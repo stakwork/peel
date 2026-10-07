@@ -30,8 +30,10 @@ then the sidebar collapses; panels never overlay the conversation.
 
 Top to bottom:
 
-1. **Header.** Peel logo, "Peel", and the wallet balance in sats under it. A
-   compose button on the right starts a new direct message.
+1. **Header.** Peel logo, "Peel", and the wallet balance in sats under it.
+   On the right, Sphinx's connection bolt: green when connected, orange
+   otherwise; clicking it shows the state, the retry countdown and the last
+   connection error. A compose button will start a new direct message.
 2. **Search.** One field over every conversation.
 3. **Threads.** Threads you started or replied to that have new replies, with
    an unread count.
@@ -42,8 +44,8 @@ Top to bottom:
    tribes are bold. Ends with "Join a tribe". The section collapses.
 7. **Direct messages.** One row per contact, unread ones bold with a count.
    Ends with "Add contact". The section collapses.
-8. **Footer.** Your avatar, your name and the connection state ("Connected",
-   "Connecting", "Offline").
+8. **Footer.** Your avatar and your name. (The connection state moved to the
+   header bolt, 2026-10-07.)
 
 No tabs and no filter chips. Sorting inside each section: most recent first.
 
@@ -215,8 +217,14 @@ The layout can be built before the features behind it, with empty states:
 - Sidebar: search (filters the lists, held in `AppModel.searchQuery`), Threads,
   Mentions, Payments with empty states, Tribes with "No tribes yet", Direct
   messages, "Add contact" (a popover next to the row, through
-  `Engine.addContact`), and a footer with your name and connection state that
-  opens your contact info to copy.
+  `Engine.addContact`), and a footer with your name that opens your contact
+  info to copy.
+- Delivery and reads (2026-10-07): the connection bolt in the header; a green
+  bolt beside the time of a message the server confirmed; "Not delivered ·
+  Retry · Discard" under a failed one; chat errors in a quiet bar above the
+  composer; unread direct messages bold with a blue count, muted ones dimmed
+  with a crossed-out bell (Mute / Unmute in the row's context menu). Times
+  show under the last message of a run and beside any bubble on hover.
 - Conversation: header with the name and short key, day dividers, bubbles,
   the composer with the round send arrow. A banner at the bottom on
   development profiles says the twelve words are in a plain file.

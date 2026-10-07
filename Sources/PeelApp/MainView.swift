@@ -100,6 +100,7 @@ struct SidebarHeader: View {
                 }
             }
             Spacer()
+            ConnectionBolt()
         }
         .padding(.horizontal, 4)
     }
@@ -194,13 +195,117 @@ extension SidebarLink where Icon == AnyView {
     }
 }
 
+/// A direct message in the sidebar: bold with a count when unread, dimmed
+/// with a crossed-out bell when muted. Mute and unmute from its context menu.
 struct DirectMessageLink: View {
+    @Environment(AppModel.self) private var model
     let conversation: Conversation
 
     var body: some View {
-        SidebarLink(conversation.name, to: .chat(conversation.chat)) {
-            Avatar(name: conversation.name, url: conversation.photoURL, size: 18)
+        let state = model.readStates[conversation.chat]
+        let muted = state?.mute == .muted
+        let unread = muted ? 0 : state?.unread ?? 0
+        let destination = AppModel.Destination.chat(conversation.chat)
+        Button {
+            model.destination = destination
+        } label: {
+            HStack(spacing: 9) {
+                Avatar(name: conversation.name, url: conversation.photoURL, size: 18)
+                    .frame(width: 18)
+                Text(conversation.name).lineLimit(1)
+                Spacer(minLength: 4)
+                if muted {
+                    Image(systemName: "bell.slash")
+                        .font(.system(size: 11))
+                        .help("Muted")
+                } else if unread > 0 {
+                    UnreadBadge(count: unread)
+                }
+            }
+            .opacity(muted ? 0.6 : 1)
         }
+        .buttonStyle(SidebarRowStyle(selected: model.destination == destination, unread: unread > 0))
+        .contextMenu {
+            Button(muted ? "Unmute" : "Mute") {
+                Task { await model.setMuted(conversation.chat, !muted) }
+            }
+        }
+    }
+}
+
+struct UnreadBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(Theme.font(11, .bold))
+            .monospacedDigit()
+            .foregroundStyle(Theme.buttonText)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Theme.accent, in: Capsule())
+    }
+}
+
+/// Sphinx's bolt for the connection: green when connected, orange otherwise.
+/// Click for the state, the retry countdown and the last connection error.
+struct ConnectionBolt: View {
+    @Environment(AppModel.self) private var model
+    @State private var showing = false
+
+    private var connected: Bool { model.connection == .connected }
+
+    var body: some View {
+        Button {
+            showing.toggle()
+        } label: {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(model.connection.label)
+        .accessibilityLabel(model.connection.label)
+        .popover(isPresented: $showing, arrowEdge: .bottom) {
+            ConnectionCard()
+        }
+    }
+}
+
+struct ConnectionCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(label(at: context.date))
+                    .font(Theme.font(14, .medium))
+                    .monospacedDigit()
+            }
+            if model.connection != .connected, let error = model.notice {
+                Text(error)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .textSelection(.enabled)
+                    .lineLimit(4)
+            }
+            if case .offline = model.connection {
+                Button("Reconnect now") { Task { await model.reconnectNow() } }
+                    .buttonStyle(.plain)
+                    .font(Theme.font(12, .medium))
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+        .padding(14)
+        .frame(width: 260, alignment: .leading)
+    }
+
+    private func label(at now: Date) -> String {
+        guard case .offline = model.connection, let at = model.reconnectAt else { return model.connection.label }
+        let seconds = max(0, Int(at.timeIntervalSince(now).rounded(.up)))
+        return seconds > 0 ? "Offline, retrying in \(seconds)s" : "Offline, retrying"
     }
 }
 
@@ -275,20 +380,23 @@ struct AddContactForm: View {
 
 struct SidebarRowStyle: ButtonStyle {
     let selected: Bool
+    /// Unread rows are bold and bright, as in Slack.
+    var unread = false
 
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration, selected: selected)
+        Row(configuration: configuration, selected: selected, unread: unread)
     }
 
     private struct Row: View {
         let configuration: Configuration
         let selected: Bool
+        let unread: Bool
         @State private var hovering = false
 
         var body: some View {
             configuration.label
-                .font(Theme.font(14, selected ? .medium : .regular))
-                .foregroundStyle(selected ? Theme.selectionText : Theme.secondaryText)
+                .font(Theme.font(14, unread ? .bold : selected ? .medium : .regular))
+                .foregroundStyle(selected ? Theme.selectionText : unread ? Theme.text : Theme.secondaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -317,10 +425,6 @@ struct SidebarFooter: View {
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                Text(model.connection.label)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
             }
             .padding(.horizontal, 6)
             .padding(.top, 9)

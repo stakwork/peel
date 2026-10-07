@@ -26,6 +26,10 @@ enum Theme {
     static let sentBubble = Color(light: 0xDDEDFD, dark: 0x3E6189)
     static let receivedBubble = Color(light: 0xF2F3F5, dark: 0x222E3A)
     static let sentText = Color(light: 0x1E1F25, dark: 0xFFFFFF)
+    /// PrimaryGreen: connected, and a message the server confirmed.
+    static let confirmed = Color(light: 0x49C998, dark: 0x49C998)
+    /// SphinxOrange: not connected. Also the boost bolt, from phase 4.
+    static let attention = Color(light: 0xFFBC58, dark: 0xFFBC58)
 
     /// Roboto when the app bundle carries it, otherwise the system font.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {

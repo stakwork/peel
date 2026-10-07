@@ -17,6 +17,12 @@ struct PeelCommand {
           add <contact-info> [name]   start a key exchange with a contact
           send <pubkey> <text>        send a text message
           listen                      stay connected, reconnecting as needed, and print what arrives
+          messages <pubkey>           the stored messages of one chat, with row ids and delivery
+          resend <id>                 send an undelivered message again
+          discard <id>                drop an undelivered message
+          unread                      unread counts and mute levels by chat
+          read <pubkey>               mark a chat read up to its newest message
+          mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
 
         options:
           --profile <name>    which local account to use (default: default)
@@ -104,8 +110,58 @@ struct PeelCommand {
             guard let pubkey = arguments.next(), !arguments.isEmpty else {
                 throw PeelError("send needs a pubkey and some text")
             }
-            let session = try await Session(Account.load(profile, server: server)).connect(insecure: insecure)
+            let session = try await Session(Account.load(profile, server: server))
+            // Offline, the send is still recorded, as failed, so it can be retried.
+            do {
+                _ = try await session.connect(insecure: insecure)
+            } catch {
+                print("not connected: \(error)")
+            }
             try await session.engine.sendText(arguments.rest().joined(separator: " "), to: pubkey)
+            try await session.finish(after: wait)
+
+        case "messages":
+            guard let pubkey = arguments.next() else { throw PeelError("messages needs a pubkey") }
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await rows in storage.messages(in: pubkey) {
+                for row in rows {
+                    let delivery = row.delivery.map { " [\($0)]" } ?? ""
+                    print("\(row.id ?? 0)  #\(row.serverIndex.map(String.init) ?? "-")  \(row.fromMe ? "->" : "<-")\(delivery) \(row.content ?? "")")
+                }
+                break
+            }
+
+        case "resend", "discard":
+            guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("\(command) needs a message id") }
+            if command == "discard" {
+                try await Account.load(profile, server: server).discard(messageID: id)
+                print("discarded \(id)")
+                return
+            }
+            let session = try await Session(Account.load(profile, server: server)).connect(insecure: insecure)
+            try await session.engine.resend(messageID: id)
+            try await session.finish(after: wait)
+
+        case "unread":
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await states in storage.readStates() {
+                for state in states.values.sorted(by: { $0.chat < $1.chat }) {
+                    print("\(state.chat)  unread \(state.unread)  mute \(state.mute)")
+                }
+                break
+            }
+
+        case "read", "mute":
+            guard let pubkey = arguments.next() else { throw PeelError("\(command) needs a pubkey") }
+            let session = try await Session(Account.load(profile, server: server)).connect(insecure: insecure)
+            if command == "read" {
+                try await session.engine.markRead(pubkey)
+            } else {
+                guard let level = arguments.next().flatMap({ Int($0) }).flatMap(MuteLevel.init(rawValue:)) else {
+                    throw PeelError("mute needs a level: 0, 1 or 2")
+                }
+                try await session.engine.setMute(pubkey, level: level)
+            }
             try await session.finish(after: wait)
 
         case "listen":
@@ -161,6 +217,8 @@ struct Session {
             "history complete"
         case .historyFailed(let reason):
             "history failed: \(reason)"
+        case .conversationError(let chat, let message):
+            "error in \(chat.prefix(12)): \(message)"
         case .coreError(let message):
             "core error: \(message)"
         }

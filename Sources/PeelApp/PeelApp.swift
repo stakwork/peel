@@ -23,6 +23,7 @@ struct PeelApp: App {
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
+                    model.markSelectedChatRead()
                 }
                 #endif
         }

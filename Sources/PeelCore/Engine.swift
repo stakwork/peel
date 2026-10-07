@@ -20,6 +20,9 @@ public actor Engine {
         /// The server has nothing more; after a restore, the account is complete.
         case historyDone
         case historyFailed(String)
+        /// An error that belongs to one conversation, such as a send the server refused.
+        case conversationError(chat: String, message: String)
+        /// An error that belongs to no conversation in particular.
         case coreError(String)
     }
 
@@ -64,9 +67,11 @@ public actor Engine {
         case notConnected
         case invalidContactInfo
         case registrationTimedOut
+        case notRetryable
 
         public var description: String {
             switch self {
+            case .notRetryable: "only an undelivered message of ours can be sent again or discarded"
             case .noServer: "this account has no server recorded"
             case .notConnected: "not connected to the server"
             case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
@@ -261,6 +266,13 @@ public actor Engine {
         reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 0) }
     }
 
+    /// Skips the wait before the next reconnect attempt.
+    public func reconnectNow() {
+        guard keepConnected, connection != .connected, connection != .connecting else { return }
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 0) }
+    }
+
     public func disconnect() async {
         keepConnected = false
         reconnectTask?.cancel()
@@ -342,7 +354,8 @@ public actor Engine {
                 attempt += 1
             }
         }
-        reconnectTask = nil
+        // A cancelled loop has already been replaced or stopped.
+        if !Task.isCancelled { reconnectTask = nil }
     }
 
     private func connectionClosed(_ closed: Transport) async {
@@ -393,21 +406,89 @@ public actor Engine {
     @discardableResult
     public func sendText(_ text: String, to pubkey: String) async throws -> String? {
         let body = String(decoding: try JSONEncoder().encode(["content": text]), as: UTF8.self)
+        return try await deliver(body: body, content: text, to: pubkey, replacing: nil)
+    }
+
+    /// Sends an undelivered message again. The core gives every send a new uuid
+    /// and tag, so the same row takes them over and moves to now; the server's
+    /// echo then matches that row rather than adding a second one.
+    @discardableResult
+    public func resend(messageID: Int64) async throws -> String? {
+        guard let message = try storage.message(id: messageID), message.isRetryable(), let body = message.body else {
+            throw Failure.notRetryable
+        }
+        return try await deliver(body: body, content: message.content, to: message.chat, replacing: messageID)
+    }
+
+    /// Drops an undelivered message of ours from this Mac. It never reached the
+    /// server, so there is nothing to delete anywhere else.
+    public func discard(messageID: Int64) throws {
+        guard let message = try storage.message(id: messageID), message.isRetryable() else {
+            throw Failure.notRetryable
+        }
+        try storage.deleteMessage(id: messageID)
+    }
+
+    /// The core only returns a tag and uuid for what was sent; the local row is
+    /// written in the same transaction as the state, before publishing. If the
+    /// publish fails the row is marked failed, ready to send again, and the
+    /// failure is reported as a send status rather than thrown.
+    private func deliver(body: String, content: String?, to pubkey: String, replacing id: Int64?) async throws -> String? {
         let time = clock.next()
         let result = try Sphinxrs.send(
             seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.text), msgJson: body,
             state: StateCodec.encode(state), myAlias: alias, myImg: photoURL, amtMsat: 0, isTribe: false
         )
-        // The core only returns a tag and uuid for what was sent; the local row
-        // is written in the same transaction as the state, before publishing.
         let sent = result.msgs.first
-        let outgoing = Message(
-            uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: text,
-            timestamp: Date().millisecondsSince1970, tag: sent?.tag, status: Message.Delivery.pending.rawValue
-        )
-        let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing)
-        try await complete(result, followUps)
+        let now = Date().millisecondsSince1970
+        var outgoing: Message?
+        var resend: Storage.Commit.Resend?
+        if let id {
+            resend = (id, sent?.uuid, sent?.tag, now)
+        } else {
+            outgoing = Message(
+                uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: content,
+                timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue
+            )
+        }
+        let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend)
+        do {
+            try await complete(result, followUps)
+        } catch {
+            if let uuid = sent?.uuid {
+                try storage.setStatus(.failed, uuid: uuid)
+            }
+            emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
+            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(error)"))
+        }
         return sent?.tag
+    }
+
+    /// Marks a chat read up to its newest message, here and on the server, so
+    /// the account's other devices agree. Offline, only the local marker moves;
+    /// the server catches up when `getReads` next shows it behind.
+    public func markRead(_ chat: String) async throws {
+        guard let index = try storage.highestServerIndex(in: chat) else { return }
+        if let read = try storage.lastReads()[chat], read >= index { return }
+        try storage.setRead(chat: chat, index: index)
+        try await publishRead(chat, index: index)
+    }
+
+    private func publishRead(_ chat: String, index: Int64) async throws {
+        guard transport != nil, state["c/\(chat)"] != nil, let index = UInt64(exactly: index) else { return }
+        try await run { time, state in
+            try Sphinxrs.read(seed: seed, uniqueTime: time, state: state, pubkey: chat, msgIdx: index)
+        }
+    }
+
+    /// Sets how loud a chat may be. The level lives on the server, which uses it
+    /// for push notifications, so this needs a connection.
+    public func setMute(_ chat: String, level: MuteLevel) async throws {
+        guard transport != nil else { throw Failure.notConnected }
+        try await run { time, state in
+            try Sphinxrs.mute(seed: seed, uniqueTime: time, state: state, pubkey: chat, muteLevel: UInt8(level.rawValue))
+        }
+        try storage.setMute(chat: chat, level: level)
     }
 
     /// Asks the server for messages newer than the newest one stored locally.
@@ -428,7 +509,7 @@ public actor Engine {
     ) async throws -> RunReturn {
         let time = clock.next()
         let result = try call(time, StateCodec.encode(state))
-        let followUps = try commit(result, time: time, expectedSender: expectedSender, outgoing: nil)
+        let followUps = try commit(result, time: time, expectedSender: expectedSender)
         try await complete(result, followUps)
         return result
     }
@@ -437,14 +518,29 @@ public actor Engine {
         var acknowledgedPings: [UInt64] = []
         var justRegistered = false
         var restorePlan: MessageCounts?
+        /// Chats read here further than the server knows, to tell it again.
+        var staleReads: [(chat: String, index: Int64)] = []
     }
 
     /// The synchronous half: one transaction with everything the core reported,
     /// then the in-memory bookkeeping and events.
-    private func commit(_ result: RunReturn, time: String, expectedSender: String?, outgoing: Message?) throws -> FollowUps {
+    private func commit(
+        _ result: RunReturn, time: String, expectedSender: String?,
+        outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil
+    ) throws -> FollowUps {
         var followUps = FollowUps()
         var commit = Storage.Commit()
         commit.settings[.clock] = time
+        commit.resend = resend
+        if let json = result.lastRead, let reads = try? JSONDecoder().decode([String: Int64].self, from: Data(json.utf8)) {
+            commit.reads = reads
+            followUps.staleReads = try storage.lastReads().compactMap { chat, index in
+                (reads[chat] ?? -1) < index ? (chat, index) : nil
+            }
+        }
+        if let json = result.muteLevels, let mutes = try? JSONDecoder().decode([String: Int].self, from: Data(json.utf8)) {
+            commit.mutes = mutes
+        }
 
         let updates = try result.stateMp.map(StateCodec.decode) ?? [:]
         var newState = state
@@ -530,7 +626,13 @@ public actor Engine {
                let pingTime = pingsByTag.removeValue(forKey: tag) {
                 followUps.acknowledgedPings.append(pingTime)
             }
-            emit.yield(.coreError(error))
+            // A refused send carries its tag; a live message names its sender.
+            let chat = try sent?.tag.flatMap { try storage.chat(forTag: $0) } ?? expectedSender
+            if let chat {
+                emit.yield(.conversationError(chat: chat, message: error))
+            } else {
+                emit.yield(.coreError(error))
+            }
         }
         return followUps
     }
@@ -565,6 +667,9 @@ public actor Engine {
             try await run { time, state in
                 try Sphinxrs.pingDone(seed: seed, uniqueTime: time, state: state, pingTs: pingTime)
             }
+        }
+        for (chat, index) in followUps.staleReads {
+            try await publishRead(chat, index: index)
         }
         if followUps.justRegistered {
             await cameOnline()
@@ -635,7 +740,11 @@ public actor Engine {
                 )
             }
         } catch {
-            emit.yield(.coreError("\(kind): \(error)"))
+            if let expectedSender {
+                emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(error)"))
+            } else {
+                emit.yield(.coreError("\(kind): \(error)"))
+            }
         }
     }
 
@@ -649,6 +758,7 @@ public actor Engine {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
             }
+            try await fetchReadsAndMutes()
             if let run = history {
                 try await request(run)
             } else if try storage.value(for: .needsRestore) == "1" {
@@ -661,6 +771,16 @@ public actor Engine {
             }
         } catch {
             emit.yield(.coreError("coming online: \(error)"))
+        }
+    }
+
+    /// Read markers and mutes live on the server, shared by every device.
+    private func fetchReadsAndMutes() async throws {
+        try await run { time, state in
+            try Sphinxrs.getReads(seed: seed, uniqueTime: time, state: state)
+        }
+        try await run { time, state in
+            try Sphinxrs.getMutes(seed: seed, uniqueTime: time, state: state)
         }
     }
 
@@ -752,6 +872,9 @@ public actor Engine {
     private func historyEnded() async throws {
         if try storage.value(for: .needsRestore) == "1" {
             try storage.set("0", for: .needsRestore)
+            // The first ask came before the restore rebuilt the contacts, and
+            // the core drops markers for contacts it does not know.
+            try await fetchReadsAndMutes()
         }
         emit.yield(.historyDone)
     }

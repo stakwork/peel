@@ -261,6 +261,14 @@ public actor Engine {
         self.alias = alias
     }
 
+    /// The photo others see beside this account's messages: an https URL, or
+    /// empty for none.
+    public func setPhotoURL(_ url: String) throws {
+        guard url.isEmpty || url.httpsOnly != nil else { throw PeelError("a photo must be an https URL") }
+        try storage.set(url, for: .photoURL)
+        photoURL = url
+    }
+
     public func setServer(_ server: ServerAddress) throws {
         try storage.set(server.description, for: .server)
         self.server = server

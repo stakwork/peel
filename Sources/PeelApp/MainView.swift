@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import PeelCore
 
@@ -746,20 +747,67 @@ struct Avatar: View {
         Self.tones[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % Self.tones.count]
     }
 
+    @State private var loaded: CGImage?
+
     var body: some View {
-        AsyncImage(url: photo) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            tone.overlay {
-                if size >= 24 {
-                    Text(name.prefix(1).uppercased())
-                        .font(Theme.font(size * 0.42, .bold))
-                        .foregroundStyle(.white)
+        Group {
+            if let image = loaded ?? photo.flatMap(PhotoCache.shared.cached) {
+                Image(decorative: image, scale: 1).resizable().scaledToFill()
+            } else {
+                tone.overlay {
+                    if size >= 24 {
+                        Text(name.prefix(1).uppercased())
+                            .font(Theme.font(size * 0.42, .bold))
+                            .foregroundStyle(.white)
+                    }
                 }
             }
         }
+        .task(id: photo) {
+            loaded = nil
+            if let photo { loaded = await PhotoCache.shared.image(for: photo) }
+        }
         .frame(width: size, height: size)
         .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
+    }
+}
+
+/// Photos fetched once per URL and kept for the session. A row in a lazy list
+/// is made and dropped as it scrolls; each `AsyncImage` fetched on its own and
+/// a row dropped mid-fetch was left on its initial for good, so every run of a
+/// tribe member's messages after the first showed no photo. Here the fetch
+/// belongs to the cache, not the row, and every row with that URL shares it.
+@MainActor
+final class PhotoCache {
+    static let shared = PhotoCache()
+
+    private var images: [URL: CGImage] = [:]
+    private var loads: [URL: Task<(image: CGImage?, answered: Bool), Never>] = [:]
+    /// URLs whose server gave no image, not asked for again this session.
+    /// A fetch that never reached the server is tried again next time.
+    private var failed: Set<URL> = []
+
+    func cached(_ url: URL) -> CGImage? { images[url] }
+
+    func image(for url: URL) async -> CGImage? {
+        if let image = images[url] { return image }
+        guard !failed.contains(url) else { return nil }
+        let load = loads[url] ?? Task.detached(priority: .utility) {
+            guard let (data, response) = try? await URLSession.shared.data(from: url) else { return (nil, false) }
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil)
+            else { return (nil, true) }
+            return (CGImageSourceCreateImageAtIndex(source, 0, nil), true)
+        }
+        loads[url] = load
+        let result = await load.value
+        loads[url] = nil
+        if let image = result.image {
+            images[url] = image
+        } else if result.answered {
+            failed.insert(url)
+        }
+        return result.image
     }
 }
 

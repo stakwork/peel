@@ -47,6 +47,7 @@ struct PeelCommand {
           --server <host:port>  override the server (init, signup, restore; later runs reuse it)
           --network <bitcoin|regtest>   for init, signup and restore
           --alias <name>      the name others see (default: the profile name)
+          --photo <https url> the photo others see beside this account's messages ("" for none)
           --wait <seconds>    how long to stay connected after a command (default: 5)
           --insecure          accept an untrusted TLS certificate
           --tribe-host <host:port>  the account's tribes server (init, signup and restore take it from
@@ -78,6 +79,7 @@ struct PeelCommand {
         }
         let network = arguments.option("--network") ?? "bitcoin"
         let alias = arguments.option("--alias") ?? profile.name
+        let photo = arguments.option("--photo")
         let wait = arguments.option("--wait").flatMap { Int($0) } ?? 5
         let insecure = arguments.flag("--insecure")
         let tribeHost = arguments.option("--tribe-host")
@@ -86,8 +88,12 @@ struct PeelCommand {
             print(usage)
             return
         }
+        func withPhoto(_ engine: Engine) async throws -> Engine {
+            if let photo { try await engine.setPhotoURL(photo) }
+            return engine
+        }
         func load() async throws -> Engine {
-            try await Account.load(profile, server: server, tribeHost: tribeHost)
+            try await withPhoto(Account.load(profile, server: server, tribeHost: tribeHost))
         }
 
         switch command {
@@ -96,7 +102,7 @@ struct PeelCommand {
             let created = try await Account.create(
                 profile, alias: alias, pin: "", network: network, server: server, tribeHost: tribeHost
             )
-            try await Session(created.engine).connect(insecure: insecure).finish(after: wait)
+            try await Session(withPhoto(created.engine)).connect(insecure: insecure).finish(after: wait)
 
         case "signup":
             guard let text = arguments.next() else { throw PeelError("signup needs an invite link, or - for stdin") }
@@ -106,7 +112,7 @@ struct PeelCommand {
                 tribeHost: tribeHost, allowUntrustedCertificate: insecure
             )
             print("account created in \(profile.directory.path)")
-            try await Session(created.engine).finish(after: wait)
+            try await Session(withPhoto(created.engine)).finish(after: wait)
 
         case "restore":
             print("twelve words:")
@@ -114,7 +120,7 @@ struct PeelCommand {
                 profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server,
                 tribeHost: tribeHost
             )
-            let session = try await Session(engine).connect(insecure: insecure)
+            let session = try await Session(withPhoto(engine)).connect(insecure: insecure)
             // The engine fetches contacts and history itself once online.
             while await session.engine.isSyncingHistory {
                 try await Task.sleep(for: .milliseconds(300))

@@ -101,7 +101,7 @@ Xcode project yet, which is only needed for TestFlight and the iPhone target.
 | # | Phase | Status | File |
 |---|-------|--------|------|
 | 1 | Core and account | done | [phases/01-core.md](phases/01-core.md) |
-| 2 | Safe accounts: Keychain, PIN, onboarding, restore | engine done; app onboarding landing | [phases/02-messaging.md](phases/02-messaging.md) |
+| 2 | Safe accounts: Keychain, PIN, onboarding, restore | core goal reached; leftovers listed in the file | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | planned | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | planned | [phases/04-money.md](phases/04-money.md) |
 | 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |

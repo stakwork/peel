@@ -1,6 +1,6 @@
 # Phase 2 — Safe accounts: Keychain, onboarding, restore
 
-Status: in progress. Xcode is installed and an Apple Development certificate exists (2026-10-07).
+Status: core goal reached 2026-10-07 evening. Tom restored the throwaway's twelve words in the signed app with a PIN; the Keychain item exists, no mnemonic file does, and the engine-driven restore brought back the contact and history. What remains is listed under "Still open in this phase".
 
 Goal: Peel can hold a real account safely. The twelve words live in the
 Keychain, a new account can be created from an invite, and an existing account
@@ -56,10 +56,13 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    to the data-protection keychain (`kSecUseDataProtectionKeychain`), which
    wraps items in hardware and keeps them out of backups.
 
-3. **Onboarding: new account.** One field already accepts an invite link.
-   Finish the flow: name, then a screen that shows the twelve words once with a
-   "written down" confirmation, then the conversation list. Verify with a fresh
-   invite on the throwaway path. Signup already works end to end from the CLI.
+3. **Onboarding.** Done in the app (2026-10-07): welcome → invite link or
+   twelve words → name → PIN → confirm PIN → the words shown once (new
+   account) or restore progress (existing account); PIN lock at launch with a
+   timeout setting; "forget this account on this Mac" on the lock screen; a
+   banner when a development profile's words are in a file. The new-account
+   path has not yet been exercised with a fresh invite in the app (signup is
+   proven from the CLI); do that with the next invite.
 4. **Restore from twelve words.** Done. `Account.restore` marks the account
    (`needsRestore`) and the engine runs the plan itself the moment it is
    online: `getMsgsCounts`, then one message per contact key
@@ -72,15 +75,22 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    signature, so a sender can only name themself, and contact records are
    honoured only when signed by this account. Verified 2026-10-07 from the CLI
    into a fresh profile (contact, name, all messages) and by Tom in the app.
-   Still to do in the app: show the progress, and a "forget this account on
-   this Mac" action for an orphaned Keychain item.
+   The app shows the progress and offers "forget this account" on the lock
+   screen.
 
-5. **Real-account checklist**, done by Tom, not an agent: Keychain in place,
-   restore proven on the throwaway, CLI closed (the profile lock enforces one
-   process), official app still installed. Restore the real account, then use
-   both clients side by side for a few days before relying on Peel.
+5. **Real-account checklist**, done by Tom, not an agent: Keychain in place
+   (done), restore proven on the throwaway in the app (done), CLI closed (the
+   profile lock enforces one process), official app still installed. Restore
+   the real account, then use both clients side by side for a few days before
+   relying on Peel. Tribes are phase 3, so until then Peel shows DMs only.
 
-## After the account is safe
+## Still open in this phase
+
+0. **Data-protection keychain.** The item is in the file-based login keychain
+   (see task 2). Moving it to the data-protection keychain needs a bundle with
+   an application identifier, i.e. an Xcode project with a provisioning
+   profile. Do this before the real account moves over if at all possible.
+
 
 6. **Long messages.** Text over ~869 bytes is split by the bindings layer
    (`sphinx-rs/sphinx-ffi/src/chunk.rs`, type 34). Confirm how `send` reports a
@@ -95,8 +105,8 @@ restore is the point of this phase; the Keychain is what makes it allowed.
 
 ## Done criteria
 
-- An account created in the app has no `mnemonic` file anywhere.
-- A rebuilt app opens without a Keychain prompt.
-- A fresh profile restored from the throwaway's words shows the conversation
-  with Tom and its history.
-- Tom's real account runs in Peel alongside the official app with no loss.
+- [x] An account created in the app has no `mnemonic` file anywhere.
+- [x] A rebuilt app opens without a Keychain prompt (signed with Tom's identity).
+- [x] A fresh profile restored from the throwaway's words shows the conversation
+  with Tom and its history (CLI and app, 2026-10-07).
+- [ ] Tom's real account runs in Peel alongside the official app with no loss.

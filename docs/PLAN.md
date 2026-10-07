@@ -109,7 +109,8 @@ only needed for TestFlight and the iPhone target.
 | 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |
 | 6 | Calls | planned | [phases/06-calls.md](phases/06-calls.md) |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
-| 8 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/08-local-tools.md](phases/08-local-tools.md) |
+| 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |
+| 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
 
 ## Scope (decided 2026-10-05)
 

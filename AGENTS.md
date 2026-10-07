@@ -188,6 +188,9 @@ optional here: a bug in this code can lose money or leak a key.
    layout or rules changed.
 6. **Ship.** Commit with a plain message and push.
 
+This chain reviews one diff. Before the repo goes to the team, phase 8
+(`docs/phases/08-audit.md`) reviews the whole of it, features frozen.
+
 ## Local test server
 
 No invite needed. From `~/Documents/sphinx` (set `CARGO_TARGET_DIR` outside the

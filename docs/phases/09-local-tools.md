@@ -1,4 +1,4 @@
-# Phase 8 — Local runtimes: Peel dispatches work to Claude Code, Goose or Codex
+# Phase 9 — Local runtimes: Peel dispatches work to Claude Code, Goose or Codex
 
 Status: planned. Comes after the agent host in `docs/agent-native.md` exists
 and after the real account has moved over.

@@ -52,6 +52,12 @@ struct MessageTests {
     }
 }
 
+/// A uuid as the core issues them: 64 hex characters.
+func uuid(_ n: Int) -> String { String(format: "%064x", n) }
+
+/// A direct-message chat for tests.
+let dm = "02aa"
+
 extension Message {
     static func fixture(
         uuid: String? = "uuid-1",
@@ -68,12 +74,14 @@ extension Message {
         paymentHash: String? = nil,
         status: String? = nil,
         replyUUID: String? = nil,
-        threadUUID: String? = nil
+        threadUUID: String? = nil,
+        amountMsat: Int64? = nil
     ) -> Message {
         Message(
             id: nil, uuid: uuid, serverIndex: serverIndex, type: type, chat: chat, fromMe: fromMe,
             sender: sender, body: body, content: content, msat: msat, timestamp: timestamp, tag: tag,
-            paymentHash: paymentHash, status: status, replyUUID: replyUUID, threadUUID: threadUUID
+            paymentHash: paymentHash, status: status, replyUUID: replyUUID, threadUUID: threadUUID,
+            amountMsat: amountMsat
         )
     }
 }

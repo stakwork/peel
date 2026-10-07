@@ -70,12 +70,29 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   in the link colour, without the scheme and shortened in the middle when
   long; lines starting with "-" or "•" are a list with a hanging indent.
   Quotes, attachments, thread summaries, Retry and the deleted placeholder
-  sit in the row. Hovering lights the row and shows Reply and More at its
-  top-right, over its top edge, as in Slack. Joins and leaves are a quiet
+  sit in the row. Hovering lights the row and shows Reply, Boost (others'
+  messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
   centred line ("carol joined").
 - **Day dividers** ("Today", "Yesterday", then dates).
-- **Boosts** show as a chip under the message: a bolt and the total sats. A
-  "+" chip next to it boosts.
+- **Boosts** show as a chip under the message, as the official Mac app
+  draws them (`NewMessageBoostView`): an orange bolt, the total ("1,210
+  sats"), then the first three boosters' photos overlapping (24 pt, one
+  per person in the order they boosted, initials when there is no photo)
+  and "+N" for the other people (Tom, 2026-10-07). Tinted in the selection
+  colour when one of them is yours; clicking it opens who boosted (avatars, names,
+  amounts). There is no "+" chip: Boost is in the hover bar (Reply, Boost,
+  More) and "Boost…" in the message menu, on others' messages only (built
+  2026-10-07, see `../phases/04-money.md`).
+- **Payments** in a DM are a compact row: an orange bolt in a soft circle
+  where the photo goes, "You sent **1,000 sats**" or "Bob sent you **1,000
+  sats**", the time and delivery bolt, the note under it. A payment or
+  boost waiting past 30 s reads "… waiting for the server…" (no Discard: it
+  may have paid); a failed one "Not sent · Retry · Discard".
+- **Money panels.** Boost (preset tips, another amount, the tribe's price
+  and escrow and the total, balance) and Send sats (amount, note,
+  balance) are Peel panels; their button says the amount ("Boost 110
+  sats"). Over the threshold (default 100 sats) the first click turns it
+  orange, "Click again to boost 1,000 sats"; the second sends exactly that.
 - **Thread summary.** In a tribe, a thread of two or more collapses to one
   row: the original message, then up to three participants' avatars, "N
   replies" as a link (bold, with "N new", when unread) and "Last reply
@@ -84,7 +101,7 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
 - **Composer.** A rounded text field ("Message #Tribe" or "Message Name")
   and a round send arrow beside it, not a "Send" button (Tom, 2026-10-07).
   Attach, send sats and mention join it with their phases; no control appears
-  before it works.
+  before it works. In a DM a round bolt beside the paperclip opens Send sats.
 
 ### Thread panel (360 pt)
 

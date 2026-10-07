@@ -3,11 +3,7 @@ import GRDB
 import Testing
 @testable import PeelCore
 
-/// A uuid as the core issues them: 64 hex characters.
-private func uuid(_ n: Int) -> String { String(format: "%064x", n) }
-
 private let tribe = "02tribe"
-private let dm = "02aa"
 
 struct ThreadTests {
     let profile = TempProfile()

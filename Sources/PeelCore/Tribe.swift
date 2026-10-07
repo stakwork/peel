@@ -60,10 +60,16 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
         Self.messageAmount(pricePerMessage: pricePerMessageMsat, escrow: escrowMsat)
     }
 
+    /// What a payment or boost to the tribe pays on top of its own amount:
+    /// price plus escrow, with no 3-sat floor (the Mac app's boost).
+    public var paymentPriceMsat: UInt64 {
+        Self.messageAmount(pricePerMessage: pricePerMessageMsat, escrow: escrowMsat, floor: 0)
+    }
+
     /// Prices come from the tribes server, so the sum saturates rather than overflows.
-    static func messageAmount(pricePerMessage: Int64, escrow: Int64) -> UInt64 {
+    static func messageAmount(pricePerMessage: Int64, escrow: Int64, floor: Int64 = 3000) -> UInt64 {
         let (sum, overflow) = max(pricePerMessage, 0).addingReportingOverflow(max(escrow, 0))
-        return UInt64(max(overflow ? Int64.max : sum, 3000))
+        return UInt64(max(overflow ? Int64.max : sum, floor))
     }
 
     public static let databaseTableName = "tribe"

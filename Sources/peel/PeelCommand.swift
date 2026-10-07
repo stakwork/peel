@@ -24,7 +24,8 @@ struct PeelCommand {
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages
           threads                     threads (tribes and contacts) this account started or wrote in, newest first
-          resend <id>                 send an undelivered message again
+          resend <id>                 send an undelivered message again (a failed payment: --yes over
+                                      the confirmation threshold)
           discard <id>                drop an undelivered message
           delete <id>                 delete a message for everyone (yours, or any in a tribe you own)
           unread                      unread counts and mute levels by chat
@@ -49,6 +50,13 @@ struct PeelCommand {
           tribe-kick <pubkey> <member-pubkey>   remove a member from a tribe this account owns
           tribe-pin <pubkey> <uuid|-> pin a message in a tribe this account owns ("-" unpins)
           mentions                    tribe messages that mention this account
+
+          boost <id> <sats>           boost someone else's message (row id from messages); in a tribe the
+                                      tribe's price per message and escrow are added
+          pay <pubkey> <sats>         send sats to a contact in their chat (--text <note>)
+                                      (both refuse more than the balance, and over the confirmation
+                                      threshold without --yes)
+          payments [pubkey]           payments and boosts, in one chat or all, newest first
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -98,7 +106,8 @@ struct PeelCommand {
         let replyTo = arguments.option("--reply")
         let inThread = arguments.option("--thread")
         let memesHost = arguments.option("--memes-host")
-        let caption = arguments.option("--text")
+        let note = arguments.option("--text")
+        let confirmed = arguments.flag("--yes")
         guard let command = arguments.next() else {
             print(usage)
             return
@@ -146,7 +155,7 @@ struct PeelCommand {
         case "whoami":
             let storage = try Storage(directory: profile.directory, readOnly: true)
             print("contact info: \(try storage.value(for: .contactInfo) ?? "not registered yet")")
-            print("balance: \(try storage.value(for: .balanceMsat).flatMap { UInt64($0) }.map { "\($0 / 1000) sats" } ?? "unknown")")
+            print("balance: \(try storage.balanceMsat().map { "\($0 / 1000) sats (\($0) msat)" } ?? "unknown")")
             print("server: \(try storage.value(for: .server) ?? "none")")
             print("name: \(try storage.value(for: .alias) ?? "")")
             print("photo: \(try storage.value(for: .photoURL).flatMap(\.nilIfEmpty) ?? "none")")
@@ -193,7 +202,7 @@ struct PeelCommand {
             let session = try await Session(load())
             await session.connectIfPossible(insecure: insecure)
             let id = try await session.engine.sendAttachment(
-                URL(fileURLWithPath: path), text: caption ?? "", to: pubkey, replyTo: replyTo, inThread: inThread
+                URL(fileURLWithPath: path), text: note ?? "", to: pubkey, replyTo: replyTo, inThread: inThread
             )
             print("attachment row \(id)")
             try await session.finish(after: wait)
@@ -218,6 +227,10 @@ struct PeelCommand {
             for try await timeline in storage.timeline(in: chat) {
                 for row in timeline.messages {
                     Session.printRow(row, parents: timeline.parents)
+                    if let boosts = row.uuid.flatMap({ timeline.boosts[$0] }) {
+                        let who = boosts.boosts.map { $0.fromMe ? "me" : $0.alias ?? "?" }
+                        print("      boosted \(boosts.count)x, \(boosts.totalMsat / 1000) sats, by \(who.joined(separator: ", "))")
+                    }
                     if let thread = row.threadUUID.flatMap({ timeline.threads[$0] }) {
                         print("      thread of \(thread.count), \(thread.unread) unread, started by \(Session.line(thread.original))")
                     }
@@ -263,7 +276,7 @@ struct PeelCommand {
                 return
             }
             let session = try await Session(load()).connect(insecure: insecure)
-            try await session.engine.resend(messageID: id)
+            try await confirming(confirmed) { try await session.engine.resend(messageID: id, confirmedMsat: $0) }
             try await session.finish(after: wait)
 
         case "unread":
@@ -388,6 +401,36 @@ struct PeelCommand {
                 break
             }
 
+        case "boost":
+            guard let id = arguments.next().flatMap({ Int64($0) }), let msat = arguments.next().flatMap(Sats.msat) else {
+                throw PeelError("boost needs a message id and a whole number of sats above zero")
+            }
+            let session = try await Session(load()).connectIfPossible(insecure: insecure)
+            try await confirming(confirmed) {
+                try await session.engine.boost(messageID: id, amountMsat: msat, confirmedMsat: $0)
+            }
+            try await session.finish(after: wait)
+
+        case "pay":
+            guard let pubkey = arguments.next(), let msat = arguments.next().flatMap(Sats.msat) else {
+                throw PeelError("pay needs a pubkey and a whole number of sats above zero")
+            }
+            let session = try await Session(load()).connectIfPossible(insecure: insecure)
+            try await confirming(confirmed) {
+                try await session.engine.sendPayment(to: pubkey, amountMsat: msat, text: note ?? "", confirmedMsat: $0)
+            }
+            try await session.finish(after: wait)
+
+        case "payments":
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await rows in storage.payments(in: arguments.next()) {
+                for row in rows {
+                    let delivery = row.delivery.map { " [\($0)]" } ?? ""
+                    print("\(row.id ?? 0)  \(row.chat.prefix(12))  \(Session.line(row))\(delivery)")
+                }
+                break
+            }
+
         case "listen":
             let session = try await Session(load())
             await session.engine.start(allowUntrustedCertificate: insecure)
@@ -418,12 +461,14 @@ struct Session {
         return self
     }
 
-    /// Connects if it can, else says why and carries on offline.
-    func connectIfPossible(insecure: Bool) async {
+    /// Offline, a send is still recorded, as failed, so it can be retried.
+    @discardableResult
+    func connectIfPossible(insecure: Bool) async -> Session {
         do {
-            try await engine.connect(allowUntrustedCertificate: insecure)
+            return try await connect(insecure: insecure)
         } catch {
             print("not connected: \(error)")
+            return self
         }
     }
 
@@ -460,6 +505,8 @@ struct Session {
             "profile: \(alias), photo \(photoURL ?? "none")"
         case .transfer(let id, let direction, let bytes, let total):
             "\(direction) \(id): \(bytes) of \(total) bytes"
+        case .moneyReceived(let message):
+            "received \((message.amountMsat ?? 0) / 1000) sats in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
         }
     }
 }
@@ -478,10 +525,16 @@ extension Session {
         }
     }
 
-    /// Who sent a message, its type unless text, and what it says.
+    /// Who sent a message, its type unless text, and what it says; for a
+    /// payment or boost the amount, and the message boosted.
     static func line(_ message: Message) -> String {
         let who = message.fromMe ? "me" : message.senderAlias ?? String(message.chat.prefix(12))
-        let kind = message.type == MessageType.text ? "" : " type \(message.type)"
+        let kind = switch message.type {
+        case MessageType.text: ""
+        case MessageType.directPayment: " paid \((message.amountMsat ?? 0) / 1000) sats"
+        case MessageType.boost: " boosted \((message.amountMsat ?? 0) / 1000) sats on \(message.replyUUID?.prefix(12) ?? "-")"
+        default: " type \(message.type)"
+        }
         var file = ""
         if let attachment = message.attachmentKind {
             let details = [message.mediaType, message.fileName, message.fileSize.map { "\($0) bytes" },
@@ -532,6 +585,17 @@ struct TribeOptions {
         if let isPrivate { settings.isPrivate = isPrivate }
         if let unlisted { settings.unlisted = unlisted }
         return settings
+    }
+}
+
+/// A payment over the confirmation threshold: with `--yes`, sent again for
+/// the amount the engine names (and printed); without, the refusal stands.
+func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throws {
+    do {
+        try await send(nil)
+    } catch Engine.Failure.needsConfirmation(let msat) where yes {
+        print("confirmed \(msat / 1000) sats (\(msat) msat)")
+        try await send(msat)
     }
 }
 

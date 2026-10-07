@@ -1,8 +1,8 @@
 import SwiftUI
 import PeelCore
 
-/// A rounded field with the attach button before it and the round send
-/// arrow after it. Over the field: what it is replying to, and the files
+/// A rounded field with the attach button (and in a direct message the
+/// send-sats bolt) before it and the round send arrow after it. Over the field: what it is replying to, and the files
 /// waiting to go. A chat and each open thread have their own
 /// (`ComposerID`); its draft, what it replies to and the files it holds
 /// live in the model, so the message menus can set them and a draft
@@ -14,7 +14,10 @@ struct Composer: View {
     /// Who `@` offers, in a tribe; nil elsewhere. Asked each time an `@word`
     /// starts, so it is current without querying on every message.
     var loadMentionable: (@MainActor @Sendable () async -> [TribeMember])?
+    /// In a direct message: who the bolt beside the field sends sats to.
+    var paysTo: String?
 
+    @State private var sendingSats = false
     @State private var mentionable: [TribeMember] = []
     @State private var mention: String?
     @State private var highlighted = 0
@@ -95,6 +98,23 @@ struct Composer: View {
             }
             .buttonStyle(.plain)
             .help("Attach files")
+            if let paysTo {
+                Button {
+                    sendingSats = true
+                } label: {
+                    Image(systemName: "bolt")
+                        .font(.system(size: 14))
+                        .foregroundStyle(sendingSats ? Theme.attention : Theme.secondaryText)
+                        .frame(width: 32, height: 32)
+                        .overlay(Circle().strokeBorder(Theme.divider))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Send sats")
+                .peelPopover(isPresented: $sendingSats) {
+                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats = false }
+                }
+            }
             VStack(alignment: .leading, spacing: 0) {
                 if let target = model.replyTargets[composer] {
                     ReplyBar(message: target) { model.cancelReply(in: composer) }

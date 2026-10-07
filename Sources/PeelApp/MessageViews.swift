@@ -15,6 +15,8 @@ enum Quote: Equatable {
 struct ChatRow: Identifiable {
     enum Kind: Equatable {
         case message, request, note
+        /// Sats sent in a direct message (type 5).
+        case payment
         /// A thread's original that is not stored here.
         case missingOriginal
         /// "N replies" under a thread's original.
@@ -31,6 +33,8 @@ struct ChatRow: Identifiable {
     /// A run of one sender's images (two or more), oldest first.
     var images: [Message] = []
     var summary: ThreadSummary?
+    /// The boosts on `message` (the original, for a collapsed thread).
+    var boosts: BoostSummary?
     var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
     var approved: Bool?
@@ -57,7 +61,7 @@ struct ChatRow: Identifiable {
     /// "N replies" come first.
     static func rows(
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
-        inTribe: Bool, people: People, threadRoot: String? = nil, original: Message? = nil
+        boosts: [String: BoostSummary] = [:], inTribe: Bool, people: People, threadRoot: String? = nil, original: Message? = nil
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -81,6 +85,7 @@ struct ChatRow: Identifiable {
                 continue
             }
             let kind: Kind = message.isContent ? .message
+                : message.type == MessageType.directPayment ? .payment
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
             if kind == .message, let last = rows.last, last.takes(message, alias: row.alias) {
@@ -91,6 +96,9 @@ struct ChatRow: Identifiable {
             if kind == .message { row.quote = quote(message, parents: parents, threadRoot: threadRoot) }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
             rows.append(row)
+        }
+        for index in rows.indices where rows[index].kind == .message {
+            rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
         }
         // Runs: one sender, a few minutes apart, on one day. The last of a run
         // shows the time under it; in a tribe the first shows the name.
@@ -188,6 +196,8 @@ struct MessageList: View {
                             case .note:
                                 MembershipNote(message: row.message)
                                     .padding(.horizontal, 20)
+                            case .payment:
+                                PaymentRow(row: row)
                             case .missingOriginal:
                                 OriginalNotAvailable()
                                     .padding(.horizontal, 20)
@@ -283,6 +293,8 @@ struct MessageRow: View {
     let goTo: (Message) -> Void
 
     @State private var hovering = false
+    /// The boost panel, opened from the hover bar's bolt or "Boost…".
+    @State private var boosting = false
 
     static let avatarSize: CGFloat = 32
     static let gutterSpacing: CGFloat = 10
@@ -331,7 +343,7 @@ struct MessageRow: View {
                 }
                 MessageContent(
                     row: row, goTo: goTo,
-                    menu: { MessageMenu.entries(for: row, composer: composer, model: model) },
+                    menu: { MessageMenu.entries(for: row, composer: composer, model: model, boost: boost) },
                     tileMenu: { image in
                         var single = row
                         single.message = image
@@ -340,6 +352,9 @@ struct MessageRow: View {
                     }
                 )
                 .opacity(message.delivery == .pending && !retryable && !uploading ? 0.6 : 1)
+                if let boosts = row.boosts {
+                    BoostLine(boosts: boosts, showsChip: !message.deleted)
+                }
                 if let summary = row.summary {
                     ThreadSummaryLine(summary: summary)
                 }
@@ -365,15 +380,35 @@ struct MessageRow: View {
         // At the row's top-right, overlapping its top edge as Slack's does;
         // never over the text, which stops well short of the right edge.
         .overlay(alignment: .topTrailing) {
-            if hovering, !menuOpen, !retryable, !uploading, !message.deleted {
-                HoverBar(row: row, composer: composer)
+            if hovering, !menuOpen, !boosting, !retryable, !uploading, !message.deleted {
+                HoverBar(row: row, composer: composer, boost: boost)
                     .padding(.trailing, 20)
                     .offset(y: -10)
+            }
+        }
+        // The boost panel opens under where the hover bar sits, and stays
+        // while the bar goes.
+        .overlay(alignment: .topTrailing) {
+            if message.isBoostable {
+                Color.clear
+                    .frame(width: 96, height: 16)
+                    .padding(.trailing, 20)
+                    .allowsHitTesting(false)
+                    .peelPopover(isPresented: $boosting) {
+                        BoostPanel(message: message) { boosting = false }
+                    }
             }
         }
         .zIndex(hovering ? 1 : 0)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+    }
+
+    /// Opens the boost panel, where this message can be boosted.
+    private var boost: (@MainActor () -> Void)? {
+        guard message.isBoostable else { return nil }
+        let boosting = $boosting
+        return { boosting.wrappedValue = true }
     }
 }
 
@@ -404,11 +439,12 @@ private struct RunHeader: View {
     }
 }
 
-/// Reply and More, over a hovered row's top-right corner.
+/// Reply, Boost and More, over a hovered row's top-right corner.
 private struct HoverBar: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
     let composer: ComposerID
+    let boost: (@MainActor () -> Void)?
 
     var body: some View {
         let message = row.message
@@ -418,9 +454,12 @@ private struct HoverBar: View {
                     withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
                 }
             }
+            if let boost {
+                HoverIconButton(systemImage: "bolt", help: "Boost", action: boost)
+            }
             if !message.deleted {
                 MenuButton(systemImage: "ellipsis", help: "More", source: row.id) {
-                    MessageMenu.entries(for: row, composer: composer, model: model)
+                    MessageMenu.entries(for: row, composer: composer, model: model, boost: boost)
                 }
             }
         }
@@ -430,11 +469,14 @@ private struct HoverBar: View {
 }
 
 /// What a message's menu offers. Undelivered: Retry and Discard. Otherwise
-/// Reply, copying, saving an attachment, and for a
-/// tribe's owner, pinning (the Mac app lets only the owner pin).
+/// Reply, Boost (where `boost` is given: someone else's message), copying,
+/// saving an attachment, and for a tribe's owner, pinning (the Mac app lets
+/// only the owner pin).
 @MainActor
 enum MessageMenu {
-    static func entries(for row: ChatRow, composer: ComposerID, model: AppModel) -> [MenuEntry] {
+    static func entries(
+        for row: ChatRow, composer: ComposerID, model: AppModel, boost: (@MainActor () -> Void)? = nil
+    ) -> [MenuEntry] {
         let message = row.message
         var copy: [MenuEntry] = []
         if let text = message.content?.trimmed.nilIfEmpty {
@@ -466,6 +508,9 @@ enum MessageMenu {
             reply.append(.button("Reply", systemImage: "arrowshape.turn.up.left", shortcut: .key("r")) {
                 withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
             })
+        }
+        if let boost {
+            reply.append(.button("Boost…", systemImage: "bolt", action: boost))
         }
         var pin: [MenuEntry] = []
         if let tribe = model.selectedTribe, tribe.pubkey == message.chat, tribe.canManage, message.isPinnable {

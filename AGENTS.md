@@ -30,7 +30,7 @@ in progress and what comes next. Update it when you finish something.
   `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
-  `ImageViewer`, and `PeelMenu`, the one menu used instead of native ones;
+  `ImageViewer`, `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `Notifier` for local notifications and the Dock badge)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -166,7 +166,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 - One process per profile: `Storage` takes a lock, so a second app or CLI on the
   same profile fails with "another Peel process is using ...". Quit the other one.
 - Only a writable `Storage` migrates. The read-only CLI commands (`whoami`,
-  `contacts`, `messages`, `thread`, `threads`, `unread`, `tribes`) fail with
+  `contacts`, `messages`, `thread`, `threads`, `unread`, `tribes`, `payments`) fail with
   "no such table" or "no such column" on a
   profile last opened by an older build; run any connecting command (or the
   app) on it once first.

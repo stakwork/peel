@@ -42,9 +42,9 @@ swift build
 (sha256 plus the `sphinx-rs` commit); pass `--update` after deliberately taking a
 new build of the core.
 
-Only the command-line tools are installed on this Mac, not Xcode: build with
-`swift build`, not `xcodebuild`. The app bundle is assembled by hand in
-`scripts/run-app.sh`.
+Xcode is installed, but there is no Xcode project yet (phase 2 adds one for a
+signed bundle). Until then build with `swift build`; the app bundle is
+assembled by hand in `scripts/run-app.sh`.
 
 ## How the core works
 
@@ -96,6 +96,26 @@ Only the command-line tools are installed on this Mac, not Xcode: build with
   state, not decoration; no red for ordinary failure; restraint in motion.
 - Keep this file, `docs/PLAN.md` and the phase files current when you change
   the layout or finish a step.
+
+## How a change ships
+
+Every change, however small, goes through this chain. The reviews are not
+optional here: a bug in this code can lose money or leak a key.
+
+1. **Plan.** Read the phase file. Agree what is being built and what "done"
+   looks like, and write that into the phase file before writing code.
+2. **Build.** Engine and storage first, UI second. Reuse what the core and the
+   reference client already do.
+3. **Verify in the real medium.** `swift build`; the local test server for
+   anything protocol-level; the throwaway account on production for anything
+   the server sees. Never a real account.
+4. **Review.** `/code-review` for correctness, `/simplify` for reuse,
+   simplicity, efficiency and altitude (it applies its fixes), then
+   `/security-review`. Fix what they find. Findings deliberately not applied go
+   in the phase file with the reason.
+5. **Record.** Update the phase file (done, learned, next) and this file if the
+   layout or rules changed.
+6. **Ship.** Commit with a plain message and push.
 
 ## Local test server
 

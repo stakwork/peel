@@ -84,18 +84,18 @@ device's child-key indices; it is sensitive but not the seed.
 
 ### Platform
 
-macOS 14+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
+macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
-the Mac app's repo; building it from source needs Rust 1.88.0. This Mac has
-only the command-line tools: builds use `swift build` and the app bundle is
-assembled by `scripts/run-app.sh`.
+the Mac app's repo; building it from source needs Rust 1.88.0. Xcode is
+installed (2026-10-07); until phase 2 adds an Xcode project, builds use
+`swift build` and the app bundle is assembled by `scripts/run-app.sh`.
 
 ## Phases
 
 | # | Phase | Status | File |
 |---|-------|--------|------|
 | 1 | Core and account | done, in daily-use trial | [phases/01-core.md](phases/01-core.md) |
-| 2 | Restore, secrets and the rest of messaging basics | next | [phases/02-messaging.md](phases/02-messaging.md) |
+| 2 | Safe accounts: Keychain, onboarding, restore | next | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | planned | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | planned | [phases/04-money.md](phases/04-money.md) |
 | 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |

@@ -41,6 +41,7 @@ messages, payments and boosts are separate tasks and not listed.
 | Private: member's state follows (approved, declined) | chat status | 20 / 14, 21 | Done, also on restore |
 | Kick (owner) | `kickTribeMember` | `send` 16 with `member` | Done |
 | Removed, declined or deleted: say so, remove locally | "Delete Tribe" row | — | Done ("Remove from Peel") |
+| Deleted tribes left out of a restore | restores only tribes the registry still serves | — | Done (from the 22 in history) |
 | Mentions: `@` autocomplete from aliases heard in 3 months | `aliasesAndPics`, `getAtMention` | — (plain `content`) | Done |
 | Mentions: highlighted in messages | `\B@[^\s]+` | — | Done (bold) |
 | Mentions: which messages mention me | `content.contains("@alias ")` | server `detect_mentions` (exact word) | Done, as the server reads them |
@@ -387,6 +388,69 @@ exact, e.g. "1.999 sats"); `isPerson` duplicated the contact lookup.
 - Only the owner's decisions change a member's state: an incoming 16, 21 or
   22 must carry `role: 0` (the tribes server stamps it, and already refuses
   them from anyone else).
+
+### Fixes after first use (2026-10-07)
+
+Three things Tom saw on his own account, each checked before the fix:
+
+- **Deleted tribes came back after a restore**, with the "deleted" bar.
+  The Mac app restores a tribe only when the registry still serves it
+  (`fetchTribeInfo` in the restore), so deleted tribes are simply absent;
+  removed and declined tribes are restored (the registry still serves
+  them) with the kick message or a rejected status and a "Delete Tribe"
+  option, and a deletion heard while running stays in the chat with a
+  delete button. Peel now matches: while a restore replays history
+  (`Setting.needsRestore`, cached as `Engine.restoring`), a 22 that marks
+  a tribe deleted also marks it left, so it is hidden and what the tribe
+  still sends is dropped; removed and declined keep their bar; live
+  deletions keep the bar. The Mentions list leaves out tribes no longer
+  shown (it used to list mentions in tribes removed from Peel).
+- **Member photos did not show in tribe messages.** Not the data: the
+  core, the Mac app and the tribes server all use `sender.photo_url`, the
+  tribes server forwards it untouched (`mutate_msg_to_forward`), and Peel
+  stores and reads it under that key. On a local stack the photo was in
+  every stored message, yet only the first run of a member's messages
+  showed it; later runs showed the initial. Root cause: each row's own
+  `AsyncImage` fetched the photo, and in the lazy message list rows are
+  made and dropped while it lays out, so a fetch cut off with its row left
+  that row on the placeholder for good. The sidebar shows each contact
+  once, in a stable row, which is why DM photos worked. `Avatar` now loads
+  through `PhotoCache` (app-wide, one fetch per URL shared by every row,
+  owned by the cache rather than the row, kept for the session; a URL the
+  server answered without an image is not asked for again, a network
+  failure is). The CLI gained `--photo <https url>` (`Engine.setPhotoURL`),
+  so development accounts can send a photo; before, Peel always sent none.
+- **A tribe opened a second time was blank until scrolled.** The message
+  list is now a fresh view per chat (`.id`, from `fix/blank-conversation`)
+  and is made again once the chat's messages have loaded, so
+  `defaultScrollAnchor(.bottom)` applies to the real content: before, it
+  applied to the empty list and the jump that followed landed part way
+  up, as a lazy stack only estimates heights it has not measured.
+
+Verified on a local stack (broker 1893, mixer 8023, tribes 8823; profiles
+`fx-alice`, `fx-bob`, restores into `fx-alice2`, `fx-bob2`):
+
+| Check | Command | Result |
+|---|---|---|
+| Photo travels | `--photo https://… send <tribe> …` (bob), `listen` (alice) | `sender.photo_url` stored on every one of bob's messages |
+| Photo shows on every run | app built with `bundle-app.sh` into the scratchpad, `-profile fx-alice`, 13 runs of bob's messages | Before: photo on the first run only. After: on every run (window screenshots) |
+| First load lands at the bottom | same, on launch (the app opens the first chat) | Before: top, then part way up. After: newest message at the bottom |
+| Live deletion keeps the bar | bob in "Doomed", alice `tribe-delete`, bob `listen`, `tribes` | bob: `(deleted)`, not left |
+| Restore drops deleted | `restore` of bob and alice | Doomed `left, deleted` for both (hidden); Photo Club `(removed)` for bob, kept with its bar; alice still owner of it |
+| After the restore, live again | alice2 creates and deletes "After Restore" with bob2 in it | bob2: `(deleted)`, not left |
+
+Not verified in the UI: switching between chats and back (no way to
+click in this session; the second open takes the same path as the launch,
+which was checked); the restore in the app (CLI only); a production photo
+URL (the local check used a gravatar URL and a dead memes URL).
+
+`/code-review low` on `origin/main...HEAD` (it read the PeelCore hunks),
+both fixed: the members list and mention candidates skipped senders whose
+message has no time (`timestamp > 0` is false for NULL); approving or
+declining by member key, when no request was stored, skipped the
+"answered once" check and could pay twice (now refused unless the
+server's latest list still shows the member waiting, and the member leaves
+that list once answered).
 
 ### Reviews (parity, 2026-10-07)
 

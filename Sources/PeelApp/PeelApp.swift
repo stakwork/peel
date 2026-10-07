@@ -20,6 +20,11 @@ struct PeelApp: App {
                 .frame(minWidth: 760, minHeight: 460)
                 #endif
                 .task { await model.start() }
+                #if os(macOS)
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    model.lockIfDue()
+                }
+                #endif
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
@@ -36,6 +41,8 @@ struct RootView: View {
         case .loading:
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .locked:
+            LockView()
         case .onboarding:
             OnboardingView()
         case .ready:

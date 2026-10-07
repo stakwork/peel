@@ -10,7 +10,10 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: conversation.name, subtitle: Formatting.shortKey(conversation.chat))
+            DetailHeader(
+                title: conversation.name,
+                avatar: Avatar(name: conversation.name, url: conversation.photoURL, size: 32)
+            )
             MessageList(messages: model.messages)
             Composer(draft: $draft, placeholder: "Message \(conversation.name)", focused: $composing, send: send)
         }

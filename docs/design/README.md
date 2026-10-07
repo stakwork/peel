@@ -90,6 +90,45 @@ separate section. Two differences:
 Agent-specific views (budget, schedule, activity, approval cards) are not part
 of this layout yet; see `../agent-native.md`.
 
+## Profile and onboarding
+
+Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
+(Profile, onboarding 1–5, restore 2b–3b).
+
+- **Profile** is a full page in the detail column, opened from the sidebar
+  footer. It holds your photo, name and short key; a "Your contact info" card
+  with a QR code, Copy and Create invite; Account (name, balance, server,
+  devices); Security (PIN, Touch ID, Show words behind PIN or Touch ID);
+  Notifications; and "Remove this account from this Mac", the only red text.
+- **New account:** Welcome (invite or restore), then four steps: invite,
+  name and photo, a six-digit PIN with an optional Touch ID unlock, and the
+  twelve words with an "I've written them down" check before Peel opens.
+- **Restore:** twelve word fields (paste fills all twelve, suggestions as you
+  type), then a progress page: account, contacts, messages with a count,
+  tribes. "Open Peel" works before history finishes.
+- **The PIN is required, as in the official apps** (Tom, 2026-10-07). The
+  restore flow gets a PIN step too. How the PIN protects the words is a
+  phase 2 decision; see `docs/phases/02-messaging.md`.
+
+**Built 2026-10-07** (`OnboardingView.swift`, `LockView.swift`): both flows,
+the PIN at launch for the app's own profile, the optional re-lock
+(`defaults write dev.peel.mac pinTimeoutHours <hours>` until Profile has it),
+"Paste twelve words", and restore progress from `Engine.Event.history`. Tom
+ran the restore with the throwaway's words: contacts and conversation came
+back, the words sit in the Keychain and no words file exists.
+
+Not built: the photo picker (needs uploads to the media server), word
+suggestions while typing, the Profile page.
+
+Review notes left open:
+
+- No limit on PIN attempts at the lock screen; the official app has none.
+  Through the screen a full search takes about 4.6 days at 0.4 s per try.
+- Re-locking after the timeout hides the window but keeps data in memory; the
+  official app clears its context.
+- If `Account.restore` fails after the words are saved, a retry reports that an
+  account already exists until the app is relaunched.
+
 ## Colour
 
 Tokens come from the official Mac app's colour catalog

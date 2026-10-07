@@ -35,6 +35,6 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
-# Ad-hoc signature: enough to run locally. A stable identity comes with Xcode.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+# A stable identity, so Keychain items survive rebuilds.
+"$ROOT/scripts/sign-app.sh" "$APP"
 open -n "$APP" --args "$@"

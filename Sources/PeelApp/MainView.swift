@@ -397,36 +397,21 @@ struct Detail: View {
 }
 
 /// The bar across the top of the detail column.
-struct DetailHeader<Trailing: View>: View {
+struct DetailHeader: View {
     let title: String
-    var subtitle: String?
-    @ViewBuilder var trailing: Trailing
+    var avatar: Avatar?
 
     var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Theme.font(16, .bold))
-                    .lineLimit(1)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
-            }
+        HStack(spacing: 10) {
+            if let avatar { avatar }
+            Text(title)
+                .font(Theme.font(16, .bold))
+                .lineLimit(1)
             Spacer()
-            trailing
         }
         .padding(.horizontal, 20)
         .frame(height: 60)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
-    }
-}
-
-extension DetailHeader where Trailing == EmptyView {
-    init(title: String, subtitle: String? = nil) {
-        self.init(title: title, subtitle: subtitle) { EmptyView() }
     }
 }
 
@@ -502,10 +487,5 @@ enum Formatting {
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
-    }
-
-    /// The start and end of a public key, enough to tell two apart.
-    static func shortKey(_ key: String) -> String {
-        key.count > 12 ? "\(key.prefix(6))…\(key.suffix(4))" : key
     }
 }

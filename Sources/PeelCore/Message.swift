@@ -11,6 +11,13 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         case failed = "FAILED"
     }
 
+    /// Where an outgoing attachment is on its way to the memes server.
+    public enum Upload: String, Sendable {
+        case pending = "PENDING"
+        case done = "DONE"
+        case failed = "FAILED"
+    }
+
     public var id: Int64?
     public var uuid: String?
     /// The server's index for this message, used to page through history.
@@ -35,20 +42,39 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var replyUUID: String?
     /// The original message of the thread this one is in (`threadUuid`).
     public var threadUUID: String?
+    /// For an attachment: its declared MIME type.
+    public var mediaType: String?
+    /// For an attachment: the file name and decrypted size, once known (ours
+    /// from the start, someone else's after a download).
+    public var fileName: String?
+    public var fileSize: Int64?
+    /// For an attachment of ours: whether the memes server has it yet.
+    public var upload: String?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
     /// Known only for messages we sent.
     public var delivery: Delivery? { status.flatMap(Delivery.init(rawValue:)) }
 
+    public var uploadState: Upload? { upload.flatMap(Upload.init(rawValue:)) }
+
+    /// What kind of attachment this is, by its declared type; nil for anything
+    /// but an attachment. A download checks the bytes against it.
+    public var attachmentKind: AttachmentKind? {
+        type == MessageType.attachment ? AttachmentKind(mediaType: mediaType) : nil
+    }
+
     /// How long a send may wait for the server before it can be sent again, as
     /// in the official apps.
     public static let confirmationTimeout: TimeInterval = 30
 
-    /// One of our text messages that failed, or that the server has not
-    /// confirmed within the timeout, and so may be sent again or discarded.
+    /// One of our text messages or attachments that failed, or that the
+    /// server has not confirmed within the timeout, and so may be sent again
+    /// or discarded. An attachment still uploading is neither.
     public func isRetryable(now: Date = .now) -> Bool {
-        guard fromMe, type == MessageType.text else { return false }
+        guard fromMe, MessageType.content.contains(type), uploadState != .pending else {
+            return false
+        }
         switch delivery {
         case .failed: return true
         case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
@@ -77,6 +103,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 /// Message type numbers defined by the core (`MsgType` in the sphinx crate).
 public enum MessageType {
     public static let text = 0
+    /// A file on the memes server; the message carries its token and key.
+    public static let attachment = 6
+    /// What people say to each other: text and attachments. These count as
+    /// unread, end a conversation's preview, and can be sent again.
+    static let content = [text, attachment]
+    static let contentSQL = content.map(String.init).joined(separator: ", ")
     public static let groupJoin = 14
     public static let groupLeave = 15
     /// The owner removing a member; carries the member's key in `member`.
@@ -89,7 +121,7 @@ public enum MessageType {
     /// The owner deleting the tribe.
     public static let tribeDelete = 22
     /// Every type a tribe conversation shows: text and the membership notes.
-    static let shownInChats = [text, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
+    static let shownInChats = [text, attachment, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }
@@ -137,6 +169,11 @@ enum MessageUUID {
 
 extension String {
     public var nilIfEmpty: String? { isEmpty ? nil : self }
+
+    /// This string with line breaks, tabs and other control characters removed.
+    var withoutControlCharacters: String {
+        String(String.UnicodeScalarView(unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
+    }
 
     /// This string if it is an https URL, else nil: photos are never fetched
     /// over anything else.

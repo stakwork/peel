@@ -16,6 +16,9 @@ in progress and what comes next. Update it when you finish something.
   - `Storage.swift` — SQLite via GRDB: core state, settings, messages, contacts,
     tribes, live queries (`conversations()`, `messages(in:)`); holds the profile lock
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
+  - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
+    media tokens, the memes server (sign-in, upload, download), what a file
+    is by its bytes, and the profile's `media/` cache and outbox
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
@@ -100,8 +103,20 @@ malformed input; `Storage` commits (atomic state and settings), message upsert
 status by tag, contact alias/photo rules, the `conversations()` and
 `messages(in:)` first emission, and the profile lock; `Message` helpers;
 `ServerAddress` parsing; and the `Engine` helpers that need no server
-(mnemonics, invites, a fresh account). Nothing talks to a broker: anything
+(mnemonics, invites, a fresh account); attachment encryption against an
+independent RNCryptor vector, media tokens, file kinds and names, the media
+cache, and the attachment columns. Nothing talks to a broker: anything
 protocol-level is still verified against the local test server.
+
+### Local memes server
+
+There is no memes server in `~/Documents/sphinx` (its `memes/` crate is an
+S3 upload stub with none of the endpoints the apps use) or in
+`sphinx-swarm` (which points at the hosted one). Local tests use a throwaway
+stub of the endpoints in `docs/phases/03-chat.md` ("How attachments work"),
+not kept in the repo, on a free port; pass `--memes-host 127.0.0.1:<port>` to
+`init` (or any later command). An account on a loopback server has no memes
+server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 
 ## How the core works
 
@@ -233,7 +248,10 @@ A command that only connects briefly may exit before what the tribe sends
 has arrived (an approval, a kick); `listen` for a few seconds to catch up.
 
 Accounts made before the mixer knew `DEFAULT_TRIBE_PUBKEY` have no tribes
-server; make new ones. If another stack already holds 1883 and 8000, run a
+server; make new ones. If tribe sends start failing with "Upstream node set CLTV
+to less than the CLTV set by the sender" in the tribes server's log, restart
+the tribes server: it reads the block height once, and the auto-mining mixer
+keeps raising it. If another stack already holds 1883 and 8000, run a
 second one on other ports (`BROKER_MQTT_PORT`, `BROKER_CONSOLE_PORT`,
 `ROCKET_PORT`, `BROKER_URL`, separate `DB_PATH`s) and pass `--server
 127.0.0.1:<port>`. Only `.development` profiles may be used; never post to a

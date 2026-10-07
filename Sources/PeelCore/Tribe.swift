@@ -225,6 +225,14 @@ public struct TribeLink: Sendable, Equatable {
     static func isPlainHost(_ host: String) -> Bool {
         !host.isEmpty && host.allSatisfy { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == ":" }
     }
+
+    /// Where to reach a plain `host[:port]`: http for this machine, https for
+    /// everything else. Nil for anything that is not a plain host.
+    static func baseURL(_ host: String) -> URL? {
+        guard isPlainHost(host) else { return nil }
+        let name = host.split(separator: ":").first.map(String.init) ?? host
+        return URL(string: "\(ServerAddress.isLoopback(host: name) ? "http" : "https")://\(host)")
+    }
 }
 
 /// The tribes server's public registry: `GET /tribes/<pubkey>`.
@@ -286,10 +294,7 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     /// `GET /tribes/<pubkey>`, as the server sent it. Plain http only for a
     /// loopback host, as for the MQTT server.
     static func record(pubkey: String, host: String) async throws -> Data {
-        guard TribeLink.isPlainHost(host) else { throw PeelError("unreadable tribes host \(host)") }
-        let scheme = ServerAddress.isLoopback(host: host.split(separator: ":").first.map(String.init) ?? host)
-            ? "http" : "https"
-        guard let url = URL(string: "\(scheme)://\(host)/tribes/\(pubkey)") else {
+        guard let url = TribeLink.baseURL(host)?.appendingPathComponent("tribes/\(pubkey)") else {
             throw PeelError("unreadable tribes host \(host)")
         }
         let (data, response) = try await URLSession.shared.data(from: url)

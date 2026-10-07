@@ -9,8 +9,11 @@ import GRDB
 public final class Storage: Sendable {
     private let pool: DatabasePool
     private let lock: Int32?
+    /// The profile directory; attachments are kept under `media/`.
+    let directory: URL
 
     public init(directory: URL, readOnly: Bool = false) throws {
+        self.directory = directory
         try FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
         )
@@ -152,6 +155,18 @@ public final class Storage: Sendable {
                 CREATE INDEX message_thread ON message (chat, threadUUID, timestamp) WHERE threadUUID IS NOT NULL;
                 """)
         }
+        migrator.registerMigration("v9") { db in
+            // Attachments: what the message's JSON declares, and for ours,
+            // whether the memes server has the file yet.
+            try db.alter(table: "message") { t in
+                t.add(column: "mediaType", .text)
+                t.add(column: "fileName", .text)
+                t.add(column: "fileSize", .integer)
+                t.add(column: "upload", .text)
+            }
+            // Only our own attachments have an upload, so this stays tiny.
+            try db.execute(sql: "CREATE INDEX message_upload ON message (upload) WHERE upload IS NOT NULL")
+        }
         return migrator
     }
 }
@@ -185,12 +200,14 @@ public enum Setting: String, Sendable {
     case pinTimeoutHours
     /// The tribes server this account's own tribes are listed on, as `host[:port]`.
     case tribeHost
+    /// The memes server attachments go to, as `host[:port]`; `memes.sphinx.chat` when unset.
+    case memesHost
     /// The highest server index of a message dropped unstored (from a left
     /// tribe), so catching up does not fetch it again.
     case droppedIndex
 }
 
-/// One chat in the sidebar: a contact or a tribe, plus the newest text message.
+/// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
 public struct Conversation: Codable, Sendable, Identifiable, Equatable, FetchableRecord {
     public var chat: String
     /// The contact's alias or the tribe's name.
@@ -336,13 +353,13 @@ extension Storage {
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
-            SELECT id FROM message WHERE chat = c.chat AND type = \(MessageType.text)
+            SELECT id FROM message WHERE chat = c.chat AND type IN (\(MessageType.contentSQL))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
         """
 
-    /// Text, plus the membership notes only tribes send. The owner's own
+    /// Text and attachments, plus the membership notes only tribes send. The owner's own
     /// removals are left out, as in the Mac app: the tribe's copy does not
     /// say whom they were for. (Only the owner can send them.)
     private static let messagesSQL = messagesSQL(also: "")
@@ -351,16 +368,16 @@ extension Storage {
     /// message of a thread of two or more but the newest, and the thread's
     /// original. A thread whose original is not stored is not collapsed.
     private static let tribeTimelineSQL = messagesSQL(also: """
-        AND NOT (m.threadUUID IS NOT NULL AND m.type = \(MessageType.text)
+        AND NOT (m.threadUUID IS NOT NULL AND m.type IN (\(MessageType.contentSQL))
             AND EXISTS (SELECT 1 FROM message o WHERE o.uuid = m.threadUUID AND o.chat = m.chat)
             AND EXISTS (
                 SELECT 1 FROM message n
-                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND n.type = \(MessageType.text)
+                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND n.type IN (\(MessageType.contentSQL))
                     AND (n.timestamp, n.id) > (m.timestamp, m.id)
             ))
         AND NOT (m.uuid IS NOT NULL AND EXISTS (
             SELECT 1 FROM message n
-            WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND n.type = \(MessageType.text)
+            WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND n.type IN (\(MessageType.contentSQL))
             LIMIT 1 OFFSET 1
         ))
         """)
@@ -378,7 +395,7 @@ extension Storage {
     }
 
     /// A thread's newest 200 messages, oldest first.
-    private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND type = \(MessageType.text)")
+    private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND type IN (\(MessageType.contentSQL))")
 
     /// Threads of two or more messages with their original stored, each with
     /// its original's columns plus `threadCount`, `threadLast` and
@@ -391,7 +408,7 @@ extension Storage {
                 SUM(t.fromMe = 0 AND t.serverIndex > COALESCE(s.lastRead, -1)) AS threadUnread
             FROM message t
             LEFT JOIN chatState s ON s.chat = t.chat
-            WHERE t.threadUUID IS NOT NULL AND t.type = \(MessageType.text) AND \(filter)
+            WHERE t.threadUUID IS NOT NULL AND t.type IN (\(MessageType.contentSQL)) AND \(filter)
             GROUP BY t.chat, t.threadUUID
             HAVING COUNT(*) >= 2
         ) g
@@ -399,13 +416,13 @@ extension Storage {
         """
     }
 
-    /// Incoming text messages past the read marker count as unread, one row per
-    /// conversation; each count is a range on `message_unread`, and the
-    /// mentions among them a range on `message_mentions`.
+    /// Incoming text messages and attachments past the read marker count as
+    /// unread, one row per conversation; each count is a range on
+    /// `message_unread`, and the mentions among them a range on `message_mentions`.
     private static let readStatesSQL = """
         SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
             SELECT COUNT(*) FROM message m
-            WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type = \(MessageType.text)
+            WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type IN (\(MessageType.contentSQL))
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
         ) AS unread, (
             SELECT COUNT(*) FROM message m
@@ -468,7 +485,7 @@ extension Storage {
 
     /// The people seen posting in a tribe, with the newest photo per alias.
     func tribeSenders(_ tribe: String) throws -> [TribeMember] {
-        try seenInTribe(tribe, types: [MessageType.text], since: 0).map(\.member)
+        try seenInTribe(tribe, types: MessageType.content, since: 0).map(\.member)
     }
 
     /// Who can be mentioned in a tribe, as the Mac app offers them: everyone
@@ -767,12 +784,13 @@ extension Storage {
                     db,
                     sql: """
                         UPDATE message SET uuid = ?, tag = ?, status = ?, timestamp = ?
-                        WHERE id = ? AND chat = ? AND fromMe = 1 AND type = ? AND status IN (?, ?)
+                        WHERE id = ? AND chat = ? AND fromMe = 1 AND type IN (\(MessageType.contentSQL))
+                            AND status IN (?, ?)
                         RETURNING *
                         """,
                     arguments: [
                         resend.uuid, resend.tag, Message.Delivery.pending.rawValue, resend.timestamp,
-                        resend.id, resend.chat, MessageType.text,
+                        resend.id, resend.chat,
                         Message.Delivery.pending.rawValue, Message.Delivery.failed.rawValue,
                     ]
                 )
@@ -818,8 +836,8 @@ extension Storage {
             sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
-                     mentionsMe, replyUUID, threadUUID)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     mentionsMe = MAX(message.mentionsMe, excluded.mentionsMe),
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
@@ -831,7 +849,8 @@ extension Storage {
                     body = COALESCE(message.body, excluded.body),
                     content = COALESCE(message.content, excluded.content),
                     replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
-                    threadUUID = COALESCE(message.threadUUID, excluded.threadUUID)
+                    threadUUID = COALESCE(message.threadUUID, excluded.threadUUID),
+                    mediaType = COALESCE(message.mediaType, excluded.mediaType)
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
                 """,
@@ -839,6 +858,7 @@ extension Storage {
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
                 message.status, message.mentionsMe, message.replyUUID, message.threadUUID,
+                message.mediaType, message.fileName, message.fileSize, message.upload,
             ]
         )
     }
@@ -902,6 +922,54 @@ extension Storage {
     /// Removes one of our own messages that never reached the server.
     func deleteMessage(id: Int64) throws {
         try pool.write { db in try db.execute(sql: "DELETE FROM message WHERE id = ?", arguments: [id]) }
+    }
+
+    /// Records where an outgoing attachment's upload stands; a failed upload
+    /// fails the message. Once the memes server has the file, the body
+    /// carries its token.
+    func setUpload(_ upload: Message.Upload, id: Int64, body: String? = nil) throws {
+        let status: String? = upload == .failed ? Message.Delivery.failed.rawValue : nil
+        try pool.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE message SET upload = ?, body = COALESCE(?, body), status = COALESCE(?, status)
+                    WHERE id = ? AND fromMe = 1 AND type = \(MessageType.attachment)
+                    """,
+                arguments: [upload.rawValue, body, status, id]
+            )
+        }
+    }
+
+    /// Takes a failed upload for a retry. False when it is already uploading
+    /// or done, so one upload of a row runs at a time.
+    func claimUpload(id: Int64) throws -> Bool {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE message SET upload = ? WHERE id = ? AND upload = ?",
+                arguments: [Message.Upload.pending.rawValue, id, Message.Upload.failed.rawValue]
+            )
+            return db.changesCount > 0
+        }
+    }
+
+    /// Uploads still marked as running when the engine starts were cut off.
+    func failInterruptedUploads() throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE message SET upload = ?, status = ? WHERE upload = ?",
+                arguments: [Message.Upload.failed.rawValue, Message.Delivery.failed.rawValue, Message.Upload.pending.rawValue]
+            )
+        }
+    }
+
+    /// The file name and decrypted size a download found.
+    func setFile(id: Int64, name: String?, size: Int64) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE message SET fileName = COALESCE(fileName, ?), fileSize = ? WHERE id = ?",
+                arguments: [name, size, id]
+            )
+        }
     }
 
     func upsertContact(pubkey: String, alias: String?) throws {

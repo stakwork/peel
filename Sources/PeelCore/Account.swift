@@ -5,14 +5,16 @@ import Foundation
 /// an app can show a returning account while it is still offline.
 public enum Account {
     /// Loads an existing account without connecting it. Development profiles
-    /// have no PIN and ignore the argument. A server or tribes host given here
-    /// replaces the recorded one.
+    /// have no PIN and ignore the argument. A server, tribes host or memes
+    /// host given here replaces the recorded one.
     public static func load(
-        _ profile: Profile, pin: String = "", server: ServerAddress? = nil, tribeHost: String? = nil
+        _ profile: Profile, pin: String = "", server: ServerAddress? = nil, tribeHost: String? = nil,
+        memesHost: String? = nil
     ) async throws -> Engine {
         let engine = try Engine(mnemonic: profile.loadMnemonic(pin: pin), storage: Storage(directory: profile.directory))
         if let server { try await engine.setServer(server) }
         if let tribeHost { try await engine.setTribeHost(tribeHost) }
+        if let memesHost { try await engine.setMemesHost(memesHost) }
         return engine
     }
 
@@ -30,7 +32,8 @@ public enum Account {
     /// if the config cannot be read, the engine tries again on coming online.
     public static func signup(
         _ profile: Profile, invite: Engine.Invite, alias: String, pin: String, network: String = "bitcoin",
-        server: ServerAddress? = nil, tribeHost: String? = nil, allowUntrustedCertificate: Bool = false
+        server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil,
+        allowUntrustedCertificate: Bool = false
     ) async throws -> Created {
         guard let address = server ?? invite.server.flatMap(ServerAddress.init) else {
             throw PeelError("the invite does not say which server to use")
@@ -40,7 +43,8 @@ public enum Account {
             tribeHost = try? await ServerConfig.fetch(network: network).usableTribeHost
         }
         let created = try await create(
-            profile, alias: alias, pin: pin, network: network, server: address, tribeHost: tribeHost
+            profile, alias: alias, pin: pin, network: network, server: address, tribeHost: tribeHost,
+            memesHost: memesHost
         )
         let engine = created.engine
         do {
@@ -60,12 +64,13 @@ public enum Account {
     /// Creates an account that needs no invite, for a local test server.
     public static func create(
         _ profile: Profile, alias: String, pin: String, network: String = "bitcoin", server: ServerAddress,
-        tribeHost: String? = nil
+        tribeHost: String? = nil, memesHost: String? = nil
     ) async throws -> Created {
         if profile.requiresPIN { try PIN.validate(pin) }
         let mnemonic = try Engine.generateMnemonic()
         let engine = try await open(
-            profile, mnemonic: mnemonic, pin: pin, alias: alias, network: network, server: server, tribeHost: tribeHost
+            profile, mnemonic: mnemonic, pin: pin, alias: alias, network: network, server: server, tribeHost: tribeHost,
+            memesHost: memesHost
         )
         return Created(engine: engine, mnemonic: mnemonic)
     }
@@ -76,7 +81,7 @@ public enum Account {
     /// only on that host.
     public static func restore(
         _ profile: Profile, mnemonic: String, alias: String, pin: String, network: String = "bitcoin",
-        server: ServerAddress? = nil, tribeHost: String? = nil
+        server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil
     ) async throws -> Engine {
         if profile.requiresPIN { try PIN.validate(pin) }
         let words = try Engine.validate(mnemonic: mnemonic)
@@ -94,7 +99,7 @@ public enum Account {
         }
         return try await open(
             profile, mnemonic: words, pin: pin, alias: alias, network: network, server: address, tribeHost: tribeHost,
-            needsRestore: true
+            memesHost: memesHost, needsRestore: true
         )
     }
 
@@ -102,7 +107,7 @@ public enum Account {
     /// leaves nothing that would block trying again.
     private static func open(
         _ profile: Profile, mnemonic: String, pin: String, alias: String, network: String, server: ServerAddress,
-        tribeHost: String?, needsRestore: Bool = false
+        tribeHost: String?, memesHost: String?, needsRestore: Bool = false
     ) async throws -> Engine {
         let storage = try Storage(directory: profile.directory)
         try storage.set(network, for: .network)
@@ -111,6 +116,7 @@ public enum Account {
         try await engine.setAlias(alias)
         try await engine.setServer(server)
         if let tribeHost { try await engine.setTribeHost(tribeHost) }
+        if let memesHost { try await engine.setMemesHost(memesHost) }
         try profile.secrets.save(mnemonic: mnemonic, pin: pin)
         return engine
     }

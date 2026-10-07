@@ -68,12 +68,14 @@ struct ThreadSummaryLine: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let latest = summary.latest {
-                    Text(["Last reply", latest.fromMe ? "you" : model.sender(of: latest).name, Formatting.listTime(latest.date)]
-                        .compactMap { $0 }.joined(separator: " "))
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
+                    let who = model.sender(of: latest).name
+                    TimelineView(.everyMinute) { context in
+                        Text("\(who) replied \(Formatting.relative(latest.date, now: context.date))")
+                            .font(Theme.font(12))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(1)
+                    }
                 }
             }
             .padding(.horizontal, 6)
@@ -181,10 +183,14 @@ private struct ThreadCard: View {
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)
                         Spacer()
-                        Text(Formatting.listTime(Date(millisecondsSince1970: summary.lastTimestamp ?? 0)))
+                        if let lastDate = summary.lastDate {
+                            TimelineView(.everyMinute) { context in
+                                Text(Formatting.relative(lastDate, now: context.date))
+                            }
                             .font(Theme.font(12))
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
+                        }
                     }
                     (Text(author.name + " ").font(Theme.font(14, .bold))
                         + Text(original.preview).font(Theme.font(14, unread ? .bold : .regular)))

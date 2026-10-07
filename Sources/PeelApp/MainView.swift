@@ -1051,15 +1051,28 @@ enum Formatting {
         count == 1 ? "1 reply" : "\(count) replies"
     }
 
-    /// A time in a list: "10:14" today, "Yesterday", "Mon" this week, else a date.
-    static func listTime(_ date: Date) -> String {
+    /// How long ago, as Slack writes it: "just now", "5 min ago", "today at
+    /// 14:32", "yesterday at 09:10", "3 days ago", "2 Oct", "2 Oct 2025"
+    /// (times and dates in the user's format). Everything is measured from
+    /// `now`, in calendar days, so midnight and DST changes count right.
+    static func relative(_ date: Date, now: Date = .now) -> String {
+        let seconds = now.timeIntervalSince(date)
+        // A few minutes of clock skew between devices reads as now; further
+        // ahead, the time or date it claims.
+        if seconds > -300 && seconds < 60 { return "just now" }
+        if seconds >= 60 && seconds < 3600 { return "\(Int(seconds / 60)) min ago" }
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return date.formatted(.dateTime.hour().minute()) }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        if let days = calendar.dateComponents([.day], from: date, to: .now).day, days < 7 {
-            return date.formatted(.dateTime.weekday(.abbreviated))
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
+                                           to: calendar.startOfDay(for: now)).day ?? 0
+        switch days {
+        case 0: return "today at \(date.formatted(.dateTime.hour().minute()))"
+        case 1: return "yesterday at \(date.formatted(.dateTime.hour().minute()))"
+        case 2..<7: return "\(days) days ago"
+        default:
+            let style = Date.FormatStyle.dateTime.day().month(.abbreviated)
+            let sameYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
+            return date.formatted(sameYear ? style : style.year())
         }
-        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     /// Sats from msat, exact, since prices are shown before paying: "1 sat",

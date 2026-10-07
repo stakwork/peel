@@ -354,6 +354,7 @@ public struct ThreadSummary: Sendable, Identifiable, Equatable {
     /// The original's uuid, which every message in the thread names.
     public var uuid: String { original.uuid ?? "" }
     public var id: String { "\(chat)/\(uuid)" }
+    public var lastDate: Date? { lastTimestamp.map(Date.init(millisecondsSince1970:)) }
 }
 
 /// A thread as its own view shows it.

@@ -88,11 +88,7 @@ struct SidebarHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            #if os(macOS)
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable()
-                .frame(width: 30, height: 30)
-            #endif
+            AppIcon(size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Peel")
                     .font(Theme.font(15, .bold))
@@ -480,6 +476,31 @@ enum Clipboard {
         UIPasteboard.general.string = text
         #endif
     }
+
+    static func paste() -> String? {
+        #if os(macOS)
+        NSPasteboard.general.string(forType: .string)
+        #else
+        UIPasteboard.general.string
+        #endif
+    }
+}
+
+/// The app's icon, as the Dock shows it.
+struct AppIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        #if os(macOS)
+        Image(nsImage: NSApplication.shared.applicationIconImage)
+            .resizable()
+            .frame(width: size, height: size)
+        #endif
+    }
+}
+
+extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
 enum Formatting {

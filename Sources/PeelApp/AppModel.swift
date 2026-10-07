@@ -9,10 +9,25 @@ final class AppModel {
 
     /// How far a restore from twelve words has got.
     struct RestoreProgress {
-        var contacts: (reached: UInt64, end: UInt64?)?
-        var messages: (reached: UInt64, end: UInt64?)?
-        var finished = false
-        var failure: String?
+        struct Count {
+            var reached: UInt64
+            var end: UInt64?
+
+            var fraction: Double? {
+                guard let end, end > 0 else { return nil }
+                return min(1, Double(reached) / Double(end))
+            }
+        }
+
+        enum Outcome { case finished, failed(String) }
+
+        var contacts: Count?
+        var messages: Count?
+        var outcome: Outcome?
+
+        var finished: Bool {
+            if case .finished = outcome { true } else { false }
+        }
     }
 
     /// What the sidebar has selected.
@@ -82,13 +97,13 @@ final class AppModel {
             phase = .onboarding
             return
         }
-        // The app's own account is sealed under its PIN; development profiles are not.
-        guard profile.kind == .development else {
+        guard !profile.requiresPIN else {
             phase = .locked
             return
         }
         do {
             try await open(profile, pin: "")
+            enterApp()
         } catch {
             notice = "\(error)"
             phase = .onboarding
@@ -103,16 +118,28 @@ final class AppModel {
             try await open(profile, pin: pin)
         } else {
             // Checking the PIN means deriving its key, which is slow on purpose.
-            _ = try await Task.detached { try profile.loadMnemonic(pin: pin) }.value
+            try await Task.detached { try profile.verifyPIN(pin) }.value
         }
-        unlockedAt = .now
-        phase = .ready
+        enterApp()
+    }
+
+    /// Removes the account's words and data from this Mac, for when the PIN is
+    /// lost. The account itself lives on and can be restored from its words.
+    func forgetAccount() async throws {
+        guard let profile else { return }
+        await engine?.disconnect()
+        engine = nil
+        try profile.delete()
+        conversations = []
+        messages = []
+        destination = nil
+        phase = .onboarding
     }
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
     /// comes to the front.
     func lockIfDue() {
-        guard phase == .ready, profile?.kind == .app, pinTimeoutHours > 0,
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0,
               let unlockedAt, Date.now.timeIntervalSince(unlockedAt) > Double(pinTimeoutHours) * 3600 else { return }
         phase = .locked
     }
@@ -122,7 +149,7 @@ final class AppModel {
     func createAccount(invite input: String, name: String, pin: String) async throws -> [String] {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
-        guard let invite = try? Engine.parseInvite(input.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        guard let invite = try? Engine.parseInvite(input) else {
             throw PeelError("That doesn't look like a Sphinx invite.")
         }
         let created = try await Account.signup(profile, invite: invite, alias: name, pin: pin)
@@ -137,12 +164,13 @@ final class AppModel {
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
         let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
-        await attach(engine)
+        // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
+        await attach(engine)
     }
 
-    /// Leaves onboarding for the main window.
-    func finishOnboarding() {
+    /// Opens the main window, from onboarding or the lock screen.
+    func enterApp() {
         unlockedAt = .now
         phase = .ready
     }
@@ -159,18 +187,14 @@ final class AppModel {
     /// Adds a contact from the contact info they shared.
     func addContact(_ contactInfo: String, alias: String) async throws {
         guard let engine else { return }
-        let alias = alias.trimmingCharacters(in: .whitespaces)
-        try await engine.addContact(
-            contactInfo.trimmingCharacters(in: .whitespacesAndNewlines),
-            alias: alias.isEmpty ? nil : alias
-        )
+        let alias = alias.trimmed
+        try await engine.addContact(contactInfo.trimmed, alias: alias.isEmpty ? nil : alias)
     }
 
     private func open(_ profile: Profile, pin: String) async throws {
         // Loading derives keys and opens the database; keep it off the main thread.
         let engine = try await Task.detached { try await Account.load(profile, pin: pin) }.value
         await attach(engine)
-        phase = .ready
     }
 
     private func attach(_ engine: Engine) async {
@@ -198,13 +222,13 @@ final class AppModel {
                 notice = message
             case .history(let phase, let reached, let end):
                 switch phase {
-                case .contacts: restoreProgress.contacts = (reached, end)
-                case .messages: restoreProgress.messages = (reached, end)
+                case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
+                case .messages: restoreProgress.messages = .init(reached: reached, end: end)
                 }
             case .historyDone:
-                restoreProgress.finished = true
+                restoreProgress.outcome = .finished
             case .historyFailed(let reason):
-                restoreProgress.failure = reason
+                restoreProgress.outcome = .failed(reason)
             case .message, .sendStatus:
                 break
             }

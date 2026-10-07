@@ -21,6 +21,8 @@ enum Theme {
     static let accent = Color(light: 0x618AFF, dark: 0x618AFF)
     static let button = Color(light: 0x3F68E0, dark: 0x618AFF)
     static let buttonText = Color(light: 0xFFFFFF, dark: 0x0E1620)
+    /// PrimaryRed: only for actions that destroy something.
+    static let destructive = Color(light: 0xED7474, dark: 0xED7474)
     static let sentBubble = Color(light: 0xDDEDFD, dark: 0x3E6189)
     static let receivedBubble = Color(light: 0xF2F3F5, dark: 0x222E3A)
     static let sentText = Color(light: 0x1E1F25, dark: 0xFFFFFF)

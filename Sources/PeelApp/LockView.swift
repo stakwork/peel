@@ -7,15 +7,12 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
+    @State private var confirmingForget = false
 
     var body: some View {
-        OnboardingPage(progress: nil, problem: nil) {
+        OnboardingPage {
             VStack(spacing: 24) {
-                #if os(macOS)
-                Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable()
-                    .frame(width: 72, height: 72)
-                #endif
+                AppIcon(size: 72)
                 VStack(spacing: 8) {
                     Text("Enter your PIN")
                         .font(Theme.font(24, .bold))
@@ -29,7 +26,39 @@ struct LockView: View {
                 ProgressView()
                     .controlSize(.small)
                     .opacity(working ? 1 : 0)
+                forget
             }
+        }
+    }
+
+    /// For a lost PIN. Confirmed in place, next to the trigger.
+    @ViewBuilder private var forget: some View {
+        if confirmingForget {
+            VStack(spacing: 10) {
+                Text("This removes the account's words and messages from this Mac. You can restore it later with your twelve words.")
+                    .font(Theme.font(13))
+                    .foregroundStyle(Theme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                HStack(spacing: 16) {
+                    Button("Cancel") { confirmingForget = false }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.secondaryText)
+                    Button("Forget account") {
+                        Task {
+                            do { try await model.forgetAccount() } catch { problem = "\(error)" }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.destructive)
+                }
+                .font(Theme.font(13, .medium))
+            }
+        } else {
+            Button("Forgot your PIN? Forget this account on this Mac") { confirmingForget = true }
+                .buttonStyle(.plain)
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
         }
     }
 
@@ -39,11 +68,8 @@ struct LockView: View {
         defer { working = false }
         do {
             try await model.unlock(pin: pin)
-        } catch SecretStoreFailure.wrongPIN {
-            problem = "Wrong PIN. Try again."
-            pin = ""
         } catch {
-            problem = "\(error)"
+            problem = error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : "\(error)"
             pin = ""
         }
     }

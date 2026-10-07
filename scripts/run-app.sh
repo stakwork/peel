@@ -1,6 +1,6 @@
 #!/bin/sh
-# Builds Peel, wraps it as an app bundle and opens it. Extra arguments go to the
-# app, e.g. ./scripts/run-app.sh -profile throwaway
+# Builds Peel, wraps it as an app bundle, installs it in ~/Applications and
+# opens it. Extra arguments go to the app, e.g. ./scripts/run-app.sh -profile throwaway
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -37,4 +37,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 # A stable identity, so Keychain items survive rebuilds.
 "$ROOT/scripts/sign-app.sh" "$APP"
-open -n "$APP" --args "$@"
+# Install a copy at a fixed place, so a Dock pin and Spotlight survive rebuilds.
+INSTALLED="$HOME/Applications/Peel.app"
+mkdir -p "$HOME/Applications"
+rm -rf "$INSTALLED"
+ditto "$APP" "$INSTALLED"
+open -n "$INSTALLED" --args "$@"

@@ -28,7 +28,8 @@ in progress and what comes next. Update it when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
-- `scripts/run-app.sh` — builds, bundles, signs and opens the Mac app
+- `scripts/run-app.sh` — builds, bundles, signs the Mac app, installs it to
+  `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity
 - `scripts/build-icon.sh` — renders `Assets/peel.svg` into `Assets/AppIcon.icns`
 

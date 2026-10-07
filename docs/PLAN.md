@@ -110,7 +110,7 @@ only needed for TestFlight and the iPhone target.
 | 6 | Calls | planned | [phases/06-calls.md](phases/06-calls.md) |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |
-| 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
+| 9 | Agents as contacts: any ACP harness behind a Sphinx identity | planned, after the audit | [phases/09-agents.md](phases/09-agents.md) |
 
 ## Scope (decided 2026-10-05)
 

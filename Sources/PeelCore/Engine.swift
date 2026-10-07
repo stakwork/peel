@@ -156,6 +156,8 @@ public actor Engine {
     private var changingTribes: Set<String> = []
     /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
     private var droppedIndex: Int64
+    /// A restore from the words is replaying history; see `Setting.needsRestore`.
+    private var restoring: Bool
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
 
@@ -197,6 +199,7 @@ public actor Engine {
         contactsByChildIndex = Self.index(contacts)
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
         droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
+        restoring = try storage.value(for: .needsRestore) == "1"
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -1093,7 +1096,11 @@ public actor Engine {
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
-            if let tribe = knownTribes[message.chat], let changed = Self.membership(after: message, in: tribe) {
+            if let tribe = knownTribes[message.chat], var changed = Self.membership(after: message, in: tribe) {
+                // A restore leaves deleted tribes out, as the Mac app does (it
+                // restores only tribes the registry still serves); a deletion
+                // heard while running keeps its bar so the user sees what happened.
+                if restoring, changed.status == .deleted { changed.left = true }
                 knownTribes[tribe.pubkey] = changed
                 commit.tribes.append(changed)
             }
@@ -1333,7 +1340,7 @@ public actor Engine {
             try await fetchReadsAndMutes()
             if let run = history {
                 try await request(run)
-            } else if try storage.value(for: .needsRestore) == "1" {
+            } else if restoring {
                 awaitingCounts = true
                 try await self.run { time, state in
                     try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
@@ -1456,8 +1463,9 @@ public actor Engine {
     }
 
     private func historyEnded() async throws {
-        if try storage.value(for: .needsRestore) == "1" {
+        if restoring {
             try storage.set("0", for: .needsRestore)
+            restoring = false
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()

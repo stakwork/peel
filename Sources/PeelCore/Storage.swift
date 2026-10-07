@@ -431,13 +431,17 @@ extension Storage {
         }
     }
 
-    /// The newest 200 messages that mention this account, newest first,
-    /// re-emitted whenever they change.
+    /// The newest 200 messages that mention this account in tribes it still
+    /// shows, newest first, re-emitted whenever they change.
     public func mentions() -> some AsyncSequence<[Message], any Error> {
         ValueObservation
             .trackingConstantRegion { db in
                 try Message.fetchAll(
-                    db, sql: "SELECT * FROM message WHERE mentionsMe = 1 ORDER BY timestamp DESC, id DESC LIMIT 200"
+                    db, sql: """
+                    SELECT * FROM message
+                    WHERE mentionsMe = 1 AND chat IN (SELECT pubkey FROM tribe WHERE left = 0)
+                    ORDER BY timestamp DESC, id DESC LIMIT 200
+                    """
                 )
             }
             .removeDuplicates()

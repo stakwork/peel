@@ -48,6 +48,13 @@ final class AppModel {
     var destination: Destination? {
         didSet {
             if selectedChat != oldValue?.chat {
+                newMessages = nil
+                keepsUnread = nil
+                // A jump into this chat (`focus(on:)`) set both just before.
+                if focus?.message.chat != selectedChat {
+                    focus = nil
+                    timelineLimit = nil
+                }
                 observeMessages()
                 if openThread?.chat != selectedChat { openThread = nil }
             }
@@ -99,6 +106,19 @@ final class AppModel {
     var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
     var readStates: [String: ChatReadState] = [:]
+    /// The open chat's read marker as it was when it opened, before it was
+    /// marked read: "New messages" goes above the first incoming message
+    /// past it. `after` is nil when nothing was unread, and once you send.
+    private var newMessages: (chat: String, after: Int64?)?
+    /// The open chat, marked unread by hand: it is not marked read again
+    /// until you leave it, scroll to its bottom or send in it.
+    private var keepsUnread: String?
+    /// A message to scroll to and light up once its list shows it (the
+    /// chat's, or with `inThread` its thread panel's); see `focus(on:)`.
+    var focus: FocusTarget?
+    /// The open chat's timeline reaches back to this message (older than
+    /// the newest 200), for `focus`.
+    private var timelineLimit: Int?
     /// Unread mentions in tribes that are not muted, for the sidebar.
     var unreadMentions: Int {
         readStates.values.reduce(0) { $0 + $1.shownMentions }
@@ -246,7 +266,7 @@ final class AppModel {
         guard let chat = selectedChat else { return chatRows = [] }
         chatRows = ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
-            inTribe: isTribe(chat), people: people(in: chat)
+            inTribe: isTribe(chat), people: people(in: chat), newAfter: newMessagesAfter(in: chat)
         )
     }
 
@@ -254,8 +274,13 @@ final class AppModel {
         guard let open = openThread, let thread else { return threadRows = [] }
         threadRows = ChatRow.rows(
             thread.messages, parents: thread.parents, boosts: thread.boosts, inTribe: isTribe(open.chat),
-            people: people(in: open.chat), threadRoot: open.uuid, original: thread.original
+            people: people(in: open.chat), threadRoot: open.uuid, original: thread.original,
+            newAfter: newMessagesAfter(in: open.chat)
         )
+    }
+
+    private func newMessagesAfter(in chat: String) -> Int64? {
+        newMessages?.chat == chat ? newMessages?.after : nil
     }
 
     /// You and the contact, as a chat's rows name them.
@@ -382,13 +407,67 @@ final class AppModel {
         notifier.showsText = shows
     }
 
-    /// A click on a notification: Peel to the front with that chat open.
-    func openFromNotification(_ chat: String) {
+    /// A click on a notification: Peel to the front with that chat open,
+    /// at the message it was for.
+    func openFromNotification(_ chat: String, messageID: Int64?) {
         #if os(macOS)
         NSApplication.shared.activate()
         #endif
         guard phase == .ready || phase == .locked else { return }
-        destination = .chat(chat)
+        if let message = messageID.flatMap({ try? engine?.storage.message(id: $0) }), message.chat == chat {
+            focus(on: message)
+        } else {
+            destination = .chat(chat)
+        }
+    }
+
+    /// Opens a message's chat (with `inThread`, its thread panel) scrolled to
+    /// it, lit for a moment. One older than the newest 200 is loaded with
+    /// everything after it; one deleted since opens the chat with a notice.
+    /// Takes precedence over "New messages".
+    func focus(on message: Message, inThread: Bool = false) {
+        let chat = message.chat
+        guard let storage = engine?.storage else { return }
+        // As stored now: it may have been deleted since the list was drawn.
+        var current = message
+        do {
+            if let id = message.id {
+                guard let stored = try storage.message(id: id), !stored.deleted else {
+                    destination = .chat(chat)
+                    conversationNotices[chat] = "That message was deleted"
+                    return
+                }
+                current = stored
+            }
+        } catch {
+            // Could not check; go to it as it was.
+        }
+        let opening = selectedChat != chat
+        if !inThread, opening || !timelineShows(current),
+           let limit = try? storage.timelineLimit(reaching: current), limit > Storage.pageSize {
+            // Before `focus`, so the list now showing never sees it.
+            timelineLimit = max(limit, timelineLimit ?? 0)
+            if !opening { observeMessages() }
+        }
+        focus = FocusTarget(message: current, inThread: inThread)
+        if opening { destination = .chat(chat) }
+        if inThread { openThread(of: current) }
+    }
+
+    /// Whether the open chat's timeline has a row for `message`: its own, or
+    /// a collapsed thread's that it is the original of or a reply in.
+    private func timelineShows(_ message: Message) -> Bool {
+        timeline.messages.contains { $0.id == message.id }
+            || message.uuid.map { timeline.threads[$0] != nil } ?? false
+            || message.threadUUID.map { timeline.threads[$0] != nil } ?? false
+    }
+
+    /// The chat's list is back at its bottom: a timeline grown for a jump
+    /// goes back to the newest 200, so later changes re-read only those.
+    func chatListAtBottom() {
+        guard timelineLimit != nil else { return }
+        timelineLimit = nil
+        observeMessages()
     }
 
     func resend(_ message: Message) async {
@@ -437,7 +516,9 @@ final class AppModel {
     /// Marks the open chat read while the window is in front, so a message that
     /// arrives while you look at it never shows as unread.
     func markSelectedChatRead() {
-        guard isFrontmost, phase == .ready, let chat = selectedChat else { return }
+        guard let chat = selectedChat else { return }
+        noteNewMessages(in: chat)
+        guard isFrontmost, phase == .ready, keepsUnread != chat else { return }
         notifier.removeDelivered(in: [chat])
         guard let engine, (readStates[chat]?.unread ?? 0) > 0 else { return }
         Task {
@@ -447,6 +528,50 @@ final class AppModel {
                 conversationNotices[chat] = "Could not mark as read: \(error)"
             }
         }
+    }
+
+    /// Once per opening, as soon as the chat's read state is known and
+    /// before it is marked read: where "New messages" goes.
+    private func noteNewMessages(in chat: String) {
+        guard newMessages?.chat != chat, let state = readStates[chat] else { return }
+        newMessages = (chat, state.unread > 0 ? state.lastRead ?? -1 : nil)
+        // Rows not loaded yet are built with it when they arrive.
+        if newMessages?.after != nil, !timeline.messages.isEmpty { rebuildRows() }
+    }
+
+    /// Marks a chat unread from one message on, or from its newest incoming
+    /// message. On the open chat it then stays unread while you look, with
+    /// "New messages" moved to where it now starts.
+    func markUnread(_ chat: String, from message: Message? = nil) async {
+        let open = chat == selectedChat
+        if open { keepsUnread = chat }
+        var marker: Int64?
+        let done = await attempt("mark as unread", in: chat) { engine in
+            marker = try await engine.markUnread(chat, fromServerIndex: message?.serverIndex)
+        }
+        // Left and came back meanwhile: the hold has ended, so has this.
+        guard open, keepsUnread == chat else { return }
+        if done {
+            newMessages = (chat, marker)
+            rebuildRows()
+        } else {
+            keepsUnread = nil
+        }
+    }
+
+    /// The open chat's list reached its bottom: a chat kept unread is read now.
+    func reachedBottom(of chat: String) {
+        guard keepsUnread == chat else { return }
+        keepsUnread = nil
+        markSelectedChatRead()
+    }
+
+    /// Sending reads the chat (the server moves its marker too); "New
+    /// messages" has done its job.
+    func sent(in chat: String) {
+        if keepsUnread == chat { keepsUnread = nil }
+        // The sent message's row rebuilds the rest without it.
+        if newMessages?.chat == chat { newMessages = (chat, nil) }
     }
 
     /// What a tribe link points to, to show before paying to join.
@@ -693,7 +818,9 @@ final class AppModel {
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         messagesTask = Task {
             do {
-                for try await timeline in storage.timeline(in: chat) {
+                for try await timeline in storage.timeline(
+                    in: chat, limit: timelineLimit ?? Storage.pageSize
+                ) {
                     self.timeline = timeline
                     rebuildChatRows()
                 }

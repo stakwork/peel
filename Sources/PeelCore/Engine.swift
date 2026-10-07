@@ -216,6 +216,9 @@ public actor Engine {
     private var updatedTribes: Set<String> = []
     /// Tribes with an update or delete on its way; see `changeOwnedTribe`.
     private var changingTribes: Set<String> = []
+    /// Chats whose read marker was sent since `getReads` was last asked: its
+    /// answer may predate the marker, so it is not applied to them.
+    private var readsSentSinceGetReads: Set<String> = []
     /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
     private var droppedIndex: Int64
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
@@ -1000,24 +1003,55 @@ public actor Engine {
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
             emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(error))"))
+            return sent?.tag
+        }
+        // The server moves the chat's read marker to what was just sent.
+        readsSentSinceGetReads.insert(pubkey)
+        do {
+            try storage.readBySending(in: pubkey)
+        } catch {
+            // Sent all the same; the next `getReads` brings the marker.
+            emit.yield(.coreError("marking read after sending: \(error)"))
         }
         return sent?.tag
     }
 
     /// Marks a chat read up to its newest message, here and on the server, so
-    /// the account's other devices agree. Offline, only the local marker moves;
-    /// the server catches up when `getReads` next shows it behind.
+    /// the account's other devices agree. Never moves the marker back (the
+    /// server's may be past what is stored here). Offline, the marker waits
+    /// as pending and goes once the server answers `getReads`.
     public func markRead(_ chat: String) async throws {
-        guard let index = try storage.highestServerIndex(in: chat) else { return }
-        guard try storage.setRead(chat: chat, index: index) else { return }
+        guard let index = try storage.highestServerIndex(in: chat),
+              try storage.setRead(chat: chat, index: index, as: .read) else { return }
         try await publishRead(chat, index: index)
     }
 
-    private func publishRead(_ chat: String, index: Int64) async throws {
-        guard transport != nil, state["c/\(chat)"] != nil, let index = UInt64(exactly: index) else { return }
-        try await run { time, state in
-            try Sphinxrs.read(seed: seed, uniqueTime: time, state: state, pubkey: chat, msgIdx: index)
+    /// Marks a chat unread from one message (by server index) on, or from
+    /// its newest incoming message so it counts one: the marker goes just
+    /// before it, as the official apps' "Mark as Unread" does, and the server
+    /// takes the lower marker as it is. Threads share the chat's marker.
+    /// Returns the new marker.
+    @discardableResult
+    public func markUnread(_ chat: String, fromServerIndex index: Int64? = nil) async throws -> Int64 {
+        // The server keeps markers only for core contacts (tribes included).
+        guard state["c/\(chat)"] != nil else { throw Failure.notAChat }
+        guard let index = try index ?? storage.newestIncomingIndex(in: chat), index > 0 else {
+            throw Failure.noSuchMessage
         }
+        if try storage.setRead(chat: chat, index: index - 1, as: .unread) {
+            try await publishRead(chat, index: index - 1)
+        }
+        return index - 1
+    }
+
+    /// Sends a marker set here; once sent, it is no longer pending.
+    private func publishRead(_ chat: String, index: Int64) async throws {
+        guard transport != nil, state["c/\(chat)"] != nil, let msgIdx = UInt64(exactly: index) else { return }
+        try await run { time, state in
+            try Sphinxrs.read(seed: seed, uniqueTime: time, state: state, pubkey: chat, msgIdx: msgIdx)
+        }
+        readsSentSinceGetReads.insert(chat)
+        try storage.readSent(chat: chat, index: index)
     }
 
     /// Sets how loud a chat may be. The level lives on the server, which uses it
@@ -1738,7 +1772,7 @@ public actor Engine {
         var commit = Storage.Commit()
         commit.settings[.clock] = time
         commit.resend = resend
-        commit.reads = Self.reads(result.lastRead)
+        commit.reads = Self.reads(result.lastRead).filter { !readsSentSinceGetReads.contains($0.key) }
         if let json = result.muteLevels, let mutes = try? JSONDecoder().decode([String: Int].self, from: Data(json.utf8)) {
             commit.mutes = mutes
         }
@@ -2066,14 +2100,14 @@ public actor Engine {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            let result = try await run(expectedSender: expectedSender) { time, state in
+            try await run(expectedSender: expectedSender) { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL
                 )
             }
             if kind == "getreads" {
-                try await republishStaleReads(server: Self.reads(result.lastRead))
+                try await publishPendingReads()
             }
         } catch {
             if let expectedSender {
@@ -2126,10 +2160,12 @@ public actor Engine {
         json.flatMap { try? JSONDecoder().decode([String: Int64].self, from: Data($0.utf8)) } ?? [:]
     }
 
-    /// Tells the server again about chats read here further than it knows,
-    /// such as while offline. Runs only in reply to `getReads`.
-    private func republishStaleReads(server: [String: Int64]) async throws {
-        for (chat, index) in try storage.lastReads() where (server[chat] ?? -1) < index {
+    /// Sends the markers moved here that the server does not have yet (read
+    /// or marked unread while offline). Runs only in reply to `getReads`,
+    /// whose markers have just replaced every other one: the server's are the
+    /// truth, so a marker set on another device is never pushed back.
+    private func publishPendingReads() async throws {
+        for (chat, index) in try storage.pendingReads() {
             try await publishRead(chat, index: index)
         }
     }
@@ -2157,6 +2193,7 @@ public actor Engine {
 
     /// Read markers and mutes live on the server, shared by every device.
     private func fetchReadsAndMutes() async throws {
+        readsSentSinceGetReads = []
         try await run { time, state in
             try Sphinxrs.getReads(seed: seed, uniqueTime: time, state: state)
         }

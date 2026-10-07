@@ -45,9 +45,21 @@ struct ChatRow: Identifiable {
     var approved: Bool?
     var alias: String?
     var photoURL: String?
+    /// The messages the row stands for, oldest first: a run's images, a
+    /// collapsed thread's newest, else its own.
+    var shown: [Message] {
+        if let latest { return [latest] }
+        return images.isEmpty ? [message] : images
+    }
+
     /// Where the row sits in time: a collapsed thread at its newest message.
     var date: Date
     var startsDay = false
+    /// "New messages" goes above this row: the first incoming one past the
+    /// read marker the chat had when it was opened.
+    var startsNew = false
+    /// For a collapsed thread: its newest message, which placed the row.
+    var latest: Message?
     var startsRun = false
     var endsRun = true
 
@@ -63,10 +75,11 @@ struct ChatRow: Identifiable {
 
     /// The rows of a chat (`threads` collapsed), or of a thread: with
     /// `threadRoot` set, its `original` (or a note that it is missing) and
-    /// "N replies" come first.
+    /// "N replies" come first. `newAfter` is the read marker that places "New messages".
     static func rows(
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
-        boosts: [String: BoostSummary] = [:], inTribe: Bool, people: People, threadRoot: String? = nil, original: Message? = nil
+        boosts: [String: BoostSummary] = [:], inTribe: Bool, people: People, threadRoot: String? = nil,
+        original: Message? = nil, newAfter: Int64? = nil
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -81,9 +94,16 @@ struct ChatRow: Identifiable {
                             inTribe: inTribe, people: people))
             rows.append(row(anchor, kind: .replies(messages.count), id: "r\(threadRoot)", inTribe: inTribe, people: people))
         }
+        var newAfter = newAfter
         for message in messages {
+            // A collapsed thread's row stands for its newest message, which this is.
+            // What counts as unread (`Storage.readStates`): text, attachments, payments.
+            let startsNew = newAfter.map { message.countsAsUnread(after: $0) } ?? false
+            if startsNew { newAfter = nil }
             if let thread = message.threadUUID, let summary = threads[thread] {
                 var row = row(summary.original, kind: .message, id: "t\(summary.uuid)", inTribe: inTribe, people: people)
+                row.startsNew = startsNew
+                row.latest = message
                 row.summary = summary
                 row.date = message.date
                 rows.append(row)
@@ -93,17 +113,24 @@ struct ChatRow: Identifiable {
                 : message.type == MessageType.directPayment ? .payment
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
-            if kind == .message, let last = rows.last, last.takes(message, alias: row.alias) {
+            if kind == .message, !startsNew, let last = rows.last, last.takes(message, alias: row.alias) {
                 rows[rows.count - 1].images = (last.images.isEmpty ? [last.message] : last.images) + [message]
                 rows[rows.count - 1].message = message
                 continue
             }
             if kind == .message { row.quote = quote(message, parents: parents, threadRoot: threadRoot) }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
+            row.startsNew = startsNew
             rows.append(row)
         }
         for index in rows.indices where rows[index].kind == .message {
             rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
+        }
+        // Only boosts on our messages are new: above the first of those.
+        if let after = newAfter, let index = rows.firstIndex(where: { row in
+            row.message.fromMe && (row.boosts?.boosts.contains { !$0.fromMe && ($0.serverIndex ?? -1) > after } ?? false)
+        }) {
+            rows[index].startsNew = true
         }
         // Runs: one sender, a few minutes apart, on one day. The last of a run
         // shows the time under it; in a tribe the first shows the name.
@@ -115,7 +142,7 @@ struct ChatRow: Identifiable {
             }
             let previous = rows[index - 1], row = rows[index]
             let startsDay = !Calendar.current.isDate(row.date, inSameDayAs: previous.date)
-            let startsRun = startsDay || row.kind != .message || previous.kind != .message
+            let startsRun = startsDay || row.startsNew || row.kind != .message || previous.kind != .message
                 || row.summary != nil || previous.summary != nil || previous.message.fromMe != row.message.fromMe
                 || row.date.timeIntervalSince(previous.date) > 5 * 60 || row.alias != previous.alias
             rows[index - 1].endsRun = startsRun
@@ -177,6 +204,18 @@ struct MessageList: View {
 
     /// A row just jumped to from a quote, lit for a moment.
     @State private var flashed: String?
+    @State private var userScrolling = false
+    /// Scrolled up over a screen from the bottom: the jump button shows.
+    @State private var farFromBottom = false
+    /// The newest server index when the jump button appeared; what came
+    /// after it and counts as unread is the button's count.
+    @State private var seenUpTo: Int64?
+
+    /// Where the list sits against its bottom, as the scroll position changes.
+    private struct BottomDistance: Equatable {
+        var atBottom: Bool
+        var far: Bool
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -189,7 +228,13 @@ struct MessageList: View {
                             DayDivider(date: row.date)
                                 .padding(.horizontal, 20)
                         }
-                        Group {
+                        // "New messages" shares its row's id, so scrolling to
+                        // the row (drawn or not) shows it.
+                        VStack(alignment: .leading, spacing: 0) {
+                            if row.startsNew {
+                                NewMessagesDivider()
+                                    .padding(.horizontal, 20)
+                            }
                             switch row.kind {
                             case .message:
                                 MessageRow(row: row, composer: composer, flashed: flashed == row.id) {
@@ -203,6 +248,7 @@ struct MessageList: View {
                                     .padding(.horizontal, 20)
                             case .payment:
                                 PaymentRow(row: row)
+                                    .background(flashed == row.id ? Theme.selection.opacity(0.45) : .clear)
                             case .missingOriginal:
                                 OriginalNotAvailable()
                                     .padding(.horizontal, 20)
@@ -224,33 +270,183 @@ struct MessageList: View {
             .defaultScrollAnchor(.bottom, for: .sizeChanges)
             // A lazy list only estimates the rows it has not drawn, so the
             // initial anchor can land short of the end; go to the newest.
+            // With "New messages", open at it instead.
             .onAppear {
-                if composer.thread == nil, let last = rows.last?.id { proxy.scrollTo(last, anchor: .bottom) }
+                if focusTarget != nil {
+                    // A message asked for wins over "New messages". After the
+                    // list's initial bottom anchor, which would undo it.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(100))
+                        takeFocus(proxy)
+                    }
+                } else if let new = rows.first(where: \.startsNew) {
+                    proxy.scrollTo(new.id, anchor: .top)
+                } else if composer.thread == nil, let last = rows.last?.id {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
             }
+            // Scrolled back to the bottom by hand after "Mark unread": reading
+            // resumes. Not when a new message scrolls it there.
+            .onScrollPhaseChange { _, phase in
+                userScrolling = phase == .interacting || phase == .decelerating
+            }
+            .onScrollGeometryChange(for: BottomDistance.self) { geometry in
+                let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
+                return BottomDistance(atBottom: below <= 24, far: below > geometry.containerSize.height)
+            } action: { old, new in
+                if new.atBottom, !old.atBottom, userScrolling { reachedBottom() }
+                // Counted from the first time it leaves the bottom until it is
+                // back there, through resizes that cross the one-screen line.
+                if new.atBottom {
+                    seenUpTo = nil
+                    if composer.thread == nil, !old.atBottom { model.chatListAtBottom() }
+                }
+                if new.far, seenUpTo == nil { seenUpTo = seenWhenScrolledUp }
+                if new.far != farFromBottom {
+                    withAnimation(.easeOut(duration: 0.2)) { farFromBottom = new.far }
+                }
+            }
+            .onChange(of: model.focus?.message.id) { _, _ in takeFocus(proxy) }
+            // New rows follow you down unless you have scrolled away (then
+            // the jump button counts them); your own always do.
             .onChange(of: rows.last?.id) { _, last in
-                if let last {
+                if let last, !farFromBottom || rows.last?.shown.last?.fromMe == true {
                     withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if farFromBottom {
+                    JumpToNewestButton(count: newSinceScrolledUp, composer: composer) { jumpToNewest(proxy) }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
                 }
             }
         }
     }
 
-    /// From a quote to the message it quotes: scrolled to and lit if it is
-    /// here, its thread opened if a thread has folded it away.
-    private func go(to parent: Message, proxy: ScrollViewProxy) {
+    /// What counts as seen when the list leaves the bottom: up to "New
+    /// messages" when it shows (those below it are still unread), else
+    /// everything in the list.
+    private var seenWhenScrolledUp: Int64 {
+        if let new = rows.first(where: \.startsNew), let index = new.shown.first?.serverIndex { return index - 1 }
+        return rows.lazy.compactMap { $0.shown.last?.serverIndex }.max() ?? -1
+    }
+
+    /// Messages below that count as unread (as "New messages" does) and came
+    /// after what was seen; counted from the bottom up, stopping at it.
+    private var newSinceScrolledUp: Int {
+        guard let seenUpTo else { return 0 }
+        var count = 0
+        for row in rows.reversed() {
+            guard let newest = row.shown.last?.serverIndex, newest > seenUpTo else { break }
+            count += row.shown.filter { $0.countsAsUnread(after: seenUpTo) }.count
+        }
+        return count
+    }
+
+    /// To the newest message; like scrolling there by hand, it ends a
+    /// "Mark unread" hold and reads the chat.
+    private func jumpToNewest(_ proxy: ScrollViewProxy) {
+        guard let last = rows.last?.id else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(last, anchor: .bottom) }
+        reachedBottom()
+    }
+
+    /// Only the chat's own list releases the hold (threads share its marker
+    /// but not its scroll position).
+    private func reachedBottom() {
+        if composer.thread == nil { model.reachedBottom(of: composer.chat) }
+    }
+
+    /// The model's focused message, if it belongs in this list: scrolled
+    /// to and lit (or its thread opened, whose list then takes it).
+    private func takeFocus(_ proxy: ScrollViewProxy) {
+        guard let target = focusTarget else { return }
+        if go(to: target.message, proxy: proxy) {
+            model.focus = nil
+            return
+        }
+        // Not here though within what is loaded, and no thread to look in:
+        // give up rather than hold it. Older: the longer timeline is coming.
+        let loadedFrom = rows.first?.date ?? .distantPast
+        if target.message.date >= loadedFrom, composer.thread != nil || target.message.threadUUID == nil {
+            model.focus = nil
+        }
+    }
+
+    /// The model's focused message, when it belongs in this list.
+    private var focusTarget: FocusTarget? {
+        guard let target = model.focus, target.message.chat == composer.chat,
+              composer.thread.map({ $0 == target.message.threadRoot }) ?? !target.inThread,
+              !rows.isEmpty else { return nil }
+        return target
+    }
+
+    /// From a quote (or `takeFocus`) to a message: scrolled to and lit if it
+    /// is here, its thread opened if a thread has folded it away. Returns
+    /// whether it was here.
+    @discardableResult
+    private func go(to parent: Message, proxy: ScrollViewProxy) -> Bool {
         let uuid = parent.uuid
         if let row = rows.first(where: { row in
-            row.kind == .message
+            (row.kind == .message || row.kind == .payment)
                 && (row.message.uuid == uuid || row.images.contains { $0.uuid == uuid } || row.summary?.original.uuid == uuid)
         }) {
             withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(row.id, anchor: .center) }
             flashed = row.id
             Task {
-                try? await Task.sleep(for: .seconds(1.2))
-                if flashed == row.id { flashed = nil }
+                // Lit, then fading out as it settles.
+                try? await Task.sleep(for: .seconds(0.4))
+                if flashed == row.id { withAnimation(.easeOut(duration: 1.5)) { flashed = nil } }
             }
+            return true
         } else if composer.thread == nil, parent.threadUUID != nil {
             withAnimation(.easeOut(duration: 0.2)) { model.openThread(of: parent) }
+        }
+        return false
+    }
+}
+
+/// The round "to the newest" button over a list scrolled up, with how many
+/// new messages came in below. End or Command-Down does the same.
+private struct JumpToNewestButton: View {
+    @Environment(AppModel.self) private var model
+    let count: Int
+    let composer: ComposerID
+    let action: () -> Void
+
+    /// On the chat's own list only, and not over a draft, where End and
+    /// Command-Down move the cursor. Read here so typing redraws only this.
+    private var shortcuts: Bool {
+        composer.thread == nil && (model.drafts[composer] ?? "").isEmpty
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 36, height: 36)
+                    .menuBoxed(cornerRadius: 18)
+                if count > 0 {
+                    UnreadBadge(count: count).offset(x: 4, y: -6)
+                }
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(count > 0 ? "\(count) new below · Jump to newest (End)" : "Jump to newest (End)")
+        .accessibilityLabel(count > 0 ? "Jump to newest, \(count) new" : "Jump to newest")
+        .background {
+            // Shortcuts, only while the button shows.
+            if shortcuts {
+                ForEach([KeyboardShortcut(.end, modifiers: []), KeyboardShortcut(.downArrow, modifiers: .command)],
+                        id: \.key) { shortcut in
+                    Button("", action: action).keyboardShortcut(shortcut).opacity(0).frame(width: 0, height: 0)
+                }
+            }
         }
     }
 }
@@ -510,13 +706,21 @@ enum MessageMenu {
                 })
             }
         }
+        var unread: [MenuEntry] = []
+        if !message.fromMe, message.isContent, !message.deleted, message.serverIndex != nil {
+            // A run of images: from its first.
+            let first = row.images.first ?? message
+            unread.append(.button("Mark unread from here", systemImage: "envelope.badge") {
+                Task { await model.markUnread(first.chat, from: first) }
+            })
+        }
         var delete: [MenuEntry] = []
         if oneMessage, model.canDelete(message, inTribe: row.inTribe) {
             delete.append(.destructive("Delete", systemImage: "trash", confirm: "Delete for everyone") {
                 Task { await model.delete(message) }
             })
         }
-        return .sections(reply, copy + file, pin, delete)
+        return .sections(reply, copy + file, unread, pin, delete)
     }
 }
 

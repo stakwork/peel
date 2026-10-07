@@ -132,6 +132,13 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// Text or an attachment: what people say, as opposed to membership notes.
     public var isContent: Bool { MessageType.content.contains(type) }
 
+    /// Unread past `marker`, as a row counts it (`Storage.readStates` also
+    /// counts others' boosts on our messages): someone else's text,
+    /// attachment or payment.
+    public func countsAsUnread(after marker: Int64) -> Bool {
+        !fromMe && MessageType.unreadTypes.contains(type) && (serverIndex ?? -1) > marker
+    }
+
     /// Whether a reply or a thread message can name this one: text or an
     /// attachment that others hold under the same uuid. Our own must have
     /// been delivered (a retry gives it a new uuid), and in a tribe it must
@@ -225,7 +232,7 @@ public enum MessageType {
     public static let payments = [directPayment, boost]
     /// Types that count as unread whoever they are for; a boost counts only
     /// on this account's own message.
-    static let unreadTypes = content + [directPayment]
+    public static let unreadTypes = content + [directPayment]
     /// Types as an SQL `IN` list.
     static func sqlList(_ types: [Int]) -> String { types.map(String.init).joined(separator: ", ") }
     /// Every type a conversation shows: text, attachments, direct payments

@@ -72,7 +72,7 @@ final class Notifier {
                 hiddenPreviewsBodyPlaceholder: Self.hiddenText, options: []
             ),
         ])
-        delegate.open = { [weak self] chat in self?.model?.openFromNotification(chat) }
+        delegate.open = { [weak self] chat, message in self?.model?.openFromNotification(chat, messageID: message) }
     }
 
     /// Whether to offer turning notifications on: never asked, not declined here.
@@ -196,11 +196,11 @@ final class Notifier {
             let name = conversation?.name ?? last.senderAlias ?? "Someone"
             let place = conversation?.isTribe == true ? "#\(name)" : nil
             if shown.count > Self.summaryAbove {
-                post(center, id: "summary-\(chat)", chat: chat, locked: locked,
+                post(center, id: "summary-\(chat)", chat: chat, message: shown.first?.id, locked: locked,
                      title: place ?? name, subtitle: nil, body: "\(shown.count) new messages")
             } else {
                 for message in shown {
-                    post(center, id: message.uuid ?? UUID().uuidString, chat: chat, locked: locked,
+                    post(center, id: message.uuid ?? UUID().uuidString, chat: chat, message: message.id, locked: locked,
                          title: place == nil ? name : message.senderAlias ?? "Someone",
                          subtitle: place, body: body(of: message))
                 }
@@ -220,7 +220,7 @@ final class Notifier {
 
     /// While Peel is locked a notification names nobody and says nothing.
     private func post(
-        _ center: UNUserNotificationCenter, id: String, chat: String, locked: Bool,
+        _ center: UNUserNotificationCenter, id: String, chat: String, message: Int64?, locked: Bool,
         title: String, subtitle: String?, body: String
     ) {
         let content = UNMutableNotificationContent()
@@ -230,7 +230,9 @@ final class Notifier {
         content.sound = .default
         content.threadIdentifier = chat
         content.categoryIdentifier = Self.category
-        content.userInfo = ["chat": chat]
+        var info: [String: Any] = ["chat": chat]
+        info["message"] = message
+        content.userInfo = info
         center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
     }
 
@@ -274,7 +276,7 @@ final class Notifier {
 /// Receives clicks on notifications, which the system delivers off the main thread.
 private final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     /// Set once, on the main actor, before any notification is posted.
-    @MainActor var open: ((String) -> Void)?
+    @MainActor var open: ((String, Int64?) -> Void)?
 
     /// Shown even while Peel is in front: only chats other than the open one get here.
     func userNotificationCenter(
@@ -286,7 +288,8 @@ private final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unche
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
               let chat = response.notification.request.content.userInfo["chat"] as? String else { return }
-        await MainActor.run { open?(chat) }
+        let message = response.notification.request.content.userInfo["message"] as? Int64
+        await MainActor.run { open?(chat, message) }
     }
 }
 

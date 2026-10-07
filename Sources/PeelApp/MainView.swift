@@ -386,7 +386,7 @@ struct ConversationLink: View {
     }
 }
 
-/// A sidebar row's menu: Mark as read, the notification level, and for a
+/// A sidebar row's menu: Mark as read (or unread), the notification level, and for a
 /// tribe its link and leaving it (confirmed in place). Direct messages have
 /// no Leave, and no Delete chat: the engine cannot delete a conversation.
 @MainActor
@@ -395,8 +395,12 @@ enum ConversationMenu {
         let chat = conversation.chat
         let level = model.readStates[chat]?.mute ?? .all
         let unread = model.readStates[chat]?.unread ?? 0
-        let read: [MenuEntry] = unread > 0
-            ? [.button("Mark as read", systemImage: "checkmark.circle") { Task { await model.markRead(chat) } }] : []
+        var read: [MenuEntry] = []
+        if unread > 0 {
+            read.append(.button("Mark as read", systemImage: "checkmark.circle") { Task { await model.markRead(chat) } })
+        } else if (try? model.engine?.storage.newestIncomingIndex(in: chat)) != nil {
+            read.append(.button("Mark as unread", systemImage: "envelope.badge") { Task { await model.markUnread(chat) } })
+        }
         var levels: [MenuEntry] = [.header("Notify me about")]
         // The tribes server only marks mentions in tribes.
         let choices: [(MuteLevel, String)] = conversation.isTribe

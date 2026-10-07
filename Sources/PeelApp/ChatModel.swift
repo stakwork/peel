@@ -377,10 +377,10 @@ extension AppModel {
         message.id.flatMap { attachment($0).downloaded?.fileName } ?? message.fileName
     }
 
-    /// Puts an image on the clipboard.
-    func copyImage(_ message: Message) {
-        guard let id = message.id, let file = attachment(id).file else { return }
-        Clipboard.copyImage(at: file)
+    /// Puts an image on the clipboard; false when it is not downloaded or cannot be read.
+    func copyImage(_ message: Message) -> Bool {
+        guard let id = message.id, let file = attachment(id).file else { return false }
+        return Clipboard.copyImage(at: file)
     }
 
     func showImages(_ messages: [Message], at index: Int) {

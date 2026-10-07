@@ -122,7 +122,9 @@ struct ImageViewer: View {
                 } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
                     .buttonStyle(GhostButtonStyle())
             }
-            Button { model.copyImage(current) } label: { Label("Copy", systemImage: "doc.on.doc") }
+            CopyButton("Copy") { model.copyImage(current) }
+                // A fresh button per image, so one copied does not mark the next.
+                .id(current.id)
                 .buttonStyle(GhostButtonStyle())
                 .disabled(image == nil)
             Button { Task { await model.save(current) } } label: { Label("Save as…", systemImage: "square.and.arrow.down") }

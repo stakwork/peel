@@ -224,6 +224,36 @@ Restrained. The thread panel slides in from the right in about 200 ms with an
 ease-out curve and leaves faster. Sidebar selection, hovers and keyboard
 actions do not animate.
 
+### Copy feedback
+
+Every copy says it worked (Tom, 2026-10-07: "all copy buttons should have
+feedback"). Built in `Sources/PeelApp/CopyFeedback.swift`; use it for any new
+copy (the Payments screen's invoice and payment hash included), never a bare
+`Clipboard.copy`:
+
+- **A button:** `CopyButton("Copy invoice", text: invoice)`, or
+  `CopyButton("Copy image") { model.copyImage(message) }` for anything else
+  that copies (the closure returns whether it copied; no check when it did
+  not). It takes the surrounding button style (`GhostButtonStyle`);
+  `iconOnly: true` draws the small hover icon button instead, with the title
+  as its tooltip. `systemImage` defaults to `doc.on.doc`. After the click
+  the icon becomes a green check and the title "Copied" (a spring of about
+  180 ms, no overshoot, scale and fade; leaving in 140 ms), held 1.5 s; another
+  click starts the wait again. Both labels are laid out at once, so the button
+  never changes width. Reduce Motion keeps only the cross-fade.
+- **A button that copies in two steps** (the twelve words, after their
+  warning): `CopyLabel("Copy", copiedAt: date)` as the label, setting
+  `copiedAt` when the copy really happens.
+- **A menu item:** `.copy("Copy tribe link", text: link, systemImage: "link")`,
+  or `.copy(title) { ... }` (returning whether it copied). The menu closes
+  on the click, so a small "Copied" pill with a green check fades in at the
+  bottom centre of the main window and leaves after 1.5 s
+  (`MenuPresenter.showToast`), also for a menu opened inside a panel.
+  `.copyText` is one of these.
+- The twelve words keep their warning, Peel-only concealed copy and
+  one-minute clear; only the Copy button's label changed.
+- VoiceOver hears "Copied" each time (`CopyFeedback.announce`).
+
 ## What the engine needs
 
 Each part of the layout depends on something below the UI. Most of it exists

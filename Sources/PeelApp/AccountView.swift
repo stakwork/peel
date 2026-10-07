@@ -172,7 +172,6 @@ private struct IdentitySection: View {
 private struct ContactInfoSection: View {
     @Environment(AppModel.self) private var model
     @State private var code: CGImage?
-    @State private var copied = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
@@ -198,19 +197,10 @@ private struct ContactInfoSection: View {
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if let info = model.myContactInfo {
-                    HStack(spacing: 10) {
-                        Button("Copy contact info") {
-                            Clipboard.copy(info)
-                            copied = true
-                        }
+                    CopyButton("Copy contact info", text: info)
                         .buttonStyle(GhostButtonStyle())
-                        if copied {
-                            Text("Copied")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                    }
-                    .padding(.top, 4)
+                        .id(info)
+                        .padding(.top, 4)
                 }
             }
             Spacer(minLength: 0)
@@ -218,7 +208,6 @@ private struct ContactInfoSection: View {
         .padding(18)
         .panelBoxed()
         .task(id: model.myContactInfo) {
-            copied = false
             code = model.myContactInfo.flatMap(QRCode.image)
         }
     }
@@ -444,7 +433,8 @@ private struct WordsRow: View {
     @State private var hideAt = Date.distantPast
     @State private var visible = false
     @State private var confirmingCopy = false
-    @State private var copied = false
+    /// When the words were last copied: the Copy button shows its check.
+    @State private var copiedAt: Date?
     /// Bumped by `hide`, so a PIN check still running when the words are
     /// hidden (Cancel, Peel leaving the front) does not show them after all.
     @State private var generation = 0
@@ -518,14 +508,15 @@ private struct WordsRow: View {
                     Button("Copy words") {
                         Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
                         confirmingCopy = false
-                        copied = true
+                        copiedAt = .now
+                        CopyFeedback.announce()
                     }
                     .buttonStyle(GhostButtonStyle(prominent: true))
                 } else {
-                    Button("Copy") { confirmingCopy = true }
+                    Button { confirmingCopy = true } label: { CopyLabel("Copy", copiedAt: copiedAt) }
                         .buttonStyle(GhostButtonStyle())
-                    if copied {
-                        Text("Copied; cleared from the clipboard in a minute")
+                    if copiedAt != nil {
+                        Text("Cleared from the clipboard in a minute")
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)
                     }
@@ -583,7 +574,7 @@ private struct WordsRow: View {
         askingPIN = false
         visible = false
         confirmingCopy = false
-        copied = false
+        copiedAt = nil
     }
 }
 

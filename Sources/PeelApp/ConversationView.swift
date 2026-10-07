@@ -203,7 +203,7 @@ struct TribeMembersPanel: View {
             Theme.divider.frame(height: 1)
             HStack(spacing: 8) {
                 if let link = tribe?.link {
-                    Button("Copy link") { Clipboard.copy(link) }
+                    CopyButton("Copy link", text: link, systemImage: "link")
                 }
                 Spacer()
                 // The owner cannot leave, only delete the tribe (under Edit tribe).
@@ -247,7 +247,7 @@ struct TribeMembersPanel: View {
                                             Task { await answer(member, approve: false) }
                                         },
                                     ],
-                                    [.button("Copy name", systemImage: "doc.on.doc") { Clipboard.copy(member.alias) }]
+                                    [.copy("Copy name", text: member.alias)]
                                 )
                             }
                         }
@@ -274,7 +274,7 @@ struct TribeMembersPanel: View {
                                                            confirm: "Remove \(member.alias)") { Task { await kick(pubkey) } })
                             }
                             return .sections(
-                                [.button("Copy name", systemImage: "doc.on.doc") { Clipboard.copy(member.alias) }], remove
+                                [.copy("Copy name", text: member.alias)], remove
                             )
                         }
                     }

@@ -18,7 +18,8 @@ in progress and what comes next. Update it when you finish something.
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
-    the words in the Keychain sealed under a six-digit PIN, `.development`
+    the words in the data-protection Keychain sealed under a six-digit PIN
+    (moved there from the login Keychain on first unlock), `.development`
     profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
@@ -29,9 +30,14 @@ in progress and what comes next. Update it when you finish something.
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below)
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
-- `scripts/run-app.sh` — builds, bundles, signs the Mac app, installs it to
+- `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
+  (default `.build/Peel.app`, or the path given), without installing it
+- `scripts/run-app.sh` — `bundle-app.sh`, then installs to
   `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
-- `scripts/sign-app.sh` — signs a bundle with the Apple Development identity
+- `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
+  embeds a provisioning profile and the Keychain entitlements (see Signing)
+- `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
+  fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/build-icon.sh` — renders `Assets/peel.svg` into `Assets/AppIcon.icns`
 
 ## Build and run
@@ -47,9 +53,36 @@ swift build
 (sha256 plus the `sphinx-rs` commit); pass `--update` after deliberately taking a
 new build of the core.
 
-Xcode is installed, but there is no Xcode project yet (phase 2 adds one for a
-signed bundle). Until then build with `swift build`; the app bundle is
-assembled by hand in `scripts/run-app.sh`.
+The app bundle is assembled by hand in `scripts/bundle-app.sh`; there is no
+Xcode project for the app itself. To check a build without replacing the
+installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+
+## Signing and the weekly re-sign
+
+The app keeps the words in the data-protection Keychain, which needs the
+`keychain-access-groups` entitlement, which needs a provisioning profile. Tom
+has a free Personal Team (team `T3M78XC3UV`, bundle ID `dev.peel.mac`, access
+group `T3M78XC3UV.dev.peel.mac`), so:
+
+- `scripts/sign-app.sh` picks the installed profile for the app ID that lasts
+  longest (`~/Library/Developer/Xcode/UserData/Provisioning Profiles`), embeds
+  it as `Contents/embedded.provisionprofile`, and signs with entitlements
+  derived from it. When none is left with two days to run it builds
+  `scripts/provision` with `xcodebuild -allowProvisioningUpdates`, which asks
+  Apple for a new one. Xcode must be signed in to the Apple ID (Settings >
+  Accounts); nothing else is interactive.
+- A Personal Team profile lasts **7 days**. Once the embedded profile has
+  expired macOS refuses to launch the app. The Keychain item is not lost: it
+  belongs to the access group, not the profile, and a build signed with a
+  fresh profile reads it (checked by re-signing with a second profile).
+- So: **run `./scripts/run-app.sh` at least once a week** (it prints the
+  expiry). If the installed app has already stopped launching, the same
+  command fixes it.
+- Without an Apple Development identity the bundle is signed ad hoc and cannot
+  use the Keychain at all: creating or unlocking an app account fails with a
+  Keychain error. Development profiles (`-profile`) still work.
+- A free team may register at most 10 App IDs in 7 days; do not change the
+  bundle ID casually.
 
 ## Tests
 

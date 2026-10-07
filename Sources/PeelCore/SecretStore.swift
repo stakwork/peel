@@ -40,14 +40,20 @@ public enum PIN {
     }
 }
 
-/// The login Keychain, holding the words encrypted with the PIN.
+/// The data-protection Keychain, holding the words encrypted with the PIN.
 ///
-/// The item is tied to the signed app that wrote it, so other programs are
-/// asked before they can read it; the PIN then has to be guessed to use what
-/// they read. Six digits are a small space, so the derivation is slow on
-/// purpose, but it buys minutes against a GPU, not days: the Keychain's ACL and
-/// the login password are the real wall. Moving to the data-protection
-/// Keychain (hardware-wrapped, not in backups) needs a provisioned bundle.
+/// The item belongs to the app's Keychain access group, so only an app signed
+/// by the same team with that group can see it, and it is
+/// `WhenUnlockedThisDeviceOnly`: wrapped by a key tied to this Mac, never
+/// synced to iCloud, never restored from a backup onto another Mac. The PIN
+/// then has to be guessed to use what is read. Six digits are a small space,
+/// so the derivation is slow on purpose, but it buys minutes against a GPU,
+/// not days: the Keychain is the real wall.
+///
+/// Needs a bundle signed with a provisioning profile that grants the access
+/// group (`scripts/sign-app.sh`); anything else gets `errSecMissingEntitlement`.
+/// Words kept by earlier builds in the file-based login Keychain move here on
+/// the first unlock.
 public struct KeychainSecretStore: SecretStore {
     private static let service = "dev.peel"
     public let account: String
@@ -56,57 +62,119 @@ public struct KeychainSecretStore: SecretStore {
         self.account = account
     }
 
-    private var query: [String: Any] {
+    private enum Keychain {
+        /// Where the words live.
+        case dataProtection
+        /// The file-based login keychain earlier builds used; read only to move
+        /// the words out of it.
+        case login
+    }
+
+    private func query(_ keychain: Keychain) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: keychain == .dataProtection,
         ]
     }
 
     public var hasMnemonic: Bool {
-        SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+        exists(.dataProtection) || exists(.login)
     }
 
     public var requiresPIN: Bool { true }
 
     public func loadMnemonic(pin: String) throws -> String {
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query.merging([kSecReturnData as String: true]) { $1 } as CFDictionary, &item)
-        switch status {
-        case errSecSuccess:
-            guard let sealed = item as? Data else { throw PeelError("the Keychain item for \(account) is unreadable") }
-            return try PINBox.open(sealed, pin: pin)
-        case errSecItemNotFound:
-            throw SecretStoreFailure.noAccount
-        default:
-            throw PeelError("Keychain read failed: \(Self.message(status))")
+        let current = try read(.dataProtection)
+        let legacy = try read(.login)
+        guard let sealed = current ?? legacy else { throw SecretStoreFailure.noAccount }
+        let words = try PINBox.open(sealed, pin: pin)
+        if let legacy {
+            try moveToDataProtection(legacy, alreadyThere: current)
         }
+        return words
     }
 
     public func save(mnemonic: String, pin: String) throws {
         try PIN.validate(pin)
-        let attributes = query.merging([
-            kSecValueData as String: try PINBox.seal(mnemonic, pin: pin),
-            kSecAttrLabel as String: "Peel account \(account)",
-        ]) { $1 }
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status != errSecDuplicateItem else { throw SecretStoreFailure.accountExists }
-        guard status == errSecSuccess else { throw PeelError("Keychain write failed: \(Self.message(status))") }
+        guard !exists(.login) else { throw SecretStoreFailure.accountExists }
+        try add(PINBox.seal(mnemonic, pin: pin))
     }
 
     public func changePIN(from oldPIN: String, to newPIN: String) throws {
         try PIN.validate(newPIN)
         let mnemonic = try loadMnemonic(pin: oldPIN)
         let update = [kSecValueData as String: try PINBox.seal(mnemonic, pin: newPIN)]
-        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        let status = SecItemUpdate(query(.dataProtection) as CFDictionary, update as CFDictionary)
         guard status == errSecSuccess else { throw PeelError("Keychain update failed: \(Self.message(status))") }
     }
 
+    /// Removes the words from both keychains.
     public func deleteMnemonic() throws {
-        let status = SecItemDelete(query as CFDictionary)
+        for keychain in [Keychain.dataProtection, .login] {
+            let status = SecItemDelete(query(keychain) as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                throw PeelError("Keychain delete failed: \(Self.message(status))")
+            }
+        }
+    }
+
+    /// Copies the sealed words from the login keychain, reads the copy back,
+    /// and only when it matches removes the original. Any failure leaves the
+    /// original where it was. A copy already in place (an earlier move whose
+    /// delete failed) is checked the same way; one that differs is left alone,
+    /// and so is the original.
+    private func moveToDataProtection(_ sealed: Data, alreadyThere current: Data?) throws {
+        if current == nil {
+            do {
+                try add(sealed)
+            } catch {
+                throw PeelError("could not move the account into the data-protection Keychain (\(error)); it is still in the login Keychain")
+            }
+            guard try read(.dataProtection) == sealed else {
+                _ = SecItemDelete(query(.dataProtection) as CFDictionary)
+                throw PeelError("the account's copy in the data-protection Keychain did not match; it is still in the login Keychain")
+            }
+        } else if current != sealed {
+            return
+        }
+        let status = SecItemDelete(query(.login) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw PeelError("Keychain delete failed: \(Self.message(status))")
+            throw PeelError("the account moved to the data-protection Keychain, but the old copy in the login Keychain could not be removed: \(Self.message(status))")
+        }
+    }
+
+    private func add(_ sealed: Data) throws {
+        let attributes = query(.dataProtection).merging([
+            kSecValueData as String: sealed,
+            kSecAttrLabel as String: "Peel account \(account)",
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrSynchronizable as String: false,
+        ]) { $1 }
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        guard status != errSecDuplicateItem else { throw SecretStoreFailure.accountExists }
+        guard status == errSecSuccess else { throw PeelError("Keychain write failed: \(Self.message(status))") }
+    }
+
+    private func exists(_ keychain: Keychain) -> Bool {
+        SecItemCopyMatching(query(keychain) as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// The sealed words, or nil when there is no item.
+    private func read(_ keychain: Keychain) throws -> Data? {
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(
+            query(keychain).merging([kSecReturnData as String: true]) { $1 } as CFDictionary, &item
+        )
+        switch status {
+        case errSecSuccess:
+            guard let sealed = item as? Data else { throw PeelError("the Keychain item for \(account) is unreadable") }
+            return sealed
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw PeelError("Keychain read failed: \(Self.message(status))")
         }
     }
 

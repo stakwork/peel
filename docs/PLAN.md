@@ -80,12 +80,12 @@ which are not core state). Live queries use GRDB `ValueObservation`.
 
 ### Identity and secrets
 
-The twelve-word mnemonic is the account. App profiles keep it in the login
-Keychain, sealed under a six-digit PIN (`SecretStore`); development profiles
+The twelve-word mnemonic is the account. App profiles keep it in the
+data-protection Keychain (this device only), sealed under a six-digit PIN
+(`SecretStore`); development profiles
 used by the CLI keep it in a plain file and are for throwaway accounts only.
 The PIN lives only in memory. Core state holds contact keys and the device's
-child-key indices; it is sensitive but not the seed. Limits and the next step
-(data-protection keychain) are in phase 2.
+child-key indices; it is sensitive but not the seed. Limits are in phase 2.
 
 ### Platform
 
@@ -93,8 +93,10 @@ macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
 the Mac app's repo and is pinned by hash in `Vendor/sphinxrs.lock`; building
 it from source needs Rust 1.88.0. Xcode is installed and the app is signed
-with Tom's Apple Development identity (`scripts/sign-app.sh`); there is no
-Xcode project yet, which is only needed for TestFlight and the iPhone target.
+with Tom's Apple Development identity and a Personal Team provisioning
+profile that lasts 7 days (`scripts/sign-app.sh`; see "Signing and the weekly
+re-sign" in `AGENTS.md`); there is no Xcode project for the app yet, which is
+only needed for TestFlight and the iPhone target.
 
 ## Phases
 

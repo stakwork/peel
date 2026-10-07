@@ -45,16 +45,12 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    `Profile(name:kind:)` picks the store and exposes `requiresPIN`; the app
    uses `.development` only when launched with `-profile`. The PIN lives only
    in memory; timeout and re-asking are the app's job.
-   Honest limits, from the security review: the item is in the file-based
-   login keychain, so `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` is not
-   in effect there (it is backed up and migrated with the keychain file), and
-   a six-digit PIN at ~0.4 s per guess falls to an offline search in minutes
-   on a GPU and hours on a laptop if someone has the keychain file and the
-   login password. The Keychain's binding to the signed app plus the login
-   password are the real wall; the PIN stops a passer-by at an unlocked Mac.
-   Next step when an Xcode project with a provisioning profile exists: move
-   to the data-protection keychain (`kSecUseDataProtectionKeychain`), which
-   wraps items in hardware and keeps them out of backups.
+   Honest limits, from the security review: a six-digit PIN at ~0.4 s per
+   guess falls to an offline search in minutes on a GPU and hours on a laptop
+   if someone gets the sealed blob out of the Keychain. The Keychain is the
+   real wall; the PIN stops a passer-by at an unlocked Mac. Since "Still open"
+   item 0 the item is in the data-protection Keychain, not the login keychain
+   file.
 
 3. **Onboarding.** Done in the app (2026-10-07): welcome → invite link or
    twelve words → name → PIN → confirm PIN → the words shown once (new
@@ -86,11 +82,55 @@ restore is the point of this phase; the Keychain is what makes it allowed.
 
 ## Still open in this phase
 
-0. **Data-protection keychain.** The item is in the file-based login keychain
-   (see task 2). Moving it to the data-protection keychain needs a bundle with
-   an application identifier, i.e. an Xcode project with a provisioning
-   profile. Decided 2026-10-07: this lands before the real account moves over.
+0. **Data-protection keychain.** Done 2026-10-07 (branch
+   `phase2/data-protection-keychain`). The words now live in the
+   data-protection Keychain (`kSecUseDataProtectionKeychain`), access group
+   `T3M78XC3UV.dev.peel.mac`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`,
+   not synchronizable; `PINBox` sealing is unchanged. Being ThisDeviceOnly,
+   the item is wrapped by a key tied to this Mac and is not carried by Time
+   Machine, iCloud Keychain or a migration to another Mac: a new Mac needs
+   the twelve words (stated, not tested).
+   Migration: on unlock with the right PIN, an item still in the login
+   Keychain is copied over, read back and compared byte for byte, and only
+   then deleted. If any step fails the old item stays and the unlock shows
+   the error. A wrong PIN moves nothing. Forget deletes from both keychains;
+   a save is refused while an old item exists.
+   Signing: a free Personal Team is enough. Spike, 2026-10-07:
 
+   | Approach | Launches | `SecItemAdd` |
+   |---|---|---|
+   | Hand-built bundle, Apple Development identity, no entitlements | yes | -34018 (missing entitlement) |
+   | Same, with `keychain-access-groups` entitlements, no profile | killed at launch (SIGKILL) | — |
+   | Minimal Xcode project, automatic signing, `xcodebuild -allowProvisioningUpdates` | yes | 0; read and delete 0 |
+   | Hand-built bundle + entitlements + the profile Xcode fetched, embedded | yes (direct and via `open`) | 0; read and delete 0 |
+   | Item written under profile 1, read by a build with a newly fetched profile 2 | yes | read 0, same value |
+
+   Xcode was already signed in; it fetched "Mac Team Provisioning Profile:
+   <bundle id>" with no prompt. The profile's `TimeToLive` is 7 and its
+   expiry 7 days after creation; it grants `keychain-access-groups`
+   `T3M78XC3UV.*` and lists this Mac only. Not tested (it would need the
+   clock moved): launching with an expired profile. macOS is expected to
+   refuse the launch, and the item, owned by the access group, is read again
+   by any build re-signed with a fresh profile, as the last row shows.
+   `scripts/sign-app.sh` now embeds the profile and entitlements and fetches
+   a fresh profile through `scripts/provision` when the current one has under
+   two days left; `scripts/bundle-app.sh` builds a signed bundle without
+   installing it. Weekly re-signing is in `AGENTS.md` ("Signing and the
+   weekly re-sign"): run `./scripts/run-app.sh` at least once a week.
+   Verified with a harness built from `SecretStore.swift` and `Profile.swift`,
+   bundled as `dev.peel.mac` and signed by `sign-app.sh`, on `kc-*` profiles
+   only: create, unlock, wrong PIN refused, change PIN (old refused, new
+   works), duplicate save refused, restore from words, delete (both keychains
+   empty); item attributes `pdmn=aku`, `sync=0`, access group as above.
+   Migration: a profile created by a harness built from `origin/main`
+   (login keychain) unlocked with the new build: wrong PIN moved nothing;
+   right PIN left one data-protection item and nothing in the login keychain
+   (`security find-generic-password -s dev.peel` lists only `default`). A
+   build without the profile failed the move with the entitlement error and
+   kept the login item; the provisioned build then moved it. The signed app
+   itself launches (run on a development profile; the `default` profile was
+   not touched). Not exercised by hand in the app: the lock screen showing a
+   migration error, and Tom's own first unlock, which performs the move.
 
 6. **Long messages.** Text over ~869 bytes is split by the bindings layer
    (`sphinx-rs/sphinx-ffi/src/chunk.rs`, type 34). Confirm how `send` reports a

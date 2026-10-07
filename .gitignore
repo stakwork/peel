@@ -8,3 +8,4 @@ xcuserdata/
 Vendor/sphinxrsFFI.xcframework/
 Sources/Sphinxrs/sphinxrs.swift
 peel-1024.png
+!scripts/provision/Provision.xcodeproj/

@@ -132,8 +132,16 @@ protocol-level is still verified against the local test server.
 
 ## Rules
 
-- Develop against the throwaway account (profile `throwaway`), never a real
-  one. Do not call `setPushToken` for a real account: the server keeps one push
+- The app's profile `default` (`~/Library/Application Support/Peel/default`,
+  words in the data-protection Keychain) holds Tom's REAL account since
+  2026-10-07. Never open, test against, migrate, copy or delete it, and never
+  run `scripts/run-app.sh` (it replaces the Peel Tom uses every day); build
+  with `scripts/bundle-app.sh` into `.build` and launch with `-profile <dev>`.
+  The CLI only opens development profiles under `Peel/dev` and requires an
+  explicit `--profile` that is not `default`.
+- Develop against development profiles on the local test server; use the
+  throwaway account (profile `throwaway`) only for what the production server
+  must see, one session at a time, never a real one. Do not call `setPushToken` for a real account: the server keeps one push
   token per account and it would take notifications away from the official app.
 - One process per profile: `Storage` takes a lock, so a second app or CLI on the
   same profile fails with "another Peel process is using ...". Quit the other one.

@@ -34,15 +34,15 @@ The app is signed with a free Personal Team profile that lasts 7 days; run
 Or from the command line:
 
 ```sh
-.build/debug/peel signup - --alias "My name"   # paste the invite link on stdin
-.build/debug/peel whoami
-.build/debug/peel add <pubkey_lsp_scid>
-.build/debug/peel send <pubkey> hello
-.build/debug/peel listen
+.build/debug/peel --profile alice signup - --alias "My name"   # paste the invite link on stdin
+.build/debug/peel --profile alice whoami
+.build/debug/peel --profile alice add <pubkey_lsp_scid>
+.build/debug/peel --profile alice send <pubkey> hello
+.build/debug/peel --profile alice listen
 ```
 
 Accounts live under `~/Library/Application Support/Peel/dev/<profile>`; pick one
-with `--profile`.
+with `--profile` (required; `default` is reserved for the app's own account).
 
 See `AGENTS.md` for how the code is organised, `docs/PLAN.md` for the
 architecture, and `docs/phases/` for what is done and what comes next.

@@ -26,7 +26,7 @@ struct ConversationView: View {
                 // lazy stack blank at the bottom anchor until it was scrolled.
                 // Made again once the messages have loaded, so it starts at
                 // the bottom of them rather than of an empty list.
-                .id(MessageListID(chat: conversation.chat, loaded: !model.messages.isEmpty))
+                .id(model.messages.isEmpty ? nil : conversation.chat)
             if let notice = model.conversationNotices[conversation.chat] {
                 ConversationNotice(text: notice) { model.dismissNotice(in: conversation.chat) }
             }
@@ -769,9 +769,4 @@ struct MentionSuggestions: View {
         .frame(width: 240)
         .panelBoxed()
     }
-}
-
-private struct MessageListID: Hashable {
-    let chat: String
-    let loaded: Bool
 }

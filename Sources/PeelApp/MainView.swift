@@ -747,11 +747,19 @@ struct Avatar: View {
         Self.tones[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % Self.tones.count]
     }
 
-    @State private var loaded: CGImage?
+    /// The fetched photo, kept with its URL so a view reused for another
+    /// person never shows the last one's photo while the new one loads.
+    @State private var loaded: (url: URL, image: CGImage)?
+
+    private var image: CGImage? {
+        guard let photo else { return nil }
+        if let loaded, loaded.url == photo { return loaded.image }
+        return PhotoCache.shared.cached(photo)
+    }
 
     var body: some View {
         Group {
-            if let image = loaded ?? photo.flatMap(PhotoCache.shared.cached) {
+            if let image {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 tone.overlay {
@@ -764,8 +772,7 @@ struct Avatar: View {
             }
         }
         .task(id: photo) {
-            loaded = nil
-            if let photo { loaded = await PhotoCache.shared.image(for: photo) }
+            if let photo, let image = await PhotoCache.shared.image(for: photo) { loaded = (photo, image) }
         }
         .frame(width: size, height: size)
         .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
@@ -782,9 +789,10 @@ final class PhotoCache {
     static let shared = PhotoCache()
 
     private var images: [URL: CGImage] = [:]
-    private var loads: [URL: Task<(image: CGImage?, answered: Bool), Never>] = [:]
+    /// A fetch that throws (no answer, or the server busy or failing) is tried
+    /// again next time; one that returns nil got no image and joins `failed`.
+    private var loads: [URL: Task<CGImage?, any Error>] = [:]
     /// URLs whose server gave no image, not asked for again this session.
-    /// A fetch that never reached the server is tried again next time.
     private var failed: Set<URL> = []
 
     func cached(_ url: URL) -> CGImage? { images[url] }
@@ -792,22 +800,34 @@ final class PhotoCache {
     func image(for url: URL) async -> CGImage? {
         if let image = images[url] { return image }
         guard !failed.contains(url) else { return nil }
-        let load = loads[url] ?? Task.detached(priority: .utility) {
-            guard let (data, response) = try? await URLSession.shared.data(from: url) else { return (nil, false) }
-            guard (response as? HTTPURLResponse)?.statusCode == 200,
-                  let source = CGImageSourceCreateWithData(data as CFData, nil)
-            else { return (nil, true) }
-            return (CGImageSourceCreateImageAtIndex(source, 0, nil), true)
+        let load: Task<CGImage?, any Error>
+        if let running = loads[url] {
+            load = running
+        } else {
+            load = Task.detached(priority: .utility) {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if status == 429 || status >= 500 { throw URLError(.badServerResponse) }
+                guard status == 200, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+                // Decoded here, at avatar size (the short side still covers a
+                // 36pt avatar at 2x for photos up to 3:1, as it is filled), so
+                // drawing neither decodes on the main thread nor keeps the full photo.
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 256,
+                ] as CFDictionary)
+            }
+            loads[url] = load
         }
-        loads[url] = load
-        let result = await load.value
+        let result = await load.result
         loads[url] = nil
-        if let image = result.image {
-            images[url] = image
-        } else if result.answered {
-            failed.insert(url)
+        switch result {
+        case .success(let image?): images[url] = image; return image
+        case .success(nil): failed.insert(url); return nil
+        case .failure: return nil
         }
-        return result.image
     }
 }
 

@@ -462,8 +462,8 @@ extension Storage {
         ).filter { $0.lastType != MessageType.groupLeave }.map(\.member)
     }
 
-    /// Each alias seen in a tribe's messages of `types` from `since` on (a
-    /// message with no time counts as 0), from its newest such message
+    /// Each alias seen in a tribe's messages of `types` from `since` on (all
+    /// of them, timeless ones too, when `since` is 0), from its newest such message
     /// (photo https only, and that message's type), sorted by alias.
     private func seenInTribe(
         _ tribe: String, types: [Int], since: Int64
@@ -476,11 +476,11 @@ extension Storage {
                         type, MAX(id)
                     FROM message
                     WHERE chat = ? AND fromMe = 0 AND type IN (\(types.map(String.init).joined(separator: ", ")))
-                        AND IFNULL(timestamp, 0) >= ? AND json_valid(sender) AND IFNULL(json_extract(sender, '$.alias'), '') != ''
+                        \(since > 0 ? "AND timestamp >= ?" : "") AND json_valid(sender) AND IFNULL(json_extract(sender, '$.alias'), '') != ''
                     GROUP BY alias
                     ORDER BY alias COLLATE NOCASE
                     """,
-                arguments: [tribe, since]
+                arguments: since > 0 ? [tribe, since] : [tribe]
             ).map { row in
                 let photo: String? = row["photo"]
                 return (TribeMember(alias: row["alias"], photoURL: photo?.httpsOnly, pubkey: nil, pending: false), row["type"])

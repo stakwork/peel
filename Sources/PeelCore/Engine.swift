@@ -156,6 +156,8 @@ public actor Engine {
     private var tribes: [String: Tribe] = [:]
     /// Member lists the tribes server sent for tribes this account owns.
     private var memberLists: [String: TribeMembers.List] = [:]
+    /// Join requests answered this session; see `answerJoinRequest`.
+    private var sentAnswers: Set<String> = []
     /// Tribes whose update the tribes server has confirmed, until `updateRegistry` takes it.
     private var updatedTribes: Set<String> = []
     /// Tribes with an update or delete on its way; see `changeOwnedTribe`.
@@ -748,28 +750,40 @@ public actor Engine {
     /// and the member's key (`member`) when known, which the tribes server
     /// reads first. An approved member gets the recent history from the tribe.
     public func answerJoinRequest(in pubkey: String, _ request: JoinRequest, approve: Bool) async throws {
-        let tribe = try ownedTribe(pubkey)
+        var tribe = try ownedTribe(pubkey)
         var fields: [String: String] = [:]
         switch request {
         case .message(let uuid):
             fields["replyUuid"] = uuid
         case .member(let member, let alias):
             guard member.isPubkey else { throw PeelError("that is not a member's key") }
-            // The request may not be stored; then the server's latest list,
-            // when there is one, must still show the member waiting.
-            if let list = memberLists[pubkey], !list.pending.contains(where: { $0.pubkey == member }) {
+            // The request may not be stored, so the server's list must show
+            // the member waiting; fetched when this session has none.
+            if memberLists[pubkey] == nil {
+                _ = try await tribeMembers(pubkey)
+                tribe = try ownedTribe(pubkey)
+            }
+            guard memberLists[pubkey]?.pending.contains(where: { $0.pubkey == member }) == true else {
                 throw PeelError("that member is not waiting for an answer")
             }
             fields["member"] = member
             fields["replyUuid"] = try storage.joinRequest(in: pubkey, from: alias)
         }
-        // Each answer costs the tribe's price; a request is answered once.
-        if let request = fields["replyUuid"], try storage.isAnswered(request: request, in: pubkey) {
+        // Each answer costs the tribe's price; a request is answered once. Our
+        // answer is stored only when the server echoes it, so until then the
+        // request is held in `sentAnswers` and the member taken off the list.
+        let replyUuid = fields["replyUuid"]
+        if let replyUuid, try sentAnswers.contains(replyUuid) || storage.isAnswered(request: replyUuid, in: pubkey) {
             throw PeelError("that request has already been answered")
         }
-        try await sendToTribe(tribe, type: approve ? MessageType.memberApprove : MessageType.memberReject, fields: fields)
-        if let member = fields["member"] {
-            memberLists[pubkey]?.pending.removeAll { $0.pubkey == member }
+        if let replyUuid { sentAnswers.insert(replyUuid) }
+        if let member = fields["member"] { memberLists[pubkey]?.pending.removeAll { $0.pubkey == member } }
+        do {
+            try await sendToTribe(tribe, type: approve ? MessageType.memberApprove : MessageType.memberReject, fields: fields)
+        } catch {
+            if let replyUuid { sentAnswers.remove(replyUuid) }
+            if fields["member"] != nil { memberLists[pubkey] = nil }
+            throw error
         }
     }
 
@@ -964,7 +978,10 @@ public actor Engine {
     /// The tribes server marks what the owner sends with role 0, including
     /// the join it sends the owner on creation, so our own message with it
     /// says this account owns the tribe, as after a restore.
-    private static func membership(after message: Message, in tribe: Tribe) -> Tribe? {
+    /// A restore (`replaying`) leaves deleted tribes out, as the Mac app does
+    /// (it restores only tribes the registry still serves); a deletion heard
+    /// otherwise keeps its bar so the user sees what happened.
+    private static func membership(after message: Message, in tribe: Tribe, replaying: Bool) -> Tribe? {
         var changed = tribe
         if message.fromMe {
             if message.senderInfo?.role == 0 { changed.isOwner = true }
@@ -982,6 +999,7 @@ public actor Engine {
         } else if message.type == MessageType.tribeDelete {
             // Only the owner can delete, so this is true for the owner too.
             changed.status = .deleted
+            if replaying { changed.left = true }
         } else if !tribe.isOwner {
             switch message.type {
             case MessageType.memberApprove, MessageType.groupJoin:
@@ -1153,11 +1171,8 @@ public actor Engine {
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
-            if let tribe = knownTribes[message.chat], var changed = Self.membership(after: message, in: tribe) {
-                // A restore leaves deleted tribes out, as the Mac app does (it
-                // restores only tribes the registry still serves); a deletion
-                // heard while running keeps its bar so the user sees what happened.
-                if restoring, changed.status == .deleted { changed.left = true }
+            if let tribe = knownTribes[message.chat],
+               let changed = Self.membership(after: message, in: tribe, replaying: restoring) {
                 knownTribes[tribe.pubkey] = changed
                 commit.tribes.append(changed)
             }

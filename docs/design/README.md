@@ -52,17 +52,21 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
 - **Header.** The tribe name with `#` (or the contact's name), member count and
   description for a tribe, and three icon buttons: call, pinned messages,
   members.
-- **Messages are flat, Slack style, not bubbles.** Avatar, name, time, text.
-  Consecutive messages from the same person within a few minutes collapse
-  under one name.
+- **Messages are bubbles: theirs on the left, yours on the right** (Tom,
+  2026-10-07; the flat Slack style in the mock was tried in the app and
+  dropped). Yours use Sphinx's sent-message blue, theirs the received grey.
+  Time under each bubble. How tribe messages with many senders show the
+  sender is decided with phase 3.
 - **Day dividers** ("Today", "Yesterday", then dates).
 - **Boosts** show as a chip under the message: a bolt and the total sats. A
   "+" chip next to it boosts.
 - **Thread summary** under a message that has replies: the repliers' avatars,
   "N replies" as a link, and "Last reply HH:MM". Clicking it opens the thread
   panel.
-- **Composer.** A text field ("Message #Tribe" or "Message Name") with a
-  toolbar: attach, send sats, mention, and Send.
+- **Composer.** A rounded text field ("Message #Tribe" or "Message Name")
+  and a round send arrow beside it, not a "Send" button (Tom, 2026-10-07).
+  Attach, send sats and mention join it with their phases; no control appears
+  before it works.
 
 ### Thread panel (360 pt)
 
@@ -89,8 +93,9 @@ of this layout yet; see `../agent-native.md`.
 ## Colour
 
 Tokens come from the official Mac app's colour catalog
-(`sphinx-mac-v2/com.stakwork.sphinx.desktop/Colors.xcassets/SphinxNew`). Dark is
-the default; light follows the system setting.
+(`sphinx-mac-v2/com.stakwork.sphinx.desktop/Colors.xcassets/SphinxNew`). The app
+is dark only for now (Tom, 2026-10-07); the light values are kept in
+`Theme.swift` for later.
 
 | Role | Dark | Light | Sphinx token |
 |---|---|---|---|
@@ -104,6 +109,8 @@ the default; light follows the system setting.
 | Quoted or summary block | `#1E2934` | `#F2F3F5` | ThreadOriginalMsg / ReceivedMsgBG |
 | Accent (unread counts, links, selection) | `#618AFF` | `#618AFF` | PrimaryBlue |
 | Filled buttons | `#618AFF` | `#3F68E0` | PrimaryBlue, adjusted |
+| Your message bubble | `#3E6189` | `#DDEDFD` | SentMsgBG |
+| Their message bubble | `#222E3A` | `#F2F3F5` | ReceivedMsgBG |
 | Boost bolt | `#FFBC58` | `#FFBC58` | SphinxOrange |
 | Online dot | `#49C998` | `#49C998` | PrimaryGreen |
 
@@ -156,3 +163,39 @@ The layout can be built before the features behind it, with empty states:
 3. Tribes, the thread panel and thread summaries with phase 3.
 4. Payments, boosts and send-sats with phase 4.
 5. Mentions once message storage can answer it.
+
+## Status
+
+**Steps 1 and 2: built (2026-10-07).**
+
+- Dark Sphinx colours (`Sources/PeelApp/Theme.swift`) and Roboto bundled
+  (`Assets/Fonts`, registered through `ATSApplicationFontsPath` in
+  `scripts/run-app.sh`; the system font when run unbundled).
+- Hidden title bar; the sidebar header carries the app icon, "Peel" and the
+  balance.
+- Sidebar: search (filters the lists, held in `AppModel.searchQuery`), Threads,
+  Mentions, Payments with empty states, Tribes with "No tribes yet", Direct
+  messages, "Add contact" (a popover next to the row, through
+  `Engine.addContact`), and a footer with your name and connection state that
+  opens your contact info to copy.
+- Conversation: header with the name and short key, day dividers, bubbles,
+  the composer with the round send arrow. A banner at the bottom on
+  development profiles says the twelve words are in a plain file.
+
+Verified on the throwaway profile: messages both ways render, the layout holds
+at the default window size. Not yet checked by hand: adding a contact through
+the popover.
+
+Not built, noticed in use:
+
+- **No notification for incoming messages.** Push is off limits (one push
+  token per account, owned by the official app). A local notification when a
+  message arrives and the window is not in front needs no server change; it
+  needs the signed app from phase 2 task 1.
+- Sidebar rows are buttons, not a `List`, so arrow keys do not move between
+  conversations yet.
+- The sidebar width is fixed at 260 pt and does not collapse; the window's
+  minimum width (760 pt) keeps the conversation readable.
+
+The rejected native-sidebar variant and the first Slack-skin build are kept in
+the session scratchpad only; the mock canvas has all four mocked directions.

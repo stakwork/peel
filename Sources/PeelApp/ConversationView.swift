@@ -10,8 +10,9 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            DetailHeader(title: conversation.name, subtitle: Formatting.shortKey(conversation.chat))
             MessageList(messages: model.messages)
-            Composer(draft: $draft, focused: $composing, send: send)
+            Composer(draft: $draft, placeholder: "Message \(conversation.name)", focused: $composing, send: send)
         }
         .onAppear { composing = true }
         .onChange(of: conversation.chat) { composing = true }
@@ -31,16 +32,16 @@ struct MessageList: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if startsNewDay(at: index) {
-                            DayHeading(date: message.date)
+                            DayDivider(date: message.date)
                         }
                         MessageRow(message: message)
                             .id(message.id)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
@@ -58,19 +59,26 @@ struct MessageList: View {
     }
 }
 
-struct DayHeading: View {
+struct DayDivider: View {
     let date: Date
 
     var body: some View {
-        Text(Formatting.dayHeading(date))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 12)
-            .padding(.bottom, 6)
+        HStack(spacing: 12) {
+            Theme.divider.frame(height: 1)
+            Text(Formatting.dayHeading(date))
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 2)
+                .overlay(Capsule().strokeBorder(Theme.divider))
+                .fixedSize()
+            Theme.divider.frame(height: 1)
+        }
+        .padding(.vertical, 8)
     }
 }
 
+/// One message: theirs on the left, yours on the right.
 struct MessageRow: View {
     let message: Message
 
@@ -79,11 +87,16 @@ struct MessageRow: View {
             if message.fromMe { Spacer(minLength: 80) }
             VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
                 Text(message.content ?? "")
+                    .font(Theme.font(14))
+                    .lineSpacing(2)
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(bubble, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .foregroundStyle(message.fromMe ? Color.white : Color.primary)
+                    .padding(.vertical, 8)
+                    .background(
+                        message.fromMe ? Theme.sentBubble : Theme.receivedBubble,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .foregroundStyle(message.fromMe ? Theme.sentText : Theme.text)
                     .opacity(message.delivery == .pending ? 0.6 : 1)
                 HStack(spacing: 6) {
                     if message.delivery == .failed {
@@ -92,20 +105,17 @@ struct MessageRow: View {
                     Text(message.date, format: .dateTime.hour().minute())
                         .monospacedDigit()
                 }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(Theme.font(11))
+                .foregroundStyle(Theme.secondaryText)
             }
             if !message.fromMe { Spacer(minLength: 80) }
         }
-    }
-
-    private var bubble: AnyShapeStyle {
-        message.fromMe ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.tertiary)
     }
 }
 
 struct Composer: View {
     @Binding var draft: String
+    let placeholder: String
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
 
@@ -114,26 +124,28 @@ struct Composer: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message", text: $draft, axis: .vertical)
+        HStack(alignment: .bottom, spacing: 10) {
+            TextField(placeholder, text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
+                .font(Theme.font(14))
                 .lineLimit(1...8)
                 .focused(focused)
                 .onSubmit(send)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.divider))
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 26))
+                    .font(.system(size: 28))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(canSend ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .foregroundStyle(canSend ? Theme.accent : Theme.secondaryText.opacity(0.5))
             .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: .command)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, 16)
     }
 }

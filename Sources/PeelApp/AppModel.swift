@@ -7,13 +7,21 @@ import PeelCore
 final class AppModel {
     enum Phase { case loading, onboarding, ready }
 
+    /// What the sidebar has selected.
+    enum Destination: Hashable {
+        case threads, mentions, payments
+        case chat(String)
+    }
+
     var phase: Phase = .loading
     var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
     var messages: [Message] = []
-    var selectedChat: String? {
-        didSet { if selectedChat != oldValue { observeMessages() } }
+    var destination: Destination? {
+        didSet { if selectedChat != oldValue?.chat { observeMessages() } }
     }
+    var searchQuery = ""
+    var myAlias: String?
     var myContactInfo: String?
     var balanceMsat: UInt64?
     var notice: String?
@@ -38,6 +46,15 @@ final class AppModel {
     }
 
     var usesFileSecrets: Bool { profile?.kind == .development }
+
+    var selectedChat: String? { destination?.chat }
+
+    /// Direct messages matching the sidebar search.
+    var filteredConversations: [Conversation] {
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return conversations }
+        return conversations.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
 
     var selectedConversation: Conversation? {
         conversations.first { $0.chat == selectedChat }
@@ -79,9 +96,20 @@ final class AppModel {
         }
     }
 
+    /// Adds a contact from the contact info they shared.
+    func addContact(_ contactInfo: String, alias: String) async throws {
+        guard let engine else { return }
+        let alias = alias.trimmingCharacters(in: .whitespaces)
+        try await engine.addContact(
+            contactInfo.trimmingCharacters(in: .whitespacesAndNewlines),
+            alias: alias.isEmpty ? nil : alias
+        )
+    }
+
     private func attach(_ engine: Engine) async {
         self.engine = engine
         let storage = engine.storage
+        myAlias = try? storage.value(for: .alias)
         myContactInfo = try? storage.value(for: .contactInfo)
         balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
         connection = await engine.connection
@@ -112,8 +140,8 @@ final class AppModel {
         do {
             for try await rows in storage.conversations() {
                 conversations = rows
-                if selectedChat == nil {
-                    selectedChat = rows.first?.chat
+                if destination == nil, let first = rows.first {
+                    destination = .chat(first.chat)
                 }
             }
         } catch {
@@ -134,5 +162,11 @@ final class AppModel {
                 if !Task.isCancelled { notice = "\(error)" }
             }
         }
+    }
+}
+
+private extension AppModel.Destination {
+    var chat: String? {
+        if case .chat(let chat) = self { chat } else { nil }
     }
 }

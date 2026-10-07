@@ -14,10 +14,17 @@ struct PeelApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .tint(Theme.accent)
+                .preferredColorScheme(.dark)
+                #if os(macOS)
                 .frame(minWidth: 760, minHeight: 460)
+                #endif
                 .task { await model.start() }
         }
-        .defaultSize(width: 1000, height: 660)
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1180, height: 760)
+        #endif
     }
 }
 

@@ -254,5 +254,15 @@ message; the people button opens a members popover with Copy link and Leave,
 confirmed inline. No call or pinned-message buttons yet. Thread panel and
 summaries are still to come.
 
+**Tribes parity (2026-10-07, branch `phase3/tribes-parity`).** "Create a
+tribe" under "Join a tribe" and an owner-only edit button in the tribe header
+open one form (Delete confirmed inside it). Requests to join sit at the top
+of the members popover and inline in the chat, with Approve and Decline;
+Remove beside each member for the owner. A pinned message shows as a thin
+bar under the header rather than a header button. When you cannot post
+(waiting, declined, removed, deleted) a quiet bar replaces the composer.
+Typing `@` offers aliases above the composer; the Mentions item lists
+messages that mention you. Details in `../phases/03-chat.md`.
+
 The rejected native-sidebar variant and the first Slack-skin build are kept in
 the session scratchpad only; the mock canvas has all four mocked directions.

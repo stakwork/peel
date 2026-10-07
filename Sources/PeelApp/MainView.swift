@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import PeelCore
 
@@ -46,6 +47,7 @@ struct Sidebar: View {
 
     var body: some View {
         @Bindable var model = model
+        let unreadMentions = model.unreadMentions
         VStack(alignment: .leading, spacing: 12) {
             SidebarHeader()
             SearchField(text: $model.searchQuery)
@@ -53,7 +55,11 @@ struct Sidebar: View {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(spacing: 1) {
                         SidebarLink("Threads", systemImage: "bubble.left", to: .threads)
-                        SidebarLink("Mentions", systemImage: "at", to: .mentions)
+                        SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
+                            Image(systemName: "at").font(.system(size: 13))
+                        } accessory: {
+                            if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                        }
                         SidebarLink("Payments", systemImage: "bolt", to: .payments)
                     }
                     SidebarSection("Tribes", expanded: $showTribes) {
@@ -61,6 +67,7 @@ struct Sidebar: View {
                             ConversationLink(conversation: conversation)
                         }
                         SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                        SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
                     }
                     SidebarSection("Direct messages", expanded: $showDirect) {
                         ForEach(model.directConversations) { conversation in
@@ -207,30 +214,45 @@ extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
 }
 
 /// A direct message or a tribe in the sidebar: bold with a count when unread,
-/// dimmed with a crossed-out bell when muted. Mute and unmute from its context menu.
+/// dimmed with a crossed-out bell when muted. A tribe set to mentions only
+/// counts only the messages that mention you, with an @ beside it. The
+/// notification level is set from its context menu.
 struct ConversationLink: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
 
     var body: some View {
         let state = model.readStates[conversation.chat]
-        let muted = state?.mute == .muted
-        let unread = muted ? 0 : state?.unread ?? 0
-        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: muted) {
+        let level = state?.mute ?? .all
+        let unread = state?.shownUnread ?? 0
+        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: level == .muted) {
             ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
-            if muted {
+            if unread > 0 {
+                UnreadBadge(count: unread)
+            } else if level == .muted {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 11))
                     .help("Muted")
-            } else if unread > 0 {
-                UnreadBadge(count: unread)
+            } else if level == .mentionsOnly {
+                Image(systemName: "at")
+                    .font(.system(size: 11))
+                    .help("Mentions only")
             }
         }
         .contextMenu {
-            Button(muted ? "Unmute" : "Mute") {
-                Task { await model.setMuted(conversation.chat, !muted) }
+            Picker("Notify", selection: Binding(
+                get: { level },
+                set: { newLevel in Task { await model.setMute(conversation.chat, newLevel) } }
+            )) {
+                Text("All messages").tag(MuteLevel.all)
+                // The tribes server only marks mentions in tribes.
+                if conversation.isTribe {
+                    Text("Mentions only").tag(MuteLevel.mentionsOnly)
+                }
+                Text("Nothing (mute)").tag(MuteLevel.muted)
             }
+            .pickerStyle(.inline)
         }
     }
 }
@@ -628,7 +650,7 @@ struct Detail: View {
             case .threads:
                 EmptyPlace(title: "Threads", message: "Threads you start or reply to show up here.")
             case .mentions:
-                EmptyPlace(title: "Mentions", message: "Messages that mention you show up here.")
+                MentionsView()
             case .payments:
                 EmptyPlace(title: "Payments", message: "Payments you send and receive show up here.")
             case nil:
@@ -725,20 +747,75 @@ struct Avatar: View {
         Self.tones[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % Self.tones.count]
     }
 
+    @State private var loaded: CGImage?
+
     var body: some View {
-        AsyncImage(url: photo) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            tone.overlay {
-                if size >= 24 {
-                    Text(name.prefix(1).uppercased())
-                        .font(Theme.font(size * 0.42, .bold))
-                        .foregroundStyle(.white)
+        Group {
+            if let image = loaded ?? photo.flatMap(PhotoCache.shared.cached) {
+                Image(decorative: image, scale: 1).resizable().scaledToFill()
+            } else {
+                tone.overlay {
+                    if size >= 24 {
+                        Text(name.prefix(1).uppercased())
+                            .font(Theme.font(size * 0.42, .bold))
+                            .foregroundStyle(.white)
+                    }
                 }
             }
         }
+        .task(id: photo) {
+            loaded = nil
+            if let photo { loaded = await PhotoCache.shared.image(for: photo) }
+        }
         .frame(width: size, height: size)
         .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
+    }
+}
+
+/// Photos fetched once per URL and kept for the session. A row in a lazy list
+/// is made and dropped as it scrolls; each `AsyncImage` fetched on its own and
+/// a row dropped mid-fetch was left on its initial for good, so every run of a
+/// tribe member's messages after the first showed no photo. Here the fetch
+/// belongs to the cache, not the row, and every row with that URL shares it.
+@MainActor
+final class PhotoCache {
+    static let shared = PhotoCache()
+
+    private var images: [URL: CGImage] = [:]
+    private var loads: [URL: Task<(image: CGImage?, answered: Bool), Never>] = [:]
+    /// URLs whose server gave no image, not asked for again this session.
+    /// A fetch that never reached the server is tried again next time.
+    private var failed: Set<URL> = []
+
+    func cached(_ url: URL) -> CGImage? { images[url] }
+
+    func image(for url: URL) async -> CGImage? {
+        if let image = images[url] { return image }
+        guard !failed.contains(url) else { return nil }
+        let load = loads[url] ?? Task.detached(priority: .utility) {
+            guard let (data, response) = try? await URLSession.shared.data(from: url) else { return (nil, false) }
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil)
+            else { return (nil, true) }
+            return (CGImageSourceCreateImageAtIndex(source, 0, nil), true)
+        }
+        loads[url] = load
+        let result = await load.value
+        loads[url] = nil
+        if let image = result.image {
+            images[url] = image
+        } else if result.answered {
+            failed.insert(url)
+        }
+        return result.image
+    }
+}
+
+extension View {
+    /// The quiet panel box behind notices, bars and suggestion lists.
+    func panelBoxed() -> some View {
+        background(Theme.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.divider))
     }
 }
 

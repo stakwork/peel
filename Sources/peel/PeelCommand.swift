@@ -29,7 +29,17 @@ struct PeelCommand {
           tribe-members <pubkey>      a tribe's members (the full list only for its owner)
           tribe-leave <pubkey>        leave a tribe
           tribe-create <name>         create a tribe owned by this account on its tribes server
-                                      (--description, --price-per-message, --price-to-join in sats)
+          tribe-edit <pubkey>         change a tribe this account owns; options left out stay as they are
+                                      (both take --name (edit), --description, --image <https url>,
+                                      --price-per-message, --price-to-join, --escrow in sats,
+                                      --escrow-hours, --private <yes|no>, --unlisted <yes|no>)
+          tribe-delete <pubkey>       delete a tribe this account owns
+          tribe-approve <pubkey> <request-uuid | member-pubkey [alias]>
+          tribe-reject <pubkey> <request-uuid | member-pubkey [alias]>
+                                      answer a request to join a private tribe this account owns
+          tribe-kick <pubkey> <member-pubkey>   remove a member from a tribe this account owns
+          tribe-pin <pubkey> <uuid|-> pin a message in a tribe this account owns ("-" unpins)
+          mentions                    tribe messages that mention this account
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -37,6 +47,7 @@ struct PeelCommand {
           --server <host:port>  override the server (init, signup, restore; later runs reuse it)
           --network <bitcoin|regtest>   for init, signup and restore
           --alias <name>      the name others see (default: the profile name)
+          --photo <https url> the photo others see beside this account's messages ("" for none)
           --wait <seconds>    how long to stay connected after a command (default: 5)
           --insecure          accept an untrusted TLS certificate
           --tribe-host <host:port>  the account's tribes server (init, signup and restore take it from
@@ -68,18 +79,21 @@ struct PeelCommand {
         }
         let network = arguments.option("--network") ?? "bitcoin"
         let alias = arguments.option("--alias") ?? profile.name
+        let photo = arguments.option("--photo")
         let wait = arguments.option("--wait").flatMap { Int($0) } ?? 5
         let insecure = arguments.flag("--insecure")
         let tribeHost = arguments.option("--tribe-host")
-        let description = arguments.option("--description")
-        let pricePerMessage = try arguments.option("--price-per-message").map(msat(sats:)) ?? 0
-        let priceToJoin = try arguments.option("--price-to-join").map(msat(sats:)) ?? 0
+        let tribeOptions = try TribeOptions(&arguments)
         guard let command = arguments.next() else {
             print(usage)
             return
         }
+        func withPhoto(_ engine: Engine) async throws -> Engine {
+            if let photo { try await engine.setPhotoURL(photo) }
+            return engine
+        }
         func load() async throws -> Engine {
-            try await Account.load(profile, server: server, tribeHost: tribeHost)
+            try await withPhoto(Account.load(profile, server: server, tribeHost: tribeHost))
         }
 
         switch command {
@@ -88,7 +102,7 @@ struct PeelCommand {
             let created = try await Account.create(
                 profile, alias: alias, pin: "", network: network, server: server, tribeHost: tribeHost
             )
-            try await Session(created.engine).connect(insecure: insecure).finish(after: wait)
+            try await Session(withPhoto(created.engine)).connect(insecure: insecure).finish(after: wait)
 
         case "signup":
             guard let text = arguments.next() else { throw PeelError("signup needs an invite link, or - for stdin") }
@@ -98,7 +112,7 @@ struct PeelCommand {
                 tribeHost: tribeHost, allowUntrustedCertificate: insecure
             )
             print("account created in \(profile.directory.path)")
-            try await Session(created.engine).finish(after: wait)
+            try await Session(withPhoto(created.engine)).finish(after: wait)
 
         case "restore":
             print("twelve words:")
@@ -106,7 +120,7 @@ struct PeelCommand {
                 profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server,
                 tribeHost: tribeHost
             )
-            let session = try await Session(engine).connect(insecure: insecure)
+            let session = try await Session(withPhoto(engine)).connect(insecure: insecure)
             // The engine fetches contacts and history itself once online.
             while await session.engine.isSyncingHistory {
                 try await Task.sleep(for: .milliseconds(300))
@@ -152,7 +166,8 @@ struct PeelCommand {
                 for row in rows {
                     let index = row.serverIndex.map(String.init) ?? "-"
                     let delivery = row.delivery.map { " [\($0)]" } ?? ""
-                    print("\(row.id ?? 0)  #\(index)  \(Session.line(row))\(delivery)")
+                    let mention = row.mentionsMe ? " [mentions me]" : ""
+                    print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(Session.line(row))\(delivery)\(mention)")
                 }
                 break
             }
@@ -172,7 +187,8 @@ struct PeelCommand {
             let storage = try Storage(directory: profile.directory, readOnly: true)
             for try await states in storage.readStates() {
                 for state in states.values.sorted(by: { $0.chat < $1.chat }) {
-                    print("\(state.chat)  unread \(state.unread)  mute \(state.mute)")
+                    print("\(state.chat)  unread \(state.unread)  mentions \(state.mentions)  mute \(state.mute)"
+                        + "  shown \(state.shownUnread)")
                 }
                 break
             }
@@ -193,7 +209,10 @@ struct PeelCommand {
         case "tribes":
             let storage = try Storage(directory: profile.directory, readOnly: true)
             for tribe in try storage.tribes() {
-                let flags = [tribe.isOwner ? "owner" : nil, tribe.left ? "left" : nil].compactMap { $0 }
+                let flags = [
+                    tribe.isOwner ? "owner" : nil, tribe.left ? "left" : nil, tribe.isPrivate ? "private" : nil,
+                    tribe.status == .active ? nil : "\(tribe.status)", tribe.pin.map { "pin \($0)" },
+                ].compactMap { $0 }
                 print("\(tribe.pubkey)  #\(tribe.displayName)  \(tribe.messageAmountMsat / 1000) sats/msg"
                     + (flags.isEmpty ? "" : "  (\(flags.joined(separator: ", ")))"))
                 if let link = tribe.link { print("  \(link)") }
@@ -226,13 +245,65 @@ struct PeelCommand {
         case "tribe-create":
             guard !arguments.isEmpty else { throw PeelError("tribe-create needs a name") }
             let session = try await Session(load()).connect(insecure: insecure)
-            let tribe = try await session.engine.createTribe(NewTribe(
-                name: arguments.rest().joined(separator: " "), summary: description,
-                pricePerMessageMsat: pricePerMessage, priceToJoinMsat: priceToJoin
-            ))
+            let tribe = try await session.engine.createTribe(
+                tribeOptions.apply(to: TribeSettings(name: arguments.rest().joined(separator: " ")))
+            )
             print("created #\(tribe.displayName) \(tribe.pubkey)")
             if let link = tribe.link { print(link) }
             try await session.finish(after: wait)
+
+        case "tribe-edit":
+            guard let pubkey = arguments.next() else { throw PeelError("tribe-edit needs a tribe pubkey") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            let current = try await session.engine.tribeSettings(pubkey)
+            let tribe = try await session.engine.updateTribe(pubkey, settings: tribeOptions.apply(to: current))
+            print("updated #\(tribe.displayName)")
+            try await session.finish(after: 0)
+
+        case "tribe-delete":
+            guard let pubkey = arguments.next() else { throw PeelError("tribe-delete needs a tribe pubkey") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.deleteTribe(pubkey)
+            print("deleted \(pubkey)")
+            try await session.finish(after: wait)
+
+        case "tribe-approve", "tribe-reject":
+            guard let pubkey = arguments.next(), let who = arguments.next() else {
+                throw PeelError("\(command) needs a tribe pubkey and a request uuid or member pubkey")
+            }
+            let request: Engine.JoinRequest = who.isPubkey
+                ? .member(pubkey: who, alias: arguments.next() ?? "") : .message(uuid: who)
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.answerJoinRequest(in: pubkey, request, approve: command == "tribe-approve")
+            print(command == "tribe-approve" ? "approved" : "rejected")
+            try await session.finish(after: wait)
+
+        case "tribe-kick":
+            guard let pubkey = arguments.next(), let member = arguments.next() else {
+                throw PeelError("tribe-kick needs a tribe pubkey and a member pubkey")
+            }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.kickMember(member, from: pubkey)
+            print("removed \(member)")
+            try await session.finish(after: wait)
+
+        case "tribe-pin":
+            guard let pubkey = arguments.next(), let uuid = arguments.next() else {
+                throw PeelError("tribe-pin needs a tribe pubkey and a message uuid, or - to unpin")
+            }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.pinMessage(uuid == "-" ? nil : uuid, in: pubkey)
+            print(uuid == "-" ? "unpinned" : "pinned \(uuid)")
+            try await session.finish(after: 0)
+
+        case "mentions":
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await rows in storage.mentions() {
+                for row in rows {
+                    print("\(row.chat.prefix(12))  #\(row.serverIndex.map(String.init) ?? "-")  \(Session.line(row))")
+                }
+                break
+            }
 
         case "listen":
             let session = try await Session(load())
@@ -306,13 +377,55 @@ extension Session {
     }
 }
 
-/// Whole sats from the command line, in msat.
-func msat(sats text: String) throws -> UInt64 {
-    guard let sats = UInt64(text), case let (msat, false) = sats.multipliedReportingOverflow(by: 1000),
-          msat <= UInt64(Int64.max) else {
-        throw PeelError("\(text) is not a number of sats")
+/// The tribe settings given on the command line; each one left out keeps
+/// what the tribe has (or the default, for a new tribe).
+struct TribeOptions {
+    var name: String?
+    var summary: String?
+    var photoURL: String?
+    var pricePerMessage: UInt64?
+    var priceToJoin: UInt64?
+    var escrow: UInt64?
+    var escrowMillis: UInt64?
+    var isPrivate: Bool?
+    var unlisted: Bool?
+
+    init(_ arguments: inout Arguments) throws {
+        name = arguments.option("--name")
+        summary = arguments.option("--description")
+        photoURL = arguments.option("--image")
+        func option(_ name: String, unit: UInt64, of what: String) throws -> UInt64? {
+            try arguments.option(name).map { try amount($0, unit: unit, of: what) }
+        }
+        pricePerMessage = try option("--price-per-message", unit: 1000, of: "price per message")
+        priceToJoin = try option("--price-to-join", unit: 1000, of: "price to join")
+        escrow = try option("--escrow", unit: 1000, of: "escrow")
+        escrowMillis = try option("--escrow-hours", unit: 3_600_000, of: "escrow time")
+        isPrivate = try arguments.option("--private").map(yesNo)
+        unlisted = try arguments.option("--unlisted").map(yesNo)
     }
-    return msat
+
+    func apply(to settings: TribeSettings) -> TribeSettings {
+        var settings = settings
+        if let name { settings.name = name }
+        if let summary { settings.summary = summary }
+        if let photoURL { settings.photoURL = photoURL }
+        if let pricePerMessage { settings.pricePerMessageMsat = pricePerMessage }
+        if let priceToJoin { settings.priceToJoinMsat = priceToJoin }
+        if let escrow { settings.escrowMsat = escrow }
+        if let escrowMillis { settings.escrowMillis = escrowMillis }
+        if let isPrivate { settings.isPrivate = isPrivate }
+        if let unlisted { settings.unlisted = unlisted }
+        return settings
+    }
+}
+
+func yesNo(_ text: String) throws -> Bool {
+    switch text {
+    case "yes": true
+    case "no": false
+    default: throw PeelError("expected yes or no, not \(text)")
+    }
 }
 
 struct Arguments {

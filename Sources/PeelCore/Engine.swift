@@ -75,6 +75,8 @@ public actor Engine {
         case notInTribe
         case noTribeServer
         case tribeServerTimedOut
+        case awaitingApproval
+        case notTribeOwner
 
         public var description: String {
             switch self {
@@ -88,6 +90,8 @@ public actor Engine {
             case .notInTribe: "this account is not in that tribe"
             case .noTribeServer: "the server has not named a tribes server for this account"
             case .tribeServerTimedOut: "the tribes server did not answer in time"
+            case .awaitingApproval: "the tribe's owner has not approved this account yet"
+            case .notTribeOwner: "only the tribe's owner can do that"
             }
         }
     }
@@ -146,8 +150,14 @@ public actor Engine {
     private var tribes: [String: Tribe] = [:]
     /// Member lists the tribes server sent for tribes this account owns.
     private var memberLists: [String: TribeMembers.List] = [:]
+    /// Tribes whose update the tribes server has confirmed, until `updateRegistry` takes it.
+    private var updatedTribes: Set<String> = []
+    /// Tribes with an update or delete on its way; see `changeOwnedTribe`.
+    private var changingTribes: Set<String> = []
     /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
     private var droppedIndex: Int64
+    /// A restore from the words is replaying history; see `Setting.needsRestore`.
+    private var restoring: Bool
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
 
@@ -189,6 +199,7 @@ public actor Engine {
         contactsByChildIndex = Self.index(contacts)
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
         droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
+        restoring = try storage.value(for: .needsRestore) == "1"
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -251,6 +262,14 @@ public actor Engine {
     public func setAlias(_ alias: String) throws {
         try storage.set(alias, for: .alias)
         self.alias = alias
+    }
+
+    /// The photo others see beside this account's messages: an https URL, or
+    /// empty for none.
+    public func setPhotoURL(_ url: String) throws {
+        guard url.isEmpty || url.httpsOnly != nil else { throw PeelError("a photo must be an https URL") }
+        try storage.set(url, for: .photoURL)
+        photoURL = url
     }
 
     public func setServer(_ server: ServerAddress) throws {
@@ -363,10 +382,10 @@ public actor Engine {
     }
 
     /// Waits for something a server reply sets to land in the engine.
-    private func poll<T>(timeout: Duration, failure: Failure, _ check: () -> T?) async throws -> T {
+    private func poll<T>(timeout: Duration, failure: Failure, _ check: () async -> T?) async throws -> T {
         let deadline = ContinuousClock.now + timeout
         while true {
-            if let value = check() { return value }
+            if let value = await check() { return value }
             guard ContinuousClock.now < deadline else { throw failure }
             try await Task.sleep(for: .milliseconds(200))
         }
@@ -470,10 +489,12 @@ public actor Engine {
         try storage.deleteMessage(id: messageID)
     }
 
-    /// The tribe a message to `pubkey` goes to, if it is one. A left tribe takes none.
+    /// The tribe a message to `pubkey` goes to, if it is one. Only a tribe
+    /// this account is in and accepted by takes messages.
     private func openTribe(_ pubkey: String) throws -> Tribe? {
         guard let tribe = tribes[pubkey] else { return nil }
-        if tribe.left { throw Failure.notInTribe }
+        if tribe.status == .pending, !tribe.left { throw Failure.awaitingApproval }
+        guard tribe.canPost else { throw Failure.notInTribe }
         return tribe
     }
 
@@ -571,7 +592,8 @@ public actor Engine {
     @discardableResult
     public func joinTribe(link text: String, agreedJoinMsat: UInt64? = nil) async throws -> Tribe {
         guard let link = TribeLink(text) else { throw Failure.invalidTribeLink }
-        if var joined = tribes[link.pubkey], !joined.left {
+        // A member the owner declined or removed may ask again.
+        if var joined = tribes[link.pubkey], !joined.left, joined.status == .active || joined.status == .pending {
             // Found in history on another tribes server, so never looked up:
             // the link the person pasted says where it is listed.
             guard joined.host == nil else { return joined }
@@ -590,6 +612,8 @@ public actor Engine {
         tribe.update(from: info)
         tribe.host = link.host
         tribe.left = false
+        // A private tribe's owner must approve the request first.
+        tribe.status = tribe.isPrivate ? .pending : .active
         try record(tribe)
         do {
             try await run { time, state in
@@ -607,24 +631,200 @@ public actor Engine {
 
     /// Tells the tribe this account is leaving, as the official apps do, and
     /// hides it. The tribes server keeps the member on its list, so what the
-    /// tribe still sends is dropped.
+    /// tribe still sends is dropped. A tribe that never accepted this account,
+    /// removed it or was deleted refuses messages, so it is only hidden. The
+    /// owner cannot leave, only delete the tribe, as in the official apps.
     public func leaveTribe(_ pubkey: String) async throws {
         guard let joined = tribes[pubkey], !joined.left else { throw Failure.notInTribe }
+        if joined.isOwner, joined.status == .active {
+            throw PeelError("the owner cannot leave a tribe; delete it instead")
+        }
         var tribe = joined
         tribe.left = true
         try record(tribe)
+        guard joined.status == .active else { return }
         do {
-            let body = try Self.json(["content": ""])
-            try await run { time, state in
-                try Sphinxrs.send(
-                    seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.groupLeave), msgJson: body,
-                    state: state, myAlias: tribeAlias(alias), myImg: photoURL, amtMsat: joined.messageAmountMsat,
-                    isTribe: true
-                )
-            }
+            try await sendToTribe(joined, type: MessageType.groupLeave)
         } catch {
             try? record(joined)
             throw error
+        }
+    }
+
+    /// A membership or owner message to a tribe: no text, the fields the
+    /// official apps add, and the tribe's price per message, as they pay it.
+    private func sendToTribe(_ tribe: Tribe, type: Int, fields: [String: String] = [:]) async throws {
+        let body = try Self.json(fields.merging(["content": ""]) { field, _ in field })
+        try await run { time, state in
+            try Sphinxrs.send(
+                seed: seed, uniqueTime: time, to: tribe.pubkey, msgType: UInt8(type), msgJson: body,
+                state: state, myAlias: tribeAlias(alias), myImg: photoURL, amtMsat: tribe.messageAmountMsat,
+                isTribe: true
+            )
+        }
+    }
+
+    /// A tribe this account owns and is still in.
+    private func ownedTribe(_ pubkey: String) throws -> Tribe {
+        guard let tribe = tribes[pubkey], tribe.canManage else { throw Failure.notTribeOwner }
+        return tribe
+    }
+
+    /// Runs one change to a tribe this account owns (an update or the
+    /// delete) with its registry host and the tribes server, one at a time
+    /// per tribe: the server's reply names only the tribe, so a second change
+    /// would take the first one's reply, and each would undo the other's fields.
+    private func changeOwnedTribe<T>(
+        _ pubkey: String, _ change: (_ tribe: Tribe, _ host: String, _ server: String) async throws -> T
+    ) async throws -> T {
+        let tribe = try ownedTribe(pubkey)
+        guard let host = tribe.host else { throw Failure.noTribeServer }
+        let server = try tribeServer()
+        guard changingTribes.insert(pubkey).inserted else {
+            throw PeelError("another change to this tribe is still being saved")
+        }
+        defer { changingTribes.remove(pubkey) }
+        return try await change(tribe, host, server)
+    }
+
+    /// How someone asked to join a private tribe: the request message, as the
+    /// official apps answer from the chat, or the member on the owner's list.
+    public enum JoinRequest: Sendable {
+        case message(uuid: String)
+        case member(pubkey: String, alias: String)
+    }
+
+    /// The owner approves or declines a request to join a private tribe. The
+    /// answer names the request (`replyUuid`), as the official apps send it,
+    /// and the member's key (`member`) when known, which the tribes server
+    /// reads first. An approved member gets the recent history from the tribe.
+    public func answerJoinRequest(in pubkey: String, _ request: JoinRequest, approve: Bool) async throws {
+        let tribe = try ownedTribe(pubkey)
+        var fields: [String: String] = [:]
+        switch request {
+        case .message(let uuid):
+            fields["replyUuid"] = uuid
+        case .member(let member, let alias):
+            guard member.isPubkey else { throw PeelError("that is not a member's key") }
+            // The request may not be stored; then the server's latest list,
+            // when there is one, must still show the member waiting.
+            if let list = memberLists[pubkey], !list.pending.contains(where: { $0.pubkey == member }) {
+                throw PeelError("that member is not waiting for an answer")
+            }
+            fields["member"] = member
+            fields["replyUuid"] = try storage.joinRequest(in: pubkey, from: alias)
+        }
+        // Each answer costs the tribe's price; a request is answered once.
+        if let request = fields["replyUuid"], try storage.isAnswered(request: request, in: pubkey) {
+            throw PeelError("that request has already been answered")
+        }
+        try await sendToTribe(tribe, type: approve ? MessageType.memberApprove : MessageType.memberReject, fields: fields)
+        if let member = fields["member"] {
+            memberLists[pubkey]?.pending.removeAll { $0.pubkey == member }
+        }
+    }
+
+    /// The owner removes a member, named by the key on the owner's member
+    /// list. The tribes server tells only that member and the owner, and
+    /// refuses to remove the owner.
+    public func kickMember(_ member: String, from pubkey: String) async throws {
+        let tribe = try ownedTribe(pubkey)
+        guard member.isPubkey else { throw PeelError("that is not a member's key") }
+        try await sendToTribe(tribe, type: MessageType.groupKick, fields: ["member": member])
+    }
+
+    /// The owner deletes a tribe. The tribes server sends every member a
+    /// delete message (type 22) from the tribe and drops it. The Mac app also
+    /// sends its own type 22 first, but the command usually lands first and
+    /// that payment then cannot be routed (the mixer answers "no root for
+    /// scid"), so Peel sends only the command. The server's answer carries
+    /// nothing a client can read, so the tribe is hidden here only once the
+    /// registry stops listing it; until then the owner can try again.
+    public func deleteTribe(_ pubkey: String) async throws {
+        try await changeOwnedTribe(pubkey) { tribe, host, server in
+            try await run { time, state in
+                try Sphinxrs.deleteTribe(
+                    seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
+                )
+            }
+            try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) {
+                await Self.isGone(pubkey, host: host) ? () : nil
+            }
+            var deleted = tribe
+            deleted.left = true
+            deleted.status = .deleted
+            try record(deleted)
+        }
+    }
+
+    /// Whether the registry has stopped serving a tribe (or says it is
+    /// deleted). Any other failure, such as the network, counts as still there.
+    private static func isGone(_ pubkey: String, host: String) async -> Bool {
+        do {
+            return try await TribeInfo.fetch(pubkey: pubkey, host: host).deleted == true
+        } catch let error as TribeInfo.NotServed {
+            return error.isGone
+        } catch {
+            return false
+        }
+    }
+
+    /// What a tribe this account owns is set to, to start an edit from.
+    public func tribeSettings(_ pubkey: String) async throws -> TribeSettings {
+        guard let host = try ownedTribe(pubkey).host else { throw Failure.noTribeServer }
+        return try await TribeInfo.fetch(pubkey: pubkey, host: host).settings
+    }
+
+    /// Changes a tribe this account owns and waits for the tribes server to
+    /// confirm. Members see the change the next time they look the tribe up.
+    @discardableResult
+    public func updateTribe(_ pubkey: String, settings: TribeSettings) async throws -> Tribe {
+        try await updateRegistry(pubkey) { record in
+            try settings.validated(currentImage: record["img"] as? String).fields(over: record)
+        }
+    }
+
+    /// Pins one of a tribe's messages for every member, or unpins with nil.
+    /// Only the owner can; the pin is part of the tribe's registry record.
+    public func pinMessage(_ uuid: String?, in pubkey: String) async throws {
+        // Every member must hold the message under the same uuid: the tribe's.
+        if let uuid, try storage.message(uuid: uuid, in: pubkey)?.isPinnable != true {
+            throw PeelError("only a message the tribe has delivered can be pinned")
+        }
+        try await updateRegistry(pubkey) { record in
+            var record = record
+            record["pin"] = uuid ?? NSNull()
+            return record
+        }
+    }
+
+    /// Sends the tribes server the tribe's whole record with `change` made to
+    /// it: an update replaces the record, so the fields Peel does not edit
+    /// go back as they were.
+    @discardableResult
+    private func updateRegistry(
+        _ pubkey: String, _ change: ([String: Any]) throws -> [String: Any]
+    ) async throws -> Tribe {
+        try await changeOwnedTribe(pubkey) { tribe, host, server in
+            let data = try await TribeInfo.record(pubkey: pubkey, host: host)
+            guard let current = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  current["pubkey"] as? String == pubkey else {
+                throw PeelError("the tribes server answered for a different tribe")
+            }
+            var fields = try change(current)
+            fields["pubkey"] = pubkey
+            if (fields["owner_alias"] as? String)?.isEmpty != false {
+                fields["owner_alias"] = tribeAlias(alias)
+            }
+            let json = String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
+            updatedTribes.remove(pubkey)
+            try await run { time, state in
+                try Sphinxrs.updateTribe(
+                    seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribeJson: json
+                )
+            }
+            _ = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { updatedTribes.remove(pubkey) }
+            return tribes[pubkey] ?? tribe
         }
     }
 
@@ -662,13 +862,14 @@ public actor Engine {
     /// (from the config on signup or restore, or `--tribe-host`) so the new
     /// tribe has a link to share.
     @discardableResult
-    public func createTribe(_ new: NewTribe) async throws -> Tribe {
+    public func createTribe(_ settings: TribeSettings) async throws -> Tribe {
+        let new = try settings.validated()
         let server = try tribeServer()
         guard try storage.value(for: .tribeHost) != nil else { throw Failure.noTribeServer }
         let owned = Set(tribes.values.filter(\.isOwner).map(\.pubkey))
-        var new = new
-        new.ownerAlias = tribeAlias(alias)
-        let json = String(decoding: try JSONEncoder().encode(new), as: UTF8.self)
+        var fields = try new.fields()
+        fields["owner_alias"] = tribeAlias(alias)
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
         try await run { time, state in
             try Sphinxrs.createTribe(
                 seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribeJson: json
@@ -698,6 +899,50 @@ public actor Engine {
         }
         let tribeHost = try storage.value(for: .tribeHost)
         return Tribe(pubkey: message.chat, host: host == tribeHost ? host : nil)
+    }
+
+    /// What a tribe message says about this account's place in the tribe,
+    /// or nil if nothing changes. Our own join or leave (replayed on a
+    /// restore, or sent from another device) says whether we are in it; our
+    /// own request to join comes back only from this device's send, since
+    /// the tribe forwards it to the owner alone. The owner's answers reach a
+    /// member from the tribe itself: a rejection or a removal, which the
+    /// tribes server sends only to that member and the owner, and the
+    /// tribe's deletion. A member who is pending, declined or removed gets
+    /// nothing else from the tribe, so an approval or a join that reaches
+    /// them means they are in, which is how a restore (with no request in
+    /// history) sees a declined member who asked again and was approved.
+    /// The tribes server marks what the owner sends with role 0, including
+    /// the join it sends the owner on creation, so our own message with it
+    /// says this account owns the tribe, as after a restore.
+    private static func membership(after message: Message, in tribe: Tribe) -> Tribe? {
+        var changed = tribe
+        if message.fromMe {
+            if message.senderInfo?.role == 0 { changed.isOwner = true }
+            switch message.type {
+            case MessageType.groupJoin: changed.left = false; changed.status = .active
+            case MessageType.memberRequest: changed.left = false; changed.status = .pending
+            case MessageType.groupLeave: changed.left = true
+            default: break
+            }
+        } else if [MessageType.tribeDelete, MessageType.groupKick, MessageType.memberReject].contains(message.type),
+                  message.senderInfo?.role != 0 {
+            // The owner's decisions carry the owner's role; the tribes server
+            // already refuses them from anyone else, and this does not rely on it.
+            return nil
+        } else if message.type == MessageType.tribeDelete {
+            // Only the owner can delete, so this is true for the owner too.
+            changed.status = .deleted
+        } else if !tribe.isOwner {
+            switch message.type {
+            case MessageType.memberApprove, MessageType.groupJoin:
+                if [.pending, .rejected, .removed].contains(tribe.status) { changed.status = .active }
+            case MessageType.memberReject: changed.status = .rejected
+            case MessageType.groupKick: changed.status = .removed
+            default: break
+            }
+        }
+        return changed == tribe ? nil : changed
     }
 
     /// Whether the core holds a contact key for `pubkey`: people always have
@@ -845,6 +1090,7 @@ public actor Engine {
         var knownTribes = tribes
         var droppedIndex = self.droppedIndex
         var notTribes: Set<String> = []
+        let myTribeAlias = tribeAlias(alias)
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
@@ -858,14 +1104,13 @@ public actor Engine {
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
-            // Our own join or leave, as replayed on a restore or sent from
-            // another device, says whether this account is in the tribe.
-            if var tribe = knownTribes[message.chat], message.fromMe,
-               message.type == MessageType.groupJoin || message.type == MessageType.groupLeave,
-               tribe.left != (message.type == MessageType.groupLeave) {
-                tribe.left = message.type == MessageType.groupLeave
-                knownTribes[tribe.pubkey] = tribe
-                commit.tribes.append(tribe)
+            if let tribe = knownTribes[message.chat], var changed = Self.membership(after: message, in: tribe) {
+                // A restore leaves deleted tribes out, as the Mac app does (it
+                // restores only tribes the registry still serves); a deletion
+                // heard while running keeps its bar so the user sees what happened.
+                if restoring, changed.status == .deleted { changed.left = true }
+                knownTribes[tribe.pubkey] = changed
+                commit.tribes.append(changed)
             }
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
@@ -885,11 +1130,16 @@ public actor Engine {
                 }
                 // Our own message coming back from the tribe takes over the row written at send.
                 if message.fromMe { replaces = fields?.originalUuid }
+                if !message.fromMe, message.type == MessageType.text, let content = message.content {
+                    message.mentionsMe = mentions(content, alias: myTribeAlias)
+                }
             }
             commit.messages.append((message, trustSender, replaces))
         }
+        var newTribe: String?
         if let json = result.newTribe, let info = try? JSONDecoder().decode(TribeInfo.self, from: Data(json.utf8)),
            Self.isPerson(info.pubkey, in: newState) != true {
+            newTribe = info.pubkey
             // Replies on the management topic are only ever about this account's own tribes.
             var tribe = try knownTribes[info.pubkey] ?? Tribe(
                 pubkey: info.pubkey, host: try storage.value(for: .tribeHost), isOwner: true
@@ -916,6 +1166,9 @@ public actor Engine {
         self.droppedIndex = droppedIndex
         if let members {
             memberLists[members.pubkey] = members
+        }
+        if let updated = newTribe {
+            updatedTribes.insert(updated)
         }
 
         if let json = result.msgsCounts {
@@ -1095,7 +1348,7 @@ public actor Engine {
             try await fetchReadsAndMutes()
             if let run = history {
                 try await request(run)
-            } else if try storage.value(for: .needsRestore) == "1" {
+            } else if restoring {
                 awaitingCounts = true
                 try await self.run { time, state in
                     try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
@@ -1218,8 +1471,9 @@ public actor Engine {
     }
 
     private func historyEnded() async throws {
-        if try storage.value(for: .needsRestore) == "1" {
+        if restoring {
             try storage.set("0", for: .needsRestore)
+            restoring = false
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()

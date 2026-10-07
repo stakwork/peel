@@ -24,7 +24,7 @@ in progress and what comes next. Update it when you finish something.
     profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
-  `ConversationView`, `OnboardingView`)
+  `ConversationView`, `TribeViews`, `OnboardingView`)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
@@ -217,12 +217,19 @@ NO_LIGHTNING=true TESTING_ONLY_ADD_TO_SENDER=1 TESTING_ONLY_AUTO_MINE=1 \
   DEFAULT_TRIBE_PUBKEY=<tribe server key> SEED=<broker seed> sphinx-mixer
 
 .build/debug/peel --profile alice --tribe-host 127.0.0.1:8811 tribe-create My Tribe   # prints the link
-#   optional: --description <text> --price-per-message <sats> --price-to-join <sats>
+#   optional: --description <text> --image <https url> --price-per-message <sats> --price-to-join <sats>
+#             --escrow <sats> --escrow-hours <hours> --private yes|no --unlisted yes|no
 .build/debug/peel --profile bob tribe-join '<link>'
 .build/debug/peel --profile bob send <tribe pubkey> hello
-.build/debug/peel --profile alice tribe-members <tribe pubkey>
-.build/debug/peel --profile bob messages <tribe pubkey>
+.build/debug/peel --profile alice tribe-members <tribe pubkey>   # owner: member keys, pending requests
+.build/debug/peel --profile bob messages <tribe pubkey>          # row id, server index, uuid
+.build/debug/peel --profile alice tribe-approve <tribe pubkey> <request uuid | member key [alias]>
+.build/debug/peel --profile alice tribe-kick <tribe pubkey> <member key>
+.build/debug/peel --profile alice tribe-edit <tribe pubkey> --name <name>   # same options as create
 ```
+
+A command that only connects briefly may exit before what the tribe sends
+has arrived (an approval, a kick); `listen` for a few seconds to catch up.
 
 Accounts made before the mixer knew `DEFAULT_TRIBE_PUBKEY` have no tribes
 server; make new ones. If another stack already holds 1883 and 8000, run a

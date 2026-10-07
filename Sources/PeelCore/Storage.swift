@@ -122,6 +122,21 @@ public final class Storage: Sendable {
                 index: "message_unread", on: "message", columns: ["chat", "fromMe", "type", "serverIndex"]
             )
         }
+        migrator.registerMigration("v7") { db in
+            // Where this account stands in each tribe, and the pinned message.
+            try db.alter(table: "tribe") { t in
+                t.add(column: "status", .integer).notNull().defaults(to: Tribe.Status.active.rawValue)
+                t.add(column: "pin", .text)
+            }
+            // Tribe messages that mention this account, for the Mentions list
+            // and the unread count of a chat set to mentions only.
+            try db.alter(table: "message") { t in
+                t.add(column: "mentionsMe", .boolean).notNull().defaults(to: false)
+            }
+            try db.execute(sql: """
+                CREATE INDEX message_mentions ON message (chat, serverIndex) WHERE mentionsMe = 1
+                """)
+        }
         return migrator
     }
 }
@@ -192,9 +207,24 @@ public enum MuteLevel: Int, Sendable {
 public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     public var chat: String
     public var unread: Int
+    /// Unread messages that mention this account.
+    public var mentions: Int
     public var muteLevel: Int
 
     public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
+
+    /// What the sidebar counts: every unread message, only mentions, or
+    /// nothing, by the chat's mute level.
+    public var shownUnread: Int {
+        switch mute {
+        case .all: unread
+        case .mentionsOnly: mentions
+        case .muted: 0
+        }
+    }
+
+    /// Unread mentions, unless the chat is muted.
+    public var shownMentions: Int { mute == .muted ? 0 : mentions }
 }
 
 // MARK: - Reading
@@ -241,23 +271,30 @@ extension Storage {
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
         """
 
-    /// Text, plus joins and leaves, which only tribes send.
+    /// Text, plus the membership notes only tribes send. The owner's own
+    /// removals are left out, as in the Mac app: the tribe's copy does not
+    /// say whom they were for. (Only the owner can send them.)
     private static let messagesSQL = """
         SELECT * FROM (
             SELECT * FROM message
-            WHERE chat = ? AND type IN (\(MessageType.text), \(MessageType.groupJoin), \(MessageType.groupLeave))
+            WHERE chat = ? AND type IN (\(MessageType.shownInChats.map(String.init).joined(separator: ", ")))
+                AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
             ORDER BY timestamp DESC, id DESC LIMIT 200
         ) ORDER BY timestamp, id
         """
 
     /// Incoming text messages past the read marker count as unread, one row per
-    /// conversation; each count is a range on `message_unread`.
+    /// conversation; each count is a range on `message_unread`, and the
+    /// mentions among them a range on `message_mentions`.
     private static let readStatesSQL = """
         SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
             SELECT COUNT(*) FROM message m
             WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type = \(MessageType.text)
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
-        ) AS unread
+        ) AS unread, (
+            SELECT COUNT(*) FROM message m
+            WHERE m.chat = c.chat AND m.mentionsMe = 1 AND m.serverIndex > COALESCE(s.lastRead, -1)
+        ) AS mentions
         FROM (\(chatsSQL)) c
         LEFT JOIN chatState s ON s.chat = c.chat
         """
@@ -294,6 +331,12 @@ extension Storage {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
     }
 
+    func message(uuid: String, in chat: String) throws -> Message? {
+        try pool.read { db in
+            try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ? AND chat = ?", arguments: [uuid, chat])
+        }
+    }
+
     func chat(forTag tag: String) throws -> String? {
         try pool.read { db in
             try String.fetchOne(db, sql: "SELECT chat FROM message WHERE tag = ? LIMIT 1", arguments: [tag])
@@ -315,23 +358,94 @@ extension Storage {
 
     /// The people seen posting in a tribe, with the newest photo per alias.
     func tribeSenders(_ tribe: String) throws -> [TribeMember] {
+        try seenInTribe(tribe, types: [MessageType.text], since: 0).map(\.member)
+    }
+
+    /// Who can be mentioned in a tribe, as the Mac app offers them: everyone
+    /// heard from in the last three months, minus those whose last word was
+    /// leaving. Sorted by alias.
+    public func mentionCandidates(in tribe: String, now: Date = .now) throws -> [TribeMember] {
+        try seenInTribe(
+            tribe, types: [MessageType.text, MessageType.groupJoin, MessageType.groupLeave, MessageType.memberApprove],
+            since: now.addingTimeInterval(-90 * 24 * 3600).millisecondsSince1970
+        ).filter { $0.lastType != MessageType.groupLeave }.map(\.member)
+    }
+
+    /// Each alias seen in a tribe's messages of `types` from `since` on (a
+    /// message with no time counts as 0), from its newest such message
+    /// (photo https only, and that message's type), sorted by alias.
+    private func seenInTribe(
+        _ tribe: String, types: [Int], since: Int64
+    ) throws -> [(member: TribeMember, lastType: Int)] {
         try pool.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT json_extract(sender, '$.alias') AS alias, json_extract(sender, '$.photo_url') AS photo
+                    SELECT json_extract(sender, '$.alias') AS alias, json_extract(sender, '$.photo_url') AS photo,
+                        type, MAX(id)
                     FROM message
-                    WHERE chat = ? AND fromMe = 0 AND type = \(MessageType.text) AND json_valid(sender)
-                        AND IFNULL(json_extract(sender, '$.alias'), '') != ''
-                    GROUP BY alias HAVING id = MAX(id)
+                    WHERE chat = ? AND fromMe = 0 AND type IN (\(types.map(String.init).joined(separator: ", ")))
+                        AND IFNULL(timestamp, 0) >= ? AND json_valid(sender) AND IFNULL(json_extract(sender, '$.alias'), '') != ''
+                    GROUP BY alias
                     ORDER BY alias COLLATE NOCASE
                     """,
-                arguments: [tribe]
+                arguments: [tribe, since]
             ).map { row in
                 let photo: String? = row["photo"]
-                return TribeMember(alias: row["alias"], photoURL: photo?.httpsOnly, pubkey: nil, pending: false)
+                return (TribeMember(alias: row["alias"], photoURL: photo?.httpsOnly, pubkey: nil, pending: false), row["type"])
             }
         }
+    }
+
+    /// The newest request to join a tribe from `alias`, which an answer names.
+    /// The tribes server makes aliases unique within a tribe.
+    func joinRequest(in tribe: String, from alias: String) throws -> String? {
+        try pool.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                    SELECT uuid FROM message
+                    WHERE chat = ? AND fromMe = 0 AND type = \(MessageType.memberRequest) AND json_valid(sender)
+                        AND json_extract(sender, '$.alias') = ?
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                arguments: [tribe, alias]
+            )
+        }
+    }
+
+    /// Whether an approval or rejection naming this request is stored.
+    func isAnswered(request uuid: String, in tribe: String) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (
+                        SELECT 1 FROM message
+                        WHERE chat = ? AND type IN (\(MessageType.memberApprove), \(MessageType.memberReject))
+                            AND json_valid(body) AND json_extract(body, '$.replyUuid') = ?
+                    )
+                    """,
+                arguments: [tribe, uuid]
+            ) ?? false
+        }
+    }
+
+    /// The newest 200 messages that mention this account in tribes it still
+    /// shows, newest first, re-emitted whenever they change.
+    public func mentions() -> some AsyncSequence<[Message], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                try Message.fetchAll(
+                    db, sql: """
+                    SELECT * FROM message
+                    WHERE mentionsMe = 1 AND chat IN (SELECT pubkey FROM tribe WHERE left = 0)
+                    ORDER BY timestamp DESC, id DESC LIMIT 200
+                    """
+                )
+            }
+            .removeDuplicates()
+            .values(in: pool)
     }
 
     /// Every conversation, newest first, re-emitted whenever one changes.
@@ -472,9 +586,11 @@ extension Storage {
             db,
             sql: """
                 INSERT INTO message
-                    (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
+                     mentionsMe)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
+                    mentionsMe = MAX(message.mentionsMe, excluded.mentionsMe),
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
                     timestamp = COALESCE(excluded.timestamp, message.timestamp),
                     msat = COALESCE(excluded.msat, message.msat),
@@ -489,7 +605,7 @@ extension Storage {
             arguments: [
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
-                message.status,
+                message.status, message.mentionsMe,
             ]
         )
     }

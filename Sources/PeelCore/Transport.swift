@@ -26,11 +26,16 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
         host = String(parts[0])
         self.port = port
         switch scheme {
-        case nil: tls = !["127.0.0.1", "localhost", "::1"].contains(host)
+        case nil: tls = !Self.isLoopback(host: host)
         case "mqtts", "ssl", "tls": tls = true
         case "mqtt", "tcp": tls = false
         default: return nil
         }
+    }
+
+    /// This machine: the only place plaintext is allowed without asking.
+    static func isLoopback(host: String) -> Bool {
+        ["127.0.0.1", "localhost", "::1"].contains(host)
     }
 
     /// Round-trips through `init`, so what is stored keeps its TLS setting.

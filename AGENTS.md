@@ -12,9 +12,10 @@ in progress and what comes next. Update it when you finish something.
     the state they return in one transaction, performs the subscribes and
     publishes they ask for, owns the connection and reconnect loop
   - `Account.swift` — load, signup, create and restore: the one place that
-    decides where the mnemonic and server come from
+    decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB: core state, settings, messages, contacts,
-    live queries (`conversations()`, `messages(in:)`); holds the profile lock
+    tribes, live queries (`conversations()`, `messages(in:)`); holds the profile lock
+  - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
@@ -136,6 +137,10 @@ protocol-level is still verified against the local test server.
   token per account and it would take notifications away from the official app.
 - One process per profile: `Storage` takes a lock, so a second app or CLI on the
   same profile fails with "another Peel process is using ...". Quit the other one.
+- Only a writable `Storage` migrates. The read-only CLI commands (`whoami`,
+  `contacts`, `messages`, `unread`, `tribes`) fail with "no such table" on a
+  profile last opened by an older build; run any connecting command (or the
+  app) on it once first.
 - TLS is on by default; `ServerAddress` only goes plaintext for an explicit
   `mqtt://` scheme or a loopback host, and the scheme is persisted. The
   `--insecure` flag (CLI only) disables certificate verification.
@@ -186,3 +191,34 @@ SEED=1111111111111111111111111111111111111111111111111111111111111111 sphinx-bro
 NO_LIGHTNING=true TESTING_ONLY_ADD_TO_SENDER=1 SEED=<same> sphinx-mixer
 .build/debug/peel --profile alice --server 127.0.0.1:1883 init
 ```
+
+### Local tribes server
+
+The tribes server (`sphinx/tribes`) is an MQTT client of the broker plus an
+HTTP registry. Build it with `cargo build --bin sphinx-tribes`. It refuses to
+forward until it knows a blockheight, which a `NO_LIGHTNING` mixer has only
+with `TESTING_ONLY_AUTO_MINE=1`. The mixer must name the tribe server's key
+as the default, so start the tribes server first and read its key:
+
+```sh
+SEED=2222222222222222222222222222222222222222222222222222222222222222 \
+  BROKER_URL=localhost:1883 ROCKET_PORT=8811 HOST=127.0.0.1:8811 DB_PATH=<dir>/tribes \
+  sphinx-tribes
+curl -s http://127.0.0.1:8811/info        # {"pubkey":"<tribe server key>"}
+NO_LIGHTNING=true TESTING_ONLY_ADD_TO_SENDER=1 TESTING_ONLY_AUTO_MINE=1 \
+  DEFAULT_TRIBE_PUBKEY=<tribe server key> SEED=<broker seed> sphinx-mixer
+
+.build/debug/peel --profile alice --tribe-host 127.0.0.1:8811 tribe-create My Tribe   # prints the link
+#   optional: --description <text> --price-per-message <sats> --price-to-join <sats>
+.build/debug/peel --profile bob tribe-join '<link>'
+.build/debug/peel --profile bob send <tribe pubkey> hello
+.build/debug/peel --profile alice tribe-members <tribe pubkey>
+.build/debug/peel --profile bob messages <tribe pubkey>
+```
+
+Accounts made before the mixer knew `DEFAULT_TRIBE_PUBKEY` have no tribes
+server; make new ones. If another stack already holds 1883 and 8000, run a
+second one on other ports (`BROKER_MQTT_PORT`, `BROKER_CONSOLE_PORT`,
+`ROCKET_PORT`, `BROKER_URL`, separate `DB_PATH`s) and pass `--server
+127.0.0.1:<port>`. Only `.development` profiles may be used; never post to a
+production tribe.

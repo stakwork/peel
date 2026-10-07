@@ -70,6 +70,11 @@ public actor Engine {
         case invalidContactInfo
         case registrationTimedOut
         case notRetryable
+        case invalidTribeLink
+        case tribeDeleted
+        case notInTribe
+        case noTribeServer
+        case tribeServerTimedOut
 
         public var description: String {
             switch self {
@@ -78,6 +83,11 @@ public actor Engine {
             case .notConnected: "not connected to the server"
             case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
             case .registrationTimedOut: "the server did not confirm registration in time"
+            case .invalidTribeLink: "that is not a tribe link"
+            case .tribeDeleted: "this tribe has been deleted"
+            case .notInTribe: "this account is not in that tribe"
+            case .noTribeServer: "the server has not named a tribes server for this account"
+            case .tribeServerTimedOut: "the tribes server did not answer in time"
             }
         }
     }
@@ -132,6 +142,14 @@ public actor Engine {
     /// Contacts by the child index the core uses for them, so a live message's
     /// topic names its sender without a core call.
     private var contactsByChildIndex: [UInt64: String] = [:]
+    /// Every tribe this account knows, joined or left, by pubkey.
+    private var tribes: [String: Tribe] = [:]
+    /// Member lists the tribes server sent for tribes this account owns.
+    private var memberLists: [String: TribeMembers.List] = [:]
+    /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
+    private var droppedIndex: Int64
+    private var refreshingTribes = false
+    private var tribesNeedRefresh = false
 
     /// A history fetch in progress: which kind, the next index to ask for, and
     /// where it ends (unknown until the server says). Runs queue behind one
@@ -169,6 +187,8 @@ public actor Engine {
         emit = continuation
         let contacts = try Self.contacts(in: state)
         contactsByChildIndex = Self.index(contacts)
+        tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
+        droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -236,6 +256,12 @@ public actor Engine {
     public func setServer(_ server: ServerAddress) throws {
         try storage.set(server.description, for: .server)
         self.server = server
+    }
+
+    /// The tribes server this account's own tribes are listed on, as `host[:port]`.
+    public func setTribeHost(_ host: String) throws {
+        guard TribeLink.isPlainHost(host) else { throw PeelError("unreadable tribes host \(host)") }
+        try storage.set(host, for: .tribeHost)
     }
 
     public func contacts() throws -> [Contact] {
@@ -332,10 +358,16 @@ public actor Engine {
         }
     }
 
-    private func waitUntilRegistered(timeout: Duration = .seconds(30)) async throws {
+    private func waitUntilRegistered() async throws {
+        try await poll(timeout: .seconds(30), failure: .registrationTimedOut) { isRegistered ? () : nil }
+    }
+
+    /// Waits for something a server reply sets to land in the engine.
+    private func poll<T>(timeout: Duration, failure: Failure, _ check: () -> T?) async throws -> T {
         let deadline = ContinuousClock.now + timeout
-        while !isRegistered {
-            guard ContinuousClock.now < deadline else { throw Failure.registrationTimedOut }
+        while true {
+            if let value = check() { return value }
+            guard ContinuousClock.now < deadline else { throw failure }
             try await Task.sleep(for: .milliseconds(200))
         }
     }
@@ -405,20 +437,26 @@ public actor Engine {
         try storage.upsertContact(pubkey: parts[0], alias: theirAlias)
     }
 
-    /// Sends a text message to a contact. Returns the tag the server will confirm.
+    /// Sends a text message to a contact or a tribe. Returns the tag the server will confirm.
     @discardableResult
     public func sendText(_ text: String, to pubkey: String) async throws -> String? {
-        let body = String(decoding: try JSONEncoder().encode(["content": text]), as: UTF8.self)
-        return try await deliver(body: body, content: text, to: pubkey, replacing: nil)
+        try await deliver(body: try Self.json(["content": text]), content: text, to: pubkey, replacing: nil)
     }
 
     /// Sends an undelivered message again. The core gives every send a new uuid
     /// and tag, so the same row takes them over and moves to now; the server's
-    /// echo then matches that row rather than adding a second one.
+    /// echo then matches that row rather than adding a second one. A tribe
+    /// message pays the tribe's current price, as a first send would, but
+    /// never more than the price it was first sent at: a raise since then
+    /// shows in the tribe's header, and the message must be sent anew.
     @discardableResult
     public func resend(messageID: Int64) async throws -> String? {
         guard let message = try storage.message(id: messageID), message.isRetryable(), let body = message.body else {
             throw Failure.notRetryable
+        }
+        if let tribe = try openTribe(message.chat), let paid = message.msat,
+           tribe.messageAmountMsat > UInt64(max(paid, 0)) {
+            throw PeelError("this tribe now charges more per message; send it as a new message")
         }
         return try await deliver(body: body, content: message.content, to: message.chat, replacing: messageID)
     }
@@ -432,15 +470,30 @@ public actor Engine {
         try storage.deleteMessage(id: messageID)
     }
 
-    /// The core only returns a tag and uuid for what was sent; the local row is
-    /// written in the same transaction as the state, before publishing. If the
-    /// publish fails the row is marked failed, ready to send again, and the
-    /// failure is reported as a send status rather than thrown.
+    /// The tribe a message to `pubkey` goes to, if it is one. A left tribe takes none.
+    private func openTribe(_ pubkey: String) throws -> Tribe? {
+        guard let tribe = tribes[pubkey] else { return nil }
+        if tribe.left { throw Failure.notInTribe }
+        return tribe
+    }
+
+    private static func json(_ fields: [String: String]) throws -> String {
+        String(decoding: try JSONEncoder().encode(fields), as: UTF8.self)
+    }
+
+    /// One text message through the core. A tribe message carries sats (the
+    /// tribe's current price, at least 3) and the alias in the form tribes
+    /// accept. The core only returns a tag and uuid for what was sent; the
+    /// local row is written in the same transaction as the state, before
+    /// publishing. If the publish fails the row is marked failed, ready to send
+    /// again, and the failure is reported as a send status rather than thrown.
     private func deliver(body: String, content: String?, to pubkey: String, replacing id: Int64?) async throws -> String? {
+        let tribe = try openTribe(pubkey)
         let time = clock.next()
         let result = try Sphinxrs.send(
             seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.text), msgJson: body,
-            state: StateCodec.encode(state), myAlias: alias, myImg: photoURL, amtMsat: 0, isTribe: false
+            state: StateCodec.encode(state), myAlias: tribe == nil ? alias : tribeAlias(alias), myImg: photoURL,
+            amtMsat: tribe?.messageAmountMsat ?? 0, isTribe: tribe != nil
         )
         let sent = result.msgs.first
         let now = Date().millisecondsSince1970
@@ -451,6 +504,7 @@ public actor Engine {
         } else {
             outgoing = Message(
                 uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: content,
+                msat: tribe.map { Int64(clamping: $0.messageAmountMsat) },
                 timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue
             )
         }
@@ -493,9 +547,229 @@ public actor Engine {
         try storage.setMute(chat: chat, level: level)
     }
 
+    // MARK: - Tribes
+
+    /// What the tribes server says about the tribe a link points to, so the
+    /// price can be shown before joining.
+    public func tribeInfo(link text: String) async throws -> TribeInfo {
+        guard let link = TribeLink(text) else { throw Failure.invalidTribeLink }
+        return try await tribeInfo(link)
+    }
+
+    private func tribeInfo(_ link: TribeLink) async throws -> TribeInfo {
+        let info = try await TribeInfo.fetch(pubkey: link.pubkey, host: link.host)
+        guard info.deleted != true else { throw Failure.tribeDeleted }
+        return info
+    }
+
+    /// Joins the tribe a `sphinx.chat://?action=tribeV2` link points to, paying
+    /// its price to join (1 sat if it has none, as the official apps do). The
+    /// tribe is recorded before the join goes out, so the history it replays
+    /// is filed under the tribe. Joining a tribe already joined does nothing.
+    /// `agreedJoinMsat` is the price the person was shown; the join fails
+    /// rather than pay anything else.
+    @discardableResult
+    public func joinTribe(link text: String, agreedJoinMsat: UInt64? = nil) async throws -> Tribe {
+        guard let link = TribeLink(text) else { throw Failure.invalidTribeLink }
+        if var joined = tribes[link.pubkey], !joined.left {
+            // Found in history on another tribes server, so never looked up:
+            // the link the person pasted says where it is listed.
+            guard joined.host == nil else { return joined }
+            joined.update(from: try await tribeInfo(link))
+            joined.host = link.host
+            try record(joined)
+            return joined
+        }
+        let info = try await tribeInfo(link)
+        if let agreedJoinMsat, info.joinAmountMsat != agreedJoinMsat {
+            throw PeelError("the price to join has changed; look the tribe up again")
+        }
+        guard let routeHint = info.routeHint else { throw PeelError("the tribes server gave no route to this tribe") }
+        let previous = tribes[link.pubkey]
+        var tribe = previous ?? Tribe(pubkey: link.pubkey)
+        tribe.update(from: info)
+        tribe.host = link.host
+        tribe.left = false
+        try record(tribe)
+        do {
+            try await run { time, state in
+                try Sphinxrs.joinTribe(
+                    seed: seed, uniqueTime: time, state: state, tribePubkey: tribe.pubkey, tribeRouteHint: routeHint,
+                    alias: tribeAlias(alias), amtMsat: info.joinAmountMsat, isPrivate: tribe.isPrivate
+                )
+            }
+        } catch {
+            try? record(previous, pubkey: tribe.pubkey)
+            throw error
+        }
+        return tribe
+    }
+
+    /// Tells the tribe this account is leaving, as the official apps do, and
+    /// hides it. The tribes server keeps the member on its list, so what the
+    /// tribe still sends is dropped.
+    public func leaveTribe(_ pubkey: String) async throws {
+        guard let joined = tribes[pubkey], !joined.left else { throw Failure.notInTribe }
+        var tribe = joined
+        tribe.left = true
+        try record(tribe)
+        do {
+            let body = try Self.json(["content": ""])
+            try await run { time, state in
+                try Sphinxrs.send(
+                    seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.groupLeave), msgJson: body,
+                    state: state, myAlias: tribeAlias(alias), myImg: photoURL, amtMsat: joined.messageAmountMsat,
+                    isTribe: true
+                )
+            }
+        } catch {
+            try? record(joined)
+            throw error
+        }
+    }
+
+    /// Saves a tribe, or forgets it when nil, here and on disk.
+    private func record(_ tribe: Tribe?, pubkey: String? = nil) throws {
+        guard let pubkey = tribe?.pubkey ?? pubkey else { return }
+        if let tribe { try storage.save([tribe]) } else { try storage.deleteTribe(pubkey) }
+        tribes[pubkey] = tribe
+    }
+
+    /// The tribe's members. The tribes server gives the list only to the
+    /// owner; anyone else gets the people seen posting.
+    public func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
+        guard let tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
+        let seen = try storage.tribeSenders(pubkey)
+        guard tribe.isOwner else { return TribeMembers(members: seen, complete: false) }
+        let server = try tribeServer()
+        memberLists[pubkey] = nil
+        try await run { time, state in
+            try Sphinxrs.listTribeMembers(
+                seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
+            )
+        }
+        let list = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { memberLists[pubkey] }
+        // The server's list has no photos; take them from what members posted.
+        let photos = Dictionary(seen.map { ($0.alias, $0.photoURL) }, uniquingKeysWith: { $1 })
+        func members(_ entries: [TribeMembers.List.Entry], pending: Bool) -> [TribeMember] {
+            entries.map { TribeMember(alias: $0.alias, photoURL: photos[$0.alias] ?? nil, pubkey: $0.pubkey, pending: pending) }
+        }
+        return TribeMembers(members: members(list.confirmed, pending: false) + members(list.pending, pending: true), complete: true)
+    }
+
+    /// Creates a tribe on the account's tribes server, owned by this account,
+    /// and waits for the server to list it. Needs the tribes host recorded
+    /// (from the config on signup or restore, or `--tribe-host`) so the new
+    /// tribe has a link to share.
+    @discardableResult
+    public func createTribe(_ new: NewTribe) async throws -> Tribe {
+        let server = try tribeServer()
+        guard try storage.value(for: .tribeHost) != nil else { throw Failure.noTribeServer }
+        let owned = Set(tribes.values.filter(\.isOwner).map(\.pubkey))
+        var new = new
+        new.ownerAlias = tribeAlias(alias)
+        let json = String(decoding: try JSONEncoder().encode(new), as: UTF8.self)
+        try await run { time, state in
+            try Sphinxrs.createTribe(
+                seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribeJson: json
+            )
+        }
+        return try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) {
+            tribes.values.first { $0.isOwner && !owned.contains($0.pubkey) && $0.name == new.name }
+        }
+    }
+
+    /// A tribe this account is in but has no record of, as after a restore:
+    /// a tribes server names its host on the joins it forwards, including our
+    /// own join coming back. Only a core contact with no contact key can be a
+    /// tribe (people always have one), and the host is kept only when it is
+    /// the account's own tribes server, so a stranger cannot make Peel fetch
+    /// from a host of their choosing.
+    /// A chat the core holds a contact key for goes into `notTribes`, so it
+    /// is looked up once per call.
+    private func discoveredTribe(
+        _ message: Message, trustSender: Bool, state: [String: Data], notTribes: inout Set<String>
+    ) throws -> Tribe? {
+        guard trustSender || message.fromMe, let host = message.senderInfo?.host?.nilIfEmpty,
+              let isPerson = Self.isPerson(message.chat, in: state) else { return nil }
+        guard !isPerson else {
+            notTribes.insert(message.chat)
+            return nil
+        }
+        let tribeHost = try storage.value(for: .tribeHost)
+        return Tribe(pubkey: message.chat, host: host == tribeHost ? host : nil)
+    }
+
+    /// Whether the core holds a contact key for `pubkey`: people always have
+    /// one, tribes never. Nil when the core has no such contact.
+    private static func isPerson(_ pubkey: String, in state: [String: Data]) -> Bool? {
+        guard state["c/\(pubkey)"] != nil,
+              let json = try? Sphinxrs.getContact(state: StateCodec.encode(state), pubkey: pubkey),
+              let contact = try? JSONDecoder().decode(Contact.self, from: Data(json.utf8)) else { return nil }
+        return contact.contactKey != nil
+    }
+
+    private func tribeServer() throws -> String {
+        guard let server = try? Sphinxrs.getDefaultTribeServer(state: StateCodec.encode(state)), !server.isEmpty else {
+            throw Failure.noTribeServer
+        }
+        return server
+    }
+
+    /// An account made without the tribes host (the config could not be read
+    /// at signup, or made before Peel kept it) takes it from the public config.
+    /// Never from a joined link, which anyone can write.
+    private func recordConfiguredTribeHost() async {
+        guard (try? storage.value(for: .tribeHost)) == nil, let server, !ServerAddress.isLoopback(host: server.host),
+              let host = try? await ServerConfig.fetch(network: network).usableTribeHost else { return }
+        try? setTribeHost(host)
+    }
+
+    /// Takes the registry's current name, photo and prices for each joined
+    /// tribe, a few at a time, and saves what changed in one write. Failures
+    /// leave what is stored. A call while a refresh runs makes it go round
+    /// once more instead of starting a second one.
+    private func refreshTribes() async {
+        tribesNeedRefresh = true
+        guard !refreshingTribes else { return }
+        refreshingTribes = true
+        defer { refreshingTribes = false }
+        while tribesNeedRefresh {
+            tribesNeedRefresh = false
+            let joined = tribes.values.compactMap { tribe in tribe.left ? nil : tribe.host.map { (tribe.pubkey, $0) } }
+            let infos = await withTaskGroup(of: TribeInfo?.self) { group in
+                var pending = joined[...]
+                func addNext() {
+                    guard let (pubkey, host) = pending.popFirst() else { return }
+                    group.addTask { try? await TribeInfo.fetch(pubkey: pubkey, host: host) }
+                }
+                for _ in 0..<4 { addNext() }
+                var infos: [TribeInfo] = []
+                while let result = await group.next() {
+                    if let result { infos.append(result) }
+                    addNext()
+                }
+                return infos
+            }
+            let changed = infos.compactMap { info -> Tribe? in
+                guard var current = tribes[info.pubkey], !current.left else { return nil }
+                current.update(from: info)
+                return current == tribes[info.pubkey] ? nil : current
+            }
+            do {
+                try storage.save(changed)
+                for tribe in changed { tribes[tribe.pubkey] = tribe }
+            } catch {
+                emit.yield(.coreError("saving tribes: \(error)"))
+            }
+        }
+    }
+
     /// Asks the server for messages newer than the newest one stored locally.
     public func syncMessages() async throws {
-        let next = try storage.highestServerIndex().map { $0 + 1 } ?? 0
+        // Messages dropped from left tribes are not stored but still count.
+        let highest = max(try storage.highestServerIndex() ?? -1, droppedIndex)
+        let next = highest < 0 ? 0 : UInt64(highest) + 1
         try await startHistory(HistoryRun(phase: .messages, next: next, end: nil))
     }
 
@@ -520,6 +794,8 @@ public actor Engine {
         var acknowledgedPings: [UInt64] = []
         var justRegistered = false
         var restorePlan: MessageCounts?
+        /// Tribes first seen in this call, whose names are still to be looked up.
+        var discoveredTribes = false
     }
 
     /// The synchronous half: one transaction with everything the core reported,
@@ -563,17 +839,68 @@ public actor Engine {
             commit.settings[.contactInfo] = info
         }
         if let outgoing {
-            commit.messages.append((outgoing, trustSender: false))
+            commit.messages.append((outgoing, trustSender: false, replaces: nil))
         }
         var landedPings: [String] = []
+        var knownTribes = tribes
+        var droppedIndex = self.droppedIndex
+        var notTribes: Set<String> = []
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            if let message = Self.message(from: msg, expectedSender: expectedSender, state: newState) {
-                commit.messages.append(message)
+            guard var (message, trustSender) = Self.message(from: msg, expectedSender: expectedSender, state: newState)
+            else { continue }
+            if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
+               let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
+                knownTribes[found.pubkey] = found
+                commit.tribes.append(found)
+                followUps.discoveredTribes = true
             }
+            // Our own join or leave, as replayed on a restore or sent from
+            // another device, says whether this account is in the tribe.
+            if var tribe = knownTribes[message.chat], message.fromMe,
+               message.type == MessageType.groupJoin || message.type == MessageType.groupLeave,
+               tribe.left != (message.type == MessageType.groupLeave) {
+                tribe.left = message.type == MessageType.groupLeave
+                knownTribes[tribe.pubkey] = tribe
+                commit.tribes.append(tribe)
+            }
+            var replaces: String?
+            if let tribe = knownTribes[message.chat] {
+                if tribe.left {
+                    if let index = message.serverIndex, index > droppedIndex {
+                        droppedIndex = index
+                        commit.settings[.droppedIndex] = String(index)
+                    }
+                    continue
+                }
+                // The sender pubkey is the tribe's; the alias and photo are
+                // the member's and must not rename the tribe.
+                trustSender = false
+                let fields = BodyFields.decode(message.body)
+                if let date = fields?.date, date > 0 {
+                    message.timestamp = date
+                }
+                // Our own message coming back from the tribe takes over the row written at send.
+                if message.fromMe { replaces = fields?.originalUuid }
+            }
+            commit.messages.append((message, trustSender, replaces))
+        }
+        if let json = result.newTribe, let info = try? JSONDecoder().decode(TribeInfo.self, from: Data(json.utf8)),
+           Self.isPerson(info.pubkey, in: newState) != true {
+            // Replies on the management topic are only ever about this account's own tribes.
+            var tribe = try knownTribes[info.pubkey] ?? Tribe(
+                pubkey: info.pubkey, host: try storage.value(for: .tribeHost), isOwner: true
+            )
+            tribe.update(from: info)
+            knownTribes[tribe.pubkey] = tribe
+            commit.tribes.append(tribe)
+        }
+        var members: TribeMembers.List?
+        if let json = result.tribeMembers {
+            members = try? JSONDecoder().decode(TribeMembers.List.self, from: Data(json.utf8))
         }
         let sent = result.sentStatus.flatMap { try? JSONDecoder().decode(SentStatus.self, from: Data($0.utf8)) }
         if let sent, let tag = sent.tag {
@@ -584,6 +911,11 @@ public actor Engine {
         state = newState
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
+        }
+        tribes = knownTribes
+        self.droppedIndex = droppedIndex
+        if let members {
+            memberLists[members.pubkey] = members
         }
 
         if let json = result.msgsCounts {
@@ -663,6 +995,9 @@ public actor Engine {
                 try Sphinxrs.pingDone(seed: seed, uniqueTime: time, state: state, pingTs: pingTime)
             }
         }
+        if followUps.discoveredTribes {
+            Task { [weak self] in await self?.refreshTribes() }
+        }
         if followUps.justRegistered {
             await cameOnline()
         }
@@ -702,7 +1037,7 @@ public actor Engine {
             uuid: msg.uuid,
             serverIndex: msg.index.flatMap { UInt64($0) }.flatMap { Int64(exactly: $0) },
             type: Int(type), chat: chat, fromMe: fromMe,
-            sender: msg.sender, body: msg.message, content: BodyFields.content(of: msg.message),
+            sender: msg.sender, body: msg.message, content: BodyFields.decode(msg.message)?.content,
             msat: msg.msat.map { Int64(clamping: $0) },
             timestamp: msg.timestamp.map { Int64(clamping: $0) },
             tag: msg.tag, paymentHash: msg.paymentHash
@@ -749,6 +1084,10 @@ public actor Engine {
     /// catch up from the newest message stored.
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
+        Task { [weak self] in
+            await self?.recordConfiguredTribeHost()
+            await self?.refreshTribes()
+        }
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)

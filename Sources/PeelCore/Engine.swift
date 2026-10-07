@@ -26,6 +26,9 @@ public actor Engine {
         case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
+        /// The name or photo this account sends changed (by the user, or
+        /// filled in by a restore).
+        case profile(alias: String, photoURL: String?)
     }
 
     public enum HistoryPhase: Sendable {
@@ -265,17 +268,42 @@ public actor Engine {
 
     public var isRegistered: Bool { Self.isRegistered(state) }
 
+    /// The name and photo this account sends with its messages.
+    public var myAlias: String { alias }
+    public var myPhotoURL: String? { photoURL.httpsOnly }
+
+    /// The name others see. Names are not core state and the server keeps no
+    /// profile: it travels with each message sent from now on (and with a
+    /// tribe join), and a contact's app takes the newest one it sees, as with
+    /// the official apps. Nothing is announced and sent messages keep the old one.
     public func setAlias(_ alias: String) throws {
+        let alias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !alias.isEmpty else { throw PeelError("the name cannot be empty") }
         try storage.set(alias, for: .alias)
         self.alias = alias
+        emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
     }
 
     /// The photo others see beside this account's messages: an https URL, or
-    /// empty for none.
+    /// empty for none. It travels like the name. Uploading a picture from this
+    /// device belongs to the attachments work (memes server): upload, then
+    /// pass the URL it returns here.
     public func setPhotoURL(_ url: String) throws {
+        let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard url.isEmpty || url.httpsOnly != nil else { throw PeelError("a photo must be an https URL") }
         try storage.set(url, for: .photoURL)
         photoURL = url
+        emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
+    }
+
+    /// Hours after which an app asks for the PIN again; 0 means only at
+    /// launch, nil that this account has never set it.
+    public func pinTimeoutHours() throws -> Int? {
+        try storage.value(for: .pinTimeoutHours).flatMap { Int($0) }
+    }
+
+    public func setPINTimeout(hours: Int) throws {
+        try storage.set(String(max(0, hours)), for: .pinTimeoutHours)
     }
 
     public func setServer(_ server: ServerAddress) throws {
@@ -1525,6 +1553,12 @@ public actor Engine {
         if restoring {
             try storage.set("0", for: .needsRestore)
             restoring = false
+            // The server keeps no profile; the account's own photo comes back
+            // only on the messages it sent. A photo already set wins. Best
+            // effort: a failure here must not stop the restore finishing.
+            if photoURL.isEmpty, let photo = try? storage.newestOwnPhotoURL() {
+                try? setPhotoURL(photo)
+            }
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()

@@ -1,10 +1,12 @@
 # Phase 5 — Parity: contacts, profile, People, web apps, languages
 
-Status: planned.
+Status: in progress. Account screen built; the rest planned.
 
 - Contacts UI: add by contact info or QR, share own QR and contact string,
   create invites with sats (`makeInvite`, `cancelInvite`), inbound requests.
-- Profile: name, photo (upload to memes), PIN lock with timeout.
+- Profile: done 2026-10-07 as the **Account screen** (branch
+  `phase5/account-screen`); photo upload from this Mac waits for attachments.
+  See "Account screen" below.
 - People and LSATs: person profiles, external auth challenge
   (`SphinxOnionManager+PeopleExtension.swift`), LSAT list.
 - Web apps: in-chat web apps in a WKWebView with an authorise prompt
@@ -21,3 +23,108 @@ Status: planned.
 - Localisation: the six languages of the official app via String Catalogs.
 - Settings sync between devices (the Mac app's `Data Sync Manager`), if still
   wanted once the iPhone exists.
+
+## Account screen
+
+Opened from your row at the foot of the sidebar or with ⌘, (the app menu's
+"Account…" replaces Settings). Follows the `Profile` board of the design
+canvas, adapted: no Touch ID, notifications, devices or invite rows yet.
+
+- **Name** (`Engine.setAlias`, trimmed, never empty; CLI `rename <name>`).
+  How it reaches others, checked against the official Mac app
+  (`ProfileViewController.updateProfile`): it only saves the owner's nickname
+  locally. Names and photos are not core state and the server keeps no
+  profile, so nothing is announced; the name travels as `myAlias` on every
+  message sent from then on (and on a tribe join), and a contact's app
+  takes the newest one it sees (`updateContactInfoFromMessage`). Messages
+  already sent keep the old name. Peel does the same.
+- **Photo** by https link (`Engine.setPhotoURL`, now trimmed); travels like
+  the name as `myImg`. Seam for upload: the attachments work uploads a
+  picture to the memes server and passes the URL it returns to the same
+  call; nothing fakes an upload today. Shown through the shared
+  `Avatar`/`PhotoCache` in the screen, the sidebar footer and the tribe
+  member list.
+- **Restore recovers the photo.** The official app keeps the account's own
+  photo only in its local owner record (`UserContact.avatarUrl`; Data Sync
+  carries tip amount, private photo and PIN timeout, not the photo). During
+  a restore it fills an empty owner nickname/photo from the account's own
+  sent messages, whose sender JSON carries `alias` and `photo_url`. Peel now
+  does the same at the end of a restore: if no photo is set, it takes the
+  photo of the newest own direct message (`Storage.newestOwnPhotoURL`; tribe
+  messages left out, as the official app does). The name is not filled
+  because Peel's restore always asks for one.
+- **Contact info** with Copy and a QR code (CoreImage `qrCodeGenerator`);
+  the old contact-info popover on the sidebar footer is gone.
+- **Twelve words**: only after the PIN (`Profile.words(pin:)`, derived off
+  the main thread), masked by default with Reveal/Mask, hidden again after
+  30 s, when Peel leaves the front, or when the screen closes. Copy asks
+  first in place; the copy is marked `org.nspasteboard.ConcealedType` and
+  cleared after a minute unless something else was copied. Never logged.
+  Development profiles have no PIN, so the words show without one.
+- **Change PIN**: old → new → new again (`Profile.changePIN`, existing
+  `SecretStore.changePIN`). A wrong old PIN starts again; nothing changes.
+- **Ask for the PIN** (timeout) moved from the `pinTimeoutHours` default to
+  the account's `Setting.pinTimeoutHours`; an account that never set it
+  reads the old default, which is left in place (other profiles share it).
+- **Balance** read only; **server** and connection state read only.
+- **Forget this account on this Mac**: the lock screen's forget logic, now a
+  shared `ForgetAccountControl`, confirmed in place with what is deleted and
+  that the words are needed to come back.
+
+Verified (2026-10-07):
+- Local stack (broker 1927, mixer 8047), development profiles `ac-*`: a
+  restore of `ac-alice` into a fresh `ac-alice3` came back with the photo of
+  her newest message (`whoami` → `photo: https://example.com/alice-2.png`);
+  `rename "  "` refused; `rename Alice Bee` then a send: Bob's contact row
+  became "Alice Bee" with the new photo, his earlier message still shows
+  "Alice".
+- Keychain: a harness built from `SecretStore.swift` and `Profile.swift`,
+  bundled as `dev.peel.mac` and signed by `scripts/sign-app.sh`, on the app
+  profile `ac-kc1` only: words with the right PIN, wrong PIN refused, change
+  with a wrong old PIN refused (old still works), short or non-digit new PIN
+  refused, change works (old refused, new opens the same words), a
+  development profile refuses a PIN change, delete leaves nothing.
+- App: bundled with `bundle-app.sh` into the scratchpad and launched with
+  `-profile ac-alice3`; the screen renders (identity, QR, account and
+  security groups, forget control).
+
+Not exercised by hand in the app (no input automation here): editing the
+name or photo, the change-PIN steps on an app profile (the app only opens
+`default` with a PIN, which is off limits), revealing, masking, copying and
+auto-hiding the words, the timeout picker, ⌘, and forgetting from this
+screen.
+
+Review (2026-10-07): `/code-review` (high), `/simplify` and
+`/security-review` ran on this branch. Fixed: copied words stay on this Mac
+(`currentHostOnly`, no Universal Clipboard) and are cleared after a minute,
+on lock, on quit and on forget; a PIN check still running when the words
+are hidden cannot show them; Cancel is off while a PIN change runs; Return
+in an empty photo field no longer removes the photo, and a save cannot run
+twice; a failed forget starts the app over from what is left instead of a
+main window with no engine; forget clears all per-account state in one
+place; photo recovery is best effort (cannot stop a restore finishing) and
+skips own records without sender details. The engine now emits
+`.profile(alias:photoURL:)` from `setAlias`/`setPhotoURL` (so a restore's
+photo or a future upload reaches the sidebar without a pull) and owns the
+PIN timeout (`Engine.pinTimeoutHours`/`setPINTimeout`); `PIN.problem` is
+the one wrong-PIN message; the QR uses one shared `CIContext`; the account
+groups reuse `panelBoxed`, `SectionLabel` and `FormFooter`. Security review
+found nothing to fix.
+Not applied, with reasons:
+- Taking the name and photo from this account's own messages sent by
+  another device (the official app does this outside a restore): useful
+  with both clients side by side, but an older echo could undo a newer
+  local change; needs a "changed at" rule. Next step.
+- Moving the words reveal session and the copy policy into `AppModel`: the
+  words already clear on lock (the screen goes away), resign and forget;
+  worth doing when another surface shows them.
+- One shared inline editor for name and photo, and `GhostButtonStyle` folded
+  into the onboarding button styles: different layouts and sizes; revisit
+  if a third editor appears.
+- Building `ForgetAccountControl` on `InlineConfirm`: it needs a long
+  explanation, a problem line and alignment that `InlineConfirm` lacks.
+- An index for `newestOwnPhotoURL`: it runs once per restore.
+- A PIN attempt limit on the account screen: the lock screen has none
+  either; the slow derivation is the only brake.
+- Requiring the PIN to forget from the account screen: the lock screen can
+  forget without it (for a lost PIN), so it would add no protection.

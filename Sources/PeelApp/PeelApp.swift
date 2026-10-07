@@ -25,11 +25,22 @@ struct PeelApp: App {
                     model.lockIfDue()
                     model.markSelectedChatRead()
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    Clipboard.clearSecret()
+                }
                 #endif
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 760)
+        .commands {
+            // The account screen stands in for Settings.
+            CommandGroup(replacing: .appSettings) {
+                Button("Account…") { model.destination = .account }
+                    .keyboardShortcut(",", modifiers: .command)
+                    .disabled(model.phase != .ready)
+            }
+        }
         #endif
     }
 }

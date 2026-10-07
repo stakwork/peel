@@ -12,7 +12,8 @@ struct PeelCommand {
           init                        new account with no invite (local test server; needs --server)
           signup <invite|->           new account from an invite link ("-" reads it from stdin)
           restore                     existing account; reads the twelve words from stdin
-          whoami                      this account's contact info and balance
+          whoami                      this account's contact info, balance, name and photo
+          rename <name>               the name others see on messages sent from now on
           contacts                    contacts known to the core
           add <contact-info> [name]   start a key exchange with a contact
           send <pubkey> <text>        send a text message to a contact or a tribe
@@ -138,6 +139,14 @@ struct PeelCommand {
             print("contact info: \(try storage.value(for: .contactInfo) ?? "not registered yet")")
             print("balance: \(try storage.value(for: .balanceMsat).flatMap { UInt64($0) }.map { "\($0 / 1000) sats" } ?? "unknown")")
             print("server: \(try storage.value(for: .server) ?? "none")")
+            print("name: \(try storage.value(for: .alias) ?? "")")
+            print("photo: \(try storage.value(for: .photoURL).flatMap(\.nilIfEmpty) ?? "none")")
+
+        case "rename":
+            guard !arguments.isEmpty else { throw PeelError("rename needs a name") }
+            let engine = try await load()
+            try await engine.setAlias(arguments.rest().joined(separator: " "))
+            print("name: \(await engine.myAlias)")
 
         case "contacts":
             let storage = try Storage(directory: profile.directory, readOnly: true)
@@ -395,6 +404,8 @@ struct Session {
             "connecting: \(message)"
         case .coreError(let message):
             "core error: \(message)"
+        case .profile(let alias, let photoURL):
+            "profile: \(alias), photo \(photoURL ?? "none")"
         }
     }
 }

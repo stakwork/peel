@@ -211,7 +211,7 @@ struct TribeMembersPanel: View {
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
-                        MemberRow(alias: model.myAlias ?? "You", photoURL: nil, note: "you")
+                        MemberRow(alias: model.myAlias ?? "You", photoURL: model.myPhotoURL, note: "you")
                     }
                     ForEach(confirmed) { member in
                         let isMe = member.pubkey != nil && member.pubkey == me

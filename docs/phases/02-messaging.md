@@ -89,7 +89,7 @@ restore is the point of this phase; the Keychain is what makes it allowed.
 0. **Data-protection keychain.** The item is in the file-based login keychain
    (see task 2). Moving it to the data-protection keychain needs a bundle with
    an application identifier, i.e. an Xcode project with a provisioning
-   profile. Do this before the real account moves over if at all possible.
+   profile. Decided 2026-10-07: this lands before the real account moves over.
 
 
 6. **Long messages.** Text over ~869 bytes is split by the bindings layer

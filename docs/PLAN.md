@@ -130,8 +130,6 @@ is active.
 ## Open questions
 
 - Build the Rust bindings from source or keep using the prebuilt library?
-- Data-protection keychain needs a provisioned bundle: add the Xcode project
-  before or after the real account moves over?
 
 ## Accounts
 

@@ -218,6 +218,8 @@ public actor Engine {
     private static let historyStall: Duration = .seconds(30)
 
     private static let historyPageSize: UInt32 = 100
+    /// How long publishes wait behind the register of a new child key; see `complete`.
+    static let registerSettle: Duration = .milliseconds(750)
 
     public init(mnemonic: String, storage: Storage) throws {
         seed = try Sphinxrs.mnemonicToSeed(mnemonic: Self.normalise(mnemonic: mnemonic))
@@ -1630,30 +1632,55 @@ public actor Engine {
         return followUps
     }
 
-    /// The asynchronous half: the network work the core asked for, in its order.
-    private func complete(_ result: RunReturn, _ followUps: FollowUps) async throws {
-        var publishes: [(topic: String, payload: Data)] = []
+    typealias Publish = (topic: String, payload: Data)
+
+    /// What `complete` publishes, in order: `now`, then `later` once the
+    /// register of a new child key (a key exchange or a tribe join) has had
+    /// time to land, because `later` may be addressed to that key, such as this
+    /// account's own contact record (type 33). Without a new key, `later` is empty.
+    static func publishPlan(_ result: RunReturn) -> (now: [Publish], later: [Publish]) {
+        var now: [Publish] = []
         if let topic = result.settleTopic, let payload = result.settlePayload {
-            publishes.append((topic, payload))
+            now.append((topic, payload))
         }
         if let topic = result.registerTopic, let payload = result.registerPayload {
-            publishes.append((topic, payload))
+            now.append((topic, payload))
         }
+        var rest: [Publish] = []
         if let topic = result.asyncpayTopic, let payload = result.asyncpayPayload {
-            publishes.append((topic, payload))
+            rest.append((topic, payload))
         }
         for (index, topic) in result.topics.enumerated() {
-            publishes.append((topic, index < result.payloads.count ? result.payloads[index] : Data()))
+            rest.append((topic, index < result.payloads.count ? result.payloads[index] : Data()))
         }
+        if result.registerTopic != nil, result.newChildIdx != nil {
+            return (now, rest)
+        }
+        return (now + rest, [])
+    }
 
-        if !result.subscriptionTopics.isEmpty || !publishes.isEmpty {
+    /// Publishes in order on the current transport, read at call time so a
+    /// reconnect during the register wait is used.
+    private func publish(_ publishes: [Publish]) async throws {
+        guard !publishes.isEmpty else { return }
+        guard let transport else { throw Failure.notConnected }
+        for publish in publishes {
+            try await transport.publish(publish.topic, publish.payload)
+        }
+    }
+
+    /// The asynchronous half: the network work the core asked for, in its order.
+    private func complete(_ result: RunReturn, _ followUps: FollowUps) async throws {
+        let (now, later) = Self.publishPlan(result)
+        if !result.subscriptionTopics.isEmpty {
             guard let transport else { throw Failure.notConnected }
-            if !result.subscriptionTopics.isEmpty {
-                try await transport.subscribe(result.subscriptionTopics)
-            }
-            for publish in publishes {
-                try await transport.publish(publish.topic, publish.payload)
-            }
+            try await transport.subscribe(result.subscriptionTopics)
+        }
+        try await publish(now)
+        if !later.isEmpty {
+            // See `publishPlan`. A cancelled wait still publishes: the state is committed.
+            try? await Task.sleep(for: Self.registerSettle)
+            try await publish(later)
         }
 
         for pingTime in followUps.acknowledgedPings {

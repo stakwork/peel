@@ -251,6 +251,64 @@ restore is the point of this phase; the Keychain is what makes it allowed.
      the transport error text, which the row does not.
    - Caching link detection or day/run flags per message: the bubble is now
      its own view, so hover no longer redoes it; measure before caching more.
+10. **Restore: contacts started by the other side.** Fixed 2026-10-07
+   (branch `fix/restore-contacts`). Symptom: Gus adds Fay, Fay's Peel
+   answers, Fay restores her words into a new profile and Gus is gone, until
+   either side sends a message on the contact's key.
+   Cause (Peel): a restore rebuilds contacts from the first message on each
+   child key (`fetchFirstMsgsPerKey`). For the answering side that is its own
+   contact record (type 33), which the core sends to the new child key in
+   the same result that registers the key (`handle_msg.rs` `ContactKey` →
+   `send.rs` `add_contact_inner` → `handler.rs`
+   `push_contact_key_record_msg`, on `sendself`). The mixer handles every
+   request in its own task (`mixer/src/mqtt.rs` `spawn_router`), so the
+   `sendself` peeled before `register` had written the key
+   (`send.rs` `unwrap_onion`: `get_scid_for_pubkey` fails, the onion goes
+   to "a peer" and fails) and `spawn_send_thread` drops a `sendself`
+   failure without a status. Peel published register and the rest back to
+   back; the Mac app waits 0.25 s after a register and 0.5 s more before
+   the topics (`SphinxOnionManager+HandleStateExtension.swift`
+   `handleRegisterTopic`, `handleTopicsToPush`), and the reference client
+   waits for the async payment before the topics (`wasm/test/auto/main.ts`
+   `handle_rr`). The adding side lost its first record the same way but
+   sends a second one on the confirmation, so only the answering side lost
+   the contact.
+   Fix: `Engine.complete` publishes settle and register, waits 0.75 s when
+   the register is for a new child key (`newChildIdx`: add contact, answer,
+   tribe join), then publishes the rest on the current transport
+   (`Engine.publishPlan`, unit tested).
+   Verified on the local stack (`rs-*` profiles): before, Fay restored with
+   no contacts and the server held only Gus's key exchange for her; after,
+   Fay (answer only) and Erin (answer, then a DM) restore with the contact
+   ready, and the adding side keeps both records. Still a timing margin, as
+   in the official app; the robust fix is the mixer finishing `register`
+   before later requests from the same client (not changed here).
+   Accounts that answered a key exchange in Peel before this fix have no
+   record on the server for that contact; a restore brings it back only once
+   either side has sent a message on the contact's key.
+   Review (`/code-review`, `/security-review`): fixed a cancelled wait
+   skipping the rest and a reconnect during the wait publishing on the old
+   transport. Not applied, with reasons:
+   - Waiting for the register reply instead of a fixed time: the reply comes
+     through the same serial inbound loop the wait runs in (answering a key
+     exchange happens inside `receive`), so it needs the rest moved to its
+     own task; worth doing with the mixer fix, not for this.
+   - The wait holds the inbound loop for 0.75 s per new key: rare (a key
+     exchange or join), and the official app waits as long.
+   - Waiting between the async payment and the topics as well (the Mac app
+     waits for the payment's tag): a separate race, not seen to lose
+     anything on the local stack.
+   - Re-sending contact records for contacts already answered: the core has
+     no call that makes a lone type 33; needs a core change.
+   Simplify pass: the two publish loops now share `Engine.publish`, and the
+   comment in `complete` points at `publishPlan`. Not applied:
+   - A per-key publish gate (a "register settles at" deadline checked by
+     every publish): the engine actor is free during the wait, so another
+     `run` or `send` (a DM to the new contact, a second key exchange) can
+     publish before the register lands. Rare (a send within 0.75 s of
+     answering); the gate belongs with waiting for the register reply.
+   - Shortening this entry's cause trace: the citations are what make the
+     timing margin checkable against the core and the Mac app.
 
 ## Done criteria
 

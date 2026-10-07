@@ -33,11 +33,23 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    prefers) and a hardened runtime. Keep `swift build` and `scripts/run-app.sh`
    working for the CLI and quick checks, but the app ships from Xcode from now
    on. Update `AGENTS.md` and the README.
-2. **Keychain storage.** Done in code, untested until task 1 gives the app a
-   signed identity: `SecretStore` with `KeychainSecretStore` (app profiles,
-   `Application Support/Peel/<name>`) and `FileSecretStore` (development
-   profiles under `Peel/dev/<name>`, CLI only). `Profile(name:kind:)` picks
-   the store; the app uses `.development` only when launched with `-profile`.
+2. **Keychain storage with a PIN.** Tom decided (2026-10-07) that a six-digit
+   PIN is required, as in the official apps. Done in code and checked with a
+   scratch program (save, unlock, wrong PIN, PIN change, duplicate, delete):
+   `SecretStore` with `KeychainSecretStore` (app profiles,
+   `Application Support/Peel/<name>`; the words are sealed under a key derived
+   from the PIN with PBKDF2-HMAC-SHA256, 2.5M iterations and a random salt,
+   then AES-256-GCM; versioned blob in a generic-password item) and
+   `FileSecretStore` (development profiles under `Peel/dev/<name>`, CLI only,
+   no PIN). `Profile(name:kind:)` picks the store; the app uses
+   `.development` only when launched with `-profile`. The PIN lives only in
+   memory; timeout and re-asking are the app's job.
+   Known limit, raised with Tom: six digits is a small space. At about half a
+   second per guess, a leaked item falls to an offline search in days on one
+   machine (hours on a GPU); the Keychain's binding to the signed app is the
+   real wall. A memory-hard KDF would need a dependency; revisit if the threat
+   model grows. Not RNCryptor-compatible with the official app's format on
+   purpose (the copy is local only).
    Original brief: a `SecretStore` with two implementations: Keychain
    (`kSecClassGenericPassword`, service `dev.peel`, account = profile name,
    `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, not synced to iCloud) for

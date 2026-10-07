@@ -48,13 +48,14 @@ public struct Profile: Sendable {
         }
     }
 
-    public var hasAccount: Bool {
-        (try? secrets.loadMnemonic()) != nil
-    }
+    public var hasAccount: Bool { secrets.hasMnemonic }
 
-    public func loadMnemonic() throws -> String {
-        guard let mnemonic = try secrets.loadMnemonic() else { throw Failure.noAccount(name) }
-        return mnemonic
+    public func loadMnemonic(pin: String) throws -> String {
+        do {
+            return try secrets.loadMnemonic(pin: pin)
+        } catch SecretStoreFailure.noAccount {
+            throw Failure.noAccount(name)
+        }
     }
 
     /// Removes the words and everything stored with them.

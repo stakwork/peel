@@ -4,9 +4,10 @@ import Foundation
 /// the mnemonic and the server come from. Connecting is left to the caller, so
 /// an app can show a returning account while it is still offline.
 public enum Account {
-    /// Loads an existing account without connecting it.
-    public static func load(_ profile: Profile, alias: String? = nil, server: ServerAddress? = nil) async throws -> Engine {
-        let engine = try Engine(mnemonic: profile.loadMnemonic(), storage: Storage(directory: profile.directory))
+    /// Loads an existing account without connecting it. Development profiles
+    /// ignore the PIN.
+    public static func load(_ profile: Profile, pin: String = "", alias: String? = nil, server: ServerAddress? = nil) async throws -> Engine {
+        let engine = try Engine(mnemonic: profile.loadMnemonic(pin: pin), storage: Storage(directory: profile.directory))
         if let alias { try await engine.setAlias(alias) }
         if let server { try await engine.setServer(server) }
         return engine
@@ -16,13 +17,13 @@ public enum Account {
     /// first contact. On any failure short of a registration timeout the
     /// profile is removed again, since the invite was not used.
     public static func signup(
-        _ profile: Profile, invite: Engine.Invite, alias: String, network: String = "bitcoin",
+        _ profile: Profile, invite: Engine.Invite, alias: String, pin: String = "", network: String = "bitcoin",
         server: ServerAddress? = nil, allowUntrustedCertificate: Bool = false
     ) async throws -> Engine {
         guard let address = server ?? invite.server.flatMap(ServerAddress.init) else {
             throw PeelError("the invite does not say which server to use")
         }
-        let engine = try await create(profile, alias: alias, network: network, server: address)
+        let engine = try await create(profile, alias: alias, pin: pin, network: network, server: address)
         do {
             try await engine.connect(inviteCode: invite.code, allowUntrustedCertificate: allowUntrustedCertificate)
             if let inviter = invite.inviterContactInfo {
@@ -39,16 +40,16 @@ public enum Account {
 
     /// Creates an account that needs no invite, for a local test server.
     public static func create(
-        _ profile: Profile, alias: String, network: String = "bitcoin", server: ServerAddress
+        _ profile: Profile, alias: String, pin: String = "", network: String = "bitcoin", server: ServerAddress
     ) async throws -> Engine {
-        try profile.secrets.save(mnemonic: Engine.generateMnemonic())
-        return try await open(profile, alias: alias, network: network, server: server)
+        try profile.secrets.save(mnemonic: Engine.generateMnemonic(), pin: pin)
+        return try await open(profile, pin: pin, alias: alias, network: network, server: server)
     }
 
     /// Brings an account back from its twelve words. The server comes from the
     /// public config unless given. History is not pulled back yet.
     public static func restore(
-        _ profile: Profile, mnemonic: String, alias: String, network: String = "bitcoin",
+        _ profile: Profile, mnemonic: String, alias: String, pin: String = "", network: String = "bitcoin",
         server: ServerAddress? = nil
     ) async throws -> Engine {
         let words = try Engine.validate(mnemonic: mnemonic)
@@ -62,14 +63,14 @@ public enum Account {
             }
             address = parsed
         }
-        try profile.secrets.save(mnemonic: words)
-        return try await open(profile, alias: alias, network: network, server: address)
+        try profile.secrets.save(mnemonic: words, pin: pin)
+        return try await open(profile, pin: pin, alias: alias, network: network, server: address)
     }
 
-    private static func open(_ profile: Profile, alias: String, network: String, server: ServerAddress) async throws -> Engine {
+    private static func open(_ profile: Profile, pin: String, alias: String, network: String, server: ServerAddress) async throws -> Engine {
         let storage = try Storage(directory: profile.directory)
         try storage.set(network, for: .network)
-        let engine = try Engine(mnemonic: profile.loadMnemonic(), storage: storage)
+        let engine = try Engine(mnemonic: profile.loadMnemonic(pin: pin), storage: storage)
         try await engine.setAlias(alias)
         try await engine.setServer(server)
         return engine

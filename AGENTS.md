@@ -92,8 +92,9 @@ assembled by hand in `scripts/run-app.sh`.
   state or single-account assumptions in `PeelCore`; every user action is an
   engine operation, never logic inside a view; message conventions live in the
   engine.
-- UI follows Tom's `tom-ui` and `taste` skills: lens is Apple calm; colour is
-  state, not decoration; no red for ordinary failure; restraint in motion.
+- UI follows `docs/design/README.md` (Slack-style layout, Sphinx colours and
+  Roboto) and Tom's `tom-ui` and `taste` skills: colour is state, not
+  decoration; no red for ordinary failure; restraint in motion.
 - Keep this file, `docs/PLAN.md` and the phase files current when you change
   the layout or finish a step.
 

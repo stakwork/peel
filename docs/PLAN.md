@@ -23,6 +23,9 @@ host. The engine stays Swift for now (decided 2026-10-07); a separate always-on
 engine is a later phase. See [agent-native.md](agent-native.md) before changing
 the architecture.
 
+The target layout and visual language are in [design/README.md](design/README.md):
+Slack-style tribes, direct messages and threads, in Sphinx's colours.
+
 ## Architecture
 
 ```

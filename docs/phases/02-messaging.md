@@ -22,7 +22,7 @@ restore is the point of this phase; the Keychain is what makes it allowed.
 ## Tasks, in order
 
 1. **A stable signing identity.** Done for local use (2026-10-07): Tom's
-   Apple Development certificate (personal team XWVAFRHS6U) plus Apple's WWDR
+   Apple Development certificate (personal team ID T3M78XC3UV) plus Apple's WWDR
    G3 intermediate in the login keychain; `scripts/sign-app.sh` signs the
    bundle with it, hardened runtime on. No Xcode project yet: it is not needed
    for local signing, only later for TestFlight and the iPhone target.

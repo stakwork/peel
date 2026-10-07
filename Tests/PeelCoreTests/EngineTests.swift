@@ -1,0 +1,108 @@
+import Foundation
+import Testing
+@testable import PeelCore
+
+private let abandon = Array(repeating: "abandon", count: 11) + ["about"]
+
+struct MnemonicTests {
+    @Test func wordsSplitOnWhitespaceAndCommasAndLowercase() {
+        #expect(Engine.words(in: "  Apple, BANANA\ncherry\t,, date ") == ["apple", "banana", "cherry", "date"])
+        #expect(Engine.words(in: "").isEmpty)
+        #expect(Engine.words(in: " ,\n ").isEmpty)
+    }
+
+    @Test func validateReturnsCanonicalWords() throws {
+        let messy = "  " + abandon.map { $0.uppercased() }.joined(separator: ",\n ") + " "
+        #expect(try Engine.validate(mnemonic: messy) == abandon.joined(separator: " "))
+    }
+
+    @Test(arguments: [
+        "",
+        Array(repeating: "abandon", count: 12).joined(separator: " "),  // bad checksum
+        (Array(repeating: "abandon", count: 11) + ["notaword"]).joined(separator: " "),
+        Array(repeating: "abandon", count: 5).joined(separator: " "),
+    ])
+    func validateRejectsBadMnemonics(mnemonic: String) {
+        #expect(throws: (any Error).self) { try Engine.validate(mnemonic: mnemonic) }
+    }
+
+    @Test func generatedMnemonicIsTwelveValidWords() throws {
+        let mnemonic = try Engine.generateMnemonic()
+        #expect(Engine.words(in: mnemonic).count == 12)
+        #expect(try Engine.validate(mnemonic: mnemonic) == mnemonic)
+        #expect(try Engine.generateMnemonic() != mnemonic)
+    }
+}
+
+struct InviteTests {
+    /// Builds an invite the way the core's `invite_qr` does.
+    private func invite(host: String, code: [UInt8], contact: (key: [UInt8], lsp: [UInt8], scid: UInt64, alias: String)?) -> String {
+        var link = "sphinx.chat://?action=i&d=" + base64URL(code + Array(host.utf8))
+        if let contact {
+            let scid = withUnsafeBytes(of: contact.scid.bigEndian, Array.init)
+            link += "&c=" + base64URL(contact.key + contact.lsp + scid + Array(contact.alias.utf8))
+        }
+        return link
+    }
+
+    private func base64URL(_ bytes: [UInt8]) -> String {
+        Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+    }
+
+    @Test func parsesHostAndCode() throws {
+        let code = [UInt8](0..<32)
+        let parsed = try Engine.parseInvite("  " + invite(host: "broker.example.com:8883", code: code, contact: nil) + "\n")
+        #expect(parsed.code == code.map { String(format: "%02x", $0) }.joined())
+        #expect(parsed.server == "broker.example.com:8883")
+        #expect(parsed.inviterContactInfo == nil)
+        #expect(parsed.inviterAlias == nil)
+    }
+
+    @Test func parsesInviter() throws {
+        let key = [UInt8](repeating: 2, count: 33)
+        let lsp = [UInt8](repeating: 3, count: 33)
+        let link = invite(host: "h:1", code: Array(repeating: 0, count: 32), contact: (key, lsp, 1234, "Ann"))
+        let parsed = try Engine.parseInvite(link)
+        #expect(parsed.inviterContactInfo == "\(String(repeating: "02", count: 33))_\(String(repeating: "03", count: 33))_1234")
+        #expect(parsed.inviterAlias == "Ann")
+    }
+
+    @Test func rejectsInviteWithoutData() {
+        #expect(throws: (any Error).self) { try Engine.parseInvite("sphinx.chat://?action=i&x=1") }
+        #expect(throws: (any Error).self) { try Engine.parseInvite("d=!!!") }
+    }
+}
+
+struct EngineOfflineTests {
+    let profile = TempProfile()
+
+    @Test func freshAccountIsUnregisteredWithNoContacts() async throws {
+        let storage = try profile.storage()
+        let engine = try Engine(mnemonic: abandon.joined(separator: " "), storage: storage)
+        #expect(await engine.isRegistered == false)
+        #expect(try await engine.contacts().isEmpty)
+        #expect(try Engine.contacts(in: storage).isEmpty)
+        #expect(await engine.connection == .offline(retryIn: nil))
+    }
+
+    @Test func deviceIDIsCreatedOnceAndKept() throws {
+        let words = abandon.joined(separator: " ")
+        let deviceID: String?
+        do {
+            let storage = try profile.storage()
+            _ = try Engine(mnemonic: words, storage: storage)
+            deviceID = try storage.value(for: .deviceID)
+        }
+        #expect(deviceID != nil)
+        let storage = try profile.storage()
+        _ = try Engine(mnemonic: words, storage: storage)
+        #expect(try storage.value(for: .deviceID) == deviceID)
+    }
+
+    @Test func rejectsInvalidMnemonic() throws {
+        let storage = try profile.storage()
+        #expect(throws: (any Error).self) { try Engine(mnemonic: "not words", storage: storage) }
+    }
+}

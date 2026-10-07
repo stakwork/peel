@@ -17,7 +17,8 @@ in progress and what comes next. Update it when you finish something.
     live queries (`conversations()`, `messages(in:)`); holds the profile lock
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
-  - `Profile.swift` — a local account directory; mnemonic in a plain file (dev only)
+  - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
+    the words in the Keychain, `.development` profiles in a plain file (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
   `ConversationView`, `OnboardingView`)

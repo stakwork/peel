@@ -18,18 +18,26 @@ final class AppModel {
     var balanceMsat: UInt64?
     var notice: String?
 
-    /// Which local account to use: launch with `-profile <name>`.
+    /// The app's own account keeps its words in the Keychain. Launching with
+    /// `-profile <name>` opens a development profile instead, whose words sit in
+    /// a plain file; the window says so.
     private(set) var profile: Profile?
     private var engine: Engine?
     private var messagesTask: Task<Void, Never>?
 
     init() {
         do {
-            profile = try Profile(name: UserDefaults.standard.string(forKey: "profile") ?? "default")
+            if let development = UserDefaults.standard.string(forKey: "profile") {
+                profile = try Profile(name: development, kind: .development)
+            } else {
+                profile = try Profile(name: "default", kind: .app)
+            }
         } catch {
             notice = "\(error)"
         }
     }
+
+    var usesFileSecrets: Bool { profile?.kind == .development }
 
     var selectedConversation: Conversation? {
         conversations.first { $0.chat == selectedChat }
@@ -94,7 +102,7 @@ final class AppModel {
                 balanceMsat = msat
             case .coreError(let message):
                 notice = message
-            case .message, .sendStatus:
+            case .message, .sendStatus, .history:
                 break
             }
         }

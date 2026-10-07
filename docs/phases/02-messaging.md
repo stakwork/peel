@@ -1,6 +1,6 @@
 # Phase 2 — Safe accounts: Keychain, onboarding, restore
 
-Status: next. Xcode is installed (2026-10-07), which unblocks all of it.
+Status: in progress. Xcode is installed and an Apple Development certificate exists (2026-10-07).
 
 Goal: Peel can hold a real account safely. The twelve words live in the
 Keychain, a new account can be created from an invite, and an existing account
@@ -28,7 +28,12 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    prefers) and a hardened runtime. Keep `swift build` and `scripts/run-app.sh`
    working for the CLI and quick checks, but the app ships from Xcode from now
    on. Update `AGENTS.md` and the README.
-2. **Keychain storage.** A `SecretStore` with two implementations: Keychain
+2. **Keychain storage.** Done in code, untested until task 1 gives the app a
+   signed identity: `SecretStore` with `KeychainSecretStore` (app profiles,
+   `Application Support/Peel/<name>`) and `FileSecretStore` (development
+   profiles under `Peel/dev/<name>`, CLI only). `Profile(name:kind:)` picks
+   the store; the app uses `.development` only when launched with `-profile`.
+   Original brief: a `SecretStore` with two implementations: Keychain
    (`kSecClassGenericPassword`, service `dev.peel`, account = profile name,
    `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, not synced to iCloud) for
    the app, and the existing file for the CLI. App profiles move to
@@ -42,8 +47,16 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    Finish the flow: name, then a screen that shows the twelve words once with a
    "written down" confirmation, then the conversation list. Verify with a fresh
    invite on the throwaway path. Signup already works end to end from the CLI.
-4. **Restore from twelve words.** After connecting, rebuild what a fresh
-   install lacks. Port the sequence from the Mac app's
+4. **Restore from twelve words.** Engine side done (`Engine.restore()`):
+   `getMsgsCounts`, then one message per contact key (`fetchFirstMsgsPerKey`
+   paging; the core recreates each contact, and the account's own
+   `ContactKeyRecord`s, which the core only honours when signed by this
+   account, supply names and photos), then whatever messages are still
+   missing. Verified 2026-10-07: the throwaway's words restored into a fresh
+   CLI profile reproduced the contact, its name and all messages. Still to do:
+   the app's onboarding path (`AppModel.join` refuses twelve words until the
+   Keychain is live) with a progress view driven by `.history` events.
+   Original brief: after connecting, rebuild what a fresh install lacks. Port the sequence from the Mac app's
    `SphinxOnionManager+AccountRestoreExtension.swift`:
    `getMsgsCounts` → `fetchFirstMsgsPerKey` (one message per contact key, from
    which the core reconstructs each contact; `ContactKeyRecord`, type 33,

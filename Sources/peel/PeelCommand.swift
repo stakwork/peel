@@ -40,7 +40,7 @@ struct PeelCommand {
 
     static func run() async throws {
         var arguments = Arguments(CommandLine.arguments.dropFirst())
-        let profile = try Profile(name: arguments.option("--profile") ?? "default")
+        let profile = try Profile(name: arguments.option("--profile") ?? "default", kind: .development)
         let server = try arguments.option("--server").map { text in
             guard let address = ServerAddress(text) else { throw PeelError("cannot read server address \(text)") }
             return address
@@ -74,7 +74,10 @@ struct PeelCommand {
             let engine = try await Account.restore(
                 profile, mnemonic: readLine() ?? "", alias: alias, network: network, server: server
             )
-            try await Session(engine).connect(insecure: insecure).finish(after: wait)
+            let session = try await Session(engine).connect(insecure: insecure)
+            try await session.engine.restore()
+            print("restore complete")
+            try await session.finish(after: wait)
 
         case "whoami":
             let storage = try Storage(directory: profile.directory, readOnly: true)
@@ -149,6 +152,8 @@ struct Session {
             "\(message.fromMe ? "->" : "<-") \(message.chat.prefix(12)) type \(message.type): \(message.content ?? "")"
         case .sendStatus(let tag, let status):
             "send \(status) \(tag?.prefix(12) ?? "")"
+        case .history(let phase, let reached, let end):
+            "history \(phase): \(reached) of \(end.map(String.init) ?? "?")"
         case .coreError(let message):
             "core error: \(message)"
         }

@@ -41,7 +41,7 @@ public enum Account {
     public static func create(
         _ profile: Profile, alias: String, network: String = "bitcoin", server: ServerAddress
     ) async throws -> Engine {
-        try profile.save(mnemonic: Engine.generateMnemonic())
+        try profile.secrets.save(mnemonic: Engine.generateMnemonic())
         return try await open(profile, alias: alias, network: network, server: server)
     }
 
@@ -62,7 +62,7 @@ public enum Account {
             }
             address = parsed
         }
-        try profile.save(mnemonic: words)
+        try profile.secrets.save(mnemonic: words)
         return try await open(profile, alias: alias, network: network, server: address)
     }
 

@@ -43,6 +43,8 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 /// Message type numbers defined by the core (`MsgType` in the sphinx crate).
 public enum MessageType {
     public static let text = 0
+    /// This account telling its other devices about a contact.
+    public static let contactKeyRecord = 33
 }
 
 /// What a message says about who sent it. Self-declared: trust it only when the

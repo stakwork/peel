@@ -84,6 +84,11 @@ Later, the always-on part may move to a separate engine, possibly in Rust on
 has no UI types and every action is an engine operation, so a different engine
 can sit behind the same interface.
 
+The first candidate for that engine is a fork of Block's Buzz harness
+(`crates/buzz-acp` in `block/buzz`, Rust, Apache 2.0) with a Sphinx transport
+on `sphinx-rs`: its host loop is what phase 9 adopts. See
+`phases/09-agents.md`.
+
 ## Corrections to the two pages
 
 Checked against the code on 2026-10-07.

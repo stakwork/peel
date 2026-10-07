@@ -458,8 +458,8 @@ public actor Engine {
         do {
             try await complete(result, followUps)
         } catch {
-            if let uuid = sent?.uuid {
-                try storage.setStatus(.failed, uuid: uuid)
+            if let tag = sent?.tag {
+                try storage.setStatus(.failed, tag: tag)
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
             emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(error)"))
@@ -472,8 +472,7 @@ public actor Engine {
     /// the server catches up when `getReads` next shows it behind.
     public func markRead(_ chat: String) async throws {
         guard let index = try storage.highestServerIndex(in: chat) else { return }
-        if let read = try storage.lastRead(in: chat), read >= index { return }
-        try storage.setRead(chat: chat, index: index)
+        guard try storage.setRead(chat: chat, index: index) else { return }
         try await publishRead(chat, index: index)
     }
 
@@ -507,12 +506,12 @@ public actor Engine {
     /// run against stale state.
     @discardableResult
     private func run(
-        expectedSender: String? = nil, readsReply: Bool = false,
+        expectedSender: String? = nil,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         let result = try call(time, StateCodec.encode(state))
-        let followUps = try commit(result, time: time, expectedSender: expectedSender, readsReply: readsReply)
+        let followUps = try commit(result, time: time, expectedSender: expectedSender)
         try await complete(result, followUps)
         return result
     }
@@ -521,30 +520,19 @@ public actor Engine {
         var acknowledgedPings: [UInt64] = []
         var justRegistered = false
         var restorePlan: MessageCounts?
-        /// Chats read here further than the server knows, to tell it again.
-        var staleReads: [(chat: String, index: Int64)] = []
     }
 
     /// The synchronous half: one transaction with everything the core reported,
     /// then the in-memory bookkeeping and events.
     private func commit(
-        _ result: RunReturn, time: String, expectedSender: String?, readsReply: Bool = false,
+        _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil
     ) throws -> FollowUps {
         var followUps = FollowUps()
         var commit = Storage.Commit()
         commit.settings[.clock] = time
         commit.resend = resend
-        // The core leaves `lastRead` out when the server has no markers at all,
-        // so a reply to `getReads` counts even without one.
-        let reads = result.lastRead.flatMap { try? JSONDecoder().decode([String: Int64].self, from: Data($0.utf8)) }
-        if readsReply || reads != nil {
-            let reads = reads ?? [:]
-            commit.reads = reads
-            followUps.staleReads = try storage.lastReads().compactMap { chat, index in
-                (reads[chat] ?? -1) < index ? (chat, index) : nil
-            }
-        }
+        commit.reads = Self.reads(result.lastRead)
         if let json = result.muteLevels, let mutes = try? JSONDecoder().decode([String: Int].self, from: Data(json.utf8)) {
             commit.mutes = mutes
         }
@@ -675,9 +663,6 @@ public actor Engine {
                 try Sphinxrs.pingDone(seed: seed, uniqueTime: time, state: state, pingTs: pingTime)
             }
         }
-        for (chat, index) in followUps.staleReads {
-            try await publishRead(chat, index: index)
-        }
         if followUps.justRegistered {
             await cameOnline()
         }
@@ -740,11 +725,14 @@ public actor Engine {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            try await run(expectedSender: expectedSender, readsReply: kind == "getreads") { time, state in
+            let result = try await run(expectedSender: expectedSender) { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL
                 )
+            }
+            if kind == "getreads" {
+                try await republishStaleReads(server: Self.reads(result.lastRead))
             }
         } catch {
             if let expectedSender {
@@ -778,6 +766,20 @@ public actor Engine {
             }
         } catch {
             emit.yield(.coreError("coming online: \(error)"))
+        }
+    }
+
+    /// Read markers by chat, as the core reports them. The core leaves them out
+    /// when the server has none at all, which reads as empty.
+    private static func reads(_ json: String?) -> [String: Int64] {
+        json.flatMap { try? JSONDecoder().decode([String: Int64].self, from: Data($0.utf8)) } ?? [:]
+    }
+
+    /// Tells the server again about chats read here further than it knows,
+    /// such as while offline. Runs only in reply to `getReads`.
+    private func republishStaleReads(server: [String: Int64]) async throws {
+        for (chat, index) in try storage.lastReads() where (server[chat] ?? -1) < index {
+            try await publishRead(chat, index: index)
         }
     }
 

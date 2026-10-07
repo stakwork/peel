@@ -248,12 +248,6 @@ extension Storage {
         }
     }
 
-    func lastRead(in chat: String) throws -> Int64? {
-        try pool.read { db in
-            try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [chat])
-        }
-    }
-
     /// The newest server index in one chat, which is what a read marker points at.
     func highestServerIndex(in chat: String) throws -> Int64? {
         try pool.read { db in
@@ -341,7 +335,7 @@ extension Storage {
                 }
             }
             for (tag, status) in commit.statuses {
-                try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
+                try Self.setStatus(db, status, tag: tag)
             }
             for (chat, index) in commit.reads {
                 try Self.setRead(db, chat: chat, index: index)
@@ -435,18 +429,26 @@ extension Storage {
         )
     }
 
-    func setRead(chat: String, index: Int64) throws {
-        try pool.write { db in try Self.setRead(db, chat: chat, index: index) }
+    /// Returns whether the marker moved.
+    func setRead(chat: String, index: Int64) throws -> Bool {
+        try pool.write { db in
+            let before = try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [chat])
+            guard (before ?? -1) < index else { return false }
+            try Self.setRead(db, chat: chat, index: index)
+            return true
+        }
     }
 
     func setMute(chat: String, level: MuteLevel) throws {
         try pool.write { db in try Self.setMute(db, chat: chat, level: level.rawValue) }
     }
 
-    func setStatus(_ status: Message.Delivery, uuid: String) throws {
-        try pool.write { db in
-            try db.execute(sql: "UPDATE message SET status = ? WHERE uuid = ?", arguments: [status.rawValue, uuid])
-        }
+    func setStatus(_ status: Message.Delivery, tag: String) throws {
+        try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag) }
+    }
+
+    private static func setStatus(_ db: Database, _ status: String, tag: String) throws {
+        try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
     }
 
     /// Removes one of our own messages that never reached the server.

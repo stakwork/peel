@@ -190,31 +190,28 @@ final class AppModel {
     }
 
     func send(_ text: String) async {
-        guard let engine, let chat = selectedChat else { return }
-        conversationNotices[chat] = nil
-        do {
-            try await engine.sendText(text, to: chat)
-        } catch {
-            conversationNotices[chat] = "Could not send: \(error)"
-        }
+        guard let chat = selectedChat else { return }
+        await attempt("send", in: chat) { try await $0.sendText(text, to: chat) }
     }
 
     func resend(_ message: Message) async {
-        guard let engine, let id = message.id else { return }
-        conversationNotices[message.chat] = nil
-        do {
-            try await engine.resend(messageID: id)
-        } catch {
-            conversationNotices[message.chat] = "Could not send again: \(error)"
-        }
+        guard let id = message.id else { return }
+        await attempt("send again", in: message.chat) { try await $0.resend(messageID: id) }
     }
 
     func discard(_ message: Message) async {
-        guard let engine, let id = message.id else { return }
+        guard let id = message.id else { return }
+        await attempt("discard", in: message.chat) { try await $0.discard(messageID: id) }
+    }
+
+    /// Runs an action on one chat; a failure shows above that chat's composer.
+    private func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async {
+        guard let engine else { return }
+        conversationNotices[chat] = nil
         do {
-            try await engine.discard(messageID: id)
+            try await action(engine)
         } catch {
-            conversationNotices[message.chat] = "Could not discard: \(error)"
+            conversationNotices[chat] = "Could not \(what): \(error)"
         }
     }
 
@@ -223,12 +220,7 @@ final class AppModel {
     }
 
     func setMuted(_ chat: String, _ muted: Bool) async {
-        guard let engine else { return }
-        do {
-            try await engine.setMute(chat, level: muted ? .muted : .all)
-        } catch {
-            conversationNotices[chat] = "Could not \(muted ? "mute" : "unmute"): \(error)"
-        }
+        await attempt(muted ? "mute" : "unmute", in: chat) { try await $0.setMute(chat, level: muted ? .muted : .all) }
     }
 
     func reconnectNow() async {

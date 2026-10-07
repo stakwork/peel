@@ -161,17 +161,26 @@ struct SidebarSection<Content: View>: View {
     }
 }
 
-/// A sidebar row that selects a destination.
-struct SidebarLink<Icon: View>: View {
+/// A sidebar row that selects a destination, with an optional trailing accessory.
+struct SidebarLink<Icon: View, Accessory: View>: View {
     @Environment(AppModel.self) private var model
     let title: String
     let destination: AppModel.Destination
+    var unread = false
+    var dimmed = false
     @ViewBuilder let icon: Icon
+    @ViewBuilder let accessory: Accessory
 
-    init(_ title: String, to destination: AppModel.Destination, @ViewBuilder icon: () -> Icon) {
+    init(
+        _ title: String, to destination: AppModel.Destination, unread: Bool = false, dimmed: Bool = false,
+        @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
         self.title = title
         self.destination = destination
+        self.unread = unread
+        self.dimmed = dimmed
         self.icon = icon()
+        self.accessory = accessory()
     }
 
     var body: some View {
@@ -181,13 +190,16 @@ struct SidebarLink<Icon: View>: View {
             HStack(spacing: 9) {
                 icon.frame(width: 18)
                 Text(title).lineLimit(1)
+                Spacer(minLength: 4)
+                accessory
             }
+            .opacity(dimmed ? 0.6 : 1)
         }
-        .buttonStyle(SidebarRowStyle(selected: model.destination == destination))
+        .buttonStyle(SidebarRowStyle(selected: model.destination == destination, unread: unread))
     }
 }
 
-extension SidebarLink where Icon == AnyView {
+extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
     init(_ title: String, systemImage: String, to destination: AppModel.Destination) {
         self.init(title, to: destination) {
             AnyView(Image(systemName: systemImage).font(.system(size: 13)))
@@ -205,26 +217,17 @@ struct DirectMessageLink: View {
         let state = model.readStates[conversation.chat]
         let muted = state?.mute == .muted
         let unread = muted ? 0 : state?.unread ?? 0
-        let destination = AppModel.Destination.chat(conversation.chat)
-        Button {
-            model.destination = destination
-        } label: {
-            HStack(spacing: 9) {
-                Avatar(name: conversation.name, url: conversation.photoURL, size: 18)
-                    .frame(width: 18)
-                Text(conversation.name).lineLimit(1)
-                Spacer(minLength: 4)
-                if muted {
-                    Image(systemName: "bell.slash")
-                        .font(.system(size: 11))
-                        .help("Muted")
-                } else if unread > 0 {
-                    UnreadBadge(count: unread)
-                }
+        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: muted) {
+            Avatar(name: conversation.name, url: conversation.photoURL, size: 18)
+        } accessory: {
+            if muted {
+                Image(systemName: "bell.slash")
+                    .font(.system(size: 11))
+                    .help("Muted")
+            } else if unread > 0 {
+                UnreadBadge(count: unread)
             }
-            .opacity(muted ? 0.6 : 1)
         }
-        .buttonStyle(SidebarRowStyle(selected: model.destination == destination, unread: unread > 0))
         .contextMenu {
             Button(muted ? "Unmute" : "Mute") {
                 Task { await model.setMuted(conversation.chat, !muted) }
@@ -284,7 +287,7 @@ struct ConnectionCard: View {
                     .font(Theme.font(14, .medium))
                     .monospacedDigit()
             }
-            if model.connection != .connected, let error = model.connectionError {
+            if let error = model.connectionError {
                 Text(error)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)

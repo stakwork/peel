@@ -104,7 +104,7 @@ struct MessageList: View {
         let message = messages[index], next = messages[index + 1]
         return next.fromMe != message.fromMe
             || next.date.timeIntervalSince(message.date) > 5 * 60
-            || !Calendar.current.isDate(next.date, inSameDayAs: message.date)
+            || startsNewDay(at: index + 1)
     }
 }
 
@@ -138,9 +138,9 @@ struct MessageRow: View {
 
     var body: some View {
         // A pending send becomes retryable after a timeout, with no change to
-        // the row itself, so only those rows re-check the clock.
+        // the row itself, so those rows redraw once when it passes.
         if message.delivery == .pending {
-            TimelineView(.periodic(from: .now, by: 5)) { context in
+            TimelineView(.explicit([message.date.addingTimeInterval(Message.confirmationTimeout + 0.5)])) { context in
                 row(now: context.date)
             }
         } else {
@@ -156,7 +156,7 @@ struct MessageRow: View {
                 hoverTime
             }
             VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
-                bubble
+                MessageBubble(message: message)
                     .opacity(message.delivery == .pending && !retryable ? 0.6 : 1)
                 if retryable {
                     UndeliveredActions(message: message)
@@ -173,7 +173,19 @@ struct MessageRow: View {
         .onHover { hovering = $0 }
     }
 
-    private var bubble: some View {
+    /// Always laid out, so hovering never shifts the row; only its opacity changes.
+    private var hoverTime: some View {
+        MessageMeta(message: message)
+            .opacity(hovering && !endsRun ? 1 : 0)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Its own view, so hovering the row does not redo link detection.
+struct MessageBubble: View {
+    let message: Message
+
+    var body: some View {
         Text(LinkText.attributed(message.content ?? "", onSentBubble: message.fromMe))
             .font(Theme.font(14))
             .lineSpacing(2)
@@ -186,13 +198,6 @@ struct MessageRow: View {
             )
             .foregroundStyle(message.fromMe ? Theme.sentText : Theme.text)
             .help(message.date.formatted(date: .complete, time: .shortened))
-    }
-
-    /// Always laid out, so hovering never shifts the row; only its opacity changes.
-    private var hoverTime: some View {
-        MessageMeta(message: message)
-            .opacity(hovering && !endsRun ? 1 : 0)
-            .accessibilityHidden(true)
     }
 }
 

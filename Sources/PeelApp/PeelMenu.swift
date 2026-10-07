@@ -36,7 +36,11 @@ struct MenuItem {
     /// What the row says once clicked, waiting for a second click, for
     /// what deletes, discards or leaves ("Delete for everyone").
     var confirm: String?
-    var action: @MainActor () -> Void
+    /// Shown at the bottom of the window when `action` says it did its job
+    /// ("Copied"), since the menu has gone by then.
+    var done: String?
+    /// Returns whether it did its job; only `done` cares.
+    var action: @MainActor () -> Bool
 }
 
 enum MenuEntry {
@@ -50,7 +54,10 @@ enum MenuEntry {
         _ title: String, systemImage: String? = nil, shortcut: MenuShortcut? = nil, checked: Bool = false,
         action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, shortcut: shortcut, checked: checked, action: action))
+        .item(MenuItem(title: title, systemImage: systemImage, shortcut: shortcut, checked: checked) {
+            action()
+            return true
+        })
     }
 
     /// Red, and confirmed by a second click: the first turns the row into
@@ -58,12 +65,30 @@ enum MenuEntry {
     static func destructive(
         _ title: String, systemImage: String? = nil, confirm: String, action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, destructive: true, confirm: confirm, action: action))
+        .item(MenuItem(title: title, systemImage: systemImage, destructive: true, confirm: confirm) {
+            action()
+            return true
+        })
+    }
+
+    /// A copy item: `copy` returns whether it copied, and "Copied" shows at
+    /// the bottom of the window when it did.
+    static func copy(
+        _ title: String, systemImage: String = "doc.on.doc", shortcut: MenuShortcut? = nil,
+        copy: @escaping @MainActor () -> Bool
+    ) -> MenuEntry {
+        .item(MenuItem(title: title, systemImage: systemImage, shortcut: shortcut, done: "Copied", action: copy))
+    }
+
+    static func copy(
+        _ title: String, text: String, systemImage: String = "doc.on.doc", shortcut: MenuShortcut? = nil
+    ) -> MenuEntry {
+        .copy(title, systemImage: systemImage, shortcut: shortcut) { Clipboard.copy(text) }
     }
 
     /// "Copy text" (⌘C), the same wherever a message's words can be copied.
     static func copyText(_ text: String) -> MenuEntry {
-        .button("Copy text", systemImage: "doc.on.doc", shortcut: .command("c")) { Clipboard.copy(text) }
+        .copy("Copy text", text: text, shortcut: .command("c"))
     }
 
     var item: MenuItem? {
@@ -105,6 +130,14 @@ final class MenuPresenter {
     /// it, so that view can show it is the menu's subject.
     private(set) var isOpen = false
     private(set) var source: AnyHashable?
+
+    /// A short note at the bottom of the host window, such as "Copied".
+    struct Toast: Equatable {
+        let id = UUID()
+        let text: String
+    }
+
+    private(set) var toast: Toast?
 
     /// Gives floating content the environment of the window it opens from.
     @ObservationIgnored var environment: (AnyView) -> AnyView = { $0 }
@@ -209,7 +242,18 @@ final class MenuPresenter {
             return
         }
         dismiss()
-        item.action()
+        if item.action(), let done = item.done { showToast(done) }
+    }
+
+    /// Shows `text` at the bottom of the window for a moment; another one
+    /// takes its place and starts the wait again.
+    func showToast(_ text: String) {
+        toast = Toast(text: text)
+        CopyFeedback.announce(text)
+    }
+
+    func hideToast(id: UUID) {
+        if toast?.id == id { toast = nil }
     }
 
     func cancelConfirmation() {
@@ -344,6 +388,10 @@ private struct MenuHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .overlay(alignment: .bottom) {
+                ToastView(presenter: presenter)
+                    .padding(.bottom, 72)
+            }
             .environment(\.menuPresenter, presenter)
             #if os(macOS)
             .background(WindowReader { presenter.hostWindow = $0 })
@@ -504,17 +552,18 @@ struct MenuButton: View {
     }
 }
 
-/// A small icon button that lights up under the pointer.
-struct HoverIconButton: View {
-    let systemImage: String
+/// A small icon button that lights up under the pointer: an SF Symbol, or
+/// any label (`CopyButton`'s icon).
+struct HoverIconButton<Label: View>: View {
     let help: String
     let action: () -> Void
+    @ViewBuilder let label: () -> Label
 
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
+            label()
                 .font(.system(size: 13))
                 .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
                 .frame(width: 28, height: 26)
@@ -525,6 +574,12 @@ struct HoverIconButton: View {
         .onHover { hovering = $0 }
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+extension HoverIconButton where Label == Image {
+    init(systemImage: String, help: String, action: @escaping () -> Void) {
+        self.init(help: help, action: action) { Image(systemName: systemImage) }
     }
 }
 

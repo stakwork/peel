@@ -204,7 +204,7 @@ struct SidebarHeader: View {
             .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
         ]
         if let info = model.myContactInfo {
-            actions.append(.button("Copy contact info", systemImage: "doc.on.doc") { Clipboard.copy(info) })
+            actions.append(.copy("Copy contact info", text: info))
         }
         return .sections(
             [.view(AnyView(MenuIdentity(name: model.myAlias ?? "You", detail: detail, photoURL: model.myPhotoURL)))],
@@ -407,7 +407,7 @@ enum ConversationMenu {
         }
         guard conversation.isTribe, let tribe = model.tribe(chat) else { return .sections(read, levels) }
         let link: [MenuEntry] = tribe.link.map { link in
-            [.button("Copy tribe link", systemImage: "link") { Clipboard.copy(link) }]
+            [.copy("Copy tribe link", text: link, systemImage: "link")]
         } ?? []
         var leave: [MenuEntry] = []
         if tribe.status != .active {
@@ -955,12 +955,15 @@ extension View {
 }
 
 enum Clipboard {
-    static func copy(_ text: String) {
+    /// Returns whether it copied, like `copyImage`, for `CopyButton` and `MenuEntry.copy`.
+    @discardableResult
+    static func copy(_ text: String) -> Bool {
         #if os(macOS)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        return NSPasteboard.general.setString(text, forType: .string)
         #else
         UIPasteboard.general.string = text
+        return true
         #endif
     }
 
@@ -1002,14 +1005,16 @@ enum Clipboard {
         #endif
     }
 
-    /// Puts the picture in a file on the clipboard.
-    static func copyImage(at file: URL) {
+    /// Puts the picture in a file on the clipboard; false when it cannot be read.
+    static func copyImage(at file: URL) -> Bool {
         #if os(macOS)
-        guard let image = NSImage(contentsOf: file) else { return }
+        guard let image = NSImage(contentsOf: file) else { return false }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([image])
+        return NSPasteboard.general.writeObjects([image])
         #else
-        UIPasteboard.general.image = UIImage(contentsOfFile: file.path)
+        guard let image = UIImage(contentsOfFile: file.path) else { return false }
+        UIPasteboard.general.image = image
+        return true
         #endif
     }
 

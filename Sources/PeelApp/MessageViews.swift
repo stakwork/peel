@@ -487,7 +487,7 @@ enum MessageMenu {
         var file: [MenuEntry] = []
         if oneMessage, message.attachmentKind != nil, message.uploadState != .pending {
             if message.attachmentKind == .image, let id = message.id, model.attachment(id).file != nil {
-                file.append(.button("Copy image", systemImage: "photo") { model.copyImage(message) })
+                file.append(.copy("Copy image", systemImage: "photo") { model.copyImage(message) })
             }
             file.append(.button("Save as…", systemImage: "square.and.arrow.down") { Task { await model.save(message) } })
         }

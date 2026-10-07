@@ -196,6 +196,11 @@ public actor Engine {
     private var restoring: Bool
     /// Whether `recoverOwnPhoto` has run for this engine.
     private var photoRecoveryDone = false
+    /// The aliases each tribe echoed back on this account's own messages;
+    /// with the account's own tribe alias, what a mention of it looks like there.
+    private var echoedAliases: [String: Set<String>]
+    /// The background re-check of stored messages for mentions; see `checkMentionsIfNeeded`.
+    private var mentionScan: Task<Void, Never>?
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
 
@@ -250,6 +255,7 @@ public actor Engine {
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
         droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
         restoring = try storage.value(for: .needsRestore) == "1"
+        echoedAliases = try storage.echoedOwnAliases()
         media = MediaStore(profile: storage.directory)
         // The profile lock means no other process is uploading; anything
         // still uploading was cut off, and can be retried.
@@ -327,6 +333,41 @@ public actor Engine {
         try storage.set(alias, for: .alias)
         self.alias = alias
         emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
+        checkMentionsIfNeeded()
+    }
+
+    /// Re-checks stored tribe messages for mentions of this account whenever
+    /// the aliases that name it have changed since the last check (or were
+    /// never checked: history stored before mentions were flagged), only in
+    /// the tribes affected unless the account's alias changed. Runs in the
+    /// background, off this actor, once at a time; a change meanwhile starts
+    /// another when it ends. Not during a restore, which flags what it stores
+    /// and checks at its end. Called on rename, when an echo brings a new
+    /// alias, and at the end of each history sync.
+    private func checkMentionsIfNeeded() {
+        guard mentionScan == nil, !restoring, !alias.isEmpty else { return }
+        let mark = MentionScan(sent: tribeAlias(alias), echoed: echoedAliases)
+        let last = (try? storage.value(for: .mentionScan)).flatMap(MentionScan.init(stored:))
+        guard mark != last, let stored = mark.stored else { return }
+        let chats = mark.chats(changedSince: last)
+        let storage = storage
+        mentionScan = Task.detached { [weak self] in
+            let result = Result {
+                try storage.rescanMentions(sent: mark.sent, echoed: mark.echoed, in: chats)
+                try storage.set(stored, for: .mentionScan)
+            }
+            await self?.mentionScanEnded(result)
+        }
+    }
+
+    /// The aliases may have changed while the scan ran; a failed one waits
+    /// for the next trigger.
+    private func mentionScanEnded(_ result: Result<Void, any Error>) {
+        mentionScan = nil
+        switch result {
+        case .success: checkMentionsIfNeeded()
+        case .failure(let error): emit.yield(.coreError("checking mentions: \(error)"))
+        }
     }
 
     /// The photo others see beside this account's messages: an https URL, or
@@ -1514,7 +1555,8 @@ public actor Engine {
         var knownTribes = tribes
         var droppedIndex = self.droppedIndex
         var notTribes: Set<String> = []
-        let myTribeAlias = tribeAlias(alias)
+        var echoedAliases = self.echoedAliases
+        let sentAlias = tribeAlias(alias)
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
@@ -1550,9 +1592,12 @@ public actor Engine {
                     message.timestamp = date
                 }
                 // Our own message coming back from the tribe takes over the row written at send.
-                if message.fromMe { replaces = fields?.originalUuid }
-                if !message.fromMe, message.type == MessageType.text, let content = message.content {
-                    message.mentionsMe = mentions(content, alias: myTribeAlias)
+                if message.fromMe {
+                    replaces = fields?.originalUuid
+                    if let echoed = message.senderAlias { echoedAliases[message.chat, default: []].insert(echoed) }
+                } else if MessageType.content.contains(message.type), let content = message.content {
+                    let aliases = ownTribeAliases(sent: sentAlias, echoed: echoedAliases[message.chat] ?? [])
+                    message.mentionsMe = mentions(content, aliases: aliases)
                 }
             }
             commit.messages.append((message, trustSender, replaces))
@@ -1594,6 +1639,10 @@ public actor Engine {
             contactsByChildIndex = Self.index(contacts)
         }
         tribes = knownTribes
+        if echoedAliases != self.echoedAliases {
+            self.echoedAliases = echoedAliases
+            checkMentionsIfNeeded()
+        }
         self.droppedIndex = droppedIndex
         if let members {
             memberLists[members.pubkey] = members
@@ -1942,6 +1991,7 @@ public actor Engine {
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()
         }
+        checkMentionsIfNeeded()
         emit.yield(.historyDone)
     }
 

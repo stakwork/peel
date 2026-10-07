@@ -109,7 +109,8 @@ status by tag, contact alias/photo rules, the `conversations()` and
 `ServerAddress` parsing; and the `Engine` helpers that need no server
 (mnemonics, invites, a fresh account); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
-cache, and the attachment columns. Nothing talks to a broker: anything
+cache, and the attachment columns; mention matching, the aliases that name
+this account in a tribe, and the mention re-scan. Nothing talks to a broker: anything
 protocol-level is still verified against the local test server.
 
 ### Local memes server

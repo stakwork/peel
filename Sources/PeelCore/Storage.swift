@@ -213,6 +213,9 @@ public enum Setting: String, Sendable {
     case droppedIndex
     /// "0" when notifications should say only "New message"; text is shown otherwise.
     case notificationText
+    /// The aliases stored tribe messages were last checked for mentions of
+    /// this account (`MentionScan`); a change checks them again.
+    case mentionScan
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -351,6 +354,58 @@ extension Storage {
         let decoder = JSONDecoder()
         let photo = senders.lazy.compactMap { try? decoder.decode(SenderInfo.self, from: Data($0.utf8)).photoURL }.first
         return photo?.httpsOnly
+    }
+
+    /// The aliases the tribes echoed back on this account's own messages, by tribe.
+    func echoedOwnAliases() throws -> [String: Set<String>] {
+        try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT DISTINCT chat, json_extract(sender, '$.alias') AS alias FROM message
+                WHERE fromMe = 1 AND chat IN (SELECT pubkey FROM tribe) AND json_valid(sender)
+                  AND IFNULL(json_extract(sender, '$.alias'), '') != ''
+                """
+            ).reduce(into: [:]) { aliases, row in aliases[row["chat"] as String, default: []].insert(row["alias"]) }
+        }
+    }
+
+    /// Checks the stored tribe text messages and attachments from others (in
+    /// `chats`, or every tribe) for a mention of this account, by the aliases
+    /// that name it in that tribe, and sets `mentionsMe` to match. In chunks,
+    /// each its own transaction, so other writes go on alongside.
+    func rescanMentions(
+        sent: String, echoed: [String: Set<String>], in chats: Set<String>? = nil, chunk: Int = 500
+    ) throws {
+        if chats?.isEmpty == true { return }
+        let only = chats.map { "AND chat IN (\(databaseQuestionMarks(count: $0.count)))" } ?? ""
+        let plain: Set = [sent]
+        let aliasesByChat = echoed.mapValues { ownTribeAliases(sent: sent, echoed: $0) }
+        var after: Int64 = 0
+        while true {
+            let arguments: StatementArguments = [after] + StatementArguments(Array(chats ?? [])) + [chunk]
+            let last: Int64? = try pool.write { db in
+                let rows = try Row.fetchAll(
+                    db, sql: """
+                        SELECT id, chat, content, mentionsMe FROM message
+                        WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
+                          AND type IN (\(MessageType.contentSQL)) AND chat IN (SELECT pubkey FROM tribe) \(only)
+                        ORDER BY id LIMIT ?
+                        """,
+                    arguments: arguments
+                )
+                for row in rows {
+                    let mentioned = PeelCore.mentions(row["content"], aliases: aliasesByChat[row["chat"]] ?? plain)
+                    if mentioned != row["mentionsMe"] {
+                        try db.execute(
+                            sql: "UPDATE message SET mentionsMe = ? WHERE id = ?",
+                            arguments: [mentioned, row["id"] as Int64]
+                        )
+                    }
+                }
+                return rows.count < chunk ? nil : rows.last?["id"]
+            }
+            guard let last else { return }
+            after = last
+        }
     }
 
     /// The newest server index stored.
@@ -917,6 +972,7 @@ extension Storage {
                        uuid = ?,
                        serverIndex = COALESCE(?, serverIndex),
                        timestamp = COALESCE(?, timestamp),
+                       sender = COALESCE(sender, ?),
                        status = ?
                    WHERE uuid = ? AND chat = ? AND fromMe = 1
                        AND NOT EXISTS (SELECT 1 FROM message WHERE uuid = ?)
@@ -924,7 +980,7 @@ extension Storage {
                    """,
                // The tribe forwarding it proves the server took it.
                arguments: [
-                   uuid, message.serverIndex, message.timestamp, Message.Delivery.delivered.rawValue,
+                   uuid, message.serverIndex, message.timestamp, message.sender, Message.Delivery.delivered.rawValue,
                    original, message.chat, uuid,
                ]
            ) {

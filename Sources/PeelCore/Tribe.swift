@@ -346,13 +346,64 @@ public func amount(_ text: String, unit: UInt64, of what: String) throws -> UInt
     return UInt64(truncating: whole as NSDecimalNumber)
 }
 
-/// A mention is `@alias` written as its own word in a tribe message; no
-/// other field marks it. The tribes server splits the text on spaces and
-/// matches member aliases exactly (`detect_mentions`) to decide who gets a
-/// push, so Peel reads mentions the same way.
-public func mentions(_ text: String, alias: String) -> Bool {
-    let tag = "@" + alias
-    return text.contains(tag) && text.split(whereSeparator: \.isWhitespace).contains { $0 == tag }
+/// A mention is `@alias` in a tribe message's text; no other field marks it.
+/// The official apps insert `@alias ` from their autocomplete, and they and
+/// the tribes server disagree on how strictly to read it: the server pushes
+/// only for an exact word between spaces, the Mac app's badge is any
+/// case-insensitive `@alias` in the text. Peel reads it as people write it:
+/// any case, after a space or the start, and ended by anything an alias
+/// cannot contain (so "@Tom_Smith," and "@tom_smith:" count, "@Tom_Smith_2"
+/// and "mail@Tom_Smith" do not).
+public func mentions(_ text: String, aliases: some Collection<String>) -> Bool {
+    guard text.contains("@") else { return false }
+    let words = aliases.filter { !$0.isEmpty }.map { "@" + $0.lowercased() }
+    let lower = text.lowercased()
+    for word in words {
+        var from = lower.startIndex
+        while let found = lower.range(of: word, range: from..<lower.endIndex) {
+            let before = found.lowerBound == lower.startIndex || !isAliasCharacter(lower[lower.index(before: found.lowerBound)])
+            let after = found.upperBound == lower.endIndex || !isAliasCharacter(lower[found.upperBound])
+            if before && after { return true }
+            from = found.upperBound
+        }
+    }
+    return false
+}
+
+private func isAliasCharacter(_ c: Character) -> Bool {
+    c.isASCII && (c.isLetter || c.isNumber || c == "_")
+}
+
+/// The aliases that name this account in one tribe. Members know it by what
+/// the tribe forwarded, and the tribe echoes that back on this account's own
+/// messages: the alias it was sent with, or `name_2` when the tribes server
+/// made it unique because another member already had the name (who then owns
+/// the plain one; the server only ever appends `_2`), or an earlier name
+/// (kept on purpose: older messages name it), or one sent from another
+/// device. And the alias it sends now (`sent`, `tribeAlias` of its name),
+/// unless the tribe has already made that one unique.
+func ownTribeAliases(sent: String, echoed: Set<String>) -> Set<String> {
+    echoed.contains(sent + "_2") ? echoed : echoed.union([sent])
+}
+
+/// What stored tribe messages were last checked for mentions with
+/// (`Setting.mentionScan`): the account's tribe alias (`sent`) and the
+/// aliases each tribe echoed back.
+struct MentionScan: Codable, Equatable, Sendable {
+    var sent: String
+    var echoed: [String: Set<String>]
+
+    var stored: String? {
+        (try? JSONEncoder().encode(self)).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// The tribes whose messages need checking again since `last`: all of
+    /// them (nil) when there was none or the account's alias changed, else
+    /// those whose echoed aliases changed.
+    func chats(changedSince last: MentionScan?) -> Set<String>? {
+        guard let last, last.sent == sent else { return nil }
+        return Set(echoed.keys).union(last.echoed.keys).filter { echoed[$0] != last.echoed[$0] }
+    }
 }
 
 extension String {
@@ -363,8 +414,13 @@ extension String {
 /// Aliases in tribes: letters, digits and underscores, spaces as underscores,
 /// as the official apps send them.
 func tribeAlias(_ alias: String) -> String {
-    let fixed = String(alias.replacingOccurrences(of: " ", with: "_").filter {
-        $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_")
-    })
+    let fixed = String(alias.replacingOccurrences(of: " ", with: "_").filter(isAliasCharacter))
     return fixed.isEmpty ? "Unknown" : fixed
+}
+
+extension MentionScan {
+    init?(stored: String) {
+        guard let scan = try? JSONDecoder().decode(Self.self, from: Data(stored.utf8)) else { return nil }
+        self = scan
+    }
 }

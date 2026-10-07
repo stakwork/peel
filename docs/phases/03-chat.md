@@ -50,7 +50,7 @@ messages, payments and boosts are separate tasks and not listed.
 | Deleted tribes left out of a restore | restores only tribes the registry still serves | — | Done (from the 22 in history) |
 | Mentions: `@` autocomplete from aliases heard in 3 months | `aliasesAndPics`, `getAtMention` | — (plain `content`) | Done |
 | Mentions: highlighted in messages | `\B@[^\s]+` | — | Done (bold) |
-| Mentions: which messages mention me | `content.contains("@alias ")` | server `detect_mentions` (exact word) | Done, as the server reads them |
+| Mentions: which messages mention me | badge `lowercased().contains("@alias")`, push `contains("@alias ")` | server `detect_mentions` (exact word) | Done: any case, punctuation after, per-tribe alias (see "Mentions fix") |
 | Notification level: all, mentions only, mute | NotificationLevelView | `mute` 0 / 1 / 2 | Done (row context menu; count follows the level) |
 | Mentions list across tribes | badge only | — | Done (sidebar Mentions) |
 | Pinned message (owner pins, everyone sees it) | `shouldTogglePinState`, PinMessageBarView | `update_tribe` `pin` | Done (pin bar, context menu) |
@@ -180,7 +180,8 @@ What the protocol does (checked against the tribes server):
 - Mentions are plain `@alias` in `content`. The tribes server splits on
   spaces and matches aliases exactly to decide who gets a push (mute level
   1); the Mac app's local check is `contains("@alias ")`. Peel reads a
-  mention as the server does: `@alias` as a whole word, exact case.
+  mention case-insensitively and ended by any non-alias character (see
+  "Mentions fix" below).
 - The tribes server stamps `role: 0` on what the owner sends, including the
   join it sends the owner on creation.
 
@@ -372,9 +373,8 @@ exact, e.g. "1.999 sats"); `isPerson` duplicated the contact lookup.
 - From the parity table: tags, app and feed URLs, second brain URL; image
   upload; per-tribe alias and photo; a tribe details page; browsing the
   tribes directory; a QR code for the link.
-- Mentions flagged before v7 (or from history the engine had already stored)
-  are not back-filled; nor is a mention of the alias the tribes server
-  made unique for us (`name_2`).
+- (Done in "Mentions fix": back-fill of mentions stored before v7, and the
+  alias the tribes server made unique for us, `name_2`.)
 - Escrow refunds are the tribes server's job; nothing to build, not checked.
 
 ### Decided (parity)
@@ -497,6 +497,77 @@ only a replayed deletion, not a tribe already stored deleted and not left
 (a restore starts from an empty profile, so there is none); `--photo` is
 applied by the CLI after `Account` builds the engine rather than passed in
 like `--alias` (same effect; it is saved before connecting).
+
+### Mentions fix (branch `fix/mentions`, 2026-10-07)
+
+Tom's Mentions list was empty on his real account though colleagues write
+`@Tom_Smith`. Root cause: his account was restored (commit #6, 14:44) before
+`mentionsMe` existed (v7, #7, 15:30); nothing ever re-read stored messages,
+and later syncs fetch only newer ones. Hardened at the same time: the match
+was exact case and needed whitespace after the alias, and used only the
+account's own alias, never the one the tribe actually forwards.
+
+Checked against the official apps and the tribes server:
+- Alias in a tribe: both official apps send `fixedAlias` (spaces to
+  underscores, only `[A-Za-z0-9_]`), as Peel's `tribeAlias` does. The tribes
+  server does not convert; when the alias is another member's it rewrites it
+  to `alias_2` (`uniqueify_alias`, also on history replays to a late joiner,
+  so the earlier member can be the one renamed) and stores the newest alias.
+  The echo of our own message carries the alias the tribe forwarded.
+- Autocomplete: both apps insert `@<alias> ` from aliases seen on messages;
+  Peel inserts the same (`ComposerField`), so its mentions notify official
+  users. No change needed there.
+- Detection: push in both apps `content.contains("@\(myAlias) ")` (exact case,
+  needs a space after); Mac badge `lowercased().contains("@alias")` (any
+  case, prefix matches too); server push: split on spaces, exact token.
+
+Built:
+- `mentions(_:aliases:)`: `@alias`, any case, after the start or a
+  non-alias character, ended by the end or a non-alias character
+  ("@Tom_Smith," and "@tom_smith:" count; "@Tom_Smith_2" does not count
+  for "Tom_Smith"). Text messages and attachment captions.
+- `ownTribeAliases(sent:echoed:)`: the aliases each tribe echoed back on
+  this account's own messages (earlier names too), plus `tribeAlias` of the
+  current name unless the tribe already echoed it as `<name>_2` (then the
+  plain one is another member's).
+- Storage: our own tribe message's echo now fills the row's `sender` (it was
+  left empty), `echoedOwnAliases()`, and `rescanMentions` (chunks of 500 by
+  id, each its own write, sets `mentionsMe` to the match).
+- Engine: echoed aliases kept in memory and updated in `commit`;
+  `checkMentionsIfNeeded` (end of every history sync, after a restore too;
+  rename; an echo with a new alias) runs the scan detached when
+  `Setting.mentionScan` (`MentionScan`: the aliases last scanned for, JSON)
+  differs, only over the tribes whose aliases changed unless the name did,
+  then records it; a change during a scan starts another after it. No
+  migration.
+
+Verified (local stack on 1895/8825/8025, profiles `mn-alice`, `mn-imp`,
+`mn-tom`, `mn-tom2`, deleted afterwards): `mn-imp` took "Tom Smith" in a
+tribe first, so `mn-tom`'s post came back as `Tom_Smith_2`. Live: "@Tom_Smith_2
+can you check" and "thanks @tom_smith_2, great" flagged, "@Tom_Smith hi other
+tom" (the other member) not; in another tribe "@Tom_Smith: ping" and
+"@Tommy old name" (the name it joined with) flagged, "no mention here" not.
+After clearing every flag and the scan setting (as history stored before v7),
+`mentions` listed nothing; one `listen` later it listed the same four. A
+restore into `mn-tom2` listed the same four.
+
+Not covered: our own tribe messages whose echo arrived live before this
+change have no `sender`, so their alias is not known after a restart (the
+plain name still counts unless a restored echo shows `_2`). Echoed aliases
+are read once per launch with a scan of our own messages (no index on
+`fromMe`); acceptable at this size, a tribe column would need a migration.
+
+Reviews: `/code-review high` fixed: the current name counts beside echoed
+ones (unless echoed as `_2`); an echo with a new alias triggers the check;
+a scan no longer cancelled on disconnect (it needs no network) and one that
+ends re-checks; only changed tribes are rescanned; aliases computed once per
+tribe in the scan. Not applied: echoed aliases on the tribe row (migration),
+back-filling `sender` on rows echoed live before this change (data gone).
+`/simplify` applied GRDB `databaseQuestionMarks`, a memberwise `MentionScan`,
+`Result` for the scan outcome, one meaning of the alias (`sent`); skipped
+precomputed `@word` lists and a read/write split per chunk (small).
+`/security-review`: no finding at confidence 8 or above (a malicious tribe
+server can only change mention flags within its own tribe).
 
 ### Reviews (parity, 2026-10-07)
 

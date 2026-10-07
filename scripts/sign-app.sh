@@ -23,4 +23,4 @@ fi
 # No timestamp: the bundle is re-signed on every launch, never distributed as is.
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$APP"
 codesign --verify --strict "$APP"
-echo "signed $(basename "$APP") with: $(codesign -dv "$APP" 2>&1 | sed -n 's/^Authority=\(Apple Development.*\)/\1/p' | head -1 || echo "$IDENTITY")"
+echo "signed $(basename "$APP") with: $(codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=\(Apple Development.*\)/\1/p' | head -1 || echo "$IDENTITY")"

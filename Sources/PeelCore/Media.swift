@@ -1,5 +1,8 @@
 import CommonCrypto
 import CryptoKit
+#if os(macOS)
+import CoreServices
+#endif
 import Foundation
 import ImageIO
 import Synchronization
@@ -467,8 +470,12 @@ struct MemesServer: Sendable {
         text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+?#"))) ?? text
     }
 
-    /// `POST /file`: the encrypted bytes; returns the muid.
-    func upload(_ sealed: Data, as file: OutgoingFile, token: Token, progress: Progress? = nil) async throws -> String {
+    /// `POST /file`: the encrypted bytes; returns the muid. `POST /public`
+    /// takes a public image in the clear (a profile photo), as the Mac app's
+    /// `uploadPublicImage`; it is then served at `publicURL(muid)`.
+    func upload(
+        _ sealed: Data, as file: OutgoingFile, token: Token, route: String = "file", progress: Progress? = nil
+    ) async throws -> String {
         let boundary = "peel-\(UUID().uuidString)"
         var body = Data()
         body.reserveCapacity(sealed.count + 1024)
@@ -482,18 +489,24 @@ struct MemesServer: Sendable {
         let fileName = file.fileName.withoutControlCharacters.replacingOccurrences(of: "\"", with: "'")
         part("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: \(file.mediaType)", sealed)
         body += Data("--\(boundary)--\r\n".utf8)
-        var request = URLRequest(url: base.appendingPathComponent("file"))
+        var request = URLRequest(url: base.appendingPathComponent(route))
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
         let transfer = Transfer(limit: 1_000_000, what: "the upload", progress: progress)
         let (data, _) = try await transfer.run(Self.session.uploadTask(with: request, from: body))
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let muid = json["muid"] as? String, !muid.isEmpty else {
+              let muid = json["muid"] as? String, !muid.isEmpty,
+              // It becomes part of a URL path and of the media token.
+              muid.unicodeScalars.allSatisfy({ $0.isASCII && (CharacterSet.alphanumerics.contains($0) || "-_=".unicodeScalars.contains($0)) })
+        else {
             throw Failure.unreadableReply("the upload")
         }
         return muid
     }
+
+    /// Where an image uploaded to `/public` is served.
+    func publicURL(_ muid: String) -> URL { base.appendingPathComponent("public").appendingPathComponent(muid) }
 
     /// `GET /file/<media token>`: the encrypted bytes and the file name the
     /// server gives, refusing anything over `limit` bytes.
@@ -620,5 +633,112 @@ struct AttachmentFields: Decodable {
 
     static func decode(_ body: String?) -> AttachmentFields? {
         body.flatMap { try? JSONDecoder().decode(AttachmentFields.self, from: Data($0.utf8)) }
+    }
+}
+
+/// Pictures decoded at the size they are used, upright: attachments, photos,
+/// thumbnails. One set of ImageIO options for all of them.
+public enum ImageDecoding {
+    /// The first image of `source`, at most `maxPixels` on its long side.
+    public static func thumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
+        CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+        ] as CFDictionary)
+    }
+
+    /// The picture in a file, read without keeping the full-size image.
+    public static func thumbnail(_ file: URL, maxPixels: Int) -> CGImage? {
+        CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+            .flatMap { thumbnail($0, maxPixels: maxPixels) }
+    }
+}
+
+/// A profile photo as the Mac app uploads one: JPEG at quality 0.5.
+enum ProfilePhoto {
+    static let maxPixels = 1024
+
+    /// The picture at `file`, at most `maxPixels` on its long side, upright.
+    static func jpeg(from file: URL, limit: Int) throws -> Data {
+        let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+        guard let image = ImageDecoding.thumbnail(file, maxPixels: maxPixels) else {
+            throw PeelError("\(file.lastPathComponent) is not a picture")
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw PeelError("could not make a JPEG")
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.5] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw PeelError("could not make a JPEG") }
+        return data as Data
+    }
+}
+
+/// Files Peel writes for the person: an attachment saved where they chose,
+/// or into Downloads. Each is a copy of the decrypted file, marked as
+/// downloaded from the internet (quarantined, with Peel as the agent), so
+/// Gatekeeper checks it before it is opened. Peel itself never opens one.
+public enum UserFiles {
+    /// Copies `file` into `directory` under a cleaned `name`, as "name (1).ext"
+    /// and so on when that is taken. Returns where it went.
+    public static func save(_ file: URL, named name: String, in directory: URL) throws -> URL {
+        let clean = cleanName(name)
+        let base = (clean as NSString).deletingPathExtension, ext = (clean as NSString).pathExtension
+        for attempt in 0..<1000 {
+            let candidate = attempt == 0 ? clean : "\(base) (\(attempt))" + (ext.isEmpty ? "" : ".\(ext)")
+            let target = directory.appendingPathComponent(candidate, isDirectory: false)
+            do {
+                try FileManager.default.copyItem(at: file, to: target)
+            } catch CocoaError.fileWriteFileExists {
+                continue
+            }
+            try quarantine(target)
+            return target
+        }
+        throw PeelError("there are too many files called \(clean) already")
+    }
+
+    /// Copies `file` to `target`, replacing what is there (the person chose
+    /// it in a save panel, which asked first).
+    public static func copy(_ file: URL, to target: URL, replacing: Bool) throws {
+        if replacing, FileManager.default.fileExists(atPath: target.path) {
+            try FileManager.default.removeItem(at: target)
+        }
+        try FileManager.default.copyItem(at: file, to: target)
+        try quarantine(target)
+    }
+
+    /// A name that stays one file name: no folders, no hidden file, no
+    /// control characters.
+    static func cleanName(_ name: String) -> String {
+        var clean = name.withoutControlCharacters
+            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        // Spaces and dots both, so " .zshrc" cannot become a hidden ".zshrc".
+        while let first = clean.first, first == "." || first.isWhitespace { clean.removeFirst() }
+        clean = clean.trimmingCharacters(in: .whitespaces)
+        return clean.isEmpty ? "file" : String(clean.prefix(200))
+    }
+
+    /// Marks a file as downloaded by Peel. A file that cannot be marked is
+    /// removed rather than left unmarked.
+    static func quarantine(_ file: URL) throws {
+        #if os(macOS)
+        var url = file
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentNameKey as String: "Peel",
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String,
+            kLSQuarantineTimeStampKey as String: Date(),
+        ]
+        do {
+            try url.setResourceValues(values)
+        } catch {
+            try? FileManager.default.removeItem(at: file)
+            throw error
+        }
+        #endif
     }
 }

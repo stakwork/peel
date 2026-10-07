@@ -42,13 +42,43 @@ final class AppModel {
     var phase: Phase = .loading
     var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
-    var messages: [Message] = []
+    /// The open chat's main conversation: in a tribe with threads collapsed,
+    /// plus the messages its replies quote.
+    var timeline = Timeline.empty
     var destination: Destination? {
         didSet {
-            if selectedChat != oldValue?.chat { observeMessages() }
+            if selectedChat != oldValue?.chat {
+                observeMessages()
+                if openThread?.chat != selectedChat { openThread = nil }
+            }
             markSelectedChatRead()
         }
     }
+    /// The thread open in the side panel, and what it holds.
+    var openThread: ThreadRef? {
+        didSet { if openThread != oldValue { observeThread() } }
+    }
+    private(set) var thread: ChatThread?
+    /// Threads this account started or wrote in, for the Threads list.
+    private(set) var threads: [ThreadSummary] = []
+    /// What each composer is replying to.
+    var replyTargets: [ComposerID: Message] = [:]
+    /// Files waiting in each composer until it sends.
+    var pendingFiles: [ComposerID: [URL]] = [:]
+    /// Bumped to put the cursor in a composer.
+    var composerFocus: [ComposerID: Int] = [:]
+    /// The image viewer, when open.
+    var viewer: ImageViewerState?
+    /// What each composer holds unsent, kept while a thread covers its
+    /// chat or another chat is open.
+    var drafts: [ComposerID: String] = [:]
+    /// The open chat's rows and the open thread's, worked out once per
+    /// change of what they show rather than on every redraw.
+    private(set) var chatRows: [ChatRow] = []
+    private(set) var threadRows: [ChatRow] = []
+    /// Downloads, uploads and local copies of attachments, by message id;
+    /// each observed on its own so a progress tick redraws only its tile.
+    @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
     var searchQuery = ""
     var myAlias: String?
     /// The photo sent with this account's messages, https or nil.
@@ -76,8 +106,9 @@ final class AppModel {
     /// `-profile <name>` opens a development profile instead, whose words sit in
     /// a plain file; the window says so.
     private(set) var profile: Profile?
-    private var engine: Engine?
+    private(set) var engine: Engine?
     private var messagesTask: Task<Void, Never>?
+    private var threadTask: Task<Void, Never>?
     private var tribeTask: Task<Void, Never>?
     /// When the PIN was last entered. The PIN itself is never kept.
     private var unlockedAt: Date?
@@ -183,10 +214,54 @@ final class AppModel {
         try await signedIn().setAlias(name)
     }
 
-    /// An https image link, or empty to remove the photo. Uploading a picture
-    /// comes with attachments; it will hand its URL to the same call.
+    /// An https image link, or empty to remove the photo.
     func setPhotoURL(_ url: String) async throws {
         try await signedIn().setPhotoURL(url)
+    }
+
+    /// Works the rows out again when who they name changed (your profile,
+    /// the contact), not only when the messages did.
+    private func rebuildRows() {
+        rebuildChatRows()
+        rebuildThreadRows()
+    }
+
+    private func rebuildChatRows() {
+        guard let chat = selectedChat else { return chatRows = [] }
+        chatRows = ChatRow.rows(
+            timeline.messages, threads: timeline.threads, parents: timeline.parents, inTribe: isTribe(chat),
+            people: people(in: chat)
+        )
+    }
+
+    private func rebuildThreadRows() {
+        guard let open = openThread, let thread else { return threadRows = [] }
+        threadRows = ChatRow.rows(
+            thread.messages, parents: thread.parents, inTribe: isTribe(open.chat),
+            people: people(in: open.chat), threadRoot: open.uuid, original: thread.original
+        )
+    }
+
+    /// You and the contact, as a chat's rows name them.
+    func people(in chat: String) -> ChatRow.People {
+        let contact = conversations.first { $0.chat == chat }
+        return ChatRow.People(
+            me: (myAlias ?? "You", myPhotoURL), contact: (contact?.name ?? "Someone", contact?.photoURL)
+        )
+    }
+
+    func isTribe(_ chat: String) -> Bool {
+        conversations.first { $0.chat == chat }?.isTribe ?? false
+    }
+
+    /// Uploads a picture from this Mac and makes it the photo.
+    func uploadPhoto(_ file: URL) async throws {
+        try await signedIn().uploadPhoto(file)
+    }
+
+    /// Asks for a picture, beside the window.
+    func choosePicture() -> URL? {
+        Self.chooseFiles(prompt: "Choose", multiple: false, types: [.image]).first
     }
 
     /// The twelve words, after the PIN. Nothing here keeps or logs them.
@@ -247,14 +322,15 @@ final class AppModel {
         phase = .ready
     }
 
-    func send(_ text: String) async {
-        guard let chat = selectedChat else { return }
-        await attempt("send", in: chat) { try await $0.sendText(text, to: chat) }
-    }
-
     func resend(_ message: Message) async {
         guard let id = message.id else { return }
         await attempt("send again", in: message.chat) { try await $0.resend(messageID: id) }
+    }
+
+    /// Deletes a message for everyone; a refusal shows in its chat.
+    func delete(_ message: Message) async {
+        guard let id = message.id else { return }
+        await attempt("delete", in: message.chat) { try await $0.deleteMessage(id: id) }
     }
 
     func discard(_ message: Message) async {
@@ -265,14 +341,14 @@ final class AppModel {
     /// Runs an action on one chat; a failure shows above that chat's
     /// composer. Returns whether it succeeded.
     @discardableResult
-    private func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async -> Bool {
+    func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async -> Bool {
         guard let engine else { return false }
         conversationNotices[chat] = nil
         do {
             try await action(engine)
             return true
         } catch {
-            conversationNotices[chat] = "Could not \(what): \(error)"
+            conversationNotices[chat] = "Could not \(what): \(PeelError.readable(error))"
             return false
         }
     }
@@ -408,8 +484,17 @@ final class AppModel {
     private func resetAccountState() {
         Clipboard.clearSecret()
         conversations = []
-        messages = []
         destination = nil
+        timeline = .empty
+        openThread = nil
+        threads = []
+        replyTargets = [:]
+        pendingFiles = [:]
+        viewer = nil
+        attachmentHandles = [:]
+        drafts = [:]
+        chatRows = []
+        threadRows = []
         readStates = [:]
         conversationNotices = [:]
         restoreProgress = RestoreProgress()
@@ -434,6 +519,7 @@ final class AppModel {
         connection = await engine.connection
         Task { await self.observeConversations(storage) }
         Task { await self.observeReadStates(storage) }
+        Task { await self.observeThreads(storage) }
         Task { await self.consumeEvents(engine) }
         await engine.start()
     }
@@ -469,9 +555,15 @@ final class AppModel {
             case .profile(let alias, let photoURL):
                 myAlias = alias
                 myPhotoURL = photoURL
+                rebuildRows()
             case .historyFailed(let reason):
                 restoreProgress.outcome = .failed(reason)
-            case .message, .sendStatus, .transfer:
+            case .transfer(let id, _, let bytes, let total):
+                attachment(id).transfer(bytes: bytes, total: total)
+            case .message(let row) where row.deleted:
+                // Its decrypted file is gone; nothing may still point at it.
+                if let id = row.id { attachmentHandles[id] = nil }
+            case .message, .sendStatus:
                 break
             }
         }
@@ -480,7 +572,11 @@ final class AppModel {
     private func observeConversations(_ storage: Storage) async {
         do {
             for try await rows in storage.conversations() {
+                let open = { (rows: [Conversation]) in rows.first { $0.chat == self.selectedChat } }
+                let changed = open(conversations) != open(rows)
                 conversations = rows
+                // Rows carry the contact's name and photo, and whether it is a tribe.
+                if changed { rebuildRows() }
                 if destination == nil, let first = rows.first {
                     destination = .chat(first.chat)
                 }
@@ -506,13 +602,15 @@ final class AppModel {
     private func observeMessages() {
         messagesTask?.cancel()
         tribeTask?.cancel()
-        messages = []
+        timeline = .empty
+        chatRows = []
         selectedTribe = nil
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         messagesTask = Task {
             do {
-                for try await rows in storage.messages(in: chat) {
-                    messages = rows
+                for try await timeline in storage.timeline(in: chat) {
+                    self.timeline = timeline
+                    rebuildChatRows()
                 }
             } catch {
                 if !Task.isCancelled { notice = "\(error)" }
@@ -526,6 +624,34 @@ final class AppModel {
             } catch {
                 if !Task.isCancelled { notice = "\(error)" }
             }
+        }
+    }
+
+    /// Follows the thread open in the side panel.
+    private func observeThread() {
+        threadTask?.cancel()
+        thread = nil
+        threadRows = []
+        guard let storage = engine?.storage, let open = openThread else { return }
+        threadTask = Task {
+            do {
+                for try await thread in storage.thread(open.uuid, in: open.chat) {
+                    self.thread = thread
+                    rebuildThreadRows()
+                }
+            } catch {
+                if !Task.isCancelled { notice = "\(error)" }
+            }
+        }
+    }
+
+    private func observeThreads(_ storage: Storage) async {
+        do {
+            for try await rows in storage.threads() {
+                threads = rows
+            }
+        } catch {
+            notice = "\(error)"
         }
     }
 }

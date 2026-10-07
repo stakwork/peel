@@ -30,10 +30,13 @@ then the sidebar collapses; panels never overlay the conversation.
 
 Top to bottom:
 
-1. **Header.** Peel logo, "Peel", and the wallet balance in sats under it.
-   On the right, Sphinx's connection bolt: green when connected, orange
-   otherwise; clicking it shows the state, the retry countdown and the last
-   connection error. A compose button will start a new direct message.
+1. **You, on top** (option S2, Tom, 2026-10-07: like a workspace
+   switcher). Your photo, your name with a chevron, and the balance in sats
+   under it. Clicking it opens Peel's menu: your name, short key and balance,
+   then "Account…" (⌘,) and "Copy contact info". "Receive sats" and "Invite
+   someone" join it when they are built. On the right, Sphinx's connection
+   bolt: green when connected, orange otherwise; clicking it shows the state,
+   the retry countdown and the last connection error.
 2. **Search.** One field over every conversation.
 3. **Threads.** Threads you started or replied to that have new replies, with
    an unread count.
@@ -44,8 +47,8 @@ Top to bottom:
    tribes are bold. Ends with "Join a tribe". The section collapses.
 7. **Direct messages.** One row per contact, unread ones bold with a count.
    Ends with "Add contact". The section collapses.
-8. **Footer.** Your avatar and your name. (The connection state moved to the
-   header bolt, 2026-10-07.)
+(The footer with your name and the Peel logo in the header are gone since
+S2; the app's icon still shows on the lock and welcome screens.)
 
 No tabs and no filter chips. Sorting inside each section: most recent first.
 
@@ -54,19 +57,30 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
 - **Header.** The tribe name with `#` (or the contact's name), member count and
   description for a tribe, and three icon buttons: call, pinned messages,
   members.
-- **Messages are bubbles: theirs on the left, yours on the right** (Tom,
-  2026-10-07; the flat Slack style in the mock was tried in the app and
-  dropped). Yours use Sphinx's sent-message blue, theirs the received grey.
-  Time under each bubble. In a tribe, other members' bubbles sit beside
-  their round photo, with their name over the first bubble of each run (a
-  run breaks on another sender, five minutes or a new day); joins and
-  leaves are a quiet centred line ("carol joined").
+- **Messages are flat rows** (Tom, 2026-10-07, readability option D, "try
+  it out"; they replace the bubbles chosen earlier that day). No bubbles:
+  the text sits on the background. Each run (one sender, a new run after
+  five minutes, a new day, or anything that is not a message) starts with
+  a 32 pt photo, the sender's name (13 semibold, `Theme.name`) and the time
+  (12, secondary) once; the rest of the run sits under it, each message's
+  time in the left gutter on hover. Your messages are left-aligned too, on a
+  faint accent tint, with the green delivered bolt beside the time. Body
+  text 14 pt with 3 pt line spacing (about 1.45), at most 560 pt wide
+  (about 68 characters). Mentions are a soft chip (medium weight); links are
+  in the link colour, without the scheme and shortened in the middle when
+  long; lines starting with "-" or "•" are a list with a hanging indent.
+  Quotes, attachments, thread summaries, Retry and the deleted placeholder
+  sit in the row. Hovering lights the row and shows Reply and More at its
+  top-right, over its top edge, as in Slack. Joins and leaves are a quiet
+  centred line ("carol joined").
 - **Day dividers** ("Today", "Yesterday", then dates).
 - **Boosts** show as a chip under the message: a bolt and the total sats. A
   "+" chip next to it boosts.
-- **Thread summary** under a message that has replies: the repliers' avatars,
-  "N replies" as a link, and "Last reply HH:MM". Clicking it opens the thread
-  panel.
+- **Thread summary.** In a tribe, a thread of two or more collapses to one
+  row: the original message, then up to three participants' avatars, "N
+  replies" as a link (bold, with "N new", when unread) and "Last reply
+  <sender> <time>". Clicking it opens the thread panel. DMs never collapse:
+  replies show inline with their quote (Tom, 2026-10-07).
 - **Composer.** A rounded text field ("Message #Tribe" or "Message Name")
   and a round send arrow beside it, not a "Send" button (Tom, 2026-10-07).
   Attach, send sats and mention join it with their phases; no control appears
@@ -79,7 +93,10 @@ its close button.
 
 - Header "Thread" with the tribe or contact name under it.
 - The original message, a "N replies" divider, then the replies.
-- A reply composer with an "Also send to #Tribe" checkbox, as in Slack.
+- A reply composer. No "Also send to #Tribe" checkbox (Tom, 2026-10-07): a
+  thread reply stays in the thread.
+- Escape stops replying, then closes the panel. On a window too narrow for
+  both, the panel takes the conversation's place instead of covering it.
 
 ## Agents
 
@@ -146,14 +163,14 @@ is dark only for now (Tom, 2026-10-07); the light values are kept in
 | Conversation background | `#151E27` | `#FFFFFF` | Body |
 | Thread panel background | `#1A232D` | `#F7F8F9` | HeaderBG / ThreadOriginalMsg |
 | Input background | `#13181D` | `#F2F3F5` | InputBG1 |
-| Primary text | `#FFFFFF` | `#292C33` | PrimaryText |
+| Primary text | `#E3E7EC` | `#292C33` | PrimaryText, softened |
 | Secondary text | `#97A3B4` | `#646C73` | SecondaryText, adjusted |
 | Dividers | `#2C353D` | `#DCE0E3` | NewMessageIndicator / LightDivider |
 | Quoted or summary block | `#1E2934` | `#F2F3F5` | ThreadOriginalMsg / ReceivedMsgBG |
 | Accent (unread counts, links, selection) | `#618AFF` | `#618AFF` | PrimaryBlue |
 | Filled buttons | `#618AFF` | `#3F68E0` | PrimaryBlue, adjusted |
-| Your message bubble | `#3E6189` | `#DDEDFD` | SentMsgBG |
-| Their message bubble | `#222E3A` | `#F2F3F5` | ReceivedMsgBG |
+| Your rows (tint) | accent at 6% | accent at 6% | — (bubbles retired) |
+| Links, mention chip | `#8FB0FF`, `#2A3A5E` behind `#B4C8FF` | `#3F68E0`, `#DDE6FF` behind `#1E3D99` | — |
 | Boost bolt | `#FFBC58` | `#FFBC58` | SphinxOrange |
 | Online dot | `#49C998` | `#49C998` | PrimaryGreen |
 
@@ -170,9 +187,19 @@ selected and actionable; red only for destructive or blocking moments.
 
 ## Type
 
-Roboto, as the official apps use, at 400, 500 and 700. Sizes: 16 pt for
-conversation and panel titles, 14 pt for messages and sidebar rows, 12 pt for
-times and secondary lines. Times and sats use tabular figures.
+The system font, SF Pro (Tom, 2026-10-07: easier to read than the
+official apps' Roboto, which is no longer bundled). Sizes: 16 pt for
+conversation and panel titles, 14 pt for messages and sidebar rows, 13
+semibold for names over runs, 12 pt for times and secondary lines. Times and
+sats use tabular figures. Text in dark mode is `#E3E7EC`, not white; links
+`#8FB0FF` (light `#3F68E0`); a mention chip `#2A3A5E` behind `#B4C8FF`
+(light `#DDE6FF` behind `#1E3D99`). Secondary text stays `#97A3B4`, above
+4.5:1 on the conversation background.
+
+Panes: the sidebar (220–420 pt) and the thread panel (300–560 pt) resize by
+dragging their dividers; a double-click puts the standard width back, and
+the widths are remembered on this Mac. Below about 740 pt for the chat and
+the panel together, the thread panel takes the chat's place.
 
 ## Motion
 
@@ -211,9 +238,8 @@ The layout can be built before the features behind it, with empty states:
 
 **Steps 1 and 2: built (2026-10-07).**
 
-- Dark Sphinx colours (`Sources/PeelApp/Theme.swift`) and Roboto bundled
-  (`Assets/Fonts`, registered through `ATSApplicationFontsPath` in
-  `scripts/run-app.sh`; the system font when run unbundled).
+- Dark Sphinx colours (`Sources/PeelApp/Theme.swift`); Roboto was bundled
+  until the system font replaced it.
 - Hidden title bar; the sidebar header carries the app icon, "Peel" and the
   balance.
 - Sidebar: search (filters the lists, held in `AppModel.searchQuery`), Threads,
@@ -266,3 +292,59 @@ messages that mention you. Details in `../phases/03-chat.md`.
 
 The rejected native-sidebar variant and the first Slack-skin build are kept in
 the session scratchpad only; the mock canvas has all four mocked directions.
+
+## Replies, threads, attachments and Peel's menu
+
+Approved by Tom on 2026-10-07 (boards R1–R12 on the "Peel layout directions"
+canvas), with these decisions over the boards:
+
+- **One Reply** (Tom, later on 2026-10-07; "Reply in thread" is gone):
+  the hover bar is Reply and More, beside the bubble (right of theirs, left
+  of yours), top-aligned with it, never over its text. Reply opens the
+  inline "Replying to…" bar, except for a message folded into a collapsed
+  tribe thread, which is answered in that thread's panel. Threads emerge
+  from replies, as in the official app (a reply joins or starts the
+  parent's thread); the panel opens from "N replies" and the Threads list.
+- **No "Copy link"**: Sphinx has no message links.
+- **Peel's own menu** replaces every native context menu, pop-up button and
+  picker: right-click (or Control-click) and the hover bar's More open it;
+  arrows, Return and Escape work; it opens beside its trigger and flips at
+  the window's edges; items that delete or leave are red and take two
+  clicks: the first turns the row into bold red text with a trash icon
+  ("Delete for everyone", "Click again") without closing the menu, the
+  second acts; moving to another row or Escape puts it back. Confirms in
+  panels and screens stay inline. Shortcuts shown in it really work (R reply, ⌘C copy). The Account
+  screen's choices use the same menu as a dropdown, and the former popovers
+  (connection, join and create tribe, add contact, tribe settings, members)
+  are Peel panels in the same style. Menus and panels are their own small
+  windows beside their trigger.
+- **Delete** (red, "Delete for everyone?"): your own messages, and any in a
+  tribe you own. A deleted message reads "This message has been deleted".
+- **Sidebar row menu:** Mark as read, the notification level with a check,
+  Copy tribe link, Leave tribe. Direct messages have no Leave and no Delete
+  chat (the engine cannot delete a conversation).
+- **Threads list** covers direct messages (from a single reply) and tribes
+  (two or more messages, as they collapse), newest first, with an
+  unread dot and "Mark all read". Thread unread clears when its chat is
+  opened (the server's read marker), as in the Mac app.
+- **Quotes** show the sender and one line (an image's thumbnail or a file's
+  type beside it); a parent that is not stored reads "Original message not
+  available". Approvals and other membership messages are never quoted.
+- **Images:** a grid of up to four with "+N", for one sender's consecutive
+  images within about a minute. Images download when shown. A file's
+  download button saves it straight into Downloads ("name (1).ext" when
+  taken), then the card reads "Saved to Downloads · Show in Finder"; "Save
+  as…" (choose where) is in the message's menu. Nothing is ever opened for
+  you, and every file Peel writes for you is quarantined, so macOS checks it
+  before it opens. Paid attachments are out of scope.
+- **Uploads:** a progress bar on the row ("Uploading · 2.1 of 3.4 MB"); a
+  failed one reads "Not uploaded · Retry · Discard", like an undelivered
+  message.
+- **No emoji in previews:** an attachment without a caption reads "Image" or
+  "File: name.pdf".
+- **Pinned bar:** the one from tribes parity.
+- **Mention suggestions** (after first use): above the composer, inside the
+  window, in the menu's style, scrolling after seven.
+
+**Built 2026-10-07 (branch `phase3/chat-ui`).** Details, what was verified
+and what was not in `../phases/03-chat.md` ("Chat UI").

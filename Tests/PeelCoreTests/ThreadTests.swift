@@ -176,6 +176,94 @@ struct ThreadTests {
         #expect(threads[0].chat == tribe)
     }
 
+    @Test func threadsListHasDirectMessagesWithLatestAndParticipants() async throws {
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: tribe)])
+        func from(_ alias: String, _ n: Int, thread: Int) -> (Message, Bool, String?) {
+            let message = Message.fixture(
+                uuid: uuid(n), chat: tribe, sender: #"{"pubkey":"02tribe","alias":"\#(alias)"}"#, content: "m\(n)",
+                timestamp: Int64(n) * 1_000, threadUUID: uuid(thread)
+            )
+            return (message, false, nil)
+        }
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: dm, ready: true)],
+            messages: [
+                text(1, fromMe: true), from("ann", 2, thread: 1), from("bob", 3, thread: 1), from("ann", 4, thread: 1),
+                from("cat", 5, thread: 1), from("dan", 6, thread: 1),
+                text(10, chat: dm), text(11, chat: dm, fromMe: true, reply: 10, thread: 10),
+                text(12, chat: dm, reply: 11, thread: 10),
+                // A contact's thread with a single reply of ours is listed too.
+                text(7, chat: dm, fromMe: true), text(8, chat: dm, reply: 7, thread: 7),
+            ]
+        ))
+        let threads = try #require(try await first(storage.threads()))
+        #expect(threads.map(\.uuid) == [uuid(10), uuid(7), uuid(1)])
+        #expect(threads[0].chat == dm)
+        #expect(threads[0].latest?.content == "m12")
+        let tribeThread = threads[1]
+        #expect(tribeThread.latest?.content == "m6")
+        #expect(tribeThread.participants.map(\.alias) == ["dan", "cat", "ann"])
+    }
+
+    @Test func messagePreviewNamesAnAttachmentWithoutCaption() {
+        var image = Message.fixture(type: MessageType.attachment, content: "")
+        image.mediaType = "image/jpg"
+        #expect(image.preview == "Image")
+        var file = image
+        file.mediaType = "application/pdf"
+        file.fileName = "a.pdf"
+        #expect(file.preview == "File: a.pdf")
+        #expect(Message.fixture(content: " hi ").preview == "hi")
+    }
+
+    @Test func deletesComeOnlyFromTheSenderOrTheTribesOwner() throws {
+        func member(_ alias: String, _ n: Int, type: Int = MessageType.text, role: Int? = nil, reply: Int? = nil)
+            -> (Message, Bool, String?) {
+            let roleField = role.map { #","role":\#($0)"# } ?? ""
+            let message = Message.fixture(
+                uuid: uuid(n), type: type, chat: tribe, sender: #"{"pubkey":"02tribe","alias":"\#(alias)"\#(roleField)}"#,
+                content: "m\(n)", timestamp: Int64(n) * 1_000, replyUUID: reply.map(uuid)
+            )
+            return (message, false, nil)
+        }
+        // Our own delete counts once the server has it: the copy with an index.
+        func delete(_ n: Int, of target: Int, chat: String, fromMe: Bool = false, sent: Bool = true)
+            -> (Message, Bool, String?) {
+            let message = Message.fixture(
+                uuid: uuid(n), serverIndex: sent ? Int64(n) : nil, type: MessageType.delete, chat: chat,
+                fromMe: fromMe, content: "", timestamp: Int64(n) * 1_000, replyUUID: uuid(target)
+            )
+            return (message, false, nil)
+        }
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: tribe)])
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: dm, ready: true)],
+            messages: [
+                // Direct messages: the contact deletes their own; their delete of mine is ignored; I delete mine.
+                text(1, chat: dm), text(2, chat: dm, fromMe: true), text(3, chat: dm, fromMe: true),
+                delete(4, of: 1, chat: dm), delete(5, of: 2, chat: dm), delete(6, of: 3, chat: dm, fromMe: true),
+                // Ours, not yet on the server: nothing happens until it is.
+                text(7, chat: dm, fromMe: true), delete(8, of: 7, chat: dm, fromMe: true, sent: false),
+                // Tribe: ann deletes her own; bob's delete of ann's is ignored; the owner (role 0) deletes cat's.
+                member("ann", 10), member("ann", 11), member("cat", 12),
+                member("ann", 13, type: MessageType.delete, reply: 10),
+                member("bob", 14, type: MessageType.delete, reply: 11),
+                member("owner", 15, type: MessageType.delete, role: 0, reply: 12),
+            ]
+        ))
+        func deleted(_ n: Int, in chat: String) throws -> Bool? { try storage.message(uuid: uuid(n), in: chat)?.deleted }
+        #expect(try deleted(1, in: dm) == true)
+        #expect(try deleted(2, in: dm) == false)
+        #expect(try deleted(3, in: dm) == true)
+        #expect(try deleted(7, in: dm) == false)
+        #expect(try deleted(10, in: tribe) == true)
+        #expect(try deleted(11, in: tribe) == false)
+        #expect(try deleted(12, in: tribe) == true)
+        #expect(try storage.message(uuid: uuid(1), in: dm)?.content == nil)
+    }
+
     @Test func answeredRequestIsFoundByItsReplyColumn() throws {
         let request = Message.fixture(uuid: uuid(1), type: MessageType.memberRequest, chat: tribe)
         let approval = Message.fixture(

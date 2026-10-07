@@ -167,6 +167,12 @@ public final class Storage: Sendable {
             // Only our own attachments have an upload, so this stays tiny.
             try db.execute(sql: "CREATE INDEX message_upload ON message (upload) WHERE upload IS NOT NULL")
         }
+        migrator.registerMigration("v10") { db in
+            // Messages deleted for everyone keep their row, without content.
+            try db.alter(table: "message") { t in
+                t.add(column: "deleted", .boolean).notNull().defaults(to: false)
+            }
+        }
         return migrator
     }
 }
@@ -269,6 +275,9 @@ public struct Timeline: Sendable, Equatable {
     public var parents: [String: Message]
     /// The collapsed threads among `messages`, by the original's uuid.
     public var threads: [String: ThreadSummary]
+
+    /// Before the first emission.
+    public static let empty = Timeline(messages: [], parents: [:], threads: [:])
 }
 
 /// One thread: the message that started it and what has been said in it.
@@ -279,6 +288,10 @@ public struct ThreadSummary: Sendable, Identifiable, Equatable {
     public var lastTimestamp: Int64?
     /// Other people's thread messages past the chat's read marker.
     public var unread: Int
+    /// The newest thread message.
+    public var latest: Message?
+    /// Who wrote in the thread, most recent first, at most three.
+    public var participants: [ThreadParticipant] = []
 
     public var chat: String { original.chat }
     /// The original's uuid, which every message in the thread names.
@@ -402,15 +415,20 @@ extension Storage {
     /// `threadUnread`. `filter` narrows the thread messages `t`.
     private static func threadsSQL(where filter: String) -> String {
         """
-        SELECT o.*, g.threadCount, g.threadLast, g.threadUnread
+        SELECT o.*, g.threadCount, g.threadLast, g.threadUnread, g.latestID
         FROM (
             SELECT t.chat, t.threadUUID, COUNT(*) AS threadCount, MAX(t.timestamp) AS threadLast,
-                SUM(t.fromMe = 0 AND t.serverIndex > COALESCE(s.lastRead, -1)) AS threadUnread
+                SUM(t.fromMe = 0 AND t.serverIndex > COALESCE(s.lastRead, -1)) AS threadUnread,
+                (SELECT l.id FROM message l
+                 WHERE l.chat = t.chat AND l.threadUUID = t.threadUUID AND l.type IN (\(MessageType.contentSQL))
+                 ORDER BY l.timestamp DESC, l.id DESC LIMIT 1) AS latestID
             FROM message t
             LEFT JOIN chatState s ON s.chat = t.chat
             WHERE t.threadUUID IS NOT NULL AND t.type IN (\(MessageType.contentSQL)) AND \(filter)
             GROUP BY t.chat, t.threadUUID
-            HAVING COUNT(*) >= 2
+            -- A tribe thread is one from two messages (what collapses); with a
+            -- contact, from the first reply (Tom, 2026-10-07).
+            HAVING COUNT(*) >= 2 OR NOT EXISTS (SELECT 1 FROM tribe WHERE tribe.pubkey = t.chat)
         ) g
         JOIN message o ON o.uuid = g.threadUUID AND o.chat = g.chat
         """
@@ -640,7 +658,8 @@ extension Storage {
             .values(in: pool)
     }
 
-    /// Threads in joined tribes that this account started or wrote in,
+    /// Threads in joined tribes (two or more messages) and with contacts (a
+    /// single reply is enough), that this account started or wrote in,
     /// newest activity first, re-emitted whenever they change.
     public func threads() -> some AsyncSequence<[ThreadSummary], any Error> {
         ValueObservation
@@ -649,7 +668,7 @@ extension Storage {
                     db,
                     // Only threads with a message of ours are grouped at all.
                     where: """
-                        t.chat IN (SELECT pubkey FROM tribe WHERE left = 0) AND t.threadUUID IN (
+                        t.chat IN (SELECT chat FROM (\(Self.chatsSQL))) AND t.threadUUID IN (
                             SELECT threadUUID FROM message WHERE fromMe = 1 AND threadUUID IS NOT NULL
                             UNION SELECT uuid FROM message WHERE fromMe = 1 AND uuid IS NOT NULL
                         )
@@ -704,12 +723,64 @@ extension Storage {
     private static func threadSummaries(
         _ db: Database, where filter: String, arguments: StatementArguments = [], also tail: String = ""
     ) throws -> [ThreadSummary] {
-        try Row.fetchAll(db, sql: threadsSQL(where: filter) + "\n" + tail, arguments: arguments).map { row in
+        let rows = try Row.fetchAll(db, sql: threadsSQL(where: filter) + "\n" + tail, arguments: arguments)
+        guard !rows.isEmpty else { return [] }
+        let latestIDs: [Int64] = rows.compactMap { $0["latestID"] }
+        let latest = Dictionary(
+            try Message.fetchAll(
+                db, sql: "SELECT * FROM message WHERE id IN (\(databaseQuestionMarks(count: latestIDs.count)))",
+                arguments: StatementArguments(latestIDs)
+            ).compactMap { message in message.id.map { ($0, message) } },
+            uniquingKeysWith: { $1 }
+        )
+        var summaries = try rows.map { row in
             ThreadSummary(
-                original: try Message(row: row), count: row["threadCount"],
-                lastTimestamp: row["threadLast"], unread: row["threadUnread"] ?? 0
+                original: try Message(row: row), count: row["threadCount"], lastTimestamp: row["threadLast"],
+                unread: row["threadUnread"] ?? 0, latest: (row["latestID"] as Int64?).flatMap { latest[$0] }
             )
         }
+        let participants = try threadParticipants(
+            db, chats: Set(summaries.map(\.chat)), threads: Set(summaries.map(\.uuid))
+        )
+        for index in summaries.indices {
+            summaries[index].participants = participants[summaries[index].id] ?? []
+        }
+        return summaries
+    }
+
+    /// The last three people to write in each thread, by `ThreadSummary.id`:
+    /// one row per distinct sender, each sender's JSON decoded once.
+    private static func threadParticipants(
+        _ db: Database, chats: Set<String>, threads: Set<String>
+    ) throws -> [String: [ThreadParticipant]] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT chat, threadUUID, fromMe, sender, MAX(timestamp) AS last FROM message
+                WHERE type IN (\(MessageType.contentSQL))
+                    AND chat IN (\(databaseQuestionMarks(count: chats.count)))
+                    AND threadUUID IN (\(databaseQuestionMarks(count: threads.count)))
+                GROUP BY chat, threadUUID, fromMe, sender
+                ORDER BY last DESC
+                """,
+            arguments: StatementArguments(Array(chats) + Array(threads))
+        )
+        var result: [String: [ThreadParticipant]] = [:]
+        for row in rows {
+            let key = "\(row["chat"] as String)/\(row["threadUUID"] as String)"
+            guard result[key, default: []].count < 3 else { continue }
+            let fromMe: Bool = row["fromMe"]
+            let info = (row["sender"] as String?).flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }
+            let participant = ThreadParticipant(
+                alias: fromMe ? nil : info?.alias?.nilIfEmpty, photoURL: fromMe ? nil : info?.photoURL?.httpsOnly,
+                fromMe: fromMe
+            )
+            // The same person under a newer photo or name is one participant.
+            if !result[key, default: []].contains(where: { $0.fromMe == fromMe && $0.alias == participant.alias }) {
+                result[key, default: []].append(participant)
+            }
+        }
+        return result
     }
 }
 
@@ -740,6 +811,13 @@ extension Storage {
 
     /// Returns the stored rows; messages the upsert rejected are left out.
     func apply(_ commit: Commit) throws -> [Message] {
+        var purged: [String] = []
+        return try apply(commit, purged: &purged)
+    }
+
+    /// As `apply`, also giving the bodies of attachments a delete emptied, so
+    /// their decrypted copies can be removed from the cache.
+    func apply(_ commit: Commit, purged: inout [String]) throws -> [Message] {
         try pool.write { db in
             for (key, value) in commit.state {
                 try CoreStateRow(key: key, value: value).upsert(db)
@@ -770,8 +848,25 @@ extension Storage {
                     try Self.upsertContact(db, pubkey: row.chat, alias: info.alias, photoURL: info.photoURL)
                 }
             }
+            // After every message of the batch, so a delete finds its target
+            // even when both came in the same history page.
+            // Our own delete only once the server has it (its echo, the
+            // tribe's copy, or a delivered status below), so a delete that
+            // fails to send leaves the message as everyone else still sees it.
+            for (message, _, _) in commit.messages
+            where message.type == MessageType.delete && !(message.fromMe && message.serverIndex == nil) {
+                if let deleted = try Self.applyDelete(message, purged: &purged, in: db) { stored.append(deleted) }
+            }
             for (tag, status) in commit.statuses {
                 try Self.setStatus(db, status, tag: tag)
+                if status == Message.Delivery.delivered.rawValue,
+                   let delete = try Message.fetchOne(
+                       db, sql: "SELECT * FROM message WHERE tag = ? AND fromMe = 1 AND type = ?",
+                       arguments: [tag, MessageType.delete]
+                   ),
+                   let deleted = try Self.applyDelete(delete, purged: &purged, in: db) {
+                    stored.append(deleted)
+                }
             }
             for (chat, index) in commit.reads {
                 try Self.setRead(db, chat: chat, index: index)
@@ -839,18 +934,19 @@ extension Storage {
                      mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
-                    mentionsMe = MAX(message.mentionsMe, excluded.mentionsMe),
+                    mentionsMe = CASE WHEN message.deleted THEN 0 ELSE MAX(message.mentionsMe, excluded.mentionsMe) END,
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
                     timestamp = COALESCE(excluded.timestamp, message.timestamp),
                     msat = COALESCE(excluded.msat, message.msat),
                     paymentHash = COALESCE(excluded.paymentHash, message.paymentHash),
                     tag = COALESCE(message.tag, excluded.tag),
                     sender = COALESCE(message.sender, excluded.sender),
-                    body = COALESCE(message.body, excluded.body),
-                    content = COALESCE(message.content, excluded.content),
+                    -- A deleted message stays empty whatever copy comes again.
+                    body = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.body, excluded.body) END,
+                    content = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.content, excluded.content) END,
                     replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
                     threadUUID = COALESCE(message.threadUUID, excluded.threadUUID),
-                    mediaType = COALESCE(message.mediaType, excluded.mediaType)
+                    mediaType = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.mediaType, excluded.mediaType) END
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
                 """,
@@ -861,6 +957,51 @@ extension Storage {
                 message.mediaType, message.fileName, message.fileSize, message.upload,
             ]
         )
+    }
+
+    /// Applies a delete (type 17) to the message it names in the same chat,
+    /// when its sender may: our own delete of our own message, or of anyone's
+    /// in a tribe we own; in a tribe, the owner's (the tribes server stamps
+    /// `role: 0` on what the owner sends) or the member who sent it (the tribes
+    /// server already refuses a member deleting someone else's; the alias,
+    /// unique in a tribe, must match too); in a direct message, the contact's
+    /// own. Anything else is ignored. Returns the emptied row.
+    private static func applyDelete(_ delete: Message, purged: inout [String], in db: Database) throws -> Message? {
+        guard let uuid = delete.replyUUID, let target = try message(uuid: uuid, in: delete.chat, db),
+              MessageType.content.contains(target.type), !target.deleted, let id = target.id else { return nil }
+        let tribe = try Row.fetchOne(db, sql: "SELECT isOwner FROM tribe WHERE pubkey = ?", arguments: [delete.chat])
+        let allowed: Bool
+        if delete.fromMe {
+            allowed = target.fromMe || (tribe?["isOwner"] as Bool? ?? false)
+        } else if tribe != nil {
+            let deleter = delete.senderInfo
+            allowed = deleter?.role == 0
+                || (!target.fromMe && deleter?.alias?.nilIfEmpty != nil && deleter?.alias == target.senderInfo?.alias)
+        } else {
+            allowed = !target.fromMe
+        }
+        guard allowed else { return nil }
+        if target.type == MessageType.attachment, let body = target.body { purged.append(body) }
+        return try Message.fetchOne(
+            db,
+            sql: """
+                UPDATE message SET deleted = 1, content = NULL, body = NULL, mediaType = NULL, fileName = NULL,
+                    fileSize = NULL, mentionsMe = 0
+                WHERE id = ? RETURNING *
+                """,
+            arguments: [id]
+        )
+    }
+
+    /// How many text messages and attachments are in a thread.
+    public func threadCount(_ uuid: String, in chat: String) throws -> Int {
+        try pool.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND threadUUID = ? AND type IN (\(MessageType.contentSQL))",
+                arguments: [chat, uuid]
+            ) ?? 0
+        }
     }
 
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.

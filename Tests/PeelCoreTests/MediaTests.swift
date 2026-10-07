@@ -288,3 +288,25 @@ struct AttachmentStorageTests {
         #expect(Set(["mediaType", "fileName", "fileSize", "upload"]).isSubset(of: Set(columns)))
     }
 }
+
+struct UserFilesTests {
+    @Test func savesUnderAFreeNameAndKeepsItOneFile() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source")
+        try Data("hi".utf8).write(to: source)
+        let downloads = directory.appendingPathComponent("Downloads")
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+
+        let first = try UserFiles.save(source, named: "notes.txt", in: downloads)
+        let second = try UserFiles.save(source, named: "notes.txt", in: downloads)
+        #expect(first.lastPathComponent == "notes.txt")
+        #expect(second.lastPathComponent == "notes (1).txt")
+        #expect(UserFiles.cleanName("../../etc/passwd") == "-..-etc-passwd")
+        #expect(UserFiles.cleanName(".hidden") == "hidden")
+        #expect(UserFiles.cleanName("") == "file")
+        #expect(UserFiles.cleanName(" .zshrc") == "zshrc")
+        #expect(try first.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties != nil)
+    }
+}

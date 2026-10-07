@@ -19,13 +19,16 @@ struct ComposerField: View {
     var mention: Binding<String?> = .constant(nil)
     var insertion: MentionInsertion?
     var suggestionKey: (SuggestionKey) -> Bool = { _ in false }
+    /// Escape with no suggestions showing, such as to stop replying; returns
+    /// whether it was taken.
+    var escape: () -> Bool = { false }
 
     @State private var height: CGFloat = ComposerTextView.lineHeight
 
     var body: some View {
         ComposerTextView(
             text: $text, height: $height, mention: mention, focusRequest: focusRequest, insertion: insertion,
-            submit: submit, suggestionKey: suggestionKey
+            submit: submit, suggestionKey: suggestionKey, escape: escape
         )
         .frame(height: height)
         .overlay(alignment: .topLeading) {
@@ -58,8 +61,9 @@ private struct ComposerTextView: NSViewRepresentable {
     let insertion: MentionInsertion?
     let submit: () -> Void
     let suggestionKey: (SuggestionKey) -> Bool
+    let escape: () -> Bool
 
-    static let font = NSFont(name: "Roboto-Regular", size: 14) ?? .systemFont(ofSize: 14)
+    static let font = NSFont.systemFont(ofSize: 14)
     static let padding: CGFloat = 4
     static let maxLines: CGFloat = 8
     static let lineHeight = NSLayoutManager().defaultLineHeight(for: font) + padding * 2
@@ -135,6 +139,7 @@ private struct ComposerTextView: NSViewRepresentable {
             if mentionRange != nil, let key = Self.suggestionKeys[selector], parent.suggestionKey(key) {
                 return true
             }
+            if selector == #selector(NSResponder.cancelOperation(_:)) { return parent.escape() }
             guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
             let modifiers = NSApp.currentEvent?.modifierFlags ?? []
             if modifiers.contains(.shift) || modifiers.contains(.option) {

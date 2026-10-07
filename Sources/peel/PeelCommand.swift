@@ -14,6 +14,7 @@ struct PeelCommand {
           restore                     existing account; reads the twelve words from stdin
           whoami                      this account's contact info, balance, name and photo
           rename <name>               the name others see on messages sent from now on
+          upload-photo <picture>      upload a picture to the memes server and make it this account's photo
           contacts                    contacts known to the core
           add <contact-info> [name]   start a key exchange with a contact
           send <pubkey> <text>        send a text message to a contact or a tribe
@@ -22,13 +23,14 @@ struct PeelCommand {
           messages <pubkey>           a chat's main conversation, as the app shows it: row ids, uuids,
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages
-          threads                     tribe threads this account started or wrote in, newest first
+          threads                     threads (tribes and contacts) this account started or wrote in, newest first
           resend <id>                 send an undelivered message again
           discard <id>                drop an undelivered message
+          delete <id>                 delete a message for everyone (yours, or any in a tribe you own)
           unread                      unread counts and mute levels by chat
           read <pubkey>               mark a chat read up to its newest message
           mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
-          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>)
+          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread)
           download <id> <out path>    download and decrypt an attachment to a new file (never opened)
 
           tribes                      tribes this account is in
@@ -155,6 +157,11 @@ struct PeelCommand {
             try await engine.setAlias(arguments.rest().joined(separator: " "))
             print("name: \(await engine.myAlias)")
 
+        case "upload-photo":
+            guard let path = arguments.next() else { throw PeelError("upload-photo needs a picture") }
+            let engine = try await load()
+            print("photo: \(try await engine.uploadPhoto(URL(fileURLWithPath: path)))")
+
         case "contacts":
             let storage = try Storage(directory: profile.directory, readOnly: true)
             for contact in try Engine.contacts(in: storage) {
@@ -185,7 +192,9 @@ struct PeelCommand {
             }
             let session = try await Session(load())
             await session.connectIfPossible(insecure: insecure)
-            let id = try await session.engine.sendAttachment(URL(fileURLWithPath: path), text: caption ?? "", to: pubkey)
+            let id = try await session.engine.sendAttachment(
+                URL(fileURLWithPath: path), text: caption ?? "", to: pubkey, replyTo: replyTo, inThread: inThread
+            )
             print("attachment row \(id)")
             try await session.finish(after: wait)
 
@@ -197,8 +206,8 @@ struct PeelCommand {
             // A session, so download progress is printed.
             let session = try await Session(load())
             let file = try await session.engine.downloadAttachment(messageID: id)
-            // A new file only, and never opened: what to do with it is the person's call.
-            try FileManager.default.copyItem(at: file.file, to: URL(fileURLWithPath: out))
+            // A new file only, quarantined, and never opened: what to do with it is the person's call.
+            try UserFiles.copy(file.file, to: URL(fileURLWithPath: out), replacing: false)
             try await Task.sleep(for: .milliseconds(100))
             print("\(file.kind) \(file.size) bytes\(file.fileName.map { " \"\($0)\"" } ?? "")"
                 + "\(file.cached ? " (cached)" : "") -> \(out)")
@@ -238,6 +247,13 @@ struct PeelCommand {
                 }
                 break
             }
+
+        case "delete":
+            guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("delete needs a message id") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.deleteMessage(id: id)
+            print("deleted \(id)")
+            try await session.finish(after: wait)
 
         case "resend", "discard":
             guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("\(command) needs a message id") }
@@ -455,7 +471,8 @@ extension Session {
         let index = row.serverIndex.map(String.init) ?? "-"
         let delivery = row.delivery.map { " [\($0)]" } ?? ""
         let mention = row.mentionsMe ? " [mentions me]" : ""
-        print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(line(row))\(delivery)\(mention)")
+        let deleted = row.deleted ? " [deleted]" : ""
+        print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(line(row))\(delivery)\(mention)\(deleted)")
         if let reply = row.replyUUID {
             print("      in reply to \(parents[reply].map(line) ?? "\(reply) (not stored)")")
         }

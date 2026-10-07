@@ -151,8 +151,38 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    exercised by hand in the running app: typing in the composer (Return,
    Shift-Return, paste), hover times, clicking a link, the context menu,
    the connection popover and its countdown, Discard's confirmation, and
-   marking read when the window comes to the front. The `/code-review`,
-   `/simplify` and `/security-review` passes have not run on this branch.
+   marking read when the window comes to the front.
+
+   Review (2026-10-07): `/code-review`, `/simplify` and `/security-review`
+   ran on this branch. Fixed: an empty read map from the server (the core
+   leaves `lastRead` out) now still pushes local markers, reconciled only in
+   reply to `getreads`, so it cannot loop; the resend UPDATE checks chat,
+   `fromMe`, type and pending/failed itself; unread counts use a new
+   `message(chat, serverIndex)` index (migration v5) per conversation instead
+   of scanning the message table; `connect()` clears the reconnect task; the
+   connection popover shows the last connect error, not any notice; the
+   composer leaves input-method text alone, Cmd-Return sends again, and iOS
+   falls back to a `TextField`; one sidebar row view; pending rows redraw once
+   at the timeout. Security review found nothing to fix.
+   Not applied, with reasons:
+   - Retry or Discard on a message pending past 30 s that the server did in
+     fact get: Discard's row comes back with the next history fetch, and
+     Retry leaves the original's late echo or history copy as a second local
+     row. Accepted with the recipient-side duplicate above; the fix is an
+     engine sweep that marks pending sends failed only when the server says
+     so, which the protocol does not offer.
+   - Moving pending to failed in storage after the timeout (so only `failed`
+     is retryable): changes what the CLI and storage show; the view and
+     engine both use `Message.isRetryable`, one rule.
+   - Folding unread and mute into the `conversations()` query: worth doing,
+     but it reshapes `Conversation` and the sidebar; the indexed per-chat
+     query removes the cost that mattered.
+   - Resend as "insert new row + delete old": keeping the same row keeps its
+     place and id in the open chat; the guarded UPDATE is enough.
+   - Showing a failed send only by its row (no banner): the banner carries
+     the transport error text, which the row does not.
+   - Caching link detection or day/run flags per message: the bubble is now
+     its own view, so hover no longer redoes it; measure before caching more.
 
 ## Done criteria
 

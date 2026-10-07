@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-07. This is the architecture and the phase index. Each phase
+Last updated 2026-10-07 (evening). This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -80,25 +80,28 @@ which are not core state). Live queries use GRDB `ValueObservation`.
 
 ### Identity and secrets
 
-The twelve-word mnemonic is the account. Today it lives in a plain file inside
-the profile directory (`Profile`), which is only acceptable for the throwaway
-account. Keychain storage is phase 2 work. Core state holds contact keys and the
-device's child-key indices; it is sensitive but not the seed.
+The twelve-word mnemonic is the account. App profiles keep it in the login
+Keychain, sealed under a six-digit PIN (`SecretStore`); development profiles
+used by the CLI keep it in a plain file and are for throwaway accounts only.
+The PIN lives only in memory. Core state holds contact keys and the device's
+child-key indices; it is sensitive but not the seed. Limits and the next step
+(data-protection keychain) are in phase 2.
 
 ### Platform
 
 macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
-the Mac app's repo; building it from source needs Rust 1.88.0. Xcode is
-installed (2026-10-07); until phase 2 adds an Xcode project, builds use
-`swift build` and the app bundle is assembled by `scripts/run-app.sh`.
+the Mac app's repo and is pinned by hash in `Vendor/sphinxrs.lock`; building
+it from source needs Rust 1.88.0. Xcode is installed and the app is signed
+with Tom's Apple Development identity (`scripts/sign-app.sh`); there is no
+Xcode project yet, which is only needed for TestFlight and the iPhone target.
 
 ## Phases
 
 | # | Phase | Status | File |
 |---|-------|--------|------|
-| 1 | Core and account | done, in daily-use trial | [phases/01-core.md](phases/01-core.md) |
-| 2 | Safe accounts: Keychain, onboarding, restore | next | [phases/02-messaging.md](phases/02-messaging.md) |
+| 1 | Core and account | done | [phases/01-core.md](phases/01-core.md) |
+| 2 | Safe accounts: Keychain, PIN, onboarding, restore | engine done; app onboarding landing | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | planned | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | planned | [phases/04-money.md](phases/04-money.md) |
 | 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |
@@ -114,13 +117,20 @@ LiveKit calls; web apps; People and LSATs; paid messages and templates; six
 languages. Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive
 workspaces, Tor and relay-era code, Jitsi.
 
+## Working in parallel
+
+Two sessions worked this repo at once on 2026-10-07 with a file split (engine
+and CLI in one, app and design in the other) and `main` only, pulling with
+rebase before each push. It worked, but it needs the shipping chain in
+`AGENTS.md` to run before every push, and commits that build on their own.
+From here, prefer a branch and PR per phase task when more than one session
+is active.
+
 ## Open questions
 
-
-- Install Xcode on this Mac? Needed for a signed bundle, entitlements, Keychain
-  access groups, TestFlight and the iPhone target.
 - Build the Rust bindings from source or keep using the prebuilt library?
-- Repo hosting: local only so far.
+- Data-protection keychain needs a provisioned bundle: add the Xcode project
+  before or after the real account moves over?
 
 ## Accounts
 

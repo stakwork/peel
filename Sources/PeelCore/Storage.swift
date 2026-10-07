@@ -137,6 +137,21 @@ public final class Storage: Sendable {
                 CREATE INDEX message_mentions ON message (chat, serverIndex) WHERE mentionsMe = 1
                 """)
         }
+        migrator.registerMigration("v8") { db in
+            // Replies and threads: what a message answers and the thread it is in.
+            try db.alter(table: "message") { t in
+                t.add(column: "replyUUID", .text)
+                t.add(column: "threadUUID", .text)
+            }
+            try db.execute(sql: """
+                UPDATE message SET
+                    replyUUID = json_extract(body, '$.replyUuid'),
+                    threadUUID = json_extract(body, '$.threadUuid')
+                WHERE (body LIKE '%replyUuid%' OR body LIKE '%threadUuid%') AND json_valid(body);
+                CREATE INDEX message_reply ON message (chat, replyUUID) WHERE replyUUID IS NOT NULL;
+                CREATE INDEX message_thread ON message (chat, threadUUID, timestamp) WHERE threadUUID IS NOT NULL;
+                """)
+        }
         return migrator
     }
 }
@@ -227,6 +242,43 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     public var shownMentions: Int { mute == .muted ? 0 : mentions }
 }
 
+/// What a chat's main conversation shows.
+public struct Timeline: Sendable, Equatable {
+    /// The newest 200 messages shown, oldest first. In a tribe, a thread of
+    /// two or more messages is one row, its newest message (see `threads`);
+    /// the rest of the thread and its original are left out.
+    public var messages: [Message]
+    /// The messages replied to, by uuid, however far back they are.
+    public var parents: [String: Message]
+    /// The collapsed threads among `messages`, by the original's uuid.
+    public var threads: [String: ThreadSummary]
+}
+
+/// One thread: the message that started it and what has been said in it.
+public struct ThreadSummary: Sendable, Identifiable, Equatable {
+    public var original: Message
+    /// Messages in the thread, not counting the original.
+    public var count: Int
+    public var lastTimestamp: Int64?
+    /// Other people's thread messages past the chat's read marker.
+    public var unread: Int
+
+    public var chat: String { original.chat }
+    /// The original's uuid, which every message in the thread names.
+    public var uuid: String { original.uuid ?? "" }
+    public var id: String { "\(chat)/\(uuid)" }
+}
+
+/// A thread as its own view shows it.
+public struct ChatThread: Sendable, Equatable {
+    /// Nil until the original is stored (it may come later in history).
+    public var original: Message?
+    /// The newest 200 thread messages, oldest first.
+    public var messages: [Message]
+    /// The messages replied to inside the thread, by uuid.
+    public var parents: [String: Message]
+}
+
 // MARK: - Reading
 
 extension Storage {
@@ -274,14 +326,59 @@ extension Storage {
     /// Text, plus the membership notes only tribes send. The owner's own
     /// removals are left out, as in the Mac app: the tribe's copy does not
     /// say whom they were for. (Only the owner can send them.)
-    private static let messagesSQL = """
+    private static let messagesSQL = messagesSQL(also: "")
+
+    /// What a tribe's main conversation hides, as the Mac app does: every
+    /// message of a thread of two or more but the newest, and the thread's
+    /// original. A thread whose original is not stored is not collapsed.
+    private static let tribeTimelineSQL = messagesSQL(also: """
+        AND NOT (m.threadUUID IS NOT NULL AND m.type = \(MessageType.text)
+            AND EXISTS (SELECT 1 FROM message o WHERE o.uuid = m.threadUUID AND o.chat = m.chat)
+            AND EXISTS (
+                SELECT 1 FROM message n
+                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND n.type = \(MessageType.text)
+                    AND (n.timestamp, n.id) > (m.timestamp, m.id)
+            ))
+        AND NOT (m.uuid IS NOT NULL AND EXISTS (
+            SELECT 1 FROM message n
+            WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND n.type = \(MessageType.text)
+            LIMIT 1 OFFSET 1
+        ))
+        """)
+
+    private static func messagesSQL(also condition: String) -> String {
+        """
         SELECT * FROM (
-            SELECT * FROM message
+            SELECT * FROM message m
             WHERE chat = ? AND type IN (\(MessageType.shownInChats.map(String.init).joined(separator: ", ")))
                 AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
+            \(condition)
             ORDER BY timestamp DESC, id DESC LIMIT 200
         ) ORDER BY timestamp, id
         """
+    }
+
+    /// A thread's newest 200 messages, oldest first.
+    private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND type = \(MessageType.text)")
+
+    /// Threads of two or more messages with their original stored, each with
+    /// its original's columns plus `threadCount`, `threadLast` and
+    /// `threadUnread`. `filter` narrows the thread messages `t`.
+    private static func threadsSQL(where filter: String) -> String {
+        """
+        SELECT o.*, g.threadCount, g.threadLast, g.threadUnread
+        FROM (
+            SELECT t.chat, t.threadUUID, COUNT(*) AS threadCount, MAX(t.timestamp) AS threadLast,
+                SUM(t.fromMe = 0 AND t.serverIndex > COALESCE(s.lastRead, -1)) AS threadUnread
+            FROM message t
+            LEFT JOIN chatState s ON s.chat = t.chat
+            WHERE t.threadUUID IS NOT NULL AND t.type = \(MessageType.text) AND \(filter)
+            GROUP BY t.chat, t.threadUUID
+            HAVING COUNT(*) >= 2
+        ) g
+        JOIN message o ON o.uuid = g.threadUUID AND o.chat = g.chat
+        """
+    }
 
     /// Incoming text messages past the read marker count as unread, one row per
     /// conversation; each count is a range on `message_unread`, and the
@@ -329,12 +426,6 @@ extension Storage {
 
     public func message(id: Int64) throws -> Message? {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
-    }
-
-    func message(uuid: String, in chat: String) throws -> Message? {
-        try pool.read { db in
-            try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ? AND chat = ?", arguments: [uuid, chat])
-        }
     }
 
     func chat(forTag tag: String) throws -> String? {
@@ -422,8 +513,8 @@ extension Storage {
                 sql: """
                     SELECT EXISTS (
                         SELECT 1 FROM message
-                        WHERE chat = ? AND type IN (\(MessageType.memberApprove), \(MessageType.memberReject))
-                            AND json_valid(body) AND json_extract(body, '$.replyUuid') = ?
+                        WHERE chat = ? AND replyUUID = ?
+                            AND type IN (\(MessageType.memberApprove), \(MessageType.memberReject))
                     )
                     """,
                 arguments: [tribe, uuid]
@@ -462,6 +553,127 @@ extension Storage {
             .trackingConstantRegion { db in try Message.fetchAll(db, sql: Self.messagesSQL, arguments: [chat]) }
             .removeDuplicates()
             .values(in: pool)
+    }
+}
+
+// MARK: - Replies and threads
+
+extension Storage {
+    /// A chat's main conversation, re-emitted whenever it changes: in a tribe
+    /// with threads collapsed as the Mac app shows them, in a DM every
+    /// message; plus the parents quoted and the collapsed threads.
+    public func timeline(in chat: String) -> some AsyncSequence<Timeline, any Error> {
+        // Not a constant region: read markers are read only once there are threads.
+        ValueObservation
+            .tracking { db in
+                let isTribe = try Bool.fetchOne(
+                    db, sql: "SELECT EXISTS (SELECT 1 FROM tribe WHERE pubkey = ?)", arguments: [chat]
+                ) ?? false
+                let messages = try Message.fetchAll(
+                    db, sql: isTribe ? Self.tribeTimelineSQL : Self.messagesSQL, arguments: [chat]
+                )
+                var threads: [String: ThreadSummary] = [:]
+                let threadUUIDs = Set(messages.compactMap(\.threadUUID))
+                if isTribe, !threadUUIDs.isEmpty {
+                    let summaries = try Self.threadSummaries(
+                        db,
+                        where: "t.chat = ? AND t.threadUUID IN (\(databaseQuestionMarks(count: threadUUIDs.count)))",
+                        arguments: StatementArguments([chat] + Array(threadUUIDs))
+                    )
+                    for summary in summaries { threads[summary.uuid] = summary }
+                }
+                return Timeline(messages: messages, parents: try Self.parents(of: messages, in: chat, db), threads: threads)
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// One thread: its original and its newest 200 messages, re-emitted
+    /// whenever they change.
+    public func thread(_ uuid: String, in chat: String) -> some AsyncSequence<ChatThread, any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                let messages = try Message.fetchAll(db, sql: Self.threadMessagesSQL, arguments: [chat, uuid])
+                return ChatThread(
+                    original: try Self.message(uuid: uuid, in: chat, db),
+                    messages: messages,
+                    parents: try Self.parents(of: messages, in: chat, db)
+                )
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// Threads in joined tribes that this account started or wrote in,
+    /// newest activity first, re-emitted whenever they change.
+    public func threads() -> some AsyncSequence<[ThreadSummary], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                try Self.threadSummaries(
+                    db,
+                    // Only threads with a message of ours are grouped at all.
+                    where: """
+                        t.chat IN (SELECT pubkey FROM tribe WHERE left = 0) AND t.threadUUID IN (
+                            SELECT threadUUID FROM message WHERE fromMe = 1 AND threadUUID IS NOT NULL
+                            UNION SELECT uuid FROM message WHERE fromMe = 1 AND uuid IS NOT NULL
+                        )
+                        """,
+                    also: "ORDER BY g.threadLast DESC, o.id DESC LIMIT 200"
+                )
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// How many text messages reply to each message of a chat, by the
+    /// replied-to uuid.
+    public func replyCounts(in chat: String) throws -> [String: Int] {
+        try pool.read { db in
+            var counts: [String: Int] = [:]
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT replyUUID, COUNT(*) AS count FROM message
+                    WHERE chat = ? AND replyUUID IS NOT NULL AND type = \(MessageType.text)
+                    GROUP BY replyUUID
+                    """,
+                arguments: [chat]
+            )
+            for row in rows { counts[row["replyUUID"]] = row["count"] }
+            return counts
+        }
+    }
+
+    /// A message of one chat by uuid, such as the parent of a reply, however
+    /// old. Only the same chat: a reply cannot quote another conversation.
+    public func message(uuid: String, in chat: String) throws -> Message? {
+        try pool.read { db in try Self.message(uuid: uuid, in: chat, db) }
+    }
+
+    private static func message(uuid: String, in chat: String, _ db: Database) throws -> Message? {
+        try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ? AND chat = ?", arguments: [uuid, chat])
+    }
+
+    private static func parents(of messages: [Message], in chat: String, _ db: Database) throws -> [String: Message] {
+        let uuids = Set(messages.compactMap(\.replyUUID))
+        guard !uuids.isEmpty else { return [:] }
+        let parents = try Message.fetchAll(
+            db,
+            sql: "SELECT * FROM message WHERE chat = ? AND uuid IN (\(databaseQuestionMarks(count: uuids.count)))",
+            arguments: StatementArguments([chat] + Array(uuids))
+        )
+        return Dictionary(parents.compactMap { parent in parent.uuid.map { ($0, parent) } }, uniquingKeysWith: { $1 })
+    }
+
+    private static func threadSummaries(
+        _ db: Database, where filter: String, arguments: StatementArguments = [], also tail: String = ""
+    ) throws -> [ThreadSummary] {
+        try Row.fetchAll(db, sql: threadsSQL(where: filter) + "\n" + tail, arguments: arguments).map { row in
+            ThreadSummary(
+                original: try Message(row: row), count: row["threadCount"],
+                lastTimestamp: row["threadLast"], unread: row["threadUnread"] ?? 0
+            )
+        }
     }
 }
 
@@ -587,8 +799,8 @@ extension Storage {
             sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
-                     mentionsMe)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mentionsMe, replyUUID, threadUUID)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     mentionsMe = MAX(message.mentionsMe, excluded.mentionsMe),
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
@@ -598,14 +810,16 @@ extension Storage {
                     tag = COALESCE(message.tag, excluded.tag),
                     sender = COALESCE(message.sender, excluded.sender),
                     body = COALESCE(message.body, excluded.body),
-                    content = COALESCE(message.content, excluded.content)
+                    content = COALESCE(message.content, excluded.content),
+                    replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
+                    threadUUID = COALESCE(message.threadUUID, excluded.threadUUID)
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
                 """,
             arguments: [
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
-                message.status, message.mentionsMe,
+                message.status, message.mentionsMe, message.replyUUID, message.threadUUID,
             ]
         )
     }

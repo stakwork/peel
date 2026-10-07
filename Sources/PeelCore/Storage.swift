@@ -236,6 +236,8 @@ public enum Setting: String, Sendable {
     case mentionScan
     /// Payments and boosts over this many msat need the person's confirmation.
     case paymentConfirmationMsat
+    /// What a one-tap boost tips, in msat (the official apps' "Default tip amount").
+    case boostAmountMsat
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -867,6 +869,21 @@ extension Storage {
             )
             for row in rows { counts[row["replyUUID"]] = row["count"] }
             return counts
+        }
+    }
+
+    /// When this account last boosted the message `uuid` in `chat`, if it
+    /// has (failed boosts too: a tap that failed is still a tap).
+    func lastOwnBoost(on uuid: String, in chat: String) throws -> Date? {
+        try pool.read { db in
+            try Int64.fetchOne(
+                db,
+                sql: """
+                    SELECT MAX(timestamp) FROM message
+                    WHERE chat = ? AND replyUUID = ? AND fromMe = 1 AND type = \(MessageType.boost)
+                    """,
+                arguments: [chat, uuid]
+            ).map(Date.init(millisecondsSince1970:))
         }
     }
 

@@ -459,3 +459,134 @@ chip and the who-boosted panel. Now a boost on our message counts only
 but the summary ignores them on our messages. Checked and sound:
 confirmation binding, double clicks, retries, `.moneyReceived` (needs real
 sats), SQL built only from constants.
+
+## One-tap boost (2026-10-07, branch `phase4/one-tap-boost`)
+
+As in the official apps, the hover bar's bolt boosts at once with the
+account's boost amount: no panel, no confirmation.
+
+### What the official apps do (checked in the code)
+
+- **Setting.** Mac and iOS call it "Default tip amount", on the Profile
+  screen (Mac `Scenes/Profile/Base.lproj/Profile.storyboard`,
+  `meetingAmountField`). The default is 100 sats
+  (`UserDefaults.Keys.tipAmount.get(defaultValue: 100)`; iOS uses the key
+  `meetingPmtAmount`). It syncs between devices as `tip_amount` and is not
+  validated.
+- **Sending.** The menu item sends `pricePerMessage + escrow + tip` at once
+  (`TransactionMessageParamsExtension.getBoostMessageParams`). In a DM it
+  sends the tip alone. There is no confirmation and no guard against double
+  taps.
+- **What they show.**
+  - The menu item is the plain word "Boost" with the `boostIconGreen` icon
+    and no amount (Mac `TransactionMessageInfoGetterExtension.swift:706`,
+    iOS `:612`).
+  - Nothing is shown on success. Failure shows an alert ("boost.error",
+    or "Routing Error" in a DM).
+  - No screen breaks out the tribe's price.
+  - The chip under the message sums each boost's stored amount. For your
+    own boost that is everything sent, the price included
+    (`MessageTableCellState.swift:578`).
+
+### Decided (Tom, 2026-10-07)
+
+- Account: "Boost amount" (10 / 50 / 100 / 500 / 1,000 sats, Custom…), per
+  account, default 100 sats.
+- **One tap sends the boost amount plus the tribe's price and escrow, with
+  no confirmation of any kind.** There is no price-spike prompt, and neither
+  the threshold nor "Always confirm" applies to it. Those still apply to
+  "Boost…" (the panel for a custom amount), Send sats and, later, invoices.
+- Saving a custom boost amount over the threshold takes two clicks on the
+  Account screen. That is the one place a big amount is approved.
+- Labels name the boost amount only: "Boost 100 sats" in the menu and on
+  the bolt's tooltip, never the tribe's price. The chip's total includes
+  the price, as in the official apps.
+- The chip shows pending at once, and a failure shows Retry as before.
+- Two taps on one message within a second are one boost, silently.
+- Money buttons use plain verbs: "Boost" or "Send" when idle; when armed,
+  "Boost 150 sats" with "Click again to confirm" beside it. This applies to
+  every money confirm.
+
+### Built
+
+- **Engine.**
+  - `quickBoost(messageID:)` checks the balance only (`Confirmation.unasked`
+    in `checkPayment`).
+  - `boost(…confirmedMsat:)` and `sendPayment` keep the threshold
+    (`Engine.needsConfirmation`: over the threshold, unless confirmed for
+    exactly that amount; 0 asks for everything).
+  - `boostAmountMsat()` and `setBoostAmount(msat:confirmedMsat:)` read and
+    set the `boostAmountMsat` setting. Saving asks over the threshold.
+  - The double-tap guard is in the engine. A one-tap boost within
+    `quickBoostGap` (1 s) of our last boost on the same message
+    (`Storage.lastOwnBoost`, failed ones included) is ignored.
+- **CLI.**
+  - `boost <id>` without an amount is the one-tap boost, with no `--yes`.
+  - `boost-amount [sats]` shows or sets the amount, with `--yes` over the
+    threshold.
+- **App.**
+  - The bolt and the menu's "Boost 100 sats" (B in the menu) call
+    `AppModel.quickBoost`. A refusal (balance) shows in the chat's notice,
+    as the official apps show an alert.
+  - Account has `BoostAmountRow`. A preset saves as picked. A typed amount
+    over the threshold takes a second click (`PayButton`).
+  - `PayButton` and Retry use the plain-verb copy with `ConfirmHint`.
+
+### Verified (local stack, real accounting)
+
+Ports: broker 2363, mixer 8373, tribes 8893. Profiles `ob-alice`, `ob-bob`
+and `ob-carol` were deleted afterwards. The balances came only from key
+exchanges (6–10 sats). These checks ran on the first version of the
+branch. The one-tap path they exercise did not ask in either case, so they
+still hold. The price-spike prompt they did not reach has since been
+removed.
+
+| Check | Result |
+|---|---|
+| One-tap at the default 100 sats with a 10-sat balance | Refused locally ("the balance is not enough for that"); nothing sent |
+| Boost amount 2 sats, one-tap in a DM | Sent at once; Alice +2 sats; `.moneyReceived` live |
+| Tribe with a 3-sat price, boost amount 2 sats, one-tap | Sent 5 sats (3 + 2) at once |
+| `boost-amount 200` (over the 100-sat threshold) | Refused without `--yes`; with it, "confirmed 200 sats" and saved |
+
+Not checked by hand, because this session cannot click in the app: the
+hover bolt, the menu item, the Account row and the new button copy.
+
+### Reviews
+
+- **`/code-review high`, first version.** Applied: a custom boost amount
+  over the threshold takes a second click, now in the engine; a failed save
+  keeps the typed amount; docs. The rest (price-spike prompt, "Always
+  confirm" on one-tap, total labels) was dropped with Tom's decision for no
+  confirmation.
+- **`/simplify`.** Applied: the double-tap guard is in the engine, which
+  covers the CLI; `BoostAmountRow` reuses `PayButton`, `SatsField` and a
+  shared presets helper; there is one CLI sats parser. The second version
+  removed the per-message confirm state and `QuickBoostConfirm` altogether.
+- **`/security-review` (unintended sends), first version.** Nothing at the
+  bar. The rule it checked (a tap never confirms; confirmations bind to the
+  exact total) still holds for the panel, Send sats and Retry. One-tap is
+  now unasked by design, and it is bounded by the saved boost amount plus
+  the tribe's price and by the balance.
+- **`/code-review high` on the second version.**
+  - Applied:
+    - A later successful one-tap clears a stale "Could not boost" notice.
+    - One `checkPayment` with the `Confirmation` enum, with no wrapper
+      overload.
+  - Not applied, Tom's decision for this UX, recorded here for him:
+    - One-tap is bounded only by the balance and the saved boost amount
+      plus the tribe's price. A tribe owner who raises the price to 50,000
+      sats makes one tap send 50,100, unasked.
+    - The 100-sat default was never approved through `setBoostAmount`. A
+      boost amount saved under an earlier, higher threshold is not checked
+      again when the threshold is lowered.
+    - The label says "Boost 100 sats" while a tribe's price is added on
+      top.
+  - Not applied:
+    - Retrying a failed one-tap boost goes through `resend`, which keeps
+      the threshold, so Retry may ask where the tap did not. Retry only
+      knows the stored total, not whether it was a one-tap. It errs on
+      asking.
+    - No engine test drives `quickBoost` end to end. It needs a connected
+      core; the rule is checked on the local stack and
+      `needsConfirmation` is unit-tested.
+    - The bolt's tooltip has no "(B)"; the shortcut lives in the menu.

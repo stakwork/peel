@@ -30,6 +30,41 @@ extension AppModel {
         }
     }
 
+    /// The one-tap Boost, as in the official apps (Tom, 2026-10-07): the
+    /// boost amount, plus a tribe's price, at once, with no panel and no
+    /// confirmation. The row shows it pending, then the bolt or Retry,
+    /// through storage; the engine ignores a second tap within a second. A
+    /// refusal (the balance) shows in the chat, as the official apps' alert.
+    func quickBoost(_ message: Message) async {
+        guard let id = message.id else { return }
+        switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id) }) {
+        case .refused(let reason): conversationNotices[message.chat] = "Could not boost: \(reason)"
+        case .sent: if conversationNotices[message.chat]?.hasPrefix("Could not boost") == true {
+            conversationNotices[message.chat] = nil
+        }
+        case .needsConfirmation, .busy: break
+        }
+    }
+
+    /// "Boost 100 sats": the boost amount only, as the hover bar and menu
+    /// name it. Neither official app shows a tribe's price on a boost (the
+    /// chip's total then includes it, as theirs does).
+    var quickBoostLabel: String { "Boost \(Formatting.sats(msat: boostAmountMsat))" }
+
+    /// Over the confirmation threshold the engine asks first, as for a payment.
+    func setBoostAmount(msat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
+        guard let engine else { return .refused("Not signed in.") }
+        do {
+            try await engine.setBoostAmount(msat: msat, confirmedMsat: confirmedMsat)
+            boostAmountMsat = msat
+            return .sent
+        } catch Engine.Failure.needsConfirmation(let msat) {
+            return .needsConfirmation(msat: msat)
+        } catch {
+            return .refused(PeelError.readable(error))
+        }
+    }
+
     /// Sends sats to a contact in their chat, with an optional note.
     func sendPayment(to chat: String, amountMsat: UInt64, note: String, confirmedMsat: UInt64?) async -> PaymentOutcome {
         await pay("pay \(chat)") {
@@ -80,7 +115,7 @@ extension Formatting {
 // MARK: - Paying
 
 /// One payment from a button: the engine is asked first; over the threshold
-/// it answers with the amount, which arms the button ("Click again to …"),
+/// it answers with the amount, which arms the button (orange, "Boost 150 sats"),
 /// and the second click sends exactly that amount (the engine refuses any
 /// other). Not twice while one is on its way.
 @MainActor @Observable
@@ -113,33 +148,44 @@ final class PaymentAttempt {
     }
 }
 
-/// The button that sends money: "Boost 110 sats", or once the engine asks,
-/// "Click again to boost 1,000 sats" in orange. Any change to the amount
-/// puts it back.
+/// The button that sends money (Tom, 2026-10-07: plain verbs). Idle it
+/// says the verb ("Boost", "Send"); once the engine asks, it turns orange
+/// and names the amount ("Boost 150 sats"), with "Click again to confirm"
+/// under it, and the next click sends exactly that. Any change to the
+/// amount puts it back. `send` is called with nil, then with the amount.
 struct PayButton: View {
-    /// "Boost", "Send".
+    /// "Boost", "Send", "Save".
     let verb: String
     /// The total as it stands; nil while the amount is not valid.
     let totalMsat: UInt64?
     let attempt: PaymentAttempt
     let send: (_ confirmedMsat: UInt64?) async -> PaymentOutcome
-    let sent: () -> Void
+    var sent: () -> Void = {}
 
     var body: some View {
-        Button {
-            Task { if await attempt.run(send) { sent() } }
-        } label: {
-            Text(label).monospacedDigit()
+        VStack(alignment: .trailing, spacing: 3) {
+            Button {
+                Task { if await attempt.run(send) { sent() } }
+            } label: {
+                Text(attempt.armed.map { "\(verb) \(Formatting.sats(msat: $0))" } ?? verb).monospacedDigit()
+            }
+            .buttonStyle(GhostButtonStyle(prominent: true, fill: attempt.armed == nil ? nil : Theme.attention))
+            .keyboardShortcut(.defaultAction)
+            .disabled(totalMsat == nil || attempt.working)
+            if attempt.armed != nil {
+                ConfirmHint()
+            }
         }
-        .buttonStyle(GhostButtonStyle(prominent: true, fill: attempt.armed == nil ? nil : Theme.attention))
-        .keyboardShortcut(.defaultAction)
-        .disabled(totalMsat == nil || attempt.working)
         .onChange(of: totalMsat) { attempt.armed = nil }
     }
+}
 
-    private var label: String {
-        if let armed = attempt.armed { return "Click again to \(verb.lowercased()) \(Formatting.sats(msat: armed))" }
-        return totalMsat.map { "\(verb) \(Formatting.sats(msat: $0))" } ?? verb
+/// "Click again to confirm", quiet, beside or under an armed money button.
+struct ConfirmHint: View {
+    var body: some View {
+        Text("Click again to confirm")
+            .font(Theme.font(11))
+            .foregroundStyle(Theme.secondaryText)
     }
 }
 
@@ -175,7 +221,7 @@ private struct AmountLine: View {
 }
 
 /// A field for a whole number of sats.
-private struct SatsField: View {
+struct SatsField: View {
     let placeholder: String
     @Binding var text: String
 
@@ -558,6 +604,59 @@ struct PaymentRow: View {
 
 // MARK: - Account
 
+/// A setting's presets, with its current value among them if it is not one.
+private func presets(_ choices: [UInt64], including current: UInt64) -> [UInt64] {
+    choices.contains(current) ? choices : (choices + [current]).sorted()
+}
+
+/// What the one-tap Boost tips (the official apps' "Default tip amount",
+/// 100 sats): presets, or another amount typed in. Over the confirmation
+/// threshold a typed amount takes a second click, as a payment would.
+struct BoostAmountRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var custom: String?
+    @State private var attempt = PaymentAttempt()
+
+    private static let choices: [UInt64] = [10, 50, 100, 500, 1_000].map { $0 * 1000 }
+    /// "Custom…" in the dropdown; never an amount (zero is refused).
+    private static let other: UInt64 = 0
+
+    var body: some View {
+        let current = model.boostAmountMsat
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                PeelDropdown(
+                    selection: custom == nil ? current : Self.other,
+                    options: presets(Self.choices, including: current).map { ($0, Formatting.sats(msat: $0)) }
+                        + [(Self.other, "Custom…")]
+                ) { msat in
+                    attempt.armed = nil
+                    if msat == Self.other {
+                        custom = ""
+                    } else {
+                        custom = nil
+                        // Picking a labelled preset is the confirmation.
+                        Task { _ = await attempt.run { _ in await model.setBoostAmount(msat: msat, confirmedMsat: msat) } }
+                    }
+                }
+                .fixedSize()
+                if let custom {
+                    let typed = Sats.msat(custom)
+                    SatsField(placeholder: "Amount", text: Binding(get: { custom }, set: { self.custom = $0 }))
+                        .frame(width: 120)
+                    PayButton(verb: "Save", totalMsat: typed, attempt: attempt, send: { confirmed in
+                        guard let typed else { return .refused("Enter an amount.") }
+                        return await model.setBoostAmount(msat: typed, confirmedMsat: confirmed)
+                    }, sent: { self.custom = nil })
+                }
+            }
+            Text(attempt.problem ?? "Boost sends this at once, plus a tribe's price; Boost… in a message's menu picks another amount.")
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+        }
+    }
+}
+
 /// The threshold over which a payment or boost takes a second click.
 struct PaymentConfirmationRow: View {
     @Environment(AppModel.self) private var model
@@ -571,7 +670,7 @@ struct PaymentConfirmationRow: View {
         VStack(alignment: .leading, spacing: 2) {
             PeelDropdown(
                 selection: current,
-                options: (Self.choices.contains(current) ? Self.choices : (Self.choices + [current]).sorted())
+                options: presets(Self.choices, including: current)
                     .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Formatting.sats(msat: $0))") }
             ) { msat in
                 Task {

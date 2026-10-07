@@ -411,7 +411,7 @@ struct DayDivider: View {
 /// "Not delivered" (or "Not uploaded", or for a payment or boost "Not
 /// sent") with Retry and Discard. Discard asks once, in place. A payment's
 /// Retry goes through `PaymentAttempt`: over the threshold it first asks
-/// "Send 1,000 sats again?" with the amount.
+/// an orange "Send 1,000 sats" (or "Boost …") to click again.
 struct UndeliveredActions: View {
     @Environment(AppModel.self) private var model
     let message: Message
@@ -434,12 +434,13 @@ struct UndeliveredActions: View {
                 Button("Keep") { confirmingDiscard = false }
                     .foregroundStyle(Theme.accent)
             } else if let armed = attempt.armed {
-                Text("Send \(Formatting.sats(msat: armed)) again?")
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.text)
-                Button("Send again") { Task { await retry() } }
-                    .foregroundStyle(Theme.attention)
-                    .disabled(attempt.working)
+                Button("\(message.type == MessageType.boost ? "Boost" : "Send") \(Formatting.sats(msat: armed))") {
+                    Task { await retry() }
+                }
+                .monospacedDigit()
+                .foregroundStyle(Theme.attention)
+                .disabled(attempt.working)
+                ConfirmHint()
                 Button("Cancel") { attempt.armed = nil }
                     .foregroundStyle(Theme.secondaryText)
             } else {

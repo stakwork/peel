@@ -706,6 +706,11 @@ public actor Engine {
             fields["replyUuid"] = uuid
         case .member(let member, let alias):
             guard member.isPubkey else { throw PeelError("that is not a member's key") }
+            // The request may not be stored; then the server's latest list,
+            // when there is one, must still show the member waiting.
+            if let list = memberLists[pubkey], !list.pending.contains(where: { $0.pubkey == member }) {
+                throw PeelError("that member is not waiting for an answer")
+            }
             fields["member"] = member
             fields["replyUuid"] = try storage.joinRequest(in: pubkey, from: alias)
         }
@@ -714,6 +719,9 @@ public actor Engine {
             throw PeelError("that request has already been answered")
         }
         try await sendToTribe(tribe, type: approve ? MessageType.memberApprove : MessageType.memberReject, fields: fields)
+        if let member = fields["member"] {
+            memberLists[pubkey]?.pending.removeAll { $0.pubkey == member }
+        }
     }
 
     /// The owner removes a member, named by the key on the owner's member

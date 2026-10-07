@@ -121,7 +121,7 @@ public struct TribeMembers: Sendable, Equatable {
 
         let pubkey: String
         let confirmed: [Entry]
-        let pending: [Entry]
+        var pending: [Entry]
     }
 }
 

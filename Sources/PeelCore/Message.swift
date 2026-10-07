@@ -35,6 +35,21 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// Known only for messages we sent.
     public var delivery: Delivery? { status.flatMap(Delivery.init(rawValue:)) }
 
+    /// How long a send may wait for the server before it can be sent again, as
+    /// in the official apps.
+    public static let confirmationTimeout: TimeInterval = 30
+
+    /// One of our text messages that failed, or that the server has not
+    /// confirmed within the timeout, and so may be sent again or discarded.
+    public func isRetryable(now: Date = .now) -> Bool {
+        guard fromMe, type == MessageType.text else { return false }
+        switch delivery {
+        case .failed: return true
+        case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
+        case .delivered, nil: return false
+        }
+    }
+
     var senderInfo: SenderInfo? {
         sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }
     }

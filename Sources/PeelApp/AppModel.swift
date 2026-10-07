@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(macOS)
+import AppKit
+#endif
 import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
@@ -41,13 +44,24 @@ final class AppModel {
     var conversations: [Conversation] = []
     var messages: [Message] = []
     var destination: Destination? {
-        didSet { if selectedChat != oldValue?.chat { observeMessages() } }
+        didSet {
+            if selectedChat != oldValue?.chat { observeMessages() }
+            markSelectedChatRead()
+        }
     }
     var searchQuery = ""
     var myAlias: String?
     var myContactInfo: String?
     var balanceMsat: UInt64?
     var notice: String?
+    /// The latest error that belongs to a conversation, shown inside it.
+    var conversationNotices: [String: String] = [:]
+    /// Unread counts and mute levels by chat.
+    var readStates: [String: ChatReadState] = [:]
+    /// Why the last attempt to connect failed; cleared once connected.
+    var connectionError: String?
+    /// When the engine will next try to reconnect, for a live countdown.
+    var reconnectAt: Date?
     var restoreProgress = RestoreProgress()
 
     /// The app's own account keeps its words in the Keychain. Launching with
@@ -176,11 +190,56 @@ final class AppModel {
     }
 
     func send(_ text: String) async {
-        guard let engine, let chat = selectedChat else { return }
+        guard let chat = selectedChat else { return }
+        await attempt("send", in: chat) { try await $0.sendText(text, to: chat) }
+    }
+
+    func resend(_ message: Message) async {
+        guard let id = message.id else { return }
+        await attempt("send again", in: message.chat) { try await $0.resend(messageID: id) }
+    }
+
+    func discard(_ message: Message) async {
+        guard let id = message.id else { return }
+        await attempt("discard", in: message.chat) { try await $0.discard(messageID: id) }
+    }
+
+    /// Runs an action on one chat; a failure shows above that chat's composer.
+    private func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async {
+        guard let engine else { return }
+        conversationNotices[chat] = nil
         do {
-            try await engine.sendText(text, to: chat)
+            try await action(engine)
         } catch {
-            notice = "Could not send: \(error)"
+            conversationNotices[chat] = "Could not \(what): \(error)"
+        }
+    }
+
+    func dismissNotice(in chat: String) {
+        conversationNotices[chat] = nil
+    }
+
+    func setMuted(_ chat: String, _ muted: Bool) async {
+        await attempt(muted ? "mute" : "unmute", in: chat) { try await $0.setMute(chat, level: muted ? .muted : .all) }
+    }
+
+    func reconnectNow() async {
+        await engine?.reconnectNow()
+    }
+
+    /// Marks the open chat read while the window is in front, so a message that
+    /// arrives while you look at it never shows as unread.
+    func markSelectedChatRead() {
+        #if os(macOS)
+        guard NSApplication.shared.isActive else { return }
+        #endif
+        guard phase == .ready, let engine, let chat = selectedChat, (readStates[chat]?.unread ?? 0) > 0 else { return }
+        Task {
+            do {
+                try await engine.markRead(chat)
+            } catch {
+                conversationNotices[chat] = "Could not mark as read: \(error)"
+            }
         }
     }
 
@@ -205,6 +264,7 @@ final class AppModel {
         balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
         connection = await engine.connection
         Task { await self.observeConversations(storage) }
+        Task { await self.observeReadStates(storage) }
         Task { await self.consumeEvents(engine) }
         await engine.start()
     }
@@ -214,6 +274,16 @@ final class AppModel {
             switch event {
             case .connection(let state):
                 connection = state
+                if state == .connected { connectionError = nil }
+                if case .offline(let seconds?) = state {
+                    reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
+                } else {
+                    reconnectAt = nil
+                }
+            case .conversationError(let chat, let message):
+                conversationNotices[chat] = message
+            case .connectionError(let message):
+                connectionError = message
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
             case .balance(let msat):
@@ -242,6 +312,17 @@ final class AppModel {
                 if destination == nil, let first = rows.first {
                     destination = .chat(first.chat)
                 }
+            }
+        } catch {
+            notice = "\(error)"
+        }
+    }
+
+    private func observeReadStates(_ storage: Storage) async {
+        do {
+            for try await states in storage.readStates() {
+                readStates = states
+                markSelectedChatRead()
             }
         } catch {
             notice = "\(error)"

@@ -90,6 +90,19 @@ public final class Storage: Sendable {
                 t.add(column: "ready", .boolean).notNull().defaults(to: false)
             }
         }
+        migrator.registerMigration("v4") { db in
+            // Read markers and mute levels, mirrored from the server so other
+            // devices agree. `lastRead` is a server message index.
+            try db.create(table: "chatState") { t in
+                t.primaryKey("chat", .text)
+                t.column("lastRead", .integer)
+                t.column("muteLevel", .integer).notNull().defaults(to: 0)
+            }
+        }
+        migrator.registerMigration("v5") { db in
+            // Unread counts and read markers look up a chat's server indexes.
+            try db.create(index: "message_chat_serverIndex", on: "message", columns: ["chat", "serverIndex"])
+        }
         return migrator
     }
 }
@@ -142,6 +155,22 @@ public struct Conversation: Codable, Sendable, Identifiable, Equatable, Fetchabl
     public var lastDate: Date? { lastTimestamp.map(Date.init(millisecondsSince1970:)) }
 }
 
+/// How loud a chat is allowed to be, as the server stores it.
+public enum MuteLevel: Int, Sendable {
+    case all = 0
+    case mentionsOnly = 1
+    case muted = 2
+}
+
+/// Unread count and mute level for one chat.
+public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
+    public var chat: String
+    public var unread: Int
+    public var muteLevel: Int
+
+    public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
+}
+
 // MARK: - Reading
 
 extension Storage {
@@ -187,6 +216,55 @@ extension Storage {
         ) ORDER BY timestamp, id
         """
 
+    /// Incoming text messages past the read marker count as unread.
+    /// One row per conversation; each count is a range on `message_chat_serverIndex`.
+    private static let readStatesSQL = """
+        SELECT c.pubkey AS chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
+            SELECT COUNT(*) FROM message m
+            WHERE m.chat = c.pubkey AND m.serverIndex > COALESCE(s.lastRead, -1) AND m.fromMe = 0 AND m.type = 0
+        ) AS unread
+        FROM contact c LEFT JOIN chatState s ON s.chat = c.pubkey
+        WHERE c.ready = 1
+        """
+
+    /// Unread counts and mute levels by chat, re-emitted whenever they change.
+    public func readStates() -> some AsyncSequence<[String: ChatReadState], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                let rows = try ChatReadState.fetchAll(db, sql: Self.readStatesSQL)
+                return Dictionary(rows.map { ($0.chat, $0) }, uniquingKeysWith: { $1 })
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    func lastReads() throws -> [String: Int64] {
+        try pool.read { db in
+            var reads: [String: Int64] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT chat, lastRead FROM chatState WHERE lastRead IS NOT NULL") {
+                reads[row["chat"]] = row["lastRead"]
+            }
+            return reads
+        }
+    }
+
+    /// The newest server index in one chat, which is what a read marker points at.
+    func highestServerIndex(in chat: String) throws -> Int64? {
+        try pool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message WHERE chat = ?", arguments: [chat])
+        }
+    }
+
+    public func message(id: Int64) throws -> Message? {
+        try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
+    }
+
+    func chat(forTag tag: String) throws -> String? {
+        try pool.read { db in
+            try String.fetchOne(db, sql: "SELECT chat FROM message WHERE tag = ? LIMIT 1", arguments: [tag])
+        }
+    }
+
     /// Every conversation, newest first, re-emitted whenever one changes.
     public func conversations() -> some AsyncSequence<[Conversation], any Error> {
         ValueObservation
@@ -219,6 +297,12 @@ extension Storage {
         /// the key that decrypted the message, so its name and photo can be kept.
         var messages: [(message: Message, trustSender: Bool)] = []
         var statuses: [(tag: String, status: String)] = []
+        /// Read markers from the server; a marker only ever moves forward.
+        var reads: [String: Int64] = [:]
+        var mutes: [String: Int] = [:]
+        /// An outgoing row sent again: it takes the new send's uuid and tag.
+        var resend: Resend?
+        typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, timestamp: Int64)
     }
 
     /// Returns the stored rows; messages the upsert rejected are left out.
@@ -251,7 +335,29 @@ extension Storage {
                 }
             }
             for (tag, status) in commit.statuses {
-                try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
+                try Self.setStatus(db, status, tag: tag)
+            }
+            for (chat, index) in commit.reads {
+                try Self.setRead(db, chat: chat, index: index)
+            }
+            for (chat, level) in commit.mutes {
+                try Self.setMute(db, chat: chat, level: level)
+            }
+            if let resend = commit.resend {
+                let row = try Message.fetchOne(
+                    db,
+                    sql: """
+                        UPDATE message SET uuid = ?, tag = ?, status = ?, timestamp = ?
+                        WHERE id = ? AND chat = ? AND fromMe = 1 AND type = ? AND status IN (?, ?)
+                        RETURNING *
+                        """,
+                    arguments: [
+                        resend.uuid, resend.tag, Message.Delivery.pending.rawValue, resend.timestamp,
+                        resend.id, resend.chat, MessageType.text,
+                        Message.Delivery.pending.rawValue, Message.Delivery.failed.rawValue,
+                    ]
+                )
+                if let row { stored.append(row) }
             }
             return stored
         }
@@ -301,6 +407,53 @@ extension Storage {
                 """,
             arguments: [pubkey, alias, photo]
         )
+    }
+
+    private static func setRead(_ db: Database, chat: String, index: Int64) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO chatState (chat, lastRead) VALUES (?, ?)
+                ON CONFLICT(chat) DO UPDATE SET lastRead = MAX(COALESCE(lastRead, -1), excluded.lastRead)
+                """,
+            arguments: [chat, index]
+        )
+    }
+
+    private static func setMute(_ db: Database, chat: String, level: Int) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO chatState (chat, muteLevel) VALUES (?, ?)
+                ON CONFLICT(chat) DO UPDATE SET muteLevel = excluded.muteLevel
+                """,
+            arguments: [chat, level]
+        )
+    }
+
+    /// Returns whether the marker moved.
+    func setRead(chat: String, index: Int64) throws -> Bool {
+        try pool.write { db in
+            let before = try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [chat])
+            guard (before ?? -1) < index else { return false }
+            try Self.setRead(db, chat: chat, index: index)
+            return true
+        }
+    }
+
+    func setMute(chat: String, level: MuteLevel) throws {
+        try pool.write { db in try Self.setMute(db, chat: chat, level: level.rawValue) }
+    }
+
+    func setStatus(_ status: Message.Delivery, tag: String) throws {
+        try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag) }
+    }
+
+    private static func setStatus(_ db: Database, _ status: String, tag: String) throws {
+        try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
+    }
+
+    /// Removes one of our own messages that never reached the server.
+    func deleteMessage(id: Int64) throws {
+        try pool.write { db in try db.execute(sql: "DELETE FROM message WHERE id = ?", arguments: [id]) }
     }
 
     func upsertContact(pubkey: String, alias: String?) throws {

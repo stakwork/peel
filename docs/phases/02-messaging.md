@@ -96,12 +96,93 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    (`sphinx-rs/sphinx-ffi/src/chunk.rs`, type 34). Confirm how `send` reports a
    chunked message and how `handle` reassembles one; handle both. Verify with
    the official Mac app in both directions.
-7. **Read markers and mutes.** `getReads` and `getMutes` on connect, `read`
-   when a chat is viewed, `mute` from the sidebar; unread counts.
-8. **Send failures.** "Not delivered" with a retry; core errors shown in the
-   conversation, not as a global notice.
-9. **Composer polish.** Shift-Return for a newline, paste handling, link
-   detection, timestamps on hover.
+7. **Read markers and mutes.** Done 2026-10-07 (branch
+   `phase2/status-and-composer`). The engine asks for `getReads` and
+   `getMutes` each time it comes online; the replies land in a new
+   `chatState` table (migration v4: `lastRead` server index, `muteLevel`).
+   A read marker only moves forward, and when the server's marker is behind
+   ours (read while offline) the engine sends `read` again.
+   `Engine.markRead(chat)` runs when a chat is shown with the window in front
+   and whenever a message lands in the open chat; `Engine.setMute(chat,
+   level:)` from the sidebar's context menu (Mute / Unmute; level 2 or 0).
+   Unread = incoming text messages past the marker (`Storage.readStates()`);
+   the sidebar shows them bold with a blue count, muted chats dimmed with a
+   crossed-out bell and no count. The mixer does not push read changes from
+   other devices, so they show only on the next connect.
+   Verified on the local stack: unread 1 → `read` → 0; `mute 2`; local
+   markers wiped, reconnect, both came back from the server.
+   After a restore the engine asks again once history is in, because the
+   core drops markers for contacts it has not rebuilt yet (verified: a
+   restored profile came back read and muted).
+   Open: "mentions only" (level 1) has no UI until tribes; no mark-unread.
+8. **Send failures.** Done 2026-10-07. A sent message shows a green bolt by
+   its time once the server confirms it (`COMPLETE`, as the official apps),
+   fades while pending, and shows "Not delivered · Retry · Discard" when it
+   failed or has waited over 30 s unconfirmed (the official apps' rule,
+   `Message.isRetryable`). A publish that fails marks the row failed instead
+   of leaving it pending. `Engine.resend(messageID:)` sends the same body
+   again; the core gives each send a new uuid and tag, so the same row takes
+   them over (`Storage.Commit.resend`) and the server's echo matches it: no
+   second row. `Engine.discard(messageID:)` deletes an undelivered row
+   locally (Discard asks once, in place). Errors that belong to a chat (a
+   refused send, a message that could not be read) arrive as
+   `Event.conversationError` and show above that chat's composer; the rest
+   stay `coreError`. The connection is a bolt in the sidebar header: green
+   connected, orange otherwise (orange while connecting too, decided
+   2026-10-07); click for the state, a live retry countdown,
+   the last connection error and "Reconnect now" (`Engine.reconnectNow`).
+   Verified on the local stack from the CLI: send → delivered; broker
+   stopped → send → failed; broker back → resend → same row id.
+   Accepted for now (2026-10-07): a retry of a message that was in fact
+   delivered (pending past 30 s but the server did get it) arrives twice for
+   the recipient; the official apps share this.
+9. **Composer polish.** Done 2026-10-07. The composer is a text view
+   (`ComposerField`): Return sends, Shift-Return or Option-Return adds a line,
+   paste is plain text only, smart quotes and dashes are off, it grows to
+   eight lines. https links in bubbles are clickable (others stay text). The
+   time shows under the last message of a run (same side, under five
+   minutes apart) and beside any bubble on hover, without moving the layout;
+   the full date is in the bubble's tooltip.
+
+   Checked for items 7–9 so far: everything protocol-level on the local
+   stack from the CLI (`messages`, `resend`, `discard`, `unread`, `read`,
+   `mute` commands added for this); the sidebar rows, bubbles, bolts,
+   undelivered actions and notice bar in an offscreen render. Not yet
+   exercised by hand in the running app: typing in the composer (Return,
+   Shift-Return, paste), hover times, clicking a link, the context menu,
+   the connection popover and its countdown, Discard's confirmation, and
+   marking read when the window comes to the front.
+
+   Review (2026-10-07): `/code-review`, `/simplify` and `/security-review`
+   ran on this branch. Fixed: an empty read map from the server (the core
+   leaves `lastRead` out) now still pushes local markers, reconciled only in
+   reply to `getreads`, so it cannot loop; the resend UPDATE checks chat,
+   `fromMe`, type and pending/failed itself; unread counts use a new
+   `message(chat, serverIndex)` index (migration v5) per conversation instead
+   of scanning the message table; `connect()` clears the reconnect task; the
+   connection popover shows the last connect error, not any notice; the
+   composer leaves input-method text alone, Cmd-Return sends again, and iOS
+   falls back to a `TextField`; one sidebar row view; pending rows redraw once
+   at the timeout. Security review found nothing to fix.
+   Not applied, with reasons:
+   - Retry or Discard on a message pending past 30 s that the server did in
+     fact get: Discard's row comes back with the next history fetch, and
+     Retry leaves the original's late echo or history copy as a second local
+     row. Accepted with the recipient-side duplicate above; the fix is an
+     engine sweep that marks pending sends failed only when the server says
+     so, which the protocol does not offer.
+   - Moving pending to failed in storage after the timeout (so only `failed`
+     is retryable): changes what the CLI and storage show; the view and
+     engine both use `Message.isRetryable`, one rule.
+   - Folding unread and mute into the `conversations()` query: worth doing,
+     but it reshapes `Conversation` and the sidebar; the indexed per-chat
+     query removes the cost that mattered.
+   - Resend as "insert new row + delete old": keeping the same row keeps its
+     place and id in the open chat; the guarded UPDATE is enough.
+   - Showing a failed send only by its row (no banner): the banner carries
+     the transport error text, which the row does not.
+   - Caching link detection or day/run flags per message: the bubble is now
+     its own view, so hover no longer redoes it; measure before caching more.
 
 ## Done criteria
 

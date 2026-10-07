@@ -440,7 +440,7 @@ struct Session {
             "registered: \(contactInfo ?? "contact info not known yet")"
         case .balance(let msat):
             "balance: \(msat / 1000) sats"
-        case .message(let message):
+        case .message(let message, _):
             "\(message.fromMe ? "->" : "<-") \(message.chat.prefix(12))  \(line(message))"
         case .sendStatus(let tag, let status):
             "send \(status) \(tag?.prefix(12) ?? "")"

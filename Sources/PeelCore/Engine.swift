@@ -13,7 +13,7 @@ public actor Engine {
         /// The server knows this account and has given it a route hint.
         case registered(contactInfo: String?)
         case balance(msat: UInt64)
-        case message(Message)
+        case message(Message, Arrival)
         case sendStatus(tag: String?, status: String)
         /// A restore or catch-up fetched history up to `reached` of `end`.
         case history(phase: HistoryPhase, reached: UInt64, end: UInt64?)
@@ -36,6 +36,12 @@ public actor Engine {
         public enum Direction: Sendable {
             case upload, download
         }
+    }
+
+    /// How a message reached this device: as it was sent, in a history
+    /// page (catching up after being offline), or in a restore.
+    public enum Arrival: Sendable {
+        case live, history, restore
     }
 
     public enum HistoryPhase: Sendable {
@@ -361,6 +367,16 @@ public actor Engine {
 
     public func setPINTimeout(hours: Int) throws {
         try storage.set(String(max(0, hours)), for: .pinTimeoutHours)
+    }
+
+    /// Whether an app's notifications may show what a message says; on
+    /// unless turned off.
+    public func notificationShowsText() throws -> Bool {
+        try storage.value(for: .notificationText) != "0"
+    }
+
+    public func setNotificationShowsText(_ shows: Bool) throws {
+        try storage.set(shows ? "1" : "0", for: .notificationText)
     }
 
     public func setServer(_ server: ServerAddress) throws {
@@ -804,7 +820,7 @@ public actor Engine {
             throw error
         }
         stored?(id)
-        emit.yield(.message(row))
+        emit.yield(.message(row, .live))
         try await uploadAndDeliver(row, file: (plain, sealed))
         return id
     }
@@ -868,7 +884,7 @@ public actor Engine {
             } catch {
                 try storage.setUpload(.failed, id: id)
                 // It has no tag yet, so the row itself says it failed.
-                if let row = try storage.message(id: id) { emit.yield(.message(row)) }
+                if let row = try storage.message(id: id) { emit.yield(.message(row, .live)) }
                 emit.yield(.conversationError(chat: message.chat, message: "Not uploaded: \(PeelError.readable(error))"))
                 return nil
             }
@@ -1608,8 +1624,10 @@ public actor Engine {
         if let balance = result.newBalance {
             emit.yield(.balance(msat: balance))
         }
+        // Only history pages carry a total.
+        let arrival: Arrival = result.msgsTotal == nil ? .live : restoring ? .restore : .history
         for message in stored {
-            emit.yield(.message(message))
+            emit.yield(.message(message, arrival))
         }
         if let sent {
             emit.yield(.sendStatus(tag: sent.tag, status: sent.status))

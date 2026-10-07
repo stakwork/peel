@@ -30,7 +30,8 @@ in progress and what comes next. Update it when you finish something.
   `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
-  `ImageViewer`, and `PeelMenu`, the one menu used instead of native ones)
+  `ImageViewer`, and `PeelMenu`, the one menu used instead of native ones;
+  `Notifier` for local notifications and the Dock badge)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in

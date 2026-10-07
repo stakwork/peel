@@ -44,6 +44,11 @@ struct AccountView: View {
                         }
                         WordsRow()
                     }
+                    SettingsGroup("Notifications") {
+                        NotificationsRow()
+                        GroupDivider()
+                        NotificationTextRow()
+                    }
                     ForgetAccountControl(
                         trigger: "Forget this account on this Mac",
                         explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
@@ -575,6 +580,82 @@ private struct WordsRow: View {
         visible = false
         confirmingCopy = false
         copied = false
+    }
+}
+
+// MARK: - Notifications
+
+/// Whether macOS lets Peel show notifications, and the way to change it.
+private struct NotificationsRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        SettingsRow("Notifications") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state)
+                Text(note)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        } trailing: {
+            switch model.notifier.permission {
+            case .notAsked:
+                Button("Turn on") { Task { await model.enableNotifications() } }
+                    .buttonStyle(GhostButtonStyle(prominent: true))
+            case .allowed, .denied:
+                Button("System Settings…") { model.openNotificationSettings() }
+                    .buttonStyle(GhostButtonStyle())
+            case .unavailable:
+                EmptyView()
+            }
+        }
+    }
+
+    private var state: String {
+        switch model.notifier.permission {
+        case .allowed: "On"
+        case .notAsked: "Off"
+        case .denied: "Turned off in System Settings"
+        case .unavailable: "Unavailable"
+        }
+    }
+
+    private var note: String {
+        switch model.notifier.permission {
+        case .allowed: "For new messages while you're elsewhere, by each chat's notification level. Sounds and Focus follow System Settings."
+        case .notAsked: "Peel asks macOS once; you can change it later in System Settings."
+        case .denied: "Allow Peel under Notifications in System Settings to get them."
+        case .unavailable: "Only when Peel runs as an app."
+        }
+    }
+}
+
+private struct NotificationTextRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var problem: String?
+
+    var body: some View {
+        SettingsRow("Message text") {
+            VStack(alignment: .leading, spacing: 2) {
+                PeelDropdown(
+                    selection: model.notifier.showsText,
+                    options: [(true, "Show message text"), (false, "Say only \"New message\"")]
+                ) { shows in
+                    Task {
+                        do {
+                            try await model.setNotificationShowsText(shows)
+                            problem = nil
+                        } catch {
+                            problem = "\(error)"
+                        }
+                    }
+                }
+                .fixedSize()
+                Text(problem ?? "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither.")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        }
     }
 }
 

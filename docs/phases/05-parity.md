@@ -28,7 +28,8 @@ Status: in progress. Account screen built; the rest planned.
 
 Opened from your row at the foot of the sidebar or with ⌘, (the app menu's
 "Account…" replaces Settings). Follows the `Profile` board of the design
-canvas, adapted: no Touch ID, notifications, devices or invite rows yet.
+canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
+(permission and "Message text") came with `phase3/notifications`.
 
 - **Name** (`Engine.setAlias`, trimmed, never empty; CLI `rename <name>`).
   How it reaches others, checked against the official Mac app

@@ -263,10 +263,9 @@ the popover.
 
 Not built, noticed in use:
 
-- **No notification for incoming messages.** Push is off limits (one push
-  token per account, owned by the official app). A local notification when a
-  message arrives and the window is not in front needs no server change; it
-  needs the signed app from phase 2 task 1.
+- ~~No notification for incoming messages.~~ Local notifications and the
+  Dock badge built on `phase3/notifications`; see `../phases/03-chat.md`,
+  "Notifications".
 - Sidebar rows are buttons, not a `List`, so arrow keys do not move between
   conversations yet.
 - The sidebar width is fixed at 260 pt and does not collapse; the window's

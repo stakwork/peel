@@ -324,6 +324,8 @@ public struct BoostSummary: Sendable, Equatable {
         public var amountMsat: Int64
         /// For our own boost the server has not confirmed yet: when it went.
         public var pendingSince: Date?
+        /// Our own boost the server passed on but never settled (`Delivery.unsettled`).
+        public var unsettled = false
     }
 
     /// Oldest first.
@@ -337,6 +339,11 @@ public struct BoostSummary: Sendable, Equatable {
     public var count: Int { boosts.count }
     public var totalMsat: Int64 { boosts.reduce(0) { $0 &+ $1.amountMsat } }
     public var boostedByMe: Bool { boosts.contains(where: \.fromMe) }
+    /// Any boost of ours on it, failed ones included (`Engine.quickBoost`
+    /// boosts a message once).
+    public var hasOwnBoost: Bool { boostedByMe || !failed.isEmpty }
+    /// Our own boosts on it the server passed on but never settled.
+    public var unsettled: [Boost] { boosts.filter(\.unsettled) }
 }
 
 /// One thread: the message that started it and what has been said in it.
@@ -937,7 +944,8 @@ extension Storage {
             summaries[boosted, default: BoostSummary()].boosts.append(BoostSummary.Boost(
                 alias: sender.alias, photoURL: sender.photoURL, fromMe: boost.fromMe,
                 amountMsat: boost.amountMsat ?? 0,
-                pendingSince: boost.fromMe && boost.delivery == .pending ? boost.date : nil
+                pendingSince: boost.fromMe && boost.delivery == .pending ? boost.date : nil,
+                unsettled: boost.fromMe && boost.delivery == .unsettled
             ))
         }
         return summaries
@@ -1320,15 +1328,19 @@ extension Storage {
         try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag) }
     }
 
-    /// A status only moves forward: an unconfirmed send becomes delivered or
-    /// failed, a failed one delivered (the server had it after all), and a
-    /// delivered one never changes. So a late or synthesised failure can never
-    /// make a payment that went through retryable.
+    /// Only a payment or boost can be unsettled. A status only moves forward: an unconfirmed send becomes delivered,
+    /// unsettled or failed, an unsettled one delivered or failed, a failed
+    /// one delivered (the server had it after all), and a delivered one never
+    /// changes. So a late or synthesised failure can never make a payment
+    /// that went through retryable.
     private static func setStatus(_ db: Database, _ status: String, tag: String) throws {
         try db.execute(
             sql: """
                 UPDATE message SET status = ?1 WHERE tag = ?2
-                    AND (status IS NULL OR status = 'PENDING' OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
+                    AND (status IS NULL OR status = 'PENDING'
+                        OR (status = 'UNSETTLED' AND ?1 IN ('COMPLETE', 'FAILED'))
+                        OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
+                    AND (?1 != 'UNSETTLED' OR type IN (\(MessageType.sqlList(MessageType.payments))))
                 """,
             arguments: [status, tag]
         )

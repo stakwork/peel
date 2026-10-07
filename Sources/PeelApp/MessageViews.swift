@@ -35,6 +35,11 @@ struct ChatRow: Identifiable {
     var summary: ThreadSummary?
     /// The boosts on `message` (the original, for a collapsed thread).
     var boosts: BoostSummary?
+    /// Whether to offer Boost: someone else's boostable message we have not
+    /// boosted yet (Tom, 2026-10-07; the official apps offer it again). Our
+    /// failed boost on it offers Retry and Discard under it instead; the
+    /// engine's `quickBoost` holds the same rule.
+    var canBoost: Bool { message.isBoostable && boosts?.hasOwnBoost != true }
     var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
     var approved: Bool?
@@ -293,8 +298,6 @@ struct MessageRow: View {
     let goTo: (Message) -> Void
 
     @State private var hovering = false
-    /// The boost panel, opened from the hover bar's bolt or "Boost…".
-    @State private var boosting = false
 
     static let avatarSize: CGFloat = 32
     static let gutterSpacing: CGFloat = 10
@@ -343,7 +346,7 @@ struct MessageRow: View {
                 }
                 MessageContent(
                     row: row, goTo: goTo,
-                    menu: { MessageMenu.entries(for: row, composer: composer, model: model, boost: boost) },
+                    menu: { MessageMenu.entries(for: row, composer: composer, model: model, offersBoost: row.canBoost) },
                     tileMenu: { image in
                         var single = row
                         single.message = image
@@ -380,35 +383,15 @@ struct MessageRow: View {
         // At the row's top-right, overlapping its top edge as Slack's does;
         // never over the text, which stops well short of the right edge.
         .overlay(alignment: .topTrailing) {
-            if hovering, !menuOpen, !boosting, !retryable, !uploading, !message.deleted {
-                HoverBar(row: row, composer: composer, boost: boost)
+            if hovering, !menuOpen, !retryable, !uploading, !message.deleted {
+                HoverBar(row: row, composer: composer)
                     .padding(.trailing, 20)
                     .offset(y: -10)
-            }
-        }
-        // The boost panel opens under where the hover bar sits, and stays
-        // while the bar goes.
-        .overlay(alignment: .topTrailing) {
-            if message.isBoostable {
-                Color.clear
-                    .frame(width: 96, height: 16)
-                    .padding(.trailing, 20)
-                    .allowsHitTesting(false)
-                    .peelPopover(isPresented: $boosting) {
-                        BoostPanel(message: message) { boosting = false }
-                    }
             }
         }
         .zIndex(hovering ? 1 : 0)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-    }
-
-    /// Opens the boost panel, where this message can be boosted.
-    private var boost: (@MainActor () -> Void)? {
-        guard message.isBoostable else { return nil }
-        let boosting = $boosting
-        return { boosting.wrappedValue = true }
     }
 }
 
@@ -444,7 +427,6 @@ private struct HoverBar: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
     let composer: ComposerID
-    let boost: (@MainActor () -> Void)?
 
     var body: some View {
         let message = row.message
@@ -454,15 +436,15 @@ private struct HoverBar: View {
                     withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
                 }
             }
-            if boost != nil {
-                // One tap boosts with the boost amount; "Boost…" in More picks another.
+            if row.canBoost {
+                // One tap boosts with the boost amount (Account sets it).
                 HoverIconButton(systemImage: "bolt", help: model.quickBoostLabel) {
                     Task { await model.quickBoost(message) }
                 }
             }
             if !message.deleted {
                 MenuButton(systemImage: "ellipsis", help: "More", source: row.id) {
-                    MessageMenu.entries(for: row, composer: composer, model: model, boost: boost)
+                    MessageMenu.entries(for: row, composer: composer, model: model, offersBoost: row.canBoost)
                 }
             }
         }
@@ -472,13 +454,13 @@ private struct HoverBar: View {
 }
 
 /// What a message's menu offers. Undelivered: Retry and Discard. Otherwise
-/// Reply, Boost (where `boost` is given: someone else's message), copying,
+/// Reply, Boost (`offersBoost`: someone else's message not yet boosted), copying,
 /// saving an attachment, and for a tribe's owner, pinning (the Mac app lets
 /// only the owner pin).
 @MainActor
 enum MessageMenu {
     static func entries(
-        for row: ChatRow, composer: ComposerID, model: AppModel, boost: (@MainActor () -> Void)? = nil
+        for row: ChatRow, composer: ComposerID, model: AppModel, offersBoost: Bool = false
     ) -> [MenuEntry] {
         let message = row.message
         var copy: [MenuEntry] = []
@@ -512,10 +494,9 @@ enum MessageMenu {
                 withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
             })
         }
-        if let boost {
+        if offersBoost {
             reply.append(.button(model.quickBoostLabel, systemImage: "bolt.fill",
                                  shortcut: .key("b")) { Task { await model.quickBoost(message) } })
-            reply.append(.button("Boost…", systemImage: "bolt", action: boost))
         }
         var pin: [MenuEntry] = []
         if let tribe = model.selectedTribe, tribe.pubkey == message.chat, tribe.canManage, message.isPinnable {

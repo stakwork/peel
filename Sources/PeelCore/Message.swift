@@ -9,6 +9,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         case pending = "PENDING"
         case delivered = "COMPLETE"
         case failed = "FAILED"
+        /// A payment or boost the server handed to the recipient, who has the
+        /// message, but that did not settle in the mixer's window; it says
+        /// nothing more about it. The sats may never have moved (a local
+        /// payment) or may still be in flight (Lightning), so it is neither
+        /// delivered nor retried; a later COMPLETE or FAILED still lands.
+        case unsettled = "UNSETTLED"
     }
 
     /// Where an outgoing attachment is on its way to the memes server.
@@ -91,7 +97,7 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         switch delivery {
         case .failed: return true
         case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
-        case .delivered, nil: return false
+        case .delivered, .unsettled, nil: return false
         }
     }
 

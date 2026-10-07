@@ -282,3 +282,101 @@ struct PaymentTests {
         #expect(BodyFields.decode(odd)?.replyUuid == "r")
     }
 }
+
+/// Which rows a send status moves (`Engine.liveStatus`,
+/// `Engine.recordedStatuses`), and that payments only ever move forward.
+struct SendStatusTests {
+    let profile = TempProfile()
+
+    private func status(_ tag: String?, _ status: String) -> SentStatus {
+        SentStatus(tag: tag, status: status)
+    }
+
+    private func live(_ tag: String?, _ value: String) -> String? {
+        Engine.liveStatus(status(tag, value)).map { "\($0.tag) \($0.status)" }
+    }
+
+    private func recorded(_ records: [SentStatus], unrecorded: Set<String> = []) -> [String] {
+        Engine.recordedStatuses(records, unrecorded: unrecorded).map { "\($0.tag) \($0.status)" }
+    }
+
+    @Test func liveFinalStatusesApplyAsSent() {
+        #expect(live("t1", "COMPLETE") == "t1 COMPLETE")
+        #expect(live("t1", "FAILED") == "t1 FAILED")
+    }
+
+    // The mixer's last word on a payment whose recipient it reached but that
+    // did not settle in its window; it never sends another for that tag.
+    @Test func livePendingIsUnsettled() {
+        #expect(live("t1", "PENDING") == "t1 UNSETTLED")
+    }
+
+    @Test func liveStatusWithoutTagOrUnknownChangesNothing() {
+        #expect(live(nil, "COMPLETE") == nil)
+        #expect(live("t1", "SETTLED") == nil)
+        #expect(live("t1", "UNSETTLED") == nil)
+    }
+
+    // A recorded PENDING may be an async payment still held for an offline
+    // recipient: not an answer.
+    @Test func recordsApplyOnlyFinalStatuses() {
+        let records = [
+            status("t1", "COMPLETE"), status("t2", "PENDING"), status("t3", "FAILED"), status("t4", "UNSETTLED"),
+        ]
+        #expect(recorded(records) == ["t1 COMPLETE", "t3 FAILED"])
+    }
+
+    @Test func unrecordedOldPaymentsFailWhenTheServerHasNoRecord() {
+        #expect(recorded([status("t1", "PENDING")], unrecorded: ["t1", "t2"]) == ["t2 FAILED"])
+    }
+
+    private func storedBoost(_ storage: Storage) throws -> Message? {
+        let boost = Message.fixture(
+            uuid: uuid(2), type: MessageType.boost, chat: dm, fromMe: true, content: "", tag: "t1",
+            status: Message.Delivery.pending.rawValue, replyUUID: uuid(1), amountMsat: 21_000
+        )
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(dm, true)], messages: [(.fixture(uuid: uuid(1), chat: dm), false, nil), (boost, false, nil)]
+        ))
+        let unsettled = try #require(Engine.liveStatus(status("t1", "PENDING")))
+        _ = try storage.apply(Storage.Commit(statuses: [unsettled]))
+        return try storage.message(uuid: uuid(2), in: dm)
+    }
+
+    @Test func anUnsettledBoostIsNeitherPendingNorRetryable() async throws {
+        let storage = try profile.storage()
+        let stored = try #require(try storedBoost(storage))
+        #expect(stored.delivery == .unsettled)
+        #expect(!stored.isRetryable())
+        // Not asked about again: the mixer's records say PENDING for good.
+        #expect(try storage.pendingSends(textBefore: .max).isEmpty)
+        let summary = try #require(try await first(storage.timeline(in: dm))?.boosts[uuid(1)])
+        #expect(summary.count == 1)
+        #expect(summary.pendingSince == nil)
+        #expect(summary.unsettled.map(\.amountMsat) == [21_000])
+    }
+
+    @Test func anUnsettledBoostMovesOnToDeliveredOrFailed() throws {
+        let storage = try profile.storage()
+        _ = try storedBoost(storage)
+        _ = try storage.apply(Storage.Commit(statuses: [(tag: "t1", status: "COMPLETE")]))
+        // Delivered stays delivered whatever comes after.
+        _ = try storage.apply(Storage.Commit(statuses: [(tag: "t1", status: "FAILED"), (tag: "t1", status: "UNSETTLED")]))
+        #expect(try storage.message(uuid: uuid(2), in: dm)?.delivery == .delivered)
+    }
+
+    @Test func onlyAPaymentCanBeUnsettled() throws {
+        let storage = try profile.storage()
+        let text = Message.fixture(uuid: uuid(3), chat: dm, fromMe: true, tag: "t3", status: "PENDING")
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(text, false, nil)]))
+        _ = try storage.apply(Storage.Commit(statuses: [(tag: "t3", status: "UNSETTLED")]))
+        #expect(try storage.message(uuid: uuid(3), in: dm)?.delivery == .pending)
+    }
+
+    @Test func aFailureAfterUnsettledAllowsRetry() throws {
+        let storage = try profile.storage()
+        _ = try storedBoost(storage)
+        _ = try storage.apply(Storage.Commit(statuses: [(tag: "t1", status: "FAILED")]))
+        #expect(try storage.message(uuid: uuid(2), in: dm)?.isRetryable() == true)
+    }
+}

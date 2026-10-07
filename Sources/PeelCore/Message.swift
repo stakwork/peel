@@ -31,6 +31,10 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var status: String?
     /// A tribe message from someone else that mentions this account.
     public var mentionsMe = false
+    /// The message this one answers, by uuid (`replyUuid` in the JSON).
+    public var replyUUID: String?
+    /// The original message of the thread this one is in (`threadUuid`).
+    public var threadUUID: String?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -68,9 +72,6 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var isPinnable: Bool {
         uuid != nil && type == MessageType.text && (!fromMe || delivery == .delivered)
     }
-
-    /// The message this one answers: for an approval or rejection, the request.
-    public var replyUUID: String? { BodyFields.decode(body)?.replyUuid }
 }
 
 /// Message type numbers defined by the core (`MsgType` in the sphinx crate).
@@ -118,9 +119,19 @@ struct BodyFields: Decodable {
     /// On a message a tribe forwarded: when the tribe took it, in milliseconds.
     let date: Int64?
     let replyUuid: String?
+    let threadUuid: String?
 
     static func decode(_ body: String?) -> BodyFields? {
         body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }
+    }
+}
+
+/// A uuid as the core issues them and as `replyUuid`/`threadUuid` must be:
+/// the core packs those as exactly 32 bytes, so anything else would make
+/// the message unreadable for everyone who receives it.
+enum MessageUUID {
+    static func isValid(_ uuid: String) -> Bool {
+        uuid.utf8.count == 64 && uuid.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 }
 

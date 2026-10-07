@@ -66,12 +66,14 @@ extension Message {
         timestamp: Int64? = 1_000,
         tag: String? = nil,
         paymentHash: String? = nil,
-        status: String? = nil
+        status: String? = nil,
+        replyUUID: String? = nil,
+        threadUUID: String? = nil
     ) -> Message {
         Message(
             id: nil, uuid: uuid, serverIndex: serverIndex, type: type, chat: chat, fromMe: fromMe,
             sender: sender, body: body, content: content, msat: msat, timestamp: timestamp, tag: tag,
-            paymentHash: paymentHash, status: status
+            paymentHash: paymentHash, status: status, replyUUID: replyUUID, threadUUID: threadUUID
         )
     }
 }

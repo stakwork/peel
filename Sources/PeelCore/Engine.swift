@@ -77,6 +77,9 @@ public actor Engine {
         case tribeServerTimedOut
         case awaitingApproval
         case notTribeOwner
+        case noSuchMessage
+        case notDelivered
+        case notInThread
 
         public var description: String {
             switch self {
@@ -92,6 +95,9 @@ public actor Engine {
             case .tribeServerTimedOut: "the tribes server did not answer in time"
             case .awaitingApproval: "the tribe's owner has not approved this account yet"
             case .notTribeOwner: "only the tribe's owner can do that"
+            case .noSuchMessage: "there is no such message in this chat"
+            case .notDelivered: "that message has not been delivered yet; reply once it has"
+            case .notInThread: "that message is not in that thread"
             }
         }
     }
@@ -456,10 +462,51 @@ public actor Engine {
         try storage.upsertContact(pubkey: parts[0], alias: theirAlias)
     }
 
-    /// Sends a text message to a contact or a tribe. Returns the tag the server will confirm.
+    /// Sends a text message to a contact or a tribe, optionally as a reply to
+    /// one of its messages or into a thread (both by uuid), with the links
+    /// set as the Mac app sets them: a reply joins its parent's thread, or
+    /// starts one at the parent; `inThread` may name any message of the
+    /// thread, and a reply given with it must be in that thread. Returns the
+    /// tag the server will confirm.
     @discardableResult
-    public func sendText(_ text: String, to pubkey: String) async throws -> String? {
-        try await deliver(body: try Self.json(["content": text]), content: text, to: pubkey, replacing: nil)
+    public func sendText(
+        _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil
+    ) async throws -> String? {
+        var fields = ["content": text]
+        var thread = try inThread.map { try Self.thread(of: linkable($0, in: pubkey)) }
+        if let replyTo {
+            let parentThread = try Self.thread(of: linkable(replyTo, in: pubkey))
+            if let thread, parentThread != thread { throw Failure.notInThread }
+            fields["replyUuid"] = replyTo
+            thread = parentThread
+        }
+        fields["threadUuid"] = thread
+        return try await deliver(body: try Self.json(fields), to: pubkey, replacing: nil)
+    }
+
+    /// The thread a message is in, or the one it starts, as the Mac app works
+    /// it out (`threadUuid ?? replyUuid ?? uuid`). Its own links came from
+    /// whoever sent it; one the core could not pack is skipped.
+    private static func thread(of message: Message) -> String {
+        [message.threadUUID, message.replyUUID].compactMap { $0 }.first(where: MessageUUID.isValid)
+            ?? message.uuid ?? ""
+    }
+
+    /// A stored message of `chat` that others hold under the same uuid. Our
+    /// own message must have been delivered: a retry gives it a new uuid,
+    /// and in a tribe the others know it by the uuid the tribe gave it,
+    /// which the row takes when the tribe's copy (the only copy with a
+    /// server index; a tribe send has no copy to self) comes back.
+    private func linkable(_ uuid: String, in chat: String) throws -> Message {
+        guard MessageUUID.isValid(uuid), let message = try storage.message(uuid: uuid, in: chat) else {
+            throw Failure.noSuchMessage
+        }
+        // Restored history has no status: only a pending or failed one counts.
+        let undelivered = message.delivery == .pending || message.delivery == .failed
+        if message.fromMe, undelivered || (tribes[chat] != nil && message.serverIndex == nil) {
+            throw Failure.notDelivered
+        }
+        return message
     }
 
     /// Sends an undelivered message again. The core gives every send a new uuid
@@ -477,7 +524,7 @@ public actor Engine {
            tribe.messageAmountMsat > UInt64(max(paid, 0)) {
             throw PeelError("this tribe now charges more per message; send it as a new message")
         }
-        return try await deliver(body: body, content: message.content, to: message.chat, replacing: messageID)
+        return try await deliver(body: body, to: message.chat, replacing: messageID)
     }
 
     /// Drops an undelivered message of ours from this Mac. It never reached the
@@ -508,7 +555,7 @@ public actor Engine {
     /// local row is written in the same transaction as the state, before
     /// publishing. If the publish fails the row is marked failed, ready to send
     /// again, and the failure is reported as a send status rather than thrown.
-    private func deliver(body: String, content: String?, to pubkey: String, replacing id: Int64?) async throws -> String? {
+    private func deliver(body: String, to pubkey: String, replacing id: Int64?) async throws -> String? {
         let tribe = try openTribe(pubkey)
         let time = clock.next()
         let result = try Sphinxrs.send(
@@ -523,10 +570,12 @@ public actor Engine {
         if let id {
             resend = (id, pubkey, sent?.uuid, sent?.tag, now)
         } else {
+            let fields = BodyFields.decode(body)
             outgoing = Message(
-                uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: content,
-                msat: tribe.map { Int64(clamping: $0.messageAmountMsat) },
-                timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue
+                uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body,
+                content: fields?.content, msat: tribe.map { Int64(clamping: $0.messageAmountMsat) },
+                timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue,
+                replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
             )
         }
         let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend)
@@ -1286,14 +1335,16 @@ public actor Engine {
             chat = claimed
             trustSender = true
         }
+        let fields = BodyFields.decode(msg.message)
         let message = Message(
             uuid: msg.uuid,
             serverIndex: msg.index.flatMap { UInt64($0) }.flatMap { Int64(exactly: $0) },
             type: Int(type), chat: chat, fromMe: fromMe,
-            sender: msg.sender, body: msg.message, content: BodyFields.decode(msg.message)?.content,
+            sender: msg.sender, body: msg.message, content: fields?.content,
             msat: msg.msat.map { Int64(clamping: $0) },
             timestamp: msg.timestamp.map { Int64(clamping: $0) },
-            tag: msg.tag, paymentHash: msg.paymentHash
+            tag: msg.tag, paymentHash: msg.paymentHash,
+            replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
         )
         return (message, trustSender)
     }

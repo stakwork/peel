@@ -146,7 +146,8 @@ protocol-level is still verified against the local test server.
 - One process per profile: `Storage` takes a lock, so a second app or CLI on the
   same profile fails with "another Peel process is using ...". Quit the other one.
 - Only a writable `Storage` migrates. The read-only CLI commands (`whoami`,
-  `contacts`, `messages`, `unread`, `tribes`) fail with "no such table" on a
+  `contacts`, `messages`, `thread`, `threads`, `unread`, `tribes`) fail with
+  "no such table" or "no such column" on a
   profile last opened by an older build; run any connecting command (or the
   app) on it once first.
 - TLS is on by default; `ServerAddress` only goes plaintext for an explicit

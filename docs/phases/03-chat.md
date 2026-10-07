@@ -2,7 +2,9 @@
 
 Status: tribes built and reviewed on branch `phase3/tribes`, rebased onto
 the status branch (2026-10-07); tribes parity with the Mac app built on
-`phase3/tribes-parity` (on top of it); threads and attachments planned.
+`phase3/tribes-parity` (on top of it); replies and threads in the engine,
+storage and CLI on `phase3/replies-threads` (on top of parity), UI to come;
+attachments planned.
 
 ## Tribes
 
@@ -502,8 +504,243 @@ our own registry during a delete would hide the tribe locally.
 
 ## Threads and replies
 
-- `replyUuid` and `threadUuid` in the message JSON; quote rendering; a threads
-  list per chat. Reference: `formatMsg` in `SphinxOnionManager+ChatExtension.swift`.
+Branch `phase3/replies-threads`, on top of `phase3/tribes-parity`. Engine,
+storage and CLI only; the UI waits for Tom's design review. Parity's
+member approvals and rejections name the request in `replyUuid` too; they
+now read the stored `replyUUID` column (`isAnswered`, the app's answered
+requests) instead of decoding the body.
+
+Done means: send a reply and a thread message to a contact and to a tribe
+(tribe pricing, delivery status and Retry unchanged); every stored message
+knows its parent and thread, including history replayed on a late join or a
+restore; storage answers "the thread T", "reply counts in a chat", "the
+parent of this reply" (even outside the newest 200) and "threads I took part
+in"; the main conversation applies the Mac app's rule for what a thread
+hides; CLI `send --reply`, `send --thread`, `thread`, `threads`. Verified on
+a local stack with a tribes server, both directions, DM and tribe.
+
+### Conventions (checked against the code, 2026-10-07)
+
+Sources: `formatMsg`, `sendMessage` and `MessageInnerContent` in the Mac
+app's `SphinxOnionManager+ChatExtension.swift` and `+StructsAndHelpersExtension.swift`,
+`NewChatViewModel+SendMessageExtension.swift`, the Mac data sources
+(`NewChatTableDataSource+ResultsControllerExtension.swift`,
+`ThreadTableDataSource`, `ThreadsListDataSource`), the core
+(`sphinx/src/msg/mod.rs`, `ser.rs`), the tribes server (`forward.rs`) and
+the reference client (`wasm/test/auto/send.ts`).
+
+- **Wire.** Two optional keys in a text message's JSON, next to `content`:
+  `"replyUuid"` and `"threadUuid"` (camelCase). Nothing else: no quoted
+  text, no sender, no copy of the parent. The core packs both as 32 raw
+  bytes (`Type::Bytes32`, `hex::decode` on send) and the receiving core
+  rejects any other length (`read_bytes32_val`: "bad bytes32"), so each must
+  be exactly 64 hex characters, i.e. a uuid the core issued. The reference
+  client checks `length !== 64` before sending a `replyUuid`.
+- **What the Mac app sends.**
+  - Reply to message M from the main conversation: `replyUuid = M.uuid`,
+    `threadUuid = M.threadUuid ?? M.replyUuid ?? M.uuid`. So every reply
+    also starts or joins a thread, in DMs as in tribes.
+  - Post in the thread view of thread T: `threadUuid = T`, no `replyUuid`.
+  - Reply to M inside thread T: `threadUuid = T`, `replyUuid = M.uuid`.
+  - Boosts, purchases and member approvals also carry `replyUuid` (other
+    message types); none of them is a thread message.
+- **The parent and the quote.** A reply names its parent by uuid only; the
+  quote (parent's sender and text) is drawn from the receiver's own copy of
+  the parent, looked up by uuid. No parent stored, no quote.
+- **A thread** is every message in the chat whose `threadUuid` is T. Its
+  original message is the message whose `uuid` is T; it carries no
+  `threadUuid` itself.
+- **Tribe uuids.** The tribes server forwards each message under a new uuid
+  (the sender's goes in `originalUuid`), and the tribes server keeps
+  `replyUuid`/`threadUuid` untouched. So in a tribe a parent is named by the
+  tribe's uuid, which is what every member holds. Our own message gets the
+  tribe's uuid only when its copy comes back (the row takes it over, as for
+  tribes already); until then it cannot be replied to without the link
+  breaking for everyone else.
+- **Main conversation (Mac rule).** Threads are grouped only in tribes
+  (`isPublicGroup`). A thread with two or more messages collapses: the
+  original message and every thread message but the newest are hidden, and
+  the newest shows as one thread row (original message, count, latest
+  replies) at its own place in time. A thread with one message shows that
+  reply inline with its quote, and the original stays. In DMs nothing is
+  hidden: every reply shows inline with its quote. (The Mac app collapses
+  only when the original is in the loaded page; Peel collapses whenever the
+  original is stored, so a thread does not change shape as you scroll.)
+- **Threads list (Mac).** Per tribe: originals with two or more thread
+  messages, newest latest reply first. Peel's Threads list is the
+  cross-chat, Slack-style version Tom asked for: tribe threads of two or more
+  that this account started or posted in.
+- **Unread.** The Mac app marks every received message seen when the chat
+  is opened, thread messages included, and its server read marker is per
+  chat. Peel counts a thread's unread as the other people's thread messages
+  past the chat's server read marker; no per-thread marker.
+
+### Built
+
+- `Message.replyUUID` and `threadUUID`, stored columns filled from the
+  body's `replyUuid`/`threadUuid` on every copy (live, history, our own
+  send); like the body, kept from the first copy. `MessageUUID.isValid`:
+  64 lowercase hex.
+- Storage migration `v8`, after parity's `v7` (this branch is rebased on
+  `phase3/tribes-parity`): the two columns, filled for
+  messages already stored from their bodies, and partial indexes
+  `message_reply (chat, replyUUID)` and `message_thread (chat, threadUUID,
+  timestamp)`.
+- Queries: `timeline(in:)` (the main conversation with the Mac rule above,
+  plus the quoted parents, however old, and a `ThreadSummary` per collapsed
+  thread: original, count, last time, unread); `thread(_:in:)` (original
+  plus the newest 200 thread messages and their parents); `threads()`
+  (tribe threads of two or more, original stored, that this account
+  started or wrote in, joined tribes only, newest activity first);
+  `replyCounts(in:)` (direct replies per message); `message(uuid:in:)` (the
+  parent, same chat only). `messages(in:)` is unchanged, so the app shows
+  what it showed until its thread UI is designed.
+- `Engine.sendText(_:to:replyTo:inThread:)`: links set as the Mac app sets
+  them (`inThread` may name any message of the thread; it resolves to that
+  message's thread; a reply given with it must be that thread's original or
+  in it, `notInThread`). Both must be stored messages of the same chat (64
+  hex). Our own message must not be pending or failed (a Retry gives it a
+  new uuid), and in a tribe it must have come back from the tribe, since
+  until then the others know it under another uuid (`notDelivered`). A
+  parent's own link that the core could not pack is skipped (the reply
+  then starts a thread at the parent) rather than sent. Goes through the shared `deliver`, so tribe pricing, the pending /
+  delivered / failed status and Retry are unchanged; a Retry re-sends the
+  stored body and keeps the row, links included.
+- CLI: `send --reply <uuid>`, `send --thread <uuid>`, `thread <pubkey>
+  <uuid>`, `threads`; `messages` now prints the main conversation (uuids,
+  "in reply to", collapsed threads).
+- Tests: `ThreadTests` (uuid check, body keys, links kept from the first
+  copy, the v8 backfill, parent beyond the newest 200 and only in its chat,
+  DM shows every reply, lone tribe reply inline, collapse of two or more
+  with count and unread, no collapse without the original, thread view,
+  threads list, reply counts). Built with `swift build --build-tests`; not
+  run here.
+
+### Verified (local stack, 2026-10-07)
+
+Broker 1897, mixer 8027, tribes server 8827; profiles `rt2-alice`,
+`rt2-bob`, `rt2-carol`, `rt2-bob2`.
+
+- DM, both ways: Bob `send --reply` to Alice's message → body
+  `{"content","replyUuid":P,"threadUuid":P}`; Alice's `messages` shows it
+  "in reply to me: hello bob". Alice `send --thread <Bob's reply>` → body
+  has only `threadUuid` = the original (resolved through Bob's reply);
+  Bob's `thread` shows the original and both messages; DM main view shows
+  every message.
+- Tribe, both ways: Alice's root, Bob's reply (paid 3 sats, delivered),
+  Alice's reply to Bob's reply (`replyUuid` = Bob's, `threadUuid` = root),
+  Bob's `--thread` post. Main view collapses to the newest with "thread of
+  N"; `thread` shows all in order with quotes; `threads` lists it on both
+  with unread past the server marker.
+- Retry: broker stopped, Bob's tribe reply failed (row FAILED, links set);
+  broker back, `resend` → same row COMPLETE with a server index, body and
+  links unchanged; Alice received it with its quote.
+- Late joiner: Carol joined after all of it; the replayed history kept
+  every link (same tribe uuids), collapse and quotes as on Alice's side.
+- Restore: Bob's words into `rt2-bob2`; tribe and DM came back with all
+  links, the thread listed.
+- Refusals: unknown uuid, a uuid from another chat, and a reply to our own
+  failed tribe message (`notDelivered`).
+
+After the rebase onto `phase3/tribes-parity` (v7 then v8), a smoke run on
+fresh profiles: a private tribe, Bob's request, Alice's `tribe-approve`
+(the answer stored with `replyUUID` = the request), a second approve
+refused as already answered (`isAnswered` on the column), and Bob's tribe
+reply to Alice's post delivered with its quote.
+
+Not verified: the Mac app's rendering of Peel's replies and threads (the
+JSON has the Mac app's keys and values; key order differs from run to run,
+as it does in the Mac app's `JSONSerialization`, and the core reads it into
+a struct, so order does not matter), but no official client was in the
+loop; anything on production.
+
+### Reviews
+
+`/code-review high`, applied: a reply to our own pending or failed DM
+message is refused (a Retry gives it a new uuid); `timeline` tracks its
+region per fetch, so marking a chat read updates thread unread counts even
+when the chat had no threads when it was opened; a parent's link the core
+could not pack is skipped instead of failing with "no such message"; a reply
+given with `inThread` must be in that thread (`notInThread`); the collapse
+rule's "two or more" is an `EXISTS ... OFFSET 1`, not a count per row; the
+doc no longer claims the JSON is byte-for-byte the Mac app's.
+
+Not applied, with reasons:
+- "A server echo under our own uuid could set `serverIndex` before the
+  tribe's copy lands": a tribe send has no copy to self (`send.rs`, the
+  `is_tribe` branch), so the tribe's copy is the only one with an index.
+- Read-only CLI commands on a profile not yet migrated to v8 fail with "no
+  such column": the existing rule in `AGENTS.md` (run a connecting command
+  once); listed there now.
+- `.sortedKeys` for the body: the Mac app's `JSONSerialization` order is
+  not fixed either, and the core reads the JSON into a struct.
+- `--reply`/`--thread` taken from anywhere in the arguments, even inside
+  the text: same as every other CLI option (`--description` and so on).
+- `replyCounts(in:)` and `message_reply` have no caller yet: asked for in
+  the brief for the UI (a "N replies" marker), and the index also serves
+  the parent lookups of a future "replies to this" view. Drop them if the
+  design does not use them.
+
+`/simplify` (reuse, simplification, efficiency, altitude), applied: one
+`thread(of:)` rule (`threadUuid ?? replyUuid ?? uuid`, invalid links
+skipped) for both `replyTo` and `inThread`, so `--reply R` and `--thread R`
+agree on R's thread; the thread view's query built by `messagesSQL(also:)`;
+`threads()` groups only threads with a message of ours instead of every
+tribe thread on each change; the v8 backfill tests `LIKE` before parsing
+JSON; unused `ThreadSummary.lastDate` dropped; tests share `first` and
+`Message.fixture` takes `replyUUID`/`threadUUID`.
+
+Not applied, with reasons:
+- One body-to-row mapping shared by send and receive, and `deliver` taking
+  typed fields instead of decoding the body: worth doing when attachments
+  add the next convention, not for two fields.
+- The collapse rule exists twice in SQL (`tribeTimelineSQL` and
+  `threadsSQL`); one CTE would tie them together but is a larger rewrite.
+  The tests cover both together (`tribeCollapsesAThreadOfTwoOrMore`).
+- `timeline` work per change (tribe lookup, summaries, parents re-run on
+  any message write): a second observation keyed on the visible uuids is
+  more machinery than 200 rows warrant now.
+- The app still reads `messages(in:)`: switching it to `timeline(in:)` is
+  the UI work that waits for the design review.
+- `replyCounts(in:)` kept, as above.
+
+`/security-review`: no finding at confidence 8 or above. Checked: every
+value interpolated into SQL is a constant or `databaseQuestionMarks`; peer
+uuids are bound as arguments; parent, thread and count lookups are all
+scoped to one chat, so a peer cannot get another chat's message quoted;
+the upsert's same-chat guard and first-copy links still hold; a peer's
+link reused in our reply is checked with `MessageUUID.isValid` first; no
+key material in the new CLI output. Near-misses not applied: a non-string
+`replyUuid` would make `BodyFields` fail and hide the content (the core
+packs both as 32 bytes and hands them back as hex strings, so a peer cannot
+produce one); a tribe member can forge thread links that change how a
+tribe's threads collapse (display only, within that tribe).
+
+### Decided for the UI (Tom, 2026-10-07)
+
+- A thread reply stays in the thread only: no "Also send to #tribe" option,
+  and no engine or CLI path for it (none was built).
+- Hover bar order: Reply, then Reply in thread. No "Copy link": Sphinx has
+  no message links.
+- Images: a grid of up to 4 with "+N", grouping one sender's images sent
+  within about a minute.
+- DM rows get a context menu without Leave.
+
+### Open questions for the UI
+
+- Reply vs Reply in thread: the Mac app's Reply also joins or starts a
+  thread (`threadUuid` is always set). Peel's engine does the same, so the
+  two hover actions send the same links and differ only in where the
+  composer opens. Is that what the design wants?
+- The thread row in the main view: original, count, newest message;
+  whether to show participants' photos and the thread's unread count.
+- Thread unread uses the chat's server read marker; opening the chat
+  clears thread unread too (as the Mac app does). A per-thread marker would
+  be local only.
+- Quote when the parent is not stored (older than history, or another
+  client's broken link): show nothing, or "original not available".
+- Threads in DMs: the Mac app never collapses them; the Threads list is
+  tribes only. Keep it that way?
 
 ## Attachments
 

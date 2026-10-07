@@ -27,7 +27,7 @@ private func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
     return try queue.read { try Row.fetchAll($0, sql: sql) }
 }
 
-private func first<S: AsyncSequence>(_ sequence: S) async throws -> S.Element? {
+func first<S: AsyncSequence>(_ sequence: S) async throws -> S.Element? {
     var iterator = sequence.makeAsyncIterator()
     return try await iterator.next()
 }

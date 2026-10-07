@@ -16,8 +16,12 @@ struct PeelCommand {
           contacts                    contacts known to the core
           add <contact-info> [name]   start a key exchange with a contact
           send <pubkey> <text>        send a text message to a contact or a tribe
+                                      (--reply <uuid> answers a message, --thread <uuid> posts in its thread)
           listen                      stay connected, reconnecting as needed, and print what arrives
-          messages <pubkey>           the newest stored messages of a contact or a tribe, with row ids and delivery
+          messages <pubkey>           a chat's main conversation, as the app shows it: row ids, uuids,
+                                      delivery, quoted parents and collapsed threads
+          thread <pubkey> <uuid>      one thread: its original and its messages
+          threads                     tribe threads this account started or wrote in, newest first
           resend <id>                 send an undelivered message again
           discard <id>                drop an undelivered message
           unread                      unread counts and mute levels by chat
@@ -84,6 +88,8 @@ struct PeelCommand {
         let insecure = arguments.flag("--insecure")
         let tribeHost = arguments.option("--tribe-host")
         let tribeOptions = try TribeOptions(&arguments)
+        let replyTo = arguments.option("--reply")
+        let inThread = arguments.option("--thread")
         guard let command = arguments.next() else {
             print(usage)
             return
@@ -156,18 +162,43 @@ struct PeelCommand {
             } catch {
                 print("not connected: \(error)")
             }
-            try await session.engine.sendText(arguments.rest().joined(separator: " "), to: pubkey)
+            try await session.engine.sendText(
+                arguments.rest().joined(separator: " "), to: pubkey, replyTo: replyTo, inThread: inThread
+            )
             try await session.finish(after: wait)
 
         case "messages":
             guard let chat = arguments.next() else { throw PeelError("messages needs a pubkey") }
             let storage = try Storage(directory: profile.directory, readOnly: true)
-            for try await rows in storage.messages(in: chat) {
-                for row in rows {
-                    let index = row.serverIndex.map(String.init) ?? "-"
-                    let delivery = row.delivery.map { " [\($0)]" } ?? ""
-                    let mention = row.mentionsMe ? " [mentions me]" : ""
-                    print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(Session.line(row))\(delivery)\(mention)")
+            for try await timeline in storage.timeline(in: chat) {
+                for row in timeline.messages {
+                    Session.printRow(row, parents: timeline.parents)
+                    if let thread = row.threadUUID.flatMap({ timeline.threads[$0] }) {
+                        print("      thread of \(thread.count), \(thread.unread) unread, started by \(Session.line(thread.original))")
+                    }
+                }
+                break
+            }
+
+        case "thread":
+            guard let chat = arguments.next(), let uuid = arguments.next() else {
+                throw PeelError("thread needs a pubkey and the uuid of the thread's original message")
+            }
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await thread in storage.thread(uuid, in: chat) {
+                print("original: \(thread.original.map(Session.line) ?? "not stored")")
+                for row in thread.messages {
+                    Session.printRow(row, parents: thread.parents)
+                }
+                break
+            }
+
+        case "threads":
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for try await threads in storage.threads() {
+                for thread in threads {
+                    print("\(thread.chat.prefix(12))  \(thread.uuid)  \(thread.count) messages, \(thread.unread) unread")
+                    print("      \(Session.line(thread.original))")
                 }
                 break
             }
@@ -369,6 +400,18 @@ struct Session {
 }
 
 extension Session {
+    /// One stored row: id, server index, uuid, what it says, delivery, and
+    /// the message it replies to, if stored.
+    static func printRow(_ row: Message, parents: [String: Message]) {
+        let index = row.serverIndex.map(String.init) ?? "-"
+        let delivery = row.delivery.map { " [\($0)]" } ?? ""
+        let mention = row.mentionsMe ? " [mentions me]" : ""
+        print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(line(row))\(delivery)\(mention)")
+        if let reply = row.replyUUID {
+            print("      in reply to \(parents[reply].map(line) ?? "\(reply) (not stored)")")
+        }
+    }
+
     /// Who sent a message, its type unless text, and what it says.
     static func line(_ message: Message) -> String {
         let who = message.fromMe ? "me" : message.senderAlias ?? String(message.chat.prefix(12))

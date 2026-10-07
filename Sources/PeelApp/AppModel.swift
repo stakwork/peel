@@ -7,22 +7,8 @@ import PeelCore
 final class AppModel {
     enum Phase { case loading, onboarding, ready }
 
-    enum Connection: Equatable {
-        case connecting
-        case connected
-        case offline(retryIn: Int)
-
-        var label: String {
-            switch self {
-            case .connecting: "Connecting"
-            case .connected: "Connected"
-            case .offline(let seconds): "Offline, retrying in \(seconds)s"
-            }
-        }
-    }
-
     var phase: Phase = .loading
-    var connection: Connection = .connecting
+    var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
     var messages: [Message] = []
     var selectedChat: String? {
@@ -32,17 +18,17 @@ final class AppModel {
     var balanceMsat: UInt64?
     var notice: String?
 
-    let profile: Profile
-    private var storage: Storage?
+    /// Which local account to use: launch with `-profile <name>`.
+    private(set) var profile: Profile?
     private var engine: Engine?
-    private var server: ServerAddress?
-    private var tasks: [Task<Void, Never>] = []
     private var messagesTask: Task<Void, Never>?
 
     init() {
-        let arguments = CommandLine.arguments
-        let name = arguments.firstIndex(of: "--profile").flatMap { arguments.count > $0 + 1 ? arguments[$0 + 1] : nil }
-        profile = Profile(name: name ?? "default")
+        do {
+            profile = try Profile(name: UserDefaults.standard.string(forKey: "profile") ?? "default")
+        } catch {
+            notice = "\(error)"
+        }
     }
 
     var selectedConversation: Conversation? {
@@ -50,41 +36,31 @@ final class AppModel {
     }
 
     func start() async {
-        guard phase == .loading else { return }
+        guard phase == .loading, let profile else { return }
         guard profile.hasAccount else {
             phase = .onboarding
             return
         }
         do {
-            try await open()
+            // Loading an account derives keys and opens the database; keep it off the main thread.
+            let engine = try await Task.detached { try await Account.load(profile) }.value
+            await attach(engine)
         } catch {
             notice = "\(error)"
             phase = .onboarding
         }
     }
 
-    /// Creates a new account from an invite link.
-    func signup(invite: String, name: String) async throws {
-        let parsed = try Engine.parseInvite(invite)
-        guard let host = parsed.server, let address = ServerAddress(host) else {
-            throw AppError("The invite does not say which server to use.")
+    /// One field takes either an invite link or the twelve words of an account.
+    func join(_ input: String, name: String) async throws {
+        guard let profile else { return }
+        let engine: Engine
+        if let invite = try? Engine.parseInvite(input) {
+            engine = try await Account.signup(profile, invite: invite, alias: name)
+        } else {
+            engine = try await Account.restore(profile, mnemonic: input, alias: name)
         }
-        try profile.save(mnemonic: Engine.generateMnemonic())
-        try await open(server: address, name: name, inviteCode: parsed.code)
-        if let inviter = parsed.inviterContactInfo {
-            try await engine?.addContact(inviter, alias: parsed.inviterAlias, inviteCode: parsed.code)
-        }
-    }
-
-    /// Opens an existing account from its twelve words. History is not pulled
-    /// back yet; only new messages will show.
-    func restore(mnemonic: String, name: String) async throws {
-        let config = try await ServerConfig.fetch()
-        guard let address = ServerAddress(config.defaultLSP) else {
-            throw AppError("The server address in the config is unreadable.")
-        }
-        try profile.save(mnemonic: mnemonic)
-        try await open(server: address, name: name)
+        await attach(engine)
     }
 
     func send(_ text: String) async {
@@ -96,71 +72,36 @@ final class AppModel {
         }
     }
 
-    private func open(server: ServerAddress? = nil, name: String? = nil, inviteCode: String? = nil) async throws {
-        let storage = try Storage(directory: profile.directory)
-        let engine = try Engine(mnemonic: profile.loadMnemonic(), storage: storage)
-        if let name { try await engine.setAlias(name) }
-        if let server {
-            try storage.set(server.description, for: .server)
-        }
-        guard let stored = try storage.value(for: .server), let address = ServerAddress(stored) else {
-            throw AppError("This account has no server recorded.")
-        }
-        self.storage = storage
+    private func attach(_ engine: Engine) async {
         self.engine = engine
-        self.server = address
-        myContactInfo = try storage.value(for: .contactInfo)
-        balanceMsat = try storage.value(for: .balanceMsat).flatMap { UInt64($0) }
-
-        tasks.append(Task { await self.observeConversations() })
-        tasks.append(Task { await self.consumeEvents() })
+        let storage = engine.storage
+        myContactInfo = try? storage.value(for: .contactInfo)
+        balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
+        connection = await engine.connection
+        Task { await self.observeConversations(storage) }
+        Task { await self.consumeEvents(engine) }
         phase = .ready
-        await connect(inviteCode: inviteCode)
-        if inviteCode != nil {
-            try await engine.waitUntilRegistered()
-        }
+        await engine.start()
     }
 
-    private func connect(inviteCode: String? = nil) async {
-        guard let engine, let server else { return }
-        var attempt = 0
-        while !Task.isCancelled {
-            connection = .connecting
-            do {
-                try await engine.connect(to: server, inviteCode: inviteCode)
-                connection = .connected
-                return
-            } catch {
-                notice = "Connection failed: \(error)"
-            }
-            attempt += 1
-            let delay = min(30, 2 << min(attempt, 4))
-            connection = .offline(retryIn: delay)
-            try? await Task.sleep(for: .seconds(delay))
-        }
-    }
-
-    private func consumeEvents() async {
-        guard let engine else { return }
+    private func consumeEvents(_ engine: Engine) async {
         for await event in engine.events {
             switch event {
+            case .connection(let state):
+                connection = state
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
                 notice = message
-            case .disconnected:
-                connection = .offline(retryIn: 2)
-                Task { await self.connect() }
             case .message, .sendStatus:
                 break
             }
         }
     }
 
-    private func observeConversations() async {
-        guard let storage else { return }
+    private func observeConversations(_ storage: Storage) async {
         do {
             for try await rows in storage.conversations() {
                 conversations = rows
@@ -176,7 +117,7 @@ final class AppModel {
     private func observeMessages() {
         messagesTask?.cancel()
         messages = []
-        guard let storage, let chat = selectedChat else { return }
+        guard let storage = engine?.storage, let chat = selectedChat else { return }
         messagesTask = Task {
             do {
                 for try await rows in storage.messages(in: chat) {
@@ -187,9 +128,4 @@ final class AppModel {
             }
         }
     }
-}
-
-struct AppError: Error, CustomStringConvertible {
-    let description: String
-    init(_ description: String) { self.description = description }
 }

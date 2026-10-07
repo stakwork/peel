@@ -25,13 +25,13 @@ swift build
 ## Try it
 
 ```sh
-./scripts/run-app.sh --profile throwaway
+./scripts/run-app.sh -profile throwaway
 ```
 
 Or from the command line:
 
 ```sh
-.build/debug/peel signup <invite-code> --alias "My name"
+.build/debug/peel signup - --alias "My name"   # paste the invite link on stdin
 .build/debug/peel whoami
 .build/debug/peel add <pubkey_lsp_scid>
 .build/debug/peel send <pubkey> hello
@@ -41,5 +41,5 @@ Or from the command line:
 Accounts live under `~/Library/Application Support/Peel/dev/<profile>`; pick one
 with `--profile`.
 
-See `AGENTS.md` for how the code is organised and `docs/PLAN.md` for what is done
-and what comes next.
+See `AGENTS.md` for how the code is organised, `docs/PLAN.md` for the
+architecture, and `docs/phases/` for what is done and what comes next.

@@ -34,7 +34,7 @@ struct MessageList: View {
                 LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if startsNewDay(at: index) {
-                            DayHeading(date: date(of: message))
+                            DayHeading(date: message.date)
                         }
                         MessageRow(message: message)
                             .id(message.id)
@@ -52,13 +52,9 @@ struct MessageList: View {
         }
     }
 
-    private func date(of message: Message) -> Date {
-        Date(milliseconds: message.timestamp ?? 0)
-    }
-
     private func startsNewDay(at index: Int) -> Bool {
         guard index > 0 else { return true }
-        return !Calendar.current.isDate(date(of: messages[index]), inSameDayAs: date(of: messages[index - 1]))
+        return !Calendar.current.isDate(messages[index].date, inSameDayAs: messages[index - 1].date)
     }
 }
 
@@ -88,12 +84,12 @@ struct MessageRow: View {
                     .padding(.vertical, 7)
                     .background(bubble, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .foregroundStyle(message.fromMe ? Color.white : Color.primary)
-                    .opacity(message.status == "PENDING" ? 0.6 : 1)
+                    .opacity(message.delivery == .pending ? 0.6 : 1)
                 HStack(spacing: 6) {
-                    if message.status == "FAILED" {
+                    if message.delivery == .failed {
                         Text("Not delivered")
                     }
-                    Text(Formatting.time(Date(milliseconds: message.timestamp ?? 0)))
+                    Text(message.date, format: .dateTime.hour().minute())
                         .monospacedDigit()
                 }
                 .font(.caption2)
@@ -113,6 +109,10 @@ struct Composer: View {
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
 
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("Message", text: $draft, axis: .vertical)
@@ -128,8 +128,8 @@ struct Composer: View {
                     .font(.system(size: 26))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .foregroundStyle(canSend ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.horizontal, 16)

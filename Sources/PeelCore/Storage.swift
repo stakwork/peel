@@ -1,15 +1,42 @@
 import Foundation
 import GRDB
-import Sphinxrs
 
 /// Everything Peel keeps on disk for one account.
+///
+/// A writable Storage holds an exclusive lock on the profile directory, because
+/// two processes running core calls against their own copies of the core state
+/// would corrupt the account.
 public final class Storage: Sendable {
     private let pool: DatabasePool
+    private let lock: Int32?
 
-    public init(directory: URL) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        pool = try DatabasePool(path: directory.appendingPathComponent("peel.sqlite").path)
-        try Self.migrator.migrate(pool)
+    public init(directory: URL, readOnly: Bool = false) throws {
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        lock = readOnly ? nil : try Self.lock(directory)
+        var configuration = Configuration()
+        configuration.readonly = readOnly
+        pool = try DatabasePool(path: directory.appendingPathComponent("peel.sqlite").path, configuration: configuration)
+        if !readOnly {
+            try Self.migrator.migrate(pool)
+        }
+    }
+
+    deinit {
+        if let lock { close(lock) }
+    }
+
+    private static func lock(_ directory: URL) throws -> Int32 {
+        let path = directory.appendingPathComponent("lock").path
+        let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw PeelError("could not open \(path)") }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            close(fd)
+            throw PeelError("another Peel process is using \(directory.path)")
+        }
+        return fd
     }
 
     private static var migrator: DatabaseMigrator {
@@ -57,42 +84,29 @@ public final class Storage: Sendable {
                 GROUP BY chat HAVING id = MAX(id)
                 """)
         }
+        migrator.registerMigration("v3") { db in
+            // A contact is ready once the core holds their key; only those are conversations.
+            try db.alter(table: "contact") { t in
+                t.add(column: "ready", .boolean).notNull().defaults(to: false)
+            }
+        }
         return migrator
     }
 }
 
-// MARK: - Core state
+// MARK: - Rows
 
-extension Storage {
-    func loadCoreState() throws -> [String: Data] {
-        try pool.read { db in
-            var state: [String: Data] = [:]
-            for row in try Row.fetchAll(db, sql: "SELECT key, value FROM coreState") {
-                state[row["key"]] = row["value"]
-            }
-            return state
-        }
-    }
-
-    func commitCoreState(set: [String: Data], delete: [String]) throws {
-        try pool.write { db in
-            for (key, value) in set {
-                try db.execute(
-                    sql: """
-                        INSERT INTO coreState (key, value) VALUES (?, ?)
-                        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                        """,
-                    arguments: [key, value]
-                )
-            }
-            for key in delete {
-                try db.execute(sql: "DELETE FROM coreState WHERE key = ?", arguments: [key])
-            }
-        }
-    }
+private struct CoreStateRow: Codable, PersistableRecord {
+    static let databaseTableName = "coreState"
+    var key: String
+    var value: Data
 }
 
-// MARK: - Settings
+private struct SettingRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "setting"
+    var key: String
+    var value: String
+}
 
 public enum Setting: String, Sendable {
     case network
@@ -102,133 +116,8 @@ public enum Setting: String, Sendable {
     case photoURL
     case contactInfo
     case balanceMsat
+    case clock
 }
-
-extension Storage {
-    public func value(for setting: Setting) throws -> String? {
-        try pool.read { db in
-            try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = ?", arguments: [setting.rawValue])
-        }
-    }
-
-    public func set(_ value: String, for setting: Setting) throws {
-        try pool.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO setting (key, value) VALUES (?, ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                    """,
-                arguments: [setting.rawValue, value]
-            )
-        }
-    }
-}
-
-// MARK: - Messages
-
-extension Storage {
-    /// Stores a message we are sending, before the server has seen it. The server
-    /// later echoes it to all our devices; `record` then fills in the same row.
-    func recordOutgoing(uuid: String?, tag: String?, type: Int, chat: String, body: String, content: String?) throws -> Message? {
-        try pool.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO message (uuid, type, chat, fromMe, body, content, timestamp, tag, status)
-                    VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'PENDING')
-                    ON CONFLICT(uuid) DO NOTHING
-                    """,
-                arguments: [uuid, type, chat, body, content, Int64(Date().timeIntervalSince1970 * 1000), tag]
-            )
-            if let uuid {
-                return try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ?", arguments: [uuid])
-            }
-            return try Message.fetchOne(db, key: db.lastInsertedRowID)
-        }
-    }
-
-    /// Stores a message from the core. The same message can arrive live and again
-    /// from history, so rows are matched on uuid and only filled in, never blanked.
-    /// Returns nil for entries that are not messages, such as the bare tag the core
-    /// returns from a send.
-    func record(_ msg: Msg) throws -> Message? {
-        let fromMe = msg.fromMe ?? false
-        let sender = msg.sender.flatMap { try? JSONDecoder().decode(SenderFields.self, from: Data($0.utf8)) }
-        guard let chat = fromMe ? msg.sentTo : sender?.pubkey, let type = msg.type else {
-            return nil
-        }
-        let body = msg.message.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }
-
-        return try pool.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO message
-                        (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(uuid) DO UPDATE SET
-                        serverIndex = COALESCE(excluded.serverIndex, serverIndex),
-                        sender = COALESCE(excluded.sender, sender),
-                        body = COALESCE(excluded.body, body),
-                        content = COALESCE(excluded.content, content),
-                        msat = COALESCE(excluded.msat, msat),
-                        timestamp = COALESCE(excluded.timestamp, timestamp),
-                        tag = COALESCE(excluded.tag, tag),
-                        paymentHash = COALESCE(excluded.paymentHash, paymentHash)
-                    """,
-                arguments: [
-                    msg.uuid, msg.index.flatMap { Int64($0) }, Int(type), chat, fromMe, msg.sender, msg.message,
-                    body?.content, msg.msat.map { Int64(clamping: $0) }, msg.timestamp.map { Int64(clamping: $0) }, msg.tag,
-                    msg.paymentHash,
-                ]
-            )
-            if !fromMe, let sender, sender.pubkey == chat {
-                try Self.upsertContact(db, pubkey: chat, alias: sender.alias, photoURL: sender.photoURL)
-            }
-            if let uuid = msg.uuid {
-                return try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ?", arguments: [uuid])
-            }
-            return try Message.fetchOne(db, key: db.lastInsertedRowID)
-        }
-    }
-
-    func setStatus(_ status: String, forTag tag: String) throws {
-        try pool.write { db in
-            try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
-        }
-    }
-
-    public func messages(in chat: String, limit: Int = 50) throws -> [Message] {
-        try pool.read { db in
-            try Message.fetchAll(
-                db,
-                sql: "SELECT * FROM message WHERE chat = ? ORDER BY timestamp DESC, id DESC LIMIT ?",
-                arguments: [chat, limit]
-            ).reversed()
-        }
-    }
-
-    public func highestServerIndex() throws -> Int64? {
-        try pool.read { db in
-            try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message")
-        }
-    }
-}
-
-private struct SenderFields: Decodable {
-    let pubkey: String
-    let alias: String?
-    let photoURL: String?
-
-    enum CodingKeys: String, CodingKey {
-        case pubkey, alias
-        case photoURL = "photo_url"
-    }
-}
-
-private struct BodyFields: Decodable {
-    let content: String?
-}
-
-// MARK: - Contacts and conversations
 
 /// One chat in the sidebar: the contact plus the newest text message.
 public struct Conversation: Codable, Sendable, Identifiable, Equatable, FetchableRecord {
@@ -245,26 +134,36 @@ public struct Conversation: Codable, Sendable, Identifiable, Equatable, Fetchabl
         if let alias, !alias.isEmpty { return alias }
         return String(chat.prefix(12))
     }
+
+    public var lastDate: Date? { lastTimestamp.map(Date.init(millisecondsSince1970:)) }
 }
 
+// MARK: - Reading
+
 extension Storage {
-    /// Makes sure a contact row exists; fills in a name or photo when given one.
-    func upsertContact(pubkey: String, alias: String?, photoURL: String?) throws {
-        try pool.write { db in
-            try Self.upsertContact(db, pubkey: pubkey, alias: alias, photoURL: photoURL)
+    func loadCoreState() throws -> [String: Data] {
+        try pool.read { db in
+            var state: [String: Data] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT key, value FROM coreState") {
+                state[row["key"]] = row["value"]
+            }
+            return state
         }
     }
 
-    private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
-        try db.execute(
-            sql: """
-                INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
-                ON CONFLICT(pubkey) DO UPDATE SET
-                    alias = COALESCE(NULLIF(excluded.alias, ''), alias),
-                    photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
-                """,
-            arguments: [pubkey, alias, photoURL]
-        )
+    public func value(for setting: Setting) throws -> String? {
+        try pool.read { db in try SettingRow.fetchOne(db, key: setting.rawValue)?.value }
+    }
+
+    public func set(_ value: String, for setting: Setting) throws {
+        try pool.write { db in try SettingRow(key: setting.rawValue, value: value).upsert(db) }
+    }
+
+    /// The newest server index stored, which is where history fetches resume.
+    func highestServerIndex() throws -> UInt64? {
+        try pool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message").flatMap { UInt64(exactly: $0) }
+        }
     }
 
     private static let conversationsSQL = """
@@ -274,38 +173,133 @@ extension Storage {
         LEFT JOIN message m ON m.id = (
             SELECT id FROM message WHERE chat = c.pubkey AND type = 0 ORDER BY timestamp DESC, id DESC LIMIT 1
         )
+        WHERE c.ready = 1
         ORDER BY m.timestamp IS NULL, m.timestamp DESC, c.alias
         """
 
-    /// Every conversation, newest first, re-emitted whenever anything changes.
-    public func conversations() -> AsyncThrowingStream<[Conversation], Error> {
-        observe { db in try Conversation.fetchAll(db, sql: Self.conversationsSQL) }
+    private static let messagesSQL = """
+        SELECT * FROM (
+            SELECT * FROM message WHERE chat = ? AND type = 0 ORDER BY timestamp DESC, id DESC LIMIT 200
+        ) ORDER BY timestamp, id
+        """
+
+    /// Every conversation, newest first, re-emitted whenever one changes.
+    public func conversations() -> some AsyncSequence<[Conversation], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in try Conversation.fetchAll(db, sql: Self.conversationsSQL) }
+            .removeDuplicates()
+            .values(in: pool)
     }
 
-    /// The messages of one chat, oldest first, re-emitted whenever they change.
-    public func messages(in chat: String) -> AsyncThrowingStream<[Message], Error> {
-        observe { db in
-            try Message.fetchAll(
-                db, sql: "SELECT * FROM message WHERE chat = ? AND type = 0 ORDER BY timestamp, id", arguments: [chat]
-            )
-        }
+    /// The newest 200 messages of one chat, oldest first, re-emitted whenever they change.
+    public func messages(in chat: String) -> some AsyncSequence<[Message], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in try Message.fetchAll(db, sql: Self.messagesSQL, arguments: [chat]) }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+}
+
+// MARK: - Writing
+
+extension Storage {
+    /// Everything one core call changed. Written in a single transaction so the
+    /// account can never be half-updated.
+    struct Commit {
+        var state: [String: Data] = [:]
+        var deleteState: [String] = []
+        var settings: [Setting: String] = [:]
+        /// Core contacts, when the call changed them: pubkey and whether their key is held.
+        var contacts: [(pubkey: String, ready: Bool)]?
+        /// Messages to store; `trustSender` means the engine matched the sender to
+        /// the key that decrypted the message, so its name and photo can be kept.
+        var messages: [(message: Message, trustSender: Bool)] = []
+        var statuses: [(tag: String, status: String)] = []
     }
 
-    private func observe<Value: Sendable>(
-        _ fetch: @escaping @Sendable (Database) throws -> Value
-    ) -> AsyncThrowingStream<Value, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await value in ValueObservation.tracking(fetch).values(in: pool) {
-                        continuation.yield(value)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+    /// Returns the stored rows; messages the upsert rejected are left out.
+    func apply(_ commit: Commit) throws -> [Message] {
+        try pool.write { db in
+            for (key, value) in commit.state {
+                try CoreStateRow(key: key, value: value).upsert(db)
+            }
+            if !commit.deleteState.isEmpty {
+                try CoreStateRow.deleteAll(db, keys: commit.deleteState)
+            }
+            for (setting, value) in commit.settings {
+                try SettingRow(key: setting.rawValue, value: value).upsert(db)
+            }
+            if let contacts = commit.contacts {
+                let statement = try db.cachedStatement(sql: """
+                    INSERT INTO contact (pubkey, ready) VALUES (?, ?)
+                    ON CONFLICT(pubkey) DO UPDATE SET ready = excluded.ready
+                    """)
+                for contact in contacts {
+                    try statement.execute(arguments: [contact.pubkey, contact.ready])
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            var stored: [Message] = []
+            for (message, trustSender) in commit.messages {
+                guard let row = try Self.store(message, in: db) else { continue }
+                stored.append(row)
+                if trustSender, let info = message.senderInfo {
+                    try Self.upsertContact(db, pubkey: row.chat, alias: info.alias, photoURL: info.photoURL)
+                }
+            }
+            for (tag, status) in commit.statuses {
+                try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
+            }
+            return stored
         }
+    }
+
+    /// A message can arrive more than once: live, as the server's echo of our own
+    /// send, and again from history. Rows are matched on uuid. Server-side facts
+    /// (index, time, amount, hash) are filled in from the later copy; what the
+    /// message says is kept from the first. A uuid already used in another
+    /// conversation is rejected, so no contact can rewrite another's messages.
+    private static func store(_ message: Message, in db: Database) throws -> Message? {
+        try Message.fetchOne(
+            db,
+            sql: """
+                INSERT INTO message
+                    (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(uuid) DO UPDATE SET
+                    serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
+                    timestamp = COALESCE(excluded.timestamp, message.timestamp),
+                    msat = COALESCE(excluded.msat, message.msat),
+                    paymentHash = COALESCE(excluded.paymentHash, message.paymentHash),
+                    tag = COALESCE(message.tag, excluded.tag),
+                    sender = COALESCE(message.sender, excluded.sender),
+                    body = COALESCE(message.body, excluded.body),
+                    content = COALESCE(message.content, excluded.content)
+                WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
+                RETURNING *
+                """,
+            arguments: [
+                message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
+                message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
+                message.status,
+            ]
+        )
+    }
+
+    /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
+    private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
+        let photo = photoURL.flatMap { URL(string: $0)?.scheme == "https" ? $0 : nil }
+        try db.execute(
+            sql: """
+                INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
+                ON CONFLICT(pubkey) DO UPDATE SET
+                    alias = COALESCE(NULLIF(excluded.alias, ''), alias),
+                    photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
+                """,
+            arguments: [pubkey, alias, photo]
+        )
+    }
+
+    func upsertContact(pubkey: String, alias: String?) throws {
+        try pool.write { db in try Self.upsertContact(db, pubkey: pubkey, alias: alias, photoURL: nil) }
     }
 }

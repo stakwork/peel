@@ -5,6 +5,11 @@ import PeelCore
 struct PeelApp: App {
     @State private var model = AppModel()
 
+    init() {
+        // Everything this process creates (database, journal) is private to the user.
+        umask(0o077)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

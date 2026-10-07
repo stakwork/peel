@@ -1,16 +1,20 @@
 # Agent Guide
 
 Peel is a native Sphinx chat client written from scratch in Swift on the shared
-Rust core. Read `docs/PLAN.md` first: it says what is done, what is being worked
-on, and what comes next.
+Rust core. Read `docs/PLAN.md` first (architecture and phase index), then the
+phase you are working on under `docs/phases/`: each says what is done, what is
+in progress and what comes next. Update it when you finish something.
 
 ## Project layout
 
 - `Sources/PeelCore/` — the client engine, no UI
   - `Engine.swift` — the actor that drives one account: runs core calls, commits
-    the state they return, performs the subscribes and publishes they ask for
+    the state they return in one transaction, performs the subscribes and
+    publishes they ask for, owns the connection and reconnect loop
+  - `Account.swift` — load, signup, create and restore: the one place that
+    decides where the mnemonic and server come from
   - `Storage.swift` — SQLite via GRDB: core state, settings, messages, contacts,
-    live queries (`conversations()`, `messages(in:)`)
+    live queries (`conversations()`, `messages(in:)`); holds the profile lock
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift` — a local account directory; mnemonic in a plain file (dev only)
@@ -23,15 +27,20 @@ on, and what comes next.
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
 - `scripts/run-app.sh` — builds, bundles and opens the Mac app
+- `scripts/build-icon.sh` — renders `Assets/peel.svg` into `Assets/AppIcon.icns`
 
 ## Build and run
 
 ```sh
 ./scripts/build-ffi.sh      # once, and after the core changes
 swift build
-./scripts/run-app.sh --profile throwaway
-.build/debug/peel --profile throwaway listen
+./scripts/run-app.sh -profile throwaway      # app: single dash, read via UserDefaults
+.build/debug/peel --profile throwaway listen  # CLI: double dash
 ```
+
+`scripts/build-ffi.sh` checks the static library against `Vendor/sphinxrs.lock`
+(sha256 plus the `sphinx-rs` commit); pass `--update` after deliberately taking a
+new build of the core.
 
 Only the command-line tools are installed on this Mac, not Xcode: build with
 `swift build`, not `xcodebuild`. The app bundle is assembled by hand in
@@ -53,25 +62,40 @@ Only the command-line tools are installed on this Mac, not Xcode: build with
   live in the official apps, not in the core. The reference is
   `sphinx-mac-v2/.../SphinxOnionManager+ChatExtension.swift`. Match them exactly
   or colleagues see broken messages.
-- `send` returns only a tag and a uuid; Peel writes its own outgoing row before
-  publishing. The server echoes sent messages to all of the account's devices.
+- `send` returns only a tag and a uuid; Peel writes its own outgoing row in the
+  same transaction as the state. The server echoes sent messages to all of the
+  account's devices.
+- The sender inside a message is self-declared. For a live message the child
+  index in the topic names the contact whose key decrypted it, and `Engine`
+  files the message under that contact; names and photos are only taken from
+  senders that match. History (`batch`) messages carry no index, so they are
+  accepted only from known contacts and never rename anyone.
 - Names and photos are not core state; they arrive with messages and invites.
+  A contact is a conversation only once the core holds their key (`ready`).
 
 ## Rules
 
 - Develop against the throwaway account (profile `throwaway`), never a real
   one. Do not call `setPushToken` for a real account: the server keeps one push
   token per account and it would take notifications away from the official app.
-- Never run the app and the CLI on the same profile at the same time.
+- One process per profile: `Storage` takes a lock, so a second app or CLI on the
+  same profile fails with "another Peel process is using ...". Quit the other one.
+- TLS is on by default; `ServerAddress` only goes plaintext for an explicit
+  `mqtt://` scheme or a loopback host, and the scheme is persisted. The
+  `--insecure` flag (CLI only) disables certificate verification.
 - Never log the seed, the mnemonic, or invite links.
 - Swift 6 language mode with strict concurrency in `PeelCore` and `PeelApp`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Do not add a dependency for something under a hundred lines.
+- Keep the engine agent-ready (`docs/agent-native.md`): no UI types, global
+  state or single-account assumptions in `PeelCore`; every user action is an
+  engine operation, never logic inside a view; message conventions live in the
+  engine.
 - UI follows Tom's `tom-ui` and `taste` skills: lens is Apple calm; colour is
   state, not decoration; no red for ordinary failure; restraint in motion.
-- Keep this file and `docs/PLAN.md` current when you change the layout or
-  finish a step.
+- Keep this file, `docs/PLAN.md` and the phase files current when you change
+  the layout or finish a step.
 
 ## Local test server
 

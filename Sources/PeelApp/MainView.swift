@@ -5,7 +5,6 @@ struct MainView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        @Bindable var model = model
         NavigationSplitView {
             ConversationList()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 380)
@@ -60,7 +59,7 @@ struct ConversationRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            Text(conversation.lastTimestamp.map { Formatting.short(Date(milliseconds: $0)) } ?? "")
+            Text(conversation.lastDate.map(Formatting.short) ?? "")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .frame(width: 44, alignment: .trailing)
@@ -122,13 +121,18 @@ struct EmptyDetail: View {
     }
 }
 
+/// A contact's photo, or their initial. Only https photos are ever loaded.
 struct Avatar: View {
     let name: String
     let url: String?
     let size: CGFloat
 
+    private var photo: URL? {
+        url.flatMap(URL.init).flatMap { $0.scheme == "https" ? $0 : nil }
+    }
+
     var body: some View {
-        AsyncImage(url: url.flatMap(URL.init)) { image in
+        AsyncImage(url: photo) { image in
             image.resizable().scaledToFill()
         } placeholder: {
             Circle()
@@ -145,36 +149,16 @@ struct Avatar: View {
 }
 
 enum Formatting {
-    private static let time: DateFormatter = {
-        let f = DateFormatter()
-        f.timeStyle = .short
-        f.dateStyle = .none
-        return f
-    }()
-
-    private static let day: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "d MMM"
-        return f
-    }()
-
+    /// Time today, otherwise the day.
     static func short(_ date: Date) -> String {
-        Calendar.current.isDateInToday(date) ? time.string(from: date) : day.string(from: date)
-    }
-
-    static func time(_ date: Date) -> String {
-        time.string(from: date)
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     static func dayHeading(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
-    }
-}
-
-extension Date {
-    init(milliseconds: Int64) {
-        self.init(timeIntervalSince1970: TimeInterval(milliseconds) / 1000)
     }
 }

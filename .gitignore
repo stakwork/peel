@@ -7,3 +7,4 @@ xcuserdata/
 # Produced by scripts/build-ffi.sh
 Vendor/sphinxrsFFI.xcframework/
 Sources/Sphinxrs/sphinxrs.swift
+peel-1024.png

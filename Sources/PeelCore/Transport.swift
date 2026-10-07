@@ -10,8 +10,8 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
     public var port: Int
     public var tls: Bool
 
-    /// Parses "host:port" with an optional scheme. Port 8883 means TLS, the same
-    /// rule the core's own client uses.
+    /// Parses "host:port" with an optional scheme. TLS is on unless the scheme is
+    /// `mqtt://` or the host is this machine.
     public init?(_ string: String) {
         var rest = string.trimmingCharacters(in: .whitespacesAndNewlines)
         var scheme: String?
@@ -25,10 +25,16 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
         }
         host = String(parts[0])
         self.port = port
-        tls = port == 8883 || ["mqtts", "tls", "ssl", "https"].contains(scheme ?? "")
+        switch scheme {
+        case nil: tls = !["127.0.0.1", "localhost", "::1"].contains(host)
+        case "mqtts", "ssl", "tls": tls = true
+        case "mqtt", "tcp": tls = false
+        default: return nil
+        }
     }
 
-    public var description: String { "\(host):\(port)" }
+    /// Round-trips through `init`, so what is stored keeps its TLS setting.
+    public var description: String { "\(tls ? "mqtts" : "mqtt")://\(host):\(port)" }
 }
 
 struct Inbound: Sendable {
@@ -41,11 +47,15 @@ struct Inbound: Sendable {
 final class Transport: Sendable {
     private let client: MQTTClient
 
+    /// Messages from the broker, listened for from the moment the transport
+    /// exists. The stream ends when the connection closes.
+    let inbound: AsyncStream<Inbound>
+
     init(server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool) {
         let tls: MQTTClient.TLSConfigurationType? = server.tls
             ? .ts(TSTLSConfiguration(certificateVerification: allowUntrustedCertificate ? .none : .fullVerification))
             : nil
-        client = MQTTClient(
+        let client = MQTTClient(
             host: server.host,
             port: server.port,
             identifier: clientID,
@@ -58,12 +68,8 @@ final class Transport: Sendable {
                 tlsConfiguration: tls
             )
         )
-    }
-
-    /// Messages from the broker. The stream ends when the connection closes.
-    /// Call before `connect` so nothing is missed.
-    func inbound() -> AsyncStream<Inbound> {
-        AsyncStream { continuation in
+        self.client = client
+        inbound = AsyncStream { continuation in
             client.addPublishListener(named: "peel") { result in
                 if case .success(let info) = result {
                     continuation.yield(Inbound(topic: info.topicName, payload: Data(buffer: info.payload)))

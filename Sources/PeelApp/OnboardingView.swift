@@ -1,7 +1,8 @@
 import SwiftUI
 import PeelCore
 
-/// One field takes either an invite link or the twelve words of an existing account.
+/// One field takes either an invite link or the twelve words of an existing
+/// account; the engine decides which it is.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
@@ -10,8 +11,10 @@ struct OnboardingView: View {
     @State private var working = false
     @State private var problem: String?
 
-    private var isInvite: Bool { code.trimmingCharacters(in: .whitespaces).hasPrefix("sphinx.chat://") }
-    private var isMnemonic: Bool { code.split(whereSeparator: \.isWhitespace).count == 12 }
+    private var ready: Bool {
+        !working && !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -36,9 +39,9 @@ struct OnboardingView: View {
                 }
                 Spacer()
                 if working { ProgressView().controlSize(.small) }
-                Button(isMnemonic ? "Open" : "Join") { Task { await go() } }
+                Button("Continue") { Task { await go() } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(working || name.trimmingCharacters(in: .whitespaces).isEmpty || !(isInvite || isMnemonic))
+                    .disabled(!ready)
             }
         }
         .frame(width: 440)
@@ -51,12 +54,7 @@ struct OnboardingView: View {
         working = true
         defer { working = false }
         do {
-            let trimmedName = name.trimmingCharacters(in: .whitespaces)
-            if isInvite {
-                try await model.signup(invite: code, name: trimmedName)
-            } else {
-                try await model.restore(mnemonic: code, name: trimmedName)
-            }
+            try await model.join(code, name: name.trimmingCharacters(in: .whitespaces))
         } catch {
             problem = "\(error)"
         }

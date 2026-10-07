@@ -26,6 +26,19 @@ if [ -f "$MAC_BINDINGS" ] && ! cmp -s "$BINDINGS" "$MAC_BINDINGS"; then
   exit 1
 fi
 
+# Every signing and encryption step runs inside this library, so refuse a copy
+# that differs from the one recorded in Vendor/sphinxrs.lock. Pass --update after
+# deliberately taking a new build.
+LOCK="$ROOT/Vendor/sphinxrs.lock"
+ACTUAL="$(shasum -a 256 "$LIB" | cut -d' ' -f1) $(git -C "$SPHINX_RS" rev-parse HEAD)"
+if [ "${1:-}" = "--update" ] || [ ! -f "$LOCK" ]; then
+  mkdir -p "$ROOT/Vendor"
+  printf '%s\n' "$ACTUAL" > "$LOCK"
+elif [ "$(cat "$LOCK")" != "$ACTUAL" ]; then
+  echo "universal-sphinxrs-mac.a or sphinx-rs differ from Vendor/sphinxrs.lock; re-run with --update if intended" >&2
+  exit 1
+fi
+
 XCF="$ROOT/Vendor/sphinxrsFFI.xcframework"
 SLICE="$XCF/macos-arm64_x86_64"
 rm -rf "$XCF"

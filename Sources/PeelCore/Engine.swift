@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import Sphinxrs
 
 /// Drives one account against the Sphinx core.
@@ -10,27 +9,42 @@ import Sphinxrs
 /// records what arrived, and performs the subscribes and publishes it asked for.
 public actor Engine {
     public enum Event: Sendable {
+        case connection(ConnectionState)
         /// The server knows this account and has given it a route hint.
         case registered(contactInfo: String?)
         case balance(msat: UInt64)
         case message(Message)
         case sendStatus(tag: String?, status: String)
         case coreError(String)
-        case disconnected
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum ConnectionState: Sendable, Equatable {
+        case offline(retryIn: Int?)
+        case connecting
+        case connected
+
+        public var label: String {
+            switch self {
+            case .offline(let seconds?): "Offline, retrying in \(seconds)s"
+            case .offline(nil): "Offline"
+            case .connecting: "Connecting"
+            case .connected: "Connected"
+            }
+        }
+    }
+
+    public enum Failure: Error, Equatable, CustomStringConvertible {
+        case noServer
         case notConnected
         case invalidContactInfo
         case registrationTimedOut
-        case randomUnavailable
 
         public var description: String {
             switch self {
+            case .noServer: "this account has no server recorded"
             case .notConnected: "not connected to the server"
             case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
             case .registrationTimedOut: "the server did not confirm registration in time"
-            case .randomUnavailable: "the system random number generator failed"
             }
         }
     }
@@ -47,35 +61,48 @@ public actor Engine {
         }
     }
 
+    /// What an invite code carries: where to connect and who sent it.
+    public struct Invite: Sendable {
+        public let code: String
+        public let server: String?
+        public let inviterContactInfo: String?
+        public let inviterAlias: String?
+    }
+
     public nonisolated let events: AsyncStream<Event>
+    public nonisolated let storage: Storage
     private let emit: AsyncStream<Event>.Continuation
 
     private let seed: String
     private let network: String
     private let deviceID: String
-    private let storage: Storage
     private var alias: String
     private var photoURL: String
+    private var server: ServerAddress?
+    private var allowUntrustedCertificate = false
 
     private var state: [String: Data]
-    private var snapshot: Data?
-    private var clock = UniqueClock()
+    private var clock: UniqueClock
+    public private(set) var connection: ConnectionState = .offline(retryIn: nil)
     private var transport: Transport?
     private var listener: Task<Void, Never>?
+    private var keepConnected = false
+    private var reconnectTask: Task<Void, Never>?
 
-    /// Pings that arrived before registration finished.
-    private var heldPings: [Inbound] = []
-    /// Payments waiting for us, by payment hash and by tag, with the ping time to acknowledge.
+    /// Payments waiting for us while we were offline: payment hash and tag → the
+    /// ping time to acknowledge once the payment lands.
     private var pingsByHash: [String: UInt64] = [:]
     private var pingsByTag: [String: UInt64] = [:]
+    /// The index the last history request started from, to stop paging when a
+    /// page brought nothing new.
+    private var historyRequestedFrom: UInt64?
 
     private static let historyPageSize: UInt32 = 100
 
-    public init(mnemonic: String, storage: Storage, network: String = "bitcoin") throws {
-        let words = mnemonic.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        seed = try Sphinxrs.mnemonicToSeed(mnemonic: words)
-        self.network = network
+    public init(mnemonic: String, storage: Storage) throws {
+        seed = try Sphinxrs.mnemonicToSeed(mnemonic: Self.normalise(mnemonic: mnemonic))
         self.storage = storage
+        network = try storage.value(for: .network) ?? "bitcoin"
         state = try storage.loadCoreState()
         if let stored = try storage.value(for: .deviceID) {
             deviceID = stored
@@ -85,18 +112,30 @@ public actor Engine {
         }
         alias = try storage.value(for: .alias) ?? ""
         photoURL = try storage.value(for: .photoURL) ?? ""
+        server = try storage.value(for: .server).flatMap(ServerAddress.init)
+        clock = UniqueClock(last: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0)
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
+        _ = try storage.apply(Storage.Commit(contacts: Self.readiness(in: state)))
     }
 
-    /// What an invite code carries: where to connect and who sent it.
-    public struct Invite: Sendable {
-        public let code: String
-        public let server: String?
-        public let inviterContactInfo: String?
-        public let inviterAlias: String?
-        public let initialTribe: String?
+    // MARK: - Pure helpers
+
+    public static func generateMnemonic() throws -> String {
+        let entropy = (0..<16).map { _ in UInt8.random(in: .min ... .max) }
+        return try Sphinxrs.mnemonicFromEntropy(entropy: entropy.map { String(format: "%02x", $0) }.joined())
+    }
+
+    /// Checks twelve words and returns them in canonical form.
+    public static func validate(mnemonic: String) throws -> String {
+        let words = normalise(mnemonic: mnemonic)
+        _ = try Sphinxrs.mnemonicToSeed(mnemonic: words)
+        return words
+    }
+
+    private static func normalise(mnemonic: String) -> String {
+        mnemonic.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     public static func parseInvite(_ text: String) throws -> Invite {
@@ -105,99 +144,162 @@ public actor Engine {
             code: parsed.code,
             server: parsed.lspHost,
             inviterContactInfo: parsed.inviterContactInfo,
-            inviterAlias: parsed.inviterAlias,
-            initialTribe: parsed.initialTribe
+            inviterAlias: parsed.inviterAlias
         )
     }
 
-    public static func generateMnemonic() throws -> String {
-        var entropy = [UInt8](repeating: 0, count: 16)
-        guard SecRandomCopyBytes(kSecRandomDefault, entropy.count, &entropy) == errSecSuccess else {
-            throw Failure.randomUnavailable
-        }
-        return try Sphinxrs.mnemonicFromEntropy(entropy: entropy.map { String(format: "%02x", $0) }.joined())
+    /// The contacts an account holds, without deriving its seed.
+    public static func contacts(in storage: Storage) throws -> [Contact] {
+        try contacts(in: storage.loadCoreState())
+    }
+
+    private static func readiness(in state: [String: Data]) throws -> [(pubkey: String, ready: Bool)] {
+        try contacts(in: state).map { ($0.pubkey, $0.contactKey != nil) }
+    }
+
+    private static func contacts(in state: [String: Data]) throws -> [Contact] {
+        let json = try Sphinxrs.listContacts(state: StateCodec.encode(state))
+        return try JSONDecoder().decode([Contact].self, from: Data(json.utf8))
+    }
+
+    private static func isRegistered(_ state: [String: Data]) -> Bool {
+        state["my_scid"] != nil && state["server_pubkey"] != nil
     }
 
     // MARK: - Account
 
-    public var isRegistered: Bool {
-        state["my_scid"] != nil && state["server_pubkey"] != nil
-    }
+    public var isRegistered: Bool { Self.isRegistered(state) }
 
     public func setAlias(_ alias: String) throws {
         try storage.set(alias, for: .alias)
         self.alias = alias
     }
 
-    public func contacts() throws -> [Contact] {
-        let json = try Sphinxrs.listContacts(state: stateSnapshot())
-        return try JSONDecoder().decode([Contact].self, from: Data(json.utf8))
+    public func setServer(_ server: ServerAddress) throws {
+        try storage.set(server.description, for: .server)
+        self.server = server
     }
 
-    /// Gives every contact the core knows a row in storage, so it has a
-    /// conversation even before any message or name has arrived.
-    private func syncContacts() throws {
-        for contact in try contacts() {
-            try storage.upsertContact(pubkey: contact.pubkey, alias: nil, photoURL: nil)
-        }
+    public func contacts() throws -> [Contact] {
+        try Self.contacts(in: state)
     }
 
     // MARK: - Connection
 
-    /// Connects and announces this device. Pass the invite code only when
-    /// creating the account.
-    public func connect(
-        to server: ServerAddress,
-        inviteCode: String? = nil,
-        allowUntrustedCertificate: Bool = false
-    ) async throws {
-        await disconnect()
-        try await run { _, _ in try Sphinxrs.setNetwork(network: network) }
-        try syncContacts()
+    /// Connects once and returns when the account is online. Pass the invite code
+    /// only when creating the account. A dropped connection stays dropped.
+    public func connect(inviteCode: String? = nil, allowUntrustedCertificate: Bool = false) async throws {
+        keepConnected = false
+        reconnectTask?.cancel()
+        self.allowUntrustedCertificate = allowUntrustedCertificate
+        try await establish(inviteCode: inviteCode)
+        try await waitUntilRegistered()
+    }
 
-        let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
-        let loginTime = clock.next()
-        let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-        let transport = Transport(
-            server: server,
-            clientID: xpub,
-            username: loginTime,
-            password: signature,
-            allowUntrustedCertificate: allowUntrustedCertificate
-        )
-        let inbound = transport.inbound()
-        do {
-            try await transport.connect()
-        } catch {
-            await transport.close()
-            throw error
-        }
-        self.transport = transport
-        listener = Task { [weak self] in
-            for await message in inbound {
-                await self?.receive(message)
-            }
-            await self?.connectionClosed(transport)
-        }
-
-        try await run { time, state in
-            try Sphinxrs.initialSetup(
-                seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
-            )
-        }
-        let tribeTopic = try Sphinxrs.getTribeManagementTopic(
-            seed: seed, uniqueTime: clock.next(), state: stateSnapshot()
-        )
-        try await transport.subscribe([tribeTopic])
-
-        // A returning account is already registered; a new one comes online when
-        // the server's registration reply lands (see `complete`).
-        if isRegistered {
-            await cameOnline()
-        }
+    /// Connects and keeps reconnecting with backoff until `disconnect()`.
+    /// Progress is reported through `.connection` events.
+    public func start(allowUntrustedCertificate: Bool = false) {
+        self.allowUntrustedCertificate = allowUntrustedCertificate
+        keepConnected = true
+        guard connection != .connected, reconnectTask == nil else { return }
+        reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 0) }
     }
 
     public func disconnect() async {
+        keepConnected = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        await teardown()
+        setConnection(.offline(retryIn: nil))
+    }
+
+    private func establish(inviteCode: String?) async throws {
+        guard let server else { throw Failure.noServer }
+        await teardown()
+        setConnection(.connecting)
+        do {
+            try await run { _, _ in try Sphinxrs.setNetwork(network: network) }
+            let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
+            let loginTime = clock.next()
+            let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
+            let transport = Transport(
+                server: server, clientID: xpub, username: loginTime, password: signature,
+                allowUntrustedCertificate: allowUntrustedCertificate
+            )
+            do {
+                try await transport.connect()
+            } catch {
+                await transport.close()
+                throw error
+            }
+            self.transport = transport
+            listener = Task { [weak self] in
+                for await message in transport.inbound {
+                    await self?.receive(message)
+                }
+                await self?.connectionClosed(transport)
+            }
+            try await run { time, state in
+                try Sphinxrs.initialSetup(
+                    seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
+                )
+            }
+            let tribeTopic = try Sphinxrs.getTribeManagementTopic(
+                seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state)
+            )
+            try await transport.subscribe([tribeTopic])
+            setConnection(.connected)
+            // A returning account is already registered; a new one comes online
+            // when the server's registration reply lands (see `complete`).
+            if isRegistered {
+                await cameOnline()
+            }
+        } catch {
+            await teardown()
+            setConnection(.offline(retryIn: nil))
+            throw error
+        }
+    }
+
+    private func waitUntilRegistered(timeout: Duration = .seconds(30)) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !isRegistered {
+            guard ContinuousClock.now < deadline else { throw Failure.registrationTimedOut }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
+    private func reconnectLoop(attempt: Int) async {
+        var attempt = attempt
+        while keepConnected, !Task.isCancelled {
+            if attempt > 0 {
+                let delay = min(30, 2 << min(attempt - 1, 4))
+                setConnection(.offline(retryIn: delay))
+                try? await Task.sleep(for: .seconds(delay))
+                if !keepConnected || Task.isCancelled { break }
+            }
+            do {
+                try await establish(inviteCode: nil)
+                break
+            } catch {
+                emit.yield(.coreError("connecting: \(error)"))
+                attempt += 1
+            }
+        }
+        reconnectTask = nil
+    }
+
+    private func connectionClosed(_ closed: Transport) async {
+        guard transport === closed else { return }
+        transport = nil
+        await closed.close()
+        setConnection(.offline(retryIn: nil))
+        if keepConnected, reconnectTask == nil {
+            reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 1) }
+        }
+    }
+
+    private func teardown() async {
         listener?.cancel()
         listener = nil
         if let transport {
@@ -206,13 +308,10 @@ public actor Engine {
         }
     }
 
-    /// Waits for the server to register a new account.
-    public func waitUntilRegistered(timeout: Duration = .seconds(30)) async throws {
-        let deadline = ContinuousClock.now + timeout
-        while !isRegistered {
-            guard ContinuousClock.now < deadline else { throw Failure.registrationTimedOut }
-            try await Task.sleep(for: .milliseconds(200))
-        }
+    private func setConnection(_ state: ConnectionState) {
+        guard connection != state else { return }
+        connection = state
+        emit.yield(.connection(state))
     }
 
     // MARK: - Contacts and messages
@@ -231,35 +330,33 @@ public actor Engine {
                 inviteCode: inviteCode, theirAlias: theirAlias
             )
         }
-        try storage.upsertContact(pubkey: parts[0], alias: theirAlias, photoURL: nil)
+        try storage.upsertContact(pubkey: parts[0], alias: theirAlias)
     }
 
     /// Sends a text message to a contact. Returns the tag the server will confirm.
     @discardableResult
     public func sendText(_ text: String, to pubkey: String) async throws -> String? {
         let body = String(decoding: try JSONEncoder().encode(["content": text]), as: UTF8.self)
-        let result = try await run { time, state in
-            try Sphinxrs.send(
-                seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.text), msgJson: body,
-                state: state, myAlias: alias, myImg: photoURL, amtMsat: 0, isTribe: false
-            )
-        } afterCommit: { result in
-            // The core only returns a tag and uuid for what was sent, so the local
-            // row is written here, before the server's confirmation can arrive.
-            let sent = result.msgs.first
-            if let message = try storage.recordOutgoing(
-                uuid: sent?.uuid, tag: sent?.tag, type: MessageType.text, chat: pubkey, body: body, content: text
-            ) {
-                emit.yield(.message(message))
-            }
-        }
-        return result.msgs.first?.tag
+        let time = clock.next()
+        let result = try Sphinxrs.send(
+            seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.text), msgJson: body,
+            state: StateCodec.encode(state), myAlias: alias, myImg: photoURL, amtMsat: 0, isTribe: false
+        )
+        // The core only returns a tag and uuid for what was sent; the local row
+        // is written in the same transaction as the state, before publishing.
+        let sent = result.msgs.first
+        let outgoing = Message(
+            uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: text,
+            timestamp: Date().millisecondsSince1970, tag: sent?.tag, status: Message.Delivery.pending.rawValue
+        )
+        let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing)
+        try await complete(result, followUps)
+        return sent?.tag
     }
 
     /// Asks the server for messages newer than the newest one stored locally.
     public func syncMessages() async throws {
-        let next = try storage.highestServerIndex().map { UInt64($0) + 1 } ?? 0
-        try await fetchHistory(from: next)
+        try await fetchHistory(from: try storage.highestServerIndex().map { $0 + 1 } ?? 0)
     }
 
     // MARK: - The core contract
@@ -269,12 +366,12 @@ public actor Engine {
     /// run against stale state.
     @discardableResult
     private func run(
-        _ call: (_ time: String, _ state: Data) throws -> RunReturn,
-        afterCommit: (RunReturn) throws -> Void = { _ in }
+        expectedSender: String? = nil,
+        _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
-        let result = try call(clock.next(), stateSnapshot())
-        let followUps = try commit(result)
-        try afterCommit(result)
+        let time = clock.next()
+        let result = try call(time, StateCodec.encode(state))
+        let followUps = try commit(result, time: time, expectedSender: expectedSender, outgoing: nil)
         try await complete(result, followUps)
         return result
     }
@@ -284,59 +381,74 @@ public actor Engine {
         var justRegistered = false
     }
 
-    private func stateSnapshot() -> Data {
-        if let snapshot { return snapshot }
-        let encoded = StateCodec.encode(state)
-        snapshot = encoded
-        return encoded
-    }
-
-    /// The synchronous half: persist state, then record everything the core reported.
-    private func commit(_ result: RunReturn) throws -> FollowUps {
+    /// The synchronous half: one transaction with everything the core reported,
+    /// then the in-memory bookkeeping and events.
+    private func commit(_ result: RunReturn, time: String, expectedSender: String?, outgoing: Message?) throws -> FollowUps {
         var followUps = FollowUps()
-        let wasRegistered = isRegistered
+        var commit = Storage.Commit()
+        commit.settings[.clock] = time
 
         let updates = try result.stateMp.map(StateCodec.decode) ?? [:]
-        if !updates.isEmpty || !result.stateToDelete.isEmpty {
-            try storage.commitCoreState(set: updates, delete: result.stateToDelete)
-            state.merge(updates) { _, new in new }
-            for key in result.stateToDelete {
-                state[key] = nil
-            }
-            snapshot = nil
+        var newState = state
+        newState.merge(updates) { _, new in new }
+        for key in result.stateToDelete {
+            newState[key] = nil
         }
-        followUps.justRegistered = !wasRegistered && isRegistered
+        commit.state = updates
+        commit.deleteState = result.stateToDelete
+        followUps.justRegistered = !isRegistered && Self.isRegistered(newState)
+        if (Array(updates.keys) + result.stateToDelete).contains(where: { $0.hasPrefix("c/") }) {
+            commit.contacts = try Self.readiness(in: newState)
+        }
 
         if let balance = result.newBalance {
-            try storage.set(String(balance), for: .balanceMsat)
-            emit.yield(.balance(msat: balance))
+            commit.settings[.balanceMsat] = String(balance)
         }
         if let info = result.myContactInfo {
-            try storage.set(info, for: .contactInfo)
+            commit.settings[.contactInfo] = info
+        }
+        if let outgoing {
+            commit.messages.append((outgoing, trustSender: false))
+        }
+        var landedPings: [String] = []
+        for msg in result.msgs {
+            if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
+                followUps.acknowledgedPings.append(pingTime)
+                landedPings.append(hash)
+            }
+            if let message = Self.message(from: msg, expectedSender: expectedSender, state: newState) {
+                commit.messages.append(message)
+            }
+        }
+        let sent = result.sentStatus.flatMap { try? JSONDecoder().decode(SentStatus.self, from: Data($0.utf8)) }
+        if let sent, let tag = sent.tag {
+            commit.statuses.append((tag, sent.status))
+        }
+
+        let stored = try storage.apply(commit)
+        state = newState
+
+        for hash in landedPings {
+            pingsByHash[hash] = nil
         }
         if let ping = result.ping {
             notePing(ping)
         }
-        for msg in result.msgs {
-            if let hash = msg.paymentHash, let time = pingsByHash.removeValue(forKey: hash) {
-                followUps.acknowledgedPings.append(time)
-            }
-            if let message = try storage.record(msg) {
-                emit.yield(.message(message))
-            }
+        if let balance = result.newBalance {
+            emit.yield(.balance(msat: balance))
         }
-        if let json = result.sentStatus,
-           let sent = try? JSONDecoder().decode(SentStatus.self, from: Data(json.utf8)) {
-            if let tag = sent.tag {
-                try storage.setStatus(sent.status, forTag: tag)
-            }
+        for message in stored {
+            emit.yield(.message(message))
+        }
+        if let sent {
             emit.yield(.sendStatus(tag: sent.tag, status: sent.status))
         }
         if let error = result.error {
-            // A ping whose payment no longer exists must still be acknowledged.
+            // The core reports a failed "online" reply only in this text, with
+            // the ping's tag at the end; the payment it was for no longer exists.
             if let tag = error.components(separatedBy: "async pay not found: ").last, tag.count == 64,
-               let time = pingsByTag.removeValue(forKey: tag) {
-                followUps.acknowledgedPings.append(time)
+               let pingTime = pingsByTag.removeValue(forKey: tag) {
+                followUps.acknowledgedPings.append(pingTime)
             }
             emit.yield(.coreError(error))
         }
@@ -377,29 +489,63 @@ public actor Engine {
         if followUps.justRegistered {
             await cameOnline()
         }
+        if let total = result.msgsTotal {
+            try await continueHistory(upTo: total)
+        }
+    }
+
+    /// Turns what the core reported into a row, deciding which conversation it
+    /// belongs to. The sender inside a message is self-declared; for a live
+    /// message the engine knows which contact's key decrypted it and uses that.
+    /// Messages from history name only known contacts, and never rename them.
+    private static func message(from msg: Msg, expectedSender: String?, state: [String: Data]) -> (Message, Bool)? {
+        guard let type = msg.type else { return nil }
+        let fromMe = msg.fromMe ?? false
+        let claimed = msg.sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }?.pubkey
+        let chat: String
+        var trustSender = false
+        if fromMe {
+            guard let to = msg.sentTo else { return nil }
+            chat = to
+        } else if let expectedSender {
+            chat = expectedSender
+            trustSender = claimed == expectedSender
+        } else {
+            guard let claimed, state["c/\(claimed)"] != nil else { return nil }
+            chat = claimed
+        }
+        let message = Message(
+            uuid: msg.uuid,
+            serverIndex: msg.index.flatMap { UInt64($0) }.map { Int64(clamping: $0) },
+            type: Int(type), chat: chat, fromMe: fromMe,
+            sender: msg.sender, body: msg.message, content: BodyFields.content(of: msg.message),
+            msat: msg.msat.map { Int64(clamping: $0) },
+            timestamp: msg.timestamp.map { Int64(clamping: $0) },
+            tag: msg.tag, paymentHash: msg.paymentHash
+        )
+        return (message, trustSender)
     }
 
     private func receive(_ inbound: Inbound) async {
-        let topic = inbound.topic.split(separator: "/", omittingEmptySubsequences: false)
-        let kind = topic.count > 5 ? String(topic[5]) : inbound.topic
+        let parts = inbound.topic.split(separator: "/", omittingEmptySubsequences: false)
+        let kind = parts.count > 5 ? String(parts[5]) : inbound.topic
 
-        // Answering a ping tells a payer we are reachable, which needs our own
-        // route hint, so pings wait until registration has completed.
-        if kind == "ping", !isRegistered {
-            heldPings.append(inbound)
-            return
+        // Answering a ping needs our own route hint. Until registered, let it go:
+        // the server re-sends pending pings when we ask for them on coming online.
+        if kind == "ping", !isRegistered { return }
+
+        // The child index in a live message's topic names the contact whose key
+        // decrypted it; index 0 is the account key used for key exchange.
+        var expectedSender: String?
+        if ["msg", "msgs", "stream"].contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
+            expectedSender = try? Sphinxrs.contactPubkeyByChildIndex(state: StateCodec.encode(state), childIdx: index)
         }
         do {
-            let result = try await run { time, state in
+            try await run(expectedSender: expectedSender) { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL
                 )
-            }
-            // History arrives a page at a time; keep going until a short page.
-            if kind == "batch", result.msgs.count >= Int(Self.historyPageSize),
-               let last = result.msgs.compactMap({ $0.index.flatMap { UInt64($0) } }).max() {
-                try await fetchHistory(from: last + 1)
             }
         } catch {
             emit.yield(.coreError("\(kind): \(error)"))
@@ -409,11 +555,6 @@ public actor Engine {
     /// Runs once per connection, as soon as the account is registered.
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
-        let held = heldPings
-        heldPings = []
-        for ping in held {
-            await receive(ping)
-        }
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
@@ -425,12 +566,23 @@ public actor Engine {
     }
 
     private func fetchHistory(from index: UInt64) async throws {
+        historyRequestedFrom = index
         try await run { time, state in
             try Sphinxrs.fetchMsgsBatch(
                 seed: seed, uniqueTime: time, state: state,
                 lastMsgIdx: index, limit: Self.historyPageSize, reverse: false
             )
         }
+    }
+
+    /// History comes a page at a time; the server says how far it goes.
+    /// Stops when a page brought nothing new, so an unreadable message cannot
+    /// cause an endless loop.
+    private func continueHistory(upTo total: UInt64) async throws {
+        guard let requestedFrom = historyRequestedFrom,
+              let have = try storage.highestServerIndex(),
+              have < total, have >= requestedFrom else { return }
+        try await fetchHistory(from: have + 1)
     }
 
     /// A ping is "paymentHash:time:tag".
@@ -442,13 +594,6 @@ public actor Engine {
             pingsByTag[parts[2]] = time
         }
     }
-
-    private func connectionClosed(_ closed: Transport) async {
-        guard transport === closed else { return }
-        transport = nil
-        await closed.close()
-        emit.yield(.disconnected)
-    }
 }
 
 private struct SentStatus: Decodable {
@@ -456,10 +601,15 @@ private struct SentStatus: Decodable {
     let status: String
 }
 
-/// Every core call needs a time that is never reused. Milliseconds plus a little
-/// jitter, as the official apps send, forced to be strictly increasing.
+/// Every core call needs a time that is never reused, even across restarts.
+/// Milliseconds plus a little jitter, as the official apps send, forced to be
+/// strictly increasing and persisted with each commit.
 private struct UniqueClock {
-    private var last: UInt64 = 0
+    private var last: UInt64
+
+    init(last: UInt64) {
+        self.last = last
+    }
 
     mutating func next() -> String {
         let now = UInt64(Date().timeIntervalSince1970 * 1000) + UInt64.random(in: 0..<1000)

@@ -3,11 +3,11 @@ import PackageDescription
 
 let package = Package(
     name: "Peel",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "PeelCore", targets: ["PeelCore"]),
         .executable(name: "peel", targets: ["peel"]),
-        .executable(name: "Peel", targets: ["PeelApp"]),
+        .executable(name: "PeelApp", targets: ["PeelApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swift-server-community/mqtt-nio.git", from: "2.13.0"),

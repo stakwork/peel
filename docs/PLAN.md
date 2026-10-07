@@ -1,6 +1,8 @@
-# Peel plan
+# Peel
 
-Last updated 2026-10-07.
+Last updated 2026-10-07. This is the architecture and the phase index. Each phase
+has its own file under `docs/phases/` with what is done, what is in progress and
+what is next.
 
 ## Why
 
@@ -11,8 +13,94 @@ official apps if it turns out better. Mac first, iPhone second.
 
 Only what other clients and the server can observe is fixed: the core's wire
 protocol, the JSON shape of each message type, and the side services. Everything
-else is designed from first principles. "Parity" means the same capabilities,
-not the same screens.
+else is designed from first principles. "Parity" with the official app means the
+same capabilities, not the same screens.
+
+Peel is also the base for the sovereign Sphinx agent: always-on agents, each a
+Sphinx account with its own child key, balance and memory, that you talk to by
+DM. The engine must therefore run headless and serve both the app and an agent
+host. The engine stays Swift for now (decided 2026-10-07); a separate always-on
+engine is a later phase. See [agent-native.md](agent-native.md) before changing
+the architecture.
+
+## Architecture
+
+```
+┌──────────────────────────────┐   ┌──────────────────────┐
+│ PeelApp (SwiftUI, Mac)       │   │ peel (CLI harness)   │
+│ AppModel · views             │   │ dev and testing only │
+└──────────────┬───────────────┘   └──────────┬───────────┘
+               │                              │
+┌──────────────▼──────────────────────────────▼───────────┐
+│ PeelCore (Swift package, no UI)                         │
+│                                                         │
+│  Engine (actor)  ── runs core calls, commits state,     │
+│       │             performs the network work           │
+│       ├── Storage (GRDB / SQLite): core state, settings,│
+│       │   messages, contacts, live queries              │
+│       └── Transport (mqtt-nio): one signed MQTT session │
+└──────────────┬──────────────────────────────────────────┘
+               │ Sphinxrs (generated Swift bindings)
+┌──────────────▼──────────────────────────────────────────┐
+│ Rust core: stakwork/sphinx via sphinx-rs/sphinx-ffi      │
+│ keys, onions, key exchange, tribes, invoices, routing   │
+└─────────────────────────────────────────────────────────┘
+               │ MQTT over TLS
+        broker + mixer (the LSP), tribes server, memes,
+        LiveKit, hub (push), config endpoint
+```
+
+### The core contract
+
+The core is a library of pure functions. Each call takes the seed, a unique
+time and the whole state (a MessagePack map), and returns a `RunReturn`: state
+entries to save or delete, topics to subscribe, payloads to publish, messages
+that arrived, balance, reads, mutes, payments, errors. `Engine.run` is the whole
+contract: run the call, commit the returned state before anything else can run,
+then perform the network work in the order the core gave it. Everything the
+client does is a sequence of such calls.
+
+Reference implementations, in order of authority:
+
+1. The core itself: `~/Documents/sphinx/sphinx/src/bindings/`.
+2. The core's own TypeScript client: `~/Documents/sphinx/wasm/test/auto/`
+   (`main.ts` has `handle_rr`, the contract in 180 lines).
+3. The official Mac app, for message conventions the core does not define:
+   `~/Documents/sphinx-mac-v2/.../Crypter/SphinxOnionManager+*.swift`.
+
+### Storage
+
+One SQLite file per account (`peel.sqlite`, WAL). Tables: `coreState` (opaque
+key/value owned by the core), `setting`, `message` (upsert on uuid; raw sender
+and body JSON kept alongside extracted columns), `contact` (names and photos,
+which are not core state). Live queries use GRDB `ValueObservation`.
+
+### Identity and secrets
+
+The twelve-word mnemonic is the account. Today it lives in a plain file inside
+the profile directory (`Profile`), which is only acceptable for the throwaway
+account. Keychain storage is phase 2 work. Core state holds contact keys and the
+device's child-key indices; it is sensitive but not the seed.
+
+### Platform
+
+macOS 14+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
+bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
+the Mac app's repo; building it from source needs Rust 1.88.0. This Mac has
+only the command-line tools: builds use `swift build` and the app bundle is
+assembled by `scripts/run-app.sh`.
+
+## Phases
+
+| # | Phase | Status | File |
+|---|-------|--------|------|
+| 1 | Core and account | done, in daily-use trial | [phases/01-core.md](phases/01-core.md) |
+| 2 | Restore, secrets and the rest of messaging basics | next | [phases/02-messaging.md](phases/02-messaging.md) |
+| 3 | Tribes, threads and attachments | planned | [phases/03-chat.md](phases/03-chat.md) |
+| 4 | Money | planned | [phases/04-money.md](phases/04-money.md) |
+| 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |
+| 6 | Calls | planned | [phases/06-calls.md](phases/06-calls.md) |
+| 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
 
 ## Scope (decided 2026-10-05)
 
@@ -23,75 +111,20 @@ LiveKit calls; web apps; People and LSATs; paid messages and templates; six
 languages. Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive
 workspaces, Tor and relay-era code, Jitsi.
 
-## Done
-
-- Core contract implemented in `Engine` and verified end to end: registration,
-  key exchange, text DMs both ways, offline catch-up, send confirmations. Tested
-  between two accounts on a local test server, then between the throwaway
-  account and Tom's real account on the production server (TLS verified, no
-  certificate exceptions).
-- Invite signup works against the production server.
-- Storage: core state, settings, messages (upsert on uuid), contacts (names and
-  photos from message senders), live queries for the UI.
-- Mac app shell: onboarding, conversation list, conversation view with
-  composer, connection status, reconnect with backoff. It launches and shows a
-  window; the layout has not yet been checked by eye.
-- Command-line harness with `init`, `signup`, `add`, `send`, `listen`,
-  `contacts`, `whoami`.
-
-## In progress
-
-- Mac app: first real use on the throwaway account. Look at it, fix what reads
-  wrong, then use it for a day.
-
-## Next, in order
-
-1. **Restore from mnemonic.** Connecting works, but a fresh install has no
-   contacts or history. Port the restore sequence: `fetchFirstMsgsPerKey`,
-   `getMsgsCounts`, `fetchMsgsBatch` paging, contact reconstruction from
-   `ContactKeyRecord` (type 33) messages. Reference:
-   `SphinxOnionManager+AccountRestoreExtension.swift` in `sphinx-mac-v2`.
-2. **Long messages.** Text over ~869 bytes is split into chunks by the bindings
-   layer (`sphinx-ffi/src/chunk.rs`). Confirm how `send` reports chunked
-   messages (several tags) and how `handle` reassembles them, and handle both.
-3. **Keychain.** Replace the mnemonic file with Keychain storage in the app. The
-   CLI keeps the file for throwaway accounts.
-4. **Read markers and mutes.** `getReads`, `read`, `getMutes`, `mute` on connect
-   and on viewing a chat; unread counts in the sidebar.
-5. **Tribes.** Join from a link, read, post, member list. Core calls:
-   `joinTribe`, `listTribeMembers`, tribe management topic (already subscribed).
-   Tribe messages carry a member as sender and the tribe as the chat; the
-   message store needs a `chat` that is not the sender.
-6. **Threads and replies.** `replyUuid` and `threadUuid` in the message JSON;
-   quote rendering; threads list.
-7. **Attachments.** Encrypt, upload to `memes.sphinx.chat`, `makeMediaToken`,
-   send type 6 with `mediaToken`, `mediaKey`, `mediaType`; download and decrypt
-   on receive. Reference: `SphinxOnionManager+ChatExtension.swift` and the Mac
-   app's `Managers/Attachments`.
-8. **Money.** Send sats in chat (type 5 and keysend), pay a BOLT11 invoice,
-   request payment (`makeInvoice`), boosts (type 29), a Receive screen with QR
-   and live paid confirmation, transaction history (`fetchPayments`). The async
-   payment ping flow is already handled in `Engine`.
-9. **Contacts and invites UI.** Add by contact info, share own QR, create
-   invites (`makeInvite`), inbound requests.
-10. **Profile, PIN, People and LSATs, web apps, localisation.**
-11. **Calls** (LiveKit).
-12. **iPhone target.** Push notifications are the open problem: the server keeps
-    one push token per account and the hub only signs for the official bundle
-    ID.
-
 ## Open questions
 
-- Install Xcode on this Mac? Needed for a signed app bundle, entitlements,
-  Keychain access groups, and the iPhone target.
-- Build the Rust bindings from source (needs Rust 1.88.0 per `sphinx-rs`) or
-  keep using the static library the Mac app ships?
+
+- Install Xcode on this Mac? Needed for a signed bundle, entitlements, Keychain
+  access groups, TestFlight and the iPhone target.
+- Build the Rust bindings from source or keep using the prebuilt library?
 - Repo hosting: local only so far.
 
 ## Accounts
 
 - Throwaway account: profile `throwaway`, alias "Peel", created from Tom's
   invite on 2026-10-07. Its only contact is Tom's real account. Mnemonic at
-  `~/Library/Application Support/Peel/dev/throwaway/mnemonic`.
-- Production broker: `mqtt-broker.v2.sphinx.chat:8883`. Config endpoint:
+  `~/Library/Application Support/Peel/dev/throwaway/mnemonic`. Never develop
+  against a real account.
+- Production broker: `mqtt-broker.v2.sphinx.chat:8883` (valid Let's Encrypt
+  certificate). Config endpoint:
   `https://config.config.sphinx.chat/api/config/bitcoin`.

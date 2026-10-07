@@ -2,33 +2,34 @@ import Foundation
 import PeelCore
 
 // A development harness for PeelCore. It keeps the mnemonic in a plain file so
-// it can run unattended, which is only acceptable for throwaway accounts. The
-// app stores the mnemonic in the Keychain instead.
+// it can run unattended, which is only acceptable for throwaway accounts.
 
 @main
 struct PeelCommand {
     static let usage = """
         usage: peel [options] <command>
 
-          init                        new account with no invite (local test server)
-          signup <invite>             new account from an invite code
+          init                        new account with no invite (local test server; needs --server)
+          signup <invite|->           new account from an invite link ("-" reads it from stdin)
+          restore                     existing account; reads the twelve words from stdin
           whoami                      this account's contact info and balance
           contacts                    contacts known to the core
           add <contact-info> [name]   start a key exchange with a contact
           send <pubkey> <text>        send a text message
-          listen                      stay connected and print what arrives
+          listen                      stay connected, reconnecting as needed, and print what arrives
 
         options:
           --profile <name>    which local account to use (default: default)
-          --server <host:port>
-          --network <bitcoin|regtest>
-          --alias <name>      the name others see
+          --server <host:port>  override the server (init, signup, restore; later runs reuse it)
+          --network <bitcoin|regtest>   for init, signup and restore
+          --alias <name>      the name others see (default: the profile name)
           --wait <seconds>    how long to stay connected after a command (default: 5)
           --insecure          accept an untrusted TLS certificate
         """
 
     static func main() async {
         setvbuf(stdout, nil, _IOLBF, 0)
+        umask(0o077)
         do {
             try await run()
         } catch {
@@ -39,14 +40,15 @@ struct PeelCommand {
 
     static func run() async throws {
         var arguments = Arguments(CommandLine.arguments.dropFirst())
-        let profile = Profile(name: arguments.option("--profile") ?? "default")
-        var options = Options(
-            server: arguments.option("--server"),
-            network: arguments.option("--network") ?? "bitcoin",
-            alias: arguments.option("--alias"),
-            wait: arguments.option("--wait").flatMap { Int($0) } ?? 5,
-            insecure: arguments.flag("--insecure")
-        )
+        let profile = try Profile(name: arguments.option("--profile") ?? "default")
+        let server = try arguments.option("--server").map { text in
+            guard let address = ServerAddress(text) else { throw PeelError("cannot read server address \(text)") }
+            return address
+        }
+        let network = arguments.option("--network") ?? "bitcoin"
+        let alias = arguments.option("--alias") ?? profile.name
+        let wait = arguments.option("--wait").flatMap { Int($0) } ?? 5
+        let insecure = arguments.flag("--insecure")
         guard let command = arguments.next() else {
             print(usage)
             return
@@ -54,100 +56,80 @@ struct PeelCommand {
 
         switch command {
         case "init":
-            try profile.save(mnemonic: Engine.generateMnemonic())
-            let session = try await Session(profile: profile, options: options)
-            try await session.finish(after: options.wait)
+            guard let server else { throw PeelError("init needs --server host:port") }
+            let engine = try await Account.create(profile, alias: alias, network: network, server: server)
+            try await Session(engine).connect(insecure: insecure).finish(after: wait)
 
         case "signup":
-            guard let text = arguments.next() else { throw CommandError("signup needs an invite code") }
-            let invite = try Engine.parseInvite(text)
-            options.server = options.server ?? invite.server
-            try profile.save(mnemonic: Engine.generateMnemonic())
-            print("mnemonic saved to \(profile.mnemonicFile.path)")
-            let session = try await Session(profile: profile, options: options, inviteCode: invite.code)
-            if let inviter = invite.inviterContactInfo {
-                try await session.engine.addContact(inviter, alias: invite.inviterAlias, inviteCode: invite.code)
-            }
-            try await session.finish(after: options.wait)
+            guard let text = arguments.next() else { throw PeelError("signup needs an invite link, or - for stdin") }
+            let invite = try Engine.parseInvite(text == "-" ? readLine() ?? "" : text)
+            let engine = try await Account.signup(
+                profile, invite: invite, alias: alias, network: network, server: server, allowUntrustedCertificate: insecure
+            )
+            print("account created in \(profile.directory.path)")
+            try await Session(engine).finish(after: wait)
+
+        case "restore":
+            print("twelve words:")
+            let engine = try await Account.restore(
+                profile, mnemonic: readLine() ?? "", alias: alias, network: network, server: server
+            )
+            try await Session(engine).connect(insecure: insecure).finish(after: wait)
 
         case "whoami":
-            let storage = try Storage(directory: profile.directory)
+            let storage = try Storage(directory: profile.directory, readOnly: true)
             print("contact info: \(try storage.value(for: .contactInfo) ?? "not registered yet")")
             print("balance: \(try storage.value(for: .balanceMsat).flatMap { UInt64($0) }.map { "\($0 / 1000) sats" } ?? "unknown")")
             print("server: \(try storage.value(for: .server) ?? "none")")
 
         case "contacts":
-            let engine = try Engine(
-                mnemonic: profile.loadMnemonic(), storage: Storage(directory: profile.directory), network: options.network
-            )
-            for contact in try await engine.contacts() {
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            for contact in try Engine.contacts(in: storage) {
                 print("\(contact.pubkey)  \(contact.contactKey == nil ? "pending" : "ready")")
             }
 
         case "add":
-            guard let info = arguments.next() else { throw CommandError("add needs contact info") }
-            let session = try await Session(profile: profile, options: options)
+            guard let info = arguments.next() else { throw PeelError("add needs contact info") }
+            let session = try await Session(Account.load(profile, server: server)).connect(insecure: insecure)
             try await session.engine.addContact(info, alias: arguments.next())
-            try await session.finish(after: options.wait)
+            try await session.finish(after: wait)
 
         case "send":
             guard let pubkey = arguments.next(), !arguments.isEmpty else {
-                throw CommandError("send needs a pubkey and some text")
+                throw PeelError("send needs a pubkey and some text")
             }
-            let session = try await Session(profile: profile, options: options)
+            let session = try await Session(Account.load(profile, server: server)).connect(insecure: insecure)
             try await session.engine.sendText(arguments.rest().joined(separator: " "), to: pubkey)
-            try await session.finish(after: options.wait)
+            try await session.finish(after: wait)
 
         case "listen":
-            let session = try await Session(profile: profile, options: options)
+            let session = try await Session(Account.load(profile, server: server))
+            await session.engine.start(allowUntrustedCertificate: insecure)
             await session.printer.value
 
         default:
-            throw CommandError("unknown command \(command)\n\(usage)")
+            throw PeelError("unknown command \(command)\n\(usage)")
         }
     }
 }
 
-struct Options {
-    var server: String?
-    var network: String
-    var alias: String?
-    var wait: Int
-    var insecure: Bool
-}
-
-struct CommandError: Error, CustomStringConvertible {
-    let description: String
-    init(_ description: String) { self.description = description }
-}
-
-/// A connected, registered account with its events printed as they arrive.
+/// An engine with its events printed as they arrive.
 struct Session {
     let engine: Engine
     let printer: Task<Void, Never>
 
-    init(profile: Profile, options: Options, inviteCode: String? = nil) async throws {
-        let storage = try Storage(directory: profile.directory)
-        let engine = try Engine(mnemonic: profile.loadMnemonic(), storage: storage, network: options.network)
-        if let alias = options.alias {
-            try await engine.setAlias(alias)
-        }
-        guard let server = try options.server ?? storage.value(for: .server) else {
-            throw CommandError("no server known for this profile; pass --server host:port")
-        }
-        guard let address = ServerAddress(server) else {
-            throw CommandError("cannot read server address \(server)")
-        }
+    init(_ engine: Engine) {
         self.engine = engine
         printer = Task {
             for await event in engine.events {
                 print(Session.describe(event))
-                if case .disconnected = event { break }
             }
         }
-        try await engine.connect(to: address, inviteCode: inviteCode, allowUntrustedCertificate: options.insecure)
-        try storage.set(server, for: .server)
-        try await engine.waitUntilRegistered()
+    }
+
+    func connect(insecure: Bool) async throws -> Session {
+        try await engine.connect(allowUntrustedCertificate: insecure)
+        return self
     }
 
     func finish(after seconds: Int) async throws {
@@ -157,6 +139,8 @@ struct Session {
 
     static func describe(_ event: Engine.Event) -> String {
         switch event {
+        case .connection(let state):
+            state.label.lowercased()
         case .registered(let contactInfo):
             "registered: \(contactInfo ?? "contact info not known yet")"
         case .balance(let msat):
@@ -167,8 +151,6 @@ struct Session {
             "send \(status) \(tag?.prefix(12) ?? "")"
         case .coreError(let message):
             "core error: \(message)"
-        case .disconnected:
-            "disconnected"
         }
     }
 }

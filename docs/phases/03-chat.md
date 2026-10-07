@@ -454,6 +454,46 @@ declining by member key, when no request was stored, skipped the
 server's latest list still shows the member waiting, and the member leaves
 that list once answered).
 
+Rest of the chain on the same changes (`cf632db..49fa5da`, reviewed on
+main after the squash). `/simplify`, applied: `PhotoCache` decodes a
+thumbnail off the main thread (max 256 px, enough for a 36pt avatar at 2x
+filled from a 3:1 photo) instead of keeping the full photo and decoding it
+while drawing, and a fetch that fails throws instead of returning a flag
+pair; the restore rule (a deletion replayed in a restore marks the tribe
+left) moved into `membership(after:in:replaying:)`, which owns every
+membership rule; mention candidates use the `(chat, timestamp)` index again
+(`IFNULL(timestamp, 0) >= ?` could not; the time condition is now left out
+when `since` is 0, the only case that counts timeless messages);
+`MessageListID` became `.id(messages.isEmpty ? nil : chat)`. `/security-review`:
+nothing. `/code-review high`, fixed: answering by member key with no stored
+request and no member list in this session (a fresh CLI) skipped every
+"answered once" check, so it now fetches the list first and requires the
+member waiting on it; our answer is stored only when the server echoes it,
+so a second answer before the echo (chat note and member list, or a double
+click) paid again: a request being answered is now held for the session and
+the member leaves the cached list before the send (both undone if the send
+fails); `Avatar` showed the previous person's photo in a reused view until
+the new one loaded (the loaded image is now kept with its URL); a 429 or 5xx
+from a photo host kept that photo off for the session (now retried).
+Verified on a local stack (broker 11883, tribes 11811, mixer 11800;
+profiles `rv-alice`, `rv-bob`, `rv-carol`, since deleted): a fresh
+`tribe-approve <tribe> <member key>` with no stored list fetched it and
+approved bob (server list: bob a member); the same again was refused ("not
+waiting"); `tribe-reject <uuid>` for carol, then again, was refused
+("already answered"); approving carol by key afterwards was refused.
+
+Not applied: photo downloads have no size cap (a member's photo URL can
+stream a large body; `AsyncImage` had the same, and capping needs a
+streaming fetch); answering by request uuid does not take the member off
+the cached list (the uuid path does not know the member's key; answering
+again from the list is refused by the stored or held request); two empty
+chats share the message list's `nil` id (nothing to anchor in an empty list,
+and the id changes as soon as messages arrive); the restore rule now covers
+only a replayed deletion, not a tribe already stored deleted and not left
+(a restore starts from an empty profile, so there is none); `--photo` is
+applied by the CLI after `Account` builds the engine rather than passed in
+like `--alias` (same effect; it is saved before connecting).
+
 ### Reviews (parity, 2026-10-07)
 
 `/code-review high`, fixed: Return took `@anna` over a finished `@ann`

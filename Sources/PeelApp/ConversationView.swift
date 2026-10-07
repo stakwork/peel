@@ -22,6 +22,9 @@ struct ConversationView: View {
                 }
             }
             MessageList(messages: model.messages, tribe: tribe, inTribe: conversation.isTribe)
+                // A fresh scroll view per chat: reusing one across chats left the
+                // lazy stack blank at the bottom anchor until it was scrolled.
+                .id(conversation.chat)
             if let notice = model.conversationNotices[conversation.chat] {
                 ConversationNotice(text: notice) { model.dismissNotice(in: conversation.chat) }
             }
@@ -338,8 +341,12 @@ struct MessageList: View {
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.last?.id) { _, last in
-                if let last {
+            .onChange(of: messages.last?.id) { previous, last in
+                guard let last else { return }
+                // The first load jumps; only a new message animates.
+                if previous == nil {
+                    proxy.scrollTo(last, anchor: .bottom)
+                } else {
                     withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) }
                 }
             }

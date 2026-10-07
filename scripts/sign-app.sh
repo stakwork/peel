@@ -21,14 +21,17 @@ if [ -z "$IDENTITY" ]; then
   HASHES="$(security find-identity -v -p codesigning 2>/dev/null \
     | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Apple Development: .*/\1/p')"
   case "$(printf '%s\n' "$HASHES" | grep -c .)" in
-    0) echo "no Apple Development identity found; signing ad hoc (the app cannot use the Keychain)" >&2
-       codesign --force --sign - --options runtime --timestamp=none "$APP"
-       exit 0 ;;
+    0) IDENTITY="-" ;;
     1) IDENTITY="$HASHES" ;;
     *) echo "several Apple Development identities found; set PEEL_SIGN_IDENTITY to one of:" >&2
        security find-identity -v -p codesigning >&2
        exit 1 ;;
   esac
+fi
+if [ "$IDENTITY" = "-" ]; then
+  echo "signing ad hoc: the app cannot use the Keychain" >&2
+  codesign --force --sign - --options runtime --timestamp=none "$APP"
+  exit 0
 fi
 
 BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")"
@@ -39,6 +42,7 @@ if printf '%s' "$IDENTITY" | grep -qE '^[0-9A-Fa-f]{40}$'; then
 else
   CERT="$(security find-certificate -c "$IDENTITY" -p)"
 fi
+CERT_SHA1="$(printf '%s\n' "$CERT" | openssl x509 -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')"
 TEAM="$(printf '%s\n' "$CERT" | openssl x509 -noout -subject -nameopt multiline | sed -n 's/^ *organizationalUnitName *= *//p' | head -1)"
 [ -n "$TEAM" ] || { echo "cannot read the team ID from the signing certificate" >&2; exit 1; }
 APP_ID="$TEAM.$BUNDLE_ID"
@@ -47,13 +51,24 @@ PROFILES="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# Prints "<expiry epoch> <path>" for the installed profile for APP_ID that
-# lasts longest, or nothing.
+# Whether the decoded profile in $WORK/profile.plist lists the signing certificate.
+lists_certificate() {
+  i=0
+  while cert="$(plutil -extract "DeveloperCertificates.$i" raw -o - "$WORK/profile.plist" 2>/dev/null)"; do
+    [ "$(printf '%s' "$cert" | base64 -D | openssl x509 -inform der -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')" = "$CERT_SHA1" ] && return 0
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# Prints "<expiry epoch> <path>" for the installed profile for APP_ID and this
+# certificate that lasts longest, or nothing.
 newest_profile() {
   for p in "$PROFILES"/*.provisionprofile; do
     [ -f "$p" ] || continue
     security cms -D -i "$p" > "$WORK/profile.plist" 2>/dev/null || continue
     [ "$(plutil -extract 'Entitlements.com\.apple\.application-identifier' raw -o - "$WORK/profile.plist" 2>/dev/null)" = "$APP_ID" ] || continue
+    lists_certificate || continue
     expiry="$(plutil -extract ExpirationDate raw -o - "$WORK/profile.plist")"
     echo "$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$expiry" +%s) $p"
   done | sort -n | tail -1
@@ -63,9 +78,14 @@ NOW="$(date +%s)"
 BEST="$(newest_profile)"
 if [ -z "$BEST" ] || [ "${BEST%% *}" -lt $((NOW + 2 * 86400)) ]; then
   echo "fetching a provisioning profile for $APP_ID from Xcode" >&2
-  if ! xcodebuild -quiet -project "$ROOT/scripts/provision/Provision.xcodeproj" -scheme Provision \
-      -derivedDataPath "$ROOT/.build/provision" -allowProvisioningUpdates \
+  # Xcode keeps using a profile that has not expired yet, so set the old one
+  # aside while it fetches, and put it back if that fails.
+  mkdir "$WORK/aside"
+  [ -z "$BEST" ] || mv "${BEST#* }" "$WORK/aside/"
+  if ! xcodebuild -quiet -project "$ROOT/scripts/provision/Provision.xcodeproj" -target Provision \
+      SYMROOT="$ROOT/.build/provision" OBJROOT="$ROOT/.build/provision" -allowProvisioningUpdates \
       DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" build >"$WORK/xcodebuild.log" 2>&1; then
+    mv "$WORK/aside/"* "$PROFILES/" 2>/dev/null || true
     cat "$WORK/xcodebuild.log" >&2
     echo "Xcode could not provide a profile. Open Xcode > Settings > Accounts, sign in to the Apple ID for team $TEAM, then run this again." >&2
     exit 1

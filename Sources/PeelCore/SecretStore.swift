@@ -85,20 +85,21 @@ public struct KeychainSecretStore: SecretStore {
 
     public var requiresPIN: Bool { true }
 
+    /// Opens the words with the PIN. Words still in the login Keychain are
+    /// moved to the data-protection Keychain once the PIN has opened them.
     public func loadMnemonic(pin: String) throws -> String {
-        let current = try read(.dataProtection)
-        let legacy = try read(.login)
-        guard let sealed = current ?? legacy else { throw SecretStoreFailure.noAccount }
-        let words = try PINBox.open(sealed, pin: pin)
-        if let legacy {
-            try moveToDataProtection(legacy, alreadyThere: current)
+        if let sealed = try read(.dataProtection) {
+            return try PINBox.open(sealed, pin: pin)
         }
+        guard let legacy = try read(.login) else { throw SecretStoreFailure.noAccount }
+        let words = try PINBox.open(legacy, pin: pin)
+        try moveToDataProtection(legacy)
         return words
     }
 
     public func save(mnemonic: String, pin: String) throws {
         try PIN.validate(pin)
-        guard !exists(.login) else { throw SecretStoreFailure.accountExists }
+        guard !hasMnemonic else { throw SecretStoreFailure.accountExists }
         try add(PINBox.seal(mnemonic, pin: pin))
     }
 
@@ -120,28 +121,23 @@ public struct KeychainSecretStore: SecretStore {
         }
     }
 
-    /// Copies the sealed words from the login keychain, reads the copy back,
-    /// and only when it matches removes the original. Any failure leaves the
-    /// original where it was. A copy already in place (an earlier move whose
-    /// delete failed) is checked the same way; one that differs is left alone,
-    /// and so is the original.
-    private func moveToDataProtection(_ sealed: Data, alreadyThere current: Data?) throws {
-        if current == nil {
-            do {
-                try add(sealed)
-            } catch {
-                throw PeelError("could not move the account into the data-protection Keychain (\(error)); it is still in the login Keychain")
-            }
-            guard try read(.dataProtection) == sealed else {
-                _ = SecItemDelete(query(.dataProtection) as CFDictionary)
-                throw PeelError("the account's copy in the data-protection Keychain did not match; it is still in the login Keychain")
-            }
-        } else if current != sealed {
-            return
+    /// Copies the sealed words from the login Keychain, reads the copy back,
+    /// and only when it matches removes the original. A failure before that
+    /// leaves the original where it was and no copy. If only the removal
+    /// fails the words are safe in both; the next unlock uses the copy.
+    private func moveToDataProtection(_ sealed: Data) throws {
+        do {
+            try add(sealed)
+        } catch {
+            throw PeelError("could not move the account into the data-protection Keychain (\(error)); it is still in the login Keychain")
+        }
+        guard (try? read(.dataProtection)) == sealed else {
+            _ = SecItemDelete(query(.dataProtection) as CFDictionary)
+            throw PeelError("the account's copy in the data-protection Keychain did not read back the same; it is still in the login Keychain")
         }
         let status = SecItemDelete(query(.login) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw PeelError("the account moved to the data-protection Keychain, but the old copy in the login Keychain could not be removed: \(Self.message(status))")
+            throw PeelError("the account moved to the data-protection Keychain, but its old copy in the login Keychain could not be removed: \(Self.message(status))")
         }
     }
 

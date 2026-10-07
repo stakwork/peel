@@ -51,16 +51,15 @@ final class AppModel {
         }
     }
 
-    /// One field takes either an invite link or the twelve words of an account.
+    /// Creates an account from an invite link. Twelve words are refused on
+    /// purpose: the app has no Keychain storage yet, and a real account's words
+    /// must never land in the plain file the development profiles use.
     func join(_ input: String, name: String) async throws {
         guard let profile else { return }
-        let engine: Engine
-        if let invite = try? Engine.parseInvite(input) {
-            engine = try await Account.signup(profile, invite: invite, alias: name)
-        } else {
-            engine = try await Account.restore(profile, mnemonic: input, alias: name)
+        guard let invite = try? Engine.parseInvite(input) else {
+            throw PeelError("Only an invite link works for now. Restoring from twelve words arrives with Keychain storage.")
         }
-        await attach(engine)
+        await attach(try await Account.signup(profile, invite: invite, alias: name))
     }
 
     func send(_ text: String) async {

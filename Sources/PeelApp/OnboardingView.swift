@@ -1,8 +1,7 @@
 import SwiftUI
 import PeelCore
 
-/// One field takes either an invite link or the twelve words of an existing
-/// account; the engine decides which it is.
+/// Takes an invite link. Twelve words come back with Keychain storage (phase 2).
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
@@ -22,10 +21,10 @@ struct OnboardingView: View {
                 Text("Peel")
                     .font(.system(size: 34, weight: .semibold))
                     .kerning(-0.5)
-                Text("Paste an invite link to start, or your twelve words to come back.")
+                Text("Paste an invite link to start.")
                     .foregroundStyle(.secondary)
             }
-            TextField("Invite link or twelve words", text: $code, axis: .vertical)
+            TextField("Invite link", text: $code, axis: .vertical)
                 .lineLimit(2...4)
                 .textFieldStyle(.roundedBorder)
             TextField("Your name", text: $name)

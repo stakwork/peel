@@ -12,7 +12,9 @@ restore is the point of this phase; the Keychain is what makes it allowed.
 - No real account touches Peel until tasks 1, 2 and 4 are done and task 4 has
   been proven on the throwaway's own words.
 - The app never writes a mnemonic to a file. The plain file store stays for
-  the CLI and its throwaway profiles only.
+  the CLI and its throwaway profiles only. Until task 2 lands, the app's
+  onboarding refuses twelve words outright (`AppModel.join`); task 4 removes
+  that refusal.
 - Never call `setPushToken`. A real account restored into Peel is one more
   device on that account; the server keeps a single push token per account and
   registering ours would take notifications away from the official app.

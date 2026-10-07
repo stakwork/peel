@@ -471,7 +471,7 @@ final class AppModel {
                 myPhotoURL = photoURL
             case .historyFailed(let reason):
                 restoreProgress.outcome = .failed(reason)
-            case .message, .sendStatus:
+            case .message, .sendStatus, .transfer:
                 break
             }
         }

@@ -29,6 +29,13 @@ public actor Engine {
         /// The name or photo this account sends changed (by the user, or
         /// filled in by a restore).
         case profile(alias: String, photoURL: String?)
+        /// An attachment going up to or coming down from the memes server:
+        /// bytes so far of the total, at most every 5% or 250 ms, and at the end.
+        case transfer(messageID: Int64, direction: Direction, bytes: Int64, total: Int64)
+
+        public enum Direction: Sendable {
+            case upload, download
+        }
     }
 
     public enum HistoryPhase: Sendable {
@@ -83,6 +90,12 @@ public actor Engine {
         case noSuchMessage
         case notDelivered
         case notInThread
+        case notAChat
+        case noMemesServer
+        case notAnAttachment
+        case attachmentWithoutKey
+        case untrustedMediaHost(String)
+        case uploadInProgress
 
         public var description: String {
             switch self {
@@ -101,6 +114,12 @@ public actor Engine {
             case .noSuchMessage: "there is no such message in this chat"
             case .notDelivered: "that message has not been delivered yet; reply once it has"
             case .notInThread: "that message is not in that thread"
+            case .notAChat: "that is neither a contact nor a tribe this account is in"
+            case .noMemesServer: "this account has no memes server for attachments (set one with --memes-host)"
+            case .notAnAttachment: "that message is not an attachment"
+            case .attachmentWithoutKey: "this attachment came without its key (paid attachments are not supported)"
+            case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
+            case .uploadInProgress: "this attachment is still uploading"
             }
         }
     }
@@ -172,6 +191,16 @@ public actor Engine {
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
 
+    /// Attachments: the decrypted cache and the uploads waiting to go, and
+    /// the memes server's bearer token (memory only).
+    private let media: MediaStore
+    private var memesToken: (host: String, token: MemesServer.Token)?
+    /// Largest attachment sent or downloaded, and the most the cache keeps.
+    static let attachmentLimit = 100_000_000
+    static let mediaCacheLimit = 500_000_000
+    /// Where the official apps keep attachments.
+    static let defaultMemesHost = "memes.sphinx.chat"
+
     /// A history fetch in progress: which kind, the next index to ask for, and
     /// where it ends (unknown until the server says). Runs queue behind one
     /// another; a restore is contacts first, then every message from the start.
@@ -211,6 +240,10 @@ public actor Engine {
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
         droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
         restoring = try storage.value(for: .needsRestore) == "1"
+        media = MediaStore(profile: storage.directory)
+        // The profile lock means no other process is uploading; anything
+        // still uploading was cut off, and can be retried.
+        try storage.failInterruptedUploads()
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -317,6 +350,12 @@ public actor Engine {
     public func setTribeHost(_ host: String) throws {
         guard TribeLink.isPlainHost(host) else { throw PeelError("unreadable tribes host \(host)") }
         try storage.set(host, for: .tribeHost)
+    }
+
+    /// The memes server attachments go to and come from, as `host[:port]`.
+    public func setMemesHost(_ host: String) throws {
+        _ = try MemesServer(host: host)
+        try storage.set(host, for: .memesHost)
     }
 
     public func contacts() throws -> [Contact] {
@@ -554,6 +593,9 @@ public actor Engine {
            tribe.messageAmountMsat > UInt64(max(paid, 0)) {
             throw PeelError("this tribe now charges more per message; send it as a new message")
         }
+        if message.type == MessageType.attachment {
+            return try await uploadAndDeliver(message)
+        }
         return try await deliver(body: body, to: message.chat, replacing: messageID)
     }
 
@@ -564,6 +606,7 @@ public actor Engine {
             throw Failure.notRetryable
         }
         try storage.deleteMessage(id: messageID)
+        try? FileManager.default.removeItem(at: media.outgoing(messageID))
     }
 
     /// The tribe a message to `pubkey` goes to, if it is one. Only a tribe
@@ -579,17 +622,20 @@ public actor Engine {
         String(decoding: try JSONEncoder().encode(fields), as: UTF8.self)
     }
 
-    /// One text message through the core. A tribe message carries sats (the
-    /// tribe's current price, at least 3) and the alias in the form tribes
-    /// accept. The core only returns a tag and uuid for what was sent; the
-    /// local row is written in the same transaction as the state, before
-    /// publishing. If the publish fails the row is marked failed, ready to send
-    /// again, and the failure is reported as a send status rather than thrown.
-    private func deliver(body: String, to pubkey: String, replacing id: Int64?) async throws -> String? {
+    /// One text message or attachment through the core. A tribe message
+    /// carries sats (the tribe's current price, at least 3) and the alias in
+    /// the form tribes accept. The core only returns a tag and uuid for what
+    /// was sent; the local row is written in the same transaction as the
+    /// state, before publishing. If the publish fails the row is marked failed,
+    /// ready to send again, and the failure is reported as a send status
+    /// rather than thrown.
+    private func deliver(
+        body: String, to pubkey: String, replacing id: Int64?, type: Int = MessageType.text
+    ) async throws -> String? {
         let tribe = try openTribe(pubkey)
         let time = clock.next()
         let result = try Sphinxrs.send(
-            seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(MessageType.text), msgJson: body,
+            seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(type), msgJson: body,
             state: StateCodec.encode(state), myAlias: tribe == nil ? alias : tribeAlias(alias), myImg: photoURL,
             amtMsat: tribe?.messageAmountMsat ?? 0, isTribe: tribe != nil
         )
@@ -602,7 +648,7 @@ public actor Engine {
         } else {
             let fields = BodyFields.decode(body)
             outgoing = Message(
-                uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body,
+                uuid: sent?.uuid, type: type, chat: pubkey, fromMe: true, body: body,
                 content: fields?.content, msat: tribe.map { Int64(clamping: $0.messageAmountMsat) },
                 timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue,
                 replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
@@ -645,6 +691,197 @@ public actor Engine {
             try Sphinxrs.mute(seed: seed, uniqueTime: time, state: state, pubkey: chat, muteLevel: UInt8(level.rawValue))
         }
         try storage.setMute(chat: chat, level: level)
+    }
+
+    // MARK: - Attachments
+
+    /// Sends a file to a contact or a tribe as the official apps do: encrypted
+    /// with a fresh key, uploaded to the memes server, then a type 6 message
+    /// with the media token and key (see the phase 3 notes). The row is
+    /// written first and the encrypted file kept until the memes server has
+    /// it, so a failed upload or send can be retried without the file. Like
+    /// `sendText`, a failure is reported through events, not thrown; the
+    /// upload reports `.transfer` progress. Returns the row's id.
+    @discardableResult
+    public func sendAttachment(_ file: URL, text: String = "", to pubkey: String) async throws -> Int64 {
+        let tribe = try openTribe(pubkey)
+        guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
+        _ = try memesServer()
+        let limit = Self.attachmentLimit
+        let (outgoing, plain, sealed, key) = try await Task.detached {
+            let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values.isRegularFile == true else { throw PeelError("\(file.path) is not a file") }
+            guard (values.fileSize ?? 0) <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+            let plain = try Data(contentsOf: file)
+            guard plain.count <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+            let key = MediaCrypto.newKey()
+            return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
+                    try MediaCrypto.encrypt(plain, key: key), key)
+        }.value
+        let body = try Self.attachmentBody(text: text, key: key, mediaType: outgoing.mediaType, token: nil)
+        let draft = Message(
+            type: MessageType.attachment, chat: pubkey, fromMe: true, body: body, content: text,
+            msat: tribe.map { Int64(clamping: $0.messageAmountMsat) }, timestamp: Date().millisecondsSince1970,
+            status: Message.Delivery.pending.rawValue, mediaType: outgoing.mediaType, fileName: outgoing.fileName,
+            fileSize: Int64(plain.count), upload: Message.Upload.pending.rawValue
+        )
+        guard let row = try storage.apply(Storage.Commit(messages: [(draft, false, nil)])).first, let id = row.id else {
+            throw PeelError("the attachment was not stored")
+        }
+        do {
+            try await Task.detached { [media] in try media.write(sealed, to: media.outgoing(id)) }.value
+        } catch {
+            // Without the encrypted file the row could never be sent.
+            try? storage.deleteMessage(id: id)
+            throw error
+        }
+        emit.yield(.message(row))
+        try await uploadAndDeliver(row, file: (plain, sealed))
+        return id
+    }
+
+    /// The message JSON of an attachment, as the Mac app's `formatMsg`: the
+    /// key twice (the core encrypts `mediaKeyForSelf` to this account, so our
+    /// other devices and a restore can read it), the MIME type and, once
+    /// uploaded, the media token.
+    private static func attachmentBody(text: String?, key: String, mediaType: String?, token: String?) throws -> String {
+        var fields = ["content": text ?? "", "mediaKey": key, "mediaKeyForSelf": key]
+        fields["mediaType"] = mediaType
+        fields["mediaToken"] = token
+        return try json(fields)
+    }
+
+    /// Uploads an attachment of ours if the memes server does not have it
+    /// yet, then sends the message. An upload that fails marks the row failed.
+    /// A first send passes the file and its encrypted form; a retry claims
+    /// the row's upload (so it runs only once at a time), reads the outbox,
+    /// and leaves the cache to fill on the first download.
+    @discardableResult
+    private func uploadAndDeliver(_ message: Message, file: (plain: Data, sealed: Data)? = nil) async throws -> String? {
+        guard let id = message.id, var body = message.body, let fields = AttachmentFields.decode(body),
+              let key = fields.mediaKey else { throw Failure.notRetryable }
+        if message.uploadState != .done {
+            if file == nil {
+                guard try storage.claimUpload(id: id) else { throw Failure.uploadInProgress }
+            }
+            do {
+                let memes = try memesServer()
+                let outbox = media.outgoing(id)
+                let sealed = if let file { file.sealed } else {
+                    try await Task.detached { try Data(contentsOf: outbox) }.value
+                }
+                let outgoing = OutgoingFile(fileName: message.fileName ?? "file", mediaType: message.mediaType ?? "")
+                let progress = transferProgress(id, .upload)
+                let muid = try await withMemes(memes) { token in
+                    try await memes.upload(sealed, as: outgoing, token: token, progress: progress)
+                }
+                // A year, as the official apps give their tokens.
+                let expiry = UInt32(clamping: Int(Date().timeIntervalSince1970) + 365 * 24 * 3600)
+                let token = try Sphinxrs.makeMediaToken(
+                    seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state), host: memes.host,
+                    muid: muid, to: message.chat, expiry: expiry
+                )
+                body = try Self.attachmentBody(text: message.content, key: key, mediaType: message.mediaType, token: token)
+                try storage.setUpload(.done, id: id, body: body)
+                // Our own copy is in the cache from the start, as in the official apps.
+                let plain = file?.plain
+                try? await Task.detached { [media] in
+                    if let plain { _ = try? media.store(plain, muid: muid, key: key, limit: Self.mediaCacheLimit) }
+                    try FileManager.default.removeItem(at: outbox)
+                }.value
+            } catch {
+                try storage.setUpload(.failed, id: id)
+                // It has no tag yet, so the row itself says it failed.
+                if let row = try storage.message(id: id) { emit.yield(.message(row)) }
+                emit.yield(.conversationError(chat: message.chat, message: "Not uploaded: \(error)"))
+                return nil
+            }
+        }
+        return try await deliver(
+            body: body, to: message.chat, replacing: id, type: MessageType.attachment
+        )
+    }
+
+    /// Reports a transfer's progress as an event for that row.
+    private func transferProgress(_ id: Int64, _ direction: Event.Direction) -> MemesServer.Progress {
+        let emit = emit
+        return { bytes, total in emit.yield(.transfer(messageID: id, direction: direction, bytes: bytes, total: total)) }
+    }
+
+    /// Downloads and decrypts an attachment into the profile's cache, or
+    /// finds it there, reporting `.transfer` progress while it downloads.
+    /// Only from this account's memes server; the bytes are checked against
+    /// the declared type, and nothing is ever opened.
+    public func downloadAttachment(messageID: Int64) async throws -> DownloadedAttachment {
+        guard let message = try storage.message(id: messageID), message.type == MessageType.attachment,
+              let fields = AttachmentFields.decode(message.body), let mediaToken = fields.mediaToken,
+              let token = MediaToken(mediaToken) else { throw Failure.notAnAttachment }
+        // A paid attachment comes without its key until it is bought.
+        guard let key = fields.mediaKey?.nilIfEmpty else { throw Failure.attachmentWithoutKey }
+        let memes = try memesServer()
+        guard token.host == memes.host else { throw Failure.untrustedMediaHost(token.host) }
+        let declared = AttachmentKind(mediaType: fields.mediaType)
+        var fileName = message.fileName
+        let stored: (file: URL, kind: AttachmentKind, size: Int)
+        let cached = media.lookup(muid: token.muid, key: key)
+        if let cached {
+            stored = try await Task.detached {
+                let plain = try Data(contentsOf: cached, options: .mappedIfSafe)
+                return (cached, AttachmentKind.verified(plain, declared: declared), plain.count)
+            }.value
+        } else {
+            // Encryption adds a header, padding and a MAC to what was sent.
+            let limit = Self.attachmentLimit + 128
+            let progress = transferProgress(messageID, .download)
+            let (sealed, name) = try await withMemes(memes) { auth in
+                try await memes.download(mediaToken: mediaToken, token: auth, limit: limit, progress: progress)
+            }
+            stored = try await Task.detached { [media] in
+                let plain = try MediaCrypto.decrypt(sealed, key: key)
+                let file = try media.store(plain, muid: token.muid, key: key, limit: Self.mediaCacheLimit)
+                return (file, AttachmentKind.verified(plain, declared: declared), plain.count)
+            }.value
+            try storage.setFile(id: messageID, name: name, size: Int64(stored.size))
+            fileName = fileName ?? name
+        }
+        return DownloadedAttachment(
+            file: stored.file, kind: stored.kind, fileName: fileName, size: stored.size, cached: cached != nil
+        )
+    }
+
+    /// The account's memes server: the one recorded, else the official
+    /// apps' own, except on a local test server, which has none unless named.
+    private func memesServer() throws -> MemesServer {
+        if let host = try storage.value(for: .memesHost) { return try MemesServer(host: host) }
+        guard let server, !ServerAddress.isLoopback(host: server.host) else { throw Failure.noMemesServer }
+        return try MemesServer(host: Self.defaultMemesHost)
+    }
+
+    /// Runs a memes server call with a bearer token, signing in again once
+    /// if the server no longer takes the one kept.
+    private func withMemes<T>(_ memes: MemesServer, _ call: (MemesServer.Token) async throws -> T) async throws -> T {
+        do {
+            return try await call(memesSignIn(memes, refresh: false))
+        } catch let error as MemesServer.Failure where error.isUnauthorized {
+            return try await call(memesSignIn(memes, refresh: true))
+        }
+    }
+
+    /// The bearer token: kept in memory until shortly before it expires. A
+    /// new one is had by signing the server's challenge with the account key.
+    private func memesSignIn(_ memes: MemesServer, refresh: Bool) async throws -> MemesServer.Token {
+        if !refresh, let kept = memesToken, kept.host == memes.host, kept.token.isFresh { return kept.token }
+        let (id, challenge) = try await memes.challenge()
+        guard let bytes = MemesServer.challengeBytes(challenge) else {
+            throw MemesServer.Failure.unreadableReply("sign-in")
+        }
+        let signature = try Sphinxrs.signBase64(
+            seed: seed, idx: 0, time: clock.next(), network: network, msg: MediaToken.base64URLEncode(bytes)
+        )
+        let pubkey = try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
+        let token = try await memes.verify(id: id, signature: signature, pubkey: pubkey)
+        memesToken = (memes.host, token)
+        return token
     }
 
     // MARK: - Tribes
@@ -1379,7 +1616,7 @@ public actor Engine {
             trustSender = true
         }
         let fields = BodyFields.decode(msg.message)
-        let message = Message(
+        var message = Message(
             uuid: msg.uuid,
             serverIndex: msg.index.flatMap { UInt64($0) }.flatMap { Int64(exactly: $0) },
             type: Int(type), chat: chat, fromMe: fromMe,
@@ -1389,6 +1626,9 @@ public actor Engine {
             tag: msg.tag, paymentHash: msg.paymentHash,
             replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
         )
+        if message.type == MessageType.attachment, let fields = AttachmentFields.decode(msg.message) {
+            message.mediaType = fields.mediaType
+        }
         return (message, trustSender)
     }
 

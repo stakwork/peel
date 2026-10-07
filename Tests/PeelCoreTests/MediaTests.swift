@@ -1,0 +1,290 @@
+import Foundation
+import Testing
+@testable import PeelCore
+
+/// A 1×1 PNG.
+private let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+
+private func hex(_ text: String) -> Data {
+    var data = Data()
+    var index = text.startIndex
+    while index < text.endIndex {
+        let next = text.index(index, offsetBy: 2)
+        data.append(UInt8(text[index..<next], radix: 16)!)
+        index = next
+    }
+    return data
+}
+
+struct MediaCryptoTests {
+    @Test func newKeyIsHexOfThirtyTwoLettersAndDigits() {
+        let key = MediaCrypto.newKey()
+        #expect(key.count == 64)
+        let ascii = String(decoding: hex(key), as: UTF8.self)
+        #expect(ascii.count == 32)
+        #expect(ascii.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) })
+        #expect(MediaCrypto.newKey() != key)
+    }
+
+    @Test(arguments: [0, 1, 15, 16, 17, 1000, 70_000])
+    func roundTrip(size: Int) throws {
+        let plain = Data((0..<size).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+        let key = MediaCrypto.newKey()
+        let sealed = try MediaCrypto.encrypt(plain, key: key)
+        // Header, whole AES blocks, MAC.
+        #expect(sealed.count == 34 + (size / 16 + 1) * 16 + 32)
+        #expect(sealed.prefix(2) == Data([3, 1]))
+        #expect(try MediaCrypto.decrypt(sealed, key: key) == plain)
+        // Fresh salts and IV every time.
+        #expect(try MediaCrypto.encrypt(plain, key: key) != sealed)
+    }
+
+    /// Made by an independent RNCryptor v3 implementation (Python
+    /// `cryptography`: PBKDF2-SHA1 ×10,000, AES-256-CBC, HMAC-SHA256) with
+    /// fixed salts and IV, so Peel reads what the official apps write.
+    @Test func decryptsAnRNCryptorVector() throws {
+        let sealed = hex(
+            "03010001020304050607010203040506070802030405060708090a0b0c0d0e0f1011824c3d7d729a392faace1f72e6161d"
+            + "8886a54b5deb5704ff5f40982db64f6964c4bbbfed851edd0f1c3bab4595d1c8c254a55b7a933d3a9a033624edcc31096b"
+        )
+        let plain = try MediaCrypto.decrypt(sealed, key: String(repeating: "3a", count: 32))
+        #expect(String(decoding: plain, as: UTF8.self) == "peel attachment vector")
+    }
+
+    @Test func wrongKeyIsRefused() throws {
+        let sealed = try MediaCrypto.encrypt(Data("secret".utf8), key: MediaCrypto.newKey())
+        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: MediaCrypto.newKey()) }
+    }
+
+    @Test func tamperingIsRefused() throws {
+        let key = MediaCrypto.newKey()
+        var sealed = try MediaCrypto.encrypt(Data(repeating: 7, count: 64), key: key)
+        sealed[40] ^= 1
+        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: key) }
+    }
+
+    @Test(arguments: [Data(), Data([3, 1]), Data([2, 1] + [UInt8](repeating: 0, count: 100))])
+    func malformedIsRefused(sealed: Data) {
+        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: "00") }
+    }
+}
+
+struct MediaTokenTests {
+    private func token(host: String, muid: String, meta: String = "") -> String {
+        let b64 = { (data: Data) in MediaToken.base64URLEncode(data) }
+        return [b64(Data(host.utf8)), muid, "", b64(Data([0, 0, 1, 0])), b64(Data(meta.utf8)), "c2ln"]
+            .joined(separator: ".")
+    }
+
+    @Test func readsHostAndMuid() throws {
+        let parsed = try #require(MediaToken(token(host: "memes.sphinx.chat", muid: "qFSOa50yWeGSG8oelsMvctLYdejPRD090dsypBSx_xg=")))
+        #expect(parsed.host == "memes.sphinx.chat")
+        #expect(parsed.muid == "qFSOa50yWeGSG8oelsMvctLYdejPRD090dsypBSx_xg=")
+        #expect(MediaToken(token(host: "h", muid: "m", meta: "amt=21"))?.muid == "m")
+    }
+
+    @Test(arguments: ["", "bm90IGEgaG9zdA", "!!!.muid", "aGVsbG8=."])
+    func unreadableTokensAreRefused(text: String) {
+        #expect(MediaToken(text) == nil)
+    }
+
+    @Test func challengeIsReadAsTheMacAppReadsIt() {
+        let bytes = Data([0xfb, 0xff, 0x00, 0x10, 0x20])
+        let urlSafe = MediaToken.base64URLEncode(bytes)
+        #expect(urlSafe.contains("-") || urlSafe.contains("_"))
+        #expect(MemesServer.challengeBytes(urlSafe) == bytes)
+        #expect(MemesServer.challengeBytes(bytes.base64EncodedString()) == bytes)
+        // Not a multiple of four: cut, as `nonBase64Data` does.
+        #expect(MemesServer.challengeBytes("AAECAw") == Data([0, 1, 2]))
+    }
+
+    @Test func bearerTokenExpiryComesFromTheJWT() {
+        let payload = MediaToken.base64URLEncode(Data(#"{"exp":4102444800}"#.utf8))
+        let token = MemesServer.Token("e30.\(payload).sig")
+        #expect(token.expires == Date(timeIntervalSince1970: 4_102_444_800))
+        #expect(token.isFresh)
+        #expect(!MemesServer.Token("opaque").isFresh)
+    }
+}
+
+struct AttachmentKindTests {
+    @Test(arguments: [
+        ("image/jpg", AttachmentKind.image), ("image/gif", .image), ("", .image), ("video/mov", .video),
+        ("audio/wav", .audio), ("audio/mpeg", .audio), ("application/pdf", .pdf), ("sphinx/text", .text),
+        ("application/zip", .file),
+    ])
+    func kindFromMediaType(type: String, kind: AttachmentKind) {
+        #expect(AttachmentKind(mediaType: type) == kind)
+    }
+
+    @Test func bytesMustMatchTheDeclaredKind() {
+        #expect(AttachmentKind.verified(png, declared: .image) == .image)
+        #expect(AttachmentKind.verified(Data("<html>".utf8), declared: .image) == .file)
+        #expect(AttachmentKind.verified(Data("%PDF-1.7\n".utf8), declared: .pdf) == .pdf)
+        #expect(AttachmentKind.verified(png, declared: .pdf) == .file)
+        #expect(AttachmentKind.verified(Data([0, 0, 0, 0x18] + Array("ftypmp42".utf8)), declared: .video) == .video)
+        #expect(AttachmentKind.verified(Data("#!/bin/sh\n".utf8), declared: .video) == .file)
+        #expect(AttachmentKind.verified(Data(Array("RIFF".utf8) + [0, 0, 0, 0] + Array("WAVE".utf8)), declared: .audio) == .audio)
+        #expect(AttachmentKind.verified(Data("MZ".utf8), declared: .audio) == .file)
+        #expect(AttachmentKind.verified(Data([0xff, 0xfe, 0xfd]), declared: .text) == .file)
+    }
+
+    @Test func outgoingFilesAreNamedAsTheMacAppNamesThem() {
+        let photo = OutgoingFile(name: "holiday.png", data: png)
+        #expect(photo == OutgoingFile(fileName: "image.jpg", mediaType: "image/jpg"))
+        #expect(photo.field == "image")
+        let pdf = OutgoingFile(name: "report.pdf", data: Data("%PDF-1.7".utf8))
+        #expect(pdf == OutgoingFile(fileName: "report.pdf", mediaType: "application/pdf"))
+        #expect(pdf.field == "file")
+        #expect(OutgoingFile(name: "clip.mov", data: Data()) == OutgoingFile(fileName: "video.mov", mediaType: "video/mov"))
+        #expect(OutgoingFile(name: "clip.mp4", data: Data()).mediaType == "video/mov")
+        // Other videos go as files, as from the Mac app.
+        #expect(OutgoingFile(name: "clip.avi", data: Data()).fileName == "clip.avi")
+        #expect(OutgoingFile(name: "a\r\nb.txt", data: Data()).fileName == "a\r\nb.txt")
+        #expect(OutgoingFile(name: "notes.zip", data: Data([1])).mediaType == "application/zip")
+        #expect(OutgoingFile(name: "README", data: Data([1])).mediaType == "application/octet-stream")
+        #expect(OutgoingFile(fileName: "audio.wav", mediaType: "audio/wav").field == "audio")
+    }
+
+    @Test(arguments: [
+        ("attachment; filename=report.pdf", "report.pdf"),
+        ("attachment; filename=\"a b.txt\"; size=3", "a b.txt"),
+        ("attachment; filename=../../etc/passwd", "passwd"),
+        ("attachment; filename=.hidden", "hidden"),
+        ("inline", nil),
+    ])
+    func fileNamesFromTheServerAreMadeSafe(header: String, name: String?) {
+        #expect(MemesServer.fileName(fromDisposition: header) == name)
+    }
+
+    @Test func memesHostsAreHTTPSExceptHere() throws {
+        #expect(throws: MemesServer.Failure.self) { try MemesServer(host: "evil.com/path") }
+        #expect(throws: MemesServer.Failure.self) { try MemesServer(host: "user@evil.com") }
+        _ = try MemesServer(host: "memes.sphinx.chat")
+        _ = try MemesServer(host: "127.0.0.1:8857")
+    }
+}
+
+struct MediaStoreTests {
+    let profile = TempProfile()
+
+    @Test func cacheIsTrimmedOldestFirst() throws {
+        let store = MediaStore(profile: profile.url)
+        let old = try store.store(Data(repeating: 1, count: 600), muid: "old", key: "k", limit: 10_000)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -100)], ofItemAtPath: old.path)
+        _ = try store.store(Data(repeating: 2, count: 600), muid: "new", key: "k", limit: 1_000)
+        #expect(store.lookup(muid: "old", key: "k") == nil)
+        #expect(store.lookup(muid: "new", key: "k") != nil)
+    }
+
+    @Test func entriesAreKeyedByMuidAndKey() throws {
+        let store = MediaStore(profile: profile.url)
+        let file = try store.store(Data("x".utf8), muid: "../../escape", key: "k1", limit: 1_000)
+        #expect(file.deletingLastPathComponent().standardizedFileURL == store.cache.standardizedFileURL)
+        #expect(store.lookup(muid: "../../escape", key: "k2") == nil)
+        #expect(store.lookup(muid: "../../escape", key: "k1") == file)
+    }
+}
+
+struct AttachmentStorageTests {
+    let profile = TempProfile()
+
+    private func outgoing() -> Message {
+        var message = Message.fixture(
+            uuid: nil, type: MessageType.attachment, fromMe: true, body: #"{"content":"","mediaKey":"k"}"#,
+            content: "", status: Message.Delivery.pending.rawValue
+        )
+        message.mediaType = "image/jpg"
+        message.fileName = "image.jpg"
+        message.fileSize = 70
+        message.upload = Message.Upload.pending.rawValue
+        return message
+    }
+
+    private func store(_ message: Message, in storage: Storage) throws -> Message {
+        try #require(try storage.apply(Storage.Commit(messages: [(message, false, nil)])).first)
+    }
+
+    @Test func outgoingAttachmentMovesThroughItsUpload() throws {
+        let storage = try profile.storage()
+        let row = try store(outgoing(), in: storage)
+        let id = try #require(row.id)
+        #expect(row.uploadState == .pending)
+        #expect(row.attachmentKind == .image)
+        #expect(row.fileName == "image.jpg")
+
+        try storage.setUpload(.failed, id: id)
+        #expect(try storage.message(id: id)?.delivery == .failed)
+        #expect(try storage.message(id: id)?.isRetryable() == true)
+
+        // A retry claims the upload once; a second claim waits for it.
+        #expect(try storage.claimUpload(id: id))
+        #expect(try !storage.claimUpload(id: id))
+        #expect(try storage.message(id: id)?.isRetryable() == false)
+
+        try storage.setUpload(.done, id: id, body: #"{"mediaToken":"t"}"#)
+        let done = try #require(try storage.message(id: id))
+        #expect(done.uploadState == .done)
+        #expect(done.body == #"{"mediaToken":"t"}"#)
+        #expect(try !storage.claimUpload(id: id))
+
+        // Sending it then takes over the row, as a resend does for text.
+        let sent = try storage.apply(Storage.Commit(resend: (id, "02aa", "u9", "tag9", 5_000)))
+        #expect(sent.first?.uuid == "u9")
+        #expect(sent.first?.delivery == .pending)
+        #expect(sent.first?.uploadState == .done)
+    }
+
+    @Test func anUploadInFlightIsNotRetryableAndOneCutOffIs() throws {
+        let storage = try profile.storage()
+        var row = try store(outgoing(), in: storage)
+        row.timestamp = 0
+        #expect(!row.isRetryable())
+        try storage.failInterruptedUploads()
+        let id = try #require(row.id)
+        let after = try #require(try storage.message(id: id))
+        #expect(after.uploadState == .failed)
+        #expect(after.delivery == .failed)
+        #expect(after.isRetryable())
+    }
+
+    @Test func incomingAttachmentKeepsItsFieldsAcrossCopies() throws {
+        let storage = try profile.storage()
+        var live = Message.fixture(uuid: "u1", type: MessageType.attachment, content: "look")
+        live.mediaType = "application/pdf"
+        let id = try #require(try store(live, in: storage).id)
+        var history = Message.fixture(uuid: "u1", serverIndex: 5, type: MessageType.attachment, content: "look")
+        history.mediaType = "image/jpg"
+        let merged = try store(history, in: storage)
+        #expect(merged.mediaType == "application/pdf")
+        #expect(merged.serverIndex == 5)
+
+        try storage.setFile(id: id, name: "report.pdf", size: 1234)
+        let row = try #require(try storage.message(id: id))
+        #expect(row.fileName == "report.pdf")
+        #expect(row.fileSize == 1234)
+    }
+
+    @Test func attachmentsShowInTheChatAndCountAsUnread() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: "02aa", ready: true)],
+            messages: [
+                (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", content: "text", timestamp: 1_000), false, nil),
+                (.fixture(uuid: "u2", serverIndex: 2, type: MessageType.attachment, chat: "02aa", content: "", timestamp: 2_000), false, nil),
+            ]
+        ))
+        let messages = try #require(try await first(storage.messages(in: "02aa")))
+        #expect(messages.map(\.uuid) == ["u1", "u2"])
+        let states = try #require(try await first(storage.readStates()))
+        #expect(states["02aa"]?.unread == 2)
+        let conversations = try #require(try await first(storage.conversations()))
+        #expect(conversations.first?.lastTimestamp == 2_000)
+    }
+
+    @Test func migrationAddsTheAttachmentColumns() throws {
+        _ = try profile.storage()
+        let columns = try rows(profile, "PRAGMA table_info(message)").map { $0["name"] as String }
+        #expect(Set(["mediaType", "fileName", "fileSize", "upload"]).isSubset(of: Set(columns)))
+    }
+}

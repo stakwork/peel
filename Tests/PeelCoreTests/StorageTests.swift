@@ -22,7 +22,7 @@ final class TempProfile {
 }
 
 /// Reads rows straight from the database file, bypassing Storage.
-private func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
+func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
     let queue = try DatabaseQueue(path: profile.url.appendingPathComponent("peel.sqlite").path)
     return try queue.read { try Row.fetchAll($0, sql: sql) }
 }

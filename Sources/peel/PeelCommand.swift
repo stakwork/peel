@@ -28,6 +28,8 @@ struct PeelCommand {
           unread                      unread counts and mute levels by chat
           read <pubkey>               mark a chat read up to its newest message
           mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
+          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>)
+          download <id> <out path>    download and decrypt an attachment to a new file (never opened)
 
           tribes                      tribes this account is in
           tribe-join <link>           join from a sphinx.chat://?action=tribeV2 link
@@ -57,6 +59,8 @@ struct PeelCommand {
           --insecure          accept an untrusted TLS certificate
           --tribe-host <host:port>  the account's tribes server (init, signup and restore take it from
                               the config otherwise; later runs reuse it)
+          --memes-host <host:port>  the account's memes server for attachments (default
+                              memes.sphinx.chat; later runs reuse it)
         """
 
     static func main() async {
@@ -91,6 +95,8 @@ struct PeelCommand {
         let tribeOptions = try TribeOptions(&arguments)
         let replyTo = arguments.option("--reply")
         let inThread = arguments.option("--thread")
+        let memesHost = arguments.option("--memes-host")
+        let caption = arguments.option("--text")
         guard let command = arguments.next() else {
             print(usage)
             return
@@ -100,14 +106,15 @@ struct PeelCommand {
             return engine
         }
         func load() async throws -> Engine {
-            try await withPhoto(Account.load(profile, server: server, tribeHost: tribeHost))
+            try await withPhoto(Account.load(profile, server: server, tribeHost: tribeHost, memesHost: memesHost))
         }
 
         switch command {
         case "init":
             guard let server else { throw PeelError("init needs --server host:port") }
             let created = try await Account.create(
-                profile, alias: alias, pin: "", network: network, server: server, tribeHost: tribeHost
+                profile, alias: alias, pin: "", network: network, server: server, tribeHost: tribeHost,
+                memesHost: memesHost
             )
             try await Session(withPhoto(created.engine)).connect(insecure: insecure).finish(after: wait)
 
@@ -116,7 +123,7 @@ struct PeelCommand {
             let invite = try Engine.parseInvite(text == "-" ? readLine() ?? "" : text)
             let created = try await Account.signup(
                 profile, invite: invite, alias: alias, pin: "", network: network, server: server,
-                tribeHost: tribeHost, allowUntrustedCertificate: insecure
+                tribeHost: tribeHost, memesHost: memesHost, allowUntrustedCertificate: insecure
             )
             print("account created in \(profile.directory.path)")
             try await Session(withPhoto(created.engine)).finish(after: wait)
@@ -125,7 +132,7 @@ struct PeelCommand {
             print("twelve words:")
             let engine = try await Account.restore(
                 profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server,
-                tribeHost: tribeHost
+                tribeHost: tribeHost, memesHost: memesHost
             )
             let session = try await Session(withPhoto(engine)).connect(insecure: insecure)
             // The engine fetches contacts and history itself once online.
@@ -166,15 +173,35 @@ struct PeelCommand {
             }
             let session = try await Session(load())
             // Offline, the send is still recorded, as failed, so it can be retried.
-            do {
-                _ = try await session.connect(insecure: insecure)
-            } catch {
-                print("not connected: \(error)")
-            }
+            await session.connectIfPossible(insecure: insecure)
             try await session.engine.sendText(
                 arguments.rest().joined(separator: " "), to: pubkey, replyTo: replyTo, inThread: inThread
             )
             try await session.finish(after: wait)
+
+        case "send-file":
+            guard let pubkey = arguments.next(), let path = arguments.next() else {
+                throw PeelError("send-file needs a pubkey and a file")
+            }
+            let session = try await Session(load())
+            await session.connectIfPossible(insecure: insecure)
+            let id = try await session.engine.sendAttachment(URL(fileURLWithPath: path), text: caption ?? "", to: pubkey)
+            print("attachment row \(id)")
+            try await session.finish(after: wait)
+
+        case "download":
+            guard let id = arguments.next().flatMap({ Int64($0) }), let out = arguments.next() else {
+                throw PeelError("download needs a message id and a path to write to")
+            }
+            guard !FileManager.default.fileExists(atPath: out) else { throw PeelError("\(out) already exists") }
+            // A session, so download progress is printed.
+            let session = try await Session(load())
+            let file = try await session.engine.downloadAttachment(messageID: id)
+            // A new file only, and never opened: what to do with it is the person's call.
+            try FileManager.default.copyItem(at: file.file, to: URL(fileURLWithPath: out))
+            try await Task.sleep(for: .milliseconds(100))
+            print("\(file.kind) \(file.size) bytes\(file.fileName.map { " \"\($0)\"" } ?? "")"
+                + "\(file.cached ? " (cached)" : "") -> \(out)")
 
         case "messages":
             guard let chat = arguments.next() else { throw PeelError("messages needs a pubkey") }
@@ -375,6 +402,15 @@ struct Session {
         return self
     }
 
+    /// Connects if it can, else says why and carries on offline.
+    func connectIfPossible(insecure: Bool) async {
+        do {
+            try await engine.connect(allowUntrustedCertificate: insecure)
+        } catch {
+            print("not connected: \(error)")
+        }
+    }
+
     func finish(after seconds: Int) async throws {
         try await Task.sleep(for: .seconds(seconds))
         await engine.disconnect()
@@ -406,6 +442,8 @@ struct Session {
             "core error: \(message)"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
+        case .transfer(let id, let direction, let bytes, let total):
+            "\(direction) \(id): \(bytes) of \(total) bytes"
         }
     }
 }
@@ -427,7 +465,13 @@ extension Session {
     static func line(_ message: Message) -> String {
         let who = message.fromMe ? "me" : message.senderAlias ?? String(message.chat.prefix(12))
         let kind = message.type == MessageType.text ? "" : " type \(message.type)"
-        return "\(who)\(kind): \(message.content ?? "")"
+        var file = ""
+        if let attachment = message.attachmentKind {
+            let details = [message.mediaType, message.fileName, message.fileSize.map { "\($0) bytes" },
+                           message.uploadState.map { "upload \($0)" }].compactMap { $0 }
+            file = " [\(attachment): \(details.joined(separator: ", "))]"
+        }
+        return "\(who)\(kind)\(file): \(message.content ?? "")"
     }
 }
 

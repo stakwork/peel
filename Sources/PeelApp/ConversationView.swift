@@ -332,7 +332,8 @@ struct MessageList: View {
                             } else if message.type == MessageType.memberRequest, !message.fromMe {
                                 JoinRequestNote(message: message, approved: message.uuid.flatMap { answers[$0] },
                                                 canAnswer: canAnswer)
-                            } else {
+                            } else if message.type != MessageType.attachment {
+                                // Attachments wait for their design; the engine already has them.
                                 MembershipNote(message: message)
                             }
                         }

@@ -4,7 +4,7 @@ Status: tribes built and reviewed on branch `phase3/tribes`, rebased onto
 the status branch (2026-10-07); tribes parity with the Mac app built on
 `phase3/tribes-parity` (on top of it); replies and threads in the engine,
 storage and CLI on `phase3/replies-threads` (on top of parity), UI to come;
-attachments planned.
+attachments in the engine, storage and CLI on `phase3/attachments` (no UI yet).
 
 ## Tribes
 
@@ -784,9 +784,270 @@ tribe's threads collapse (display only, within that tribe).
 
 ## Attachments
 
-- Encrypt with a random key, upload to `memes.sphinx.chat` (auth by signed
-  challenge), `makeMediaToken` (or `makeMediaTokenWithPrice`), send type 6 with
-  `mediaToken`, `mediaKey`, `mediaKeyForSelf`, `mediaType`. Download and decrypt
-  on receive; thumbnails; file, image, audio, video.
-- Reference: `SphinxOnionManager+ChatExtension.swift`, the Mac app's
-  `Managers/Attachments` and `Managers/S3 Uploader`.
+Status (branch `phase3/attachments`): engine, storage and CLI; no UI yet (the
+UI waits for the design review).
+
+Done means: send an image or any file to a contact or a tribe, encrypted and
+uploaded exactly as the official apps do it, so their users see it; receive
+and download one, decrypted and cached; Retry and tribe prices behave as for
+text; every action an engine operation with a CLI command.
+
+### How attachments work (checked against the code, 2026-10-07)
+
+Sources: the Mac app (`Managers/Attachments/AttachmentsManager.swift`,
+`AttachmentObject.swift`, `API/API+AttachmentsExtension.swift`,
+`Managers/Encryption/SymmetricEncryptionManager.swift`,
+`Helpers/MediaLoader.swift`, `CoreData/TransactionMessage/
+TransactionMessageMediaExtension.swift`, `formatMsg`/`sendAttachment`/
+`signChallenge` in `SphinxOnionManager+ChatExtension.swift`), the core
+(`sphinx/src/msg`, `bindings/media.rs`, `msg/ldat.rs`), `sphinx-ffi`
+(`sign_bytes`, `sign_base64`) and the tribes server (`tribes/src/forward.rs`).
+The reference client (`wasm/test/auto/sendAttachment.ts`) only sends
+`content`, `mediaKey`, `mediaToken`; the Mac app is the authority.
+
+- **Memes server.** `https://memes.sphinx.chat`, hard-coded in the Mac app
+  (`API.kAttachmentsServerUrl`, overridable by a `fileServerURL` default) and
+  as the host inside every media token. It is not in the public config
+  (`config.config.sphinx.chat` has only `tribe_host`, `default_lsp`, ...).
+  Peel keeps it as `Setting.memesHost`, default `memes.sphinx.chat`;
+  `--memes-host` sets it (loopback hosts are spoken to over http, all others
+  https only).
+- **Auth.** `GET /ask` → `{id, challenge}`. The challenge (URL-safe base64)
+  is signed with the account key (child index 0) by the core's
+  `signBytes` over the decoded bytes: a 65-byte recoverable Lightning
+  signed-message signature, sent as URL-safe base64 with padding (the Mac
+  app's `signBase64` branch gives the same bytes). `POST
+  /verify?id=<id>&sig=<sig>&pubkey=<account pubkey>` (empty multipart body) →
+  `{token}`, a JWT whose payload `exp` says how long it lasts. The token is
+  sent as `Authorization: Bearer` on uploads and downloads; the Mac app keeps
+  it until `exp` and asks again on failure. Peel keeps it in memory only.
+- **Encryption.** RNCryptor v3, password form. The key is 32 random
+  alphanumeric ASCII characters, hex-encoded: a 64-character lowercase hex
+  string, used as the password (its UTF-8 bytes). Format: `03 01`, 8-byte
+  encryption salt, 8-byte HMAC salt, 16-byte IV, AES-256-CBC with PKCS#7
+  padding, HMAC-SHA256 over everything before it. Both keys are
+  PBKDF2-HMAC-SHA1, 10,000 rounds, 32 bytes. CryptoKit has no PBKDF2 or CBC,
+  so Peel uses CommonCrypto (part of the SDK, not a new dependency) for those
+  two and CryptoKit for the HMAC.
+- **Upload.** `POST /file`, multipart, `Authorization: Bearer`. Field `name`
+  is `image`, `video`, `audio`, `text` or `file`; field `file` is the
+  *encrypted* bytes with a file name and MIME type chosen by kind, as
+  `AttachmentObject.getFileAndMime`: a still image `image.jpg` /
+  `image/jpg` (whatever the real format; the bytes are sent unchanged), an
+  animated image `image.gif` / `image/gif`, a video `video.mov` /
+  `video/mov`, a recording `audio.wav` / `audio/wav`, a PDF its own name /
+  `application/pdf`, anything else its own name / the MIME type of its
+  extension (or `application/octet-stream`). The reply's `muid` names the
+  file.
+- **Media token.** The core's `makeMediaToken(seed, time, state, host:
+  "memes.sphinx.chat", muid, to: <recipient>, expiry: now + 1 year)`
+  (`makeMediaTokenWithPrice` adds `amt=<sats>` for a paid attachment). The
+  token is `b64(host).muid.b64(buyer, empty).b64(expiry, u32 BE).b64(meta).sig`,
+  URL-safe base64 with padding; `to` is ignored by the core.
+- **The message.** Type 6 (`attachment`), JSON
+  `{"content": <text or "">, "mediaKey": <key>, "mediaKeyForSelf": <key>,
+  "mediaType": <MIME>, "mediaToken": <token>}` (plus `replyUuid` /
+  `threadUuid` when set). The core moves `mediaKeyForSelf` (it must be 32
+  bytes of hex, which the key is) into `encryptedMediaKey`, encrypted to this
+  account, so our own copy (echo, other devices, restore) gets `mediaKey`
+  back after decryption. The recipient reads `mediaKey` in the clear inside
+  the onion-encrypted message. Amounts as for text: 0 to a contact; a tribe
+  is paid its price per message plus escrow, at least 3 sats. The tribes
+  server refuses an attachment without `mediaKey` or `mediaToken`
+  (`valid_pld`), forwards both to every member (late joiners get them with
+  the history), and strips `mediaKey` only when the token has a price.
+- **Paid attachments** (types 7 purchase, 8 accept, 9 deny): to a contact the
+  key is left out and sent in a purchase-accept; in a tribe the tribes server
+  holds the key and sends it with its own accept. Not built in Peel: sending
+  with a price is not offered, and a received paid attachment (token `amt`
+  > 0 and no key) is reported as not supported.
+- **Download.** `GET https://<host from the token>/file/<mediaToken>` with
+  the bearer token; the file name comes from `Content-Disposition:
+  ...filename=` (or `GET /media/<muid>` → `{filename, size}`). Decrypt with
+  `mediaKey`. Kind by `mediaType` as the Mac app (`getMediaType`): contains
+  `image` or `gif` → image; `video` → video; `audio` → audio (the Mac app
+  plays only `audio/wav`); `sphinx/text` → paid text; `pdf` → PDF; else a
+  file; an empty type is an image. The Mac app caches decrypted data in
+  memory and images in SDImageCache with no size cap, and caches its own
+  upload's plain bytes under the media URL right after sending.
+
+### Decisions
+
+- Peel downloads only from the account's own memes host. A token naming any
+  other host is refused: otherwise any sender could make Peel fetch from a
+  server of their choosing, and the bearer token must never go elsewhere.
+  Redirects keep the bearer token only on the same host, and only to https
+  (or loopback).
+- What a download claims to be is checked against its bytes (image headers
+  for images, container signatures for video and audio, `%PDF-` for PDFs);
+  a mismatch is reported as a plain file, which nothing renders. Peel never
+  opens or executes a file; `download` writes it where it is told and stops.
+- Size cap 100 MB for sending and downloading (a `Content-Length` over it is
+  refused before reading; a body that grows past it is cut off). The
+  decrypted cache lives in `<profile>/media/cache`, one file per muid, and is
+  trimmed to 500 MB, oldest first.
+- The encrypted upload waits in `<profile>/media/outbox/<row id>` until the
+  memes server has it, so Retry after a failed upload uploads the same bytes
+  again; after a successful upload Retry only sends the message (the body,
+  with token and key, is stored on the row).
+- Received audio of any `audio/*` type is audio, not only `audio/wav` as in
+  the Mac app (which shows other audio as a file): Peel can play it, and the
+  bytes are checked against audio signatures first. What Peel *sends* for an
+  audio file is the Mac app's generic file (its own name and MIME type).
+- Paid attachments are out of scope for now (decided 2026-10-07).
+
+### For the UI (decided 2026-10-07)
+
+- Images download automatically when shown (they are small and decrypted
+  locally); other files download on tap.
+- "Save…" lets the person pick where a file goes; nothing is opened for them.
+- Upload progress is a bar on the row, from `Engine.Event.transfer`
+  (`.upload`); downloads report `.download` the same way.
+- Until then the app hides attachment rows in the chat (`ConversationView`),
+  but the engine counts them as unread and as a chat's newest message.
+
+### Built
+
+- `Media.swift`: `MediaCrypto` (RNCryptor v3 password form, CommonCrypto for
+  PBKDF2 and AES-CBC, CryptoKit for the HMAC), `MediaToken` (host, muid),
+  `MemesServer` (ask/verify, upload and capped download through one
+  chunked transfer that reports progress, an ephemeral URL session that
+  keeps the bearer token off other hosts and plain http),
+  `AttachmentKind` (from `mediaType`, and `verified(_:declared:)` from the
+  bytes: ImageIO must decode an image; container signatures for video and
+  audio; `%PDF-`; UTF-8 for paid text), `OutgoingFile` (the Mac app's names
+  and MIME types), `MediaStore` (cache and outbox under `<profile>/media`,
+  cache files named by a hash of muid and key, trimmed oldest first).
+- Storage migration **`v9`**, after v7 (tribes parity) and v8 (replies and
+  threads): `message.mediaType`, `fileName`, `fileSize`, `upload`
+  (`PENDING`, `DONE`, `FAILED`), and a partial index on `upload`. The key and
+  token stay in the body JSON only. Attachments (type 6) are "content" with
+  text (`MessageType.content`): shown in `messages(in:)`, unread, a chat's
+  newest message, retryable, counted as a tribe member's posts.
+  `Setting.memesHost`.
+- `Engine`: `sendAttachment(_:text:to:)` (DM or tribe; the row is written
+  before the upload, with the key in the body and the encrypted file in the
+  outbox; tribe price as for text), `downloadAttachment(messageID:)`
+  (cache first; own memes host only; key required, paid attachments
+  refused; capped; decrypted, checked, cached; file name and size recorded),
+  `setMemesHost`. `resend` uploads again only when the upload never
+  finished, claiming the row in the database so one upload runs at a time
+  (an upload cut off by a quit is marked failed when the engine starts);
+  otherwise it only sends. `discard` removes the outbox file. The bearer
+  token is kept in memory and refreshed on expiry or a 401/403.
+  `Event.transfer(messageID:direction:bytes:total:)` reports upload and
+  download progress at most every 5% or 250 ms, and at the end. File work,
+  decryption and the kind check run off the actor. Incoming attachment rows
+  get `mediaType` from the body. `Account` takes `memesHost` like
+  `tribeHost`.
+- CLI: `send-file <pubkey> <path> [--text <caption>]`, `download <id> <out
+  path>` (refuses an existing path; never opens anything), `--memes-host`,
+  attachment details in `messages`.
+- No new dependency: CommonCrypto, CryptoKit, ImageIO and
+  UniformTypeIdentifiers are system frameworks.
+
+### Verified (local stack, 2026-10-07)
+
+Broker 1907, mixer 8037, tribes 8837 and a memes stub on 8857 (no real memes
+server can be run locally, see AGENTS.md; the stub verifies the sign-in
+signature with secp256k1 against the given pubkey, so the sign-in convention
+is checked for real). Profiles `at-alice`, `at-bob`, `at-carol`, `at-bob2`.
+
+- Sign-in: `GET /ask`, `POST /verify` accepted (signature over the
+  challenge, account key, URL-safe base64).
+- DM image Alice → Bob: uploaded as `name=image`, `image.jpg`, `image/jpg`;
+  the stored blob decrypts with an independent Python RNCryptor
+  implementation to the original file; body has `content`, `mediaKey`,
+  `mediaKeyForSelf`, `mediaType`, `mediaToken`. Bob downloads it
+  byte-identical; a second download is a cache hit (no request to the server).
+- DM PDF and text file Bob → Alice: `application/pdf` / `text/plain`, file
+  names from `Content-Disposition`, byte-identical; Alice's own image is a
+  cache hit from the start.
+- Tribe (5 sats per message): Bob posts an image, Alice a PDF; each row is
+  one row, delivered (the tribe's copy merged), paid 5000 msat; each side
+  downloads the other's intact.
+- Late joiner Carol gets both tribe attachments in the history and
+  downloads them intact. Bob restored from his words (`at-bob2`) downloads
+  his own DM and tribe attachments and Alice's, all intact.
+- Retry: memes server down → row `upload FAILED`, message failed, outbox
+  file kept; `resend` with the server back uploads once and delivers, outbox
+  emptied. Upload done but no broker → message failed; `resend` delivers with
+  no second upload.
+- Oversize: a 104.9 MB file is refused before anything is stored or
+  uploaded; a download declaring 200 MB, and one streaming 101 MB with no
+  length, are both refused with nothing written; the same attachment
+  downloads intact afterwards.
+- A token whose host is not the account's memes host is refused.
+- Unit tests build (`swift build --build-tests`); not run in this session.
+
+After the reviews and the rebase onto v7 and v8 (same stack; the existing
+profiles migrated from the earlier v9 to v7, v8 in place):
+- DM image Alice → Bob intact, second download a cache hit; an 8 MB file
+  intact both ways.
+- Progress through a slowed stub: `upload` events at 5.2, 6.3, 7.3, 8.4 MB
+  and the end; `download` events about every half megabyte to the end.
+- Tribe: a PDF each way (Bob's and Alice's, both sent by `resend` of rows
+  left pending) delivered and downloaded intact on the other side.
+- Memes stub down: row `upload failed`; `resend` with it back uploads once
+  and delivers.
+- Stack note: tribe sends failed with "malformed onion: Upstream node set
+  CLTV to less than the CLTV set by the sender" after the stack had run for
+  about half an hour; restarting the tribes server (which reads the block
+  height once, while an auto-mining mixer keeps raising it) fixed it. Not
+  an attachments issue; text sends failed the same way.
+
+Not verified: anything against `memes.sphinx.chat` or with the official
+apps (the conventions are matched from their code, and the stub enforces the
+same endpoints); video and audio files; the 401 re-sign-in path (the stub's
+tokens outlive a run); cache trimming at 500 MB (unit test only).
+
+### Reviews (2026-10-07)
+
+`/code-review high`, all fixed except the audio one (see Decisions): the app
+drew attachments as "joined" notes (now hidden until their design); the
+sidebar ignored them; a row looked retryable mid-upload; a row was left
+without its outbox file when that write failed; an upload failure had no
+tag (the row is emitted instead); a line break in a file name reached the
+multipart headers; the download read a byte at a time; the file was
+decrypted again just for the cache; videos other than .mov/.mp4/.m4v/.3gp
+went as `video.mov` (now plain files, as from the Mac app).
+
+`/simplify` (reuse, simplification, efficiency, altitude), applied: upload
+state only in the database (a retry claims the row; no in-memory set);
+`Storage.insert`, the `muid` column, `Conversation.lastType`,
+`MediaToken.price` and `Failure.paidAttachment` dropped;
+`MessageType.content` for every "text or attachment" list (which also puts
+attachment senders in `tribeSenders`); `TribeLink.baseURL` shared with
+`TribeInfo.fetch`; `withoutControlCharacters`; `Session.connectIfPossible`;
+`memesHost` through `Account` like `tribeHost`; file work, decryption and
+the kind check off the actor; the first send reuses its encrypted bytes and
+a retry does not decrypt for the cache; encryption into one buffer; one
+image source for "image" and "animated"; a partial index for the startup
+check; test helpers shared with `StorageTests`.
+
+Not applied, with reasons:
+- `audio/*` stays audio (see Decisions).
+- The `upload` column is not derived from the body and status: the UI needs
+  "uploading" apart from "sending".
+- The kind is checked again on every cache hit (off the actor) rather than
+  stored: one column less, and a cached file is re-checked as it is now.
+- The cache is trimmed on every store, not by a running total: a directory
+  listing per download is small next to the download.
+- Uploads are built in memory, not streamed from a file: 100 MB cap.
+- The transfer's own redirect handler is kept although the session has one:
+  it is the security path, so it does not rely on delegate fallback.
+- The app hides attachments in the view only; unread and the sidebar count
+  them until the attachment design lands.
+- `EngineTests` keeps its own base64url helper (outside this change).
+
+`/security-review`: no finding at confidence 7 or above. Checked: the
+bearer token goes only to the configured memes host (a token naming another
+host is refused; redirects drop it off-host and refuse plain http); the
+media token only extends the path on that host; cache and outbox names
+cannot be steered (hashes and row ids); the server's file name is cleaned
+and never used as a path; the MAC is checked (constant time) before
+decrypting; keys, salts and IVs come from the system CSPRNG; all SQL is
+bound or built from constants; a remote sender sets only `mediaType`;
+nothing logs keys or tokens. Near-miss not applied: a received `mediaType`
+is printed raw by the CLI, like message text already is.
+

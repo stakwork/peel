@@ -37,5 +37,9 @@ let package = Package(
         ),
         .executableTarget(name: "peel", dependencies: ["PeelCore"]),
         .executableTarget(name: "PeelApp", dependencies: ["PeelCore"]),
+        .testTarget(
+            name: "PeelCoreTests",
+            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
     ]
 )

@@ -26,6 +26,7 @@ in progress and what comes next. Update it when you finish something.
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
+- `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below)
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
 - `scripts/run-app.sh` — builds, bundles, signs the Mac app, installs it to
@@ -49,6 +50,22 @@ new build of the core.
 Xcode is installed, but there is no Xcode project yet (phase 2 adds one for a
 signed bundle). Until then build with `swift build`; the app bundle is
 assembled by hand in `scripts/run-app.sh`.
+
+## Tests
+
+```sh
+swift test      # needs the generated bindings, like swift build
+```
+
+`Tests/PeelCoreTests` uses Swift Testing and runs offline, each storage test in
+its own temporary profile directory. It covers `StateCodec` round-trips and
+malformed input; `Storage` commits (atomic state and settings), message upsert
+(uuid dedupe, server fields from the later copy, cross-chat uuid rejection),
+status by tag, contact alias/photo rules, the `conversations()` and
+`messages(in:)` first emission, and the profile lock; `Message` helpers;
+`ServerAddress` parsing; and the `Engine` helpers that need no server
+(mnemonics, invites, a fresh account). Nothing talks to a broker: anything
+protocol-level is still verified against the local test server.
 
 ## How the core works
 

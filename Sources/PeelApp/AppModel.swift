@@ -35,7 +35,7 @@ final class AppModel {
 
     /// What the sidebar has selected.
     enum Destination: Hashable {
-        case threads, mentions, payments
+        case threads, mentions, payments, account
         case chat(String)
     }
 
@@ -51,7 +51,11 @@ final class AppModel {
     }
     var searchQuery = ""
     var myAlias: String?
+    /// The photo sent with this account's messages, https or nil.
+    var myPhotoURL: String?
     var myContactInfo: String?
+    /// The server this account talks to, as `host:port`.
+    var myServer: String?
     var balanceMsat: UInt64?
     var notice: String?
     /// The latest error that belongs to a conversation, shown inside it.
@@ -79,9 +83,10 @@ final class AppModel {
     private var unlockedAt: Date?
 
     /// Hours after which the app asks for the PIN again when it comes to the
-    /// front; 0 means only at launch. Set with
-    /// `defaults write dev.peel.mac pinTimeoutHours <hours>` until Profile has it.
-    private var pinTimeoutHours: Int { UserDefaults.standard.integer(forKey: "pinTimeoutHours") }
+    /// front; 0 means only at launch. Kept with the account; an account that
+    /// has never set it here takes the `pinTimeoutHours` default earlier
+    /// builds read, which is left in place.
+    private(set) var pinTimeoutHours = 0
 
     init() {
         do {
@@ -152,15 +157,54 @@ final class AppModel {
 
     /// Removes the account's words and data from this Mac, for when the PIN is
     /// lost. The account itself lives on and can be restored from its words.
+    /// If removing fails part-way, the app starts over from whatever is left:
+    /// the lock screen while the words remain, onboarding once they are gone.
     func forgetAccount() async throws {
         guard let profile else { return }
         await engine?.disconnect()
         engine = nil
-        try profile.delete()
-        conversations = []
-        messages = []
-        destination = nil
-        phase = .onboarding
+        resetAccountState()
+        do {
+            try profile.delete()
+            phase = .onboarding
+        } catch {
+            phase = .loading
+            await start()
+            notice = "Could not forget the account: \(error)"
+            throw error
+        }
+    }
+
+    // MARK: Account screen
+
+    /// The name others see on the messages sent from now on. The engine's
+    /// `.profile` event updates `myAlias`.
+    func setName(_ name: String) async throws {
+        try await signedIn().setAlias(name)
+    }
+
+    /// An https image link, or empty to remove the photo. Uploading a picture
+    /// comes with attachments; it will hand its URL to the same call.
+    func setPhotoURL(_ url: String) async throws {
+        try await signedIn().setPhotoURL(url)
+    }
+
+    /// The twelve words, after the PIN. Nothing here keeps or logs them.
+    func revealWords(pin: String) async throws -> [String] {
+        guard let profile else { throw PeelError("no profile") }
+        return try await Task.detached { try profile.words(pin: pin) }.value
+    }
+
+    /// Reseals the words under a new PIN, typed twice.
+    func changePIN(from oldPIN: String, to newPIN: String, confirmation: String) async throws {
+        guard let profile else { throw PeelError("no profile") }
+        guard newPIN == confirmation else { throw PeelError("The new PINs don't match.") }
+        try await Task.detached { try profile.changePIN(from: oldPIN, to: newPIN) }.value
+    }
+
+    func setPINTimeout(hours: Int) async throws {
+        try await signedIn().setPINTimeout(hours: hours)
+        pinTimeoutHours = hours
     }
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
@@ -168,6 +212,7 @@ final class AppModel {
     func lockIfDue() {
         guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0,
               let unlockedAt, Date.now.timeIntervalSince(unlockedAt) > Double(pinTimeoutHours) * 3600 else { return }
+        Clipboard.clearSecret()
         phase = .locked
     }
 
@@ -359,11 +404,32 @@ final class AppModel {
         await attach(engine)
     }
 
+    /// Drops everything shown about the account that was open.
+    private func resetAccountState() {
+        Clipboard.clearSecret()
+        conversations = []
+        messages = []
+        destination = nil
+        readStates = [:]
+        conversationNotices = [:]
+        restoreProgress = RestoreProgress()
+        myAlias = nil
+        myPhotoURL = nil
+        myContactInfo = nil
+        myServer = nil
+        balanceMsat = nil
+        unlockedAt = nil
+    }
+
     private func attach(_ engine: Engine) async {
         self.engine = engine
         let storage = engine.storage
-        myAlias = try? storage.value(for: .alias)
+        myAlias = await engine.myAlias
+        myPhotoURL = await engine.myPhotoURL
         myContactInfo = try? storage.value(for: .contactInfo)
+        myServer = try? storage.value(for: .server)
+        pinTimeoutHours = ((try? await engine.pinTimeoutHours()) ?? nil)
+            ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
         connection = await engine.connection
         Task { await self.observeConversations(storage) }
@@ -400,6 +466,9 @@ final class AppModel {
                 }
             case .historyDone:
                 restoreProgress.outcome = .finished
+            case .profile(let alias, let photoURL):
+                myAlias = alias
+                myPhotoURL = photoURL
             case .historyFailed(let reason):
                 restoreProgress.outcome = .failed(reason)
             case .message, .sendStatus:

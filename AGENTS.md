@@ -24,7 +24,7 @@ in progress and what comes next. Update it when you finish something.
     profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
-  `ConversationView`, `TribeViews`, `OnboardingView`)
+  `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in

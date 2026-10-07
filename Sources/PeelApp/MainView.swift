@@ -576,60 +576,25 @@ struct SidebarRowStyle: ButtonStyle {
     }
 }
 
+/// You, at the foot of the sidebar: opens the account screen (also ⌘,).
 struct SidebarFooter: View {
     @Environment(AppModel.self) private var model
-    @State private var showingInfo = false
 
     var body: some View {
         Button {
-            showingInfo = true
+            model.destination = .account
         } label: {
             HStack(spacing: 9) {
-                Avatar(name: model.myAlias ?? "?", url: nil, size: 24)
+                Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 24)
                 Text(model.myAlias ?? "You")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.text)
                     .lineLimit(1)
                 Spacer(minLength: 6)
             }
-            .padding(.horizontal, 6)
-            .padding(.top, 9)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SidebarRowStyle(selected: model.destination == .account))
+        .help("Your account (⌘,)")
+        .padding(.top, 8)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
-        .popover(isPresented: $showingInfo, arrowEdge: .top) {
-            ContactInfoCard(info: model.myContactInfo)
-        }
-    }
-}
-
-/// Your own contact info, to share with someone who wants to add you.
-struct ContactInfoCard: View {
-    let info: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Your contact info")
-                .font(Theme.font(15, .bold))
-            if let info {
-                Text(info)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .lineLimit(4)
-                    .truncationMode(.middle)
-                HStack {
-                    Spacer()
-                    Button("Copy") { Clipboard.copy(info) }
-                }
-            } else {
-                Text("Available once the server has registered this account.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-            }
-        }
-        .padding(16)
-        .frame(width: 320)
     }
 }
 
@@ -653,6 +618,8 @@ struct Detail: View {
                 MentionsView()
             case .payments:
                 EmptyPlace(title: "Payments", message: "Payments you send and receive show up here.")
+            case .account:
+                AccountView()
             case nil:
                 EmptyPlace(title: "Peel", message: "Pick a conversation, or add a contact.")
             }
@@ -826,6 +793,44 @@ enum Clipboard {
         NSPasteboard.general.setString(text, forType: .string)
         #else
         UIPasteboard.general.string = text
+        #endif
+    }
+
+    #if os(macOS)
+    /// The pasteboard's change count right after a secret was copied, while
+    /// it may still be there.
+    @MainActor private static var secretChangeCount: Int?
+    #endif
+
+    /// Copies a secret: kept on this Mac (no Universal Clipboard), marked
+    /// concealed so clipboard managers skip it, and cleared after
+    /// `clearAfter`, on quit, or when the account is forgotten, unless
+    /// something else has been copied since.
+    @MainActor static func copySecret(_ text: String, clearAfter: Duration) {
+        #if os(macOS)
+        let board = NSPasteboard.general
+        board.prepareForNewContents(with: .currentHostOnly)
+        board.setString(text, forType: .string)
+        board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        secretChangeCount = board.changeCount
+        Task { @MainActor in
+            try? await Task.sleep(for: clearAfter)
+            clearSecret()
+        }
+        #else
+        UIPasteboard.general.setItems(
+            [["public.utf8-plain-text": text]],
+            options: [.localOnly: true, .expirationDate: Date.now.addingTimeInterval(Double(clearAfter.components.seconds))]
+        )
+        #endif
+    }
+
+    /// Clears a secret copied with `copySecret` if it is still on the clipboard.
+    @MainActor static func clearSecret() {
+        #if os(macOS)
+        guard let copied = secretChangeCount else { return }
+        secretChangeCount = nil
+        if NSPasteboard.general.changeCount == copied { NSPasteboard.general.clearContents() }
         #endif
     }
 

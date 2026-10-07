@@ -49,6 +49,19 @@ public struct Profile: Sendable {
         _ = try secrets.loadMnemonic(pin: pin)
     }
 
+    /// The twelve words, for showing to their owner after the PIN. Slow (the
+    /// PIN's key is derived on purpose slowly); call it off the main thread.
+    public func words(pin: String) throws -> [String] {
+        Engine.words(in: try secrets.loadMnemonic(pin: pin))
+    }
+
+    /// Reseals the words under a new PIN. A wrong old PIN throws
+    /// `SecretStoreFailure.wrongPIN` and changes nothing. Slow, like `words`.
+    public func changePIN(from oldPIN: String, to newPIN: String) throws {
+        guard requiresPIN else { throw PeelError("this profile has no PIN") }
+        try secrets.changePIN(from: oldPIN, to: newPIN)
+    }
+
     /// Removes the words and everything stored with them. A failure to remove
     /// the words is reported, and the database is then kept with them.
     public func delete() throws {

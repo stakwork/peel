@@ -300,6 +300,25 @@ extension Storage {
         try pool.write { db in try SettingRow(key: setting.rawValue, value: value).upsert(db) }
     }
 
+    /// The photo on this account's newest direct message that says one, as
+    /// the server returns it to every device: where a restore finds the
+    /// account's own photo, as the official apps do. Records without sender
+    /// details (payments, key exchanges) are passed over; an empty photo on
+    /// the newest one that has the field means none. Nil unless https.
+    func newestOwnPhotoURL() throws -> String? {
+        let senders = try pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT sender FROM message
+                WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
+                  AND chat NOT IN (SELECT pubkey FROM tribe)
+                ORDER BY serverIndex DESC LIMIT 50
+                """)
+        }
+        let decoder = JSONDecoder()
+        let photo = senders.lazy.compactMap { try? decoder.decode(SenderInfo.self, from: Data($0.utf8)).photoURL }.first
+        return photo?.httpsOnly
+    }
+
     /// The newest server index stored.
     func highestServerIndex() throws -> Int64? {
         try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }

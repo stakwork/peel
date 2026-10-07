@@ -7,7 +7,6 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
-    @State private var confirmingForget = false
 
     var body: some View {
         OnboardingPage {
@@ -26,39 +25,13 @@ struct LockView: View {
                 ProgressView()
                     .controlSize(.small)
                     .opacity(working ? 1 : 0)
-                forget
+                // For a lost PIN.
+                ForgetAccountControl(
+                    trigger: "Forgot your PIN? Forget this account on this Mac",
+                    explanation: "This removes the account's words and messages from this Mac. You can restore it later with your twelve words."
+                )
+                .frame(maxWidth: 360)
             }
-        }
-    }
-
-    /// For a lost PIN. Confirmed in place, next to the trigger.
-    @ViewBuilder private var forget: some View {
-        if confirmingForget {
-            VStack(spacing: 10) {
-                Text("This removes the account's words and messages from this Mac. You can restore it later with your twelve words.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-                HStack(spacing: 16) {
-                    Button("Cancel") { confirmingForget = false }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.secondaryText)
-                    Button("Forget account") {
-                        Task {
-                            do { try await model.forgetAccount() } catch { problem = "\(error)" }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.destructive)
-                }
-                .font(Theme.font(13, .medium))
-            }
-        } else {
-            Button("Forgot your PIN? Forget this account on this Mac") { confirmingForget = true }
-                .buttonStyle(.plain)
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
         }
     }
 
@@ -69,8 +42,67 @@ struct LockView: View {
         do {
             try await model.unlock(pin: pin)
         } catch {
-            problem = error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : "\(error)"
+            problem = PIN.problem(error)
             pin = ""
+        }
+    }
+}
+
+extension PIN {
+    /// What to show when a PIN was not accepted.
+    static func problem(_ error: any Error) -> String {
+        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : "\(error)"
+    }
+}
+
+/// Removes the account from this Mac (`AppModel.forgetAccount`), confirmed in
+/// place next to the trigger with what is deleted, never in a dialog.
+struct ForgetAccountControl: View {
+    @Environment(AppModel.self) private var model
+    let trigger: String
+    let explanation: String
+    var alignment: HorizontalAlignment = .center
+    var triggerColor = Theme.secondaryText
+
+    @State private var confirming = false
+    @State private var working = false
+    @State private var problem: String?
+
+    var body: some View {
+        if confirming {
+            VStack(alignment: alignment, spacing: 10) {
+                Text(explanation)
+                    .font(Theme.font(13))
+                    .foregroundStyle(Theme.secondaryText)
+                    .multilineTextAlignment(alignment == .center ? .center : .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let problem { ProblemText(problem) }
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        confirming = false
+                        problem = nil
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.secondaryText)
+                    Button("Forget account") {
+                        working = true
+                        Task {
+                            do { try await model.forgetAccount() } catch { problem = "\(error)" }
+                            working = false
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.destructive)
+                    if working { ProgressView().controlSize(.small) }
+                }
+                .font(Theme.font(13, .medium))
+                .disabled(working)
+            }
+        } else {
+            Button(trigger) { confirming = true }
+                .buttonStyle(.plain)
+                .font(Theme.font(13))
+                .foregroundStyle(triggerColor)
         }
     }
 }

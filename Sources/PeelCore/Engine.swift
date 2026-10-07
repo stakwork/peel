@@ -756,7 +756,7 @@ public actor Engine {
         if let tribe, tribe.paymentPriceMsat > amount {
             throw PeelError("this tribe now charges more per message; boost again as a new boost")
         }
-        try checkPayment(amount, confirmedMsat: confirmedMsat)
+        try checkPayment(amount, .threshold(confirmedMsat))
         return try await deliver(body: body, to: message.chat, type: message.type, amountMsat: amount, replacing: messageID)
     }
 
@@ -789,14 +789,70 @@ public actor Engine {
     /// thrown. Returns the tag the server will confirm.
     @discardableResult
     public func boost(messageID: Int64, amountMsat: UInt64, confirmedMsat: UInt64? = nil) async throws -> String? {
+        try await boost(messageID: messageID, amountMsat: amountMsat, confirmation: .threshold(confirmedMsat))
+    }
+
+    /// Whether a payment is held to the confirmation threshold, and the
+    /// amount the person confirmed if asked; or sent unasked (one-tap boost).
+    private enum Confirmation {
+        case threshold(UInt64?)
+        case unasked
+    }
+
+    private func boost(messageID: Int64, amountMsat: UInt64, confirmation: Confirmation) async throws -> String? {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         let (message, uuid) = try boostTarget(try storage.message(id: messageID))
         guard let total = Self.boostTotalMsat(tipMsat: amountMsat, in: try openTribe(message.chat)) else {
             throw Failure.insufficientBalance
         }
-        try checkPayment(total, confirmedMsat: confirmedMsat)
+        try checkPayment(total, confirmation)
         let body = try Self.json(["content": "", "replyUuid": uuid])
         return try await deliver(body: body, to: message.chat, type: MessageType.boost, amountMsat: total, replacing: nil)
+    }
+
+    /// The official apps' one-tap boost (Tom, 2026-10-07: the same UX): the
+    /// account's boost amount (`boostAmountMsat`) plus, in a tribe, its price
+    /// and escrow, sent at once with no confirmation of any kind; the
+    /// threshold, "Always confirm" included, is for the custom amount,
+    /// payments and invoices. The boost amount itself was approved when it
+    /// was saved (`setBoostAmount`). Only the balance is checked. A second
+    /// tap within `quickBoostGap` of our last boost on the same message is
+    /// taken for a double click and ignored (returns nil).
+    @discardableResult
+    public func quickBoost(messageID: Int64) async throws -> String? {
+        if let message = try storage.message(id: messageID), let uuid = message.uuid,
+           let last = try storage.lastOwnBoost(on: uuid, in: message.chat),
+           Date.now.timeIntervalSince(last) < Self.quickBoostGap {
+            return nil
+        }
+        return try await boost(messageID: messageID, amountMsat: try boostAmountMsat(), confirmation: .unasked)
+    }
+
+    /// The official apps' default tip, 100 sats ("Default tip amount").
+    public static let defaultBoostAmountMsat: UInt64 = 100_000
+
+    public func boostAmountMsat() throws -> UInt64 {
+        try storage.value(for: .boostAmountMsat).flatMap { UInt64($0) }.flatMap { $0 > 0 ? $0 : nil }
+            ?? Self.defaultBoostAmountMsat
+    }
+
+    /// Taps on one message closer together than this are one boost.
+    public static let quickBoostGap: TimeInterval = 1
+
+    /// Every later one-tap boost sends this amount unasked, so one over the
+    /// confirmation threshold must be confirmed (`confirmedMsat`) like a payment.
+    public func setBoostAmount(msat: UInt64, confirmedMsat: UInt64? = nil) throws {
+        guard msat > 0 else { throw Failure.invalidAmount }
+        if Self.needsConfirmation(msat, confirmedMsat: confirmedMsat, thresholdMsat: try paymentConfirmationMsat()) {
+            throw Failure.needsConfirmation(amountMsat: msat)
+        }
+        try storage.set(String(msat), for: .boostAmountMsat)
+    }
+
+    /// Whether `amountMsat` must be confirmed first: over the threshold (0
+    /// asks for everything) and not confirmed for exactly this amount.
+    static func needsConfirmation(_ amountMsat: UInt64, confirmedMsat: UInt64?, thresholdMsat: UInt64) -> Bool {
+        confirmedMsat != amountMsat && amountMsat > thresholdMsat
     }
 
     /// What a boost with this tip pays: in a tribe its price per message and
@@ -826,7 +882,7 @@ public actor Engine {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard tribes[pubkey] == nil else { throw Failure.paymentToTribe }
         guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
-        try checkPayment(amountMsat, confirmedMsat: confirmedMsat)
+        try checkPayment(amountMsat, .threshold(confirmedMsat))
         let body = try Self.json(["content": text])
         return try await deliver(
             body: body, to: pubkey, type: MessageType.directPayment, amountMsat: amountMsat, replacing: nil
@@ -836,11 +892,13 @@ public actor Engine {
     /// Refuses an amount over the last balance the server reported, or over
     /// the confirmation threshold unless the person confirmed exactly this
     /// amount (a confirmation never covers a total that changed since, such
-    /// as a tribe raising its price between the two clicks).
-    private func checkPayment(_ amountMsat: UInt64, confirmedMsat: UInt64?) throws {
+    /// as a tribe raising its price between the two clicks). A one-tap
+    /// boost (`.unasked`) is checked against the balance only.
+    private func checkPayment(_ amountMsat: UInt64, _ confirmation: Confirmation) throws {
         guard let balance = try balanceMsat() else { throw Failure.balanceUnknown }
         guard amountMsat <= balance else { throw Failure.insufficientBalance }
-        if confirmedMsat != amountMsat, amountMsat > (try paymentConfirmationMsat()) {
+        if case .threshold(let confirmedMsat) = confirmation,
+           Self.needsConfirmation(amountMsat, confirmedMsat: confirmedMsat, thresholdMsat: try paymentConfirmationMsat()) {
             throw Failure.needsConfirmation(amountMsat: amountMsat)
         }
     }

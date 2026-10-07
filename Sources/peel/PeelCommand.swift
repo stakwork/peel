@@ -51,11 +51,14 @@ struct PeelCommand {
           tribe-pin <pubkey> <uuid|-> pin a message in a tribe this account owns ("-" unpins)
           mentions                    tribe messages that mention this account
 
-          boost <id> <sats>           boost someone else's message (row id from messages); in a tribe the
-                                      tribe's price per message and escrow are added
+          boost <id> [sats]           boost someone else's message (row id from messages); in a tribe the
+                                      tribe's price per message and escrow are added; without an
+                                      amount, the one-tap boost with the account's boost amount,
+                                      sent with no confirmation, as in the official apps
           pay <pubkey> <sats>         send sats to a contact in their chat (--text <note>)
                                       (both refuse more than the balance, and over the confirmation
                                       threshold without --yes)
+          boost-amount [sats]         what a one-tap boost tips (default 100 sats); sets it when given (--yes over the threshold)
           payments [pubkey]           payments and boosts, in one chat or all, newest first
 
         options:
@@ -402,12 +405,15 @@ struct PeelCommand {
             }
 
         case "boost":
-            guard let id = arguments.next().flatMap({ Int64($0) }), let msat = arguments.next().flatMap(Sats.msat) else {
-                throw PeelError("boost needs a message id and a whole number of sats above zero")
-            }
+            guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("boost needs a message id") }
+            let msat = try arguments.next().map(satsArgument)
             let session = try await Session(load()).connectIfPossible(insecure: insecure)
-            try await confirming(confirmed) {
-                try await session.engine.boost(messageID: id, amountMsat: msat, confirmedMsat: $0)
+            if let msat {
+                try await confirming(confirmed) {
+                    try await session.engine.boost(messageID: id, amountMsat: msat, confirmedMsat: $0)
+                }
+            } else {
+                try await session.engine.quickBoost(messageID: id)
             }
             try await session.finish(after: wait)
 
@@ -420,6 +426,13 @@ struct PeelCommand {
                 try await session.engine.sendPayment(to: pubkey, amountMsat: msat, text: note ?? "", confirmedMsat: $0)
             }
             try await session.finish(after: wait)
+
+        case "boost-amount":
+            let engine = try await load()
+            if let msat = try arguments.next().map(satsArgument) {
+                try await confirming(confirmed) { try await engine.setBoostAmount(msat: msat, confirmedMsat: $0) }
+            }
+            print("boost amount: \(try await engine.boostAmountMsat() / 1000) sats")
 
         case "payments":
             let storage = try Storage(directory: profile.directory, readOnly: true)
@@ -586,6 +599,12 @@ struct TribeOptions {
         if let unlisted { settings.unlisted = unlisted }
         return settings
     }
+}
+
+/// An amount in sats from the command line, as msat.
+func satsArgument(_ text: String) throws -> UInt64 {
+    guard let msat = Sats.msat(text) else { throw PeelError("the amount must be a whole number of sats above zero") }
+    return msat
 }
 
 /// A payment over the confirmation threshold: with `--yes`, sent again for

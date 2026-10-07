@@ -92,6 +92,8 @@ final class AppModel {
     /// Payments and boosts on their way to the engine, so a double click
     /// never sends one twice.
     @ObservationIgnored var moneyInFlight: Set<String> = []
+    /// What the one-tap Boost tips (the engine's boost amount).
+    var boostAmountMsat = Engine.defaultBoostAmountMsat
     var notice: String?
     /// The latest error that belongs to a conversation, shown inside it.
     var conversationNotices: [String: String] = [:]
@@ -571,6 +573,7 @@ final class AppModel {
         balanceMsat = nil
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
+        boostAmountMsat = Engine.defaultBoostAmountMsat
         unlockedAt = nil
         notifier.reset()
     }
@@ -586,6 +589,7 @@ final class AppModel {
             ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = try? storage.balanceMsat()
         paymentConfirmationMsat = (try? await engine.paymentConfirmationMsat()) ?? Engine.defaultPaymentConfirmationMsat
+        boostAmountMsat = (try? await engine.boostAmountMsat()) ?? Engine.defaultBoostAmountMsat
         connection = await engine.connection
         notifier.attach(storage, showsText: (try? await engine.notificationShowsText()) ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.

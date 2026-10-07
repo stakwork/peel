@@ -29,6 +29,10 @@ struct AccountView: View {
                             PaymentConfirmationRow()
                         }
                         GroupDivider()
+                        SettingsRow("Boost amount") {
+                            BoostAmountRow()
+                        }
+                        GroupDivider()
                         SettingsRow("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")

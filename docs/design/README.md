@@ -80,9 +80,15 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   per person in the order they boosted, initials when there is no photo)
   and "+N" for the other people (Tom, 2026-10-07). Tinted in the selection
   colour when one of them is yours; clicking it opens who boosted (avatars, names,
-  amounts). There is no "+" chip: Boost is in the hover bar (Reply, Boost,
-  More) and "Boost…" in the message menu, on others' messages only (built
-  2026-10-07, see `../phases/04-money.md`).
+  amounts). There is no "+" chip: the bolt in the hover bar (Reply, Boost,
+  More) boosts at once with your boost amount, as the official apps do:
+  one tap, no panel and no confirmation of any kind (Tom, 2026-10-07); its
+  tooltip and the menu's "Boost 100 sats" (B) name the boost amount only,
+  never a tribe's price (the official apps' menu just says "Boost"; their
+  chip, like Peel's, then totals what was sent, price included).
+  "Boost…" in the message menu opens the panel for another amount, under
+  the confirmation threshold. On others' messages only (see
+  `../phases/04-money.md`).
 - **Payments** in a DM are a compact row: an orange bolt in a soft circle
   where the photo goes, "You sent **1,000 sats**" or "Bob sent you **1,000
   sats**", the time and delivery bolt, the note under it. A payment or
@@ -90,9 +96,14 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   may have paid); a failed one "Not sent · Retry · Discard".
 - **Money panels.** Boost (preset tips, another amount, the tribe's price
   and escrow and the total, balance) and Send sats (amount, note,
-  balance) are Peel panels; their button says the amount ("Boost 110
-  sats"). Over the threshold (default 100 sats) the first click turns it
-  orange, "Click again to boost 1,000 sats"; the second sends exactly that.
+  balance) are Peel panels. Money buttons use plain verbs (Tom,
+  2026-10-07): idle "Boost", "Send", "Pay"; over the threshold (default
+  100 sats) the first click turns the button orange with the amount
+  ("Boost 150 sats", "Send 2,000 sats") and a quiet "Click again to
+  confirm" beside or under it, never in the button; the second click sends
+  exactly that. The same for Retry over the threshold and saving a large
+  boost amount. Destructive menu items keep their own wording ("Delete for
+  everyone").
 - **Thread summary.** In a tribe, a thread of two or more collapses to one
   row: the original message, then up to three participants' avatars, "N
   replies" as a link (bold, with "N new", when unread) and "Last reply

@@ -454,8 +454,11 @@ private struct HoverBar: View {
                     withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
                 }
             }
-            if let boost {
-                HoverIconButton(systemImage: "bolt", help: "Boost", action: boost)
+            if boost != nil {
+                // One tap boosts with the boost amount; "Boost…" in More picks another.
+                HoverIconButton(systemImage: "bolt", help: model.quickBoostLabel) {
+                    Task { await model.quickBoost(message) }
+                }
             }
             if !message.deleted {
                 MenuButton(systemImage: "ellipsis", help: "More", source: row.id) {
@@ -510,6 +513,8 @@ enum MessageMenu {
             })
         }
         if let boost {
+            reply.append(.button(model.quickBoostLabel, systemImage: "bolt.fill",
+                                 shortcut: .key("b")) { Task { await model.quickBoost(message) } })
             reply.append(.button("Boost…", systemImage: "bolt", action: boost))
         }
         var pin: [MenuEntry] = []

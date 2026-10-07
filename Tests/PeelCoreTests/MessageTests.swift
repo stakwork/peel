@@ -39,10 +39,10 @@ struct MessageTests {
     }
 
     @Test func bodyContent() {
-        #expect(BodyFields.content(of: #"{"content":"hello","amount":0}"#) == "hello")
-        #expect(BodyFields.content(of: #"{"amount":0}"#) == nil)
-        #expect(BodyFields.content(of: "plain text") == nil)
-        #expect(BodyFields.content(of: nil) == nil)
+        #expect(BodyFields.decode(#"{"content":"hello","amount":0}"#)?.content == "hello")
+        #expect(BodyFields.decode(#"{"amount":0}"#)?.content == nil)
+        #expect(BodyFields.decode("plain text") == nil)
+        #expect(BodyFields.decode(nil) == nil)
     }
 
     @Test func millisecondDates() {

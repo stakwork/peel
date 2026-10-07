@@ -70,6 +70,7 @@ final class AppModel {
     private(set) var profile: Profile?
     private var engine: Engine?
     private var messagesTask: Task<Void, Never>?
+    private var tribeTask: Task<Void, Never>?
     /// When the PIN was last entered. The PIN itself is never kept.
     private var unlockedAt: Date?
 
@@ -94,8 +95,13 @@ final class AppModel {
 
     var selectedChat: String? { destination?.chat }
 
+    /// Tribes matching the sidebar search.
+    var tribeConversations: [Conversation] { filteredConversations.filter(\.isTribe) }
+
     /// Direct messages matching the sidebar search.
-    var filteredConversations: [Conversation] {
+    var directConversations: [Conversation] { filteredConversations.filter { !$0.isTribe } }
+
+    private var filteredConversations: [Conversation] {
         let query = searchQuery.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return conversations }
         return conversations.filter { $0.name.localizedCaseInsensitiveContains(query) }
@@ -104,6 +110,9 @@ final class AppModel {
     var selectedConversation: Conversation? {
         conversations.first { $0.chat == selectedChat }
     }
+
+    /// The open tribe's details: price, description, whether this account owns it.
+    private(set) var selectedTribe: Tribe?
 
     func start() async {
         guard phase == .loading, let profile else { return }
@@ -243,6 +252,30 @@ final class AppModel {
         }
     }
 
+    /// What a tribe link points to, to show before paying to join.
+    func previewTribe(_ link: String) async throws -> TribeInfo {
+        guard let engine else { throw PeelError("not signed in") }
+        return try await engine.tribeInfo(link: link)
+    }
+
+    /// Joins a tribe from its link, paying only the price shown, and opens it.
+    func joinTribe(_ link: String, agreedJoinMsat: UInt64) async throws {
+        guard let engine else { return }
+        let tribe = try await engine.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat)
+        destination = .chat(tribe.pubkey)
+    }
+
+    func leaveTribe(_ pubkey: String) async throws {
+        guard let engine else { return }
+        try await engine.leaveTribe(pubkey)
+        if selectedChat == pubkey { destination = nil }
+    }
+
+    func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
+        guard let engine else { throw PeelError("not signed in") }
+        return try await engine.tribeMembers(pubkey)
+    }
+
     /// Adds a contact from the contact info they shared.
     func addContact(_ contactInfo: String, alias: String) async throws {
         guard let engine else { return }
@@ -329,14 +362,27 @@ final class AppModel {
         }
     }
 
+    /// Follows the open chat's messages and, for a tribe, its details, which a
+    /// join or a registry refresh can change.
     private func observeMessages() {
         messagesTask?.cancel()
+        tribeTask?.cancel()
         messages = []
+        selectedTribe = nil
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         messagesTask = Task {
             do {
                 for try await rows in storage.messages(in: chat) {
                     messages = rows
+                }
+            } catch {
+                if !Task.isCancelled { notice = "\(error)" }
+            }
+        }
+        tribeTask = Task {
+            do {
+                for try await tribe in storage.tribe(chat) {
+                    selectedTribe = tribe
                 }
             } catch {
                 if !Task.isCancelled { notice = "\(error)" }

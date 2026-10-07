@@ -103,6 +103,25 @@ public final class Storage: Sendable {
             // Unread counts and read markers look up a chat's server indexes.
             try db.create(index: "message_chat_serverIndex", on: "message", columns: ["chat", "serverIndex"])
         }
+        migrator.registerMigration("v6") { db in
+            // Tribes are core contacts too; this says which, and what the registry says about them.
+            try db.create(table: "tribe") { t in
+                t.primaryKey("pubkey", .text)
+                t.column("name", .text)
+                t.column("photoURL", .text)
+                t.column("summary", .text)
+                t.column("host", .text)
+                t.column("pricePerMessageMsat", .integer).notNull().defaults(to: 0)
+                t.column("escrowMsat", .integer).notNull().defaults(to: 0)
+                t.column("isPrivate", .boolean).notNull().defaults(to: false)
+                t.column("isOwner", .boolean).notNull().defaults(to: false)
+                t.column("left", .boolean).notNull().defaults(to: false)
+            }
+            // Unread counts read only the index: a tribe's whole history can be unread.
+            try db.create(
+                index: "message_unread", on: "message", columns: ["chat", "fromMe", "type", "serverIndex"]
+            )
+        }
         return migrator
     }
 }
@@ -134,13 +153,20 @@ public enum Setting: String, Sendable {
     case needsRestore
     /// Hours before the app asks for the PIN again; "0" means only at launch.
     case pinTimeoutHours
+    /// The tribes server this account's own tribes are listed on, as `host[:port]`.
+    case tribeHost
+    /// The highest server index of a message dropped unstored (from a left
+    /// tribe), so catching up does not fetch it again.
+    case droppedIndex
 }
 
-/// One chat in the sidebar: the contact plus the newest text message.
+/// One chat in the sidebar: a contact or a tribe, plus the newest text message.
 public struct Conversation: Codable, Sendable, Identifiable, Equatable, FetchableRecord {
     public var chat: String
+    /// The contact's alias or the tribe's name.
     public var alias: String?
     public var photoURL: String?
+    public var isTribe: Bool
     public var lastContent: String?
     public var lastTimestamp: Int64?
     public var lastFromMe: Bool?
@@ -192,39 +218,48 @@ extension Storage {
         try pool.write { db in try SettingRow(key: setting.rawValue, value: value).upsert(db) }
     }
 
-    /// The newest server index stored, which is where history fetches resume.
-    func highestServerIndex() throws -> UInt64? {
-        try pool.read { db in
-            try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message").flatMap { UInt64(exactly: $0) }
-        }
+    /// The newest server index stored.
+    func highestServerIndex() throws -> Int64? {
+        try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }
     }
 
-    private static let conversationsSQL = """
-        SELECT c.pubkey AS chat, c.alias, c.photoURL,
-               m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
-        FROM contact c
-        LEFT JOIN message m ON m.id = (
-            SELECT id FROM message WHERE chat = c.pubkey AND type = 0 ORDER BY timestamp DESC, id DESC LIMIT 1
-        )
-        WHERE c.ready = 1
-        ORDER BY m.timestamp IS NULL, m.timestamp DESC, c.alias
+    /// Every conversation: ready contacts and joined tribes. A tribe is a core
+    /// contact with no contact key, so it is never a ready contact.
+    private static let chatsSQL = """
+        SELECT pubkey AS chat, alias, photoURL, 0 AS isTribe FROM contact WHERE ready = 1
+        UNION ALL
+        SELECT pubkey, name, photoURL, 1 FROM tribe WHERE left = 0
         """
 
+    private static let conversationsSQL = """
+        SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
+        FROM (\(chatsSQL)) c
+        LEFT JOIN message m ON m.id = (
+            SELECT id FROM message WHERE chat = c.chat AND type = \(MessageType.text)
+            ORDER BY timestamp DESC, id DESC LIMIT 1
+        )
+        ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
+        """
+
+    /// Text, plus joins and leaves, which only tribes send.
     private static let messagesSQL = """
         SELECT * FROM (
-            SELECT * FROM message WHERE chat = ? AND type = 0 ORDER BY timestamp DESC, id DESC LIMIT 200
+            SELECT * FROM message
+            WHERE chat = ? AND type IN (\(MessageType.text), \(MessageType.groupJoin), \(MessageType.groupLeave))
+            ORDER BY timestamp DESC, id DESC LIMIT 200
         ) ORDER BY timestamp, id
         """
 
-    /// Incoming text messages past the read marker count as unread.
-    /// One row per conversation; each count is a range on `message_chat_serverIndex`.
+    /// Incoming text messages past the read marker count as unread, one row per
+    /// conversation; each count is a range on `message_unread`.
     private static let readStatesSQL = """
-        SELECT c.pubkey AS chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
+        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
             SELECT COUNT(*) FROM message m
-            WHERE m.chat = c.pubkey AND m.serverIndex > COALESCE(s.lastRead, -1) AND m.fromMe = 0 AND m.type = 0
+            WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type = \(MessageType.text)
+                AND m.serverIndex > COALESCE(s.lastRead, -1)
         ) AS unread
-        FROM contact c LEFT JOIN chatState s ON s.chat = c.pubkey
-        WHERE c.ready = 1
+        FROM (\(chatsSQL)) c
+        LEFT JOIN chatState s ON s.chat = c.chat
         """
 
     /// Unread counts and mute levels by chat, re-emitted whenever they change.
@@ -265,6 +300,40 @@ extension Storage {
         }
     }
 
+    /// One tribe's record, re-emitted whenever it changes.
+    public func tribe(_ pubkey: String) -> some AsyncSequence<Tribe?, any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in try Tribe.fetchOne(db, key: pubkey) }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// Every tribe this account knows, joined or left.
+    public func tribes() throws -> [Tribe] {
+        try pool.read { db in try Tribe.fetchAll(db) }
+    }
+
+    /// The people seen posting in a tribe, with the newest photo per alias.
+    func tribeSenders(_ tribe: String) throws -> [TribeMember] {
+        try pool.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT json_extract(sender, '$.alias') AS alias, json_extract(sender, '$.photo_url') AS photo
+                    FROM message
+                    WHERE chat = ? AND fromMe = 0 AND type = \(MessageType.text) AND json_valid(sender)
+                        AND IFNULL(json_extract(sender, '$.alias'), '') != ''
+                    GROUP BY alias HAVING id = MAX(id)
+                    ORDER BY alias COLLATE NOCASE
+                    """,
+                arguments: [tribe]
+            ).map { row in
+                let photo: String? = row["photo"]
+                return TribeMember(alias: row["alias"], photoURL: photo?.httpsOnly, pubkey: nil, pending: false)
+            }
+        }
+    }
+
     /// Every conversation, newest first, re-emitted whenever one changes.
     public func conversations() -> some AsyncSequence<[Conversation], any Error> {
         ValueObservation
@@ -295,7 +364,8 @@ extension Storage {
         var contacts: [(pubkey: String, ready: Bool)]?
         /// Messages to store; `trustSender` means the engine matched the sender to
         /// the key that decrypted the message, so its name and photo can be kept.
-        var messages: [(message: Message, trustSender: Bool)] = []
+        /// `replaces` is the uuid of our own row that a tribe's copy of it takes over.
+        var messages: [(message: Message, trustSender: Bool, replaces: String?)] = []
         var statuses: [(tag: String, status: String)] = []
         /// Read markers from the server; a marker only ever moves forward.
         var reads: [String: Int64] = [:]
@@ -303,6 +373,7 @@ extension Storage {
         /// An outgoing row sent again: it takes the new send's uuid and tag.
         var resend: Resend?
         typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, timestamp: Int64)
+        var tribes: [Tribe] = []
     }
 
     /// Returns the stored rows; messages the upsert rejected are left out.
@@ -326,9 +397,12 @@ extension Storage {
                     try statement.execute(arguments: [contact.pubkey, contact.ready])
                 }
             }
+            for tribe in commit.tribes {
+                try tribe.upsert(db)
+            }
             var stored: [Message] = []
-            for (message, trustSender) in commit.messages {
-                guard let row = try Self.store(message, in: db) else { continue }
+            for (message, trustSender, replaces) in commit.messages {
+                guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 stored.append(row)
                 if trustSender, let info = message.senderInfo {
                     try Self.upsertContact(db, pubkey: row.chat, alias: info.alias, photoURL: info.photoURL)
@@ -368,8 +442,33 @@ extension Storage {
     /// (index, time, amount, hash) are filled in from the later copy; what the
     /// message says is kept from the first. A uuid already used in another
     /// conversation is rejected, so no contact can rewrite another's messages.
-    private static func store(_ message: Message, in db: Database) throws -> Message? {
-        try Message.fetchOne(
+    ///
+    /// A tribe gives each message it forwards a new uuid and keeps the sender's
+    /// as `originalUuid`, so our own message coming back from the tribe takes
+    /// over the row written when it was sent (`original`), in the same chat only.
+    private static func store(_ message: Message, replacing original: String?, in db: Database) throws -> Message? {
+        if let original, let uuid = message.uuid,
+           let merged = try Message.fetchOne(
+               db,
+               sql: """
+                   UPDATE message SET
+                       uuid = ?,
+                       serverIndex = COALESCE(?, serverIndex),
+                       timestamp = COALESCE(?, timestamp),
+                       status = ?
+                   WHERE uuid = ? AND chat = ? AND fromMe = 1
+                       AND NOT EXISTS (SELECT 1 FROM message WHERE uuid = ?)
+                   RETURNING *
+                   """,
+               // The tribe forwarding it proves the server took it.
+               arguments: [
+                   uuid, message.serverIndex, message.timestamp, Message.Delivery.delivered.rawValue,
+                   original, message.chat, uuid,
+               ]
+           ) {
+            return merged
+        }
+        return try Message.fetchOne(
             db,
             sql: """
                 INSERT INTO message
@@ -397,7 +496,7 @@ extension Storage {
 
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
     private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
-        let photo = photoURL.flatMap { URL(string: $0)?.scheme == "https" ? $0 : nil }
+        let photo = photoURL?.httpsOnly
         try db.execute(
             sql: """
                 INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
@@ -458,5 +557,16 @@ extension Storage {
 
     func upsertContact(pubkey: String, alias: String?) throws {
         try pool.write { db in try Self.upsertContact(db, pubkey: pubkey, alias: alias, photoURL: nil) }
+    }
+
+    func save(_ tribes: [Tribe]) throws {
+        guard !tribes.isEmpty else { return }
+        try pool.write { db in
+            for tribe in tribes { try tribe.upsert(db) }
+        }
+    }
+
+    func deleteTribe(_ pubkey: String) throws {
+        _ = try pool.write { db in try Tribe.deleteOne(db, key: pubkey) }
     }
 }

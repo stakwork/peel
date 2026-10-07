@@ -57,8 +57,10 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
 - **Messages are bubbles: theirs on the left, yours on the right** (Tom,
   2026-10-07; the flat Slack style in the mock was tried in the app and
   dropped). Yours use Sphinx's sent-message blue, theirs the received grey.
-  Time under each bubble. How tribe messages with many senders show the
-  sender is decided with phase 3.
+  Time under each bubble. In a tribe, other members' bubbles sit beside
+  their round photo, with their name over the first bubble of each run (a
+  run breaks on another sender, five minutes or a new day); joins and
+  leaves are a quiet centred line ("carol joined").
 - **Day dividers** ("Today", "Yesterday", then dates).
 - **Boosts** show as a chip under the message: a bolt and the total sats. A
   "+" chip next to it boosts.
@@ -243,6 +245,14 @@ Not built, noticed in use:
   conversations yet.
 - The sidebar width is fixed at 260 pt and does not collapse; the window's
   minimum width (760 pt) keeps the conversation readable.
+
+**Step 3, tribes: built (2026-10-07, branch `phase3/tribes`).** Tribes rows
+show `#` or the tribe's image on a rounded square; "Join a tribe" opens a
+popover beside the row (paste link, Look up shows name, description and
+costs, then Join). The header shows the description and the price per
+message; the people button opens a members popover with Copy link and Leave,
+confirmed inline. No call or pinned-message buttons yet. Thread panel and
+summaries are still to come.
 
 The rejected native-sidebar variant and the first Slack-skin build are kept in
 the session scratchpad only; the mock canvas has all four mocked directions.

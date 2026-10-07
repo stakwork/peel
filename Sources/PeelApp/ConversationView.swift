@@ -10,15 +10,23 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(
-                title: conversation.name,
-                avatar: Avatar(name: conversation.name, url: conversation.photoURL, size: 32)
-            )
-            MessageList(messages: model.messages)
+            if conversation.isTribe {
+                TribeHeader(conversation: conversation, tribe: model.selectedTribe)
+            } else {
+                DetailHeader(title: conversation.name) {
+                    ConversationIcon(conversation: conversation, size: 32)
+                }
+            }
+            MessageList(messages: model.messages, inTribe: conversation.isTribe)
             if let notice = model.conversationNotices[conversation.chat] {
                 ConversationNotice(text: notice) { model.dismissNotice(in: conversation.chat) }
             }
-            Composer(draft: $draft, placeholder: "Message \(conversation.name)", focusRequest: focusRequest, send: send)
+            Composer(
+                draft: $draft,
+                placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
+                focusRequest: focusRequest,
+                send: send
+            )
         }
         .onAppear { focusRequest += 1 }
         .onChange(of: conversation.chat) { focusRequest += 1 }
@@ -65,19 +73,196 @@ struct ConversationNotice: View {
     }
 }
 
-struct MessageList: View {
-    let messages: [Message]
+
+/// A tribe's name, what it is about and what a message costs, with the
+/// members panel behind the people button.
+struct TribeHeader: View {
+    let conversation: Conversation
+    let tribe: Tribe?
+
+    @State private var showingMembers = false
+
+    private var subtitle: String? {
+        guard let tribe else { return nil }
+        return [tribe.summary?.trimmed.nilIfEmpty, "\(Formatting.sats(msat: tribe.messageAmountMsat)) a message"]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
 
     var body: some View {
+        DetailHeader(title: conversation.name, subtitle: subtitle) {
+            ConversationIcon(conversation: conversation, size: 32)
+        } trailing: {
+            Button {
+                showingMembers = true
+            } label: {
+                Image(systemName: "person.2")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Members")
+            .popover(isPresented: $showingMembers, arrowEdge: .bottom) {
+                TribeMembersPanel(conversation: conversation, tribe: tribe) { showingMembers = false }
+            }
+        }
+    }
+}
+
+/// Who is in the tribe, its link, and leaving it. Only the owner gets the
+/// full list from the tribes server; everyone else sees who has posted.
+struct TribeMembersPanel: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
+    let tribe: Tribe?
+    let done: () -> Void
+
+    @State private var members: TribeMembers?
+    @State private var problem: String?
+    @State private var confirmingLeave = false
+    @State private var leaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(members?.complete == false ? "Seen in #\(conversation.name)" : "Members")
+                    .font(Theme.font(15, .bold))
+                if members?.complete == false {
+                    Text("Only the tribe's owner gets the full member list.")
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+            memberList
+            Theme.divider.frame(height: 1)
+            HStack(spacing: 8) {
+                if let link = tribe?.link {
+                    Button("Copy link") { Clipboard.copy(link) }
+                }
+                Spacer()
+                leaveControl
+            }
+            if let problem {
+                ProblemText(problem)
+            }
+        }
+        .padding(16)
+        .frame(width: 300)
+        .task(id: conversation.chat) { await load() }
+    }
+
+    @ViewBuilder private var memberList: some View {
+        if let members {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    // The server's list includes this account; the seen list does not.
+                    if !members.complete {
+                        MemberRow(alias: model.myAlias ?? "You", photoURL: nil, note: "you")
+                    }
+                    ForEach(members.members) { member in
+                        MemberRow(alias: member.alias, photoURL: member.photoURL, note: member.pending ? "waiting for approval" : nil)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 280)
+            .fixedSize(horizontal: false, vertical: true)
+        } else if problem == nil {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text("Asking the tribes server…")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+
+    /// Leaving is confirmed right here, next to the button, not in a dialog.
+    @ViewBuilder private var leaveControl: some View {
+        if confirmingLeave {
+            Text("Leave #\(conversation.name)?")
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+            Button("Cancel") { confirmingLeave = false }
+                .disabled(leaving)
+            Button {
+                Task { await leave() }
+            } label: {
+                Text("Leave").foregroundStyle(Theme.destructive)
+            }
+            .disabled(leaving)
+        } else {
+            Button("Leave tribe") { confirmingLeave = true }
+        }
+    }
+
+    private func load() async {
+        do {
+            members = try await model.tribeMembers(conversation.chat)
+        } catch {
+            problem = "Could not load members: \(error)"
+        }
+    }
+
+    private func leave() async {
+        leaving = true
+        defer { leaving = false }
+        do {
+            try await model.leaveTribe(conversation.chat)
+            done()
+        } catch {
+            problem = "Could not leave: \(error)"
+            confirmingLeave = false
+        }
+    }
+}
+
+struct MemberRow: View {
+    let alias: String
+    let photoURL: String?
+    let note: String?
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Avatar(name: alias, url: photoURL, size: 24)
+            Text(alias)
+                .font(Theme.font(13))
+                .lineLimit(1)
+            if let note {
+                Text(note)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+}
+
+struct MessageList: View {
+    let messages: [Message]
+    var inTribe = false
+
+    var body: some View {
+        let layout = Self.layout(messages, inTribe: inTribe)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                        if startsNewDay(at: index) {
+                    ForEach(Array(zip(messages, layout)), id: \.0.id) { message, place in
+                        if place.startsDay {
                             DayDivider(date: message.date)
                         }
-                        MessageRow(message: message, endsRun: endsRun(at: index))
-                            .id(message.id)
+                        Group {
+                            if message.type == MessageType.text {
+                                MessageRow(
+                                    message: message,
+                                    endsRun: place.endsRun,
+                                    sender: inTribe && !message.fromMe ? (place.startsRun ? .named : .indented) : .none
+                                )
+                            } else {
+                                MembershipNote(message: message)
+                            }
+                        }
+                        .id(message.id)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -92,19 +277,55 @@ struct MessageList: View {
         }
     }
 
-    private func startsNewDay(at index: Int) -> Bool {
-        guard index > 0 else { return true }
-        return !Calendar.current.isDate(messages[index].date, inSameDayAs: messages[index - 1].date)
+    private struct Place {
+        var startsDay: Bool
+        var startsRun: Bool
+        var endsRun = true
     }
 
-    /// The last of a run of messages from one side, a few minutes apart, shows
-    /// the time under it; the others show it on hover.
-    private func endsRun(at index: Int) -> Bool {
-        guard index + 1 < messages.count else { return true }
-        let message = messages[index], next = messages[index + 1]
-        return next.fromMe != message.fromMe
-            || next.date.timeIntervalSince(message.date) > 5 * 60
-            || startsNewDay(at: index + 1)
+    /// A run is one sender's messages a few minutes apart on one day. Its
+    /// last message shows the time under it (the others on hover); in a tribe
+    /// its first shows the member's name and photo. Worked out in one pass,
+    /// reading each member's name once.
+    private static func layout(_ messages: [Message], inTribe: Bool) -> [Place] {
+        var places: [Place] = []
+        places.reserveCapacity(messages.count)
+        var previousAlias: String?
+        for (index, message) in messages.enumerated() {
+            let alias = inTribe && !message.fromMe ? message.senderAlias : nil
+            guard index > 0 else {
+                places.append(Place(startsDay: true, startsRun: true))
+                previousAlias = alias
+                continue
+            }
+            let previous = messages[index - 1]
+            let startsDay = !Calendar.current.isDate(message.date, inSameDayAs: previous.date)
+            let startsRun = startsDay || message.type != MessageType.text || previous.type != MessageType.text
+                || previous.fromMe != message.fromMe
+                || message.date.timeIntervalSince(previous.date) > 5 * 60 || alias != previousAlias
+            places[index - 1].endsRun = startsRun
+            places.append(Place(startsDay: startsDay, startsRun: startsRun))
+            previousAlias = alias
+        }
+        return places
+    }
+}
+
+/// "Name joined" or "Name left", between the messages of a tribe.
+struct MembershipNote: View {
+    let message: Message
+
+    private var text: String {
+        let who = message.fromMe ? "You" : message.senderAlias ?? "Someone"
+        return message.type == MessageType.groupLeave ? "\(who) left" : "\(who) joined"
+    }
+
+    var body: some View {
+        Text(text)
+            .font(Theme.font(12))
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 2)
     }
 }
 
@@ -129,12 +350,25 @@ struct DayDivider: View {
 
 /// One message: theirs on the left, yours on the right. The time sits under
 /// the last message of a run and appears beside any bubble on hover, without
-/// moving anything.
+/// moving anything. In a tribe, theirs sit beside the member's photo, with
+/// the name over the first of a run.
 struct MessageRow: View {
+    /// The column beside a member's message in a tribe.
+    enum Sender {
+        case none
+        /// Lined up under the run's photo.
+        case indented
+        /// The member's photo, and their name over the message.
+        case named
+    }
+
     let message: Message
     let endsRun: Bool
+    var sender: Sender = .none
 
     @State private var hovering = false
+
+    private static let avatarSize: CGFloat = 28
 
     var body: some View {
         // A pending send becomes retryable after a timeout, with no change to
@@ -150,23 +384,36 @@ struct MessageRow: View {
 
     private func row(now: Date) -> some View {
         let retryable = message.isRetryable(now: now)
-        return HStack(alignment: .center, spacing: 8) {
-            if message.fromMe {
-                Spacer(minLength: 80)
-                hoverTime
+        return HStack(alignment: .top, spacing: 8) {
+            switch sender {
+            case .none: EmptyView()
+            case .indented: Color.clear.frame(width: Self.avatarSize, height: 1)
+            case .named: Avatar(name: message.senderAlias ?? "?", url: message.senderPhotoURL, size: Self.avatarSize)
             }
-            VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
-                MessageBubble(message: message)
-                    .opacity(message.delivery == .pending && !retryable ? 0.6 : 1)
-                if retryable {
-                    UndeliveredActions(message: message)
-                } else if endsRun {
-                    MessageMeta(message: message)
+            HStack(alignment: .center, spacing: 8) {
+                if message.fromMe {
+                    Spacer(minLength: 80)
+                    hoverTime
                 }
-            }
-            if !message.fromMe {
-                hoverTime
-                Spacer(minLength: 80)
+                VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
+                    if sender == .named {
+                        Text(message.senderAlias ?? "Unknown")
+                            .font(Theme.font(12, .medium))
+                            .foregroundStyle(Theme.secondaryText)
+                            .padding(.leading, 4)
+                    }
+                    MessageBubble(message: message)
+                        .opacity(message.delivery == .pending && !retryable ? 0.6 : 1)
+                    if retryable {
+                        UndeliveredActions(message: message)
+                    } else if endsRun {
+                        MessageMeta(message: message)
+                    }
+                }
+                if !message.fromMe {
+                    hoverTime
+                    Spacer(minLength: 80)
+                }
             }
         }
         .padding(.bottom, endsRun ? 6 : 0)

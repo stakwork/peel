@@ -53,11 +53,20 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     var senderInfo: SenderInfo? {
         sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }
     }
+
+    /// The name the sender gave. In a tribe this is the member, made unique
+    /// within the tribe by the tribes server; the sender pubkey is the tribe's.
+    public var senderAlias: String? { senderInfo?.alias?.nilIfEmpty }
+
+    /// The sender's photo, https only.
+    public var senderPhotoURL: String? { senderInfo?.photoURL?.httpsOnly }
 }
 
 /// Message type numbers defined by the core (`MsgType` in the sphinx crate).
 public enum MessageType {
     public static let text = 0
+    public static let groupJoin = 14
+    public static let groupLeave = 15
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }
@@ -68,19 +77,34 @@ struct SenderInfo: Decodable {
     let pubkey: String
     let alias: String?
     let photoURL: String?
+    /// Set by a tribes server on the joins it forwards.
+    let host: String?
 
     enum CodingKeys: String, CodingKey {
-        case pubkey, alias
+        case pubkey, alias, host
         case photoURL = "photo_url"
     }
 }
 
+/// The fields Peel reads from a message's JSON.
 struct BodyFields: Decodable {
     let content: String?
+    /// On a message a tribe forwarded: the uuid the sender gave it.
+    let originalUuid: String?
+    /// On a message a tribe forwarded: when the tribe took it, in milliseconds.
+    let date: Int64?
 
-    static func content(of body: String?) -> String? {
-        body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }?.content
+    static func decode(_ body: String?) -> BodyFields? {
+        body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }
     }
+}
+
+extension String {
+    public var nilIfEmpty: String? { isEmpty ? nil : self }
+
+    /// This string if it is an https URL, else nil: photos are never fetched
+    /// over anything else.
+    public var httpsOnly: String? { URL(string: self)?.scheme?.lowercased() == "https" ? self : nil }
 }
 
 extension Date {

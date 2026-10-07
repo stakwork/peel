@@ -67,7 +67,7 @@ struct StorageTests {
             try storage.apply(Storage.Commit(
                 state: ["a": Data([2])],
                 settings: [.alias: "Bob"],
-                messages: [(.fixture(content: "boom"), false)]
+                messages: [(.fixture(content: "boom"), false, nil)]
             ))
         }
         #expect(try storage.loadCoreState() == ["a": Data([1])])
@@ -95,9 +95,9 @@ struct StorageTests {
             uuid: "u1", serverIndex: 42, fromMe: true, body: #"{"content":"changed"}"#, content: "changed",
             msat: 3_000, timestamp: 2_000, tag: "tag-2", paymentHash: "hash"
         )
-        let stored = try storage.apply(Storage.Commit(messages: [(first, false)]))
+        let stored = try storage.apply(Storage.Commit(messages: [(first, false, nil)]))
         #expect(stored.count == 1)
-        let updated = try #require(try storage.apply(Storage.Commit(messages: [(echo, false)])).first)
+        let updated = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).first)
 
         #expect(updated.id == stored.first?.id)
         #expect(updated.serverIndex == 42)
@@ -115,17 +115,17 @@ struct StorageTests {
 
     @Test func laterCopyFillsMissingBodyFields() throws {
         let storage = try profile.storage()
-        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: nil), false)]))
-        let row = try #require(try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: "late"), false)])).first)
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: nil), false, nil)]))
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: "late"), false, nil)])).first)
         #expect(row.content == "late")
     }
 
     @Test func uuidFromAnotherChatIsRejected() throws {
         let storage = try profile.storage()
-        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", chat: "02aa", content: "mine"), false)]))
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", chat: "02aa", content: "mine"), false, nil)]))
         let stored = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u1", serverIndex: 9, chat: "02bb", content: "hijack"), false),
-            (.fixture(uuid: "u2", chat: "02bb", content: "fine"), false),
+            (.fixture(uuid: "u1", serverIndex: 9, chat: "02bb", content: "hijack"), false, nil),
+            (.fixture(uuid: "u2", chat: "02bb", content: "fine"), false, nil),
         ]))
         #expect(stored.map(\.uuid) == ["u2"])
         let original = try rows(profile, "SELECT chat, content, serverIndex FROM message WHERE uuid = 'u1'")
@@ -137,16 +137,16 @@ struct StorageTests {
 
     @Test func uuidReusedWithOtherDirectionIsRejected() throws {
         let storage = try profile.storage()
-        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: true), false)]))
-        let stored = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: false, content: "x"), false)]))
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: true), false, nil)]))
+        let stored = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: false, content: "x"), false, nil)]))
         #expect(stored.isEmpty)
     }
 
     @Test func statusUpdatesByTag() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u1", fromMe: true, tag: "t1", status: "PENDING"), false),
-            (.fixture(uuid: "u2", fromMe: true, tag: "t2", status: "PENDING"), false),
+            (.fixture(uuid: "u1", fromMe: true, tag: "t1", status: "PENDING"), false, nil),
+            (.fixture(uuid: "u2", fromMe: true, tag: "t2", status: "PENDING"), false, nil),
         ]))
         _ = try storage.apply(Storage.Commit(statuses: [(tag: "t1", status: "COMPLETE"), (tag: "unknown", status: "FAILED")]))
         let statuses = try rows(profile, "SELECT uuid, status FROM message ORDER BY uuid")
@@ -171,7 +171,7 @@ struct StorageTests {
     @Test func trustedSenderFillsContact() throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: "https://img/a.png"))
-        _ = try storage.apply(Storage.Commit(messages: [(message, true)]))
+        _ = try storage.apply(Storage.Commit(messages: [(message, true, nil)]))
         let row = try #require(try contact("02aa"))
         #expect(row["alias"] == "Ann")
         #expect(row["photoURL"] == "https://img/a.png")
@@ -180,7 +180,7 @@ struct StorageTests {
     @Test func untrustedSenderIsIgnored() throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: nil))
-        _ = try storage.apply(Storage.Commit(messages: [(message, false)]))
+        _ = try storage.apply(Storage.Commit(messages: [(message, false, nil)]))
         #expect(try contact("02aa") == nil)
     }
 
@@ -188,7 +188,7 @@ struct StorageTests {
     func nonHTTPSPhotoIsDropped(photo: String) throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: photo))
-        _ = try storage.apply(Storage.Commit(messages: [(message, true)]))
+        _ = try storage.apply(Storage.Commit(messages: [(message, true, nil)]))
         let row = try #require(try contact("02aa"))
         #expect(row["alias"] == "Ann")
         #expect((row["photoURL"] as String?) == nil)
@@ -197,10 +197,10 @@ struct StorageTests {
     @Test func emptyOrMissingFieldsKeepWhatIsKnown() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: "https://img/a.png")), true),
+            (.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: "https://img/a.png")), true, nil),
         ]))
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "http://img/b.png")), true),
+            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "http://img/b.png")), true, nil),
         ]))
         try storage.upsertContact(pubkey: "02aa", alias: nil)
         let row = try #require(try contact("02aa"))
@@ -233,12 +233,12 @@ struct StorageTests {
                 (pubkey: "02pending", ready: false),
             ],
             messages: [
-                (.fixture(uuid: "u1", chat: "02old", content: "old", timestamp: 1_000), false),
-                (.fixture(uuid: "u2", chat: "02new", fromMe: true, content: "older", timestamp: 1_500), false),
-                (.fixture(uuid: "u3", chat: "02new", fromMe: true, content: "newest", timestamp: 3_000), false),
+                (.fixture(uuid: "u1", chat: "02old", content: "old", timestamp: 1_000), false, nil),
+                (.fixture(uuid: "u2", chat: "02new", fromMe: true, content: "older", timestamp: 1_500), false, nil),
+                (.fixture(uuid: "u3", chat: "02new", fromMe: true, content: "newest", timestamp: 3_000), false, nil),
                 // Not text: never the preview.
-                (.fixture(uuid: "u4", type: MessageType.contactKeyRecord, chat: "02old", content: "record", timestamp: 9_000), false),
-                (.fixture(uuid: "u5", chat: "02pending", content: "hidden", timestamp: 5_000), false),
+                (.fixture(uuid: "u4", type: MessageType.contactKeyRecord, chat: "02old", content: "record", timestamp: 9_000), false, nil),
+                (.fixture(uuid: "u5", chat: "02pending", content: "hidden", timestamp: 5_000), false, nil),
             ]
         ))
         try storage.upsertContact(pubkey: "02new", alias: "Nina")
@@ -257,10 +257,10 @@ struct StorageTests {
     @Test func messagesFirstEmission() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u2", chat: "02aa", content: "second", timestamp: 2_000), false),
-            (.fixture(uuid: "u1", chat: "02aa", content: "first", timestamp: 1_000), false),
-            (.fixture(uuid: "u3", chat: "02bb", content: "other chat", timestamp: 1_500), false),
-            (.fixture(uuid: "u4", type: MessageType.contactKeyRecord, chat: "02aa", content: "record", timestamp: 1_200), false),
+            (.fixture(uuid: "u2", chat: "02aa", content: "second", timestamp: 2_000), false, nil),
+            (.fixture(uuid: "u1", chat: "02aa", content: "first", timestamp: 1_000), false, nil),
+            (.fixture(uuid: "u3", chat: "02bb", content: "other chat", timestamp: 1_500), false, nil),
+            (.fixture(uuid: "u4", type: MessageType.contactKeyRecord, chat: "02aa", content: "record", timestamp: 1_200), false, nil),
         ]))
         let messages = try #require(try await first(storage.messages(in: "02aa")))
         #expect(messages.map(\.content) == ["first", "second"])
@@ -269,7 +269,7 @@ struct StorageTests {
     @Test func messagesKeepsTheNewestTwoHundred() async throws {
         let storage = try profile.storage()
         let batch = (0..<250).map { index in
-            (Message.fixture(uuid: "u\(index)", chat: "02aa", content: "m\(index)", timestamp: Int64(index)), false)
+            (Message.fixture(uuid: "u\(index)", chat: "02aa", content: "m\(index)", timestamp: Int64(index)), false, String?.none)
         }
         _ = try storage.apply(Storage.Commit(messages: batch))
         let messages = try #require(try await first(storage.messages(in: "02aa")))

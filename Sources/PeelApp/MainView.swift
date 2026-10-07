@@ -57,17 +57,16 @@ struct Sidebar: View {
                         SidebarLink("Payments", systemImage: "bolt", to: .payments)
                     }
                     SidebarSection("Tribes", expanded: $showTribes) {
-                        Text("No tribes yet")
-                            .font(Theme.font(13))
-                            .foregroundStyle(Theme.secondaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                        ForEach(model.tribeConversations) { conversation in
+                            ConversationLink(conversation: conversation)
+                        }
+                        SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
                     }
                     SidebarSection("Direct messages", expanded: $showDirect) {
-                        ForEach(model.filteredConversations) { conversation in
-                            DirectMessageLink(conversation: conversation)
+                        ForEach(model.directConversations) { conversation in
+                            ConversationLink(conversation: conversation)
                         }
-                        AddContactLink()
+                        SidebarActionLink(title: "Add contact") { AddContactForm(done: $0) }
                     }
                 }
                 .padding(.bottom, 12)
@@ -93,7 +92,7 @@ struct SidebarHeader: View {
                 Text("Peel")
                     .font(Theme.font(15, .bold))
                 if let balance = model.balanceMsat {
-                    Text("\((balance / 1000).formatted()) sats")
+                    Text(Formatting.sats(msat: balance))
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -207,9 +206,9 @@ extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
     }
 }
 
-/// A direct message in the sidebar: bold with a count when unread, dimmed
-/// with a crossed-out bell when muted. Mute and unmute from its context menu.
-struct DirectMessageLink: View {
+/// A direct message or a tribe in the sidebar: bold with a count when unread,
+/// dimmed with a crossed-out bell when muted. Mute and unmute from its context menu.
+struct ConversationLink: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
 
@@ -218,7 +217,7 @@ struct DirectMessageLink: View {
         let muted = state?.mute == .muted
         let unread = muted ? 0 : state?.unread ?? 0
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: muted) {
-            Avatar(name: conversation.name, url: conversation.photoURL, size: 18)
+            ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
             if muted {
                 Image(systemName: "bell.slash")
@@ -312,23 +311,143 @@ struct ConnectionCard: View {
     }
 }
 
-struct AddContactLink: View {
-    @State private var adding = false
+/// A contact's photo, or a tribe's icon.
+struct ConversationIcon: View {
+    let conversation: Conversation
+    let size: CGFloat
+
+    var body: some View {
+        if conversation.isTribe {
+            TribeIcon(name: conversation.name, url: conversation.photoURL, size: size)
+        } else {
+            Avatar(name: conversation.name, url: conversation.photoURL, size: size)
+        }
+    }
+}
+
+/// A tribe's image on a rounded square, or `#` like a Slack channel.
+struct TribeIcon: View {
+    let name: String
+    let url: String?
+    let size: CGFloat
+
+    var body: some View {
+        if url != nil {
+            Avatar(name: name, url: url, size: size, shape: .roundedSquare)
+        } else {
+            Text("#")
+                .font(Theme.font(size * 0.85, .medium))
+                .frame(width: size, height: size)
+        }
+    }
+}
+
+/// Paste a link, see what the tribe is and what it costs, then join.
+struct JoinTribeForm: View {
+    @Environment(AppModel.self) private var model
+    let done: () -> Void
+
+    @State private var link = ""
+    @State private var info: TribeInfo?
+    @State private var working = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Join a tribe")
+                .font(Theme.font(15, .bold))
+            TextField("sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { Task { await lookUp() } }
+                .onChange(of: link) { info = nil; problem = nil }
+            if let info {
+                HStack(alignment: .top, spacing: 10) {
+                    TribeIcon(name: info.name, url: info.img, size: 36)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(info.name)
+                            .font(Theme.font(14, .medium))
+                        if let summary = info.summary?.trimmed.nilIfEmpty {
+                            Text(summary)
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.secondaryText)
+                                .lineLimit(3)
+                        }
+                        Text("Joining costs \(Formatting.sats(msat: info.joinAmountMsat)) · \(Formatting.sats(msat: info.messageAmountMsat)) a message")
+                            .font(Theme.font(12))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+            }
+            FormFooter(problem: problem, working: working) {
+                if info == nil {
+                    Button("Look up") { Task { await lookUp() } }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(working || link.trimmed.isEmpty)
+                } else {
+                    Button("Join") { Task { await join() } }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(working)
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
+    }
+
+    private func lookUp() async {
+        guard !link.trimmed.isEmpty, !working else { return }
+        working = true
+        defer { working = false }
+        let looked = link
+        do {
+            let found = try await model.previewTribe(looked)
+            // A link edited during the lookup is looked up again, not shown with this answer.
+            guard link == looked else { return }
+            info = found
+            problem = nil
+        } catch {
+            if link == looked { problem = "\(error)" }
+        }
+    }
+
+    private func join() async {
+        guard let info else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.joinTribe(link, agreedJoinMsat: info.joinAmountMsat)
+            done()
+        } catch {
+            problem = "\(error)"
+        }
+    }
+}
+
+/// A "+" row at the end of a sidebar section that opens a form in a popover.
+struct SidebarActionLink<Form: View>: View {
+    let title: String
+    @ViewBuilder let form: (_ done: @escaping () -> Void) -> Form
+    @State private var showing = false
 
     var body: some View {
         Button {
-            adding = true
+            showing = true
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: "plus")
                     .font(.system(size: 12))
                     .frame(width: 18)
-                Text("Add contact")
+                Text(title)
             }
         }
         .buttonStyle(SidebarRowStyle(selected: false))
-        .popover(isPresented: $adding, arrowEdge: .trailing) {
-            AddContactForm { adding = false }
+        .popover(isPresented: $showing, arrowEdge: .trailing) {
+            form { showing = false }
         }
     }
 }
@@ -351,18 +470,10 @@ struct AddContactForm: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Name (optional)", text: $name)
                 .textFieldStyle(.roundedBorder)
-            HStack {
-                if let problem {
-                    Text(problem)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(2)
-                }
-                Spacer()
-                if working { ProgressView().controlSize(.small) }
+            FormFooter(problem: problem, working: working) {
                 Button("Add") { Task { await add() } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(working || contactInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(working || contactInfo.trimmed.isEmpty)
             }
         }
         .padding(16)
@@ -377,6 +488,36 @@ struct AddContactForm: View {
             done()
         } catch {
             problem = "\(error)"
+        }
+    }
+}
+
+/// Why the last attempt failed: quiet, not red, since nothing was lost.
+struct ProblemText: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(Theme.font(12))
+            .foregroundStyle(Theme.secondaryText)
+            .lineLimit(3)
+    }
+}
+
+/// A popover form's last row: what went wrong, a spinner while working, and its buttons.
+struct FormFooter<Buttons: View>: View {
+    let problem: String?
+    let working: Bool
+    @ViewBuilder let buttons: Buttons
+
+    var body: some View {
+        HStack {
+            if let problem { ProblemText(problem) }
+            Spacer()
+            if working { ProgressView().controlSize(.small) }
+            buttons
         }
     }
 }
@@ -500,21 +641,45 @@ struct Detail: View {
 }
 
 /// The bar across the top of the detail column.
-struct DetailHeader: View {
+struct DetailHeader<Leading: View, Trailing: View>: View {
     let title: String
-    var avatar: Avatar?
+    var subtitle: String?
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 10) {
-            if let avatar { avatar }
-            Text(title)
-                .font(Theme.font(16, .bold))
-                .lineLimit(1)
+            leading
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(Theme.font(16, .bold))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Theme.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
+                }
+            }
             Spacer()
+            trailing
         }
         .padding(.horizontal, 20)
         .frame(height: 60)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+    }
+}
+
+extension DetailHeader where Leading == EmptyView, Trailing == EmptyView {
+    init(title: String) {
+        self.init(title: title, leading: { EmptyView() }, trailing: { EmptyView() })
+    }
+}
+
+extension DetailHeader where Trailing == EmptyView {
+    init(title: String, subtitle: String? = nil, @ViewBuilder leading: () -> Leading) {
+        self.init(title: title, subtitle: subtitle, leading: leading, trailing: { EmptyView() })
     }
 }
 
@@ -538,9 +703,12 @@ struct EmptyPlace: View {
 /// A contact's photo, or their initial on a colour picked from their name.
 /// Only https photos are ever loaded.
 struct Avatar: View {
+    enum Shape { case circle, roundedSquare }
+
     let name: String
     let url: String?
     let size: CGFloat
+    var shape: Shape = .circle
 
     private static let tones: [Color] = [
         Color(light: 0x7E9A8C, dark: 0x7E9A8C), Color(light: 0x9B8BB0, dark: 0x9B8BB0),
@@ -549,7 +717,7 @@ struct Avatar: View {
     ]
 
     private var photo: URL? {
-        url.flatMap(URL.init).flatMap { $0.scheme == "https" ? $0 : nil }
+        url?.httpsOnly.flatMap(URL.init)
     }
 
     /// Stable across launches, unlike `hashValue`.
@@ -570,7 +738,7 @@ struct Avatar: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
     }
 }
 
@@ -615,5 +783,15 @@ enum Formatting {
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+
+    /// Sats from msat, exact, since prices are shown before paying: "1 sat",
+    /// "3 sats", "1.999 sats".
+    static func sats(msat: UInt64) -> String {
+        guard msat % 1000 != 0 else {
+            let sats = msat / 1000
+            return "\(sats.formatted()) \(sats == 1 ? "sat" : "sats")"
+        }
+        return "\((Decimal(msat) / 1000).formatted()) sats"
     }
 }

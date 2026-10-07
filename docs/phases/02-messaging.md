@@ -128,13 +128,14 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    refused send, a message that could not be read) arrive as
    `Event.conversationError` and show above that chat's composer; the rest
    stay `coreError`. The connection is a bolt in the sidebar header: green
-   connected, orange otherwise; click for the state, a live retry countdown,
+   connected, orange otherwise (orange while connecting too, decided
+   2026-10-07); click for the state, a live retry countdown,
    the last connection error and "Reconnect now" (`Engine.reconnectNow`).
    Verified on the local stack from the CLI: send → delivered; broker
    stopped → send → failed; broker back → resend → same row id.
-   Open: a retry of a message that was in fact delivered (pending past 30 s
-   but the server did get it) arrives twice for the recipient; the official
-   apps share this.
+   Accepted for now (2026-10-07): a retry of a message that was in fact
+   delivered (pending past 30 s but the server did get it) arrives twice for
+   the recipient; the official apps share this.
 9. **Composer polish.** Done 2026-10-07. The composer is a text view
    (`ComposerField`): Return sends, Shift-Return or Option-Return adds a line,
    paste is plain text only, smart quotes and dashes are off, it grows to

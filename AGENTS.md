@@ -64,13 +64,15 @@ The app keeps the words in the data-protection Keychain, which needs the
 has a free Personal Team (team `T3M78XC3UV`, bundle ID `dev.peel.mac`, access
 group `T3M78XC3UV.dev.peel.mac`), so:
 
-- `scripts/sign-app.sh` picks the installed profile for the app ID that lasts
-  longest (`~/Library/Developer/Xcode/UserData/Provisioning Profiles`), embeds
-  it as `Contents/embedded.provisionprofile`, and signs with entitlements
-  derived from it. When none is left with two days to run it builds
-  `scripts/provision` with `xcodebuild -allowProvisioningUpdates`, which asks
-  Apple for a new one. Xcode must be signed in to the Apple ID (Settings >
-  Accounts); nothing else is interactive.
+- `scripts/sign-app.sh` builds `scripts/provision` (an empty app, same bundle
+  ID) with `xcodebuild -allowProvisioningUpdates` into `.build/provision`,
+  then copies that stub's profile into Peel as
+  `Contents/embedded.provisionprofile` and signs Peel with the stub's
+  entitlements. The stub is rebuilt only when its profile has under two days
+  left or was made for another app ID or certificate; the old profile is set
+  aside in Xcode's folder first so Xcode asks Apple for a new one. Xcode must
+  be signed in to the Apple ID (Settings > Accounts); nothing else is
+  interactive.
 - A Personal Team profile lasts **7 days**. Once the embedded profile has
   expired macOS refuses to launch the app. The Keychain item is not lost: it
   belongs to the access group, not the profile, and a build signed with a

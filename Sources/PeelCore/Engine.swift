@@ -22,6 +22,8 @@ public actor Engine {
         case historyFailed(String)
         /// An error that belongs to one conversation, such as a send the server refused.
         case conversationError(chat: String, message: String)
+        /// Why the last attempt to connect failed.
+        case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
     }
@@ -252,6 +254,7 @@ public actor Engine {
     public func connect(inviteCode: String? = nil, allowUntrustedCertificate: Bool = false) async throws {
         keepConnected = false
         reconnectTask?.cancel()
+        reconnectTask = nil
         self.allowUntrustedCertificate = allowUntrustedCertificate
         try await establish(inviteCode: inviteCode)
         try await waitUntilRegistered()
@@ -350,7 +353,7 @@ public actor Engine {
                 try await establish(inviteCode: nil)
                 break
             } catch {
-                emit.yield(.coreError("connecting: \(error)"))
+                emit.yield(.connectionError("\(error)"))
                 attempt += 1
             }
         }
@@ -444,7 +447,7 @@ public actor Engine {
         var outgoing: Message?
         var resend: Storage.Commit.Resend?
         if let id {
-            resend = (id, sent?.uuid, sent?.tag, now)
+            resend = (id, pubkey, sent?.uuid, sent?.tag, now)
         } else {
             outgoing = Message(
                 uuid: sent?.uuid, type: MessageType.text, chat: pubkey, fromMe: true, body: body, content: content,
@@ -469,7 +472,7 @@ public actor Engine {
     /// the server catches up when `getReads` next shows it behind.
     public func markRead(_ chat: String) async throws {
         guard let index = try storage.highestServerIndex(in: chat) else { return }
-        if let read = try storage.lastReads()[chat], read >= index { return }
+        if let read = try storage.lastRead(in: chat), read >= index { return }
         try storage.setRead(chat: chat, index: index)
         try await publishRead(chat, index: index)
     }
@@ -504,12 +507,12 @@ public actor Engine {
     /// run against stale state.
     @discardableResult
     private func run(
-        expectedSender: String? = nil,
+        expectedSender: String? = nil, readsReply: Bool = false,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         let result = try call(time, StateCodec.encode(state))
-        let followUps = try commit(result, time: time, expectedSender: expectedSender)
+        let followUps = try commit(result, time: time, expectedSender: expectedSender, readsReply: readsReply)
         try await complete(result, followUps)
         return result
     }
@@ -525,14 +528,18 @@ public actor Engine {
     /// The synchronous half: one transaction with everything the core reported,
     /// then the in-memory bookkeeping and events.
     private func commit(
-        _ result: RunReturn, time: String, expectedSender: String?,
+        _ result: RunReturn, time: String, expectedSender: String?, readsReply: Bool = false,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil
     ) throws -> FollowUps {
         var followUps = FollowUps()
         var commit = Storage.Commit()
         commit.settings[.clock] = time
         commit.resend = resend
-        if let json = result.lastRead, let reads = try? JSONDecoder().decode([String: Int64].self, from: Data(json.utf8)) {
+        // The core leaves `lastRead` out when the server has no markers at all,
+        // so a reply to `getReads` counts even without one.
+        let reads = result.lastRead.flatMap { try? JSONDecoder().decode([String: Int64].self, from: Data($0.utf8)) }
+        if readsReply || reads != nil {
+            let reads = reads ?? [:]
             commit.reads = reads
             followUps.staleReads = try storage.lastReads().compactMap { chat, index in
                 (reads[chat] ?? -1) < index ? (chat, index) : nil
@@ -733,7 +740,7 @@ public actor Engine {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            try await run(expectedSender: expectedSender) { time, state in
+            try await run(expectedSender: expectedSender, readsReply: kind == "getreads") { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL

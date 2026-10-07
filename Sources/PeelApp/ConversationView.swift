@@ -281,9 +281,19 @@ struct Composer: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    @ViewBuilder private var field: some View {
+        #if os(macOS)
+        ComposerField(text: $draft, placeholder: placeholder, focusRequest: focusRequest, submit: send)
+        #else
+        TextField(placeholder, text: $draft, axis: .vertical)
+            .lineLimit(1...8)
+            .onSubmit(send)
+        #endif
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            ComposerField(text: $draft, placeholder: placeholder, focusRequest: focusRequest, submit: send)
+            field
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -295,6 +305,7 @@ struct Composer: View {
             .buttonStyle(.plain)
             .foregroundStyle(canSend ? Theme.accent : Theme.secondaryText.opacity(0.5))
             .disabled(!canSend)
+            .keyboardShortcut(.return, modifiers: .command)
             .help("Send (Return). Shift-Return for a new line.")
         }
         .padding(.horizontal, 20)

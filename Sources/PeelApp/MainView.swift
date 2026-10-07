@@ -284,7 +284,7 @@ struct ConnectionCard: View {
                     .font(Theme.font(14, .medium))
                     .monospacedDigit()
             }
-            if model.connection != .connected, let error = model.notice {
+            if model.connection != .connected, let error = model.connectionError {
                 Text(error)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)

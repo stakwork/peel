@@ -99,6 +99,10 @@ public final class Storage: Sendable {
                 t.column("muteLevel", .integer).notNull().defaults(to: 0)
             }
         }
+        migrator.registerMigration("v5") { db in
+            // Unread counts and read markers look up a chat's server indexes.
+            try db.create(index: "message_chat_serverIndex", on: "message", columns: ["chat", "serverIndex"])
+        }
         return migrator
     }
 }
@@ -213,13 +217,14 @@ extension Storage {
         """
 
     /// Incoming text messages past the read marker count as unread.
+    /// One row per conversation; each count is a range on `message_chat_serverIndex`.
     private static let readStatesSQL = """
-        SELECT chat, MAX(muteLevel) AS muteLevel, SUM(unread) AS unread FROM (
-            SELECT chat, muteLevel, 0 AS unread FROM chatState
-            UNION ALL
-            SELECT m.chat, 0, 1 FROM message m LEFT JOIN chatState s ON s.chat = m.chat
-            WHERE m.fromMe = 0 AND m.type = 0 AND m.serverIndex > COALESCE(s.lastRead, -1)
-        ) GROUP BY chat
+        SELECT c.pubkey AS chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
+            SELECT COUNT(*) FROM message m
+            WHERE m.chat = c.pubkey AND m.serverIndex > COALESCE(s.lastRead, -1) AND m.fromMe = 0 AND m.type = 0
+        ) AS unread
+        FROM contact c LEFT JOIN chatState s ON s.chat = c.pubkey
+        WHERE c.ready = 1
         """
 
     /// Unread counts and mute levels by chat, re-emitted whenever they change.
@@ -240,6 +245,12 @@ extension Storage {
                 reads[row["chat"]] = row["lastRead"]
             }
             return reads
+        }
+    }
+
+    func lastRead(in chat: String) throws -> Int64? {
+        try pool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [chat])
         }
     }
 
@@ -297,7 +308,7 @@ extension Storage {
         var mutes: [String: Int] = [:]
         /// An outgoing row sent again: it takes the new send's uuid and tag.
         var resend: Resend?
-        typealias Resend = (id: Int64, uuid: String?, tag: String?, timestamp: Int64)
+        typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, timestamp: Int64)
     }
 
     /// Returns the stored rows; messages the upsert rejected are left out.
@@ -341,8 +352,16 @@ extension Storage {
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,
-                    sql: "UPDATE message SET uuid = ?, tag = ?, status = ?, timestamp = ? WHERE id = ? RETURNING *",
-                    arguments: [resend.uuid, resend.tag, Message.Delivery.pending.rawValue, resend.timestamp, resend.id]
+                    sql: """
+                        UPDATE message SET uuid = ?, tag = ?, status = ?, timestamp = ?
+                        WHERE id = ? AND chat = ? AND fromMe = 1 AND type = ? AND status IN (?, ?)
+                        RETURNING *
+                        """,
+                    arguments: [
+                        resend.uuid, resend.tag, Message.Delivery.pending.rawValue, resend.timestamp,
+                        resend.id, resend.chat, MessageType.text,
+                        Message.Delivery.pending.rawValue, Message.Delivery.failed.rawValue,
+                    ]
                 )
                 if let row { stored.append(row) }
             }

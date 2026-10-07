@@ -219,6 +219,8 @@ struct Session {
             "history failed: \(reason)"
         case .conversationError(let chat, let message):
             "error in \(chat.prefix(12)): \(message)"
+        case .connectionError(let message):
+            "connecting: \(message)"
         case .coreError(let message):
             "core error: \(message)"
         }

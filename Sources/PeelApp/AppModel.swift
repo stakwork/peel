@@ -58,6 +58,8 @@ final class AppModel {
     var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
     var readStates: [String: ChatReadState] = [:]
+    /// Why the last attempt to connect failed; cleared once connected.
+    var connectionError: String?
     /// When the engine will next try to reconnect, for a live countdown.
     var reconnectAt: Date?
     var restoreProgress = RestoreProgress()
@@ -280,6 +282,7 @@ final class AppModel {
             switch event {
             case .connection(let state):
                 connection = state
+                if state == .connected { connectionError = nil }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
                 } else {
@@ -287,6 +290,8 @@ final class AppModel {
                 }
             case .conversationError(let chat, let message):
                 conversationNotices[chat] = message
+            case .connectionError(let message):
+                connectionError = message
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
             case .balance(let msat):

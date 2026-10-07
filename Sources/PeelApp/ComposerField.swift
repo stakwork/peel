@@ -40,7 +40,7 @@ private struct ComposerTextView: NSViewRepresentable {
     static let font = NSFont(name: "Roboto-Regular", size: 14) ?? .systemFont(ofSize: 14)
     static let padding: CGFloat = 4
     static let maxLines: CGFloat = 8
-    static var lineHeight: CGFloat { NSLayoutManager().defaultLineHeight(for: font) + padding * 2 }
+    static let lineHeight = NSLayoutManager().defaultLineHeight(for: font) + padding * 2
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -69,7 +69,8 @@ private struct ComposerTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text {
+        // Marked text (an input method mid-composition) is not in the binding yet.
+        if !textView.hasMarkedText(), textView.string != text {
             textView.string = text
             context.coordinator.measure(textView)
         }

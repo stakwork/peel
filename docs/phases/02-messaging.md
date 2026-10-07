@@ -132,6 +132,31 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    not touched). Not exercised by hand in the app: the lock screen showing a
    migration error, and Tom's own first unlock, which performs the move.
 
+   Review (2026-10-07): `/code-review`, `/simplify` and `/security-review`
+   ran on this branch. Fixed: the login keychain is read only while no
+   data-protection item exists, so a locked or broken login keychain cannot
+   block unlock after the move, and a failed removal of the old copy errors
+   once and then unlocks from the new copy; `save` checks both keychains
+   before the slow seal; `PEEL_SIGN_IDENTITY=-` signs ad hoc again; the
+   provisioning stub builds with `-target` (no shared scheme needed). Signing
+   now takes the profile and entitlements from the stub app Xcode signed
+   (single source of truth, checked against the app ID, certificate and a
+   two-day margin) instead of scanning Xcode's profile folder; the stub has
+   no `get-task-allow`. Renewal checked by forcing it: the old profile was
+   set aside, Xcode issued a new one, and a build signed with it read the
+   `kc-*` items. Security review found nothing to fix.
+   Not applied, with reasons:
+   - Moving the item at launch without the PIN: the brief was "on unlock",
+     and opening it first means only a blob that decrypts gets moved.
+   - Dropping the read-back after `SecItemAdd`: the brief asked for it; one
+     query, once per account.
+   - `hasMnemonic` cannot tell a build without the entitlement from "no
+     account" (the data-protection read returns not-found, not -34018), so
+     such a build would show onboarding. Only an ad hoc build hits this
+     (an expired profile stops the launch instead); `sign-app.sh` warns.
+   - A real Xcode project for the app (Xcode would bundle, sign and renew
+     itself): bigger than this item; the stub covers the profile.
+
 6. **Long messages.** Text over ~869 bytes is split by the bindings layer
    (`sphinx-rs/sphinx-ffi/src/chunk.rs`, type 34). Confirm how `send` reports a
    chunked message and how `handle` reassembles one; handle both. Verify with

@@ -96,11 +96,17 @@ final class AppModel {
     var unreadMentions: Int {
         readStates.values.reduce(0) { $0 + $1.shownMentions }
     }
+    /// Unread messages by each chat's notification level; the Dock badge.
+    var unreadCount: Int {
+        readStates.values.reduce(0) { $0 + $1.shownUnread }
+    }
     /// Why the last attempt to connect failed; cleared once connected.
     var connectionError: String?
     /// When the engine will next try to reconnect, for a live countdown.
     var reconnectAt: Date?
     var restoreProgress = RestoreProgress()
+    /// Local notifications and the Dock badge.
+    let notifier = Notifier()
 
     /// The app's own account keeps its words in the Keychain. Launching with
     /// `-profile <name>` opens a development profile instead, whose words sit in
@@ -129,6 +135,7 @@ final class AppModel {
         } catch {
             notice = "\(error)"
         }
+        notifier.model = self
     }
 
     var usesFileSecrets: Bool { profile?.kind == .development }
@@ -161,6 +168,8 @@ final class AppModel {
             return
         }
         guard !profile.requiresPIN else {
+            // Left from a session that ended without locking.
+            notifier.removeAllDelivered()
             phase = .locked
             return
         }
@@ -285,10 +294,23 @@ final class AppModel {
     /// Asks for the PIN again if the timeout has passed. Called when the app
     /// comes to the front.
     func lockIfDue() {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0,
-              let unlockedAt, Date.now.timeIntervalSince(unlockedAt) > Double(pinTimeoutHours) * 3600 else { return }
+        guard isLockDue else { return }
         Clipboard.clearSecret()
+        notifier.removeAllDelivered()
         phase = .locked
+    }
+
+    /// The PIN timeout has passed, though Peel may not have come to the front
+    /// to lock yet; notifications already say nothing.
+    var isLockDue: Bool {
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let unlockedAt else { return false }
+        return Date.now.timeIntervalSince(unlockedAt) > Double(pinTimeoutHours) * 3600
+    }
+
+    /// Peel is quitting: what notifications said must not outlive a PIN.
+    func willTerminate() {
+        Clipboard.clearSecret()
+        if profile?.requiresPIN == true { notifier.removeAllDelivered() }
     }
 
     /// Creates an account from an invite and returns its twelve words, to show
@@ -320,6 +342,46 @@ final class AppModel {
     func enterApp() {
         unlockedAt = .now
         phase = .ready
+        Task { await notifier.refreshPermission() }
+    }
+
+    // MARK: Notifications
+
+    /// Whether Peel is the app in front, where the open chat is being read.
+    var isFrontmost: Bool {
+        #if os(macOS)
+        NSApplication.shared.isActive
+        #else
+        true
+        #endif
+    }
+
+    /// Asks the system for permission, after the offer explained it.
+    func enableNotifications() async {
+        await notifier.requestPermission()
+    }
+
+    func dismissNotificationOffer() {
+        notifier.dismissOffer()
+    }
+
+    func openNotificationSettings() {
+        notifier.openSystemSettings()
+    }
+
+    /// Off: notifications say only "New message".
+    func setNotificationShowsText(_ shows: Bool) async throws {
+        try await signedIn().setNotificationShowsText(shows)
+        notifier.showsText = shows
+    }
+
+    /// A click on a notification: Peel to the front with that chat open.
+    func openFromNotification(_ chat: String) {
+        #if os(macOS)
+        NSApplication.shared.activate()
+        #endif
+        guard phase == .ready || phase == .locked else { return }
+        destination = .chat(chat)
     }
 
     func resend(_ message: Message) async {
@@ -368,10 +430,9 @@ final class AppModel {
     /// Marks the open chat read while the window is in front, so a message that
     /// arrives while you look at it never shows as unread.
     func markSelectedChatRead() {
-        #if os(macOS)
-        guard NSApplication.shared.isActive else { return }
-        #endif
-        guard phase == .ready, let engine, let chat = selectedChat, (readStates[chat]?.unread ?? 0) > 0 else { return }
+        guard isFrontmost, phase == .ready, let chat = selectedChat else { return }
+        notifier.removeDelivered(in: [chat])
+        guard let engine, (readStates[chat]?.unread ?? 0) > 0 else { return }
         Task {
             do {
                 try await engine.markRead(chat)
@@ -504,6 +565,7 @@ final class AppModel {
         myServer = nil
         balanceMsat = nil
         unlockedAt = nil
+        notifier.reset()
     }
 
     private func attach(_ engine: Engine) async {
@@ -517,6 +579,9 @@ final class AppModel {
             ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
         connection = await engine.connection
+        notifier.attach(storage, showsText: (try? await engine.notificationShowsText()) ?? false)
+        // A notification clicked on the lock screen chose the chat before there was an engine.
+        if selectedChat != nil { observeMessages() }
         Task { await self.observeConversations(storage) }
         Task { await self.observeReadStates(storage) }
         Task { await self.observeThreads(storage) }
@@ -552,18 +617,22 @@ final class AppModel {
                 }
             case .historyDone:
                 restoreProgress.outcome = .finished
+                notifier.historyEnded()
             case .profile(let alias, let photoURL):
                 myAlias = alias
                 myPhotoURL = photoURL
                 rebuildRows()
             case .historyFailed(let reason):
                 restoreProgress.outcome = .failed(reason)
+                notifier.historyEnded()
             case .transfer(let id, _, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
-            case .message(let row) where row.deleted:
+            case .message(let row, _) where row.deleted:
                 // Its decrypted file is gone; nothing may still point at it.
                 if let id = row.id { attachmentHandles[id] = nil }
-            case .message, .sendStatus:
+            case .message(let message, let arrival):
+                notifier.received(message, arrival)
+            case .sendStatus:
                 break
             }
         }
@@ -589,7 +658,9 @@ final class AppModel {
     private func observeReadStates(_ storage: Storage) async {
         do {
             for try await states in storage.readStates() {
+                let previous = readStates
                 readStates = states
+                notifier.readStatesChanged(to: states, from: previous, unread: unreadCount)
                 markSelectedChatRead()
             }
         } catch {

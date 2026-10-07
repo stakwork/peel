@@ -24,9 +24,10 @@ struct PeelApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
                     model.markSelectedChatRead()
+                    Task { await model.notifier.refreshPermission() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                    Clipboard.clearSecret()
+                    model.willTerminate()
                 }
                 #endif
         }
@@ -59,6 +60,9 @@ struct RootView: View {
             OnboardingView()
         case .ready:
             MainView()
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if model.notifier.offersPermission { NotificationOffer() }
+                }
         }
     }
 }

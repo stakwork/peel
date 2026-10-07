@@ -211,6 +211,8 @@ public enum Setting: String, Sendable {
     /// The highest server index of a message dropped unstored (from a left
     /// tribe), so catching up does not fetch it again.
     case droppedIndex
+    /// "0" when notifications should say only "New message"; text is shown otherwise.
+    case notificationText
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -248,6 +250,8 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     /// Unread messages that mention this account.
     public var mentions: Int
     public var muteLevel: Int
+    /// The server index of the newest message read, if any.
+    public var lastRead: Int64? = nil
 
     public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
 
@@ -438,7 +442,7 @@ extension Storage {
     /// unread, one row per conversation; each count is a range on
     /// `message_unread`, and the mentions among them a range on `message_mentions`.
     private static let readStatesSQL = """
-        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, (
+        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, (
             SELECT COUNT(*) FROM message m
             WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type IN (\(MessageType.contentSQL))
                 AND m.serverIndex > COALESCE(s.lastRead, -1)

@@ -7,7 +7,8 @@ storage and CLI on `phase3/replies-threads` (on top of parity);
 attachments in the engine, storage and CLI on `phase3/attachments`; the
 UI for replies, threads, attachments and Peel's own menu on
 `phase3/chat-ui` (on top of attachments, rebased onto main after the
-Account screen), see "Chat UI" at the end.
+Account screen), see "Chat UI"; local notifications on
+`phase3/notifications`, see "Notifications" at the end.
 
 ## Tribes
 
@@ -1420,3 +1421,145 @@ links are clickable; new SQL is bound or built from constants. Near-miss
 (confidence about 5): a tribe delete is matched to its target by alias,
 which relies on the tribes server keeping aliases unique and refusing a
 member's delete of another's message; matching by sender key would not.
+
+## Notifications (branch `phase3/notifications`, 2026-10-07)
+
+Done means: while Peel runs, a macOS notification for each new message
+from someone else that you would want, opening its chat on a click, gone
+once the chat is read; the Dock badge equal to the sidebar's count. Remote
+push stays off limits (one push token per account, the official app's);
+these are local notifications posted by the running app.
+
+### Checked against the official Mac app
+
+`NotificationsHelper`, `SphinxOnionManager+NotificationsExtension`,
+`TransactionMessage.shouldSendNotification`, `getReceivedUnseenMessagesCount`:
+nothing for outgoing messages; muted chats never; mentions-only chats only
+for a mention; join and leave notes only to the tribe's admin; title is the
+tribe name with the sender as subtitle (DM: the sender); default sound;
+userInfo carries the chat, and a click opens it; the Dock badge is the
+received unseen count by notification level. Not taken: its choice of
+sounds and banner/sound modes (System Settings does that), the Reply
+action, the sender's photo as an attachment, notifying recently joined
+tribes' backlog.
+
+### Built
+
+- `Engine.Event.message` carries an `Arrival`: `.live`, `.history` (a
+  catch-up page) or `.restore`, from `msgsTotal` and `restoring` in `commit`.
+  `ChatReadState.lastRead` (the read marker, from the same query).
+  `Setting.notificationText` with `Engine.notificationShowsText` /
+  `setNotificationShowsText` (per account; development profiles and the
+  real one share UserDefaults, so it is not kept there).
+- `Notifier` (PeelApp): permission, posting, removal, Dock badge.
+  - Asks only once the account is open: a quiet bar under the window
+    ("Peel can show a notification ... Not now / Turn on notifications");
+    "Not now" is remembered on this Mac. The Account screen's
+    Notifications group shows On / Off / Turned off in System Settings with
+    Turn on or System Settings…, and a "Message text" dropdown (Show
+    message text / Say only "New message"). Permission is re-read whenever
+    Peel comes to the front. Denied: nothing posts, the screen says how to
+    allow it.
+  - What notifies: messages from others (text, attachments) and join
+    requests to a tribe this account owns, past the chat's read marker, by
+    mute level (all / mentions only: `mentionsMe` / muted: never; DMs follow
+    their level too, as in the official app). Never: own messages, other
+    membership notes, deleted rows, a restore, the first history run of a
+    session (the sidebar counts it on opening), the chat open in front of
+    you. Later catch-ups (after sleep or a dropped connection) notify;
+    messages arriving within 400 ms are gathered and more than 3 from one
+    chat become one "N new messages" notification.
+  - Content: title the sender (DM: the contact's name), subtitle `#tribe`
+    for tribes, body `Message.preview` ("Image", "File: name" for
+    attachments) up to 400 characters, or "New message" when the setting is
+    off; a join request says "X wants to join". `threadIdentifier` = chat
+    so Notification Center groups by chat; userInfo has the chat key only.
+    Default sound; Focus is the system's.
+  - Lock screen and PIN: the category's hidden-preview placeholder is "New
+    message", so with previews hidden the sender is not shown either. While
+    Peel is locked, or its PIN timeout has passed even in the background,
+    notifications say "Peel" / "New message". Delivered notifications are
+    removed when Peel locks, when a PIN profile launches into the lock
+    screen, when it quits, and when the account is forgotten.
+  - Click: Peel to the front with that chat open (behind the lock screen
+    if locked). Not scrolled to the message: the message rows belong to the
+    chat UI work; cheap to add later from `ChatModel`.
+  - Read: a chat's delivered notifications go when it is opened in front
+    of you, or when its read marker moves (read here or on another device).
+  - Dock badge: `AppModel.unreadCount` (sum of `shownUnread`), the
+    sidebar's count, so it follows read markers and mute levels. Requested
+    with `.badge`, which macOS needs to show it. (The brief said a Dock badge
+    already existed; none did on main or any branch, so it is new here.)
+- Entitlements: none. Local notifications need only the signed bundle
+  (`bundle-app.sh`); all Peel builds share bundle ID `dev.peel.mac`, so the
+  permission is shared with Tom's installed Peel.
+
+### Verified (local stack on free ports, profiles `nt-app` in the bundled app, `nt-bob` CLI)
+
+Decisions checked through a temporary log of what would be posted
+(permission was never granted on this Mac; see below):
+
+| Check | Result |
+|---|---|
+| DM from bob, another chat open | posted: title ntbob, body the text |
+| Tribe message, level all, Peel in the background | posted: ntbob / #Hive / text |
+| Mentions only: plain message, then `@ntapp ...` | only the mention posted |
+| Request to join the private tribe nt-app owns | posted: ntbob / #Owned / "ntbob wants to join" |
+| Bob's own join note, own messages | not posted |
+| Relaunch with a message sent while Peel was closed | not posted (first sync), badge counts it |
+| App paused, 5 DMs, broker restarted, resumed (reconnect catch-up) | one "5 new messages" |
+| Dock badge value | followed the sidebar counts (1, 2, 5–7) |
+| After rebasing onto main (attachments, chat UI) | DM posted as before |
+
+Not verified: anything visible in Notification Center (needs Tom to allow
+notifications once, see below); the click opening the chat; removal on
+read; the lock-screen placeholder; attachments' "Image"/"File: name" body
+(no memes server on the local stack); the Account screen's new group by
+eye. Allowing: launch a build, click "Turn on notifications" in the bar at
+the bottom, then Allow in the macOS prompt (or System Settings >
+Notifications > Peel > Allow notifications). This applies to every Peel
+build, including the installed one.
+
+### Reviews
+
+`/code-review high`, applied: a click while locked at launch left the chat
+empty after unlock (messages now observed on attach); join-request
+notifications swept away because unread counts only content (removal now
+keys on the read marker moving); notifications stayed readable after the
+PIN-timeout lock (removed on lock); the text setting failed open (now
+closed); fetching all delivered notifications once per chat (one fetch for
+all); a notification posted while a removal ran could be removed (only ones
+delivered before it). Not applied: moving the decision into PeelCore — it
+depends on what the window shows (frontmost, open chat, lock) and the engine
+now supplies the facts it needs (`Arrival`, `lastRead`).
+
+`/simplify` (four angles), applied: the engine tags arrivals instead of the
+app guessing catch-up from history events and a timer; the read marker
+from `readStates` instead of a database read per batch; tribe ownership
+read only when a join request is in the batch; the badge from
+`AppModel.unreadCount`, written only when it changes; shared session reset;
+`Dictionary(grouping:)`; redaction while locked in one place; `trimmed` /
+`nilIfEmpty`. Not applied: dropping the AppModel forwarders (kept so every
+action goes through the model, AGENTS.md); a shared bottom-banner view
+with `FileSecretsBanner` (MainView is the chat UI's file); a shared
+`Message.senderName` for the five existing "Someone" fallbacks (outside
+this change); a per-message dedupe flag from storage (the per-session uuid
+set is enough with `Arrival`).
+
+`/security-review`: one finding, fixed. Past the PIN timeout but still in
+the background, Peel stayed `.ready` and kept posting text; and
+notifications from before a quit stayed readable while the relaunched app
+asked for the PIN. Now redaction follows `AppModel.isLockDue`, and
+delivered notifications are removed on a PIN profile's launch to the lock
+screen and on quit. Ruled out: clicks bypassing the lock (the lock screen
+still shows), anything before unlock (no engine), userInfo (chat key only),
+alias spoofing (tribe notifications always carry `#tribe`), the shared
+bundle ID (same user, no new boundary; one Peel may remove another
+profile's notifications).
+
+### Open
+
+- Two Peel processes (e.g. Tom's installed one and a dev build) share the
+  bundle ID: either may receive the other's clicks and remove its
+  notifications. Harmless for one user; a profile tag in userInfo would fix it.
+- Scroll to the message on click; a Reply action.

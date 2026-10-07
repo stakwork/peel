@@ -18,7 +18,8 @@ in progress and what comes next. Update it when you finish something.
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
-    the words in the Keychain, `.development` profiles in a plain file (CLI only)
+    the words in the Keychain sealed under a six-digit PIN, `.development`
+    profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
   `ConversationView`, `OnboardingView`)
@@ -27,7 +28,8 @@ in progress and what comes next. Update it when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
-- `scripts/run-app.sh` — builds, bundles and opens the Mac app
+- `scripts/run-app.sh` — builds, bundles, signs and opens the Mac app
+- `scripts/sign-app.sh` — signs a bundle with the Apple Development identity
 - `scripts/build-icon.sh` — renders `Assets/peel.svg` into `Assets/AppIcon.icns`
 
 ## Build and run
@@ -66,11 +68,11 @@ assembled by hand in `scripts/run-app.sh`.
 - `send` returns only a tag and a uuid; Peel writes its own outgoing row in the
   same transaction as the state. The server echoes sent messages to all of the
   account's devices.
-- The sender inside a message is self-declared. For a live message the child
-  index in the topic names the contact whose key decrypted it, and `Engine`
-  files the message under that contact; names and photos are only taken from
-  senders that match. History (`batch`) messages carry no index, so they are
-  accepted only from known contacts and never rename anyone.
+- The core recovers a message's sender from its signature, so a sender can
+  only ever name themself. For a live message the child index in the topic
+  names the contact as well and `Engine` requires the two to agree. History
+  (`batch`) messages are accepted only from contacts the core knows. Contact
+  records (type 33) are honoured by the core only when signed by this account.
 - Names and photos are not core state; they arrive with messages and invites.
   A contact is a conversation only once the core holds their key (`ready`).
 

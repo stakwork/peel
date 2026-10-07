@@ -33,58 +33,48 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    prefers) and a hardened runtime. Keep `swift build` and `scripts/run-app.sh`
    working for the CLI and quick checks, but the app ships from Xcode from now
    on. Update `AGENTS.md` and the README.
-2. **Keychain storage with a PIN.** Tom decided (2026-10-07) that a six-digit
-   PIN is required, as in the official apps. Done in code and checked with a
-   scratch program (save, unlock, wrong PIN, PIN change, duplicate, delete):
-   `SecretStore` with `KeychainSecretStore` (app profiles,
-   `Application Support/Peel/<name>`; the words are sealed under a key derived
-   from the PIN with PBKDF2-HMAC-SHA256, 2.5M iterations and a random salt,
-   then AES-256-GCM; versioned blob in a generic-password item) and
-   `FileSecretStore` (development profiles under `Peel/dev/<name>`, CLI only,
-   no PIN). `Profile(name:kind:)` picks the store; the app uses
-   `.development` only when launched with `-profile`. The PIN lives only in
-   memory; timeout and re-asking are the app's job.
-   Known limit, raised with Tom: six digits is a small space. At about half a
-   second per guess, a leaked item falls to an offline search in days on one
-   machine (hours on a GPU); the Keychain's binding to the signed app is the
-   real wall. A memory-hard KDF would need a dependency; revisit if the threat
-   model grows. Not RNCryptor-compatible with the official app's format on
-   purpose (the copy is local only).
-   Original brief: a `SecretStore` with two implementations: Keychain
-   (`kSecClassGenericPassword`, service `dev.peel`, account = profile name,
-   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, not synced to iCloud) for
-   the app, and the existing file for the CLI. App profiles move to
-   `Application Support/Peel/<name>`; dev profiles stay under `Peel/dev/<name>`
-   and the app opens one only when launched with `-profile`, showing a banner
-   that says the words are in a file. `Account` takes the store; `Profile`
-   stops knowing about mnemonics. Verify: create an account in the app, confirm
-   no `mnemonic` file exists and the item is in Keychain Access, relaunch after
-   a rebuild without a prompt.
+2. **Keychain storage with a PIN.** Done and verified in the signed app
+   (2026-10-07: Tom restored the throwaway's words into the app's own profile;
+   the Keychain item exists and no mnemonic file does). Tom decided a
+   six-digit PIN is required, as in the official apps. `SecretStore` with
+   `KeychainSecretStore` (app profiles, `Application Support/Peel/<name>`;
+   the words are sealed under a key derived from the PIN with
+   PBKDF2-HMAC-SHA256, 2.5M iterations and a random salt, then AES-256-GCM;
+   versioned blob in a generic-password item) and `FileSecretStore`
+   (development profiles under `Peel/dev/<name>`, CLI only, no PIN).
+   `Profile(name:kind:)` picks the store and exposes `requiresPIN`; the app
+   uses `.development` only when launched with `-profile`. The PIN lives only
+   in memory; timeout and re-asking are the app's job.
+   Honest limits, from the security review: the item is in the file-based
+   login keychain, so `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` is not
+   in effect there (it is backed up and migrated with the keychain file), and
+   a six-digit PIN at ~0.4 s per guess falls to an offline search in minutes
+   on a GPU and hours on a laptop if someone has the keychain file and the
+   login password. The Keychain's binding to the signed app plus the login
+   password are the real wall; the PIN stops a passer-by at an unlocked Mac.
+   Next step when an Xcode project with a provisioning profile exists: move
+   to the data-protection keychain (`kSecUseDataProtectionKeychain`), which
+   wraps items in hardware and keeps them out of backups.
+
 3. **Onboarding: new account.** One field already accepts an invite link.
    Finish the flow: name, then a screen that shows the twelve words once with a
    "written down" confirmation, then the conversation list. Verify with a fresh
    invite on the throwaway path. Signup already works end to end from the CLI.
-4. **Restore from twelve words.** Engine side done (`Engine.restore()`):
-   `getMsgsCounts`, then one message per contact key (`fetchFirstMsgsPerKey`
-   paging; the core recreates each contact, and the account's own
-   `ContactKeyRecord`s, which the core only honours when signed by this
-   account, supply names and photos), then whatever messages are still
-   missing. Verified 2026-10-07: the throwaway's words restored into a fresh
-   CLI profile reproduced the contact, its name and all messages. Still to do:
-   the app's onboarding path (`AppModel.join` refuses twelve words until the
-   Keychain is live) with a progress view driven by `.history` events.
-   Original brief: after connecting, rebuild what a fresh install lacks. Port the sequence from the Mac app's
-   `SphinxOnionManager+AccountRestoreExtension.swift`:
-   `getMsgsCounts` → `fetchFirstMsgsPerKey` (one message per contact key, from
-   which the core reconstructs each contact; `ContactKeyRecord`, type 33,
-   carries the full contact info and name) → `fetchMsgsBatch` paging for
-   history (`msgsTotal` already drives paging in `Engine`) → tribes from
-   group-join messages (left to phase 3). Show progress in onboarding; a busy
-   account takes a while. Names and photos for restored contacts come from
-   those messages; see the open hardening note in phase 1 about history
-   messages and sender trust.
-   Verify by restoring the throwaway's own words into a fresh profile and
-   comparing contacts and messages with the original database.
+4. **Restore from twelve words.** Done. `Account.restore` marks the account
+   (`needsRestore`) and the engine runs the plan itself the moment it is
+   online: `getMsgsCounts`, then one message per contact key
+   (`fetchFirstMsgsPerKey` paging, from which the core recreates each
+   contact), then every message from index 0 to the server's highest. Runs
+   queue behind one another, a dropped connection resumes the page in flight,
+   a page that never comes fails the run after 30 s, and the app observes
+   progress through `.history`, `.historyDone`, `.historyFailed`. Names come
+   with the messages: the core recovers each sender from the message
+   signature, so a sender can only name themself, and contact records are
+   honoured only when signed by this account. Verified 2026-10-07 from the CLI
+   into a fresh profile (contact, name, all messages) and by Tom in the app.
+   Still to do in the app: show the progress, and a "forget this account on
+   this Mac" action for an orphaned Keychain item.
+
 5. **Real-account checklist**, done by Tom, not an agent: Keychain in place,
    restore proven on the throwaway, CLI closed (the profile lock enforces one
    process), official app still installed. Restore the real account, then use

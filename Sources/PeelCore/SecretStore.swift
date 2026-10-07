@@ -6,6 +6,8 @@ import Security
 /// Where an account's twelve words live, locked with the account's PIN.
 public protocol SecretStore: Sendable {
     var hasMnemonic: Bool { get }
+    /// Whether this store asks for a PIN at all.
+    var requiresPIN: Bool { get }
     func loadMnemonic(pin: String) throws -> String
     func save(mnemonic: String, pin: String) throws
     func changePIN(from oldPIN: String, to newPIN: String) throws
@@ -26,11 +28,14 @@ public enum SecretStoreFailure: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// The six-digit PIN that unlocks an account on this device.
+/// The six-digit PIN that unlocks an account on this device. ASCII digits only,
+/// so a PIN typed one way can always be typed again.
 public enum PIN {
+    public static let length = 6
+
     public static func validate(_ pin: String) throws {
-        guard pin.count == 6, pin.allSatisfy(\.isNumber) else {
-            throw PeelError("the PIN must be six digits")
+        guard pin.utf8.count == length, pin.utf8.allSatisfy({ (0x30...0x39).contains($0) }) else {
+            throw PeelError("the PIN must be \(length) digits")
         }
     }
 }
@@ -39,20 +44,22 @@ public enum PIN {
 ///
 /// The item is tied to the signed app that wrote it, so other programs are
 /// asked before they can read it; the PIN then has to be guessed to use what
-/// they read. Six digits are a small space, so the derivation is slow on purpose.
+/// they read. Six digits are a small space, so the derivation is slow on
+/// purpose, but it buys minutes against a GPU, not days: the Keychain's ACL and
+/// the login password are the real wall. Moving to the data-protection
+/// Keychain (hardware-wrapped, not in backups) needs a provisioned bundle.
 public struct KeychainSecretStore: SecretStore {
-    public let service: String
+    private static let service = "dev.peel"
     public let account: String
 
-    public init(service: String = "dev.peel", account: String) {
-        self.service = service
+    public init(account: String) {
         self.account = account
     }
 
     private var query: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
         ]
     }
@@ -60,6 +67,8 @@ public struct KeychainSecretStore: SecretStore {
     public var hasMnemonic: Bool {
         SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
+
+    public var requiresPIN: Bool { true }
 
     public func loadMnemonic(pin: String) throws -> String {
         var item: CFTypeRef?
@@ -79,7 +88,6 @@ public struct KeychainSecretStore: SecretStore {
         try PIN.validate(pin)
         let attributes = query.merging([
             kSecValueData as String: try PINBox.seal(mnemonic, pin: pin),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
             kSecAttrLabel as String: "Peel account \(account)",
         ]) { $1 }
         let status = SecItemAdd(attributes as CFDictionary, nil)
@@ -108,39 +116,38 @@ public struct KeychainSecretStore: SecretStore {
 }
 
 /// The words sealed under a key derived from the PIN:
-/// `version(1) | salt(16) | iterations(4, big-endian) | nonce(12) | AES-GCM box`.
+/// `version(1) | salt(16) | iterations(4, big-endian) | AES-GCM nonce+ciphertext+tag`.
 enum PINBox {
     private static let version: UInt8 = 1
-    // About half a second on an M-series Mac: a six-digit PIN is a small space.
+    // About 0.4 s on an M-series Mac. Fixed for this version; a blob claiming
+    // another count is refused rather than obeyed.
     private static let iterations: UInt32 = 2_500_000
+    private static let headerLength = 1 + 16 + 4
 
     static func seal(_ mnemonic: String, pin: String) throws -> Data {
-        var salt = Data(count: 16)
-        salt.withUnsafeMutableBytes { _ = SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
-        let key = try derive(pin: pin, salt: salt, iterations: iterations)
-        let box = try AES.GCM.seal(Data(mnemonic.utf8), using: key)
+        let salt = Data((0..<16).map { _ in UInt8.random(in: .min ... .max) })
+        let key = try derive(pin: pin, salt: salt)
+        guard let box = try AES.GCM.seal(Data(mnemonic.utf8), using: key).combined else {
+            throw PeelError("could not seal the account")
+        }
         var out = Data([version])
         out.append(salt)
         out.append(contentsOf: withUnsafeBytes(of: iterations.bigEndian) { Array($0) })
-        out.append(contentsOf: box.nonce)
-        out.append(box.ciphertext)
-        out.append(box.tag)
+        out.append(box)
         return out
     }
 
     static func open(_ sealed: Data, pin: String) throws -> String {
-        let bytes = [UInt8](sealed)
-        guard bytes.count > 1 + 16 + 4 + 12 + 16, bytes[0] == version else {
+        let bytes = Data(sealed)
+        guard bytes.count > headerLength, bytes[0] == version,
+              bytes.withUnsafeBytes({ UInt32(bigEndian: $0.loadUnaligned(fromByteOffset: 17, as: UInt32.self)) }) == iterations
+        else {
             throw PeelError("the stored account has an unknown format")
         }
-        let salt = Data(bytes[1..<17])
-        let iterations = bytes[17..<21].reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
-        let nonce = try AES.GCM.Nonce(data: Data(bytes[21..<33]))
-        let ciphertext = Data(bytes[33..<(bytes.count - 16)])
-        let tag = Data(bytes[(bytes.count - 16)...])
-        let key = try derive(pin: pin, salt: salt, iterations: iterations)
+        let key = try derive(pin: pin, salt: bytes[1..<17])
         do {
-            let plain = try AES.GCM.open(AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag), using: key)
+            let box = try AES.GCM.SealedBox(combined: bytes[headerLength...])
+            let plain = try AES.GCM.open(box, using: key)
             guard let words = String(data: plain, encoding: .utf8) else { throw SecretStoreFailure.wrongPIN }
             return words
         } catch {
@@ -149,13 +156,12 @@ enum PINBox {
         }
     }
 
-    private static func derive(pin: String, salt: Data, iterations: UInt32) throws -> SymmetricKey {
+    private static func derive(pin: String, salt: Data) throws -> SymmetricKey {
         var key = [UInt8](repeating: 0, count: 32)
-        let pinBytes = Array(pin.utf8)
         let status = salt.withUnsafeBytes { saltPointer in
             CCKeyDerivationPBKDF(
                 CCPBKDFAlgorithm(kCCPBKDF2),
-                pinBytes.map { CChar(bitPattern: $0) }, pinBytes.count,
+                pin, pin.utf8.count,
                 saltPointer.bindMemory(to: UInt8.self).baseAddress, salt.count,
                 CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256), iterations,
                 &key, key.count
@@ -176,6 +182,8 @@ public struct FileSecretStore: SecretStore {
     }
 
     public var hasMnemonic: Bool { FileManager.default.fileExists(atPath: file.path) }
+
+    public var requiresPIN: Bool { false }
 
     public func loadMnemonic(pin: String) throws -> String {
         guard let words = try? String(contentsOf: file, encoding: .utf8) else { throw SecretStoreFailure.noAccount }

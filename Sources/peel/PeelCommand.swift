@@ -57,26 +57,29 @@ struct PeelCommand {
         switch command {
         case "init":
             guard let server else { throw PeelError("init needs --server host:port") }
-            let engine = try await Account.create(profile, alias: alias, network: network, server: server)
-            try await Session(engine).connect(insecure: insecure).finish(after: wait)
+            let created = try await Account.create(profile, alias: alias, pin: "", network: network, server: server)
+            try await Session(created.engine).connect(insecure: insecure).finish(after: wait)
 
         case "signup":
             guard let text = arguments.next() else { throw PeelError("signup needs an invite link, or - for stdin") }
             let invite = try Engine.parseInvite(text == "-" ? readLine() ?? "" : text)
-            let engine = try await Account.signup(
-                profile, invite: invite, alias: alias, network: network, server: server, allowUntrustedCertificate: insecure
+            let created = try await Account.signup(
+                profile, invite: invite, alias: alias, pin: "", network: network, server: server,
+                allowUntrustedCertificate: insecure
             )
             print("account created in \(profile.directory.path)")
-            try await Session(engine).finish(after: wait)
+            try await Session(created.engine).finish(after: wait)
 
         case "restore":
             print("twelve words:")
             let engine = try await Account.restore(
-                profile, mnemonic: readLine() ?? "", alias: alias, network: network, server: server
+                profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server
             )
             let session = try await Session(engine).connect(insecure: insecure)
-            try await session.engine.restore()
-            print("restore complete")
+            // The engine fetches contacts and history itself once online.
+            while await session.engine.isSyncingHistory {
+                try await Task.sleep(for: .milliseconds(300))
+            }
             try await session.finish(after: wait)
 
         case "whoami":
@@ -154,6 +157,10 @@ struct Session {
             "send \(status) \(tag?.prefix(12) ?? "")"
         case .history(let phase, let reached, let end):
             "history \(phase): \(reached) of \(end.map(String.init) ?? "?")"
+        case .historyDone:
+            "history complete"
+        case .historyFailed(let reason):
+            "history failed: \(reason)"
         case .coreError(let message):
             "core error: \(message)"
         }

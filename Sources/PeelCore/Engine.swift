@@ -17,6 +17,9 @@ public actor Engine {
         case sendStatus(tag: String?, status: String)
         /// A restore or catch-up fetched history up to `reached` of `end`.
         case history(phase: HistoryPhase, reached: UInt64, end: UInt64?)
+        /// The server has nothing more; after a restore, the account is complete.
+        case historyDone
+        case historyFailed(String)
         case coreError(String)
     }
 
@@ -61,7 +64,6 @@ public actor Engine {
         case notConnected
         case invalidContactInfo
         case registrationTimedOut
-        case restoreTimedOut
 
         public var description: String {
             switch self {
@@ -69,7 +71,6 @@ public actor Engine {
             case .notConnected: "not connected to the server"
             case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
             case .registrationTimedOut: "the server did not confirm registration in time"
-            case .restoreTimedOut: "the server stopped answering during the restore"
             }
         }
     }
@@ -79,10 +80,13 @@ public actor Engine {
         public let pubkey: String
         /// Present once the key exchange with this contact has completed.
         public let contactKey: String?
+        /// The child key this account uses for the contact; it names them in topics.
+        public let childIndex: UInt64
 
         enum CodingKeys: String, CodingKey {
             case pubkey
             case contactKey = "contact_key"
+            case childIndex = "my_idx"
         }
     }
 
@@ -118,15 +122,23 @@ public actor Engine {
     /// ping time to acknowledge once the payment lands.
     private var pingsByHash: [String: UInt64] = [:]
     private var pingsByTag: [String: UInt64] = [:]
+    /// Contacts by the child index the core uses for them, so a live message's
+    /// topic names its sender without a core call.
+    private var contactsByChildIndex: [UInt64: String] = [:]
+
     /// A history fetch in progress: which kind, the next index to ask for, and
-    /// where it ends (unknown until the server says).
+    /// where it ends (unknown until the server says). Runs queue behind one
+    /// another; a restore is contacts first, then every message from the start.
     private struct HistoryRun {
         var phase: HistoryPhase
         var next: UInt64
         var end: UInt64?
     }
     private var history: HistoryRun?
-    private var counts: MessageCounts?
+    private var queuedHistory: [HistoryRun] = []
+    private var awaitingCounts = false
+    private var historyWatchdog: Task<Void, Never>?
+    private static let historyStall: Duration = .seconds(30)
 
     private static let historyPageSize: UInt32 = 100
 
@@ -148,7 +160,9 @@ public actor Engine {
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
-        _ = try storage.apply(Storage.Commit(contacts: Self.readiness(in: state)))
+        let contacts = try Self.contacts(in: state)
+        contactsByChildIndex = Self.index(contacts)
+        _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
     // MARK: - Pure helpers
@@ -165,8 +179,14 @@ public actor Engine {
         return words
     }
 
+    /// The words in whatever someone typed or pasted: any case, separated by
+    /// whitespace or commas.
+    public static func words(in text: String) -> [String] {
+        text.lowercased().split(whereSeparator: { $0.isWhitespace || $0 == "," }).map(String.init)
+    }
+
     private static func normalise(mnemonic: String) -> String {
-        mnemonic.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        words(in: mnemonic).joined(separator: " ")
     }
 
     public static func parseInvite(_ text: String) throws -> Invite {
@@ -184,8 +204,8 @@ public actor Engine {
         try contacts(in: storage.loadCoreState())
     }
 
-    private static func readiness(in state: [String: Data]) throws -> [(pubkey: String, ready: Bool)] {
-        try contacts(in: state).map { ($0.pubkey, $0.contactKey != nil) }
+    private static func index(_ contacts: [Contact]) -> [UInt64: String] {
+        Dictionary(contacts.map { ($0.childIndex, $0.pubkey) }, uniquingKeysWith: { $1 })
     }
 
     private static func contacts(in state: [String: Data]) throws -> [Contact] {
@@ -213,6 +233,11 @@ public actor Engine {
 
     public func contacts() throws -> [Contact] {
         try Self.contacts(in: state)
+    }
+
+    /// True while a restore or catch-up is still asking the server for history.
+    public var isSyncingHistory: Bool {
+        awaitingCounts || history != nil || !queuedHistory.isEmpty
     }
 
     // MARK: - Connection
@@ -391,39 +416,6 @@ public actor Engine {
         try await startHistory(HistoryRun(phase: .messages, next: next, end: nil))
     }
 
-    /// Rebuilds contacts and history on a device that is new to the account:
-    /// first one message per contact key, from which the core recreates each
-    /// contact, then every message from the beginning. Returns when the server
-    /// has nothing more. Call after `connect()`.
-    public func restore(timeout: Duration = .seconds(600)) async throws {
-        let deadline = ContinuousClock.now + timeout
-        // Coming online already started a catch-up; let it finish rather than race it.
-        try await waitForHistory(until: deadline)
-        counts = nil
-        try await run { time, state in
-            try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
-        }
-        let countsDeadline = ContinuousClock.now + .seconds(20)
-        while counts == nil {
-            guard ContinuousClock.now < countsDeadline else { throw Failure.restoreTimedOut }
-            try await Task.sleep(for: .milliseconds(200))
-        }
-        guard let counts else { return }
-        if counts.firstForEachKey > 0 {
-            try await startHistory(HistoryRun(phase: .contacts, next: 0, end: counts.firstForEachKeyHighestIndex))
-        } else if counts.total > 0 {
-            try await syncMessages()
-        }
-        try await waitForHistory(until: deadline)
-    }
-
-    private func waitForHistory(until deadline: ContinuousClock.Instant) async throws {
-        while history != nil {
-            guard ContinuousClock.now < deadline else { throw Failure.restoreTimedOut }
-            try await Task.sleep(for: .milliseconds(250))
-        }
-    }
-
     // MARK: - The core contract
 
     /// Runs one core call against the current state. The returned state is
@@ -444,6 +436,7 @@ public actor Engine {
     private struct FollowUps {
         var acknowledgedPings: [UInt64] = []
         var justRegistered = false
+        var restorePlan: MessageCounts?
     }
 
     /// The synchronous half: one transaction with everything the core reported,
@@ -462,9 +455,14 @@ public actor Engine {
         commit.state = updates
         commit.deleteState = result.stateToDelete
         followUps.justRegistered = !isRegistered && Self.isRegistered(newState)
-        let syncedContacts = Set(updates.keys.compactMap { $0.hasPrefix("c/") ? String($0.dropFirst(2)) : nil })
-        if !syncedContacts.isEmpty || result.stateToDelete.contains(where: { $0.hasPrefix("c/") }) {
-            commit.contacts = try Self.readiness(in: newState)
+        let changedContacts = Set(updates.keys.compactMap { $0.hasPrefix("c/") ? String($0.dropFirst(2)) : nil })
+        let removedContacts = result.stateToDelete.compactMap { $0.hasPrefix("c/") ? String($0.dropFirst(2)) : nil }
+        var contacts: [Contact]?
+        if !changedContacts.isEmpty || !removedContacts.isEmpty {
+            let all = try Self.contacts(in: newState)
+            contacts = all
+            commit.contacts = all.filter { changedContacts.contains($0.pubkey) }.map { ($0.pubkey, $0.contactKey != nil) }
+                + removedContacts.map { ($0, false) }
         }
 
         if let balance = result.newBalance {
@@ -482,9 +480,7 @@ public actor Engine {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            if let message = Self.message(
-                from: msg, expectedSender: expectedSender, state: newState, syncedContacts: syncedContacts
-            ) {
+            if let message = Self.message(from: msg, expectedSender: expectedSender, state: newState) {
                 commit.messages.append(message)
             }
         }
@@ -495,9 +491,21 @@ public actor Engine {
 
         let stored = try storage.apply(commit)
         state = newState
+        if let contacts {
+            contactsByChildIndex = Self.index(contacts)
+        }
 
         if let json = result.msgsCounts {
-            counts = try? JSONDecoder().decode(MessageCounts.self, from: Data(json.utf8))
+            do {
+                let counts = try JSONDecoder().decode(MessageCounts.self, from: Data(json.utf8))
+                if awaitingCounts {
+                    awaitingCounts = false
+                    followUps.restorePlan = counts
+                }
+            } catch {
+                awaitingCounts = false
+                emit.yield(.historyFailed("unreadable message counts: \(error)"))
+            }
         }
 
         for hash in landedPings {
@@ -561,6 +569,9 @@ public actor Engine {
         if followUps.justRegistered {
             await cameOnline()
         }
+        if let counts = followUps.restorePlan {
+            try await startRestore(counts)
+        }
         // Only batch responses carry a total.
         if result.msgsTotal != nil {
             try await advanceHistory(with: result)
@@ -568,12 +579,12 @@ public actor Engine {
     }
 
     /// Turns what the core reported into a row, deciding which conversation it
-    /// belongs to. The sender inside a message is self-declared; for a live
-    /// message the engine knows which contact's key decrypted it and uses that.
-    /// Messages from history name only known contacts, and never rename them.
-    private static func message(
-        from msg: Msg, expectedSender: String?, state: [String: Data], syncedContacts: Set<String>
-    ) -> (Message, Bool)? {
+    /// belongs to. The core recovers a message's sender from its signature, so a
+    /// sender can only ever name themself; for a live message the child index in
+    /// the topic names the contact as well and the two must agree. Contact
+    /// records (type 33) are honoured by the core only when signed by this
+    /// account. Messages from senders the core does not know are dropped.
+    private static func message(from msg: Msg, expectedSender: String?, state: [String: Data]) -> (Message, Bool)? {
         guard let type = msg.type else { return nil }
         let fromMe = msg.fromMe ?? false
         let claimed = msg.sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }?.pubkey
@@ -588,13 +599,11 @@ public actor Engine {
         } else {
             guard let claimed, state["c/\(claimed)"] != nil else { return nil }
             chat = claimed
-            // A contact record the core just applied was signed by this account's
-            // own key on another device, so what it says about the contact holds.
-            trustSender = Int(type) == MessageType.contactKeyRecord && syncedContacts.contains(claimed)
+            trustSender = true
         }
         let message = Message(
             uuid: msg.uuid,
-            serverIndex: msg.index.flatMap { UInt64($0) }.map { Int64(clamping: $0) },
+            serverIndex: msg.index.flatMap { UInt64($0) }.flatMap { Int64(exactly: $0) },
             type: Int(type), chat: chat, fromMe: fromMe,
             sender: msg.sender, body: msg.message, content: BodyFields.content(of: msg.message),
             msat: msg.msat.map { Int64(clamping: $0) },
@@ -616,7 +625,7 @@ public actor Engine {
         // decrypted it; index 0 is the account key used for key exchange.
         var expectedSender: String?
         if ["msg", "msgs", "stream"].contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
-            expectedSender = try? Sphinxrs.contactPubkeyByChildIndex(state: StateCodec.encode(state), childIdx: index)
+            expectedSender = contactsByChildIndex[index]
         }
         do {
             try await run(expectedSender: expectedSender) { time, state in
@@ -630,20 +639,56 @@ public actor Engine {
         }
     }
 
-    /// Runs once per connection, as soon as the account is registered.
+    /// Runs once per connection, as soon as the account is registered. Decides
+    /// what history to fetch: resume a run a dropped connection interrupted, do
+    /// the full restore an account brought back from its words still needs, or
+    /// catch up from the newest message stored.
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
             }
-            try await syncMessages()
+            if let run = history {
+                try await request(run)
+            } else if try storage.value(for: .needsRestore) == "1" {
+                awaitingCounts = true
+                try await self.run { time, state in
+                    try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
+                }
+            } else {
+                try await syncMessages()
+            }
         } catch {
             emit.yield(.coreError("coming online: \(error)"))
         }
     }
 
+    /// Contacts first (one message per contact key, from which the core
+    /// recreates each contact), then every message from the beginning.
+    private func startRestore(_ counts: MessageCounts) async throws {
+        var runs: [HistoryRun] = []
+        if counts.firstForEachKey > 0 {
+            runs.append(HistoryRun(phase: .contacts, next: 0, end: counts.firstForEachKeyHighestIndex))
+        }
+        if counts.total > 0 {
+            runs.append(HistoryRun(phase: .messages, next: 0, end: counts.totalHighestIndex))
+        }
+        guard let first = runs.first else {
+            try await historyEnded()
+            return
+        }
+        queuedHistory.append(contentsOf: runs.dropFirst())
+        try await startHistory(first)
+    }
+
+    /// Starts a run, or queues it behind the one in flight: all batch replies
+    /// look alike, so two runs can never be in the air at once.
     private func startHistory(_ run: HistoryRun) async throws {
+        guard history == nil else {
+            queuedHistory.append(run)
+            return
+        }
         history = run
         try await request(run)
     }
@@ -663,6 +708,14 @@ public actor Engine {
                 )
             }
         }
+        // A page that never comes ends the run, so nothing waits forever.
+        historyWatchdog?.cancel()
+        let expected = run.next
+        historyWatchdog = Task { [weak self] in
+            try? await Task.sleep(for: Self.historyStall)
+            guard !Task.isCancelled else { return }
+            await self?.historyStalled(at: expected)
+        }
     }
 
     /// History comes a page at a time. Each page moves the cursor past its
@@ -670,11 +723,9 @@ public actor Engine {
     /// unreadable message cannot cause an endless loop.
     private func advanceHistory(with result: RunReturn) async throws {
         guard var run = history else { return }
-        if run.end == nil, let total = result.msgsTotal {
-            run.end = total
-        }
+        run.end = run.end ?? result.msgsTotal
         let reached = result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }.max()
-        guard let reached, reached >= run.next else {
+        guard let reached, reached >= run.next, reached < UInt64(Int64.max) else {
             try await finish(run)
             return
         }
@@ -689,11 +740,27 @@ public actor Engine {
     }
 
     private func finish(_ run: HistoryRun) async throws {
+        historyWatchdog?.cancel()
         history = nil
-        // Contacts first, then whatever messages are still missing.
-        if run.phase == .contacts, let counts, counts.total > 0 {
-            try await syncMessages()
+        if !queuedHistory.isEmpty {
+            try await startHistory(queuedHistory.removeFirst())
+        } else {
+            try await historyEnded()
         }
+    }
+
+    private func historyEnded() async throws {
+        if try storage.value(for: .needsRestore) == "1" {
+            try storage.set("0", for: .needsRestore)
+        }
+        emit.yield(.historyDone)
+    }
+
+    private func historyStalled(at expected: UInt64) {
+        guard let run = history, run.next == expected else { return }
+        history = nil
+        queuedHistory = []
+        emit.yield(.historyFailed("no answer from the server for \(Self.historyStall) while fetching \(run.phase)"))
     }
 
     /// A ping is "paymentHash:time:tag".

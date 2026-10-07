@@ -125,10 +125,9 @@ final class AppModel {
         guard let invite = try? Engine.parseInvite(input.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw PeelError("That doesn't look like a Sphinx invite.")
         }
-        let engine = try await Account.signup(profile, invite: invite, alias: name, pin: pin)
-        await attach(engine)
-        let mnemonic = try await Task.detached { try profile.loadMnemonic(pin: pin) }.value
-        return mnemonic.split(separator: " ").map(String.init)
+        let created = try await Account.signup(profile, invite: invite, alias: name, pin: pin)
+        await attach(created.engine)
+        return Engine.words(in: created.mnemonic)
     }
 
     /// Brings an account back from its twelve words, then pulls contacts and
@@ -140,7 +139,6 @@ final class AppModel {
         let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
         await attach(engine)
         restoreProgress = RestoreProgress()
-        Task { await pullHistory(engine) }
     }
 
     /// Leaves onboarding for the main window.
@@ -175,20 +173,6 @@ final class AppModel {
         phase = .ready
     }
 
-    private func pullHistory(_ engine: Engine) async {
-        // The core's restore calls need a live connection; the engine keeps
-        // reconnecting, so wait for it however long that takes.
-        while connection != .connected {
-            try? await Task.sleep(for: .milliseconds(300))
-        }
-        do {
-            try await engine.restore()
-            restoreProgress.finished = true
-        } catch {
-            restoreProgress.failure = "\(error)"
-        }
-    }
-
     private func attach(_ engine: Engine) async {
         self.engine = engine
         let storage = engine.storage
@@ -217,6 +201,10 @@ final class AppModel {
                 case .contacts: restoreProgress.contacts = (reached, end)
                 case .messages: restoreProgress.messages = (reached, end)
                 }
+            case .historyDone:
+                restoreProgress.finished = true
+            case .historyFailed(let reason):
+                restoreProgress.failure = reason
             case .message, .sendStatus:
                 break
             }

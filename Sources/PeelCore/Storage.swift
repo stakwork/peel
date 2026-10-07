@@ -117,6 +117,10 @@ public enum Setting: String, Sendable {
     case contactInfo
     case balanceMsat
     case clock
+    /// "1" while an account brought back from its words still needs its history.
+    case needsRestore
+    /// Hours before the app asks for the PIN again; "0" means only at launch.
+    case pinTimeoutHours
 }
 
 /// One chat in the sidebar: the contact plus the newest text message.

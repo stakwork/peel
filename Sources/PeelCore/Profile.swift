@@ -3,23 +3,11 @@ import Foundation
 /// A local account: where its database lives and where its twelve words are kept.
 public struct Profile: Sendable {
     public enum Kind: Sendable {
-        /// An account the app owns: words in the Keychain.
+        /// An account the app owns: words in the Keychain, behind a PIN.
         case app
         /// A throwaway account for the command-line harness: words in a plain
         /// file, so tools can run unattended. Never for a real account.
         case development
-    }
-
-    public enum Failure: Error, CustomStringConvertible {
-        case badName(String)
-        case noAccount(String)
-
-        public var description: String {
-            switch self {
-            case .badName(let name): "\"\(name)\" is not a valid profile name; use letters, digits, dot, dash or underscore"
-            case .noAccount(let name): "no account named \(name)"
-            }
-        }
     }
 
     public let name: String
@@ -31,8 +19,8 @@ public struct Profile: Sendable {
     public init(name: String, kind: Kind) throws {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
         guard (1...64).contains(name.count), name.unicodeScalars.allSatisfy(allowed.contains),
-              name != ".", name != ".." else {
-            throw Failure.badName(name)
+              !["." , "..", "dev"].contains(name.lowercased()) else {
+            throw PeelError("\"\(name)\" is not a valid profile name; use letters, digits, dot, dash or underscore")
         }
         self.name = name
         self.kind = kind
@@ -50,15 +38,19 @@ public struct Profile: Sendable {
 
     public var hasAccount: Bool { secrets.hasMnemonic }
 
+    public var requiresPIN: Bool { secrets.requiresPIN }
+
     public func loadMnemonic(pin: String) throws -> String {
-        do {
-            return try secrets.loadMnemonic(pin: pin)
-        } catch SecretStoreFailure.noAccount {
-            throw Failure.noAccount(name)
-        }
+        try secrets.loadMnemonic(pin: pin)
     }
 
-    /// Removes the words and everything stored with them.
+    /// Checks a PIN without handing the words to the caller.
+    public func verifyPIN(_ pin: String) throws {
+        _ = try secrets.loadMnemonic(pin: pin)
+    }
+
+    /// Removes the words and everything stored with them. A failure to remove
+    /// the words is reported, and the database is then kept with them.
     public func delete() throws {
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

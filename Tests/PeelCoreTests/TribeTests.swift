@@ -1,16 +1,109 @@
 import Foundation
+import GRDB
 import Testing
 @testable import PeelCore
 
+private func uuid(_ n: Int) -> String { String(format: "%064x", n) }
+
+/// Sender details as a tribe stamps them on what it forwards.
+private func sender(_ alias: String) -> String { #"{"pubkey":"02t","alias":"\#(alias)"}"# }
+
 struct TribeTests {
-    @Test func mentionsMatchWholeWordsExactly() {
-        #expect(mentions("hi @ann welcome", alias: "ann"))
-        #expect(mentions("@ann", alias: "ann"))
-        #expect(mentions("line one\n@ann", alias: "ann"))
-        #expect(!mentions("hi @anna", alias: "ann"))
-        #expect(!mentions("hi @Ann", alias: "ann"))
-        #expect(!mentions("mail ann@example.com", alias: "ann"))
-        #expect(!mentions("hi ann", alias: "ann"))
+    @Test func mentionsMatchTheWholeAliasInAnyCase() {
+        let me = ["Tom_Smith"]
+        #expect(mentions("hi @Tom_Smith welcome", aliases: me))
+        #expect(mentions("@Tom_Smith", aliases: me))
+        #expect(mentions("line one\n@Tom_Smith", aliases: me))
+        #expect(mentions("@tom_smith can you look", aliases: me))
+        #expect(mentions("thanks @Tom_Smith, and @ann", aliases: me))
+        #expect(mentions("@Tom_Smith: done?", aliases: me))
+        #expect(mentions("(cc @Tom_Smith)", aliases: me))
+        #expect(mentions("@Tom_Smith's turn", aliases: me))
+        #expect(!mentions("hi @Tom_Smithers", aliases: me))
+        #expect(!mentions("hi @Tom_Smith_2", aliases: me))
+        #expect(!mentions("mail ann@Tom_Smith", aliases: me))
+        #expect(!mentions("hi Tom_Smith", aliases: me))
+        #expect(!mentions("hi @Tom Smith", aliases: me))
+        #expect(!mentions("hi @Tom_Smith", aliases: [String]()))
+        #expect(!mentions("hi @", aliases: [""]))
+    }
+
+    @Test func mentionsMatchAnyOfTheAliases() {
+        let me: Set = ["Tom_Smith", "Tom_Smith_2"]
+        #expect(mentions("hi @Tom_Smith_2", aliases: me))
+        #expect(mentions("@Tom_Smith_2 and @Tom_Smith", aliases: me))
+        #expect(mentions("@Tom_Smith_23 and @Tom_Smith.", aliases: me))
+        #expect(!mentions("@Tom_Smith_3", aliases: me))
+    }
+
+    @Test func ownAliasesAreTheSentOneAndTheEchoedOnes() {
+        #expect(ownTribeAliases(sent: "Tom_Smith", echoed: []) == ["Tom_Smith"])
+        // Made unique by the tribes server: the plain alias is another member's.
+        #expect(ownTribeAliases(sent: "Tom_Smith", echoed: ["Tom_Smith_2"]) == ["Tom_Smith_2"])
+        #expect(ownTribeAliases(sent: "Tom_Smith", echoed: ["Tommy", "Tom_Smith_2"]) == ["Tommy", "Tom_Smith_2"])
+        // An earlier name, or one sent from another device, still names this
+        // account, and so does a new name not echoed yet.
+        #expect(ownTribeAliases(sent: "Tom_Smith", echoed: ["Tom_Smith", "tom"]) == ["Tom_Smith", "tom"])
+        #expect(ownTribeAliases(sent: "Thomas", echoed: ["Tom_Smith"]) == ["Tom_Smith", "Thomas"])
+    }
+
+    @Test func mentionScanRechecksOnlyWhatChanged() throws {
+        let scan = MentionScan(sent: "Tom_Smith", echoed: ["02a": ["Tom_Smith"], "02b": ["Tom_Smith_2"]])
+        let stored = try #require(scan.stored)
+        #expect(MentionScan(stored: stored) == scan)
+        #expect(MentionScan(stored: "Tom_Smith") == nil)
+        #expect(scan.chats(changedSince: nil) == nil)
+        #expect(scan.chats(changedSince: scan) == [])
+        #expect(scan.chats(changedSince: MentionScan(sent: "Tom", echoed: scan.echoed)) == nil)
+        let before = MentionScan(sent: "Tom_Smith", echoed: ["02a": ["Tom_Smith"], "02c": ["x"]])
+        #expect(scan.chats(changedSince: before) == ["02b", "02c"])
+    }
+
+    @Test func echoedAliasesComeFromOwnTribeMessages() throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: "02t1"), Tribe(pubkey: "02t2")])
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: uuid(1), chat: "02t1", fromMe: true, sender: sender("Tom_Smith_2")), false, nil),
+            (.fixture(uuid: uuid(2), chat: "02t1", fromMe: true, sender: sender("Tom_Smith")), false, nil),
+            (.fixture(uuid: uuid(3), chat: "02t1", fromMe: false, sender: sender("ann")), false, nil),
+            (.fixture(uuid: uuid(4), chat: "02t2", fromMe: true, sender: nil), false, nil),
+            (.fixture(uuid: uuid(5), chat: "02dm", fromMe: true, sender: sender("Tom Smith")), false, nil),
+        ]))
+        #expect(try storage.echoedOwnAliases() == ["02t1": ["Tom_Smith", "Tom_Smith_2"]])
+    }
+
+    @Test func rescanFlagsStoredMentionsByEachTribesAliases() throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: "02t1"), Tribe(pubkey: "02t2")])
+        // In 02t1 the tribes server made this account Tom_Smith_2; 02t2 has no echo yet.
+        let messages: [(Message, Bool, String?)] = [
+            (.fixture(uuid: uuid(1), chat: "02t1", content: "hi @Tom_Smith, welcome"), false, nil),
+            (.fixture(uuid: uuid(2), chat: "02t1", content: "ask @tom_smith_2"), false, nil),
+            (.fixture(uuid: uuid(3), chat: "02t2", content: "ask @Tom_Smith_2"), false, nil),
+            (.fixture(uuid: uuid(4), chat: "02t2", content: "no mention of Tom_Smith"), false, nil),
+            (.fixture(uuid: uuid(5), type: MessageType.attachment, chat: "02t2", content: "@Tom_Smith look"), false, nil),
+            (.fixture(uuid: uuid(6), chat: "02dm", content: "@Tom_Smith in a direct message"), false, nil),
+            (.fixture(uuid: uuid(7), chat: "02t1", fromMe: true, content: "me @Tom_Smith_2"), false, nil),
+            (.fixture(uuid: uuid(8), chat: "02t2", content: "@Tom_Smith: done"), false, nil),
+        ]
+        _ = try storage.apply(Storage.Commit(messages: messages))
+        let flagged = { try rows(profile, "SELECT uuid FROM message WHERE mentionsMe = 1 ORDER BY id").map { $0["uuid"] as String } }
+        // Chunks of two, so the scan crosses chunk boundaries.
+        try storage.rescanMentions(sent: "Tom_Smith", echoed: ["02t1": ["Tom_Smith_2"]], chunk: 2)
+        #expect(try flagged() == [uuid(2), uuid(5), uuid(8)])
+
+        // Idempotent, and a later alias set unflags what no longer names this account.
+        try storage.rescanMentions(sent: "Tom_Smith", echoed: ["02t1": ["Tom_Smith_2"]])
+        #expect(try flagged() == [uuid(2), uuid(5), uuid(8)])
+        // Limited to some tribes, the others are left as they are.
+        try storage.rescanMentions(sent: "Thomas", echoed: [:], in: ["02t1"])
+        #expect(try flagged() == [uuid(5), uuid(8)])
+        try storage.rescanMentions(sent: "Tom_Smith", echoed: [:], in: [])
+        #expect(try flagged() == [uuid(5), uuid(8)])
+        try storage.rescanMentions(sent: "Tom_Smith", echoed: [:])
+        #expect(try flagged() == [uuid(1), uuid(5), uuid(8)])
     }
 
     @Test func settingsAreSentWithTheOfficialKeysInMsat() throws {

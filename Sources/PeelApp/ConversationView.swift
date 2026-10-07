@@ -1,19 +1,54 @@
 import SwiftUI
 import PeelCore
 
+/// A chat: its header, the conversation and the composer, with the open
+/// thread beside it. On a window too narrow for both, the thread takes the
+/// conversation's place rather than covering it.
 struct ConversationView: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
+    /// Dragged on its divider; remembered on this Mac (a convenience).
+    @AppStorage("threadWidth") private var threadWidth: Double = ThreadPanel.width
 
-    @State private var draft = ""
-    @State private var focusRequest = 0
+    /// The narrowest the conversation gets beside a thread.
+    private static let minimumWidth: CGFloat = 380
+
+    var body: some View {
+        let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
+        GeometryReader { geometry in
+            let both = geometry.size.width >= Self.minimumWidth + threadWidth + 1
+            HStack(spacing: 0) {
+                // Its draft lives in the model, so it survives being covered.
+                if thread == nil || both {
+                    ChatColumn(conversation: conversation)
+                }
+                if let thread {
+                    if both {
+                        PaneDivider(width: $threadWidth, range: 300...560, standard: ThreadPanel.width, growsTo: .leading)
+                    }
+                    ThreadPanel(conversation: conversation, ref: thread)
+                        .frame(width: both ? threadWidth : nil)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+        }
+    }
+
+}
+
+/// A chat's header, conversation and composer. Its own view, so resizing the
+/// window or opening a thread does not redraw it.
+private struct ChatColumn: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
 
     var body: some View {
         let tribe = conversation.isTribe ? model.selectedTribe : nil
+        let composer = ComposerID.chat(conversation.chat)
         VStack(spacing: 0) {
             if conversation.isTribe {
                 TribeHeader(conversation: conversation, tribe: tribe)
-                if let tribe, let pin = tribe.pin, let pinned = model.messages.first(where: { $0.uuid == pin }) {
+                if let tribe, let pin = tribe.pin, let pinned = pinned(pin) {
                     PinnedMessageBar(message: pinned, tribe: tribe)
                 }
             } else {
@@ -21,12 +56,12 @@ struct ConversationView: View {
                     ConversationIcon(conversation: conversation, size: 32)
                 }
             }
-            MessageList(messages: model.messages, tribe: tribe, inTribe: conversation.isTribe)
-                // A fresh scroll view per chat: reusing one across chats left the
-                // lazy stack blank at the bottom anchor until it was scrolled.
-                // Made again once the messages have loaded, so it starts at
-                // the bottom of them rather than of an empty list.
-                .id(model.messages.isEmpty ? nil : conversation.chat)
+            MessageList(rows: model.chatRows, composer: composer, canAnswer: tribe?.canManage == true)
+            // A fresh scroll view per chat: reusing one across chats left the
+            // lazy stack blank at the bottom anchor until it was scrolled.
+            // Made again once the messages have loaded, so it starts at
+            // the bottom of them rather than of an empty list.
+            .id(model.timeline.messages.isEmpty ? nil : conversation.chat)
             if let notice = model.conversationNotices[conversation.chat] {
                 ConversationNotice(text: notice) { model.dismissNotice(in: conversation.chat) }
             }
@@ -34,25 +69,20 @@ struct ConversationView: View {
                 TribeStatusBar(conversation: conversation, tribe: tribe)
             } else {
                 Composer(
-                    draft: $draft,
+                    composer: composer,
                     placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
-                    focusRequest: focusRequest,
-                    loadMentionable: conversation.isTribe
-                        ? { [chat = conversation.chat] in await model.mentionCandidates(in: chat) } : nil,
-                    send: send
+                    loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil
                 )
                 .id(conversation.chat)
             }
         }
-        .onAppear { focusRequest += 1 }
-        .onChange(of: conversation.chat) { focusRequest += 1 }
+        .fileDrop(into: composer, for: conversation)
+        .onAppear { model.composerFocus[composer, default: 0] += 1 }
     }
 
-    private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        draft = ""
-        Task { await model.send(text) }
+    /// The pinned message, also when a thread has folded it away.
+    private func pinned(_ uuid: String) -> Message? {
+        model.timeline.messages.first { $0.uuid == uuid } ?? model.timeline.threads[uuid]?.original
     }
 }
 
@@ -113,12 +143,12 @@ struct TribeHeader: View {
             HStack(spacing: 4) {
                 if let tribe, tribe.canManage {
                     HeaderButton(systemImage: "slider.horizontal.3", help: "Edit tribe") { showingSettings = true }
-                        .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
+                        .peelPopover(isPresented: $showingSettings) {
                             TribeSettingsForm(editing: tribe) { showingSettings = false }
                         }
                 }
                 HeaderButton(systemImage: "person.2", help: "Members") { showingMembers = true }
-                    .popover(isPresented: $showingMembers, arrowEdge: .bottom) {
+                    .peelPopover(isPresented: $showingMembers) {
                         TribeMembersPanel(conversation: conversation, tribe: tribe) { showingMembers = false }
                     }
             }
@@ -206,6 +236,19 @@ struct TribeMembersPanel: View {
                             MemberRow(alias: member.alias, photoURL: member.photoURL, note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
                             }
+                            .peelMenu {
+                                .sections(
+                                    [
+                                        .button("Approve", systemImage: "checkmark") {
+                                            Task { await answer(member, approve: true) }
+                                        },
+                                        .button("Decline", systemImage: "xmark") {
+                                            Task { await answer(member, approve: false) }
+                                        },
+                                    ],
+                                    [.button("Copy name", systemImage: "doc.on.doc") { Clipboard.copy(member.alias) }]
+                                )
+                            }
                         }
                         SectionLabel("Members")
                     }
@@ -222,6 +265,16 @@ struct TribeMembersPanel: View {
                                     .font(Theme.font(12, .medium))
                                     .foregroundStyle(Theme.secondaryText)
                             }
+                        }
+                        .peelMenu {
+                            var remove: [MenuEntry] = []
+                            if let pubkey = member.pubkey, !isMe, canManage {
+                                remove.append(.destructive("Remove from tribe", systemImage: "person.badge.minus",
+                                                           confirm: "Remove \(member.alias)") { Task { await kick(pubkey) } })
+                            }
+                            return .sections(
+                                [.button("Copy name", systemImage: "doc.on.doc") { Clipboard.copy(member.alias) }], remove
+                            )
                         }
                     }
                 }
@@ -306,95 +359,6 @@ extension MemberRow where Actions == EmptyView {
     }
 }
 
-struct MessageList: View {
-    let messages: [Message]
-    var tribe: Tribe?
-    var inTribe = false
-
-    var body: some View {
-        let answers = Self.answers(messages)
-        let canAnswer = tribe?.canManage == true
-        let layout = Self.layout(messages, inTribe: inTribe)
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(zip(messages, layout)), id: \.0.id) { message, place in
-                        if place.startsDay {
-                            DayDivider(date: message.date)
-                        }
-                        Group {
-                            if message.type == MessageType.text {
-                                MessageRow(
-                                    message: message,
-                                    endsRun: place.endsRun,
-                                    sender: inTribe && !message.fromMe ? (place.startsRun ? .named : .indented) : .none
-                                )
-                            } else if message.type == MessageType.memberRequest, !message.fromMe {
-                                JoinRequestNote(message: message, approved: message.uuid.flatMap { answers[$0] },
-                                                canAnswer: canAnswer)
-                            } else if message.type != MessageType.attachment {
-                                // Attachments wait for their design; the engine already has them.
-                                MembershipNote(message: message)
-                            }
-                        }
-                        .id(message.id)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-            }
-            .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.last?.id) { _, last in
-                if let last {
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) }
-                }
-            }
-        }
-    }
-
-    /// Whether each answered request (by uuid) was approved.
-    private static func answers(_ messages: [Message]) -> [String: Bool] {
-        var answers: [String: Bool] = [:]
-        for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
-            if let request = message.replyUUID { answers[request] = message.type == MessageType.memberApprove }
-        }
-        return answers
-    }
-
-    private struct Place {
-        var startsDay: Bool
-        var startsRun: Bool
-        var endsRun = true
-    }
-
-    /// A run is one sender's messages a few minutes apart on one day. Its
-    /// last message shows the time under it (the others on hover); in a tribe
-    /// its first shows the member's name and photo. Worked out in one pass,
-    /// reading each member's name once.
-    private static func layout(_ messages: [Message], inTribe: Bool) -> [Place] {
-        var places: [Place] = []
-        places.reserveCapacity(messages.count)
-        var previousAlias: String?
-        for (index, message) in messages.enumerated() {
-            let alias = inTribe && !message.fromMe ? message.senderAlias : nil
-            guard index > 0 else {
-                places.append(Place(startsDay: true, startsRun: true))
-                previousAlias = alias
-                continue
-            }
-            let previous = messages[index - 1]
-            let startsDay = !Calendar.current.isDate(message.date, inSameDayAs: previous.date)
-            let startsRun = startsDay || message.type != MessageType.text || previous.type != MessageType.text
-                || previous.fromMe != message.fromMe
-                || message.date.timeIntervalSince(previous.date) > 5 * 60 || alias != previousAlias
-            places[index - 1].endsRun = startsRun
-            places.append(Place(startsDay: startsDay, startsRun: startsRun))
-            previousAlias = alias
-        }
-        return places
-    }
-}
-
 /// "Name joined", "Name left" and the owner's decisions, between the
 /// messages of a tribe, worded as the Mac app words them.
 struct MembershipNote: View {
@@ -443,148 +407,8 @@ struct DayDivider: View {
     }
 }
 
-/// One message: theirs on the left, yours on the right. The time sits under
-/// the last message of a run and appears beside any bubble on hover, without
-/// moving anything. In a tribe, theirs sit beside the member's photo, with
-/// the name over the first of a run.
-struct MessageRow: View {
-    /// The column beside a member's message in a tribe.
-    enum Sender {
-        case none
-        /// Lined up under the run's photo.
-        case indented
-        /// The member's photo, and their name over the message.
-        case named
-    }
-
-    let message: Message
-    let endsRun: Bool
-    var sender: Sender = .none
-
-    @State private var hovering = false
-
-    private static let avatarSize: CGFloat = 28
-
-    var body: some View {
-        // A pending send becomes retryable after a timeout, with no change to
-        // the row itself, so those rows redraw once when it passes.
-        if message.delivery == .pending {
-            TimelineView(.explicit([message.date.addingTimeInterval(Message.confirmationTimeout + 0.5)])) { context in
-                row(now: context.date)
-            }
-        } else {
-            row(now: .now)
-        }
-    }
-
-    private func row(now: Date) -> some View {
-        let retryable = message.isRetryable(now: now)
-        return HStack(alignment: .top, spacing: 8) {
-            switch sender {
-            case .none: EmptyView()
-            case .indented: Color.clear.frame(width: Self.avatarSize, height: 1)
-            case .named: Avatar(name: message.senderAlias ?? "?", url: message.senderPhotoURL, size: Self.avatarSize)
-            }
-            HStack(alignment: .center, spacing: 8) {
-                if message.fromMe {
-                    Spacer(minLength: 80)
-                    hoverTime
-                }
-                VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
-                    if sender == .named {
-                        Text(message.senderAlias ?? "Unknown")
-                            .font(Theme.font(12, .medium))
-                            .foregroundStyle(Theme.secondaryText)
-                            .padding(.leading, 4)
-                    }
-                    MessageBubble(message: message)
-                        .opacity(message.delivery == .pending && !retryable ? 0.6 : 1)
-                        .contextMenu { MessageMenu(message: message) }
-                    if retryable {
-                        UndeliveredActions(message: message)
-                    } else if endsRun {
-                        MessageMeta(message: message)
-                    }
-                }
-                if !message.fromMe {
-                    hoverTime
-                    Spacer(minLength: 80)
-                }
-            }
-        }
-        .padding(.bottom, endsRun ? 6 : 0)
-        .onHover { hovering = $0 }
-    }
-
-    /// Always laid out, so hovering never shifts the row; only its opacity changes.
-    private var hoverTime: some View {
-        MessageMeta(message: message)
-            .opacity(hovering && !endsRun ? 1 : 0)
-            .accessibilityHidden(true)
-    }
-}
-
-/// A message's context menu: copy, and for a tribe's owner, pin or unpin
-/// (the Mac app lets only the owner pin).
-struct MessageMenu: View {
-    @Environment(AppModel.self) private var model
-    let message: Message
-
-    var body: some View {
-        Button("Copy text") { Clipboard.copy(message.content ?? "") }
-        if let tribe = model.selectedTribe, tribe.pubkey == message.chat, tribe.canManage, message.isPinnable {
-            if tribe.pin == message.uuid {
-                Button("Unpin") { Task { await model.pin(nil, in: tribe.pubkey) } }
-            } else {
-                Button("Pin for everyone") { Task { await model.pin(message.uuid, in: tribe.pubkey) } }
-            }
-        }
-    }
-}
-
-/// Its own view, so hovering the row does not redo link detection.
-struct MessageBubble: View {
-    let message: Message
-
-    var body: some View {
-        Text(LinkText.attributed(message.content ?? "", onSentBubble: message.fromMe))
-            .font(Theme.font(14))
-            .lineSpacing(2)
-            .textSelection(.enabled)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                message.fromMe ? Theme.sentBubble : Theme.receivedBubble,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .foregroundStyle(message.fromMe ? Theme.sentText : Theme.text)
-            .help(message.date.formatted(date: .complete, time: .shortened))
-    }
-}
-
-/// The time, and for a message of ours the server's confirmation: a green
-/// bolt, as in the official apps.
-struct MessageMeta: View {
-    let message: Message
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if message.fromMe, message.delivery == .delivered {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Theme.confirmed)
-                    .help("Delivered")
-            }
-            Text(message.date, format: .dateTime.hour().minute())
-                .monospacedDigit()
-        }
-        .font(Theme.font(11))
-        .foregroundStyle(Theme.secondaryText)
-        .fixedSize()
-    }
-}
-
-/// "Not delivered" with Retry and Discard. Discard asks once, in place.
+/// "Not delivered" (or "Not uploaded") with Retry and Discard. Discard asks
+/// once, in place.
 struct UndeliveredActions: View {
     @Environment(AppModel.self) private var model
     let message: Message
@@ -601,7 +425,8 @@ struct UndeliveredActions: View {
                 Button("Keep") { confirmingDiscard = false }
                     .foregroundStyle(Theme.accent)
             } else {
-                Text("Not delivered")
+                // An attachment the memes server never got says so, as the Mac app.
+                Text(message.uploadState == .failed ? "Not uploaded" : "Not delivered")
                     .foregroundStyle(Theme.secondaryText)
                 Button("Retry") { Task { await model.resend(message) } }
                     .foregroundStyle(Theme.accent)
@@ -620,154 +445,45 @@ enum LinkText {
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     /// The Mac app's mention pattern: `@` at the start of a word, up to the next space.
     private static let mention = try? NSRegularExpression(pattern: #"\B@[^\s]+"#)
+    /// Links longer than this show their start and end around an ellipsis.
+    private static let longLink = 56
 
-    static func attributed(_ text: String, onSentBubble: Bool) -> AttributedString {
+    /// Mentions as a soft chip; https links in the link colour, shown
+    /// without the scheme and shortened in the middle when long (the full
+    /// address is what opens). Anything else stays plain text.
+    static func attributed(_ text: String) -> AttributedString {
         var result = AttributedString(text)
         let range = NSRange(text.startIndex..., in: text)
         for match in text.contains("@") ? mention?.matches(in: text, range: range) ?? [] : [] {
             guard let textRange = Range(match.range, in: text),
                   let start = AttributedString.Index(textRange.lowerBound, within: result),
                   let end = AttributedString.Index(textRange.upperBound, within: result) else { continue }
-            result[start..<end].font = Theme.font(14, .bold)
+            result[start..<end].font = Theme.font(14, .medium)
+            result[start..<end].foregroundColor = Theme.mentionText
+            result[start..<end].backgroundColor = Theme.mentionFill
         }
         guard let detector else { return result }
-        for match in detector.matches(in: text, range: range) {
+        // Back to front, so shortening one link leaves the earlier ranges valid.
+        for match in detector.matches(in: text, range: range).reversed() {
             guard let url = match.url, url.scheme?.lowercased() == "https",
                   let textRange = Range(match.range, in: text),
                   let start = AttributedString.Index(textRange.lowerBound, within: result),
                   let end = AttributedString.Index(textRange.upperBound, within: result) else { continue }
-            result[start..<end].link = url
-            result[start..<end].underlineStyle = .single
-            // The accent blue is too faint on the sent bubble; keep the text colour there.
-            result[start..<end].foregroundColor = onSentBubble ? Theme.sentText : Theme.accent
+            var shown = AttributedString(display(String(text[textRange])))
+            shown.link = url
+            shown.foregroundColor = Theme.link
+            result.replaceSubrange(start..<end, with: shown)
         }
         return result
     }
-}
 
-struct Composer: View {
-    @Binding var draft: String
-    let placeholder: String
-    let focusRequest: Int
-    /// Who `@` offers, in a tribe; nil elsewhere. Asked each time an `@word`
-    /// starts, so it is current without querying on every message.
-    var loadMentionable: (@MainActor () async -> [TribeMember])?
-    let send: () -> Void
-
-    @State private var mentionable: [TribeMember] = []
-    @State private var mention: String?
-    @State private var highlighted = 0
-    @State private var insertion: MentionInsertion?
-    @State private var dismissedMention: String?
-
-    private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// Aliases starting with what follows the `@`, ignoring case, as the Mac
-    /// app matches them; an exact match first, so Return never swaps a
-    /// finished `@ann` for `@anna`.
-    private var suggestions: [TribeMember] {
-        guard let mention, mention != dismissedMention else { return [] }
-        let typed = mention.lowercased()
-        let matches = mentionable.filter { $0.alias.lowercased().hasPrefix(typed) }
-        return Array((matches.filter { $0.alias == mention } + matches.filter { $0.alias != mention }).prefix(6))
-    }
-
-    private func choose(_ member: TribeMember) {
-        insertion = MentionInsertion(id: (insertion?.id ?? 0) + 1, alias: member.alias)
-    }
-
-    /// Arrow keys move through the suggestions, Return or Tab takes one, Escape closes them.
-    private func handle(_ key: SuggestionKey) -> Bool {
-        let shown = suggestions
-        guard !shown.isEmpty else { return false }
-        switch key {
-        case .up: highlighted = (highlighted + shown.count - 1) % shown.count
-        case .down: highlighted = (highlighted + 1) % shown.count
-        case .accept: choose(shown[min(highlighted, shown.count - 1)])
-        case .dismiss: dismissedMention = mention
-        }
-        return true
-    }
-
-    @ViewBuilder private var field: some View {
-        #if os(macOS)
-        ComposerField(
-            text: $draft, placeholder: placeholder, focusRequest: focusRequest, submit: send,
-            mention: $mention, insertion: insertion, suggestionKey: handle
-        )
-        .onChange(of: mention) { highlighted = 0 }
-        .task(id: mention != nil) {
-            if mention != nil, let loadMentionable { mentionable = await loadMentionable() }
-        }
-        #else
-        TextField(placeholder, text: $draft, axis: .vertical)
-            .lineLimit(1...8)
-            .onSubmit(send)
-        #endif
-    }
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            field
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.divider))
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(canSend ? Theme.accent : Theme.secondaryText.opacity(0.5))
-            .disabled(!canSend)
-            .keyboardShortcut(.return, modifiers: .command)
-            .help("Send (Return). Shift-Return for a new line.")
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 6)
-        .padding(.bottom, 16)
-        .overlay(alignment: .topLeading) {
-            let shown = suggestions
-            if !shown.isEmpty {
-                MentionSuggestions(members: shown, highlighted: min(highlighted, shown.count - 1), choose: choose)
-                    .padding(.horizontal, 20)
-                    .alignmentGuide(.top) { $0[.bottom] }
-            }
-        }
+    /// "github.com/stakwork/sphinx-broker/…/0.9.3-reconnect-backoff.md".
+    static func display(_ link: String) -> String {
+        var shown = link
+        if let scheme = shown.range(of: "://") { shown = String(shown[scheme.upperBound...]) }
+        guard shown.count > longLink else { return shown }
+        let head = shown.prefix(longLink * 3 / 5), tail = shown.suffix(longLink * 2 / 5 - 1)
+        return "\(head)…\(tail)"
     }
 }
 
-/// Who an `@` can mention, just above the composer.
-struct MentionSuggestions: View {
-    let members: [TribeMember]
-    let highlighted: Int
-    let choose: (TribeMember) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
-                Button {
-                    choose(member)
-                } label: {
-                    HStack(spacing: 8) {
-                        Avatar(name: member.alias, url: member.photoURL, size: 20)
-                        Text(member.alias)
-                            .font(Theme.font(13))
-                            .foregroundStyle(index == highlighted ? Theme.selectionText : Theme.text)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(index == highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .frame(width: 240)
-        .panelBoxed()
-    }
-}

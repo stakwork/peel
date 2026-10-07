@@ -188,6 +188,8 @@ public actor Engine {
     private var droppedIndex: Int64
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
     private var restoring: Bool
+    /// Whether `recoverOwnPhoto` has run for this engine.
+    private var photoRecoveryDone = false
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
 
@@ -320,15 +322,33 @@ public actor Engine {
     }
 
     /// The photo others see beside this account's messages: an https URL, or
-    /// empty for none. It travels like the name. Uploading a picture from this
-    /// device belongs to the attachments work (memes server): upload, then
-    /// pass the URL it returns here.
+    /// empty for none. It travels like the name. `uploadPhoto` puts a picture
+    /// from this Mac on the memes server and passes its link here.
     public func setPhotoURL(_ url: String) throws {
         let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard url.isEmpty || url.httpsOnly != nil else { throw PeelError("a photo must be an https URL") }
         try storage.set(url, for: .photoURL)
         photoURL = url
         emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
+    }
+
+    /// Makes a picture this account's photo, as the Mac app's profile screen
+    /// does: a JPEG at quality 0.5 (here also at most 1024 px on its long
+    /// side) uploaded in the clear to the memes server's `/public` route,
+    /// whose public link becomes the photo URL. Returns the link.
+    @discardableResult
+    public func uploadPhoto(_ file: URL) async throws -> String {
+        let memes = try memesServer()
+        let limit = Self.attachmentLimit
+        let jpeg = try await Task.detached { try ProfilePhoto.jpeg(from: file, limit: limit) }.value
+        let muid = try await withMemes(memes) { token in
+            try await memes.upload(
+                jpeg, as: OutgoingFile(fileName: "image.jpg", mediaType: "image/jpg"), token: token, route: "public"
+            )
+        }
+        let url = memes.publicURL(muid).absoluteString
+        try setPhotoURL(url)
+        return url
     }
 
     /// Hours after which an app asks for the PIN again; 0 means only at
@@ -383,6 +403,9 @@ public actor Engine {
     /// Connects and keeps reconnecting with backoff until `disconnect()`.
     /// Progress is reported through `.connection` events.
     public func start(allowUntrustedCertificate: Bool = false) {
+        // Accounts restored before the restore learned to recover the photo
+        // get it on their first start instead.
+        if !restoring { recoverOwnPhoto() }
         self.allowUntrustedCertificate = allowUntrustedCertificate
         keepConnected = true
         guard connection != .connected, reconnectTask == nil else { return }
@@ -541,41 +564,74 @@ public actor Engine {
     public func sendText(
         _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil
     ) async throws -> String? {
+        let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
         var fields = ["content": text]
-        var thread = try inThread.map { try Self.thread(of: linkable($0, in: pubkey)) }
-        if let replyTo {
-            let parentThread = try Self.thread(of: linkable(replyTo, in: pubkey))
-            if let thread, parentThread != thread { throw Failure.notInThread }
-            fields["replyUuid"] = replyTo
-            thread = parentThread
-        }
-        fields["threadUuid"] = thread
+        fields["replyUuid"] = links.replyTo
+        fields["threadUuid"] = links.thread
         return try await deliver(body: try Self.json(fields), to: pubkey, replacing: nil)
     }
 
-    /// The thread a message is in, or the one it starts, as the Mac app works
-    /// it out (`threadUuid ?? replyUuid ?? uuid`). Its own links came from
-    /// whoever sent it; one the core could not pack is skipped.
-    private static func thread(of message: Message) -> String {
-        [message.threadUUID, message.replyUUID].compactMap { $0 }.first(where: MessageUUID.isValid)
-            ?? message.uuid ?? ""
+    /// `replyUuid` and `threadUuid` for a message to `chat`, as the Mac app
+    /// sets them: a reply joins its parent's thread (`Message.threadRoot`),
+    /// or starts one at the parent; `inThread` may name any message of the
+    /// thread, or the thread itself when only its messages are stored (the
+    /// original older than this Mac's history), and a reply given with it
+    /// must be in that thread.
+    private func links(
+        replyTo: String?, inThread: String?, in chat: String
+    ) throws -> (replyTo: String?, thread: String?) {
+        var thread = try inThread.map { uuid in
+            guard MessageUUID.isValid(uuid) else { throw Failure.noSuchMessage }
+            if let named = try storage.message(uuid: uuid, in: chat) {
+                // A deleted original still names its thread, which goes on.
+                return named.deleted ? named.threadRoot : try linkable(uuid, in: chat).threadRoot
+            }
+            guard try storage.threadCount(uuid, in: chat) > 0 else { throw Failure.noSuchMessage }
+            return uuid
+        }
+        if let replyTo {
+            let parentThread = try linkable(replyTo, in: chat).threadRoot
+            if let thread, parentThread != thread { throw Failure.notInThread }
+            thread = parentThread
+        }
+        return (replyTo, thread)
     }
 
-    /// A stored message of `chat` that others hold under the same uuid. Our
-    /// own message must have been delivered: a retry gives it a new uuid,
-    /// and in a tribe the others know it by the uuid the tribe gave it,
-    /// which the row takes when the tribe's copy (the only copy with a
-    /// server index; a tribe send has no copy to self) comes back.
+    /// A stored text message or attachment of `chat` that others hold under
+    /// the same uuid (`Message.isLinkable`).
     private func linkable(_ uuid: String, in chat: String) throws -> Message {
-        guard MessageUUID.isValid(uuid), let message = try storage.message(uuid: uuid, in: chat) else {
+        guard MessageUUID.isValid(uuid), let message = try storage.message(uuid: uuid, in: chat),
+              MessageType.content.contains(message.type) else {
             throw Failure.noSuchMessage
         }
-        // Restored history has no status: only a pending or failed one counts.
-        let undelivered = message.delivery == .pending || message.delivery == .failed
-        if message.fromMe, undelivered || (tribes[chat] != nil && message.serverIndex == nil) {
-            throw Failure.notDelivered
-        }
+        guard message.isLinkable(inTribe: tribes[chat] != nil) else { throw Failure.notDelivered }
         return message
+    }
+
+    /// Deletes a message for everyone, as the official apps do: a type 17
+    /// message naming it in `replyUuid`. Our own messages, and in a tribe this
+    /// account owns, anyone's (the tribes server refuses the rest). As in the
+    /// Mac app, a thread's original cannot be deleted while it has two or
+    /// more replies (`Message.isDeletable`). The row is emptied once the
+    /// server has the delete; one that fails to send can be sent again. A
+    /// tribe delete pays the tribe's price like any message.
+    public func deleteMessage(id: Int64) async throws {
+        guard let message = try storage.message(id: id), MessageType.content.contains(message.type),
+              !message.deleted, let uuid = message.uuid else { throw Failure.noSuchMessage }
+        let tribe = try openTribe(message.chat)
+        guard message.isDeletable(
+            inTribe: tribe != nil, ownsTribe: tribe?.canManage == true,
+            threadCount: try storage.threadCount(uuid, in: message.chat)
+        ) else {
+            throw PeelError(
+                "only your own sent messages, or any in a tribe you own, can be deleted; "
+                    + "not a thread's first message while it has replies"
+            )
+        }
+        _ = try await deliver(
+            body: try Self.json(["content": "", "replyUuid": uuid]), to: message.chat, replacing: nil,
+            type: MessageType.delete
+        )
     }
 
     /// Sends an undelivered message again. The core gives every send a new uuid
@@ -662,7 +718,7 @@ public actor Engine {
                 try storage.setStatus(.failed, tag: tag)
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
-            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(error)"))
+            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(error))"))
         }
         return sent?.tag
     }
@@ -701,12 +757,18 @@ public actor Engine {
     /// written first and the encrypted file kept until the memes server has
     /// it, so a failed upload or send can be retried without the file. Like
     /// `sendText`, a failure is reported through events, not thrown; the
-    /// upload reports `.transfer` progress. Returns the row's id.
+    /// upload reports `.transfer` progress. `stored` is told the row's id as
+    /// soon as the row exists, before the upload (an app shows the file from
+    /// disk meanwhile). Returns the row's id.
     @discardableResult
-    public func sendAttachment(_ file: URL, text: String = "", to pubkey: String) async throws -> Int64 {
+    public func sendAttachment(
+        _ file: URL, text: String = "", to pubkey: String, replyTo: String? = nil, inThread: String? = nil,
+        stored: (@Sendable (Int64) -> Void)? = nil
+    ) async throws -> Int64 {
         let tribe = try openTribe(pubkey)
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
         _ = try memesServer()
+        let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
         let limit = Self.attachmentLimit
         let (outgoing, plain, sealed, key) = try await Task.detached {
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
@@ -718,11 +780,15 @@ public actor Engine {
             return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
                     try MediaCrypto.encrypt(plain, key: key), key)
         }.value
-        let body = try Self.attachmentBody(text: text, key: key, mediaType: outgoing.mediaType, token: nil)
+        let body = try Self.attachmentBody(
+            text: text, key: key, mediaType: outgoing.mediaType, token: nil,
+            replyTo: links.replyTo, thread: links.thread
+        )
         let draft = Message(
             type: MessageType.attachment, chat: pubkey, fromMe: true, body: body, content: text,
             msat: tribe.map { Int64(clamping: $0.messageAmountMsat) }, timestamp: Date().millisecondsSince1970,
-            status: Message.Delivery.pending.rawValue, mediaType: outgoing.mediaType, fileName: outgoing.fileName,
+            status: Message.Delivery.pending.rawValue, replyUUID: links.replyTo, threadUUID: links.thread,
+            mediaType: outgoing.mediaType, fileName: outgoing.fileName,
             fileSize: Int64(plain.count), upload: Message.Upload.pending.rawValue
         )
         guard let row = try storage.apply(Storage.Commit(messages: [(draft, false, nil)])).first, let id = row.id else {
@@ -735,6 +801,7 @@ public actor Engine {
             try? storage.deleteMessage(id: id)
             throw error
         }
+        stored?(id)
         emit.yield(.message(row))
         try await uploadAndDeliver(row, file: (plain, sealed))
         return id
@@ -744,10 +811,14 @@ public actor Engine {
     /// key twice (the core encrypts `mediaKeyForSelf` to this account, so our
     /// other devices and a restore can read it), the MIME type and, once
     /// uploaded, the media token.
-    private static func attachmentBody(text: String?, key: String, mediaType: String?, token: String?) throws -> String {
+    private static func attachmentBody(
+        text: String?, key: String, mediaType: String?, token: String?, replyTo: String?, thread: String?
+    ) throws -> String {
         var fields = ["content": text ?? "", "mediaKey": key, "mediaKeyForSelf": key]
         fields["mediaType"] = mediaType
         fields["mediaToken"] = token
+        fields["replyUuid"] = replyTo
+        fields["threadUuid"] = thread
         return try json(fields)
     }
 
@@ -781,7 +852,10 @@ public actor Engine {
                     seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state), host: memes.host,
                     muid: muid, to: message.chat, expiry: expiry
                 )
-                body = try Self.attachmentBody(text: message.content, key: key, mediaType: message.mediaType, token: token)
+                body = try Self.attachmentBody(
+                    text: message.content, key: key, mediaType: message.mediaType, token: token,
+                    replyTo: message.replyUUID, thread: message.threadUUID
+                )
                 try storage.setUpload(.done, id: id, body: body)
                 // Our own copy is in the cache from the start, as in the official apps.
                 let plain = file?.plain
@@ -793,7 +867,7 @@ public actor Engine {
                 try storage.setUpload(.failed, id: id)
                 // It has no tag yet, so the row itself says it failed.
                 if let row = try storage.message(id: id) { emit.yield(.message(row)) }
-                emit.yield(.conversationError(chat: message.chat, message: "Not uploaded: \(error)"))
+                emit.yield(.conversationError(chat: message.chat, message: "Not uploaded: \(PeelError.readable(error))"))
                 return nil
             }
         }
@@ -1486,7 +1560,17 @@ public actor Engine {
             commit.statuses.append((tag, sent.status))
         }
 
-        let stored = try storage.apply(commit)
+        var purged: [String] = []
+        let stored = try storage.apply(commit, purged: &purged)
+        // A deleted attachment's decrypted copy goes with it.
+        let deletedFiles = purged.compactMap { body -> URL? in
+            guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
+                  let key = fields.mediaKey else { return nil }
+            return media.cached(muid: token.muid, key: key)
+        }
+        if !deletedFiles.isEmpty {
+            Task.detached { for file in deletedFiles { try? FileManager.default.removeItem(at: file) } }
+        }
         state = newState
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
@@ -1808,17 +1892,25 @@ public actor Engine {
         if restoring {
             try storage.set("0", for: .needsRestore)
             restoring = false
-            // The server keeps no profile; the account's own photo comes back
-            // only on the messages it sent. A photo already set wins. Best
-            // effort: a failure here must not stop the restore finishing.
-            if photoURL.isEmpty, let photo = try? storage.newestOwnPhotoURL() {
-                try? setPhotoURL(photo)
-            }
+            recoverOwnPhoto()
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()
         }
         emit.yield(.historyDone)
+    }
+
+    /// The server keeps no profile; the account's own photo comes back only
+    /// on the messages it sent (its own direct messages; tribes rewrite the
+    /// sender). Fills a photo never set on this Mac from the newest of them;
+    /// one set or removed here (stored, even empty) wins. Best effort, once
+    /// per engine: a failure here must not stop a restore finishing.
+    private func recoverOwnPhoto() {
+        guard !photoRecoveryDone else { return }
+        photoRecoveryDone = true
+        if (try? storage.value(for: .photoURL)) ?? nil == nil, let photo = try? storage.newestOwnPhotoURL() {
+            try? setPhotoURL(photo)
+        }
     }
 
     private func historyStalled(at expected: UInt64) {

@@ -100,8 +100,13 @@ private struct IdentitySection: View {
             }
             if editing {
                 VStack(alignment: .leading, spacing: 10) {
-                    // Picking a file from this Mac comes with attachments, which
-                    // upload it and hand the link to `setPhotoURL`.
+                    HStack(spacing: 10) {
+                        Button("Choose a picture…") { Task { await upload() } }
+                            .buttonStyle(GhostButtonStyle())
+                        Text("or paste a link")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                     TextField("Link to an image (https)", text: $link)
                         .onboardingField()
                         .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
@@ -125,6 +130,19 @@ private struct IdentitySection: View {
                 .padding(16)
                 .panelBoxed()
             }
+        }
+    }
+
+    /// A picture from this Mac, uploaded to the memes server as the Mac app does.
+    private func upload() async {
+        guard !working, let file = model.choosePicture() else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.uploadPhoto(file)
+            editing = false
+        } catch {
+            problem = "Could not upload the picture: \(error)"
         }
     }
 
@@ -369,25 +387,20 @@ private struct PINTimeoutRow: View {
     var body: some View {
         SettingsRow("Ask for the PIN") {
             VStack(alignment: .leading, spacing: 2) {
-                Picker("Ask for the PIN", selection: Binding(
-                    get: { model.pinTimeoutHours },
-                    set: { hours in
-                        Task {
-                            do {
-                                try await model.setPINTimeout(hours: hours)
-                                problem = nil
-                            } catch {
-                                problem = "\(error)"
-                            }
+                PeelDropdown(
+                    selection: model.pinTimeoutHours,
+                    options: (Self.choices + (Self.choices.contains(model.pinTimeoutHours) ? [] : [model.pinTimeoutHours]))
+                        .map { ($0, Self.label($0)) }
+                ) { hours in
+                    Task {
+                        do {
+                            try await model.setPINTimeout(hours: hours)
+                            problem = nil
+                        } catch {
+                            problem = "\(error)"
                         }
                     }
-                )) {
-                    ForEach(Self.choices + (Self.choices.contains(model.pinTimeoutHours) ? [] : [model.pinTimeoutHours]),
-                            id: \.self) { hours in
-                        Text(Self.label(hours)).tag(hours)
-                    }
                 }
-                .labelsHidden()
                 .fixedSize()
                 Text(problem ?? "When Peel comes to the front after this long, it asks again.")
                     .font(Theme.font(12))

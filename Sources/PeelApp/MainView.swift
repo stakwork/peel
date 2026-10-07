@@ -7,12 +7,14 @@ import PeelCore
 /// traffic lights.
 struct MainView: View {
     @Environment(AppModel.self) private var model
+    /// Dragged on its divider; remembered on this Mac (a convenience).
+    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 260
 
     var body: some View {
         HStack(spacing: 0) {
             Sidebar()
-                .frame(width: 260)
-            Theme.divider.frame(width: 1)
+                .frame(width: sidebarWidth)
+            PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
             VStack(spacing: 0) {
                 Detail()
                 if model.usesFileSecrets {
@@ -22,6 +24,57 @@ struct MainView: View {
         }
         .ignoresSafeArea(edges: .top)
         .foregroundStyle(Theme.text)
+        .overlay {
+            if let viewer = model.viewer {
+                ImageViewer(state: viewer)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
+        .peelMenuHost()
+    }
+}
+
+/// A 1 pt divider between two panes that resizes the pane on one side:
+/// a few points either side of the line take the drag, the pointer turns
+/// into the resize cursor over them, and a double-click puts the standard
+/// width back.
+struct PaneDivider: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    let standard: Double
+    /// Which way dragging makes the pane wider: towards `.trailing` for a
+    /// pane on the left (the sidebar), `.leading` for one on the right.
+    let growsTo: HorizontalEdge
+
+    @State private var start: Double?
+
+    var body: some View {
+        Theme.divider
+            .frame(width: 1)
+            .overlay {
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    #if os(macOS)
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    #endif
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { drag in
+                                let from = start ?? width
+                                start = from
+                                let delta = Double(drag.translation.width) * (growsTo == .trailing ? 1 : -1)
+                                width = min(max(from + delta, range.lowerBound), range.upperBound)
+                            }
+                            .onEnded { _ in start = nil }
+                    )
+                    .onTapGesture(count: 2) { width = standard }
+                    .help("Drag to resize; double-click for the standard width")
+            }
+            .zIndex(1)
     }
 }
 
@@ -54,7 +107,12 @@ struct Sidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(spacing: 1) {
-                        SidebarLink("Threads", systemImage: "bubble.left", to: .threads)
+                        let unreadThreads = model.unreadThreads
+                        SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
+                            Image(systemName: "bubble.left").font(.system(size: 13))
+                        } accessory: {
+                            if unreadThreads > 0 { UnreadBadge(count: unreadThreads) }
+                        }
                         SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
                             Image(systemName: "at").font(.system(size: 13))
                         } accessory: {
@@ -79,7 +137,6 @@ struct Sidebar: View {
                 .padding(.bottom, 12)
             }
             .scrollIndicators(.automatic)
-            SidebarFooter()
         }
         .padding(.horizontal, 10)
         .padding(.top, 34) // clear of the window's traffic lights
@@ -89,26 +146,97 @@ struct Sidebar: View {
     }
 }
 
+/// You, at the top of the sidebar like a workspace switcher: your photo,
+/// name and balance, opening a menu with the account screen and your
+/// contact info; the connection bolt beside it.
 struct SidebarHeader: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
+
+    @State private var frame: CGRect = .zero
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                presenter?.show(entries, at: frame, source: "you")
+            } label: {
+                HStack(spacing: 9) {
+                    Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Text(model.myAlias ?? "You")
+                                .font(Theme.font(15, .bold))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        if let balance = model.balanceMsat {
+                            Text(Formatting.sats(msat: balance))
+                                .font(Theme.font(12))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(hovering || presenter?.source == AnyHashable("you") ? Theme.hover : .clear,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            .help("You")
+            ConnectionBolt()
+        }
+    }
+
+    /// Who you are (name, short key, balance), the account screen and your
+    /// contact info. Receiving sats and invites join it when they are built.
+    private var entries: [MenuEntry] {
+        let detail = [model.myPubkey.map { "\($0.prefix(6))…\($0.suffix(4))" },
+                      model.balanceMsat.map { Formatting.sats(msat: $0) }].compactMap { $0 }.joined(separator: " · ")
+        var actions: [MenuEntry] = [
+            .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
+        ]
+        if let info = model.myContactInfo {
+            actions.append(.button("Copy contact info", systemImage: "doc.on.doc") { Clipboard.copy(info) })
+        }
+        return .sections(
+            [.view(AnyView(MenuIdentity(name: model.myAlias ?? "You", detail: detail, photoURL: model.myPhotoURL)))],
+            actions
+        )
+    }
+}
+
+/// The header of the "you" menu: photo, name, short key and balance.
+private struct MenuIdentity: View {
+    let name: String
+    let detail: String
+    let photoURL: String?
 
     var body: some View {
         HStack(spacing: 10) {
-            AppIcon(size: 30)
+            Avatar(name: name, url: photoURL, size: 34)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Peel")
-                    .font(Theme.font(15, .bold))
-                if let balance = model.balanceMsat {
-                    Text(Formatting.sats(msat: balance))
+                Text(name)
+                    .font(Theme.font(14, .bold))
+                    .lineLimit(1)
+                if !detail.isEmpty {
+                    Text(detail)
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
                 }
             }
-            Spacer()
-            ConnectionBolt()
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 }
 
@@ -219,6 +347,7 @@ extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
 /// notification level is set from its context menu.
 struct ConversationLink: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
     let conversation: Conversation
 
     var body: some View {
@@ -240,20 +369,51 @@ struct ConversationLink: View {
                     .help("Mentions only")
             }
         }
-        .contextMenu {
-            Picker("Notify", selection: Binding(
-                get: { level },
-                set: { newLevel in Task { await model.setMute(conversation.chat, newLevel) } }
-            )) {
-                Text("All messages").tag(MuteLevel.all)
-                // The tribes server only marks mentions in tribes.
-                if conversation.isTribe {
-                    Text("Mentions only").tag(MuteLevel.mentionsOnly)
-                }
-                Text("Nothing (mute)").tag(MuteLevel.muted)
+        .overlay {
+            if presenter?.source == AnyHashable(conversation.chat) {
+                RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.accent, lineWidth: 1.5)
             }
-            .pickerStyle(.inline)
         }
+        .peelMenu(source: conversation.chat) { ConversationMenu.entries(for: conversation, model: model) }
+    }
+}
+
+/// A sidebar row's menu: Mark as read, the notification level, and for a
+/// tribe its link and leaving it (confirmed in place). Direct messages have
+/// no Leave, and no Delete chat: the engine cannot delete a conversation.
+@MainActor
+enum ConversationMenu {
+    static func entries(for conversation: Conversation, model: AppModel) -> [MenuEntry] {
+        let chat = conversation.chat
+        let level = model.readStates[chat]?.mute ?? .all
+        let unread = model.readStates[chat]?.unread ?? 0
+        let read: [MenuEntry] = unread > 0
+            ? [.button("Mark as read", systemImage: "checkmark.circle") { Task { await model.markRead(chat) } }] : []
+        var levels: [MenuEntry] = [.header("Notify me about")]
+        // The tribes server only marks mentions in tribes.
+        let choices: [(MuteLevel, String)] = conversation.isTribe
+            ? [(.all, "All messages"), (.mentionsOnly, "Mentions only"), (.muted, "Nothing (mute)")]
+            : [(.all, "All messages"), (.muted, "Nothing (mute)")]
+        for (choice, title) in choices {
+            levels.append(.button(title, checked: choice == level) { Task { await model.setMute(chat, choice) } })
+        }
+        guard conversation.isTribe, let tribe = model.tribe(chat) else { return .sections(read, levels) }
+        let link: [MenuEntry] = tribe.link.map { link in
+            [.button("Copy tribe link", systemImage: "link") { Clipboard.copy(link) }]
+        } ?? []
+        var leave: [MenuEntry] = []
+        if tribe.status != .active {
+            leave.append(.destructive("Remove from Peel", systemImage: "trash", confirm: "Remove #\(conversation.name)") {
+                Task { await model.leave(chat) }
+            })
+        } else if !tribe.isOwner {
+            // The owner cannot leave, only delete the tribe (under Edit tribe).
+            leave.append(.destructive("Leave tribe", systemImage: "rectangle.portrait.and.arrow.right",
+                                      confirm: "Leave #\(conversation.name)") {
+                Task { await model.leave(chat) }
+            })
+        }
+        return .sections(read, levels, link, leave)
     }
 }
 
@@ -292,7 +452,7 @@ struct ConnectionBolt: View {
         .buttonStyle(.plain)
         .help(model.connection.label)
         .accessibilityLabel(model.connection.label)
-        .popover(isPresented: $showing, arrowEdge: .bottom) {
+        .peelPopover(isPresented: $showing) {
             ConnectionCard()
         }
     }
@@ -468,7 +628,7 @@ struct SidebarActionLink<Form: View>: View {
             }
         }
         .buttonStyle(SidebarRowStyle(selected: false))
-        .popover(isPresented: $showing, arrowEdge: .trailing) {
+        .peelPopover(isPresented: $showing) {
             form { showing = false }
         }
     }
@@ -576,28 +736,6 @@ struct SidebarRowStyle: ButtonStyle {
     }
 }
 
-/// You, at the foot of the sidebar: opens the account screen (also ⌘,).
-struct SidebarFooter: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Button {
-            model.destination = .account
-        } label: {
-            HStack(spacing: 9) {
-                Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 24)
-                Text(model.myAlias ?? "You")
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-            }
-        }
-        .buttonStyle(SidebarRowStyle(selected: model.destination == .account))
-        .help("Your account (⌘,)")
-        .padding(.top, 8)
-        .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
-    }
-}
-
 // MARK: - Detail
 
 struct Detail: View {
@@ -613,7 +751,7 @@ struct Detail: View {
                     EmptyPlace(title: "Peel", message: "Pick a conversation.")
                 }
             case .threads:
-                EmptyPlace(title: "Threads", message: "Threads you start or reply to show up here.")
+                ThreadsView()
             case .mentions:
                 MentionsView()
             case .payments:
@@ -779,12 +917,7 @@ final class PhotoCache {
                 // Decoded here, at avatar size (the short side still covers a
                 // 36pt avatar at 2x for photos up to 3:1, as it is filled), so
                 // drawing neither decodes on the main thread nor keeps the full photo.
-                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceShouldCacheImmediately: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 256,
-                ] as CFDictionary)
+                return ImageDecoding.thumbnail(source, maxPixels: 256)
             }
             loads[url] = load
         }
@@ -803,6 +936,13 @@ extension View {
     func panelBoxed() -> some View {
         background(Theme.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.divider))
+    }
+
+    /// The raised box of menus, suggestion lists and the hover bar.
+    func menuBoxed(cornerRadius: CGFloat = 8, shadow: Bool = true) -> some View {
+        background(Theme.menu, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(Theme.divider))
+            .shadow(color: .black.opacity(shadow ? 0.25 : 0), radius: 10, y: 4)
     }
 }
 
@@ -854,6 +994,17 @@ enum Clipboard {
         #endif
     }
 
+    /// Puts the picture in a file on the clipboard.
+    static func copyImage(at file: URL) {
+        #if os(macOS)
+        guard let image = NSImage(contentsOf: file) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+        #else
+        UIPasteboard.general.image = UIImage(contentsOfFile: file.path)
+        #endif
+    }
+
     static func paste() -> String? {
         #if os(macOS)
         NSPasteboard.general.string(forType: .string)
@@ -885,6 +1036,22 @@ enum Formatting {
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+
+    /// "1 reply", "5 replies".
+    static func replies(_ count: Int) -> String {
+        count == 1 ? "1 reply" : "\(count) replies"
+    }
+
+    /// A time in a list: "10:14" today, "Yesterday", "Mon" this week, else a date.
+    static func listTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return date.formatted(.dateTime.hour().minute()) }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        if let days = calendar.dateComponents([.day], from: date, to: .now).day, days < 7 {
+            return date.formatted(.dateTime.weekday(.abbreviated))
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     /// Sats from msat, exact, since prices are shown before paying: "1 sat",

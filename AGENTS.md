@@ -27,7 +27,10 @@ in progress and what comes next. Update it when you finish something.
     profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
-  `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`)
+  `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
+  for the chat: `ChatModel` (replies, threads, sending, attachments),
+  `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
+  `ImageViewer`, and `PeelMenu`, the one menu used instead of native ones)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
@@ -178,7 +181,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   engine operation, never logic inside a view; message conventions live in the
   engine.
 - UI follows `docs/design/README.md` (Slack-style layout, Sphinx colours and
-  Roboto) and Tom's `tom-ui` and `taste` skills: colour is state, not
+  the system font) and Tom's `tom-ui` and `taste` skills: colour is state, not
   decoration; no red for ordinary failure; restraint in motion.
 - Keep this file, `docs/PLAN.md` and the phase files current when you change
   the layout or finish a step.

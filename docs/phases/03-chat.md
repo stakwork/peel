@@ -3,8 +3,11 @@
 Status: tribes built and reviewed on branch `phase3/tribes`, rebased onto
 the status branch (2026-10-07); tribes parity with the Mac app built on
 `phase3/tribes-parity` (on top of it); replies and threads in the engine,
-storage and CLI on `phase3/replies-threads` (on top of parity), UI to come;
-attachments in the engine, storage and CLI on `phase3/attachments` (no UI yet).
+storage and CLI on `phase3/replies-threads` (on top of parity);
+attachments in the engine, storage and CLI on `phase3/attachments`; the
+UI for replies, threads, attachments and Peel's own menu on
+`phase3/chat-ui` (on top of attachments, rebased onto main after the
+Account screen), see "Chat UI" at the end.
 
 ## Tribes
 
@@ -766,21 +769,8 @@ tribe's threads collapse (display only, within that tribe).
   within about a minute.
 - DM rows get a context menu without Leave.
 
-### Open questions for the UI
-
-- Reply vs Reply in thread: the Mac app's Reply also joins or starts a
-  thread (`threadUuid` is always set). Peel's engine does the same, so the
-  two hover actions send the same links and differ only in where the
-  composer opens. Is that what the design wants?
-- The thread row in the main view: original, count, newest message;
-  whether to show participants' photos and the thread's unread count.
-- Thread unread uses the chat's server read marker; opening the chat
-  clears thread unread too (as the Mac app does). A per-thread marker would
-  be local only.
-- Quote when the parent is not stored (older than history, or another
-  client's broken link): show nothing, or "original not available".
-- Threads in DMs: the Mac app never collapses them; the Threads list is
-  tribes only. Keep it that way?
+The open questions that stood here were answered by Tom on 2026-10-07;
+the answers are under "Chat UI", "Decided".
 
 ## Attachments
 
@@ -903,8 +893,7 @@ The reference client (`wasm/test/auto/sendAttachment.ts`) only sends
 - "Save…" lets the person pick where a file goes; nothing is opened for them.
 - Upload progress is a bar on the row, from `Engine.Event.transfer`
   (`.upload`); downloads report `.download` the same way.
-- Until then the app hides attachment rows in the chat (`ConversationView`),
-  but the engine counts them as unread and as a chat's newest message.
+- (The app hid attachment rows until the chat UI landed; it shows them now.)
 
 ### Built
 
@@ -1051,3 +1040,383 @@ bound or built from constants; a remote sender sets only `mediaType`;
 nothing logs keys or tokens. Near-miss not applied: a received `mediaType`
 is printed raw by the CLI, like message text already is.
 
+## Chat UI: replies, threads, attachments, Peel's menu
+
+Branch `phase3/chat-ui` (2026-10-07), on top of `phase3/attachments`,
+rebased onto main after the Account screen (#10) and the tribe follow-ups
+(#11). Built from the boards Tom approved on the "Peel layout directions"
+canvas (R1–R12), with his decisions below winning where they differ.
+
+### Decided (Tom, 2026-10-07)
+
+- No "Also send to #tribe" in the thread composer.
+- One Reply (changed later the same day; "Reply in thread" removed from the
+  hover bar, the menu, the T shortcut and the viewer): Reply opens the
+  inline reply bar, or for a message folded into a collapsed tribe thread,
+  the thread panel with the reply bar there. Threads emerge from replies, as
+  in the official app; engine links are unchanged (a reply joins or starts
+  the parent's thread).
+- No "Copy link" anywhere (Sphinx has no message links).
+- Shortcuts shown in a menu must work: R reply, ⌘C copy.
+- DM rows: a menu without Leave. Mark as read and the notification level;
+  no Delete chat, because the engine cannot delete a conversation.
+- Collapsed tribe thread row: the original message, "N replies", the newest
+  reply's sender and time, up to 3 participant avatars, bold (with "N new")
+  when unread. DMs never collapse. The Threads list covers DMs and tribes;
+  a DM thread is listed from its first reply (Tom, later the same day),
+  a tribe thread from two messages, as it collapses.
+- Thread unread clears when the chat is opened (the server read marker), as
+  in the Mac app.
+- A quote whose parent is not stored says "Original message not available".
+  Approvals and other membership messages are never quoted; quotes only for
+  text and attachments.
+- Image grid: up to 4 tiles with "+N", one sender's consecutive images within
+  about a minute (60 s), with the same reply and thread links, only the last
+  carrying a caption.
+- Images download automatically when shown; files on tap; Save… opens a save
+  panel; nothing is ever opened for the person. Paid attachments are out of
+  scope.
+- Upload progress from `.transfer` events; a failed upload shows "Not
+  uploaded · Retry · Discard", like an undelivered message.
+- Previews of an attachment with no caption are words, never emoji: "Image",
+  "File: name.pdf" (`Message.preview`).
+- The pinned bar is the one from tribes parity.
+- One Peel menu replaces every native context menu, pop-up button and
+  picker in the app (Tom, after first use: also the Account screen's "Ask
+  for the PIN" picker).
+
+### Built
+
+Engine and storage (PeelCore):
+- `Message.isLinkable(inTribe:)` (the one rule for what a reply or thread
+  message may name, shared by the engine and the app), `threadRoot`,
+  `preview`, `isContent`, `senderDetails` (alias and photo from one decode).
+- `sendAttachment(_:text:to:replyTo:inThread:stored:)`: attachments can be
+  replies and thread messages (links kept through a retry); `stored` reports
+  the row id before the upload, so the app shows the local file meanwhile.
+- `links(replyTo:inThread:)` shared by text and attachments; `inThread` may
+  name a thread whose original is not stored as long as messages of it are
+  (`Storage.hasThreadMessages`), so such a thread can be answered.
+- `ThreadSummary.latest` and `participants` (last three distinct senders,
+  each sender's JSON decoded once per emission); `threads()` covers ready
+  contacts as well as joined tribes.
+- `uploadPhoto(_:)`: as the Mac app's `uploadPublicImage`, a JPEG at quality
+  0.5 (at most 1024 px) posted in the clear to the memes server's `/public`
+  route; `https://<memes host>/public/<muid>` becomes the photo. The muid is
+  checked (ASCII letters, digits, `-_=`) before it goes into a URL.
+- Own photo recovery also runs once on start, for accounts restored before
+  the restore learned it: only when no photo was ever set on this Mac, from
+  the newest own direct message (tribe copies skipped).
+- `ImageDecoding.thumbnail`: one set of ImageIO options for attachments,
+  avatars and the profile photo.
+- `PeelError.readable`: system network and file errors in a short sentence
+  instead of an NSError dump, for every notice the app shows.
+- CLI: `send-file --reply/--thread`, `upload-photo <picture>`; `threads`
+  lists DM threads too.
+- Tests (`ThreadTests`, built, not run here): DM threads in the list with
+  their latest message and participants; `Message.preview`.
+
+App (PeelApp):
+- `PeelMenu.swift`: entries (items with icon, shortcut, check, destructive
+  with an in-place confirmation, headers, dividers), a presenter per window
+  or popover (`.peelMenuHost()`), `.peelMenu { }` for right-click and
+  Control-click (an NSView that takes only those clicks), `MenuButton` and
+  `PeelDropdown`. Keyboard: arrows, Return, Escape and the item shortcuts,
+  through a key monitor while the menu is open. Opens beside its trigger and
+  flips at the window's edges.
+- Menus: message (Reply, Reply in thread, Copy text, Copy image, Save…,
+  Pin/Unpin for the owner), undelivered (Retry sending or Retry upload,
+  Discard, Copy text), sidebar row (Mark as read, notification level, Copy
+  tribe link, Leave or Remove from Peel), member row in the members popover
+  (Copy name; Approve/Decline; Remove from tribe for the owner), the Account
+  screen's PIN timeout dropdown. No native `.contextMenu`, `Picker` or `Menu`
+  remains.
+- Conversation: rows built once per timeline emission in `AppModel`
+  (`ChatRow.rows`: image runs, quotes, collapsed threads, approvals, runs and
+  day dividers in one pass); hover bar; quotes that scroll to and light up
+  their parent, or open the thread that folded it; collapsed thread rows;
+  the open thread's row tinted.
+- Thread panel (360 pt, slides in, Escape closes): original, "N replies",
+  replies, its own composer. On a window too narrow for both it takes the
+  conversation's place. Drafts, reply targets and pending files live in the
+  model per composer, so nothing is lost when it covers the chat.
+- Threads list with unread dots, "Mark all read", and a sidebar badge.
+- Attachments: image tiles and grids (decoded off the main thread at the
+  size drawn, a 200 MB memory cache, decodes shared), file cards (type,
+  name, size, Download, Save…), upload bars, the composer tray (thumbnails,
+  file cards, remove, "+"), the paperclip, drop to attach on the chat and the
+  thread panel, and the image viewer (Reply, Copy, Save…, arrows and arrow
+  keys, caption, strip, Escape). Downloads belong to the model, not the row
+  (a lazy row dropped mid-download used to cancel it).
+- Mention suggestions (Tom, after first use): above the composer, inside the
+  window, in the menu's style, scrolling after seven.
+- Account screen: "Choose a picture…" uploads the photo.
+
+### Verified (local stack, 2026-10-07)
+
+Broker 1917, mixer 8047, tribes 8847, memes stub 8867 (with a `/public`
+route added to the stub); profiles `ui-alice`, `ui-bob`, `ui-carol`, seeded
+from the CLI with DM replies, a DM thread, an image and a PDF in the DM, a
+tribe thread of four, five images in a run, a PDF, a reply, a failed DM send
+and a failed upload. The app was built with `bundle-app.sh` into the
+scratchpad and launched on `-profile ui-alice`; screenshots of each state
+are in the session scratchpad (`ui-shots/`). This session could not click or
+type in the app, so each state was reached by a temporary launch-argument
+driver calling the model (deleted, never committed).
+
+Seen in screenshots: the tribe with the image grid and "+1", PDF card,
+reply quote and collapsed thread row; the DM with quotes (text, image) and
+inline replies; the reply bar; the message, undelivered (with the in-place
+Discard confirmation), tribe and DM menus; the thread panel beside the
+conversation and on its own on a narrow window; a DM thread; the Threads
+list; the image viewer; the composer tray; an upload in progress with its
+bar; "Not uploaded · Retry · Discard"; mention suggestions above the
+composer; the PIN dropdown. The memes stub received a 1024x640 JPEG from
+`upload-photo` on `/public`.
+
+Not exercised: real right-click and hover, keyboard in menus and the viewer,
+clicking a quote, drag and drop, the save and open panels, Copy image, the
+members popover menu, Escape, Retry clicked in the UI, the own-photo
+recovery with a real photo (the local accounts have none), anything against
+`memes.sphinx.chat` or with the official apps.
+
+### Reviews
+
+`/code-review high`, fixed: a second caller of a running download did not
+wait for it (viewer, Save… read no file); the thread close button's Escape
+took the key from the composer; a thread without its stored original could
+not be answered; a covered chat lost its draft; a multi-file send's notices
+overwrote each other; two composers shared Cmd-Return; the viewer's Reply
+went to the chat composer for a thread image; an image tile did not load
+after a retried upload; "Last reply" showed only the time.
+
+`/simplify` (reuse, simplification, efficiency, altitude), applied: thread
+anchoring and upload-preview matching moved into the engine (above); rows
+built once per emission and each sender decoded once; drafts in the model
+and the zero-width covered chat replaced by a plain `if`; the menu's
+subject and open state observed apart from its highlight, so rows do not
+redraw as the pointer moves over items; one `sender(of:)` for names and
+photos; `Formatting.replies`, `OriginalNotAvailable`, `menuBoxed()`,
+`Clipboard.copyImage`, one open-panel helper, `DetailHeader` in the thread
+panel; `MessageContext` merged into `ComposerID`; grid tiles decoded at
+their size and seeded from the cache; shared decodes; dead parameters
+removed.
+
+Not applied, with reasons:
+- Files are sent one after another: `sendAttachment` awaits its upload and
+  delivery, and the order must hold. An engine call taking several files
+  (rows written first, uploads after) would show them all at once; a
+  follow-up.
+- The menu needs a host per window or popover (`.peelMenuHost()`); an
+  app-level borderless panel would not, but is more AppKit than this pass.
+  The popovers with menus (members) have one.
+- The menu and the image viewer each install a key monitor; one router for
+  the topmost overlay would be tidier. They never show together today.
+- `threads()` re-runs on every message write and its "threads I wrote in"
+  lookup has no index; an index needs a migration. Small at today's sizes.
+- `HoverIconButton` and `HeaderButton` stay two buttons (the hover style
+  differs); the pending-file badge does not reuse `AttachmentMark`.
+- The viewer decodes at up to 4096 px.
+
+`/security-review`: no finding at confidence 8 or above. Checked: the new
+SQL is bound or built from constants; the muid is validated before it goes
+into a URL and the photo must be https; the bearer token goes only to its
+own host; own-photo recovery reads only our own rows; reply and thread
+lookups stay within one chat; participant names and photos are display only
+(https photos). The near-miss (a saved file carried no quarantine
+attribute) is now fixed, below.
+
+### Open
+
+- Question for Tom: are menu-only shortcuts enough (hover shortcuts would
+  clash with typing). (A DM thread with a single reply is now listed.)
+- Click through everything listed under "Not exercised".
+
+### Sidebar: you on top (S2, 2026-10-07)
+
+Tom chose option S2 from the canvas (`SidebarYouOnTop`): the sidebar starts
+with you (photo, name with a chevron, balance) and the connection bolt;
+clicking you opens Peel's menu with your name, short key and balance,
+"Account…" (⌘,) and "Copy contact info". Receive sats and Invite someone are
+left out until they exist, and so is the compose button. The footer row and
+the old logo header are gone; the development-profile banner stays.
+`MenuEntry.view` shows the identity at the top of the menu. Seen in
+screenshots on a fresh offline development profile (menu closed and open);
+not clicked by hand.
+
+`threads()` now lists a DM thread from its first reply (`HAVING` two or more
+only for tribes); `ThreadTests` covers it (built, not run here).
+
+### After Tom's first test of the branch build (2026-10-07)
+
+Root causes, found in the code (no clicking here) and fixed:
+
+- **Hover bar over the message.** It was an overlay pinned to the bubble's
+  own top corner (top-trailing for theirs) with a small offset, so it was
+  drawn inward across the bubble: on a short message it covered most of the
+  text. It now sits in a gutter the row keeps free beside every bubble (84
+  pt), outside the bubble's edge and top-aligned with it, inside the row, so
+  moving the pointer onto it keeps the row hovered. Same in the thread panel
+  and on a narrow window (the gutter is part of every row).
+- **The "you" menu at the top did not work, nor did menus generally over
+  lists.** Menus were SwiftUI overlays drawn at the window's root, over the
+  sidebar's and the conversation's scroll views and the text fields. AppKit
+  sends a click to the deepest AppKit view under it (each `ScrollView` is an
+  `NSScrollView`), so a click on "Account…" over the sidebar went to the
+  list underneath, never to the menu. Menus and panels now open in their own
+  borderless windows (children of the window they open from), with clicks
+  outside closing them (swallowed for menus, as native menus do), Escape,
+  and closing when Peel goes to the back. The presenter knows its window
+  from the view hierarchy, not from "the key window", which is nil when Peel
+  is not frontmost.
+- **Native popovers.** The connection card, Join a tribe, Create a tribe,
+  Add contact, tribe settings and members were native `.popover`s; they are
+  `.peelPopover` panels now, in the menu's surface, anchored like it.
+- Right-click now also works on Threads cards (Open thread, Mark as read),
+  Mentions rows (Open in #tribe, Copy text), the pinned bar (Copy text,
+  Unpin) and "N replies". Text fields keep the system's text menu.
+
+Then, from the same test:
+
+- **One Reply** (see "Decided").
+- **Files land in Downloads in one click**, decrypted, under a free name
+  ("name (1).ext"), and the card offers Show in Finder (reveal only);
+  "Save as…" stays in the menu. `UserFiles` (PeelCore) writes every file
+  Peel saves for the person (Downloads, Save as…, CLI `download`) and sets
+  `com.apple.quarantine` with Peel as the agent, removing the file if that
+  fails, so Gatekeeper checks it before it opens: the security near-miss,
+  done. The app is not sandboxed (its only entitlement is the keychain
+  group), so ~/Downloads needs no entitlement; macOS may ask once for
+  access to Downloads.
+- **Delete for everyone.** Checked against the Mac app: a type 17 message
+  with `replyUuid` naming the message (`sendDeleteRequest`); it allows
+  deleting your own, or any in your own tribe (`canBeDeleted`), but not a
+  thread's original while it has two or more thread messages; a received
+  delete marks the target deleted ("This message has been deleted"). The
+  Mac app applies any received delete; Peel only applies one from the
+  message's sender (in a DM, the contact for theirs; ours for ours), or in
+  a tribe from the owner (`role: 0`, which the tribes server stamps) or the
+  member whose message it is (the tribes server already refuses anyone
+  else's, `forward.rs`; the alias, unique in a tribe, must match too).
+  Engine `deleteMessage(id:)` (pays the tribe price like any message; the
+  row is emptied when the delete is sent), storage migration **v10**
+  (`message.deleted`; content, body, key and file details cleared; a later
+  copy of the message cannot fill them again), CLI `delete <id>`, menu
+  "Delete" with "Delete for everyone?", the placeholder row.
+  Verified on a local stack (profiles `ui3-*`, since deleted): DM, each side
+  deletes its own (both see it deleted); Alice's attempt on Bob's DM refused
+  by the engine; tribe, Bob deletes his own, Alice (owner) deletes Carol's,
+  all three see both deleted; Bob's attempt on Carol's refused, and her
+  message stays. A forged delete (a contact's delete of our message, a
+  member's of another's) is covered by `ThreadTests` (built, not run); the
+  tribes server refuses a member's in the first place.
+  Not applied: a delete whose send fails leaves the row emptied here though
+  the others still have it (as the Mac app); deleting a pending or failed
+  message is Discard's job.
+
+Screenshots (fresh `ui3-` profile): the hover bar beside a bubble, the
+deleted placeholder, the "you" menu and the connection panel as Peel
+windows. Not clicked by hand: everything above.
+
+### Flat rows and system type (2026-10-07)
+
+Tom picked readability option D on the canvas (`ReadFlatRows`): flat rows
+instead of bubbles, the system font instead of Roboto (no longer bundled),
+softer text and new link and mention colours (see the design README).
+Built in `MessageViews` (rows, run header, gutter time on hover, hover bar
+at the row's top-right, list items, link shortening), `Theme`, and the
+attachment views, which now size to their column (grid tiles flexible up
+to 148 pt, file cards up to 300 pt with the name truncated in the middle,
+images at their shape up to 320 pt, never past the column). Run names and
+photos are worked out with the rows (`ChatRow.People`: you, the contact,
+or the tribe member).
+
+Also from Tom's testing: the sidebar (220–420 pt) and thread panel
+(300–560 pt) resize on their dividers (`PaneDivider`; double-click resets;
+widths kept in UserDefaults); the thread panel reads from the top (its
+original first, "No replies yet" under it) and scrolls to the bottom only
+once there is more than fits; the main conversation scrolls to its newest
+message on opening.
+
+Run breaks: Tom saw a name and time on every message in his real tribe.
+Not reproduced on a local stack: consecutive messages from one member (and
+from a contact, and from yourself) share one header here, and the rules
+(another sender by tribe alias, five minutes, a new day, a collapsed
+thread row or a note between) match the README. The grouping inputs were
+checked against the tribes server (`date` is milliseconds, aliases stay
+stable per member). The real tribe's rows are needed to find the cause:
+`peel --profile <profile> messages <tribe>` prints each row's alias and
+time.
+
+Verified with screenshots on fresh `ui4-` profiles (since deleted): a
+tribe with a run, a list, a mention, a long link, an image grid, a file, a
+thread row and a reply; a DM with runs, a quote, a file and an undelivered
+message; a thread with a file original and no replies; resized panes.
+Not clicked by hand; code-review, simplify and security-review wait for
+Tom's test of this build.
+
+### Two-click menu items and the final review chain (2026-10-07)
+
+Tom's test of the flat-rows build: everything works except the look of
+the delete confirmation. Every destructive menu item (Delete, Discard,
+Remove from Peel, Leave, Remove a member) now takes two clicks in place:
+the first turns the row into bold red text with a trash icon and "Click
+again", the menu stays open; the second acts; another row or Escape puts
+it back. Panel and screen confirms (`InlineConfirm`) are unchanged.
+
+The chain ran over the whole UI branch, `origin/phase3/attachments...HEAD`
+(`35446a6..HEAD`), each finding checked to be in that diff.
+
+`/code-review high`, fixed:
+- A thread could no longer be posted to once its original was deleted:
+  `links()` takes a deleted original's thread root, and accepts an
+  unstored uuid with stored thread messages.
+- Our own delete was applied before the server had it: it now applies on
+  the echo with a server index or on a delivered status, so a failed
+  delete can be retried (test: "own unsent delete doesn't apply").
+- The caption was lost when the file carrying it was refused: the text is
+  sent alone, refused files go back to the tray, the reply target stays.
+- The image viewer's key monitor ran under the Save panel; key monitors
+  now stand down while a modal window is up.
+- A grid tile's menu acted on the run's first image: each tile has its own.
+- A later copy of a deleted message could set "mentions me" again.
+- A deleted attachment's decrypted file stayed in the cache: it is removed.
+- The UI's delete rule differed from the engine's: both use
+  `Message.isDeletable(inTribe:ownsTribe:threadCount:)`.
+- `cleanName(" .zshrc")` kept a hidden name: spaces and dots are stripped
+  together.
+- Rows went stale after a profile or contact change: rebuilt on both.
+
+`/simplify` (reuse, simplification, efficiency, altitude), applied: dead
+`MessageMeta` removed; `MenuEntry.copyText` used in three places; the
+reply bar and "Last reply" use `sender(of:)`; `hasThreadMessages` folded
+into `threadCount`; doc comments fixed.
+
+Not applied, with reasons:
+- Multi-file send in the engine, an event instead of the `stored:`
+  callback, one sender resolver in PeelCore, `Engine.canDelete` by id,
+  "mark all threads read" as one engine call, answered/settled kept in
+  Storage, a result struct for `Storage.apply`: each moves logic across
+  the core boundary for one caller; worth it with the next feature that
+  needs them.
+- Incremental row rebuilds, a text parse cache, one right-click catcher
+  per row, an index for `threads()`, a stored unread-threads count, a
+  `fetchOne` tribe lookup: not measurable at today's sizes; the index
+  needs a migration.
+- Presenter reads moved into leaf views, `ThreadSummary.ref`,
+  `Conversation.displayName`, `leave` via `attempt`, one body-to-cache-key
+  helper, a hoisted decoder in `threadParticipants`: small tidy-ups left
+  for a later pass to keep this diff settled after Tom's test.
+- One image cache with the photo cache, shared `MenuButton` labels and
+  `listTime`: the pairs differ in size limits and styling.
+
+`/security-review`: no finding at confidence 8 or above. Checked: names
+saved into Downloads (no traversal, no hidden names, control and bidi
+characters dropped, quarantined, never opened, never overwriting); type-17
+deletes stay in their chat and apply only from the sender or the tribe's
+owner; the cache path is a hash; the photo upload's token goes only to the
+memes host, the muid is validated and photos must be https; only https
+links are clickable; new SQL is bound or built from constants. Near-miss
+(confidence about 5): a tribe delete is matched to its target by alias,
+which relies on the tribes server keeping aliases unique and refusing a
+member's delete of another's message; matching by sender key would not.

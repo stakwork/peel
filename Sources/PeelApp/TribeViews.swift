@@ -367,6 +367,18 @@ struct PinnedMessageBar: View {
         .padding(.vertical, 7)
         .background(Theme.panel)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+        .peelMenu {
+            var entries: [MenuEntry] = []
+            if let text = message.content?.trimmed.nilIfEmpty {
+                entries.append(.copyText(text))
+            }
+            if tribe.canManage {
+                entries.append(.button("Unpin from top of tribe", systemImage: "pin.slash") {
+                    Task { await model.pin(nil, in: tribe.pubkey) }
+                })
+            }
+            return entries
+        }
     }
 }
 
@@ -479,7 +491,7 @@ private struct MentionRow: View {
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
                     }
-                    Text(LinkText.attributed(message.content ?? "", onSentBubble: false))
+                    Text(LinkText.attributed(message.content ?? ""))
                         .font(Theme.font(14))
                         .foregroundStyle(Theme.text)
                         .lineLimit(4)
@@ -491,5 +503,14 @@ private struct MentionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SidebarRowStyle(selected: false))
+        .peelMenu {
+            var entries: [MenuEntry] = [.button("Open in #\(tribeName ?? "tribe")", systemImage: "number") {
+                model.destination = .chat(message.chat)
+            }]
+            if let text = message.content?.trimmed.nilIfEmpty {
+                entries.append(.copyText(text))
+            }
+            return entries
+        }
     }
 }

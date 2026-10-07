@@ -160,10 +160,22 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    - A real Xcode project for the app (Xcode would bundle, sign and renew
      itself): bigger than this item; the stub covers the profile.
 
-6. **Long messages.** Text over ~869 bytes is split by the bindings layer
-   (`sphinx-rs/sphinx-ffi/src/chunk.rs`, type 34). Confirm how `send` reports a
-   chunked message and how `handle` reassembles one; handle both. Verify with
-   the official Mac app in both directions.
+6. **Long messages.** Done (checked in the code 2026-10-07, branch
+   `phase4/boosts-payments`; Tom sees them display correctly). The vendored
+   library includes `sphinx-ffi/src/chunk.rs`: `send` splits any JSON over
+   about 569 bytes minus the alias and photo URL into type 34 fragments,
+   publishes them all and returns one `msgs[0]` whose uuid is the chunk id
+   and whose tag is the last fragment's, so Peel's row, its status and the
+   echo all match. `handle`, `fetchMsgsBatch` and the other fetches buffer
+   fragments in core state (`chunkbuf_*`, 300 s timeout) and hand back one
+   reassembled message with the original type, the chunk id as uuid and the
+   last fragment's index; in a tribe our own long message comes back under
+   the same chunk id and merges into its row. Nothing to build. Caveats:
+   every fragment carries the send's full amount, so in a tribe a long
+   message pays the price once per fragment (as the official apps do) and a
+   payment must never be split (phase 4 refuses such notes); a history page
+   made only of fragments of an unfinished message would end catch-up early
+   (needs 100 fragments in a row, not seen).
 7. **Read markers and mutes.** Done 2026-10-07 (branch
    `phase2/status-and-composer`). The engine asks for `getReads` and
    `getMutes` each time it comes online; the replies land in a new

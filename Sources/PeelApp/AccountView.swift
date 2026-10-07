@@ -25,6 +25,10 @@ struct AccountView: View {
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }
                         GroupDivider()
+                        SettingsRow("Confirm payments") {
+                            PaymentConfirmationRow()
+                        }
+                        GroupDivider()
                         SettingsRow("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")
@@ -728,9 +732,11 @@ extension SettingsRow where Trailing == EmptyView {
 }
 
 /// The quiet bordered button of the account screen; `prominent` for the one
-/// that commits.
+/// that commits (`fill` in place of the button colour, such as orange for a
+/// payment waiting for its second click).
 struct GhostButtonStyle: ButtonStyle {
     var prominent = false
+    var fill: Color?
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -741,7 +747,7 @@ struct GhostButtonStyle: ButtonStyle {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(prominent ? Theme.button : configuration.isPressed ? Theme.hover : .clear)
+                    .fill(prominent ? fill ?? Theme.button : configuration.isPressed ? Theme.hover : .clear)
             )
             .overlay {
                 if !prominent { RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider) }

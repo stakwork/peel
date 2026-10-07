@@ -53,6 +53,10 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// Deleted for everyone by its sender (or a tribe's owner): the row stays
     /// for the conversation's shape, its content and key are gone.
     public var deleted = false
+    /// For a payment or boost: the msat it moved to or from this account, or,
+    /// for one seen without sats (a tribe boost on someone else's message),
+    /// the amount the sender declared.
+    public var amountMsat: Int64?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -71,18 +75,29 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// in the official apps.
     public static let confirmationTimeout: TimeInterval = 30
 
+    /// How long after sending a payment the server's having no record of it
+    /// means it never got it (it records a send as soon as it handles it).
+    static let unrecordedPaymentTimeout: TimeInterval = 30 * 60
+
     /// One of our text messages or attachments that failed, or that the
     /// server has not confirmed within the timeout, and so may be sent again
-    /// or discarded. An attachment still uploading is neither.
+    /// or discarded. An attachment still uploading is neither. A payment or
+    /// boost only once it failed: an unconfirmed one may have paid, and
+    /// sending it again would pay twice.
     public func isRetryable(now: Date = .now) -> Bool {
-        guard fromMe, MessageType.content.contains(type), uploadState != .pending else {
-            return false
-        }
+        guard fromMe, !deleted else { return false }
+        if MessageType.payments.contains(type) { return delivery == .failed }
+        guard MessageType.content.contains(type), uploadState != .pending else { return false }
         switch delivery {
         case .failed: return true
         case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
         case .delivered, nil: return false
         }
+    }
+
+    /// Someone else's message that can be boosted, as the Mac app allows it.
+    public var isBoostable: Bool {
+        !fromMe && !deleted && uuid != nil && type == MessageType.text
     }
 
     var senderInfo: SenderInfo? {
@@ -153,6 +168,18 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 }
 
+/// Amounts as people type them.
+public enum Sats {
+    /// A whole number of sats above zero ("1,000" too), as msat; nil for
+    /// anything else, or too many to count in msat.
+    public static func msat(_ text: String) -> UInt64? {
+        let digits = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "")
+        guard let sats = UInt64(digits), sats > 0 else { return nil }
+        let (msat, overflow) = sats.multipliedReportingOverflow(by: 1000)
+        return overflow ? nil : msat
+    }
+}
+
 /// Someone who wrote in a thread, for the avatars on its summary.
 public struct ThreadParticipant: Sendable, Equatable, Hashable {
     public var alias: String?
@@ -183,8 +210,21 @@ public enum MessageType {
     public static let memberReject = 21
     /// The owner deleting the tribe.
     public static let tribeDelete = 22
-    /// Every type a tribe conversation shows: text and the membership notes.
-    static let shownInChats = [text, attachment, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
+    /// Sats sent in a chat, with an optional note in `content`.
+    public static let directPayment = 5
+    /// Sats sent for a message, named by `replyUuid`; the JSON's `amount` is
+    /// what the sender declared.
+    public static let boost = 29
+    /// The types that carry money to someone in a chat.
+    public static let payments = [directPayment, boost]
+    /// Types that count as unread whoever they are for; a boost counts only
+    /// on this account's own message.
+    static let unreadTypes = content + [directPayment]
+    /// Types as an SQL `IN` list.
+    static func sqlList(_ types: [Int]) -> String { types.map(String.init).joined(separator: ", ") }
+    /// Every type a conversation shows: text, attachments, direct payments
+    /// and the membership notes. Boosts show under the message they boost.
+    static let shownInChats = [text, attachment, directPayment, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }
@@ -218,6 +258,17 @@ struct BodyFields: Decodable {
 
     static func decode(_ body: String?) -> BodyFields? {
         body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }
+    }
+}
+
+/// On a payment or boost: the msat the sender says it carries (the core
+/// writes it from the amount sent). Read on its own so that an odd value
+/// never costs a message its other fields.
+enum DeclaredAmount {
+    private struct Field: Decodable { let amount: UInt64 }
+
+    static func decode(_ body: String?) -> Int64? {
+        body.flatMap { try? JSONDecoder().decode(Field.self, from: Data($0.utf8)) }.map { Int64(clamping: $0.amount) }
     }
 }
 

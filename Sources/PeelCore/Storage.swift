@@ -173,6 +173,24 @@ public final class Storage: Sendable {
                 t.add(column: "deleted", .boolean).notNull().defaults(to: false)
             }
         }
+        migrator.registerMigration("v11") { db in
+            // Payments and boosts: the msat each stands for. Rows stored
+            // before take what reached this account, else what was declared.
+            try db.alter(table: "message") { t in
+                t.add(column: "amountMsat", .integer)
+            }
+            try db.execute(sql: """
+                UPDATE message SET amountMsat = COALESCE(msat, CASE
+                    WHEN json_valid(body) AND json_type(body, '$.amount') = 'integer'
+                        AND (fromMe = 1 OR (type = \(MessageType.boost) AND chat IN (SELECT pubkey FROM tribe)))
+                    THEN json_extract(body, '$.amount') END)
+                WHERE type IN (\(MessageType.sqlList(MessageType.payments)));
+                CREATE INDEX message_payment ON message (timestamp)
+                    WHERE type IN (\(MessageType.sqlList(MessageType.payments)));
+                CREATE INDEX message_pending ON message (id)
+                    WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL;
+                """)
+        }
         return migrator
     }
 }
@@ -216,6 +234,8 @@ public enum Setting: String, Sendable {
     /// The aliases stored tribe messages were last checked for mentions of
     /// this account (`MentionScan`); a change checks them again.
     case mentionScan
+    /// Payments and boosts over this many msat need the person's confirmation.
+    case paymentConfirmationMsat
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -285,6 +305,36 @@ public struct Timeline: Sendable, Equatable {
 
     /// Before the first emission.
     public static let empty = Timeline(messages: [], parents: [:], threads: [:])
+    /// The boosts on `messages` and the collapsed threads' originals, by
+    /// the boosted message's uuid.
+    public var boosts: [String: BoostSummary] = [:]
+}
+
+/// The boosts on one message, summed as the Mac app shows them. Deleted
+/// boosts are left out, and our own failed ones are kept apart (`failed`),
+/// out of the count and total.
+public struct BoostSummary: Sendable, Equatable {
+    public struct Boost: Sendable, Equatable {
+        /// The booster's name as their message gave it; nil for our own.
+        public var alias: String?
+        public var photoURL: String?
+        public var fromMe: Bool
+        public var amountMsat: Int64
+        /// For our own boost the server has not confirmed yet: when it went.
+        public var pendingSince: Date?
+    }
+
+    /// Oldest first.
+    public var boosts: [Boost] = []
+    /// Our own boosts on it that failed, oldest first: each may be sent
+    /// again or discarded.
+    public var failed: [Message] = []
+    /// When our oldest unconfirmed boost on it went, if one is.
+    public var pendingSince: Date? { boosts.compactMap(\.pendingSince).min() }
+
+    public var count: Int { boosts.count }
+    public var totalMsat: Int64 { boosts.reduce(0) { $0 &+ $1.amountMsat } }
+    public var boostedByMe: Bool { boosts.contains(where: \.fromMe) }
 }
 
 /// One thread: the message that started it and what has been said in it.
@@ -314,6 +364,8 @@ public struct ChatThread: Sendable, Equatable {
     public var messages: [Message]
     /// The messages replied to inside the thread, by uuid.
     public var parents: [String: Message]
+    /// The boosts on the original and `messages`, by the boosted uuid.
+    public var boosts: [String: BoostSummary] = [:]
 }
 
 // MARK: - Reading
@@ -331,6 +383,11 @@ extension Storage {
 
     public func value(for setting: Setting) throws -> String? {
         try pool.read { db in try SettingRow.fetchOne(db, key: setting.rawValue)?.value }
+    }
+
+    /// The balance the server last reported, in msat; nil until it has.
+    public func balanceMsat() throws -> UInt64? {
+        try value(for: .balanceMsat).flatMap { UInt64($0) }
     }
 
     public func set(_ value: String, for setting: Setting) throws {
@@ -421,11 +478,14 @@ extension Storage {
         SELECT pubkey, name, photoURL, 1 FROM tribe WHERE left = 0
         """
 
+    /// The newest text, attachment or direct payment (a payment only while
+    /// not deleted) gives each conversation its place in the sidebar.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
-            SELECT id FROM message WHERE chat = c.chat AND type IN (\(MessageType.contentSQL))
+            SELECT id FROM message WHERE chat = c.chat AND (type IN (\(MessageType.contentSQL))
+                OR (type = \(MessageType.directPayment) AND deleted = 0))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
@@ -458,7 +518,7 @@ extension Storage {
         """
         SELECT * FROM (
             SELECT * FROM message m
-            WHERE chat = ? AND type IN (\(MessageType.shownInChats.map(String.init).joined(separator: ", ")))
+            WHERE chat = ? AND type IN (\(MessageType.sqlList(MessageType.shownInChats)))
                 AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
             \(condition)
             ORDER BY timestamp DESC, id DESC LIMIT 200
@@ -493,13 +553,22 @@ extension Storage {
         """
     }
 
-    /// Incoming text messages and attachments past the read marker count as
-    /// unread, one row per conversation; each count is a range on
-    /// `message_unread`, and the mentions among them a range on `message_mentions`.
+    /// Incoming text, attachments and direct payments past the read marker
+    /// count as unread, and boosts only on this account's own messages
+    /// (someone else's boost on someone else's message is not news to us;
+    /// Tom, 2026-10-07). One row per conversation; each count is ranges on
+    /// `message_unread` (one per type), plus a lookup of the boosted message
+    /// for each boost in range; the mentions among them a range on
+    /// `message_mentions`. A message deleted after it arrived still counts,
+    /// as before payments (it was news when it came).
     private static let readStatesSQL = """
         SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, (
             SELECT COUNT(*) FROM message m
-            WHERE m.chat = c.chat AND m.fromMe = 0 AND m.type IN (\(MessageType.contentSQL))
+            WHERE m.chat = c.chat AND m.fromMe = 0
+                AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
+                -- The rule `isMoneyForMe` holds for notifications too.
+                AND (m.type != \(MessageType.boost) OR EXISTS (
+                    SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
         ) AS unread, (
             SELECT COUNT(*) FROM message m
@@ -539,6 +608,23 @@ extension Storage {
 
     public func message(id: Int64) throws -> Message? {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
+    }
+
+    /// Our sends the server has not confirmed or refused: every payment or
+    /// boost, and text that has waited past the confirmation timeout, newest
+    /// first, at most 200 (`message_pending`).
+    func pendingSends(textBefore cutoff: Int64) throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
+                        AND (type IN (\(MessageType.sqlList(MessageType.payments))) OR timestamp < ?)
+                    ORDER BY id DESC LIMIT 200
+                    """,
+                arguments: [cutoff]
+            )
+        }
     }
 
     func chat(forTag tag: String) throws -> String? {
@@ -588,7 +674,7 @@ extension Storage {
                     SELECT json_extract(sender, '$.alias') AS alias, json_extract(sender, '$.photo_url') AS photo,
                         type, MAX(id)
                     FROM message
-                    WHERE chat = ? AND fromMe = 0 AND type IN (\(types.map(String.init).joined(separator: ", ")))
+                    WHERE chat = ? AND fromMe = 0 AND type IN (\(MessageType.sqlList(types)))
                         \(since > 0 ? "AND timestamp >= ?" : "") AND json_valid(sender) AND IFNULL(json_extract(sender, '$.alias'), '') != ''
                     GROUP BY alias
                     ORDER BY alias COLLATE NOCASE
@@ -652,6 +738,26 @@ extension Storage {
             .values(in: pool)
     }
 
+    /// The newest 200 payments and boosts, sent or received, in one chat or
+    /// (nil) in all, newest first, re-emitted whenever they change.
+    public func payments(in chat: String? = nil) -> some AsyncSequence<[Message], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                try Message.fetchAll(
+                    db,
+                    sql: """
+                        SELECT * FROM message
+                        WHERE type IN (\(MessageType.sqlList(MessageType.payments))) AND deleted = 0
+                            \(chat == nil ? "" : "AND chat = ?")
+                        ORDER BY timestamp DESC, id DESC LIMIT 200
+                        """,
+                    arguments: StatementArguments(chat.map { [$0] } ?? [])
+                )
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
     /// Every conversation, newest first, re-emitted whenever one changes.
     public func conversations() -> some AsyncSequence<[Conversation], any Error> {
         ValueObservation
@@ -695,7 +801,10 @@ extension Storage {
                     )
                     for summary in summaries { threads[summary.uuid] = summary }
                 }
-                return Timeline(messages: messages, parents: try Self.parents(of: messages, in: chat, db), threads: threads)
+                return Timeline(
+                    messages: messages, parents: try Self.parents(of: messages, in: chat, db), threads: threads,
+                    boosts: try Self.boosts(on: messages + threads.values.map(\.original), in: chat, db)
+                )
             }
             .removeDuplicates()
             .values(in: pool)
@@ -707,10 +816,12 @@ extension Storage {
         ValueObservation
             .trackingConstantRegion { db in
                 let messages = try Message.fetchAll(db, sql: Self.threadMessagesSQL, arguments: [chat, uuid])
+                let original = try Self.message(uuid: uuid, in: chat, db)
                 return ChatThread(
-                    original: try Self.message(uuid: uuid, in: chat, db),
+                    original: original,
                     messages: messages,
-                    parents: try Self.parents(of: messages, in: chat, db)
+                    parents: try Self.parents(of: messages, in: chat, db),
+                    boosts: try Self.boosts(on: messages + [original].compactMap { $0 }, in: chat, db)
                 )
             }
             .removeDuplicates()
@@ -777,6 +888,41 @@ extension Storage {
             arguments: StatementArguments([chat] + Array(uuids))
         )
         return Dictionary(parents.compactMap { parent in parent.uuid.map { ($0, parent) } }, uniquingKeysWith: { $1 })
+    }
+
+    /// The boosts on `messages`, by boosted uuid; same chat only.
+    private static func boosts(on messages: [Message], in chat: String, _ db: Database) throws -> [String: BoostSummary] {
+        let uuids = Set(messages.compactMap(\.uuid))
+        guard !uuids.isEmpty else { return [:] }
+        let boosts = try Message.fetchAll(
+            db,
+            sql: """
+                SELECT * FROM message
+                WHERE chat = ? AND replyUUID IN (\(databaseQuestionMarks(count: uuids.count)))
+                    AND type = \(MessageType.boost) AND deleted = 0
+                ORDER BY timestamp, id
+                """,
+            arguments: StatementArguments([chat] + Array(uuids))
+        )
+        var summaries: [String: BoostSummary] = [:]
+        // A boost on our own message pays us: only the sats that arrived
+        // count, never what its sender declared.
+        let ours = Set(messages.filter(\.fromMe).compactMap(\.uuid))
+        for var boost in boosts {
+            guard let boosted = boost.replyUUID else { continue }
+            if !boost.fromMe, ours.contains(boosted) { boost.amountMsat = boost.msat ?? 0 }
+            if boost.fromMe, boost.delivery == .failed {
+                summaries[boosted, default: BoostSummary()].failed.append(boost)
+                continue
+            }
+            let sender: (alias: String?, photoURL: String?) = boost.fromMe ? (nil, nil) : boost.senderDetails
+            summaries[boosted, default: BoostSummary()].boosts.append(BoostSummary.Boost(
+                alias: sender.alias, photoURL: sender.photoURL, fromMe: boost.fromMe,
+                amountMsat: boost.amountMsat ?? 0,
+                pendingSince: boost.fromMe && boost.delivery == .pending ? boost.date : nil
+            ))
+        }
+        return summaries
     }
 
     private static func threadSummaries(
@@ -858,13 +1004,15 @@ extension Storage {
         /// the key that decrypted the message, so its name and photo can be kept.
         /// `replaces` is the uuid of our own row that a tribe's copy of it takes over.
         var messages: [(message: Message, trustSender: Bool, replaces: String?)] = []
+        /// Send statuses by tag; each only moves a row forward (`setStatus`).
         var statuses: [(tag: String, status: String)] = []
         /// Read markers from the server; a marker only ever moves forward.
         var reads: [String: Int64] = [:]
         var mutes: [String: Int] = [:]
-        /// An outgoing row sent again: it takes the new send's uuid and tag.
+        /// An outgoing row sent again: it takes the new send's uuid, tag and
+        /// payment hash.
         var resend: Resend?
-        typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, timestamp: Int64)
+        typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64)
         var tribes: [Tribe] = []
     }
 
@@ -877,6 +1025,16 @@ extension Storage {
     /// As `apply`, also giving the bodies of attachments a delete emptied, so
     /// their decrypted copies can be removed from the cache.
     func apply(_ commit: Commit, purged: inout [String]) throws -> [Message] {
+        var received: [Message] = []
+        return try apply(commit, purged: &purged, received: &received)
+    }
+
+    /// As `apply`, also giving the sats that reached this account in this
+    /// commit (`received`): direct payments to it and boosts on its own
+    /// messages, stored for the first time, with real sats (never an amount
+    /// only declared), not deleted and past the chat's read marker (so a
+    /// restore or catch-up of what was already seen stays quiet).
+    func apply(_ commit: Commit, purged: inout [String], received: inout [Message]) throws -> [Message] {
         try pool.write { db in
             for (key, value) in commit.state {
                 try CoreStateRow(key: key, value: value).upsert(db)
@@ -900,9 +1058,17 @@ extension Storage {
                 try tribe.upsert(db)
             }
             var stored: [Message] = []
+            // Payments and boosts stored for the first time, checked once
+            // this commit's read markers are in.
+            var fresh: [Message] = []
             for (message, trustSender, replaces) in commit.messages {
+                let money = !message.fromMe && MessageType.payments.contains(message.type)
+                let isNew = try money && !(Bool.fetchOne(
+                    db, sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)", arguments: [message.uuid]
+                ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 stored.append(row)
+                if isNew { fresh.append(row) }
                 if trustSender, let info = message.senderInfo {
                     try Self.upsertContact(db, pubkey: row.chat, alias: info.alias, photoURL: info.photoURL)
                 }
@@ -930,22 +1096,26 @@ extension Storage {
             for (chat, index) in commit.reads {
                 try Self.setRead(db, chat: chat, index: index)
             }
+            received += try fresh.filter { try Self.isMoneyForMe($0, db) }
             for (chat, level) in commit.mutes {
                 try Self.setMute(db, chat: chat, level: level)
             }
+            // The rule of `Message.isRetryable`, held here too: text again once
+            // failed or unconfirmed, a payment or boost only once it failed.
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,
                     sql: """
-                        UPDATE message SET uuid = ?, tag = ?, status = ?, timestamp = ?
-                        WHERE id = ? AND chat = ? AND fromMe = 1 AND type IN (\(MessageType.contentSQL))
-                            AND status IN (?, ?)
+                        UPDATE message SET uuid = ?, tag = ?, paymentHash = ?, status = ?, timestamp = ?
+                        WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
+                            AND type IN (\(MessageType.sqlList(MessageType.content + MessageType.payments)))
+                            AND (status = ? OR (status = ? AND type IN (\(MessageType.contentSQL))))
                         RETURNING *
                         """,
                     arguments: [
-                        resend.uuid, resend.tag, Message.Delivery.pending.rawValue, resend.timestamp,
+                        resend.uuid, resend.tag, resend.paymentHash, Message.Delivery.pending.rawValue, resend.timestamp,
                         resend.id, resend.chat,
-                        Message.Delivery.pending.rawValue, Message.Delivery.failed.rawValue,
+                        Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]
                 )
                 if let row { stored.append(row) }
@@ -991,8 +1161,8 @@ extension Storage {
             sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
-                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     mentionsMe = CASE WHEN message.deleted THEN 0 ELSE MAX(message.mentionsMe, excluded.mentionsMe) END,
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
@@ -1006,7 +1176,9 @@ extension Storage {
                     content = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.content, excluded.content) END,
                     replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
                     threadUUID = COALESCE(message.threadUUID, excluded.threadUUID),
-                    mediaType = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.mediaType, excluded.mediaType) END
+                    mediaType = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.mediaType, excluded.mediaType) END,
+                    amountMsat = CASE WHEN excluded.msat IS NOT NULL AND message.fromMe = 0
+                        THEN excluded.amountMsat ELSE COALESCE(message.amountMsat, excluded.amountMsat) END
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
                 """,
@@ -1014,7 +1186,7 @@ extension Storage {
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
                 message.status, message.mentionsMe, message.replyUUID, message.threadUUID,
-                message.mediaType, message.fileName, message.fileSize, message.upload,
+                message.mediaType, message.fileName, message.fileSize, message.upload, message.amountMsat,
             ]
         )
     }
@@ -1051,6 +1223,20 @@ extension Storage {
                 """,
             arguments: [id]
         )
+    }
+
+    /// Someone else's payment or boost that brought this account sats it has
+    /// not seen yet: a direct payment, or a boost on one of its own messages
+    /// (someone else's boost on someone else's message is not news to it;
+    /// the unread count in `readStatesSQL` holds the same rule). `row` is
+    /// someone else's payment or boost, just stored.
+    private static func isMoneyForMe(_ row: Message, _ db: Database) throws -> Bool {
+        guard !row.deleted, (row.msat ?? 0) > 0, let index = row.serverIndex else { return false }
+        let lastRead = try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [row.chat])
+        guard index > lastRead ?? -1 else { return false }
+        guard row.type == MessageType.boost else { return true }
+        guard let boosted = row.replyUUID else { return false }
+        return try message(uuid: boosted, in: row.chat, db)?.fromMe == true
     }
 
     /// How many text messages and attachments are in a thread.
@@ -1116,8 +1302,18 @@ extension Storage {
         try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag) }
     }
 
+    /// A status only moves forward: an unconfirmed send becomes delivered or
+    /// failed, a failed one delivered (the server had it after all), and a
+    /// delivered one never changes. So a late or synthesised failure can never
+    /// make a payment that went through retryable.
     private static func setStatus(_ db: Database, _ status: String, tag: String) throws {
-        try db.execute(sql: "UPDATE message SET status = ? WHERE tag = ?", arguments: [status, tag])
+        try db.execute(
+            sql: """
+                UPDATE message SET status = ?1 WHERE tag = ?2
+                    AND (status IS NULL OR status = 'PENDING' OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
+                """,
+            arguments: [status, tag]
+        )
     }
 
     /// Removes one of our own messages that never reached the server.

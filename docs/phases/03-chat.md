@@ -1634,3 +1634,16 @@ profile's notifications).
   bundle ID: either may receive the other's clicks and remove its
   notifications. Harmless for one user; a profile tag in userInfo would fix it.
 - Scroll to the message on click; a Reply action.
+- **Payments and boosts (hook ready, not shown yet).** Tom, 2026-10-07:
+  payments to you and boosts on your messages should notify. The engine
+  emits `Engine.Event.moneyReceived(Message)` after the row's `.message`:
+  someone else's direct payment, or a boost on one of this account's
+  messages, stored for the first time on this Mac, with real sats
+  (`msat > 0`; a declared `amount` never counts), not deleted and past
+  the chat's read marker (so a restore or catch-up of what was read stays
+  quiet). `amountMsat` is the amount. It does not apply the chat's mute
+  level or the frontmost check; `Notifier.received` would. `AppModel`
+  ignores the event for now (`Sources/PeelApp/AppModel.swift`); the
+  notifier can take it up with the same gathering and mute rules, text
+  such as "Bob sent you 1,000 sats" or "Bob boosted your message, 100
+  sats". The same rule decides unread (`Storage.readStatesSQL`).

@@ -32,6 +32,12 @@ public actor Engine {
         /// An attachment going up to or coming down from the memes server:
         /// bytes so far of the total, at most every 5% or 250 ms, and at the end.
         case transfer(messageID: Int64, direction: Direction, bytes: Int64, total: Int64)
+        /// Sats reached this account, worth a notification: a direct payment
+        /// to it or a boost on one of its own messages, new to this Mac, past
+        /// the chat's read marker, with real sats (`msat`; `amountMsat` is the
+        /// amount). Follows its `.message`. The chat's mute level is for the
+        /// listener to apply. Never sent for history already read.
+        case moneyReceived(Message)
 
         public enum Direction: Sendable {
             case upload, download
@@ -102,9 +108,25 @@ public actor Engine {
         case attachmentWithoutKey
         case untrustedMediaHost(String)
         case uploadInProgress
+        case invalidAmount
+        case balanceUnknown
+        case insufficientBalance
+        /// Over the confirmation threshold: show the amount, then call again
+        /// with it as `confirmedMsat`.
+        case needsConfirmation(amountMsat: UInt64)
+        case notBoostable
+        case paymentToTribe
+        case noteTooLong
 
         public var description: String {
             switch self {
+            case .invalidAmount: "the amount must be more than nothing"
+            case .balanceUnknown: "the balance is not known yet; connect first"
+            case .insufficientBalance: "the balance is not enough for that"
+            case .needsConfirmation(let msat): "\(msat / 1000) sats is over the confirmation threshold; confirm it first"
+            case .notBoostable: "only someone else's delivered message can be boosted"
+            case .paymentToTribe: "a payment to a tribe goes to the tribes server; boost a message instead"
+            case .noteTooLong: "the note is too long to go with a payment"
             case .notRetryable: "only an undelivered message of ours can be sent again or discarded"
             case .noServer: "this account has no server recorded"
             case .notConnected: "not connected to the server"
@@ -177,6 +199,10 @@ public actor Engine {
     /// ping time to acknowledge once the payment lands.
     private var pingsByHash: [String: UInt64] = [:]
     private var pingsByTag: [String: UInt64] = [:]
+    /// Pending payments old enough that the server must have a record of
+    /// them if it ever got them, asked about on this connection; see
+    /// `checkPendingSends`.
+    private var unrecordedPayments: Set<String> = []
     /// Contacts by the child index the core uses for them, so a live message's
     /// topic names its sender without a core call.
     private var contactsByChildIndex: [UInt64: String] = [:]
@@ -580,6 +606,8 @@ public actor Engine {
     }
 
     private func teardown() async {
+        // A reply to this connection's status query can only come on it.
+        unrecordedPayments = []
         listener?.cancel()
         listener = nil
         if let transport {
@@ -688,8 +716,8 @@ public actor Engine {
             )
         }
         _ = try await deliver(
-            body: try Self.json(["content": "", "replyUuid": uuid]), to: message.chat, replacing: nil,
-            type: MessageType.delete
+            body: try Self.json(["content": "", "replyUuid": uuid]), to: message.chat, type: MessageType.delete,
+            replacing: nil
         )
     }
 
@@ -699,19 +727,137 @@ public actor Engine {
     /// message pays the tribe's current price, as a first send would, but
     /// never more than the price it was first sent at: a raise since then
     /// shows in the tribe's header, and the message must be sent anew.
+    /// A payment or boost goes again only once it failed (`isRetryable`), for
+    /// the same amount, within the balance and, like a new one, confirmed
+    /// when over the threshold; a boost in a tribe only if that amount still
+    /// covers the tribe's price, and only while its message can be boosted.
     @discardableResult
-    public func resend(messageID: Int64) async throws -> String? {
+    public func resend(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> String? {
         guard let message = try storage.message(id: messageID), message.isRetryable(), let body = message.body else {
             throw Failure.notRetryable
         }
-        if let tribe = try openTribe(message.chat), let paid = message.msat,
-           tribe.messageAmountMsat > UInt64(max(paid, 0)) {
-            throw PeelError("this tribe now charges more per message; send it as a new message")
+        let tribe = try openTribe(message.chat)
+        guard MessageType.payments.contains(message.type) else {
+            if let tribe, let paid = message.msat, tribe.messageAmountMsat > UInt64(max(paid, 0)) {
+                throw PeelError("this tribe now charges more per message; send it as a new message")
+            }
+            if message.type == MessageType.attachment {
+                return try await uploadAndDeliver(message)
+            }
+            return try await deliver(body: body, to: message.chat, replacing: messageID)
         }
-        if message.type == MessageType.attachment {
-            return try await uploadAndDeliver(message)
+        guard let amount = message.amountMsat.flatMap(UInt64.init(exactly:)), amount > 0 else {
+            throw Failure.notRetryable
         }
-        return try await deliver(body: body, to: message.chat, replacing: messageID)
+        // The same rule as a new boost: never pay for a message deleted since.
+        if message.type == MessageType.boost {
+            _ = try boostTarget(message.replyUUID.flatMap { try storage.message(uuid: $0, in: message.chat) })
+        }
+        if let tribe, tribe.paymentPriceMsat > amount {
+            throw PeelError("this tribe now charges more per message; boost again as a new boost")
+        }
+        try checkPayment(amount, confirmedMsat: confirmedMsat)
+        return try await deliver(body: body, to: message.chat, type: message.type, amountMsat: amount, replacing: messageID)
+    }
+
+    // MARK: - Payments and boosts
+
+    /// Payments and boosts over this many msat need the person's confirmation
+    /// (`Failure.needsConfirmation`); the app asks before calling again.
+    /// 100 sats unless the person chose otherwise (Tom, 2026-10-07); 0 asks
+    /// for every payment.
+    public static let defaultPaymentConfirmationMsat: UInt64 = 100_000
+
+    public func paymentConfirmationMsat() throws -> UInt64 {
+        try storage.value(for: .paymentConfirmationMsat).flatMap { UInt64($0) } ?? Self.defaultPaymentConfirmationMsat
+    }
+
+    public func setPaymentConfirmation(msat: UInt64) throws {
+        try storage.set(String(msat), for: .paymentConfirmationMsat)
+    }
+
+    /// The balance the server last reported, in msat; nil until it has.
+    public func balanceMsat() throws -> UInt64? {
+        try storage.balanceMsat()
+    }
+
+    /// Boosts someone else's delivered message, as the Mac app does: type 29
+    /// naming it by `replyUuid`. In a tribe the boost also pays the tribe's
+    /// price per message and escrow, so the total is that plus `amountMsat`;
+    /// the tribes server passes all of it to the message's author. Like
+    /// `sendText`, a failure to deliver is reported through events, not
+    /// thrown. Returns the tag the server will confirm.
+    @discardableResult
+    public func boost(messageID: Int64, amountMsat: UInt64, confirmedMsat: UInt64? = nil) async throws -> String? {
+        guard amountMsat > 0 else { throw Failure.invalidAmount }
+        let (message, uuid) = try boostTarget(try storage.message(id: messageID))
+        guard let total = Self.boostTotalMsat(tipMsat: amountMsat, in: try openTribe(message.chat)) else {
+            throw Failure.insufficientBalance
+        }
+        try checkPayment(total, confirmedMsat: confirmedMsat)
+        let body = try Self.json(["content": "", "replyUuid": uuid])
+        return try await deliver(body: body, to: message.chat, type: MessageType.boost, amountMsat: total, replacing: nil)
+    }
+
+    /// What a boost with this tip pays: in a tribe its price per message and
+    /// escrow (`Tribe.paymentPriceMsat`) plus the tip, else the tip; nil if
+    /// it cannot be counted. The app shows this total before sending.
+    public static func boostTotalMsat(tipMsat: UInt64, in tribe: Tribe?) -> UInt64? {
+        let (total, overflow) = (tribe?.paymentPriceMsat ?? 0).addingReportingOverflow(tipMsat)
+        return overflow ? nil : total
+    }
+
+    /// The message a boost is for, and its uuid, if it may be boosted
+    /// (`Message.isBoostable`), for a new boost and a retry alike.
+    private func boostTarget(_ message: Message?) throws -> (Message, String) {
+        guard let message, message.isBoostable, let uuid = message.uuid, MessageUUID.isValid(uuid) else {
+            throw Failure.notBoostable
+        }
+        return (message, uuid)
+    }
+
+    /// Sends sats to a contact in their chat with an optional note (type 5),
+    /// as the Mac app's payment does. Only to a person: in a tribe it would
+    /// pay the tribes server. Delivery is reported as for `sendText`.
+    @discardableResult
+    public func sendPayment(
+        to pubkey: String, amountMsat: UInt64, text: String = "", confirmedMsat: UInt64? = nil
+    ) async throws -> String? {
+        guard amountMsat > 0 else { throw Failure.invalidAmount }
+        guard tribes[pubkey] == nil else { throw Failure.paymentToTribe }
+        guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
+        try checkPayment(amountMsat, confirmedMsat: confirmedMsat)
+        let body = try Self.json(["content": text])
+        return try await deliver(
+            body: body, to: pubkey, type: MessageType.directPayment, amountMsat: amountMsat, replacing: nil
+        )
+    }
+
+    /// Refuses an amount over the last balance the server reported, or over
+    /// the confirmation threshold unless the person confirmed exactly this
+    /// amount (a confirmation never covers a total that changed since, such
+    /// as a tribe raising its price between the two clicks).
+    private func checkPayment(_ amountMsat: UInt64, confirmedMsat: UInt64?) throws {
+        guard let balance = try balanceMsat() else { throw Failure.balanceUnknown }
+        guard amountMsat <= balance else { throw Failure.insufficientBalance }
+        if confirmedMsat != amountMsat, amountMsat > (try paymentConfirmationMsat()) {
+            throw Failure.needsConfirmation(amountMsat: amountMsat)
+        }
+    }
+
+    /// Whether the bindings would split this JSON into type 34 fragments
+    /// (`should_chunk_for_send` in `sphinx-ffi/src/chunk.rs`): each fragment
+    /// carries the whole amount, so a payment must never be split. The same
+    /// sum, with a margin.
+    static func wouldBeSplit(_ body: String, alias: String, photoURL: String) -> Bool {
+        // chunk.rs: MAX_MSG_LEN, FIXED_PROTOCOL_OVERHEAD_BYTES, ROUTE_HINT_OVERHEAD_ALLOWANCE_BYTES.
+        let maxMessage = 869, protocolOverhead = 250, routeHint = 50, margin = 32
+        struct Sender: Encodable { let alias: String; let img: String }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        // Two strings always encode.
+        let sender = try! encoder.encode(Sender(alias: alias, img: photoURL)).count
+        return body.utf8.count + margin > maxMessage - protocolOverhead - routeHint - sender
     }
 
     /// Drops an undelivered message of ours from this Mac. It never reached the
@@ -737,42 +883,63 @@ public actor Engine {
         String(decoding: try JSONEncoder().encode(fields), as: UTF8.self)
     }
 
-    /// One text message or attachment through the core. A tribe message
-    /// carries sats (the tribe's current price, at least 3) and the alias in
-    /// the form tribes accept. The core only returns a tag and uuid for what
-    /// was sent; the local row is written in the same transaction as the
-    /// state, before publishing. If the publish fails the row is marked failed,
-    /// ready to send again, and the failure is reported as a send status
-    /// rather than thrown.
+    /// One message through the core: text, an attachment, a delete, a
+    /// payment or a boost. A text message to a tribe carries sats (the
+    /// tribe's current price, at least 3); a payment or boost carries
+    /// `amountMsat`. A tribe message goes with the alias in the form tribes
+    /// accept. The core only returns a tag and uuid for what was sent; the
+    /// local row is written in the same transaction as the state, before
+    /// publishing. If the publish fails the row is marked failed, ready to send
+    /// again, and the failure is reported as a send status rather than thrown.
+    /// A payment is marked failed only when nothing was published (no
+    /// connection): once anything went out it may have paid, so it stays
+    /// pending, never to be sent again, until the server says.
     private func deliver(
-        body: String, to pubkey: String, replacing id: Int64?, type: Int = MessageType.text
+        body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
+        replacing id: Int64?
     ) async throws -> String? {
         let tribe = try openTribe(pubkey)
+        let myAlias = tribe == nil ? alias : tribeAlias(alias)
+        if amountMsat != nil, Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) {
+            throw Failure.noteTooLong
+        }
+        let sats = amountMsat ?? tribe?.messageAmountMsat ?? 0
         let time = clock.next()
         let result = try Sphinxrs.send(
             seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(type), msgJson: body,
-            state: StateCodec.encode(state), myAlias: tribe == nil ? alias : tribeAlias(alias), myImg: photoURL,
-            amtMsat: tribe?.messageAmountMsat ?? 0, isTribe: tribe != nil
+            state: StateCodec.encode(state), myAlias: myAlias, myImg: photoURL,
+            amtMsat: sats, isTribe: tribe != nil
         )
         let sent = result.msgs.first
         let now = Date().millisecondsSince1970
         var outgoing: Message?
         var resend: Storage.Commit.Resend?
         if let id {
-            resend = (id, pubkey, sent?.uuid, sent?.tag, now)
+            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, now)
         } else {
             let fields = BodyFields.decode(body)
             outgoing = Message(
                 uuid: sent?.uuid, type: type, chat: pubkey, fromMe: true, body: body,
-                content: fields?.content, msat: tribe.map { Int64(clamping: $0.messageAmountMsat) },
-                timestamp: now, tag: sent?.tag, status: Message.Delivery.pending.rawValue,
-                replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
+                content: fields?.content, msat: sats > 0 ? Int64(clamping: sats) : nil,
+                timestamp: now, tag: sent?.tag, paymentHash: sent?.paymentHash,
+                status: Message.Delivery.pending.rawValue,
+                replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,
+                amountMsat: amountMsat.map { Int64(clamping: $0) }
             )
         }
         let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend)
+        // Nothing is published without a connection (`complete` checks first).
+        let unsent = transport == nil
         do {
             try await complete(result, followUps)
         } catch {
+            guard amountMsat == nil || unsent else {
+                emit.yield(.conversationError(
+                    chat: pubkey, message: "The connection failed while sending; the payment may have gone. "
+                        + "It stays unconfirmed until the server says (\(error))"
+                ))
+                return sent?.tag
+            }
             if let tag = sent?.tag {
                 try storage.setStatus(.failed, tag: tag)
             }
@@ -930,9 +1097,7 @@ public actor Engine {
                 return nil
             }
         }
-        return try await deliver(
-            body: body, to: message.chat, replacing: id, type: MessageType.attachment
-        )
+        return try await deliver(body: body, to: message.chat, type: MessageType.attachment, replacing: id)
     }
 
     /// Reports a transfer's progress as an event for that row.
@@ -1587,6 +1752,11 @@ public actor Engine {
                 // The sender pubkey is the tribe's; the alias and photo are
                 // the member's and must not rename the tribe.
                 trustSender = false
+                // Someone else's boost reaches the other members without
+                // sats; only there is the declared amount all there is.
+                if message.type == MessageType.boost, message.amountMsat == nil {
+                    message.amountMsat = DeclaredAmount.decode(message.body)
+                }
                 let fields = BodyFields.decode(message.body)
                 if let date = fields?.date, date > 0 {
                     message.timestamp = date
@@ -1622,9 +1792,21 @@ public actor Engine {
         if let sent, let tag = sent.tag {
             commit.statuses.append((tag, sent.status))
         }
+        // The server's answer for sends whose status never reached us (see
+        // `checkPendingSends`); only a final one changes a row.
+        let final = [Message.Delivery.delivered.rawValue, Message.Delivery.failed.rawValue]
+        let records = result.tags.flatMap { try? JSONDecoder().decode([SentStatus].self, from: Data($0.utf8)) }
+        var answers = (records ?? []).filter { final.contains($0.status) }
+        if let records {
+            answers += unrecordedPayments.subtracting(records.compactMap(\.tag)).map {
+                SentStatus(tag: $0, status: Message.Delivery.failed.rawValue)
+            }
+        }
+        commit.statuses += answers.compactMap { answer in answer.tag.map { ($0, answer.status) } }
 
         var purged: [String] = []
-        let stored = try storage.apply(commit, purged: &purged)
+        var received: [Message] = []
+        let stored = try storage.apply(commit, purged: &purged, received: &received)
         // A deleted attachment's decrypted copy goes with it.
         let deletedFiles = purged.compactMap { body -> URL? in
             guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
@@ -1635,6 +1817,7 @@ public actor Engine {
             Task.detached { for file in deletedFiles { try? FileManager.default.removeItem(at: file) } }
         }
         state = newState
+        if records != nil { unrecordedPayments = [] }
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
         }
@@ -1678,7 +1861,10 @@ public actor Engine {
         for message in stored {
             emit.yield(.message(message, arrival))
         }
-        if let sent {
+        for message in received {
+            emit.yield(.moneyReceived(message))
+        }
+        for sent in [sent].compactMap({ $0 }) + answers {
             emit.yield(.sendStatus(tag: sent.tag, status: sent.status))
         }
         if let error = result.error {
@@ -1794,15 +1980,20 @@ public actor Engine {
             trustSender = true
         }
         let fields = BodyFields.decode(msg.message)
+        let msat = msg.msat.map { Int64(clamping: $0) }
         var message = Message(
             uuid: msg.uuid,
             serverIndex: msg.index.flatMap { UInt64($0) }.flatMap { Int64(exactly: $0) },
             type: Int(type), chat: chat, fromMe: fromMe,
             sender: msg.sender, body: msg.message, content: fields?.content,
-            msat: msg.msat.map { Int64(clamping: $0) },
+            msat: msat,
             timestamp: msg.timestamp.map { Int64(clamping: $0) },
             tag: msg.tag, paymentHash: msg.paymentHash,
-            replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid
+            replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,
+            // What reached this account, which the core checked against the
+            // payment; only without sats what the sender declared.
+            amountMsat: MessageType.payments.contains(Int(type))
+                ? msat ?? (fromMe ? DeclaredAmount.decode(msg.message) : nil) : nil
         )
         if message.type == MessageType.attachment, let fields = AttachmentFields.decode(msg.message) {
             message.mediaType = fields.mediaType
@@ -1858,6 +2049,12 @@ public actor Engine {
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
             }
             try await fetchReadsAndMutes()
+            // Best effort: catching up must not wait on it.
+            do {
+                try await checkPendingSends()
+            } catch {
+                emit.yield(.coreError("checking pending sends: \(error)"))
+            }
             if let run = history {
                 try await request(run)
             } else if restoring {
@@ -1884,6 +2081,27 @@ public actor Engine {
     private func republishStaleReads(server: [String: Int64]) async throws {
         for (chat, index) in try storage.lastReads() where (server[chat] ?? -1) < index {
             try await publishRead(chat, index: index)
+        }
+    }
+
+    /// Asks the server what became of sends still pending here, as the Mac
+    /// app does on start: a status published while this device was offline
+    /// (an async payment redeemed later, say) is not sent again.
+    /// A payment the server has no record of this long after it was sent
+    /// never reached it (the mixer records every send it handles, an async
+    /// one as pending), so it is marked failed and may be sent again.
+    private func checkPendingSends() async throws {
+        let pending = try storage.pendingSends(
+            textBefore: Date.now.addingTimeInterval(-Message.confirmationTimeout).millisecondsSince1970
+        )
+        guard !pending.isEmpty else { return }
+        let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout)
+        unrecordedPayments = Set(pending.compactMap { message in
+            MessageType.payments.contains(message.type) && message.date < cutoff ? message.tag : nil
+        })
+        let tags = pending.compactMap(\.tag)
+        try await run { time, state in
+            try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: tags, pubkey: nil)
         }
     }
 

@@ -252,10 +252,18 @@ struct SearchField: View {
                 .font(Theme.font(13))
         }
         .foregroundStyle(Theme.secondaryText)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(Theme.input, in: RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider))
+        .fieldBoxed()
+    }
+}
+
+extension View {
+    /// The small dark box behind the sidebar's search and the fields of
+    /// Peel's panels.
+    func fieldBoxed() -> some View {
+        padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Theme.input, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider))
     }
 }
 

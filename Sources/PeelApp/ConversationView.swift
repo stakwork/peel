@@ -71,7 +71,8 @@ private struct ChatColumn: View {
                 Composer(
                     composer: composer,
                     placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
-                    loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil
+                    loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil,
+                    paysTo: conversation.isTribe ? nil : conversation.name
                 )
                 .id(conversation.chat)
             }
@@ -407,35 +408,71 @@ struct DayDivider: View {
     }
 }
 
-/// "Not delivered" (or "Not uploaded") with Retry and Discard. Discard asks
-/// once, in place.
+/// "Not delivered" (or "Not uploaded", or for a payment or boost "Not
+/// sent") with Retry and Discard. Discard asks once, in place. A payment's
+/// Retry goes through `PaymentAttempt`: over the threshold it first asks
+/// "Send 1,000 sats again?" with the amount.
 struct UndeliveredActions: View {
     @Environment(AppModel.self) private var model
     let message: Message
 
     @State private var confirmingDiscard = false
+    @State private var attempt = PaymentAttempt()
+
+    private var isPayment: Bool { MessageType.payments.contains(message.type) }
+    private var what: String {
+        message.type == MessageType.boost ? "boost" : message.type == MessageType.directPayment ? "payment" : "message"
+    }
 
     var body: some View {
         HStack(spacing: 10) {
             if confirmingDiscard {
-                Text("Discard this message?")
+                Text("Discard this \(what)?")
                     .foregroundStyle(Theme.secondaryText)
                 Button("Discard") { Task { await model.discard(message) } }
                     .foregroundStyle(Theme.destructive)
                 Button("Keep") { confirmingDiscard = false }
                     .foregroundStyle(Theme.accent)
-            } else {
-                // An attachment the memes server never got says so, as the Mac app.
-                Text(message.uploadState == .failed ? "Not uploaded" : "Not delivered")
+            } else if let armed = attempt.armed {
+                Text("Send \(Formatting.sats(msat: armed)) again?")
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.text)
+                Button("Send again") { Task { await retry() } }
+                    .foregroundStyle(Theme.attention)
+                    .disabled(attempt.working)
+                Button("Cancel") { attempt.armed = nil }
                     .foregroundStyle(Theme.secondaryText)
-                Button("Retry") { Task { await model.resend(message) } }
+            } else {
+                Text(label)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.secondaryText)
+                Button("Retry") { Task { await retry() } }
                     .foregroundStyle(Theme.accent)
+                    .disabled(attempt.working)
                 Button("Discard") { confirmingDiscard = true }
                     .foregroundStyle(Theme.secondaryText)
+            }
+            if let problem = attempt.problem {
+                ProblemText(problem)
             }
         }
         .buttonStyle(.plain)
         .font(Theme.font(11, .medium))
+    }
+
+    private var label: String {
+        // An attachment the memes server never got says so, as the Mac app.
+        if message.uploadState == .failed { return "Not uploaded" }
+        guard isPayment else { return "Not delivered" }
+        if message.type == MessageType.boost, let msat = message.amountMsat {
+            return "Boost of \(Formatting.sats(msat: msat)) not sent"
+        }
+        return "Not sent"
+    }
+
+    private func retry() async {
+        guard isPayment else { return await model.resend(message) }
+        _ = await attempt.run { await model.retryPayment(message, confirmedMsat: $0) }
     }
 }
 

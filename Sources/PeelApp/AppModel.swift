@@ -87,6 +87,11 @@ final class AppModel {
     /// The server this account talks to, as `host:port`.
     var myServer: String?
     var balanceMsat: UInt64?
+    /// Payments and boosts over this ask for a second click (`Engine`'s threshold).
+    var paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
+    /// Payments and boosts on their way to the engine, so a double click
+    /// never sends one twice.
+    @ObservationIgnored var moneyInFlight: Set<String> = []
     var notice: String?
     /// The latest error that belongs to a conversation, shown inside it.
     var conversationNotices: [String: String] = [:]
@@ -238,15 +243,15 @@ final class AppModel {
     private func rebuildChatRows() {
         guard let chat = selectedChat else { return chatRows = [] }
         chatRows = ChatRow.rows(
-            timeline.messages, threads: timeline.threads, parents: timeline.parents, inTribe: isTribe(chat),
-            people: people(in: chat)
+            timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
+            inTribe: isTribe(chat), people: people(in: chat)
         )
     }
 
     private func rebuildThreadRows() {
         guard let open = openThread, let thread else { return threadRows = [] }
         threadRows = ChatRow.rows(
-            thread.messages, parents: thread.parents, inTribe: isTribe(open.chat),
+            thread.messages, parents: thread.parents, boosts: thread.boosts, inTribe: isTribe(open.chat),
             people: people(in: open.chat), threadRoot: open.uuid, original: thread.original
         )
     }
@@ -523,7 +528,7 @@ final class AppModel {
         myContactInfo?.split(separator: "_").first.map(String.init)
     }
 
-    private func signedIn() throws -> Engine {
+    func signedIn() throws -> Engine {
         guard let engine else { throw PeelError("not signed in") }
         return engine
     }
@@ -564,6 +569,8 @@ final class AppModel {
         myContactInfo = nil
         myServer = nil
         balanceMsat = nil
+        paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
+        moneyInFlight = []
         unlockedAt = nil
         notifier.reset()
     }
@@ -577,7 +584,8 @@ final class AppModel {
         myServer = try? storage.value(for: .server)
         pinTimeoutHours = ((try? await engine.pinTimeoutHours()) ?? nil)
             ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
-        balanceMsat = try? storage.value(for: .balanceMsat).flatMap { UInt64($0) }
+        balanceMsat = try? storage.balanceMsat()
+        paymentConfirmationMsat = (try? await engine.paymentConfirmationMsat()) ?? Engine.defaultPaymentConfirmationMsat
         connection = await engine.connection
         notifier.attach(storage, showsText: (try? await engine.notificationShowsText()) ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
@@ -632,7 +640,9 @@ final class AppModel {
                 if let id = row.id { attachmentHandles[id] = nil }
             case .message(let message, let arrival):
                 notifier.received(message, arrival)
-            case .sendStatus:
+            case .sendStatus, .moneyReceived:
+                // `.moneyReceived` is for the notifier to take up (payments
+                // to you, boosts on your messages); not shown yet.
                 break
             }
         }

@@ -3,8 +3,6 @@ import GRDB
 import Testing
 @testable import PeelCore
 
-private func uuid(_ n: Int) -> String { String(format: "%064x", n) }
-
 /// Sender details as a tribe stamps them on what it forwards.
 private func sender(_ alias: String) -> String { #"{"pubkey":"02t","alias":"\#(alias)"}"# }
 

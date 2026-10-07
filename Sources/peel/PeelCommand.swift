@@ -32,7 +32,8 @@ struct PeelCommand {
                                       (--description, --price-per-message, --price-to-join in sats)
 
         options:
-          --profile <name>    which local account to use (default: default)
+          --profile <name>    which development account to use (required; under Peel/dev,
+                              never the app's own profile)
           --server <host:port>  override the server (init, signup, restore; later runs reuse it)
           --network <bitcoin|regtest>   for init, signup and restore
           --alias <name>      the name others see (default: the profile name)
@@ -55,7 +56,12 @@ struct PeelCommand {
 
     static func run() async throws {
         var arguments = Arguments(CommandLine.arguments.dropFirst())
-        let profile = try Profile(name: arguments.option("--profile") ?? "default", kind: .development)
+        // The app's own profile holds the real account; the CLI only ever opens
+        // development profiles, and never one called "default" so the two cannot be confused.
+        guard let name = arguments.option("--profile"), name.lowercased() != "default" else {
+            throw PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
+        }
+        let profile = try Profile(name: name, kind: .development)
         let server = try arguments.option("--server").map { text in
             guard let address = ServerAddress(text) else { throw PeelError("cannot read server address \(text)") }
             return address

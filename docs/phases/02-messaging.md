@@ -78,7 +78,10 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    (done), restore proven on the throwaway in the app (done), CLI closed (the
    profile lock enforces one process), official app still installed. Restore
    the real account, then use both clients side by side for a few days before
-   relying on Peel. Tribes are phase 3, so until then Peel shows DMs only.
+   relying on Peel. Done 2026-10-07: Tom restored his real account into the
+   app's `default` profile after tribes and the data-protection Keychain
+   landed; history came back complete. From here `default` is off limits to
+   every session (see AGENTS.md Rules), and the CLI refuses it.
 
 ## Still open in this phase
 

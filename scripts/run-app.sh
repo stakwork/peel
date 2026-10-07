@@ -8,6 +8,26 @@ APP="$ROOT/.build/Peel.app"
 # Install a copy at a fixed place, so a Dock pin and Spotlight survive rebuilds.
 INSTALLED="$HOME/Applications/Peel.app"
 mkdir -p "$HOME/Applications"
+# Quit any running installed copy first: its bundle is about to be replaced, and
+# a second copy on the same profile fails on the profile lock. Quit with an Apple
+# Event, not a signal, so the app's willTerminate cleanup runs (clipboard,
+# delivered notifications).
+BINARY="$INSTALLED/Contents/MacOS/PeelApp"
+PATTERN="^$(printf '%s' "$BINARY" | sed 's/[][\.*^$+?(){}|]/\\&/g')( |\$)"
+USER_ID="$(id -u)"
+running() { pgrep -U "$USER_ID" -f "$PATTERN"; }
+for pid in $(running || true); do
+  osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSRunningApplication.runningApplicationWithProcessIdentifier($pid).terminate" >/dev/null || true
+done
+waited=0
+while running >/dev/null; do
+  if [ "$waited" -ge 10 ]; then
+    echo "Peel is still running after $waited s; quit it and run this again." >&2
+    exit 1
+  fi
+  sleep 1
+  waited=$((waited + 1))
+done
 rm -rf "$INSTALLED"
 ditto "$APP" "$INSTALLED"
 open -n "$INSTALLED" --args "$@"

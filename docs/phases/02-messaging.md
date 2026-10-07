@@ -321,6 +321,22 @@ restore is the point of this phase; the Keychain is what makes it allowed.
      answering); the gate belongs with waiting for the register reply.
    - Shortening this entry's cause trace: the citations are what make the
      timing margin checkable against the core and the Mac app.
+11. **`run-app.sh` quits the installed Peel first.** Done 2026-10-07. Before
+   replacing `~/Applications/Peel.app` the script sends a quit Apple Event
+   (`NSRunningApplication.terminate`) to this user's processes running that
+   exact binary (escaped, anchored pattern), so `willTerminate` still clears
+   the clipboard and delivered notifications; if one is still running after
+   10 s it stops with an error and replaces nothing. Checked with `sh -n` and
+   the block run against a dummy bundle in a temporary directory, never the
+   installed app. Review, not applied:
+   - It quits every installed instance whatever its profile: the bundle is
+     replaced under all of them anyway.
+   - Copies running from `.build/Peel.app` or `swift run` are not quit; only
+     the installed copy is the script's concern.
+   - No SIGKILL after the timeout: an error is safer than killing a process
+     mid-write.
+   - The deeper fix, the app handling a held profile lock (bring the running
+     instance forward instead of showing onboarding), is a separate change.
 
 ## Done criteria
 

@@ -46,6 +46,7 @@ struct Sidebar: View {
 
     var body: some View {
         @Bindable var model = model
+        let unreadMentions = model.unreadMentions
         VStack(alignment: .leading, spacing: 12) {
             SidebarHeader()
             SearchField(text: $model.searchQuery)
@@ -53,7 +54,11 @@ struct Sidebar: View {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(spacing: 1) {
                         SidebarLink("Threads", systemImage: "bubble.left", to: .threads)
-                        SidebarLink("Mentions", systemImage: "at", to: .mentions)
+                        SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
+                            Image(systemName: "at").font(.system(size: 13))
+                        } accessory: {
+                            if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                        }
                         SidebarLink("Payments", systemImage: "bolt", to: .payments)
                     }
                     SidebarSection("Tribes", expanded: $showTribes) {
@@ -61,6 +66,7 @@ struct Sidebar: View {
                             ConversationLink(conversation: conversation)
                         }
                         SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                        SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
                     }
                     SidebarSection("Direct messages", expanded: $showDirect) {
                         ForEach(model.directConversations) { conversation in
@@ -207,30 +213,45 @@ extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
 }
 
 /// A direct message or a tribe in the sidebar: bold with a count when unread,
-/// dimmed with a crossed-out bell when muted. Mute and unmute from its context menu.
+/// dimmed with a crossed-out bell when muted. A tribe set to mentions only
+/// counts only the messages that mention you, with an @ beside it. The
+/// notification level is set from its context menu.
 struct ConversationLink: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
 
     var body: some View {
         let state = model.readStates[conversation.chat]
-        let muted = state?.mute == .muted
-        let unread = muted ? 0 : state?.unread ?? 0
-        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: muted) {
+        let level = state?.mute ?? .all
+        let unread = state?.shownUnread ?? 0
+        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: level == .muted) {
             ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
-            if muted {
+            if unread > 0 {
+                UnreadBadge(count: unread)
+            } else if level == .muted {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 11))
                     .help("Muted")
-            } else if unread > 0 {
-                UnreadBadge(count: unread)
+            } else if level == .mentionsOnly {
+                Image(systemName: "at")
+                    .font(.system(size: 11))
+                    .help("Mentions only")
             }
         }
         .contextMenu {
-            Button(muted ? "Unmute" : "Mute") {
-                Task { await model.setMuted(conversation.chat, !muted) }
+            Picker("Notify", selection: Binding(
+                get: { level },
+                set: { newLevel in Task { await model.setMute(conversation.chat, newLevel) } }
+            )) {
+                Text("All messages").tag(MuteLevel.all)
+                // The tribes server only marks mentions in tribes.
+                if conversation.isTribe {
+                    Text("Mentions only").tag(MuteLevel.mentionsOnly)
+                }
+                Text("Nothing (mute)").tag(MuteLevel.muted)
             }
+            .pickerStyle(.inline)
         }
     }
 }
@@ -628,7 +649,7 @@ struct Detail: View {
             case .threads:
                 EmptyPlace(title: "Threads", message: "Threads you start or reply to show up here.")
             case .mentions:
-                EmptyPlace(title: "Mentions", message: "Messages that mention you show up here.")
+                MentionsView()
             case .payments:
                 EmptyPlace(title: "Payments", message: "Payments you send and receive show up here.")
             case nil:
@@ -739,6 +760,14 @@ struct Avatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
+    }
+}
+
+extension View {
+    /// The quiet panel box behind notices, bars and suggestion lists.
+    func panelBoxed() -> some View {
+        background(Theme.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.divider))
     }
 }
 

@@ -58,6 +58,10 @@ final class AppModel {
     var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
     var readStates: [String: ChatReadState] = [:]
+    /// Unread mentions in tribes that are not muted, for the sidebar.
+    var unreadMentions: Int {
+        readStates.values.reduce(0) { $0 + $1.shownMentions }
+    }
     /// Why the last attempt to connect failed; cleared once connected.
     var connectionError: String?
     /// When the engine will next try to reconnect, for a live countdown.
@@ -213,14 +217,18 @@ final class AppModel {
         await attempt("discard", in: message.chat) { try await $0.discard(messageID: id) }
     }
 
-    /// Runs an action on one chat; a failure shows above that chat's composer.
-    private func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async {
-        guard let engine else { return }
+    /// Runs an action on one chat; a failure shows above that chat's
+    /// composer. Returns whether it succeeded.
+    @discardableResult
+    private func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async -> Bool {
+        guard let engine else { return false }
         conversationNotices[chat] = nil
         do {
             try await action(engine)
+            return true
         } catch {
             conversationNotices[chat] = "Could not \(what): \(error)"
+            return false
         }
     }
 
@@ -228,8 +236,8 @@ final class AppModel {
         conversationNotices[chat] = nil
     }
 
-    func setMuted(_ chat: String, _ muted: Bool) async {
-        await attempt(muted ? "mute" : "unmute", in: chat) { try await $0.setMute(chat, level: muted ? .muted : .all) }
+    func setMute(_ chat: String, _ level: MuteLevel) async {
+        await attempt("change notifications", in: chat) { try await $0.setMute(chat, level: level) }
     }
 
     func reconnectNow() async {
@@ -272,8 +280,70 @@ final class AppModel {
     }
 
     func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
+        try await signedIn().tribeMembers(pubkey)
+    }
+
+    /// Creates a tribe owned by this account and opens it.
+    func createTribe(_ settings: TribeSettings) async throws {
+        let tribe = try await signedIn().createTribe(settings)
+        destination = .chat(tribe.pubkey)
+    }
+
+    func tribeSettings(_ pubkey: String) async throws -> TribeSettings {
+        try await signedIn().tribeSettings(pubkey)
+    }
+
+    func updateTribe(_ pubkey: String, _ settings: TribeSettings) async throws {
+        try await signedIn().updateTribe(pubkey, settings: settings)
+    }
+
+    func deleteTribe(_ pubkey: String) async throws {
+        try await signedIn().deleteTribe(pubkey)
+        if selectedChat == pubkey { destination = nil }
+    }
+
+    func kick(_ member: String, from pubkey: String) async throws {
+        try await signedIn().kickMember(member, from: pubkey)
+    }
+
+    func answerJoinRequest(in pubkey: String, _ request: Engine.JoinRequest, approve: Bool) async throws {
+        try await signedIn().answerJoinRequest(in: pubkey, request, approve: approve)
+    }
+
+    /// Answers a request shown in the open tribe; a failure shows above its
+    /// composer. Returns whether the answer went out.
+    func answerJoinRequest(_ message: Message, approve: Bool) async -> Bool {
+        guard let uuid = message.uuid else { return false }
+        return await attempt(approve ? "approve" : "decline", in: message.chat) {
+            try await $0.answerJoinRequest(in: message.chat, .message(uuid: uuid), approve: approve)
+        }
+    }
+
+    /// Pins a message (by uuid) for every member, or unpins with nil.
+    func pin(_ uuid: String?, in pubkey: String) async {
+        await attempt(uuid == nil ? "unpin" : "pin", in: pubkey) { try await $0.pinMessage(uuid, in: pubkey) }
+    }
+
+    /// Who can be @mentioned in a tribe, read off the main thread.
+    func mentionCandidates(in pubkey: String) async -> [TribeMember] {
+        guard let storage = engine?.storage else { return [] }
+        return await Task.detached { (try? storage.mentionCandidates(in: pubkey)) ?? [] }.value
+    }
+
+    /// Tribe messages that mention this account, newest first, as they change.
+    /// Followed only while the Mentions list is open.
+    func mentionUpdates() -> (some AsyncSequence<[Message], any Error>)? {
+        engine?.storage.mentions()
+    }
+
+    /// This account's key, which names it on a tribe's member list.
+    var myPubkey: String? {
+        myContactInfo?.split(separator: "_").first.map(String.init)
+    }
+
+    private func signedIn() throws -> Engine {
         guard let engine else { throw PeelError("not signed in") }
-        return try await engine.tribeMembers(pubkey)
+        return engine
     }
 
     /// Adds a contact from the contact info they shared.

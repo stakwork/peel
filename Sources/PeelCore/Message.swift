@@ -29,6 +29,8 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var tag: String?
     public var paymentHash: String?
     public var status: String?
+    /// A tribe message from someone else that mentions this account.
+    public var mentionsMe = false
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -60,6 +62,15 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// The sender's photo, https only.
     public var senderPhotoURL: String? { senderInfo?.photoURL?.httpsOnly }
+
+    /// A text message every member holds under this uuid: anyone else's, or
+    /// ours once the tribe's copy (with the tribe's uuid) has come back.
+    public var isPinnable: Bool {
+        uuid != nil && type == MessageType.text && (!fromMe || delivery == .delivered)
+    }
+
+    /// The message this one answers: for an approval or rejection, the request.
+    public var replyUUID: String? { BodyFields.decode(body)?.replyUuid }
 }
 
 /// Message type numbers defined by the core (`MsgType` in the sphinx crate).
@@ -67,6 +78,17 @@ public enum MessageType {
     public static let text = 0
     public static let groupJoin = 14
     public static let groupLeave = 15
+    /// The owner removing a member; carries the member's key in `member`.
+    public static let groupKick = 16
+    /// A request to join a private tribe, which goes only to the owner.
+    public static let memberRequest = 19
+    /// The owner's answers to a request; `replyUuid` names the request.
+    public static let memberApprove = 20
+    public static let memberReject = 21
+    /// The owner deleting the tribe.
+    public static let tribeDelete = 22
+    /// Every type a tribe conversation shows: text and the membership notes.
+    static let shownInChats = [text, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }
@@ -79,9 +101,11 @@ struct SenderInfo: Decodable {
     let photoURL: String?
     /// Set by a tribes server on the joins it forwards.
     let host: String?
+    /// Set by a tribes server on what it forwards: 0 when the owner sent it.
+    let role: Int?
 
     enum CodingKeys: String, CodingKey {
-        case pubkey, alias, host
+        case pubkey, alias, host, role
         case photoURL = "photo_url"
     }
 }
@@ -93,6 +117,7 @@ struct BodyFields: Decodable {
     let originalUuid: String?
     /// On a message a tribe forwarded: when the tribe took it, in milliseconds.
     let date: Int64?
+    let replyUuid: String?
 
     static func decode(_ body: String?) -> BodyFields? {
         body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }

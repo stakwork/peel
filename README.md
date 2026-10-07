@@ -24,6 +24,9 @@ swift build
 
 ## Try it
 
+The app is signed with a free Personal Team profile that lasts 7 days; run
+`./scripts/run-app.sh` at least weekly to re-sign it (see `AGENTS.md`).
+
 ```sh
 ./scripts/run-app.sh -profile throwaway
 ```

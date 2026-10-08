@@ -13,7 +13,8 @@ extension Engine {
     /// would cost sats for nothing). The key exchange pays `keyExchangeMsat`,
     /// through the usual balance and threshold checks (`checkPayment`): over
     /// the threshold it throws `needsConfirmation`, and the second call, with
-    /// that amount as `confirmedMsat`, adds them. Returns their pubkey, which
+    /// that amount as `confirmedMsat`, adds them. Too few sats, or no
+    /// balance yet, throws `contactNeedsSats`. Returns their pubkey, which
     /// names the conversation, and whether a key exchange was started.
     @discardableResult
     public func addContact(
@@ -27,7 +28,13 @@ extension Engine {
         if Self.isPerson(pubkey, in: state) == true { return (pubkey, false) }
         // Nobody confirms a payment that cannot go.
         guard transport != nil else { throw Failure.notConnected }
-        try checkPayment(Self.keyExchangeMsat, .threshold(confirmedMsat))
+        do {
+            try checkPayment(Self.keyExchangeMsat, .threshold(confirmedMsat))
+        } catch Failure.balanceUnknown, Failure.insufficientBalance {
+            // Connected, no balance yet is a new account's 0 sats: its server
+            // reports one only when it changes.
+            throw Failure.contactNeedsSats
+        }
         let name = alias?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? code.inviterName
         try await addContact(info, alias: name)
         return (pubkey, true)

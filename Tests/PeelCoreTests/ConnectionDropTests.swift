@@ -11,9 +11,10 @@ struct ConnectionDropTests {
 
     /// Runs `body` on a registered engine with a balance, on `goneTransport()`,
     /// and disconnects after, which shuts the transport's client down.
-    private func withEngine(_ body: (Engine, Storage) async throws -> Void) async throws {
+    private func withEngine(balanceMsat: UInt64? = 1_000_000, _ body: (Engine, Storage) async throws -> Void) async throws {
         let storage = try profile.storage()
-        let settings: [Setting: String] = [.balanceMsat: "1000000", .server: "mqtt://127.0.0.1:1"]
+        var settings: [Setting: String] = [.server: "mqtt://127.0.0.1:1"]
+        settings[.balanceMsat] = balanceMsat.map(String.init)
         _ = try storage.apply(Storage.Commit(state: registeredState, settings: settings))
         let engine = try testEngine(storage)
         await engine.useTransportForTesting(goneTransport())
@@ -70,7 +71,7 @@ struct ConnectionDropTests {
             await #expect(throws: Engine.Failure.notConnected) { try await engine.addContact(code: "\(strangerKey)_\(key3G)_9") }
             let code = "\(keyG)_\(key3G)_9"
             try storage.set(String(Engine.keyExchangeMsat - 1), for: .balanceMsat)
-            await #expect(throws: Engine.Failure.insufficientBalance) { try await engine.addContact(code: code) }
+            await #expect(throws: Engine.Failure.contactNeedsSats) { try await engine.addContact(code: code) }
             try storage.set(String(Engine.keyExchangeMsat), for: .balanceMsat)
             try await engine.setPaymentConfirmation(msat: 0)
             await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: Engine.keyExchangeMsat)) {
@@ -79,6 +80,14 @@ struct ConnectionDropTests {
             await #expect(throws: Engine.Failure.notConnected) {
                 try await engine.addContact(code: code, confirmedMsat: Engine.keyExchangeMsat)
             }
+        }
+    }
+
+    /// A new account's server sends no balance until it changes: connected
+    /// with none yet is 0 sats, so too few to add someone, not "connect first".
+    @Test func aNewAccountWithNoBalanceNeedsSatsToAddSomeone() async throws {
+        try await withEngine(balanceMsat: nil) { engine, _ throws in
+            await #expect(throws: Engine.Failure.contactNeedsSats) { try await engine.addContact(code: "\(keyG)_\(key3G)_9") }
         }
     }
 

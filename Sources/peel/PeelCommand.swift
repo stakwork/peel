@@ -512,7 +512,7 @@ struct PeelCommand {
             let invoice = try await session.engine.createInvoice(amountMsat: msat, memo: arguments.rest().joined(separator: " "))
             print("invoice \(invoice.paymentHash)")
             print(invoice.bolt11)
-            // Stay online so a payment can settle; Ctrl-C stops.
+            // The server takes the payment even offline; stay online to see it paid. Ctrl-C stops.
             try await session.finish(after: wait)
 
         case "decode":

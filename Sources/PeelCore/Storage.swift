@@ -1410,6 +1410,39 @@ extension Storage {
         guard written != nil else { throw PeelError("that invoice is already being paid or paid") }
     }
 
+    /// Which of these payment hashes name an invoice made here and still open.
+    func openInvoices(among hashes: [String]) throws -> Set<String> {
+        guard !hashes.isEmpty else { return [] }
+        return try pool.read { db in
+            try Set(String.fetchAll(
+                db,
+                sql: """
+                    SELECT paymentHash FROM invoice WHERE incoming = 1 AND status = 'OPEN'
+                        AND paymentHash IN (\(databaseQuestionMarks(count: hashes.count)))
+                    """,
+                arguments: StatementArguments(hashes)
+            ))
+        }
+    }
+
+    /// Whether an invoice made here is open and may have been paid since
+    /// `checkedAt` (milliseconds), when the history was last fetched back to
+    /// what is stored: it had not expired by then, with a margin for the
+    /// clocks (one with no expiry counts as a week, CLN's default). Nil asks
+    /// about any open one.
+    func hasInvoicesAwaitingHistory(checkedAt: Int64?) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM invoice WHERE incoming = 1 AND status = 'OPEN'
+                        AND COALESCE(expiresAt, createdAt + 604800000) + 600000 > ?)
+                    """,
+                arguments: [checkedAt ?? 0]
+            ) ?? false
+        }
+    }
+
     /// Removes one of our own messages that never reached the server.
     func deleteMessage(id: Int64) throws {
         try pool.write { db in try db.execute(sql: "DELETE FROM message WHERE id = ?", arguments: [id]) }

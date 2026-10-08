@@ -167,9 +167,10 @@ public struct PaymentRecord: Codable, Sendable, Equatable, FetchableRecord, Pers
         return rows.compactMap(\.value).compactMap { row in
             guard let rhash = row.rhash?.lowercased(), rhash.isHash, let ts = row.ts.flatMap(Int64.init(exactly:)),
                   let amount = row.amtMsat.flatMap(Int64.init(exactly:)) else { return nil }
+            // A payment to an invoice the server made for us comes with index 0: no message.
             return PaymentRecord(
                 rhash: rhash, ts: ts, amountMsat: amount, incoming: row.msgIdx != nil,
-                msgIndex: row.msgIdx.flatMap(Int64.init(exactly:)), remote: row.remote ?? false,
+                msgIndex: row.msgIdx.flatMap { $0 == 0 ? nil : Int64(exactly: $0) }, remote: row.remote ?? false,
                 error: row.error?.nilIfEmpty
             )
         }

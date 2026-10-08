@@ -36,6 +36,15 @@ public struct Profile: Sendable {
         }
     }
 
+    /// A development profile in a directory of the caller's choosing: the
+    /// integration tests' temporary accounts (`@testable` only).
+    init(developmentAt directory: URL) {
+        name = directory.lastPathComponent
+        kind = .development
+        self.directory = directory
+        secrets = FileSecretStore(file: directory.appendingPathComponent("mnemonic"))
+    }
+
     public var hasAccount: Bool { secrets.hasMnemonic }
 
     public var requiresPIN: Bool { secrets.requiresPIN }

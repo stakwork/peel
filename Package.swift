@@ -49,5 +49,11 @@ let package = Package(
             name: "PeelCoreTests",
             dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
         ),
+        // Journeys through the real core against a local stack
+        // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1.
+        .testTarget(
+            name: "PeelIntegrationTests",
+            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
     ]
 )

@@ -705,7 +705,7 @@ questions, the same day:
    never, and no switch.
 2. **Public tribes: never shared**, whatever the switch says, and they get
    no switch. A tribe is public unless it is private (`Tribe.isPrivate`,
-   stored per tribe, `Storage.swift:120`, set from the tribes server's
+   stored per tribe, `Storage+Migrations.swift:88`, set from the tribes server's
    `private` field, `Tribe.swift:290`; Sphinx's "private" means the owner
    approves each member). An unlisted tribe that anyone with the link can
    join is public; Peel does not store `unlisted` and does not need it.

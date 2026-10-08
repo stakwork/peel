@@ -21,7 +21,7 @@ is a short plan. Update the status and the journal when you finish something.
     `ThreadSummary`, `ChatThread`
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states, tribes and their senders, mentions, payments, the shared SQL
-    (`chatsSQL`, `messagesSQL(also:)`, `countsAsUnreadSQL`)
+    (`tribeChats`, `chatsSQL`, `messagesSQL(also:)`, `countsAsUnreadSQL`)
   - `Storage+Threads.swift` — replies and threads: `timeline(in:)` (tribe
     threads collapsed), `thread(_:in:)`, `threads()`, parents, boosts and
     thread summaries

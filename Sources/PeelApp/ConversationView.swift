@@ -436,7 +436,8 @@ struct UndeliveredActions: View {
 
     private var isPayment: Bool { MessageType.payments.contains(message.type) }
     private var what: String {
-        message.type == MessageType.boost ? "boost" : message.type == MessageType.directPayment ? "payment" : "message"
+        message.type == MessageType.boost ? "boost" : message.type == MessageType.directPayment ? "payment"
+            : message.type == MessageType.invoice ? "request" : "message"
     }
 
     var body: some View {

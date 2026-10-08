@@ -230,10 +230,13 @@ extension AppModel {
         guard let engine else { return false }
         let chat = composer.chat
         let files = pendingFiles[composer] ?? []
+        let priceText = attachmentPrices[composer]
+        let priceSats = priceText.flatMap { UInt64($0) }
         let reply = replyTargets[composer]
         let replyTo = reply?.uuid
         let inThread = composer.thread
         pendingFiles[composer] = nil
+        attachmentPrices[composer] = nil
         replyTargets[composer] = nil
         conversationNotices[chat] = nil
         if files.isEmpty {
@@ -253,7 +256,9 @@ extension AppModel {
             let caption = index == files.count - 1 ? text : ""
             do {
                 // Shown from this Mac while it uploads.
-                try await engine.sendAttachment(file, text: caption, to: chat, replyTo: replyTo, inThread: inThread) {
+                try await engine.sendAttachment(
+                    file, text: caption, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats
+                ) {
                     [weak self] id in Task { @MainActor in self?.attachment(id).localFile = file }
                 }
                 if !caption.isEmpty { captionSent = true }
@@ -270,6 +275,8 @@ extension AppModel {
             conversationNotices[chat] = "Could not send " + refused.map(\.reason).joined(separator: "; ")
             // What did not go waits in the composer again, with the reply it was for.
             pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
+            // With their price: a refused paid file must never go again free.
+            if let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
             if replyTargets[composer] == nil { replyTargets[composer] = reply }
         }
         return captionSent

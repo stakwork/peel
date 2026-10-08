@@ -1,0 +1,346 @@
+import Foundation
+import GRDB
+import Testing
+@testable import PeelCore
+
+/// BOLT 11's own test vectors: 2,500 µBTC for "1 cup coffee", expired in
+/// 2017, and a donation that names no amount.
+private let coffee = "lnbc2500u1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpu9qrsgquk0rl77nj30yxdy8j9vdx85fkpmdla2087ne0xh8nhedh8w27kyke0lp53ut353s06fv3qfegext0eh0ymjpf39tuven09sam30g4vgpfna3rh"
+private let donation = "lnbc1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaq9qrsgq357wnc5r2ueh7ck6q93dj32dlqnls087fxdwk8qakdyafkq3yap9us6v52vjjsrvywa6rt52cm9r9zqt8r2t7mlcwspyetp5h2tztugp9lfyql"
+private let coffeeHash = "0001020304050607080900010203040506070809000102030405060708090102"
+private let coffeePayee = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad"
+
+/// A media token as the core writes it, selling for `price` sats when given.
+private func token(muid: String = "muid1", price: UInt64? = nil) -> String {
+    let host = MediaToken.base64URLEncode(Data("127.0.0.1:8994".utf8))
+    let meta = price.map { MediaToken.base64URLEncode(Data("amt=\($0)&ttl=31536000".utf8)) } ?? ""
+    return "\(host).\(muid).\(MediaToken.base64URLEncode(Data())).AAAAAA.\(meta).c2ln"
+}
+
+private func hash(_ n: Int) -> String { uuid(n) }
+
+struct InvoiceTests {
+    let profile = TempProfile()
+
+    // MARK: Reading invoices
+
+    @Test func anInvoiceIsReadFromItsOwnFields() throws {
+        let invoice = try Invoice(coffee)
+        #expect(invoice.amountMsat == 250_000_000)
+        #expect(invoice.payee == coffeePayee)
+        #expect(invoice.memo == "1 cup coffee")
+        #expect(invoice.paymentHash == coffeeHash)
+        #expect(invoice.isExpired())
+        #expect(!invoice.isExpired(now: Date(timeIntervalSince1970: 1_496_314_658)))
+    }
+
+    @Test func aPastedInvoiceMayCarryAPrefixSpaceAndCapitals() throws {
+        let invoice = try Invoice("  lightning:\(coffee.uppercased())\n")
+        #expect(invoice.paymentHash == coffeeHash)
+        #expect(invoice.bolt11 == coffee)
+    }
+
+    @Test func anInvoiceWithoutAnAmountReadsAsZero() throws {
+        #expect(try Invoice(donation).amountMsat == 0)
+    }
+
+    @Test func anythingElseIsRefused() {
+        #expect(throws: (any Error).self) { try Invoice("hello") }
+        #expect(throws: (any Error).self) { try Invoice("lnbc1notaninvoice") }
+    }
+
+    // MARK: The server's history
+
+    @Test func historyRowsAreCheckedAndTellDirectionByIndex() {
+        let json = """
+            [{"scid":1,"amt_msat":5000,"rhash":"\(hash(1))","ts":1000,"remote":false,"msg_idx":7},
+             {"scid":1,"amt_msat":2000,"rhash":"\(hash(2))","ts":2000,"remote":true,"msg_idx":null,"error":"no route"},
+             {"scid":1,"amt_msat":-5,"rhash":"\(hash(3))","ts":3000},
+             {"scid":1,"amt_msat":1,"rhash":"short","ts":4000},
+             "garbage"]
+            """
+        let rows = PaymentRecord.decode(json)
+        #expect(rows.count == 2)
+        #expect(rows[0].incoming && rows[0].msgIndex == 7 && !rows[0].failed)
+        #expect(!rows[1].incoming && rows[1].remote && rows[1].failed && rows[1].error == "no route")
+        #expect(PaymentRecord.decode("not json").isEmpty)
+    }
+
+    @Test func historyJoinsMessagesInvoicesAndPings() async throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit(contacts: [(dm, true)])
+        // A payment from the contact (by its message index), one of ours (by
+        // hash) with its ping, an invoice we paid, and one of ours still pending.
+        commit.messages = [
+            (.fixture(uuid: uuid(1), serverIndex: 7, type: MessageType.directPayment, chat: dm, content: "lunch",
+                      msat: 5000, timestamp: 1000, amountMsat: 5000), false, nil),
+            (.fixture(uuid: uuid(2), type: MessageType.directPayment, chat: dm, fromMe: true, content: "rent",
+                      timestamp: 2000, paymentHash: hash(2), status: "COMPLETE", amountMsat: 2000), false, nil),
+            (.fixture(uuid: uuid(3), type: MessageType.directPayment, chat: dm, fromMe: true, content: "later",
+                      timestamp: 9000, tag: "t3", paymentHash: hash(3), status: "PENDING", amountMsat: 3000), false, nil),
+        ]
+        commit.payments = PaymentRecord.decode("""
+            [{"amt_msat":5000,"rhash":"\(hash(1))","ts":1000,"msg_idx":7},
+             {"amt_msat":2000,"rhash":"\(hash(2))","ts":2000},
+             {"amt_msat":1000,"rhash":"\(hash(9))","ts":2001},
+             {"amt_msat":250000010,"rhash":"\(coffeeHash)","ts":3000}]
+            """)
+        commit.pings = [(hash(9), hash(2))]
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: false, bolt11: coffee, amountMsat: 250_000_000, memo: "1 cup coffee",
+            payee: coffeePayee, createdAt: 3000, status: .pending, tag: "tc"
+        )]
+        _ = try storage.apply(commit)
+        _ = try storage.apply(Storage.Commit(statuses: [("tc", "COMPLETE")]))
+
+        let items = try #require(try await first(storage.paymentHistory(limit: 50)))
+        #expect(items.map(\.paymentHash) == [hash(3), coffeeHash, hash(2), hash(1)])
+        let pending = items[0]
+        #expect(pending.status == .pending && !pending.incoming && pending.note == "later")
+        let coffeeItem = items[1]
+        #expect(coffeeItem.kind == .invoice && coffeeItem.status == .complete && coffeeItem.feeMsat == 10)
+        #expect(coffeeItem.note == "1 cup coffee" && coffeeItem.counterpart == nil)
+        let rent = items[2]
+        #expect(rent.kind == .payment && rent.pingMsat == 1000 && rent.counterpart != nil)
+        let lunch = items[3]
+        #expect(lunch.incoming && lunch.note == "lunch" && lunch.amountMsat == 5000)
+    }
+
+    // MARK: Paying: never twice
+
+    private func outgoing(_ status: InvoiceRecord.Status, tag: String = "t1") -> InvoiceRecord {
+        InvoiceRecord(
+            paymentHash: coffeeHash, incoming: false, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, status: status, tag: tag
+        )
+    }
+
+    @Test func anInvoiceBeingPaidOrPaidIsNeverWrittenOver() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.invoices = [outgoing(.pending)]
+        _ = try storage.apply(commit)
+        #expect(try storage.paidState(paymentHash: coffeeHash) == .pending)
+        // A second payment of it is refused before anything is published.
+        commit.invoices = [outgoing(.pending, tag: "t2")]
+        #expect(throws: (any Error).self) { try storage.apply(commit) }
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.tag == "t1")
+
+        // Failed: nothing moved, so it may be paid again, under the new tag.
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", "FAILED")], sendErrors: ["t1": "no route"]))
+        let failed = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: false))
+        #expect(failed.status == .failed && failed.error == "no route")
+        #expect(try storage.paidState(paymentHash: coffeeHash) == nil)
+        _ = try storage.apply(commit)
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .pending)
+
+        // A status only moves forward: paid stays paid.
+        _ = try storage.apply(Storage.Commit(statuses: [("t2", "COMPLETE")]))
+        _ = try storage.apply(Storage.Commit(statuses: [("t2", "FAILED")]))
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .paid)
+        if case .paid? = try storage.paidState(paymentHash: coffeeHash) {} else { Issue.record("not paid") }
+    }
+
+    /// The mixer's last word PENDING (held, maybe forever): unsettled, never
+    /// paid again, out of the connect-time check, and still able to settle.
+    @Test func anUnsettledInvoicePaymentIsNeverPaidAgain() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.invoices = [outgoing(.pending)]
+        _ = try storage.apply(commit)
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", "UNSETTLED")]))
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .unsettled)
+        #expect(try storage.paidState(paymentHash: coffeeHash) == .pending)
+        #expect(try storage.pendingInvoicePayments().isEmpty)
+        #expect(throws: (any Error).self) { try storage.apply(commit) }
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", "COMPLETE")]))
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .paid)
+    }
+
+    @Test func aPaymentInTheHistoryFromAnotherDeviceCountsAsPaid() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.payments = PaymentRecord.decode(#"[{"amt_msat":1,"rhash":"\#(coffeeHash)","ts":5}]"#)
+        _ = try storage.apply(commit)
+        #expect(try storage.paidState(paymentHash: coffeeHash) == .paid(at: Date(millisecondsSince1970: 5)))
+        // A failed attempt in the history is not a payment.
+        let other = try profile.storage(readOnly: true)
+        #expect(try other.paidState(paymentHash: hash(4)) == nil)
+    }
+
+    @Test func ourOwnInvoiceIsNeverPaidFromHere() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, status: .open
+        )]
+        _ = try storage.apply(commit)
+        #expect(try storage.paidState(paymentHash: coffeeHash) == .own)
+    }
+
+    @Test func anInvoiceMadeHereIsPaidOnlyOnceTheServerSettles() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, status: .open
+        )]
+        _ = try storage.apply(commit)
+        _ = try storage.apply(Storage.Commit(settling: [(coffeeHash, 250_000_000)]))
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: true)?.status == .open)
+        _ = try storage.apply(Storage.Commit(settled: [(coffeeHash, 42)]))
+        let paid = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: true))
+        #expect(paid.status == .paid && paid.paidAt == 42 && paid.paidMsat == 250_000_000)
+    }
+
+    /// The core settles whatever arrives for a known hash: 1 sat for a
+    /// 250,000-sat invoice is never "paid", nor is an amount not known.
+    @Test func anUnderpaidInvoiceIsNeverPaid() async throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit(contacts: [(dm, true)], messages: [(request(fromMe: true), false, nil)])
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, status: .open, chat: dm
+        )]
+        _ = try storage.apply(commit)
+        _ = try storage.apply(Storage.Commit(settling: [(coffeeHash, 1000)]))
+        _ = try storage.apply(Storage.Commit(settled: [(coffeeHash, 42)]))
+        #expect(try storage.invoice(paymentHash: coffeeHash, incoming: true)?.status == .underpaid)
+        let state = try await first(storage.timeline(in: dm))?.requests.values.first?.state
+        #expect(state == .underpaid(msat: 1000))
+    }
+
+    // MARK: Requests in a chat
+
+    private func request(fromMe: Bool, id: Int = 1) -> Message {
+        .fixture(
+            uuid: uuid(id), type: MessageType.invoice, chat: fromMe ? dm : coffeePayee, fromMe: fromMe,
+            body: #"{"content":"coffee","invoice":"\#(coffee)"}"#, content: "coffee", paymentHash: coffeeHash,
+            amountMsat: 250_000_000
+        )
+    }
+
+    @Test func theirRequestFollowsOurPaymentOfIt() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(contacts: [(coffeePayee, true)], messages: [(request(fromMe: false), false, nil)]))
+        func state() async throws -> PaymentRequest? {
+            try await first(storage.timeline(in: coffeePayee))?.requests.values.first
+        }
+        let open = try #require(try await state())
+        #expect(open.state == .open && open.paysRequester && open.invoice?.amountMsat == 250_000_000)
+        var commit = Storage.Commit()
+        commit.invoices = [outgoing(.pending)]
+        _ = try storage.apply(commit)
+        #expect(try await state()?.state == .paying)
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", "COMPLETE")]))
+        if case .paid? = try await state()?.state {} else { Issue.record("not paid") }
+    }
+
+    @Test func aRequestWhoseInvoicePaysSomeoneElseSaysSo() async throws {
+        let storage = try profile.storage()
+        var message = request(fromMe: false)
+        message.chat = dm
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(message, false, nil)]))
+        let request = try #require(try await first(storage.timeline(in: dm))?.requests.values.first)
+        #expect(!request.paysRequester)
+    }
+
+    @Test func ourRequestIsPaidByTheirPaymentOfEnoughOnly() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(request(fromMe: true), false, nil)]))
+        func state() async throws -> PaymentRequest.State? {
+            try await first(storage.timeline(in: dm))?.requests.values.first?.state
+        }
+        // A payment message that brought too little does not pay it.
+        let short = Message.fixture(uuid: uuid(2), type: MessageType.invoicePayment, chat: dm, content: nil,
+                                    msat: 1000, timestamp: 2000, paymentHash: coffeeHash)
+        _ = try storage.apply(Storage.Commit(messages: [(short, false, nil)]))
+        #expect(try await state() == .open)
+        let full = Message.fixture(uuid: uuid(3), type: MessageType.invoicePayment, chat: dm, content: nil,
+                                   msat: 250_000_000, timestamp: 3000, paymentHash: coffeeHash)
+        _ = try storage.apply(Storage.Commit(messages: [(full, false, nil)]))
+        if case .paid? = try await state() {} else { Issue.record("not paid") }
+    }
+
+    // MARK: Paid attachments
+
+    @Test func aTokensPriceIsReadFromItsMeta() {
+        #expect(MediaToken(token(price: 200))?.priceSats == 200)
+        #expect(MediaToken(token())?.priceSats == nil)
+        #expect(Message.fixture(type: MessageType.attachment, body: #"{"mediaToken":"\#(token(price: 3))"}"#)
+            .attachmentPriceMsat == 3000)
+        #expect(Message.fixture(type: MessageType.attachment, body: #"{"mediaToken":"\#(token())"}"#)
+            .attachmentPriceMsat == nil)
+    }
+
+    @Test func aPaidAttachmentUnlocksOnlyWithTheSellersKey() async throws {
+        let storage = try profile.storage()
+        let paidToken = token(price: 200)
+        let attachment = Message.fixture(
+            uuid: uuid(1), type: MessageType.attachment, chat: dm,
+            body: #"{"content":"","mediaToken":"\#(paidToken)","mediaType":"image/jpg"}"#, content: "", timestamp: 1000
+        )
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(attachment, false, nil)]))
+        func state() async throws -> PurchaseState? {
+            try await first(storage.timeline(in: dm))?.purchases.values.first
+        }
+        #expect(try await state() == .locked)
+
+        let purchase = Message.fixture(
+            uuid: uuid(2), type: MessageType.purchase, chat: dm, fromMe: true,
+            body: #"{"content":"","mediaToken":"\#(paidToken)","replyUuid":"\#(uuid(1))"}"#, timestamp: 2000,
+            tag: "p1", status: "PENDING", amountMsat: 200_000
+        )
+        _ = try storage.apply(Storage.Commit(messages: [(purchase, false, nil)]))
+        #expect(try await state() == .processing)
+
+        // An answer naming another token, or with no key, unlocks nothing.
+        let wrong = Message.fixture(uuid: uuid(3), type: MessageType.purchaseAccept, chat: dm,
+                                    body: #"{"mediaToken":"\#(token(muid: "other", price: 200))","mediaKey":"k"}"#)
+        let keyless = Message.fixture(uuid: uuid(4), type: MessageType.purchaseAccept, chat: dm,
+                                      body: #"{"mediaToken":"\#(paidToken)"}"#)
+        _ = try storage.apply(Storage.Commit(messages: [(wrong, false, nil), (keyless, false, nil)]))
+        #expect(try await state() == .processing)
+        #expect(try storage.purchasedKey(for: attachment) == nil)
+
+        let accept = Message.fixture(uuid: uuid(5), type: MessageType.purchaseAccept, chat: dm,
+                                     body: #"{"mediaToken":"\#(paidToken)","mediaKey":"thekey"}"#, timestamp: 3000)
+        _ = try storage.apply(Storage.Commit(messages: [(accept, false, nil)]))
+        #expect(try await state() == .unlocked)
+        let stored = try #require(try storage.message(uuid: uuid(1), in: dm))
+        #expect(try storage.purchasedKey(for: stored) == "thekey")
+    }
+
+    @Test func aRefusedPurchaseReadsAsDenied() async throws {
+        let storage = try profile.storage()
+        let paidToken = token(price: 50)
+        let attachment = Message.fixture(uuid: uuid(1), type: MessageType.attachment, chat: dm,
+                                         body: #"{"mediaToken":"\#(paidToken)"}"#, timestamp: 1000)
+        let purchase = Message.fixture(uuid: uuid(2), type: MessageType.purchase, chat: dm, fromMe: true,
+                                       body: #"{"mediaToken":"\#(paidToken)"}"#, timestamp: 2000, status: "COMPLETE")
+        let deny = Message.fixture(uuid: uuid(3), type: MessageType.purchaseDeny, chat: dm,
+                                   body: #"{"mediaToken":"\#(paidToken)"}"#, msat: 50_000, timestamp: 3000)
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [
+            (attachment, false, nil), (purchase, false, nil), (deny, false, nil),
+        ]))
+        #expect(try await first(storage.timeline(in: dm))?.purchases.values.first == .denied)
+    }
+
+    @Test func ourOwnPaidAttachmentCountsItsPurchases() async throws {
+        let storage = try profile.storage()
+        let paidToken = token(price: 50)
+        let ours = Message.fixture(uuid: uuid(1), type: MessageType.attachment, chat: dm, fromMe: true,
+                                   body: #"{"mediaToken":"\#(paidToken)","mediaKeyForSelf":"k"}"#, timestamp: 1000)
+        let bought = Message.fixture(uuid: uuid(2), type: MessageType.purchase, chat: dm,
+                                     body: #"{"mediaToken":"\#(paidToken)"}"#, msat: 50_000, timestamp: 2000)
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(ours, false, nil), (bought, false, nil)]))
+        #expect(try await first(storage.timeline(in: dm))?.purchases.values.first == .forSale(purchases: 1))
+        let purchase = try #require(try storage.message(uuid: uuid(2), in: dm))
+        #expect(try !storage.isAnswered(purchase: purchase, token: paidToken))
+        let answer = Message.fixture(uuid: uuid(3), type: MessageType.purchaseAccept, chat: dm, fromMe: true,
+                                     body: #"{"mediaToken":"\#(paidToken)","mediaKey":"k"}"#, timestamp: 2500)
+        _ = try storage.apply(Storage.Commit(messages: [(answer, false, nil)]))
+        #expect(try storage.isAnswered(purchase: purchase, token: paidToken))
+    }
+}

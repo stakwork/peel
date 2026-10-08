@@ -110,7 +110,7 @@ struct Composer: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Send sats")
+                .help("Send or request sats")
                 .peelPopover(isPresented: $sendingSats) {
                     SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats = false }
                 }

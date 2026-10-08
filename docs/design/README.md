@@ -402,7 +402,7 @@ canvas), with these decisions over the boards:
   taken), then the card reads "Saved to Downloads · Show in Finder"; "Save
   as…" (choose where) is in the message's menu. Nothing is ever opened for
   you, and every file Peel writes for you is quarantined, so macOS checks it
-  before it opens. Paid attachments are out of scope.
+  before it opens. Paid attachments: see "Payments" below.
 - **Uploads:** a progress bar on the row ("Uploading · 2.1 of 3.4 MB"); a
   failed one reads "Not uploaded · Retry · Discard", like an undelivered
   message.
@@ -423,3 +423,53 @@ canvas), with these decisions over the boards:
 
 **Built 2026-10-07 (branch `phase3/chat-ui`).** Details, what was verified
 and what was not in `../phases/03-chat.md` ("Chat UI").
+
+## Payments
+
+Boards P1–P5 on the "Peel layout directions" canvas (row "Payments"), with
+Tom's decisions of 2026-10-07:
+
+- **The list** is plain, grouped Today / Yesterday / Earlier this week /
+  Earlier, newest first, no balance, no tabs, no table chrome. Each row: the
+  person's photo (a dashed ring with a bolt when nobody is known: an
+  invoice, a keysend), their name, one line (the note, "Boost in #Tribe",
+  a memo), the amount and the time in a right-aligned column. Amounts follow
+  the banking apps: received "+500" in green, sent a plain "2,000" in the
+  text colour, no arrows, no minus; the header says "Amounts in sats".
+  Pending: grey, "Pending · 13:15". Failed: struck through, "Failed · 16:02".
+  Never red. Older pages load as the list reaches its end.
+- **Header:** "Payments" with Receive and Pay an invoice, small bordered
+  buttons that stay lit while their pane is open.
+- **The pane on the right** (360 pt, the thread panel's place; Escape or ✕
+  closes): a payment's detail (what it was, the amount large, who, the note
+  or the boosted message quoted, "Open in #Tribe", then Status, When,
+  Amount in sats and msat, Routing fee and Ping when known, Payment hash with
+  Copy); Receive (amount, required because the core cannot make an invoice
+  the payer fills in; memo; QR with Copy invoice and Copy QR image; a
+  countdown bar; then Paid with what arrived); Pay an invoice (paste, or drop
+  it anywhere on the window; amount, to whom, memo, expiry; what stops it in
+  an amber note; then Paying, then Paid with the fee).
+- **Money buttons** everywhere: idle "Pay" / "Unlock" / "Send", on one
+  line; over the threshold the first click arms it, orange, with "Click
+  again to confirm" under it, and only the second pays. Where the amount
+  already stands beside the button (a request card, a paid attachment's
+  price, an invoice's amount) the armed button keeps just the verb; in a
+  form whose amount is typed (boost, send) it names it ("Send 2,000
+  sats").
+- **Copy** gives a tick and "Copied" for a moment.
+- **Requests in a DM:** the composer's bolt is "Send or request sats" with a
+  Send | Request switch. A request is a 320 pt card in the flat row: who
+  asked, the amount large, the memo, and Pay; then Paying, Paid, or Expired.
+  A request whose invoice pays someone other than the person asking says so
+  in amber above Pay.
+- **Paid attachments:** someone else's, before buying, is a 320 pt card with
+  a soft blurred veil (never the picture: nothing is fetched or decrypted
+  first, and messages carry no preview), a lock, "Paid photo" (or video,
+  file, message), the price and Unlock; then "Unlocking: waiting for Bob to
+  send the key"; then the normal image or file. A refusal reads that the
+  sats came back. Your own shows the attachment as usual with "For sale at
+  200 sats · bought once" under it. Files waiting in the composer have a
+  price field beside them ("Free" when empty).
+
+**Built 2026-10-07 (branch `phase4/payments`).** Details, what was verified
+and what was not in `../phases/04-money.md`.

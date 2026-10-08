@@ -11,12 +11,22 @@ struct AttachmentView: View {
     var tileMenu: (@MainActor (Message) -> [MenuEntry])?
 
     var body: some View {
-        if row.images.count > 1 {
+        if let purchase = row.purchase, !row.message.fromMe, purchase != .unlocked {
+            // Someone else's paid attachment: nothing of it is fetched until bought.
+            LockedAttachment(row: row, state: purchase)
+        } else if row.images.count > 1 {
             ImageGrid(images: row.images, tileMenu: tileMenu)
-        } else if row.message.attachmentKind == .image {
-            ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
         } else {
-            FileCard(message: row.message)
+            VStack(alignment: .leading, spacing: 4) {
+                if row.message.attachmentKind == .image {
+                    ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
+                } else {
+                    FileCard(message: row.message)
+                }
+                if case .forSale(let purchases) = row.purchase, let price = row.message.attachmentPriceMsat {
+                    ForSaleNote(priceMsat: price, purchases: purchases)
+                }
+            }
         }
     }
 }
@@ -361,6 +371,7 @@ struct PendingFilesTray: View {
                 }
                 .buttonStyle(.plain)
                 .help("Add files")
+                AttachmentPriceField(composer: composer)
             }
             .padding(.top, 8)
             .padding(.horizontal, 2)

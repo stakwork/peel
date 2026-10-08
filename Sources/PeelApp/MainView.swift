@@ -767,7 +767,7 @@ struct Detail: View {
             case .mentions:
                 MentionsView()
             case .payments:
-                EmptyPlace(title: "Payments", message: "Payments you send and receive show up here.")
+                PaymentsView()
             case .account:
                 AccountView()
             case nil:
@@ -1013,14 +1013,20 @@ enum Clipboard {
     static func copyImage(at file: URL) -> Bool {
         #if os(macOS)
         guard let image = NSImage(contentsOf: file) else { return false }
-        NSPasteboard.general.clearContents()
-        return NSPasteboard.general.writeObjects([image])
+        return copy(image)
         #else
         guard let image = UIImage(contentsOfFile: file.path) else { return false }
         UIPasteboard.general.image = image
         return true
         #endif
     }
+
+    #if os(macOS)
+    static func copy(_ image: NSImage) -> Bool {
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.writeObjects([image])
+    }
+    #endif
 
     static func paste() -> String? {
         #if os(macOS)

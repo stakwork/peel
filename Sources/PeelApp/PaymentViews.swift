@@ -68,7 +68,7 @@ extension AppModel {
 
     /// One payment at a time per key, through the engine; its refusals in
     /// words, and the threshold's question as an outcome.
-    private func pay(_ key: String, _ action: (Engine) async throws -> Void) async -> PaymentOutcome {
+    func pay(_ key: String, _ action: (Engine) async throws -> Void) async -> PaymentOutcome {
         guard let engine else { return .refused("Not signed in.") }
         guard moneyInFlight.insert(key).inserted else { return .busy }
         defer { moneyInFlight.remove(key) }
@@ -137,28 +137,38 @@ final class PaymentAttempt {
 }
 
 /// The button that sends money (Tom, 2026-10-07: plain verbs). Idle it
-/// says the verb ("Boost", "Send"); once the engine asks, it turns orange
-/// and names the amount ("Boost 150 sats"), with "Click again to confirm"
-/// under it, and the next click sends exactly that. Any change to the
-/// amount puts it back. `send` is called with nil, then with the amount.
+/// says the verb ("Boost", "Send", "Pay", "Unlock"); once the engine asks,
+/// it turns orange, naming the amount ("Send 2,000 sats") unless it already
+/// stands beside the button, with "Click again to confirm" under it, and the next click sends
+/// exactly that. Any change to the amount puts it back. `send` is called
+/// with nil, then with the amount.
 struct PayButton: View {
-    /// "Boost", "Send", "Save".
+    /// "Boost", "Send", "Save", "Pay", "Unlock".
     let verb: String
     /// The total as it stands; nil while the amount is not valid.
     let totalMsat: UInt64?
     let attempt: PaymentAttempt
     let send: (_ confirmedMsat: UInt64?) async -> PaymentOutcome
     var sent: () -> Void = {}
+    /// Return presses it: in a panel of its own, not in a list of many.
+    var isDefault = true
+    /// Armed, the button names the amount ("Boost 150 sats"); false where the
+    /// amount already stands beside it (a request, a paid attachment, an
+    /// invoice), so it says only the verb, in orange.
+    var namesAmount = true
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 3) {
             Button {
                 Task { if await attempt.run(send) { sent() } }
             } label: {
-                Text(attempt.armed.map { "\(verb) \(Formatting.sats(msat: $0))" } ?? verb).monospacedDigit()
+                Text(attempt.armed.flatMap { namesAmount ? "\(verb) \(Formatting.sats(msat: $0))" : nil } ?? verb)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .buttonStyle(GhostButtonStyle(prominent: true, fill: attempt.armed == nil ? nil : Theme.attention))
-            .keyboardShortcut(.defaultAction)
+            .keyboardShortcut(isDefault ? .defaultAction : nil)
             .disabled(totalMsat == nil || attempt.working)
             if attempt.armed != nil {
                 ConfirmHint()
@@ -211,35 +221,70 @@ struct SatsField: View {
     }
 }
 
-/// Sending sats in a direct message: amount, an optional note, your
-/// balance, and Send.
+/// Sending or requesting sats in a direct message: amount, an optional
+/// note (a request's memo), and Send with your balance, or Request. A
+/// request moves no money, so it takes one click.
 struct SendSatsPanel: View {
     @Environment(AppModel.self) private var model
     let chat: String
     let name: String
     let done: () -> Void
 
+    enum Mode: Hashable { case send, request }
+
+    @State private var mode = Mode.send
     @State private var amount = ""
     @State private var note = ""
     @State private var attempt = PaymentAttempt()
+    @State private var requesting = false
+    @State private var requestProblem: String?
 
     var body: some View {
         let amountMsat = Sats.msat(amount)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Send sats to \(name)")
-                .font(Theme.font(15, .bold))
-                .lineLimit(1)
+            HStack {
+                Text(mode == .send ? "Send sats to \(name)" : "Request sats from \(name)")
+                    .font(Theme.font(15, .bold))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
+            }
             SatsField(placeholder: "Amount", text: $amount)
-            TextField("Note (optional)", text: $note)
+            TextField(mode == .send ? "Note (optional)" : "What it's for (optional)", text: $note)
                 .textFieldStyle(.plain)
                 .font(Theme.font(13))
                 .fieldBoxed()
-            BalanceLine()
-            FormFooter(problem: attempt.problem, working: attempt.working) {
-                PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
-                    guard let amountMsat else { return .refused("Enter an amount.") }
-                    return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, confirmedMsat: confirmed)
-                }, sent: done)
+            switch mode {
+            case .send:
+                BalanceLine()
+                FormFooter(problem: attempt.problem, working: attempt.working) {
+                    PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
+                        guard let amountMsat else { return .refused("Enter an amount.") }
+                        return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, confirmedMsat: confirmed)
+                    }, sent: done)
+                }
+            case .request:
+                Text("\(name) gets an invoice in this chat, payable for an hour.")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                FormFooter(problem: requestProblem, working: requesting) {
+                    Button("Request") {
+                        guard let amountMsat else { return }
+                        Task {
+                            requesting = true
+                            defer { requesting = false }
+                            do {
+                                try await model.requestPayment(from: chat, amountMsat: amountMsat, memo: note)
+                                done()
+                            } catch {
+                                requestProblem = PeelError.readable(error)
+                            }
+                        }
+                    }
+                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(amountMsat == nil || requesting)
+                }
             }
         }
         .padding(16)
@@ -249,6 +294,35 @@ struct SendSatsPanel: View {
             attempt.armed = nil
             attempt.problem = nil
         }
+        .onChange(of: mode) { requestProblem = nil }
+    }
+}
+
+/// Two or three choices side by side, the chosen one filled, as on the boards.
+struct SegmentedChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.0) { value, label in
+                Button {
+                    selection = value
+                } label: {
+                    Text(label)
+                        .font(Theme.font(12, selection == value ? .medium : .regular))
+                        .foregroundStyle(selection == value ? Theme.selectionText : Theme.secondaryText)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(selection == value ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Theme.input, in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider))
     }
 }
 

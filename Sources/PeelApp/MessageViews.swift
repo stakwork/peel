@@ -17,6 +17,8 @@ struct ChatRow: Identifiable {
         case message, request, note
         /// Sats sent in a direct message (type 5).
         case payment
+        /// A payment request with its invoice (type 2).
+        case paymentRequest
         /// A thread's original that is not stored here.
         case missingOriginal
         /// "N replies" under a thread's original.
@@ -43,6 +45,10 @@ struct ChatRow: Identifiable {
     var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
     var approved: Bool?
+    /// For a payment request: its invoice and whether it is paid.
+    var paymentRequest: PaymentRequest?
+    /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
+    var purchase: PurchaseState?
     var alias: String?
     var photoURL: String?
     /// The messages the row stands for, oldest first: a run's images, a
@@ -78,8 +84,9 @@ struct ChatRow: Identifiable {
     /// "N replies" come first. `newAfter` is the read marker that places "New messages".
     static func rows(
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
-        boosts: [String: BoostSummary] = [:], inTribe: Bool, people: People, threadRoot: String? = nil,
-        original: Message? = nil, newAfter: Int64? = nil
+        boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
+        purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People,
+        threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -111,6 +118,7 @@ struct ChatRow: Identifiable {
             }
             let kind: Kind = message.isContent ? .message
                 : message.type == MessageType.directPayment ? .payment
+                : message.type == MessageType.invoice ? .paymentRequest
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
             if kind == .message, !startsNew, let last = rows.last, last.takes(message, alias: row.alias) {
@@ -118,13 +126,18 @@ struct ChatRow: Identifiable {
                 rows[rows.count - 1].message = message
                 continue
             }
-            if kind == .message { row.quote = quote(message, parents: parents, threadRoot: threadRoot) }
+            if kind == .message {
+                row.quote = quote(message, parents: parents, threadRoot: threadRoot)
+            }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
             row.startsNew = startsNew
+            if kind == .paymentRequest { row.paymentRequest = message.id.flatMap { requests[$0] } }
             rows.append(row)
         }
+        // Every message row, a collapsed thread's and a thread's original included.
         for index in rows.indices where rows[index].kind == .message {
             rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
+            rows[index].purchase = rows[index].message.id.flatMap { purchases[$0] }
         }
         // Only boosts on our messages are new: above the first of those.
         if let after = newAfter, let index = rows.firstIndex(where: { row in
@@ -182,6 +195,8 @@ struct ChatRow: Identifiable {
               (message.content ?? "").isEmpty, message.fromMe == next.fromMe, alias == self.alias,
               message.replyUUID == next.replyUUID, message.threadUUID == next.threadUUID,
               Self.settled(message), Self.settled(next),
+              // A paid image is bought on its own, never in a grid.
+              message.attachmentPriceMsat == nil, next.attachmentPriceMsat == nil,
               next.date.timeIntervalSince(message.date) <= Self.imageRunGap else { return false }
         return true
     }
@@ -248,6 +263,9 @@ struct MessageList: View {
                                     .padding(.horizontal, 20)
                             case .payment:
                                 PaymentRow(row: row)
+                                    .background(flashed == row.id ? Theme.selection.opacity(0.45) : .clear)
+                            case .paymentRequest:
+                                PaymentRequestRow(row: row)
                                     .background(flashed == row.id ? Theme.selection.opacity(0.45) : .clear)
                             case .missingOriginal:
                                 OriginalNotAvailable()
@@ -593,7 +611,7 @@ struct MessageRow: View {
 
 /// A run's header: the sender's name, the time and, for yours, the green
 /// bolt once the server has it.
-private struct RunHeader: View {
+struct RunHeader: View {
     let row: ChatRow
 
     var body: some View {

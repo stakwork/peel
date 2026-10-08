@@ -84,6 +84,7 @@ cat > "$XCF/Info.plist" <<'EOF'
 </plist>
 EOF
 
+mkdir -p "$ROOT/Sources/Sphinxrs"
 cp "$BINDINGS" "$ROOT/Sources/Sphinxrs/sphinxrs.swift"
 
 echo "bindings ready: $(git -C "$SPHINX_RS" log -1 --format='sphinx-rs %h (%ad)' --date=short)"

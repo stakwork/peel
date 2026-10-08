@@ -116,6 +116,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         }
     }
 
+    /// One of ours that never went and may be dropped: a retryable send, or
+    /// a failed call, which is never sent again (its room would be stale).
+    public var isDiscardable: Bool {
+        isRetryable() || (fromMe && !deleted && type == MessageType.call && delivery == .failed)
+    }
+
     /// Someone else's message that can be boosted, as the Mac app allows it.
     public var isBoostable: Bool {
         !fromMe && !deleted && uuid != nil && type == MessageType.text
@@ -146,6 +152,18 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// Text or an attachment: what people say, as opposed to membership notes.
     public var isContent: Bool { MessageType.content.contains(type) }
+
+    /// What people say, calls included: a message row in a chat rather than
+    /// a note, a payment or a request.
+    public var isSaid: Bool { isContent || type == MessageType.call }
+
+    /// The words a row shows, trimmed: the content, or for a call message
+    /// the link it carries (all a call Peel cannot join shows, as plain text).
+    public var shownText: String {
+        let text = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard type == MessageType.call else { return text }
+        return CallLink.linkText(in: text) ?? text
+    }
 
     /// Unread past `marker`, as a row counts it (`Storage.readStates` also
     /// counts others' boosts on our messages): someone else's text,
@@ -185,6 +203,9 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// or for an attachment with no caption what it is ("Image", "File: notes.pdf").
     public var preview: String {
         if deleted { return "Message deleted" }
+        if type == MessageType.call, let link = content.flatMap(CallLink.linkText(in:)) {
+            return CallLink.mode(ofLink: link) ?? MessageMarkup.plainText(link)
+        }
         if let text = content.map(MessageMarkup.plainText), !text.isEmpty { return text }
         switch attachmentKind {
         case .image: return "Image"
@@ -252,16 +273,18 @@ public enum MessageType {
     /// Types sent again as they were when undelivered: they move no money.
     static let resendable = content + [invoice]
     /// Types that count as unread whoever they are for; a boost counts only
-    /// on this account's own message. A request asks something of you.
-    public static let unreadTypes = content + [directPayment, invoice]
+    /// on this account's own message. A request asks something of you, and
+    /// so does a call.
+    public static let unreadTypes = content + [directPayment, invoice, call]
     /// Types as an SQL `IN` list.
     static func sqlList(_ types: [Int]) -> String { types.map(String.init).joined(separator: ", ") }
     /// Every type a conversation shows: text, attachments, direct payments,
-    /// payment requests and the membership notes. Boosts show under the
-    /// message they boost.
-    static let shownInChats = [text, attachment, directPayment, invoice, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
+    /// payment requests, calls and the membership notes. Boosts show under
+    /// the message they boost.
+    static let shownInChats = [text, attachment, directPayment, invoice, call, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
     /// A call: a LiveKit room link in `content`, bare or in the `call::`
-    /// form (`CallLink`). Not shown in chats until the app has a card for it.
+    /// form (`CallLink`). Never `content` or `resendable`: a call is never
+    /// sent again, and neither list may change under a migration.
     public static let call = 32
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33

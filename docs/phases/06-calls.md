@@ -1,9 +1,9 @@
 # Phase 6 — Calls
 
-Status: **PRs 1 to 3 merged** (the call link and message, #44; the ticket
-and presence, #54; LiveKit in the bundle, #55); PR 4 (the call card) in
-progress; PRs 5 to 8 open. Finishing calls is first in the order Tom set on
-the evening of 2026-10-08 (`../PLAN.md`). Plan and boards
+Status: **PRs 1 to 4 merged** (the call link and message, #44; the ticket
+and presence, #54; LiveKit in the bundle, #55; the card and header, #59);
+PRs 5 to 8 open. Finishing calls is first in the order Tom set on the
+evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
 
@@ -22,12 +22,17 @@ decided (Tom, 2026-10-08; see "Decided" below).
   `scripts/bundle-app.sh` and `scripts/sign-app.sh`, the microphone and
   camera usage strings and entitlements, and a development-only test room
   (`Sources/PeelApp/CallTestRoom.swift`).
+- Built (PR 4): the timeline card and the header's call button
+  (`Sources/PeelApp/CallViews.swift`), calls in chats, unread and the
+  sidebar order, and a placeholder join window
+  (`Sources/PeelApp/CallPlaceholder.swift`) until PR 5; see the PR 4
+  journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), and PRs 4 to 8 (the card, the window, screen
   share, notifications, the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
-- Decided in PR 1: calls stay out of `shownInChats`, `unreadTypes` and the
-  preview until PR 4 has the card (see "Engine and app split", Storage).
+- Decided in PR 1, done in PR 4: calls joined `shownInChats`,
+  `unreadTypes` and the preview with the card.
 
 Why now: calls are core messaging, not parity. Tom's team starts calls from
 chats every day, and Peel cannot be his daily client without them (Tom,
@@ -931,6 +936,96 @@ the build, so it lands before any UI depends on it.
     deep check, and it costs one more hash of 13 MB.
   - Loading WebRTC lazily: it is a linked SwiftPM product and calls ship
     in PR 5; measure the launch cost once instead.
+
+## PR 4 journal (2026-10-08)
+
+- **Built** (boards C1 and C2): `CallCard` and `CallHeaderButton`
+  (`Sources/PeelApp/CallViews.swift`), and a placeholder join
+  (`Sources/PeelApp/CallPlaceholder.swift`) until PR 5's window.
+  - Type 32 joins `shownInChats` and `unreadTypes`, and places a chat in
+    the sidebar (`conversationsSQL`, not when deleted). It stays out of
+    `content` and `resendable`. `Message.isSaid` (content or a call) picks
+    the message row; `Message.shownText` is what a row shows (for a call
+    message Peel cannot join, the link it carries, as plain text, which
+    asks before opening like any link); `preview` reads "Audio call" or
+    "Video call" (`CallLink.mode(ofLink:)`). `CallLink(in:server:)` holds
+    the Mac app's rule (a call message, or text that is only a call link);
+    `Engine.callLink(in:)` now wraps it. A failed call of yours is
+    `isDiscardable` (never retried: its room would be stale) and the card
+    offers Discard.
+  - The card: the glyph and "Audio call"/"Video call"; live with up to
+    three 24 pt avatars (presence feed photos only, through `Web.photo`;
+    you are told apart by the ticket's identity) and "N on the call"
+    after the green dot; "No one on the call"; "Call ended"; no line when
+    unknown or older than 12 hours; "You're on this call" with Open. Join
+    is filled; a failed ticket's reason (such as "the call server named a
+    media server Peel does not know") shows quietly inside the card. More:
+    "Copy call link" and "Anyone with the link can join"; Mark unread from
+    here. Reply, Thread and Delete are not offered on a type 32 (they need
+    `content`; deleting someone's call as a tribe owner needs the engine's
+    incoming-delete rule widened, left for later).
+  - Presence: a card watches only while it is drawn (its `.task`, so
+    scrolling away or closing the chat unsubscribes) and only when its
+    message is under 12 hours old. The header also watches the open chat's
+    newest three calls under 12 hours, so "● Join · N" shows while the
+    card is off screen; that is the only watch beyond on-screen cards.
+  - The header: the phone with Peel's menu (Audio call ⌥⌘A, Video call
+    ⌥⌘V, also live as shortcuts in the chat); while a recent call has
+    someone on it, the bordered "● Join · N" pill (Open while you are on
+    it) and a chevron with "Start a new call". Hidden on an account with
+    no call server. Starting posts through `startCall` and joins; the
+    spinner sits in the clicked button. While you are on a call, starting
+    or joining another says "You're on the call in #x; leave it first"
+    rather than leaving silently (PR 5 brings the in-place confirm).
+  - The sidebar's green phone on tribe rows: a watched call with someone
+    on it, or the call you are on. With watches limited as above, that is
+    the open chat or your call's chat.
+  - Placeholder: Join and Open fetch the ticket and open the "Call" window,
+    which connects with the microphone and camera off and shows "Connected
+    · N people" and Leave; closing it leaves. Not the test room's code
+    (that stays development-only); the connect is the same two calls.
+  - `Conversation.title` ("#tribe" or the name) replaces three inline copies;
+    `MenuShortcut` gains ⌥; `HeaderButton` gains `working`.
+- **Verified** on a local stack (broker 1977, tribes 8877, mixer 8077,
+  `livekit-server --dev`, a throwaway call-server stub on 8879 that mints
+  LiveKit tokens, proxies `/rtc` and reports presence from LiveKit's
+  RoomService), profiles `cc-alice` and `cc-bob`:
+  - Bob's `call-start` in a tribe: Alice's app shows the card, the chat
+    unread 2 (text and call), the sidebar places it.
+  - Presence (Bob in the room through `lk room join`, three made-up
+    participants from the stub): the card with three avatars, "+1" and
+    "4 on the call", the header's "● Join · 4", the sidebar phone. Bob
+    leaving: "No one on the call", the header back to the phone, the
+    sidebar phone gone. The room deleted: "Call ended". A stub restart:
+    Peel reconnected and subscribed again.
+  - Only the recent call subscribed; an 18-hour-old call (inserted into
+    the dev profile's database) showed the plain card with Join and was
+    never subscribed. A type 32 with a Jitsi link showed as a plain link.
+  - **Not verified**: clicking Join, Open, Leave and the header menu, and
+    the "media server" error in place. This session cannot send clicks or
+    keys to the app (no accessibility grant), so the placeholder window's
+    connection was not driven from the UI. The ticket path is the one the
+    CLI's `call-ticket` exercises and the connect is the test room's.
+    Tom: `.build/PeelCallCardTest.app`.
+- **Reviews**: `/code-review` (high): no silent leave of a call you are on;
+  no call message sent while a join runs; a failed call can be discarded;
+  calls in collapsed threads keep their card; Mark unread on calls; the
+  preview of a non-room `call::` shows its link; the header hidden without
+  a call server; per-view watcher ids; the sidebar reads a derived set.
+  `/simplify`: `isSaid` and `shownText` in PeelCore; presence apart from
+  the (unobserved) watcher bookkeeping; recent calls worked out with the
+  rows; `HeaderButton` and `avatar(fromMe:…)` reused; one window-opening
+  helper; the window's title kept on the call. `/security-review`: no
+  findings at confidence 8 or above. Not applied, with reasons:
+  - Notifications for calls: PR 7 (calls count as unread but do not
+    notify yet).
+  - One presence task per room in the model instead of one stream per
+    view: the engine already shares one subscription per room.
+  - Caching parsed call links per message: text is skipped unless it holds
+    `sphinx.call.`; a page holds few calls.
+  - `AppModel.callServer` is read once per account: no UI changes it yet.
+  - `MenuShortcut` as a modifier set: one flag is enough for now.
+  - The placeholder's once-a-second count: PR 5 replaces the window.
 
 ## Decided (Tom, 2026-10-08)
 

@@ -1390,7 +1390,7 @@ public actor Engine {
     /// Drops an undelivered message of ours from this Mac. It never reached the
     /// server, so there is nothing to delete anywhere else.
     public func discard(messageID: Int64) throws {
-        guard let message = try storage.message(id: messageID), message.isRetryable() else {
+        guard let message = try storage.message(id: messageID), message.isDiscardable else {
             throw Failure.notRetryable
         }
         try storage.deleteMessage(id: messageID)
@@ -1850,9 +1850,8 @@ public actor Engine {
     /// app reads both as calls). Nil for anything else, and on an account
     /// with no call server.
     public func callLink(in message: Message) -> CallLink? {
-        guard !message.deleted, [MessageType.call, MessageType.text].contains(message.type),
-              let content = message.content, let server = try? callServer() else { return nil }
-        return CallLink(message: content, server: server)
+        guard let server = try? callServer() else { return nil }
+        return CallLink(in: message, server: server)
     }
 
     /// A ticket to join a call: the LiveKit server and a token, asked of

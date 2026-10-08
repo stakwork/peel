@@ -43,6 +43,11 @@ struct ConversationView: View {
 
 }
 
+extension Conversation {
+    /// "#tribe" or the contact's name, where a chat is named outside its own header.
+    var title: String { isTribe ? "#\(name)" : name }
+}
+
 /// A chat's header, conversation and composer. Its own view, so resizing the
 /// window or opening a thread does not redraw it.
 private struct ChatColumn: View {
@@ -151,6 +156,9 @@ struct TribeHeader: View {
             ConversationIcon(conversation: conversation, size: 32)
         } trailing: {
             HStack(spacing: 4) {
+                if tribe?.canPost != false {
+                    CallHeaderButton(chat: conversation.chat)
+                }
                 if let tribe, tribe.canManage {
                     HeaderButton(systemImage: "slider.horizontal.3", help: "Edit tribe") { showingSettings = true }
                         .peelPopover(isPresented: $showingSettings) {
@@ -174,6 +182,8 @@ struct TribeHeader: View {
 struct HeaderButton: View {
     let systemImage: String
     let help: String
+    /// Its action is running: the spinner takes the icon's place.
+    var working = false
     let action: () -> Void
 
     var body: some View {
@@ -181,6 +191,7 @@ struct HeaderButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.secondaryText)
+                .buttonProgress(working)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }

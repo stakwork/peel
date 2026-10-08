@@ -240,10 +240,13 @@ struct DirectHeader: View {
             DetailHeader(title: conversation.name, subtitle: model.localTimeLine(local, at: context.date)) {
                 ConversationIcon(conversation: conversation, size: 32)
             } trailing: {
-                HeaderButton(systemImage: "info.circle", help: "Details") { showingInfo = true }
-                    .peelPopover(isPresented: $showingInfo) {
-                        ChatInfoPanel(conversation: conversation, tribe: nil)
-                    }
+                HStack(spacing: 4) {
+                    CallHeaderButton(chat: conversation.chat)
+                    HeaderButton(systemImage: "info.circle", help: "Details") { showingInfo = true }
+                        .peelPopover(isPresented: $showingInfo) {
+                            ChatInfoPanel(conversation: conversation, tribe: nil)
+                        }
+                }
             }
         }
         // Asked again when a message of theirs brings an offset.
@@ -270,7 +273,7 @@ struct ChatInfoPanel: View {
     @State private var problem: String?
 
     private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
-    private var target: String { conversation.isTribe ? "#\(conversation.name)" : conversation.name }
+    private var target: String { conversation.title }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

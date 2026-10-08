@@ -353,14 +353,15 @@ extension Storage {
         SELECT pubkey, name, photoURL, 1 FROM tribe WHERE left = 0
         """
 
-    /// The newest text, attachment or direct payment (a payment only while
-    /// not deleted) gives each conversation its place in the sidebar.
+    /// The newest text, attachment, direct payment or call (a payment or a
+    /// call only while not deleted) gives each conversation its place in
+    /// the sidebar.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
             SELECT id FROM message WHERE chat = c.chat AND (type IN (\(MessageType.contentSQL))
-                OR (type = \(MessageType.directPayment) AND deleted = 0))
+                OR (type IN (\(MessageType.directPayment), \(MessageType.call)) AND deleted = 0))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias

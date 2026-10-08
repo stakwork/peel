@@ -463,7 +463,7 @@ private struct FileDrop: ViewModifier {
             #endif
             .overlay {
                 if model.dropTarget == composer {
-                    DropTarget(name: conversation.isTribe ? "#\(conversation.name)" : conversation.name,
+                    DropTarget(name: conversation.title,
                                inThread: composer.thread != nil)
                 }
             }

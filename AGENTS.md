@@ -55,6 +55,8 @@ is a short plan. Update the status and the journal when you finish something.
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
   `ImageViewer`, `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
+  `CallViews` (the call card, the header's call button and presence
+  watching) and `CallPlaceholder` (the minimal call window until PR 5);
   `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
   `buttonProgress`, the spinner inside a running button);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local

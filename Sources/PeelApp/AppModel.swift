@@ -85,7 +85,9 @@ final class AppModel {
     var drafts: [ComposerID: String] = [:]
     /// The open chat's rows and the open thread's, worked out once per
     /// change of what they show rather than on every redraw.
-    private(set) var chatRows: [ChatRow] = []
+    private(set) var chatRows: [ChatRow] = [] {
+        didSet { refreshRecentCalls() }
+    }
     private(set) var threadRows: [ChatRow] = []
     /// The engine's aliases each tribe echoed back on your messages
     /// (`Engine.echoedOwnAliases`), and from them and your name what a
@@ -106,6 +108,33 @@ final class AppModel {
     }
     /// The server this account talks to, as `host:port`.
     var myServer: String?
+    /// The call server links are checked against (`Engine.callServer`);
+    /// nil when the account has none, and then no message is a call.
+    var callServer: String?
+    /// Who is on each call a card or the header is watching, by room.
+    var callPresence: [String: CallPresence] = [:] {
+        didSet { refreshLiveCallChats() }
+    }
+    /// The views watching each room and the chat each shows it in; not
+    /// observed, so a card scrolling in or out redraws nothing.
+    @ObservationIgnored var callWatchers: [String: [UUID: String]] = [:]
+    /// The open chat's newest calls under 12 hours, at most three, newest
+    /// first: what the header watches. Set with the rows, when it changes.
+    var recentCalls: [CallLink] = []
+    /// The call this Mac is on (the placeholder window until PR 5).
+    var call: CallPlaceholder? {
+        didSet { refreshLiveCallChats() }
+    }
+    /// Chats with a watched call someone is on, or the one you are on: the
+    /// sidebar's green phone. Kept apart so presence ticks redraw no row
+    /// whose answer did not change.
+    var liveCallChats: Set<String> = []
+    /// Why the last join of a room failed, shown beside its Join.
+    var callFailures: [String: String] = [:]
+    /// The room being joined and the chat a call is being started in, for
+    /// the spinner inside the button clicked.
+    var joiningRoom: String?
+    var startingCallIn: String?
     var balanceMsat: UInt64? {
         didSet { if let balanceMsat { money.balance(balanceMsat) } }
     }
@@ -298,7 +327,7 @@ final class AppModel {
         chatRows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
-            newAfter: newMessagesAfter(in: chat)
+            callServer: callServer, newAfter: newMessagesAfter(in: chat)
         ), in: chat)
     }
 
@@ -306,7 +335,8 @@ final class AppModel {
         guard let open = openThread, let thread else { return threadRows = [] }
         threadRows = withSenderZones(ChatRow.rows(
             thread.messages, parents: thread.parents, boosts: thread.boosts, purchases: thread.purchases,
-            inTribe: isTribe(open.chat), people: people(in: open.chat), threadRoot: open.uuid, original: thread.original,
+            inTribe: isTribe(open.chat), people: people(in: open.chat), callServer: callServer,
+            threadRoot: open.uuid, original: thread.original,
             newAfter: newMessagesAfter(in: open.chat)
         ), in: open.chat)
     }
@@ -788,6 +818,11 @@ final class AppModel {
         echoedAliases = [:]
         refreshMentionAliases()
         myServer = nil
+        callServer = nil
+        callPresence = [:]
+        callWatchers = [:]
+        callFailures = [:]
+        leaveCall()
         money.reset()
         balanceMsat = nil
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
@@ -809,6 +844,7 @@ final class AppModel {
         echoedAliases = await engine.echoedOwnAliases
         refreshMentionAliases()
         myServer = try? storage.value(for: .server)
+        callServer = try? await engine.callServer()
         pinTimeoutHours = ((try? await engine.pinTimeoutHours()) ?? nil)
             ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = try? storage.balanceMsat()

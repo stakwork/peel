@@ -430,6 +430,13 @@ struct ConversationLink: View {
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: level == .muted) {
             ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
+            if conversation.isTribe, model.liveCallChats.contains(conversation.chat) {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.confirmed)
+                    .help("A call is live")
+                    .accessibilityLabel("Call live")
+            }
             if unread > 0 {
                 UnreadBadge(count: unread)
             } else if level == .muted {

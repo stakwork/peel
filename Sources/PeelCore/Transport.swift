@@ -33,6 +33,18 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
         }
     }
 
+    /// A server someone else named (an invite, the public config): as `init`,
+    /// but plaintext only to this machine, so an `mqtt://` in an invite
+    /// cannot take the login and the account's traffic off TLS. Only the
+    /// CLI's `--server` may ask for plaintext elsewhere.
+    static func named(_ string: String) throws -> ServerAddress {
+        guard let address = ServerAddress(string) else { throw PeelError("the server address \(string) is unreadable") }
+        guard address.tls || isLoopback(host: address.host) else {
+            throw PeelError("\(address.host) is named without TLS; Peel connects in the clear only to this Mac")
+        }
+        return address
+    }
+
     /// This machine: the only place plaintext is allowed without asking.
     public static func isLoopback(host: String) -> Bool {
         ["127.0.0.1", "localhost", "::1"].contains(host)

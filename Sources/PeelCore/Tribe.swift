@@ -247,8 +247,12 @@ public struct TribeLink: Sendable, Equatable {
     /// everything else. Nil for anything that is not a plain host.
     static func baseURL(_ host: String) -> URL? {
         guard isPlainHost(host) else { return nil }
-        let name = host.split(separator: ":").first.map(String.init) ?? host
-        return URL(string: "\(ServerAddress.isLoopback(host: name) ? "http" : "https")://\(host)")
+        return URL(string: "\(isLoopback(host) ? "http" : "https")://\(host)")
+    }
+
+    /// Whether a plain `host[:port]` is this machine.
+    static func isLoopback(_ host: String) -> Bool {
+        ServerAddress.isLoopback(host: host.split(separator: ":").first.map(String.init) ?? host)
     }
 }
 

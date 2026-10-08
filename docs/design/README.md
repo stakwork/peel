@@ -509,7 +509,7 @@ and what was not in `../phases/04-money.md`.
 ## Time zones
 
 Researched and designed 2026-10-08, second pass after Tom's review the same
-day; not built. Boards T1–T5 and T3a–T3c on the "Peel layout directions"
+day; not built. Boards T1–T6 and T3a–T3c on the "Peel layout directions"
 canvas (row "Time zones"). To be built after the current cleanup (plan at
 the end of this section).
 
@@ -614,55 +614,85 @@ build bodies without `metadata` (`Sources/PeelCore/Engine.swift:698`), and
 raw body of every incoming message is kept (the `body` column), so the time
 zones already received can be recovered from history.
 
-### Decision (recommended: T1 + T2 + T4 + T3a)
+### Decision (Tom, 2026-10-08)
 
-Tom, 2026-10-08, on the first boards: T1 yes but without the late-hours
-hint (dropped); keep the local time and offset in the DM header and at the
-top of the profile; T2 and T4 yes; he likes the sender's local time on each
-run, but not T3's chip. T3a–T3c redo that; T3a is recommended.
+Boards T1, T2, T3a, T4 and T6. Tom's review of the first boards: T1 yes
+without the late-hours hint (dropped); the local time and offset in the DM
+header and at the top of the profile; T2 and T4 yes; the sender's local
+time on each run, but not T3's chip. Then his answers to the open
+questions, the same day:
+
+1. **Sharing is off by default.** Opting in is the only way to share:
+   sharing says where you are.
+2. **Public tribes: never shared**, whatever the switch says, and they get
+   no switch. A tribe is public unless it is private (`Tribe.isPrivate`,
+   stored per tribe, `Storage.swift:120`, set from the tribes server's
+   `private` field, `Tribe.swift:290`; Sphinx's "private" means the owner
+   approves each member). An unlisted tribe that anyone with the link can
+   join is public; Peel does not store `unlisted` and does not need it. The
+   check happens at send time, so a tribe its owner makes public stops
+   receiving the offset with the next message.
+3. **One switch per chat, as the official apps have it:** each DM and each
+   private tribe has its own "Share my time zone" switch in that chat's info,
+   off by default (T6). The zone itself (automatic or chosen) is set once,
+   in Account (T4). Stored per chat on this Mac now; synced with the official
+   apps through the `/preferences` file later (plan step 6).
+4. **Sent on every message** in a chat where the switch is on.
+5. **You still see their time** when yours is hidden.
+6. **T3a:** the sender's local time on each run, always visible.
+7. **The glyph form,** a clock and "14:05", not "14:05 local"; the glyph's
+   accessibility label and the tooltip keep the words ("14:05 local time for
+   Lena Okafor").
+8. Reporting the official apps' DM switch bug upstream is still open.
+
+What that gives:
 
 - **DM header and profile top, one line** (T1). Under the contact's name,
-  in secondary text: "02:14 local time · 6 h ahead". The same line sits
-  under the name at the top of the contact's profile. Only when their
-  offset differs from yours; the same zone shows nothing. It moves on with
-  the minute.
-- **Hover card** (T2). Hover a name or avatar anywhere (a DM, a tribe, a
-  thread) and a card opens beside it: photo, name, short key, then
-  "**14:05** local time · 6 h behind", with the offset they sent under it.
+  in secondary text: a clock and "02:14 local time · 6 h ahead". The same
+  line sits under the name at the top of the contact's profile. Only when
+  their offset differs from yours. It moves on with the minute. The words
+  stay here, unlike the run label: the line carries the offset as well and
+  has the room.
+- **Hover card** (T2): photo, name, short key, then a clock and "**14:05**
+  local time · 6 h behind", with the offset they sent under it.
 - **The sender's local time on each run** (T3a). In the run header, after
-  your time: "Lena Okafor  20:05  · 14:05 local". Rules:
+  your time: "Lena Okafor  20:05  ◷ 14:05" (the clock is a drawn icon, not
+  the character). Rules:
   - the run header only, never on a continuation message;
   - only when the sender's offset differs from yours; your own runs never;
     anyone who sends no offset never (agents, by default);
   - always visible, in a tertiary colour, `#808D9E` (5:1 on the
     conversation background, 4.7:1 on the thread panel), 12 pt, tabular
     figures, so the times do not jitter run to run;
+  - the accessibility label is "14:05 local time for Lena Okafor", and
+    hovering the glyph shows a tooltip with the words and the offset
+    ("00:37 local time for Priya Nair · GMT+5:30");
   - the time *they had when they wrote it*: the offset on the run's first
     message, else their latest one if it is within 90 days of that message,
     else nothing;
-  - in DMs as well as tribes: the header says what time it is there now,
-    the run says what time it was when they wrote;
-  - narrow widths (the thread panel, 360 pt, or a narrow window): the
-    label stays while the header fits on one line; when it would wrap, it
-    drops out and the tooltip and hover card still carry it. A run header
-    never wraps for it;
-  - VoiceOver reads it as "14:05 local time for Lena Okafor".
+  - in DMs as well as tribes, public ones included: what others send is
+    shown wherever it arrives; only what *you* send is limited;
+  - narrow widths (the thread panel, 360 pt, or a narrow window): the label
+    stays while the header fits on one line; when it would wrap it drops
+    out, and the tooltip and hover card still carry it.
 - **No second timestamp on messages.** Hovering any message's time shows
   a tooltip with both: "20:02 your time · 02:02 for Evan".
-- **Wording.** "6 h ahead", "3 h 30 min behind", "same time as you"; on
-  runs just "14:05 local". Times follow the system's 24- or 12-hour
-  setting. The zone itself shows only in the hover card, as the sender
-  wrote it ("GMT+7").
-- **Settings,** a "Time zone" group in Account: "Share my time zone" (a
-  switch, on by default, as in the official apps) and "Time zone":
-  "Automatic · Europe/London (GMT+1)", or one chosen from a searchable Peel
-  menu. Under the switch: "Sent with your messages as an offset, like GMT+1,
-  to the people and tribes you write to. Turning it off stops sending;
-  anyone who already has it keeps the last one you sent."
+- **The per-chat switch** (T6), in the chat's info panel, under the
+  contact's or tribe's name: "Share my time zone with Evan" (in a tribe:
+  "with #Name"), off; under it "Sends your offset, GMT+1, with each message
+  you send here. Turning it off stops sending; Evan keeps the last one you
+  sent." A public tribe's panel has no switch, only the line "Your time zone
+  is never sent in public tribes."
+- **Account › Time zone** (T4): "Time zone: Automatic · Europe/London
+  (GMT+1)", or one chosen from a searchable Peel menu, and "Shared in",
+  which counts the chats you share with ("2 chats · as GMT+1" or "No
+  chats"), with "Never in public tribes" in its note.
+- **No "new chats start with sharing on" setting.** Considered and left
+  out: off is the decision, a default-on switch would quietly undo it for
+  every new contact, and the official apps' file has no such key, so it
+  would never sync. Turning it on per chat is one click in the chat's info.
 - **When they don't share,** or nothing has come for 90 days: nothing at
   all, no "unknown" anywhere. The hover card leaves the line out.
-- **One switch for the account** in v1, not one per conversation (open
-  question 2).
 
 **Always visible or on hover?** Always visible (T3a), for four reasons:
 
@@ -677,22 +707,31 @@ run, but not T3's chip. T3a–T3c redo that; T3a is recommended.
    global tribe the runs that carry it are exactly the ones whose senders
    are elsewhere. A tribe of one city shows nothing at all.
 
-The other variants, kept on the canvas:
+Kept on the canvas, not chosen: **T3b** (on hover only; fails reasons 1 to
+3), **T3c** (the first run of the day per sender; a missing label then
+means nothing), **T3** (the first, outlined chip, which read as a control),
+and the hover card alone. Board T5 shows the edge cases: a contact who
+shares nothing and an agent. The late-hours hint is dropped.
 
-- **T3b, on hover only:** the same label in the same place, revealed when
-  any message of the run is hovered (the space is not reserved, nothing
-  follows it on the line, so nothing shifts). Cleanest at rest, and fails
-  reasons 1 to 3.
-- **T3c, the first run of the day per sender:** fewer labels in a chatty
-  tribe, but its absence then means nothing ("same zone" or "already said
-  today"?) and Lena's 20:12 run reads as if her time were unknown. Worth
-  revisiting only if T3a is too busy in practice.
-- **T3, the first chip** (outlined "◷ 14:05" beside the time): kept for
-  comparison; the outline made it read as a control.
-- **C, the hover card only:** the quietest, but you have to go looking.
+### Stored per chat, in the file's shape
 
-Board T5 shows the edge cases: a contact who shares nothing and an agent.
-The late-hours hint above the composer (first pass) is dropped.
+So that sync can slot in without changing what anything means, Peel keeps
+one row per chat with exactly the fields of the official apps' `timezone`
+item (`DataSyncModels.swift:55-59`, `TimezoneSetting` at 435-459):
+
+| Peel column | File field | Meaning |
+|---|---|---|
+| `chat` (primary key) | item `identifier` | the contact's or tribe's pubkey |
+| `enabled` | `timezone_enabled` ("true"/"false") | share in this chat |
+| `identifier` (null) | `timezone_identifier` ("" when null) | a zone for this chat only; null means "the account's zone" |
+| `updatedAt` (seconds) | item `date` | for last-writer-wins |
+
+Peel's UI only ever writes `enabled` and leaves `identifier` null, so the
+chat uses the zone from Account. A zone set for one chat on the phone
+(the official apps allow it) is kept and used for that chat, and its info
+panel says "Uses Asia/Bangkok, set on another device". The zone sent is
+`identifier ?? account zone ?? this Mac's zone`. A public tribe's row is
+kept if one arrives but never makes Peel send.
 
 ### Conventions on the wire
 
@@ -700,8 +739,8 @@ The late-hours hint above the composer (first pass) is dropped.
   the offset of the chosen zone at the moment of sending, from
   `secondsFromGMT(for: now)` (summer time included, like Mac and iOS). Added
   in one place, `Engine.deliver`, to text messages and attachments
-  (payment notes included) while sharing is on; not to deletes, boosts or
-  membership messages. On every such message, not only after a change, so a
+  (payment notes included) in a DM or private tribe whose switch is on,
+  never in a public tribe; not to deletes, boosts or membership messages. On every such message, not only after a change, so a
   receiver always holds a current offset and a summer-time change never
   leaves them an hour out. About 25 bytes, which `wouldBeSplit` must count
   for payment notes. A retry re-sends the stored body, with the offset of
@@ -725,23 +764,26 @@ The late-hours hint above the composer (first pass) is dropped.
 ### Privacy
 
 - An offset narrows where you are to a band of longitude, and together with
-  when you write it says when you sleep. It goes to everyone you write to,
-  and in a tribe to every member, strangers included in a public tribe. The
-  tribe server reads tribe messages to forward them (it works out mentions
-  from them, `sphinx/tribes/src/incoming.rs`), so its operator sees the
-  offset too.
+  when you write it says when you sleep. Hence off by default, per chat,
+  and never in public tribes. In a private tribe it goes to every member the
+  owner has let in, and the tribe server reads tribe messages to forward
+  them (it works out mentions from them, `sphinx/tribes/src/incoming.rs`),
+  so its operator sees the offset too; the switch's note names the
+  members and the tribe's server.
 - Turning sharing off cannot recall what was sent: the wire has no "off".
-  The setting says so.
+  The switch's note says so.
 - The official Mac and iOS apps send the offset in DMs even with the chat's
-  switch off (the `forceIncludeTimezone` path above). Peel honours its
-  switch on every message. Worth reporting upstream.
+  switch off (the `forceIncludeTimezone` path above), and they default to
+  on and share in public tribes. Peel honours its switch on every message.
+- Once synced (plan step 6), a switch turned on in the official app on the
+  phone turns on in Peel too, but Peel still never sends in a public tribe.
 - An agent's host often runs in UTC on a server: an agent account sends no
   offset unless its owner gives it a zone.
 
 ### Agents
 
 - The time zone is engine state, not view state: each `Engine` holds the
-  share setting and chosen zone of its account (no `UserDefaults` global,
+  per-chat switches and the chosen zone of its account (no `UserDefaults` global,
   so many accounts can live in one process) and exposes
   `localTime(of:)`: their offset, when it was seen, and the difference from
   yours. The hover card and an agent's tools call the same operation.
@@ -761,39 +803,38 @@ The late-hours hint above the composer (first pass) is dropped.
    `json_type(body, '$.metadata') = 'text'` and that text is itself valid
    JSON: `metadata` is whatever the sender wrote, and one malformed value
    must not fail the migration; the stored string then goes through the
-   same parser as live messages), and a query for the latest
-   value per chat and sender within 90 days. Tests for the parser and the
-   backfill.
-2. Engine: the account's share setting and zone in the settings table;
-   `deliver` adds `metadata` to text and attachments while sharing is on;
-   `wouldBeSplit` counts it. Verify on the local test server, then with the
-   throwaway account against the official Mac app: Peel's offset shows in
-   its DM header and tribe rows, and the Mac's shows in Peel.
-3. App: the hover card (wanted for names anyway), the DM header and
-   profile line, the local time on run headers (with the one-line rule at
-   narrow widths), the time tooltip. The run label needs each message's own
-   offset, so the query in step 1 returns it per message as well as the
-   latest per sender.
-4. App: the "Time zone" group in Account with the searchable zone menu.
-5. CLI: `whoami` prints the zone being sent; `contacts` prints each
-   contact's local time.
+   same parser as live messages), and queries for each message's offset and
+   the latest per chat and sender within 90 days. Tests for the parser and
+   the backfill.
+2. Engine: a `chatTimeZone` table in the file's shape (above), with a
+   migration; the account's zone (automatic or an IANA name) in the
+   settings table; `Engine.setTimeZoneSharing(_:in:)` and
+   `Engine.setTimeZone(_:)`. `deliver` adds `metadata` when the chat's row
+   is enabled and the chat is a contact or a private tribe; `wouldBeSplit`
+   counts it. Tests: off by default, public tribes never, private tribes
+   and DMs only when enabled.
+3. Verify on the local test server, then with the throwaway account against
+   the official Mac app: Peel's offset shows in its DM header and on its
+   tribe rows, the Mac's shows in Peel, and nothing reaches a public tribe.
+4. App: the hover card (wanted for names anyway), the DM header and profile
+   line, the glyph on run headers (with the one-line rule at narrow
+   widths), the tooltips, and the per-chat switch in the chat's info (T6).
+5. App: the "Time zone" group in Account (T4) with the searchable zone menu
+   and the "Others see" summary. CLI: `whoami` prints the zone; `contacts`
+   prints each contact's local time and whether you share with them.
+6. **Later, with the preferences layer** (see `../phases/05-parity.md`,
+   "Settings sync between devices"): read and write the official apps'
+   `/preferences` file so each chat's switch round-trips with the phone.
+   What it needs: the file's JSON format (the `timezone` item: identifier
+   the chat's pubkey, value `timezone_enabled` and `timezone_identifier`);
+   RNCryptor v3 with the account's node secret key as the password (Peel
+   already has RNCryptor for attachments); and a memes-server token, which
+   Peel already gets for media. The whole file has to be merged and
+   uploaded back, since it carries the other settings too.
 
 ### Open questions for Tom
 
-1. **Default on or off?** On matches the official apps (and what people
-   like), but a new Peel user then sends an offset to every public tribe
-   they post in. Alternative: on for DMs, off for tribes.
-2. **Per conversation?** The official apps keep a switch per chat and sync
-   it through the encrypted preferences file on the memes server (tip
-   amount and PIN timeout live there too). Should Peel read and write that
-   file, or keep one switch for the account?
-3. **Every message, or only after a change?** Recommended every message:
-   fresh offsets, simpler. Android sends only after a change.
-4. **Reciprocity:** with yours hidden, do you still see theirs? Recommended
-   yes, as in Slack and the official apps.
-5. **Run label: always visible (T3a, recommended) or on hover (T3b)?** And
-   if T3a feels busy in a large tribe, fall back to T3c's once-a-day rule,
-   or a per-tribe off switch?
-6. **"14:05 local" or a glyph** ("◷ 14:05")? The word reads without
-   learning; the glyph is shorter at narrow widths.
-7. **Report the Mac and iOS DM switch bug upstream?**
+1. **Report the Mac and iOS DM switch bug upstream?** (Their switch does not
+   stop the offset in DMs.)
+2. **Private tribes:** the switch is offered there (decision 3). Should a
+   private tribe's note name how many members will see it?

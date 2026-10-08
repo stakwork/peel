@@ -9,7 +9,10 @@ Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" 
 - Contacts UI: "Contacts" below.
 - The in-app web window: "Web window" below.
 - Self-hosted servers with their own certificates: "Self-hosted servers" below.
-- Settings sync between devices, if still wanted once the iPhone exists.
+- Settings sync between devices (the Mac app's `Data Sync Manager`). Tom,
+  2026-10-08: Peel will need a preferences layer. What the official apps
+  sync is in "Settings sync" below; the per-chat time zone switch is stored
+  in the file's shape already (`../design/README.md`, "Time zones").
 
 **Decided (2026-10-08):** People, LSATs and languages are not in v1 ("Not
 now" below); web apps become a web window inside Peel.
@@ -64,6 +67,59 @@ it. Peel remembers that fingerprint for that server (a `Setting`) and
 refuses to connect if it ever changes. The CLI's `--insecure` flag stays a
 development tool. Ask Tomás whether self-hosting is indeed why the Mac app
 accepts any certificate before building it.
+
+## Settings sync: the official apps' `/preferences` file
+
+Checked 2026-10-08 in `sphinx-mac-v2`, `Managers/Data Sync Manager/`
+(`DataSyncManager.swift`, `DataSyncModels.swift`).
+
+**Where it lives.** One file per account on the memes server:
+`GET /preferences` and a multipart `POST /preferences` (fields `pubkey`,
+the account's pubkey in base64url, and `file`), with the memes-server
+bearer token (`API/API+AttachmentsExtension.swift:252-340`). A missing file
+is answered `success: false` with a known error, which bootstraps a new one.
+
+**Encryption.** RNCryptor v3 (`SymmetricEncryptionManager.encryptString`),
+base64, with the password being the account's node secret key as hex:
+`Sphinx.nodeKeys(net: "bitcoin", seed:)` from the mnemonic
+(`SphinxOnionManager.getPersonalKeys`, `SphinxOnionManager.swift:1156`).
+Only the account's own devices can read it; the memes server stores
+ciphertext.
+
+**Format.** `{"items":[{"key","identifier","date","value"}]}`, `date` in Unix
+seconds as a string, values as strings or small objects of strings:
+
+| key | identifier | value | controls |
+|---|---|---|---|
+| `tip_amount` | `"0"` | int | the default boost amount |
+| `private_photo` | `"0"` | bool | the account's "private photo" flag |
+| `timezone` | the chat's pubkey | `{timezone_enabled, timezone_identifier}` ("" = the device's zone) | sharing and the zone, per chat |
+| `feed_status` | feed id | `{chat_pubkey, feed_url, subscribed, sats_per_minute, player_speed, item_id, feed_id}` | podcast subscription, streaming sats, speed, current episode |
+| `feed_item_status` | `feedId-itemId` | `{duration, current_time}` | an episode's position |
+| `chat_color` | the colour key | hex string | the colour given to a chat or sender |
+| `pin_timeout` | `"0"` | int hours | the PIN re-lock time |
+| `biometric_enabled` | `"0"` | bool | iOS only; the Mac ignores it |
+| `ai_agent_config` | `"0"` | `"provider|apiKey|agentName"` | the in-app AI agent, **with its API key** |
+
+**When.** A change is written to a local queue (`DataSync` rows) and a sync
+runs 2 s later (debounced), and also when the app becomes active and at the
+end of a restore (`AppDelegate.swift:489`,
+`SphinxOnionManager+AccountRestoreExtension.swift:1053`). One sync: fetch
+and decrypt the file (abort on any error or malformed JSON rather than
+overwrite it), merge, apply what came from the server, upload the whole
+file, and only then clear the queue.
+
+**Conflicts.** Per `(key, identifier)`, the newer `date` wins, a local
+change only if strictly newer, otherwise the server's
+(`DataSyncManager.swift:243-263`); items only on the server are applied
+locally. `chat_color` is first-one-wins: a local colour is added only if
+the server has none for that key. Dates come from each device's clock, so
+skew decides close races.
+
+For Peel: read the whole file, keep the items it does not understand
+untouched, and write it back merged; never upload a file it could not
+decrypt. `ai_agent_config` holds a third-party API key, so Peel should
+leave it alone and never log the file.
 
 ## Not now (2026-10-08)
 

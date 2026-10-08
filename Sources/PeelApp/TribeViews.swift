@@ -243,17 +243,28 @@ struct TribeServerProgress: View {
 
 /// An action confirmed right next to its button, never in a dialog: the
 /// button, then the prompt with Cancel and the action in red. Off while the
-/// action runs; the action reports its own failure.
+/// action runs, with the spinner in the action's button; the action reports
+/// its own failure. `compact` for a row's small text buttons.
 struct InlineConfirm: View {
     let trigger: String
     var prompt: String?
     let confirm: String
+    var compact = false
     let action: () async -> Void
 
     @State private var confirming = false
     @State private var working = false
 
     var body: some View {
+        // The spinner needs a style SwiftUI draws.
+        if compact {
+            buttons.buttonStyle(.plain)
+        } else {
+            buttons.buttonStyle(GhostButtonStyle())
+        }
+    }
+
+    private var buttons: some View {
         HStack(spacing: 8) {
             if confirming {
                 if let prompt {
@@ -271,6 +282,7 @@ struct InlineConfirm: View {
                     }
                 } label: {
                     Text(confirm).foregroundStyle(Theme.destructive)
+                        .buttonProgress(working, size: compact ? .mini : .small)
                 }
             } else {
                 Button(trigger) { confirming = true }

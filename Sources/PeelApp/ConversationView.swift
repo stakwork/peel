@@ -270,10 +270,11 @@ struct TribeMembersPanel: View {
                         MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member),
                                   note: isMe ? "you, owner" : nil) {
                             if let pubkey = member.pubkey, !isMe, canManage {
-                                InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)") { await kick(pubkey) }
-                                    .buttonStyle(.plain)
-                                    .font(Theme.font(12, .medium))
-                                    .foregroundStyle(Theme.secondaryText)
+                                InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)", compact: true) {
+                                    await kick(pubkey)
+                                }
+                                .font(Theme.font(12, .medium))
+                                .foregroundStyle(Theme.secondaryText)
                             }
                         }
                         .peelMenu {

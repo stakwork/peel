@@ -366,7 +366,9 @@ small text buttons of a row); on a filled button the spinner is drawn light
 against the fill. It needs a style SwiftUI draws (`GhostButtonStyle`,
 `PrimaryButtonStyle`, `.plain`), so the popover forms' commit buttons (Look
 up, Join, Add, Create) are `GhostButtonStyle(prominent: true)` like the
-payment forms'. Where one row has several buttons
+payment forms', and so are the buttons of an inline confirm (Delete,
+Leave, Remove from Peel; a member's Remove stays `.plain`, with the mini
+spinner). Where one row has several buttons
 that run (Approve and Decline, Remove photo and Save), only the clicked one
 spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being

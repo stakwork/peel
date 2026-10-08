@@ -137,7 +137,7 @@ In v1: onboarding (invite signup, mnemonic restore, name, PIN, photo); contacts
 as the Mac app does them; payments (send in chat, pay invoice, request, boosts)
 plus a new Receive screen; chat with tribes, attachments, threads and replies,
 LiveKit calls; an in-app web window for links and tribe apps; paid messages
-and templates; self-hosted servers. Not now: People, LSATs and languages.
+and templates. Not now: People, LSATs and languages.
 Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive workspaces,
 Tor and relay-era code, Jitsi.
 

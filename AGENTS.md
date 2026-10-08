@@ -164,7 +164,7 @@ its own temporary profile directory. It covers `StateCodec` round-trips and
 malformed input; `Storage` commits (atomic state and settings), message upsert
 (uuid dedupe, server fields from the later copy, cross-chat uuid rejection),
 status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
-`messages(in:)` first emission, and the profile lock; `Message` helpers;
+`timeline(in:)` first emission, and the profile lock; `Message` helpers;
 `ServerAddress` parsing; and the `Engine` helpers that need no server
 (mnemonics, invites, a fresh account); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media

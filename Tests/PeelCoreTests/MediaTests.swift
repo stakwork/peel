@@ -263,7 +263,7 @@ struct AttachmentStorageTests {
                 (.fixture(uuid: "u2", serverIndex: 2, type: MessageType.attachment, chat: "02aa", content: "", timestamp: 2_000), false, nil),
             ]
         ))
-        let messages = try #require(try await first(storage.messages(in: "02aa")))
+        let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
         #expect(messages.map(\.uuid) == ["u1", "u2"])
         let states = try #require(try await first(storage.readStates()))
         #expect(states["02aa"]?.unread == 2)

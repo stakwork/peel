@@ -366,14 +366,4 @@ extension Storage {
             .removeDuplicates()
             .values(in: pool)
     }
-
-    /// The newest 200 messages of one chat, oldest first, re-emitted whenever they change.
-    public func messages(in chat: String) -> some AsyncSequence<[Message], any Error> {
-        ValueObservation
-            .trackingConstantRegion { db in
-                try Message.fetchAll(db, sql: Self.messagesSQL, arguments: [chat, Self.pageSize])
-            }
-            .removeDuplicates()
-            .values(in: pool)
-    }
 }

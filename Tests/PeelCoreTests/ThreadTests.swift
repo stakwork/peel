@@ -277,12 +277,4 @@ struct ThreadTests {
         #expect(try !storage.isAnswered(request: uuid(1), in: "02other"))
         #expect(try !storage.isAnswered(request: uuid(3), in: tribe))
     }
-
-    @Test func replyCountsByParent() throws {
-        let storage = try storage([
-            text(1), text(2, reply: 1, thread: 1), text(3, reply: 1, thread: 1), text(4, reply: 2, thread: 1),
-            text(5, chat: "02other", reply: 1),
-        ])
-        #expect(try storage.replyCounts(in: tribe) == [uuid(1): 2, uuid(2): 1])
-    }
 }

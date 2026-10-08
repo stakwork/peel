@@ -45,7 +45,8 @@ Top to bottom:
 4. **Mentions.** Messages that mention you, across tribes.
 5. **Payments.** Payment history: received, sent, boosts, invoices. The
    receive screen from the v1 scope lives here.
-6. **Tribes.** One row per tribe, prefixed `#`, like Slack channels. Unread
+6. **Tribes.** One row per tribe, led by the tribe's image or its initial on
+   its own colour, both on a rounded square (people are round). Unread
    tribes are bold. Ends with "Join a tribe". The section collapses.
 7. **Direct messages.** One row per contact, unread ones bold with a count.
    Ends with "Add contact". The section collapses.
@@ -56,7 +57,7 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
 
 ### Conversation (flexible)
 
-- **Header.** The tribe name with `#` (or the contact's name), member count and
+- **Header.** The tribe's icon and name (or the contact's), member count and
   description for a tribe, and three icon buttons: call, pinned messages,
   members.
 - **Messages are flat rows** (Tom, 2026-10-07, readability option D, "try

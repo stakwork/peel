@@ -49,9 +49,10 @@ struct Avatar: View {
         url?.httpsOnly.flatMap(URL.init)
     }
 
-    /// "Tom Smith" and "Tom_Smith" are TS, "Bot" is B; a tribe its initial.
+    /// "Tom Smith" and "Tom_Smith" are TS, "Bot" is B; a tribe, or anyone
+    /// under 18 pt (two letters there are too small to read), the initial.
     private var initials: String {
-        let words = name.split { $0 == " " || $0 == "_" }.prefix(shape == .roundedSquare ? 1 : 2)
+        let words = name.split { $0 == " " || $0 == "_" }.prefix(shape == .roundedSquare || size < 18 ? 1 : 2)
         return words.compactMap(\.first).map { String($0).uppercased() }.joined()
     }
 
@@ -71,14 +72,12 @@ struct Avatar: View {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 hue.avatarFill.overlay {
-                    // Initials down to the sidebar's 18pt (a tribe's 16pt):
-                    // the letter is how you find it there.
-                    if size >= (shape == .roundedSquare ? 16 : 18) {
-                        let initials = initials
-                        Text(initials)
-                            .font(Theme.font(size * (initials.count > 1 ? 0.38 : size < 24 ? 0.55 : 0.42), .bold))
-                            .foregroundStyle(.white)
-                    }
+                    // At every size, down to a boost chip's 16 pt: the letter
+                    // is how you tell people apart.
+                    let initials = initials
+                    Text(initials)
+                        .font(Theme.font(size * (initials.count > 1 ? 0.38 : size < 24 ? 0.55 : 0.42), .bold))
+                        .foregroundStyle(.white)
                 }
             }
         }

@@ -364,8 +364,8 @@ private struct BoostChip: View {
     @State private var hovering = false
 
     static let shownBoosters = 3
-    /// Under the 18 pt where initials start: a booster without a photo is
-    /// their colour, and the panel names them.
+    /// A booster without a photo shows their initial on their colour, as
+    /// everywhere else.
     private static let avatarSize: CGFloat = 16
     private static let overlap: CGFloat = 5
 
@@ -407,6 +407,8 @@ private struct BoostChip: View {
                             .zIndex(Double(Self.shownBoosters - index))
                     }
                 }
+                // The letters name no one; the help and the panel do.
+                .accessibilityHidden(true)
                 if people.count > Self.shownBoosters {
                     Text("+\(people.count - Self.shownBoosters)")
                         .font(Theme.font(11, .medium))

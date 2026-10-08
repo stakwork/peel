@@ -102,7 +102,7 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   per person in the order they boosted) and "+N" for the other people
   (Tom, 2026-10-07). Quiet, like Slack's reactions (Tom, 2026-10-08: the
   chip shouted louder than the message): 11 pt text, 16 pt photos (their
-  colour when there is no photo; too small for initials), about 20 pt
+  initial on their colour when there is no photo), about 20 pt
   tall, on the soft `quote` fill inside a divider hairline (so it keeps
   its edge on your tinted rows), firmer under the pointer. One of yours
   among them, once the server has it, tints the chip faintly
@@ -282,7 +282,8 @@ mentions, unread) and no ambers (money, the @you chip):
   Payments counterpart (list, detail, quoted message). A tribe without an
   image takes its initial on the same palette, keyed by the tribe's key,
   on its rounded square. Photos stay photos;
-  only initials get the fill (white, two letters for two words, from 18 pt).
+  only initials get the fill (white, at every size down to 16 pt; a
+  person's two letters for two words from 18 pt, a tribe's always one).
   Notifications carry no avatars.
 - **A mention of you, or @all,** is a gold chip (semibold):
   `mentionYouFill` / `mentionYouText`, `#FBE7A6` behind `#5C4300` in

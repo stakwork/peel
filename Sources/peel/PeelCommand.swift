@@ -204,6 +204,17 @@ struct Invocation {
     }
 }
 
+/// A payment over the confirmation threshold: with `--yes`, sent again for
+/// the amount the engine names (and printed); without, the refusal stands.
+func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throws {
+    do {
+        try await send(nil)
+    } catch Engine.Failure.needsConfirmation(let msat) where yes {
+        print("confirmed \(Sats.format(msat: msat)) (\(msat) msat)")
+        try await send(msat)
+    }
+}
+
 func yesNo(_ text: String) throws -> Bool {
     switch text {
     case "yes": true

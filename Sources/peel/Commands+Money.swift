@@ -120,18 +120,7 @@ extension Invocation {
 }
 
 /// An amount in sats from the command line, as msat.
-func satsArgument(_ text: String) throws -> UInt64 {
+private func satsArgument(_ text: String) throws -> UInt64 {
     guard let msat = Sats.msat(text) else { throw PeelError("the amount must be a whole number of sats above zero") }
     return msat
-}
-
-/// A payment over the confirmation threshold: with `--yes`, sent again for
-/// the amount the engine names (and printed); without, the refusal stands.
-func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throws {
-    do {
-        try await send(nil)
-    } catch Engine.Failure.needsConfirmation(let msat) where yes {
-        print("confirmed \(Sats.format(msat: msat)) (\(msat) msat)")
-        try await send(msat)
-    }
 }

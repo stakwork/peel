@@ -8,17 +8,13 @@ private let other = "02bb"
 struct PaymentTests {
     let profile = TempProfile()
 
-    private func text(_ n: Int, chat: String = dm, fromMe: Bool = false) -> Message {
-        .fixture(uuid: uuid(n), chat: chat, fromMe: fromMe, content: "m\(n)", timestamp: Int64(n) * 1_000)
-    }
-
     private func boost(
         _ n: Int, on parent: Int, chat: String = dm, fromMe: Bool = false, sats: Int64, alias: String? = nil,
         status: Message.Delivery? = nil, paid: Bool = true
     ) -> Message {
         .fixture(
             uuid: uuid(n), type: MessageType.boost, chat: chat, fromMe: fromMe,
-            sender: alias.map { #"{"pubkey":"02cc","alias":"\#($0)"}"# }, content: "",
+            sender: alias.map { sender(alias: $0) }, content: "",
             msat: !fromMe && paid ? sats * 1000 : nil,
             timestamp: Int64(n) * 1_000, status: status?.rawValue, replyUUID: uuid(parent), amountMsat: sats * 1000
         )

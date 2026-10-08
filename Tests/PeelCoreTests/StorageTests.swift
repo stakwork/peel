@@ -157,13 +157,6 @@ struct StorageTests {
 
     // MARK: Contacts
 
-    private func sender(_ pubkey: String, alias: String?, photo: String?) -> String {
-        var fields: [String: String] = ["pubkey": pubkey]
-        fields["alias"] = alias
-        fields["photo_url"] = photo
-        return String(decoding: try! JSONEncoder().encode(fields), as: UTF8.self)
-    }
-
     private func contact(_ pubkey: String) throws -> Row? {
         try rows(profile, "SELECT * FROM contact WHERE pubkey = '\(pubkey)'").first
     }

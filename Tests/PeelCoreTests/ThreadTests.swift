@@ -177,7 +177,7 @@ struct ThreadTests {
         try storage.save([Tribe(pubkey: tribe)])
         func from(_ alias: String, _ n: Int, thread: Int) -> (Message, Bool, String?) {
             let message = Message.fixture(
-                uuid: uuid(n), chat: tribe, sender: #"{"pubkey":"02tribe","alias":"\#(alias)"}"#, content: "m\(n)",
+                uuid: uuid(n), chat: tribe, sender: sender("02tribe", alias: alias), content: "m\(n)",
                 timestamp: Int64(n) * 1_000, threadUUID: uuid(thread)
             )
             return (message, false, nil)
@@ -216,9 +216,8 @@ struct ThreadTests {
     @Test func deletesComeOnlyFromTheSenderOrTheTribesOwner() throws {
         func member(_ alias: String, _ n: Int, type: Int = MessageType.text, role: Int? = nil, reply: Int? = nil)
             -> (Message, Bool, String?) {
-            let roleField = role.map { #","role":\#($0)"# } ?? ""
             let message = Message.fixture(
-                uuid: uuid(n), type: type, chat: tribe, sender: #"{"pubkey":"02tribe","alias":"\#(alias)"\#(roleField)}"#,
+                uuid: uuid(n), type: type, chat: tribe, sender: sender("02tribe", alias: alias, role: role),
                 content: "m\(n)", timestamp: Int64(n) * 1_000, replyUUID: reply.map(uuid)
             )
             return (message, false, nil)

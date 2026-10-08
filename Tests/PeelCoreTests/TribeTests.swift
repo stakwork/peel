@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import PeelCore
 
-/// Sender details as a tribe stamps them on what it forwards.
-private func sender(_ alias: String) -> String { #"{"pubkey":"02t","alias":"\#(alias)"}"# }
-
 struct TribeTests {
     @Test func mentionsMatchTheWholeAliasInAnyCase() {
         let me = ["Tom_Smith"]
@@ -62,11 +59,11 @@ struct TribeTests {
         let storage = try profile.storage()
         try storage.save([Tribe(pubkey: "02t1"), Tribe(pubkey: "02t2")])
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: uuid(1), chat: "02t1", fromMe: true, sender: sender("Tom_Smith_2")), false, nil),
-            (.fixture(uuid: uuid(2), chat: "02t1", fromMe: true, sender: sender("Tom_Smith")), false, nil),
-            (.fixture(uuid: uuid(3), chat: "02t1", fromMe: false, sender: sender("ann")), false, nil),
+            (.fixture(uuid: uuid(1), chat: "02t1", fromMe: true, sender: sender("02t", alias: "Tom_Smith_2")), false, nil),
+            (.fixture(uuid: uuid(2), chat: "02t1", fromMe: true, sender: sender("02t", alias: "Tom_Smith")), false, nil),
+            (.fixture(uuid: uuid(3), chat: "02t1", fromMe: false, sender: sender("02t", alias: "ann")), false, nil),
             (.fixture(uuid: uuid(4), chat: "02t2", fromMe: true, sender: nil), false, nil),
-            (.fixture(uuid: uuid(5), chat: "02dm", fromMe: true, sender: sender("Tom Smith")), false, nil),
+            (.fixture(uuid: uuid(5), chat: "02dm", fromMe: true, sender: sender("02t", alias: "Tom Smith")), false, nil),
         ]))
         #expect(try storage.echoedOwnAliases() == ["02t1": ["Tom_Smith", "Tom_Smith_2"]])
     }

@@ -176,17 +176,19 @@ extension Engine {
     }
 
     /// Whether the switch is on in `chat`: on unless turned off. A public
-    /// tribe never gets the offset whatever this says (`outgoingBody`).
+    /// tribe never gets the offset whatever this says (`offsetShared`).
     public func timeZoneSharing(in chat: String) throws -> Bool {
         try storage.chatTimeZone(chat)?.enabled ?? true
     }
 
-    /// The offset this account's messages in `chat` carry, as far as this
-    /// Mac knows (a tribe's registry is asked again at each send): nil when
-    /// the switch is off, or in a public tribe whatever it says.
-    public func offsetShared(in chat: String, at now: Date = .now) throws -> String? {
+    /// The offset a message of `type` to `chat` carries, what `deliver`
+    /// sets: nil when the switch is off, and nil unless the chat is a person
+    /// the core holds or a tribe whose stored record says private (kept
+    /// fresh by the registry refresh on connect and `recheckIfStale` after
+    /// sends; never asked here, so a send never waits).
+    public func offsetShared(in chat: String, type: Int = MessageType.text, at now: Date = .now) throws -> String? {
         guard knownTribe(chat).map(\.isPrivate) ?? isContact(chat) else { return nil }
-        return try sharedOffset(in: chat, type: MessageType.text, at: now)
+        return try sharedOffset(in: chat, type: type, at: now)
     }
 
     /// Turns sharing this account's offset on or off in a direct message or
@@ -221,7 +223,7 @@ extension Engine {
     }
 
     /// The offset a message of `type` to `chat` would carry by the chat's
-    /// switch alone; `outgoingBody` also asks whether the chat is private.
+    /// switch alone; `offsetShared` also asks whether the chat is private.
     func sharedOffset(in chat: String, type: Int, at now: Date = .now) throws -> String? {
         guard TimeZoneOffset.carriedBy.contains(type), try timeZoneSharing(in: chat) else { return nil }
         return TimeZoneOffset.format(try timeZone(for: chat), at: now)

@@ -139,7 +139,8 @@ format and a stable hash) and the gold chip's mention of you or @all; mention ma
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions); call links (both forms, hosts, room names,
 query keys) and the call server setting; time zones (the offset's format and
-parser, malformed metadata, the per-chat switch and public tribes, local
+parser, malformed metadata, the per-chat switch and public tribes, the
+stored tribe record and its background recheck, local
 times, the v14 column on stored history); and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test

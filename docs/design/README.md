@@ -704,9 +704,15 @@ questions, the same day:
    stored per tribe, `Storage.swift:120`, set from the tribes server's
    `private` field, `Tribe.swift:290`; Sphinx's "private" means the owner
    approves each member). An unlisted tribe that anyone with the link can
-   join is public; Peel does not store `unlisted` and does not need it. The
-   check happens at send time, so a tribe its owner makes public stops
-   receiving the offset with the next message.
+   join is public; Peel does not store `unlisted` and does not need it.
+   **Decided by the stored record, not asked at each send** (Tom,
+   2026-10-08: "sends must stay instant and in order"; his rule is only
+   "never in public tribes"). The first build asked the tribe's registry
+   before every send to a private tribe, which with sharing on by default
+   made every such send wait a round trip (up to 30–60 s on a registry
+   that hangs) and let two quick messages go out of order. Now a send reads
+   `Tribe.isPrivate` as stored, and a tribe its owner makes public stops
+   receiving the offset once Peel has refreshed its record (Privacy, below).
 3. **One switch per chat, as the official apps have it:** each DM and each
    private tribe has its own "Share my time zone" switch in that chat's info,
    on by default (T6). The zone itself (automatic or chosen) is set once,
@@ -858,6 +864,21 @@ writes no rows for chats nobody touched; turning a chat off writes
   them (it works out mentions from them, `sphinx/tribes/src/incoming.rs`),
   so its operator sees the offset too; the switch's note names the
   members and the tribe's server.
+- **A private tribe made public** keeps getting the offset until Peel next
+  reads its registry record (decision 2): a member learns of the change
+  only there. The records are read on every connection (app start, wake,
+  reconnect) and when a tribe is first seen; there is no timer, so on a Mac
+  that stays connected the record can be hours old. A send that carries the
+  offset to a private tribe whose last read record was asked for more than
+  five minutes ago (`Engine.tribeRecheck`) reads it again in the
+  background; the send itself goes by the record it has. So after an owner
+  makes a tribe public, the messages that can still carry the offset are:
+  any sent within five minutes of the last read, the first one after that
+  (it starts the read), and any sent while the read is on its way (normally
+  well under a second; at worst the request's 30–60 s timeout, after a full
+  refresh already running). A registry
+  that does not answer leaves the stored record as it is, and the next send
+  asks again: unlike the first build, no answer is not "public".
 - Turning sharing off cannot recall what was sent: the wire has no "off".
   The switch's note says so.
 - The official Mac and iOS apps send the offset in DMs even with the chat's
@@ -925,15 +946,31 @@ writes no rows for chats nobody touched; turning a chat off writes
 
 ### Built (steps 1–3, 2026-10-08)
 
-- **Wire.** `Engine.deliver` hands the core `outgoingBody(_:to:type:)`:
-  `metadata` set to `{"tz":"GMT+1"}` for text, attachments and payments
-  (`TimeZoneOffset.carriedBy`) unless the chat's row says off (no row is
-  on) and when the chat is a person the core holds, or a tribe stored as private **and** whose
-  registry says private when asked just before the send. A member learns that
-  a tribe went public only from the registry (the background refresh runs on
-  connect), so the send asks it; no answer means no offset. Taken out of the
+- **Wire.** `Engine.deliver` sets `metadata` to `{"tz":"GMT+1"}` in what it
+  hands the core, from `offsetShared(in:type:)`, for text, attachments and
+  payments (`TimeZoneOffset.carriedBy`) unless the chat's row says off (no
+  row is on) and when the chat is a person the core holds or a tribe stored
+  as private. Nothing is asked over the network on the way out, so a send is
+  never held up and sends go in the order they were made. Taken out of the
   body otherwise. Payment requests (type 2) do not carry it; the plan named
   only text, attachments and payment notes.
+- **Keeping the record fresh** (2026-10-08, replacing the first build's
+  registry request before each send to a private tribe, decision 2).
+  `refreshTribes` reads every joined tribe's record on each connection and
+  when the core reports a new tribe. After a send that carried the offset
+  to a tribe (so a private one), `deliver` calls `recheckIfStale`: when the
+  tribe's last read record was asked for more than `tribeRecheck` (five
+  minutes) ago in this session, it queues that tribe (`tribesToRecheck`)
+  for the same background refresh, which then reads only the queued
+  tribes; the send goes on without waiting. One refresh runs at a time, so
+  answers are saved in the order they were asked for, and `disconnect`
+  cancels it as before. `saveRecords` notes when each answer was asked for
+  (`tribeReadAt`); a failed read notes nothing, so the next send queues it
+  again. In memory only: a new session starts with the refresh on connect.
+  A tribe the registry marks deleted keeps its stored flag (the current
+  tribes server answers a deleted tribe with an error, so the flag is
+  rarely seen); nobody is left there to read the offset but the tribe's
+  server, which saw the tribe's messages before.
 - **A payment note that fits only without the offset** goes without it,
   rather than the payment being refused as too long.
 - **A retry follows the switch as it is now**, not the first try's offset as
@@ -972,49 +1009,54 @@ writes no rows for chats nobody touched; turning a chat off writes
 - **Verified on the local stack** (two development profiles): nothing sent
   with the switch off; `GMT+5:30` (TZ=Asia/Kolkata) and `GMT+1` in a direct
   message and a payment note once on, parsed on the other side; turning it on
-  in a public tribe refused, and a private tribe made public stopped getting
-  it with the next message, the owner's and a member's alike (the member's
-  stored record still said private); a private tribe carried both ways
+  in a public tribe refused, and (with the first build, which asked the
+  registry at each send) a private tribe made public stopped getting it with
+  the next message, the owner's and a member's alike; a private tribe carried both ways
   (`GMT+1`, `GMT-4`) through the tribes server; each side saw the other's
   local time with its own switch off. Not done: against the official Mac app
   with the throwaway account (step 3's second half).
-- **Review findings not applied.** The registry is asked on every send to
-  a private tribe with sharing on (one request; the background refresh runs
-  only on connect), rather than trusting a cached record for some minutes:
-  decision 2 says a tribe made public stops getting the offset with the next
-  message, and a member learns that only from the registry, so any cache
-  breaks that rule for as long as it lasts. **The cost, now that sharing is
-  on by default:** every text, attachment and payment to a private tribe
-  waits for one HTTPS round trip to its tribes host before it goes (tens to
-  a few hundred milliseconds normally; a registry that hangs holds the send
-  until the request times out, 30 s idle or 60 s in all, and then it goes
-  without the offset).
-  DMs and public tribes are not affected; turning the chat's switch off
-  skips the request, and so does being offline (nothing is published, and
-  the retry asks again). Not fixed here: while one send waits for the
-  registry another can overtake it, so two messages sent in quick
-  succession to a private tribe can go out in the wrong order; this was
-  true before for chats switched on, and is now the default. Fixing it
-  means queueing sends in order, a change of its own.
+- **The registry at send time, dropped** (2026-10-08, decision 2). The
+  first build asked a private tribe's registry before every send, so a tribe
+  made public stopped getting the offset with the very next message. With
+  sharing on by default that held every send to a private tribe for one
+  HTTPS round trip (30–60 s on a registry that hangs) and let a later
+  message overtake an earlier one. The stored record and `recheckIfStale`
+  replace it; the cost is the window under Privacy.
 - **Existing installs** have no rows for chats nobody touched, so every
   such DM and private tribe starts sharing with its next message, as the
   reversed decision intends. The engine shipped in #47 the same day, with
   no switch in the UI yet. The default-on change's `/security-review` found
   nothing at confidence 8 or above: every send still goes through
-  `outgoingBody`, a tribe needs its stored flag, a connection and a fresh
-  registry answer, and a key that is not a tribe needs a core contact, so
-  no row meaning on cannot reach a public tribe or a stranger.
+  `offsetShared`, a tribe needs its stored flag (then also a fresh registry
+  answer; since dropped, decision 2), and a key that is not a tribe needs a
+  core contact, so no row meaning on cannot reach a public tribe or a
+  stranger.
   `ChatTimeZone.identifier` and `updatedAt` stay although only sync
   (step 6) will write them: the table keeps the file's shape. A retry's
   stored row keeps its first body (above).
 - **`/security-review`:** no finding at confidence 8 or above. Checked: every
-  send goes through `outgoingBody`, which sets or removes `metadata` (so a
+  send goes through `offsetShared`, and `metadata` is set or removed (so a
   retry, an attachment or a payment never keeps an offset the rules no longer
-  allow); a tribe needs its stored flag and a fresh registry answer, and a
-  failed fetch is no; new SQL is bound or constant; the v14 column's guards
-  run in order. Hardened from a near-miss: a zone name may not start with `/`.
-  Left as decided: an offset worked out just before the registry answers goes
-  once if the switch is turned off in that moment.
+  allow); a tribe needs its stored flag (and, until decision 2 changed, a
+  fresh registry answer); new SQL is bound or constant; the v14 column's
+  guards run in order. Hardened from a near-miss: a zone name may not start
+  with `/`.
+- **Reviews of the stored-record change** (2026-10-08). `/code-review`
+  applied: a slow single-tribe read could save an old "private" over a
+  newer "public", a cancelled or failed read held off the next one for five
+  minutes, the recheck ran for sends that carried no offset, and the reads
+  were not cancelled on disconnect. `/simplify` then folded the single-tribe
+  read into `refreshTribes` (one refresh at a time, so answers save in order).
+  Not applied: a deleted private tribe keeps its flag (Built, above); no
+  offline guard on the recheck (an offline send is not published, and the
+  refresh on reconnect reads every tribe); the first message after a quiet
+  spell goes by the old record (the accepted window, Privacy).
+  `/security-review`: no finding at confidence 8 or above. Checked: every
+  `deliver` path (text, attachment, payment, boost, invoice, retry) goes
+  through `offsetShared`, which needs a stored private tribe or a core
+  contact, so a stored public tribe or a stranger never gets it; the
+  refresh only reads stored tribes' own hosts; a missing `private` field
+  stores public.
 
 For the UI PR: the run header's rule (the run's first message's offset, else
 the sender's latest within 90 days of it) needs a per-alias lookup at a given

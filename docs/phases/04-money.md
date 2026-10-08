@@ -405,7 +405,8 @@ back-fill); the boosts migration stays `v11`.
   message ("⚡ 1,210 sats", then up to three boosters' photos overlapping
   and "+N", as the official Mac app's `NewMessageBoostView`; tinted when
   you boosted it; replaced the first "⚡ 1,210 · 4" chip after Tom's
-  feedback) opening a Peel
+  feedback, and made quiet like Slack's reactions on 2026-10-08: 11 pt,
+  16 pt photos, see the design README) opening a Peel
   panel of who boosted with avatars and amounts; Boost in the hover bar
   (Reply, Boost, More) and "Boost…" in the message menu, where
   `isBoostable`, opening a panel with 10 / 50 / 100 / 500 sats or another

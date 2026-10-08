@@ -654,8 +654,10 @@ struct MessageRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
-        .padding(.top, row.startsRun ? 8 : 1)
-        .padding(.bottom, row.endsRun ? 4 : 1)
+        // Inside a run, 5 pt between messages: more than a message's 3 pt
+        // line spacing, so two read as two (design README, Flat rows).
+        .padding(.top, row.startsRun ? 8 : 3)
+        .padding(.bottom, row.endsRun ? 4 : 2)
         .background {
             if isSubject || flashed || openThread {
                 Theme.selection.opacity(0.45)

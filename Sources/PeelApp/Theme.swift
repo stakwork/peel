@@ -53,8 +53,20 @@ enum Theme {
     static let callChevronLine = Color(light: 0xDCE0E3, dark: 0x2F3D4A)
     /// PrimaryGreen: connected, and a message the server confirmed.
     static let confirmed = Color(light: 0x49C998, dark: 0x49C998)
-    /// SphinxOrange: not connected. Also the boost bolt, from phase 4.
-    static let attention = Color(light: 0xFFBC58, dark: 0xFFBC58)
+    /// A boost chip with one of yours in it (Tom, 2026-10-08: quiet, as
+    /// Slack's reactions): the accent at 12% over the conversation
+    /// background, opaque so the boosters' photo rings match it, under its
+    /// total in the accent tuned per theme to over 4.5:1 (`link`'s
+    /// dark value, `mentionText`'s light one). Someone else's boost sits on
+    /// `quote`.
+    static let boostMineFill = Color(light: 0xECF1FF, dark: 0x1E2B41)
+    static let boostMineText = Color(light: 0x1E3D99, dark: 0x8FB0FF)
+    /// SphinxOrange: not connected. Also the money bolt: payment rows, Send
+    /// sats and every boost chip (Tom, 2026-10-08). In light a deeper amber
+    /// (Tom, 2026-10-08): Sphinx's `#FFBC58` is about 1.5:1 on light fills;
+    /// this is over 3:1 on every fill it sits on and 4.5:1 on white, for the
+    /// "Expired" text and white text on an armed button.
+    static let attention = Color(light: 0xA86400, dark: 0xFFBC58)
 
     /// The system font (SF Pro), Tom's choice for readability on 2026-10-07.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {

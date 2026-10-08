@@ -56,52 +56,35 @@ extension PIN {
 }
 
 /// Removes the account from this Mac (`AppModel.forgetAccount`), confirmed in
-/// place next to the trigger with what is deleted, never in a dialog.
+/// place next to the trigger with what is deleted, never in a dialog: a
+/// text button on the lock screen, the last section of the Account screen
+/// (`section`). Why it failed shows under it.
 struct ForgetAccountControl: View {
     @Environment(AppModel.self) private var model
     let trigger: String
     let explanation: String
-    var alignment: HorizontalAlignment = .center
-    var triggerColor = Theme.secondaryText
+    var section = false
 
-    @State private var confirming = false
-    @State private var working = false
     @State private var problem: String?
 
     var body: some View {
-        if confirming {
-            VStack(alignment: alignment, spacing: 10) {
-                Text(explanation)
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(alignment == .center ? .center : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let problem { ProblemText(problem) }
-                HStack(spacing: 16) {
-                    Button("Cancel") {
-                        confirming = false
-                        problem = nil
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.secondaryText)
-                    Button {
-                        working = true
-                        Task {
-                            do { try await model.forgetAccount() } catch { problem = PeelError.readable(error) }
-                            working = false
-                        }
-                    } label: { Text("Forget account").buttonProgress(working) }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.destructive)
-                }
-                .font(Theme.font(13, .medium))
-                .disabled(working)
-            }
-        } else {
-            Button(trigger) { confirming = true }
-                .buttonStyle(.plain)
+        VStack(alignment: section ? .leading : .center, spacing: 8) {
+            if section {
+                FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
+            } else {
+                InlineConfirm(
+                    trigger: trigger, explanation: explanation, confirm: "Forget account", style: .text, alignment: .center,
+                    action: forget
+                )
                 .font(Theme.font(13))
-                .foregroundStyle(triggerColor)
+                .foregroundStyle(Theme.secondaryText)
+            }
+            if let problem { ProblemText(problem).padding(.horizontal, section ? 4 : 0) }
         }
+    }
+
+    private func forget() async {
+        problem = nil
+        do { try await model.forgetAccount() } catch { problem = PeelError.readable(error) }
     }
 }

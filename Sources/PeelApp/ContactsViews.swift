@@ -172,25 +172,41 @@ struct AddContactForm: View {
     @State private var sentTo: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Add contact")
-                .font(Theme.font(15, .bold))
+        FormPopover(title: "Add contact", close: done) {
             if let sentTo {
                 Text("Sent to \(sentTo). They show under Direct messages once their app answers.")
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                FormFooter(problem: nil) {
-                    Button("Done", action: done)
-                        .buttonStyle(GhostButtonStyle(prominent: true))
-                        .keyboardShortcut(.defaultAction)
-                }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 8)
             } else {
                 form
             }
+        } footer: {
+            if sentTo != nil {
+                FormFooter(problem: nil) {
+                    Button("Done", action: done)
+                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .keyboardShortcut(.defaultAction)
+                }
+            } else {
+                FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
+                    Button("Cancel", action: done)
+                        .buttonStyle(FormButtonStyle())
+                        .disabled(attempt.working)
+                    // Over the threshold the 5 sats are confirmed in place, as any payment.
+                    PayButton(
+                        verb: "Add", totalMsat: reading || text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
+                    ) { confirmed in
+                        let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
+                        if added == false { done() }
+                        if added == true { sentTo = name.trimmed.nilIfEmpty ?? code?.inviterName ?? "them" }
+                        return outcome
+                    }
+                }
+            }
         }
-        .padding(16)
-        .frame(width: 340)
         #if os(macOS)
         .onDrop(of: PasteboardFiles.dropTypes + [.plainText], delegate: CodeDrop(targeted: $dropTargeted) { codes in
             Task { await read(codes) }
@@ -199,10 +215,15 @@ struct AddContactForm: View {
     }
 
     @ViewBuilder private var form: some View {
-        TextField("Contact info, invite or Sphinx link", text: $text, axis: .vertical)
-            .lineLimit(2...4)
-            .textFieldStyle(.roundedBorder)
-            .onChange(of: text, initial: true) {
+        FormSection {
+            FormRow(label: "Code", stacked: true) {
+                FormTextField(label: "Code", prompt: "Contact info, invite or Sphinx link", text: $text, axis: .vertical)
+            }
+            if let code, let pubkey = code.pubkey {
+                CodePreview(code: code, pubkey: pubkey)
+            }
+        }
+        .onChange(of: text, initial: true) {
                 problem = nil
                 attempt.armed = nil
                 attempt.problem = nil
@@ -215,20 +236,10 @@ struct AddContactForm: View {
                 }
             }
         scanZone
-        if let code {
-            CodePreview(code: code)
-        }
-        TextField(code.flatMap(\.inviterName) ?? "Name (optional)", text: $name)
-            .textFieldStyle(.roundedBorder)
-        FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
-            // Over the threshold the 5 sats are confirmed in place, as any payment.
-            PayButton(
-                verb: "Add", totalMsat: reading || text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
-            ) { confirmed in
-                let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
-                if added == false { done() }
-                if added == true { sentTo = name.trimmed.nilIfEmpty ?? code?.inviterName ?? "them" }
-                return outcome
+            .padding(.top, 10)
+        FormSection {
+            FormRow(label: "Name") {
+                FormTextField(label: "Name", prompt: code.flatMap(\.inviterName) ?? "Optional", text: $name)
             }
         }
     }
@@ -262,7 +273,7 @@ struct AddContactForm: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .strokeBorder(dropTargeted ? Theme.accent : Theme.divider, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
     }
@@ -292,32 +303,31 @@ struct AddContactForm: View {
 }
 
 /// Who the code adds: contact info by its short key; an invite by its
-/// inviter, with what happens to its sats.
+/// inviter, with what happens to its sats. A row of the code's section.
 private struct CodePreview: View {
     @Environment(AppModel.self) private var model
     let code: ContactCode
+    let pubkey: String
 
     var body: some View {
-        if let pubkey = code.pubkey {
-            HStack(spacing: 10) {
-                Avatar(
-                    name: code.inviterName ?? "", url: nil, size: 28,
-                    hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
-                )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(code.inviterName ?? Formatting.shortKey(pubkey))
-                        .font(Theme.font(13, .medium))
-                        .foregroundStyle(Theme.text)
-                    Text(detail)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 10) {
+            Avatar(
+                name: code.inviterName ?? "", url: nil, size: 28,
+                hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(code.inviterName ?? Formatting.shortKey(pubkey))
+                    .font(Theme.font(13, .medium))
+                    .foregroundStyle(Theme.text)
+                Text(detail)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(10)
-            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
     }
 
     private var detail: String {
@@ -407,29 +417,32 @@ struct InviteForm: View {
         if let made {
             InviteDetail(code: made.code, done: done)
         } else {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Invite someone")
-                    .font(Theme.font(15, .bold))
-                Text("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                SatsField(placeholder: "Amount", text: $amount)
-                TextField("Nickname (only you see it)", text: $nickname)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Message (only you see it)", text: $message, axis: .vertical)
-                    .lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder)
-                Text("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+            FormPopover(title: "Invite someone", close: done) {
+                note("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.")
+                    .padding(.top, 6)
+                FormSection {
+                    FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                }
+                FormSection("Only you see these") {
+                    FormRow(label: "Nickname") {
+                        FormTextField(label: "Nickname", prompt: "Optional", text: $nickname)
+                    }
+                    FormRow(label: "Message", stacked: true) {
+                        FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
+                    }
+                }
+                note("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest.")
+                    .padding(.top, 10)
+            } footer: {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         if let problem = attempt.problem { ProblemText(problem) }
                         BalanceLine()
                     }
                     Spacer()
+                    Button("Cancel", action: done)
+                        .buttonStyle(FormButtonStyle())
+                        .disabled(attempt.working)
                     PayButton(verb: "Invite", totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
                         guard let msat = Sats.msat(amount) else { return .refused("Enter an amount in sats.") }
                         let (outcome, invite) = await model.makeInvite(
@@ -440,9 +453,15 @@ struct InviteForm: View {
                     }
                 }
             }
-            .padding(16)
-            .frame(width: 340)
         }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.font(12))
+            .foregroundStyle(Theme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 4)
     }
 }
 
@@ -458,15 +477,15 @@ private struct InviteDetail: View {
     @State private var problem: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        FormPopover(title: invite?.nickname ?? "Invite", close: done) {
             if let invite {
                 content(invite)
             } else {
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).padding(.vertical, 12)
             }
+        } footer: {
+            if let invite { footer(invite) }
         }
-        .padding(16)
-        .frame(width: 340)
         .task(id: model.engine.map(ObjectIdentifier.init)) {
             guard let storage = model.engine?.storage else { return }
             do {
@@ -483,10 +502,8 @@ private struct InviteDetail: View {
         HStack(alignment: .top, spacing: 14) {
             QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
             VStack(alignment: .leading, spacing: 4) {
-                Text(invite.nickname ?? "Invite")
-                    .font(Theme.font(15, .bold))
                 Text(Sats.format(msat: invite.amountMsat))
-                    .font(Theme.font(13, .medium))
+                    .font(Theme.font(15, .semibold))
                     .monospacedDigit()
                 Text(Self.statusLine(invite))
                     .font(Theme.font(12))
@@ -500,21 +517,33 @@ private struct InviteDetail: View {
                         .padding(.top, 4)
                 }
             }
+            Spacer(minLength: 0)
         }
+        .padding(12)
+        .formCard()
+        .padding(.top, 12)
         if invite.status == .ready {
-            Text("Send it to them yourself: whoever has it can sign up with its sats.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                CopyButton("Copy invite", text: invite.link)
-                CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
-                ShareLink(item: invite.link) { Image(systemName: "square.and.arrow.up") }
-                    .help("Share the invite")
-                    .accessibilityLabel("Share the invite")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Send it to them yourself: whoever has it can sign up with its sats.")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    CopyButton("Copy invite", text: invite.link)
+                    CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
+                    ShareLink(item: invite.link) { Image(systemName: "square.and.arrow.up") }
+                        .help("Share the invite")
+                        .accessibilityLabel("Share the invite")
+                }
+                .buttonStyle(FormButtonStyle())
             }
-            .buttonStyle(GhostButtonStyle())
+            .padding(.horizontal, 4)
+            .padding(.top, 12)
         }
+    }
+
+    /// Why the last try failed, then Remove, Cancel invite or Done.
+    private func footer(_ invite: InviteRecord) -> some View {
         HStack {
             if let problem { ProblemText(problem) }
             Spacer()
@@ -530,7 +559,7 @@ private struct InviteDetail: View {
                         }
                     }
                 }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(FormButtonStyle())
             }
             if invite.isPending {
                 InlineConfirm(
@@ -546,7 +575,7 @@ private struct InviteDetail: View {
                 }
                 .disabled(invite.status == .sending)
             } else {
-                Button("Done", action: done).buttonStyle(GhostButtonStyle())
+                Button("Done", action: done).buttonStyle(FormButtonStyle())
             }
         }
     }

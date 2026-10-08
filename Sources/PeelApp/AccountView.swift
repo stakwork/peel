@@ -13,26 +13,24 @@ struct AccountView: View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                // Direction A's sections (`FormSection`) on the page, a
+                // line between rows; the label column wider than a popover's.
+                VStack(alignment: .leading, spacing: 18) {
                     IdentitySection()
                     ContactInfoSection()
-                    SettingsGroup("Account") {
+                    FormSection("Account") {
                         NameRow()
-                        GroupDivider()
                         SettingsRow("Balance") {
                             Text(model.balanceMsat.map { Sats.format(msat: $0) } ?? "Known once connected")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }
-                        GroupDivider()
                         SettingsRow("Confirm payments") {
                             PaymentConfirmationRow()
                         }
-                        GroupDivider()
                         SettingsRow("Boost amount") {
                             BoostAmountRow()
                         }
-                        GroupDivider()
                         SettingsRow("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")
@@ -44,29 +42,23 @@ struct AccountView: View {
                         }
                     }
                     TimeZoneSection()
-                    SettingsGroup("Security") {
+                    FormSection("Security") {
                         if model.profile?.requiresPIN == true {
                             ChangePINRow()
-                            GroupDivider()
                             PINTimeoutRow()
-                            GroupDivider()
                         }
                         WordsRow()
-                        GroupDivider()
                         WebsiteDataRow()
                     }
-                    SettingsGroup("Notifications") {
+                    FormSection("Notifications") {
                         NotificationsRow()
-                        GroupDivider()
                         NotificationTextRow()
                     }
                     ForgetAccountControl(
-                        trigger: "Forget this account on this Mac",
+                        trigger: "Forget this account on this Mac…",
                         explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
-                        alignment: .leading,
-                        triggerColor: Theme.destructive
+                        section: true
                     )
-                    .padding(.horizontal, 4)
                 }
                 .frame(maxWidth: 640, alignment: .leading)
                 .padding(.horizontal, 24)
@@ -75,7 +67,7 @@ struct AccountView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .font(Theme.font(14))
+        .font(Theme.font(13))
     }
 }
 
@@ -114,44 +106,50 @@ private struct IdentitySection: View {
                         problem = nil
                         editing = true
                     }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(FormButtonStyle())
                 }
             }
             if editing {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Button { Task { await upload() } } label: {
-                            Text("Choose a picture…").buttonProgress(working == .upload)
+                    Group {
+                        HStack(spacing: 10) {
+                            Button { Task { await upload() } } label: {
+                                Text("Choose a picture…").buttonProgress(working == .upload)
+                            }
+                            .buttonStyle(FormButtonStyle())
+                            Text("or paste a link")
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.secondaryText)
                         }
-                        .buttonStyle(GhostButtonStyle())
-                        Text("or paste a link")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                        FormTextField(label: "Image link", prompt: "Link to an image (https)", text: $link, boxed: true)
+                            .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
                     }
-                    TextField("Link to an image (https)", text: $link)
-                        .onboardingField()
-                        .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
+                    .disabled(working != nil)
                     Text("Shown beside the messages you send from now on.")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
                     FormFooter(problem: problem) {
-                        if model.myPhotoURL != nil {
-                            Button { Task { await save("", as: .remove) } } label: {
-                                Text("Remove photo").buttonProgress(working == .remove)
+                        Group {
+                            if model.myPhotoURL != nil {
+                                Button { Task { await save("", as: .remove) } } label: {
+                                    Text("Remove photo").buttonProgress(working == .remove)
+                                }
+                                .buttonStyle(FormButtonStyle())
                             }
-                            .buttonStyle(GhostButtonStyle())
+                            Button("Cancel") { editing = false }
+                                .buttonStyle(FormButtonStyle())
                         }
-                        Button("Cancel") { editing = false }
-                            .buttonStyle(GhostButtonStyle())
+                        .disabled(working != nil)
                         Button { Task { await save(link) } } label: { Text("Save").buttonProgress(working == .save) }
-                            .buttonStyle(GhostButtonStyle(prominent: true))
+                            .buttonStyle(FormButtonStyle(kind: .primary))
                             .keyboardShortcut(.defaultAction)
-                            .disabled(link.trimmed.isEmpty)
+                            // On while it saves, keeping its fill under the
+                            // spinner; `save` ignores a second click.
+                            .disabled(link.trimmed.isEmpty || working == .upload || working == .remove)
                     }
                 }
-                .disabled(working != nil)
-                .padding(16)
-                .panelBoxed()
+                .padding(14)
+                .formCard()
             }
         }
     }
@@ -200,15 +198,15 @@ private struct ContactInfoSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let info = model.myContactInfo {
                     CopyButton("Copy contact info", text: info)
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
                         .id(info)
                         .padding(.top, 4)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(18)
-        .panelBoxed()
+        .padding(16)
+        .formCard()
     }
 }
 
@@ -261,26 +259,28 @@ private struct NameRow: View {
         if editing {
             VStack(alignment: .leading, spacing: 10) {
                 SettingsRow("Name") {
-                    TextField("Name", text: $draft)
-                        .onboardingField()
+                    FormTextField(label: "Name", text: $draft, boxed: true)
                         .onSubmit { Task { await save() } }
+                        .disabled(working)
                 }
                 Text("Contacts and tribes see it on the messages you send from now on. Messages already sent keep the old name.")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, settingsValueInset)
-                    .padding(.trailing, 16)
+                    .padding(.trailing, settingsRowPadding)
                 FormFooter(problem: problem) {
                     Button("Cancel") { editing = false }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
+                        .disabled(working)
+                    // On while it saves, keeping its fill under the spinner;
+                    // `save` ignores a second click.
                     Button { Task { await save() } } label: { Text("Save").buttonProgress(working) }
-                        .buttonStyle(GhostButtonStyle(prominent: true))
+                        .buttonStyle(FormButtonStyle(kind: .primary))
                         .keyboardShortcut(.defaultAction)
                         .disabled(draft.trimmed.isEmpty || draft.trimmed == model.myAlias)
                 }
-                .disabled(working)
-                .padding([.horizontal, .bottom], 16)
+                .padding([.horizontal, .bottom], settingsRowPadding)
             }
         } else {
             SettingsRow("Name") {
@@ -291,7 +291,7 @@ private struct NameRow: View {
                     problem = nil
                     editing = true
                 }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(FormButtonStyle())
             }
         }
     }
@@ -335,10 +335,10 @@ private struct ChangePINRow: View {
             } trailing: {
                 if step == .closed {
                     Button("Change") { reset(to: .old) }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
                 } else {
                     Button("Cancel") { reset(to: .closed) }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
                         .disabled(working)
                 }
             }
@@ -359,7 +359,7 @@ private struct ChangePINRow: View {
                     .disabled(working)
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, 8)
             }
         }
@@ -473,10 +473,10 @@ private struct WordsRow: View {
             } trailing: {
                 if words.isEmpty, !askingPIN {
                     Button("Show words") { start() }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
                 } else {
                     Button(words.isEmpty ? "Cancel" : "Hide") { hide() }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(FormButtonStyle())
                 }
             }
             if askingPIN {
@@ -489,13 +489,13 @@ private struct WordsRow: View {
                         .disabled(working)
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, 8)
             } else if !words.isEmpty {
                 shown
             } else if let problem {
                 ProblemText(problem)
-                    .padding([.horizontal, .bottom], 16)
+                    .padding([.horizontal, .bottom], settingsRowPadding)
             }
         }
         .onDisappear { hide() }
@@ -519,29 +519,22 @@ private struct WordsRow: View {
             .privacySensitive()
             HStack(spacing: 8) {
                 Button(visible ? "Mask" : "Reveal") { visible.toggle() }
-                    .buttonStyle(GhostButtonStyle())
-                if confirmingCopy {
-                    Text("Other apps can read the clipboard. Peel clears it after a minute.")
+                    .buttonStyle(FormButtonStyle())
+                // Not a loss, so the second click is the commit button, not red.
+                InlineConfirm(
+                    prompt: "Other apps can read the clipboard. Peel clears it after a minute.", confirm: "Copy words",
+                    confirmKind: .primary, confirming: $confirmingCopy
+                ) {
+                    Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
+                    copiedAt = .now
+                    CopyFeedback.announce()
+                } trigger: {
+                    CopyLabel("Copy", copiedAt: copiedAt)
+                }
+                if !confirmingCopy, copiedAt != nil {
+                    Text("Cleared from the clipboard in a minute")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Cancel") { confirmingCopy = false }
-                        .buttonStyle(GhostButtonStyle())
-                    Button("Copy words") {
-                        Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
-                        confirmingCopy = false
-                        copiedAt = .now
-                        CopyFeedback.announce()
-                    }
-                    .buttonStyle(GhostButtonStyle(prominent: true))
-                } else {
-                    Button { confirmingCopy = true } label: { CopyLabel("Copy", copiedAt: copiedAt) }
-                        .buttonStyle(GhostButtonStyle())
-                    if copiedAt != nil {
-                        Text("Cleared from the clipboard in a minute")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                    }
                 }
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -552,7 +545,7 @@ private struct WordsRow: View {
                 }
             }
         }
-        .padding([.horizontal, .bottom], 16)
+        .padding([.horizontal, .bottom], settingsRowPadding)
         .task(id: hideAt) {
             try? await Task.sleep(for: .seconds(Self.shownFor))
             if !Task.isCancelled { hide() }
@@ -616,7 +609,7 @@ private struct TimeZoneSection: View {
     private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
 
     var body: some View {
-        SettingsGroup("Time zone") {
+        FormSection("Time zone") {
             SettingsRow("Time zone") {
                 VStack(alignment: .leading, spacing: 4) {
                     Button { picking = true } label: {
@@ -645,7 +638,6 @@ private struct TimeZoneSection: View {
                     note(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.")
                 }
             }
-            GroupDivider()
             SettingsRow("Shared in") {
                 VStack(alignment: .leading, spacing: 2) {
                     switch shared {
@@ -706,7 +698,6 @@ private struct ZonePicker: View {
     }
 
     @State private var query = ""
-    @FocusState private var focused: Bool
     /// Offsets as of opening, so they follow summer time.
     @State private var zones: [Zone] = []
 
@@ -721,17 +712,11 @@ private struct ZonePicker: View {
         let query = query.trimmed.lowercased()
         let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondaryText)
-                TextField("Search cities or GMT+…", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(Theme.font(13))
-                    .focused($focused)
-                    .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
-            }
-            .fieldBoxed()
+            FormTextField(
+                label: "Search time zones", prompt: "Search cities or GMT+…", text: $query, boxed: true,
+                systemImage: "magnifyingglass", focusOnAppear: true
+            )
+            .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
             .padding(.bottom, 4)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -759,7 +744,6 @@ private struct ZonePicker: View {
         .padding(8)
         .frame(width: 320)
         .onAppear {
-            focused = true
             zones = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
                 TimeZone(identifier: id).map { zone in
                     let label = Self.label(id), offset = TimeZoneOffset.format(zone)
@@ -823,10 +807,10 @@ private struct NotificationsRow: View {
             switch model.notifier.permission {
             case .notAsked:
                 Button("Turn on") { Task { await model.enableNotifications() } }
-                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .buttonStyle(FormButtonStyle(kind: .primary))
             case .allowed, .denied:
                 Button("System Settings…") { model.openNotificationSettings() }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(FormButtonStyle())
             case .unavailable:
                 EmptyView()
             }
@@ -903,40 +887,15 @@ private struct WebsiteDataRow: View {
 
 // MARK: - Building blocks
 
-/// A titled box of rows, as on the design board.
-private struct SettingsGroup<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    init(_ title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(title.uppercased())
-                .tracking(0.5)
-                .padding(.horizontal, 4)
-            VStack(alignment: .leading, spacing: 0) {
-                content
-            }
-            .panelBoxed()
-        }
-    }
-}
-
-private struct GroupDivider: View {
-    var body: some View { Theme.divider.frame(height: 1) }
-}
-
 private let settingsLabelWidth: CGFloat = 150
-private let settingsRowPadding: CGFloat = 16
+private let settingsRowPadding: CGFloat = 12
 private let settingsRowSpacing: CGFloat = 12
 /// Where a row's value column starts, for notes under it.
 private let settingsValueInset = settingsRowPadding + settingsLabelWidth + settingsRowSpacing
 
-/// Label column, value, and an optional action on the right.
+/// A row of an Account section: the label column (`FormLabel`), the value
+/// beside it, and an optional action on the right. The page is wider than
+/// a popover, so its value reads left, by its notes.
 private struct SettingsRow<Value: View, Trailing: View>: View {
     let label: String
     @ViewBuilder let value: Value
@@ -950,16 +909,15 @@ private struct SettingsRow<Value: View, Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: settingsRowSpacing) {
-            Text(label)
-                .foregroundStyle(Theme.secondaryText)
+            FormLabel(label)
                 .frame(width: settingsLabelWidth, alignment: .leading)
             value
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
         .padding(.horizontal, settingsRowPadding)
-        .padding(.vertical, 12)
-        .frame(minHeight: 52)
+        .padding(.vertical, 9)
+        .frame(minHeight: 44)
     }
 }
 

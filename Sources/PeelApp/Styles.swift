@@ -1,15 +1,6 @@
 import SwiftUI
 
-extension View {
-    /// The small dark box behind the sidebar's search and the fields of
-    /// Peel's panels.
-    func fieldBoxed() -> some View {
-        padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(Theme.input, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider))
-    }
-}
+// Fields are `FormKit`'s (`FormTextField`, `FormNumberField`, `FieldChrome`).
 
 extension View {
     /// The quiet panel box behind notices, bars and suggestion lists.

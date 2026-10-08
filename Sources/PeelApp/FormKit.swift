@@ -89,8 +89,9 @@ struct FormSection<Content: View>: View {
 }
 
 extension View {
-    /// A section's raised card.
-    fileprivate func formCard() -> some View {
+    /// A section's raised card; also behind a form's previews (a tribe, a
+    /// contact) and the Account screen's boxes.
+    func formCard() -> some View {
         background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(Theme.menu)
@@ -181,12 +182,13 @@ private struct FormProblem: View {
 
 /// How a field looks in each state: no box at rest (a boxed field keeps a
 /// soft fill), a soft fill under the pointer, a dark well with an accent
-/// ring while focused, an amber ring while it has a problem.
-private struct FieldChrome: ViewModifier {
+/// ring while focused, an amber ring while it has a problem. Also the
+/// cells of the PIN and the twelve words.
+struct FieldChrome: ViewModifier {
     let focused: Bool
-    let hovering: Bool
-    let boxed: Bool
-    let problem: Bool
+    var hovering = false
+    var boxed = true
+    var problem = false
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -207,7 +209,9 @@ private struct FieldChrome: ViewModifier {
 
 /// A one-line text field (`axis: .vertical` for several lines). In a row
 /// its text sits on the right at rest and moves left while you type; a
-/// several-line field and a `boxed` one (on a compact popover) read left.
+/// several-line field and a `boxed` one (on a compact popover, a page, a
+/// search) read left. `systemImage` goes before the text, as a search's
+/// magnifying glass; `focusOnAppear` takes the keyboard when it appears.
 struct FormTextField: View {
     let label: String
     var prompt: String?
@@ -215,26 +219,56 @@ struct FormTextField: View {
     var axis: Axis = .horizontal
     var boxed = false
     var problem = false
+    var systemImage: String?
+    var monospaced = false
+    var focusOnAppear = false
 
     @FocusState private var focused: Bool
     @State private var hovering = false
 
     var body: some View {
         let multiline = axis == .vertical
-        TextField(label, text: $text, prompt: prompt.map { Text($0).foregroundStyle(Theme.tertiaryText) }, axis: axis)
-            .textFieldStyle(.plain)
-            .font(Theme.font(13))
-            .lineLimit(multiline ? 2...4 : 1...1)
-            .multilineTextAlignment(focused || problem || boxed || multiline ? .leading : .trailing)
-            .focused($focused)
-            .padding(.horizontal, 8)
-            .padding(.vertical, multiline ? 5 : 0)
-            .frame(minHeight: multiline ? 44 : 26, alignment: multiline ? .topLeading : .leading)
-            .modifier(FieldChrome(focused: focused, hovering: hovering, boxed: boxed, problem: problem))
-            // A several-line field lines its text up with the label above it.
-            .padding(.horizontal, multiline && !boxed ? -8 : 0)
-            .background { FocusCatcher(focused: $focused) }
-            .onHover { hovering = $0 }
+        HStack(spacing: 7) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            // At rest in a row the text reads right: a label on the section's
+            // card covers the field, which keeps reading left, since AppKit
+            // ends editing when a field's alignment changes as it is focused.
+            // Clicks go through the label to the field.
+            let resting = !(focused || problem || boxed || multiline)
+            TextField(label, text: $text, prompt: prompt.map { Text($0).foregroundStyle(Theme.tertiaryText) }, axis: axis)
+                .textFieldStyle(.plain)
+                .font(Theme.font(13))
+                .fontDesign(monospaced ? .monospaced : nil)
+                .lineLimit(multiline ? 2...4 : 1...1)
+                .focused($focused)
+                .overlay {
+                    if resting {
+                        Text(text.isEmpty ? prompt ?? "" : text)
+                            .font(Theme.font(13))
+                            .foregroundStyle(text.isEmpty ? Theme.tertiaryText : Theme.text)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                            .background(hovering ? Theme.fieldFill : .clear)
+                            .background(Theme.menu)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, multiline ? 5 : 0)
+        .frame(minHeight: multiline ? 44 : 26, alignment: multiline ? .topLeading : .leading)
+        .modifier(FieldChrome(focused: focused, hovering: hovering, boxed: boxed, problem: problem))
+        // A several-line field lines its text up with the label above it.
+        .padding(.horizontal, multiline && !boxed ? -8 : 0)
+        .background { FocusCatcher(focused: $focused) }
+        .onHover { hovering = $0 }
+        .onAppear { if focusOnAppear { focused = true } }
     }
 }
 
@@ -243,13 +277,14 @@ struct FormNumberField: View {
     let label: String
     @Binding var text: String
     let unit: String
+    var prompt = "0"
     var problem = false
 
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 4) {
-            TextField(label, text: $text, prompt: Text("0").foregroundStyle(Theme.tertiaryText))
+            TextField(label, text: $text, prompt: Text(prompt).foregroundStyle(Theme.tertiaryText))
                 .textFieldStyle(.plain)
                 .font(Theme.font(13))
                 .monospacedDigit()
@@ -321,19 +356,23 @@ private struct FormSwitchStyle: ToggleStyle {
 }
 
 /// The form's buttons, 28 high: `primary` commits (a quiet neutral chip
-/// while it cannot), `secondary` is outlined, `destructive` is outlined
-/// with red text, for the second click of an in-place confirm.
+/// while it cannot; `fill` in place of the button colour, orange for a
+/// payment waiting for its second click), `secondary` is outlined,
+/// `destructive` is outlined with red text, for the second click of an
+/// in-place confirm.
 struct FormButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, destructive }
     var kind: Kind = .secondary
+    var fill: Color?
 
     func makeBody(configuration: Configuration) -> some View {
-        FormButton(configuration: configuration, kind: kind)
+        FormButton(configuration: configuration, kind: kind, fill: fill)
     }
 
     private struct FormButton: View {
         let configuration: Configuration
         let kind: Kind
+        let fill: Color?
         @Environment(\.isEnabled) private var isEnabled
         @State private var hovering = false
 
@@ -374,65 +413,175 @@ struct FormButtonStyle: ButtonStyle {
         }
 
         private var background: Color {
-            if kind == .primary { return isEnabled ? Theme.button : Theme.fieldFill }
+            if kind == .primary { return isEnabled ? fill ?? Theme.button : Theme.fieldFill }
             return isEnabled && (hovering || configuration.isPressed) ? Theme.hover : .clear
         }
     }
 }
 
 /// The destructive action as its own section at the end of a form: one red
-/// row, which turns into the question with Cancel and the action, confirmed
-/// in place, never in a dialog. The action reports its own failure.
+/// row, which turns into the question with Cancel and the action (and, with
+/// `explanation`, what it does above them), confirmed in place, never in a
+/// dialog. The action reports its own failure.
 struct FormDestructiveSection: View {
     let trigger: String
-    let prompt: String
+    var prompt: String?
+    var explanation: String?
     let confirm: String
     let action: () async -> Void
 
-    @State private var confirming = false
+    var body: some View {
+        InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
+            .formCard()
+            .padding(.top, 14)
+    }
+}
+
+/// Peel's one in-place confirm, never a dialog: the trigger, then the
+/// prompt with Cancel and the action (red unless `confirmKind` says
+/// otherwise); `explanation` puts longer words above them. Off while the
+/// action runs, with the spinner in the action's button; the action reports
+/// its own failure. Pass `confirming` to hide what stands beside it while it
+/// asks, or to cancel it from outside.
+struct InlineConfirm<Trigger: View>: View {
+    enum Style {
+        /// Outlined form buttons.
+        case buttons
+        /// A row's small text buttons, in the row's font.
+        case text
+        /// A form's last card: a full-width red row (`FormDestructiveSection`).
+        case section
+    }
+
+    var prompt: String?
+    var explanation: String?
+    let confirm: String
+    var confirmKind = FormButtonStyle.Kind.destructive
+    var style = Style.buttons
+    var alignment = HorizontalAlignment.leading
+    var confirming: Binding<Bool>?
+    let action: () async -> Void
+    @ViewBuilder let trigger: Trigger
+
+    @State private var asking = false
     @State private var working = false
-    @State private var hovering = false
+
+    private var isAsking: Binding<Bool> { confirming ?? $asking }
 
     var body: some View {
         Group {
-            if confirming {
-                HStack(spacing: 8) {
-                    Text(prompt)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                    Spacer(minLength: 8)
-                    Button("Cancel") { confirming = false }
-                        .buttonStyle(FormButtonStyle())
-                    Button {
-                        working = true
-                        Task {
-                            await action()
-                            working = false
-                            confirming = false
-                        }
-                    } label: {
-                        Text(confirm).buttonProgress(working)
-                    }
-                    .buttonStyle(FormButtonStyle(kind: .destructive))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+            if isAsking.wrappedValue {
+                question
             } else {
-                Button { confirming = true } label: {
-                    Text(trigger)
-                        .font(Theme.font(13))
-                        .foregroundStyle(Theme.destructive)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                        .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { hovering = $0 }
+                triggerButton
             }
         }
         .disabled(working)
-        .formCard()
-        .padding(.top, 14)
+    }
+
+    @ViewBuilder private var triggerButton: some View {
+        let open = { isAsking.wrappedValue = true }
+        switch style {
+        case .buttons: Button(action: open) { trigger }.buttonStyle(FormButtonStyle())
+        case .text: Button(action: open) { trigger }.buttonStyle(.plain)
+        case .section: SectionTrigger(action: open) { trigger }
+        }
+    }
+
+    private var question: some View {
+        Group {
+            if let explanation {
+                VStack(alignment: alignment, spacing: 10) {
+                    Text(explanation)
+                        .font(Theme.font(style == .section ? 12 : 13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .multilineTextAlignment(alignment == .center ? .center : .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    answers
+                }
+            } else {
+                answers
+            }
+        }
+        .padding(.horizontal, style == .section ? 12 : 0)
+        .padding(.vertical, style == .section ? 9 : 0)
+    }
+
+    private var answers: some View {
+        HStack(spacing: style == .text ? 12 : 8) {
+            if let prompt {
+                // A row's prompt takes the row's font.
+                if style == .text {
+                    Text(prompt).foregroundStyle(Theme.secondaryText)
+                } else {
+                    Text(prompt)
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if style == .section { Spacer(minLength: 8) }
+            styled(Button("Cancel") { isAsking.wrappedValue = false }, .secondary)
+            styled(
+                Button {
+                    working = true
+                    Task {
+                        await action()
+                        working = false
+                        isAsking.wrappedValue = false
+                    }
+                } label: {
+                    Text(confirm).buttonProgress(working, size: style == .text ? .mini : .small)
+                },
+                confirmKind
+            )
+        }
+    }
+
+    /// Form buttons, or text in the colour of what the button does.
+    @ViewBuilder private func styled(_ button: some View, _ kind: FormButtonStyle.Kind) -> some View {
+        if style == .text {
+            button
+                .buttonStyle(.plain)
+                .foregroundStyle(kind == .destructive ? Theme.destructive : kind == .primary ? Theme.accent : Theme.secondaryText)
+        } else {
+            button.buttonStyle(FormButtonStyle(kind: kind))
+        }
     }
 }
+
+extension InlineConfirm where Trigger == Text {
+    init(
+        trigger: String, prompt: String? = nil, explanation: String? = nil, confirm: String,
+        confirmKind: FormButtonStyle.Kind = .destructive, style: Style = .buttons,
+        alignment: HorizontalAlignment = .leading, confirming: Binding<Bool>? = nil,
+        action: @escaping () async -> Void
+    ) {
+        self.init(
+            prompt: prompt, explanation: explanation, confirm: confirm, confirmKind: confirmKind, style: style,
+            alignment: alignment, confirming: confirming, action: action
+        ) { Text(trigger) }
+    }
+}
+
+/// A destructive section's red row, the width of its card.
+private struct SectionTrigger<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: Label
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.destructive)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+

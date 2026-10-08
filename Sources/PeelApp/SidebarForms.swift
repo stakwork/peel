@@ -13,13 +13,10 @@ struct JoinTribeForm: View {
     @State private var attempt = PaymentAttempt()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Join a tribe")
-                .font(Theme.font(15, .bold))
-            TextField("sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
-                // Return joins once the preview is up, as the Join button would.
+        // The compact form (one field): the link boxed on the popover, then the tribe.
+        FormPopover(title: "Join a tribe", compact: true, close: done) {
+            FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical, boxed: true)
+                // Return looks up, then joins once the preview is up, as the buttons would.
                 .onSubmit { Task { await submit() } }
                 .onChange(of: link) {
                     info = nil
@@ -32,7 +29,7 @@ struct JoinTribeForm: View {
                     TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(info.name)
-                            .font(Theme.font(14, .medium))
+                            .font(Theme.font(14, .semibold))
                         if let summary = info.summary?.trimmed.nilIfEmpty {
                             Text(summary)
                                 .font(Theme.font(12))
@@ -44,12 +41,18 @@ struct JoinTribeForm: View {
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+                .formCard()
             }
+        } footer: {
             FormFooter(problem: problem ?? attempt.problem) {
+                Button("Cancel", action: done)
+                    .buttonStyle(FormButtonStyle())
+                    .disabled(attempt.working)
                 if let info {
                     // Over the threshold the price is confirmed in place, as any payment.
                     PayButton(
@@ -58,14 +61,14 @@ struct JoinTribeForm: View {
                     )
                 } else {
                     Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(lookingUp) }
-                        .buttonStyle(GhostButtonStyle(prominent: true))
+                        .buttonStyle(FormButtonStyle(kind: .primary))
                         .keyboardShortcut(.defaultAction)
-                        .disabled(lookingUp || link.trimmed.isEmpty)
+                        // Not off while it looks up, so it keeps its fill under
+                        // the spinner; `lookUp` ignores a second click.
+                        .disabled(link.trimmed.isEmpty)
                 }
             }
         }
-        .padding(16)
-        .frame(width: 340)
     }
 
     private func submit() async {

@@ -68,9 +68,12 @@ struct OnboardingView: View {
     private var inviteStep: some View {
         StepBody(title: "Paste your invite",
                  detail: "The link or code someone sent you. It creates your account on the Sphinx server, and may come with sats from whoever invited you.") {
-            TextField("sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
-                .lineLimit(3...4)
-                .onboardingField()
+            FormSection {
+                FormRow(label: "Invite", stacked: true) {
+                    FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
+                }
+            }
+            .padding(.top, -14)
         } footer: {
             footer(next: "Continue", enabled: !invite.trimmed.isEmpty) { go(.name) }
         }
@@ -97,9 +100,13 @@ struct OnboardingView: View {
     private var nameStep: some View {
         StepBody(title: "What should people call you?",
                  detail: "Your name goes with your messages, to the people you talk to and in tribes. You can change it later.") {
-            TextField("Name", text: $name)
-                .onboardingField()
-                .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
+            FormSection {
+                FormRow(label: "Name") {
+                    FormTextField(label: "Name", prompt: "Required", text: $name)
+                        .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
+                }
+            }
+            .padding(.top, -14)
         } footer: {
             footer(next: "Continue", enabled: !name.trimmed.isEmpty) { go(.pin) }
         }
@@ -245,8 +252,7 @@ struct RestoreProgressView: View {
                            state: .from(started: progress.messages != nil, done: progress.finished),
                            fraction: progress.messages?.fraction)
             }
-            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.divider))
+            .formCard()
             if case .failed(let failure) = progress.outcome {
                 Text(failure)
                     .font(Theme.font(13))
@@ -385,9 +391,11 @@ struct StepBody<Fields: View, Footer: View>: View {
     }
 }
 
-/// Three columns of numbered boxes, for showing or typing the twelve words.
+/// Three columns of numbered boxes, for showing or typing the twelve words:
+/// the form's boxed fields, the one being typed in (`focused`) ringed.
 struct NumberedWordGrid<Cell: View>: View {
     let count: Int
+    var focused: Int?
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
@@ -403,7 +411,7 @@ struct NumberedWordGrid<Cell: View>: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .boxed()
+                .modifier(FieldChrome(focused: focused == index))
             }
         }
     }
@@ -428,7 +436,7 @@ struct WordEntryGrid: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.accent)
-            NumberedWordGrid(count: 12) { index in
+            NumberedWordGrid(count: 12, focused: focus) { index in
                 TextField("", text: binding(for: index))
                     .focused($focus, equals: index)
                     .textFieldStyle(.plain)
@@ -484,18 +492,15 @@ struct PinField: View {
                 .accessibilityLabel("PIN")
             HStack(spacing: 8) {
                 ForEach(0..<6, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.input)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(focused && index == pin.count ? Theme.accent : Theme.divider)
-                        )
+                    // The form's boxed field; the next digit's box ringed.
+                    Color.clear
+                        .frame(height: 52)
+                        .modifier(FieldChrome(focused: focused && index == pin.count))
                         .overlay {
                             if index < pin.count {
                                 Circle().fill(Theme.text).frame(width: 10, height: 10)
                             }
                         }
-                        .frame(height: 52)
                 }
             }
             .allowsHitTesting(false)
@@ -512,22 +517,5 @@ struct PinField: View {
             if digits != value { pin = digits }
             if digits.count == 6 { complete() }
         }
-    }
-}
-
-extension View {
-    /// The dark bordered field the onboarding steps use.
-    func onboardingField() -> some View {
-        textFieldStyle(.plain)
-            .font(Theme.font(14))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .boxed()
-    }
-
-    /// The dark rounded box behind fields and word cells.
-    func boxed() -> some View {
-        background(Theme.input, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.divider))
     }
 }

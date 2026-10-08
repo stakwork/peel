@@ -186,16 +186,8 @@ struct AttachmentPriceField: View {
             Image(systemName: text.wrappedValue.isEmpty ? "lock.open" : "lock")
                 .font(.system(size: 12))
                 .foregroundStyle(text.wrappedValue.isEmpty ? Theme.secondaryText : Theme.text)
-            TextField("Free", text: text)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-                .monospacedDigit()
-                .frame(width: 64)
-            Text("sats")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+            FormNumberField(label: "Price", text: text, unit: "sats", prompt: "Free")
         }
-        .fieldBoxed()
         .help("Sell these files: buyers pay this many sats each to open one. Leave empty to send them free.")
     }
 }

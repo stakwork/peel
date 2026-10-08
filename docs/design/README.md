@@ -74,6 +74,10 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
   centred line ("carol joined").
 - **Day dividers** ("Today", "Yesterday", then dates).
+- **New messages divider**: a blue line with "New messages" (12 semibold,
+  accent) on the right, above the first incoming message that was unread
+  when the chat was opened. The chat opens scrolled to it; it stays until
+  you change chats or send.
 - **Boosts** show as a chip under the message, as the official Mac app
   draws them (`NewMessageBoostView`): an orange bolt, the total ("1,210
   sats"), then the first three boosters' photos overlapping (24 pt, one
@@ -380,7 +384,9 @@ canvas), with these decisions over the boards:
   windows beside their trigger.
 - **Delete** (red, "Delete for everyone?"): your own messages, and any in a
   tribe you own. A deleted message reads "This message has been deleted".
-- **Sidebar row menu:** Mark as read, the notification level with a check,
+- **Message menu** (someone else's message): "Mark unread from here".
+- **Sidebar row menu:** Mark as read (Mark as unread when nothing is
+  unread and the chat has a message from them), the notification level with a check,
   Copy tribe link, Leave tribe. Direct messages have no Leave and no Delete
   chat (the engine cannot delete a conversation).
 - **Threads list** covers direct messages (from a single reply) and tribes
@@ -402,7 +408,16 @@ canvas), with these decisions over the boards:
   message.
 - **No emoji in previews:** an attachment without a caption reads "Image" or
   "File: name.pdf".
-- **Pinned bar:** the one from tribes parity.
+- **Pinned bar:** the one from tribes parity. Clicking it jumps to the message.
+- **Jump to newest**: scrolled up more than a screen, a 36 pt round button
+  (menu surface, down arrow) sits at the list's bottom-right above the
+  composer, with an accent count of new messages that came in below; click,
+  End or ⌘↓ (chat list, empty composer) scrolls to the newest. Fades in and out.
+- **Jump to a message** (Mentions, notifications, Threads list, pinned bar,
+  quotes): the chat (or thread panel) opens scrolled to it and the row is lit
+  with the selection tint, which fades out over about 1.5 s. It wins over
+  "New messages". A message deleted since opens the chat with "That message
+  was deleted".
 - **Mention suggestions** (after first use): above the composer, inside the
   window, in the menu's style, scrolling after seven.
 

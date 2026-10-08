@@ -13,6 +13,12 @@ struct ThreadRef: Hashable {
     let uuid: String
 }
 
+/// A message to bring into view; see `AppModel.focus(on:)`.
+struct FocusTarget: Equatable {
+    let message: Message
+    let inThread: Bool
+}
+
 /// Which composer: a chat's own, or a thread panel's.
 enum ComposerID: Hashable {
     case chat(String)
@@ -149,6 +155,17 @@ extension AppModel {
         composerFocus[.thread(thread), default: 0] += 1
     }
 
+    /// From the Threads list: the thread, at its first new reply when it has some.
+    func openThread(_ summary: ThreadSummary) {
+        let marker = readStates[summary.chat]?.lastRead ?? -1
+        if summary.unread > 0,
+           let first = try? engine?.storage.firstUnreadReply(inThread: summary.uuid, in: summary.chat, after: marker) {
+            focus(on: first, inThread: true)
+        } else {
+            openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
+        }
+    }
+
     func closeThread() {
         if let openThread { replyTargets[.thread(openThread)] = nil }
         openThread = nil
@@ -222,6 +239,7 @@ extension AppModel {
         if files.isEmpty {
             do {
                 try await engine.sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
+                sent(in: chat)
                 return true
             } catch {
                 conversationNotices[chat] = "Could not send: \(PeelError.readable(error))"
@@ -239,6 +257,7 @@ extension AppModel {
                     [weak self] id in Task { @MainActor in self?.attachment(id).localFile = file }
                 }
                 if !caption.isEmpty { captionSent = true }
+                sent(in: chat)
             } catch {
                 refused.append((file, "\(file.lastPathComponent): \(PeelError.readable(error))"))
             }

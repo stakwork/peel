@@ -191,6 +191,12 @@ public final class Storage: Sendable {
                     WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL;
                 """)
         }
+        migrator.registerMigration("v12") { db in
+            // A read marker moved here and not yet sent (`ReadPending`).
+            try db.alter(table: "chatState") { t in
+                t.add(column: "readPending", .integer).notNull().defaults(to: 0)
+            }
+        }
         return migrator
     }
 }
@@ -326,6 +332,8 @@ public struct BoostSummary: Sendable, Equatable {
         public var pendingSince: Date?
         /// Our own boost the server passed on but never settled (`Delivery.unsettled`).
         public var unsettled = false
+        /// Where it sits against the read marker.
+        public var serverIndex: Int64?
     }
 
     /// Oldest first.
@@ -531,9 +539,44 @@ extension Storage {
             WHERE chat = ? AND type IN (\(MessageType.sqlList(MessageType.shownInChats)))
                 AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
             \(condition)
-            ORDER BY timestamp DESC, id DESC LIMIT 200
+            ORDER BY timestamp DESC, id DESC LIMIT ?
         ) ORDER BY timestamp, id
         """
+    }
+
+    /// How many of a chat's newest messages a timeline shows.
+    public static let pageSize = 200
+
+    /// A timeline limit that reaches back to `message` (with a few older ones,
+    /// so it does not sit at the very top), and never below `pageSize`. It
+    /// counts every row from it on, hidden types too, so it may reach further.
+    public func timelineLimit(reaching message: Message) throws -> Int {
+        guard let timestamp = message.timestamp, let id = message.id else { return Self.pageSize }
+        let since = try pool.read { db in
+            try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND (timestamp, id) >= (?, ?)",
+                arguments: [message.chat, timestamp, id]
+            ) ?? 0
+        }
+        return max(Self.pageSize, since + 20)
+    }
+
+    /// The first reply in a thread past `marker` from someone else: where a
+    /// thread with new replies opens.
+    public func firstUnreadReply(inThread uuid: String, in chat: String, after marker: Int64) throws -> Message? {
+        try pool.read { db in
+            try Message.fetchOne(
+                db,
+                sql: """
+                    SELECT * FROM message m
+                    WHERE m.chat = ? AND m.threadUUID = ? AND \(Self.countsAsUnreadSQL) AND m.serverIndex > ?
+                        -- A boost has no row of its own to open at.
+                        AND m.type != \(MessageType.boost)
+                    ORDER BY m.serverIndex LIMIT 1
+                    """,
+                arguments: [chat, uuid, marker]
+            )
+        }
     }
 
     /// A thread's newest 200 messages, oldest first.
@@ -571,14 +614,20 @@ extension Storage {
     /// for each boost in range; the mentions among them a range on
     /// `message_mentions`. A message deleted after it arrived still counts,
     /// as before payments (it was news when it came).
+    /// What counts as unread, for a message `m` past the marker: someone
+    /// else's text, attachment or payment, or their boost on our message.
+    private static let countsAsUnreadSQL = """
+        m.fromMe = 0
+            AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
+            -- The rule `isMoneyForMe` holds for notifications too.
+            AND (m.type != \(MessageType.boost) OR EXISTS (
+                SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
+        """
+
     private static let readStatesSQL = """
         SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, (
             SELECT COUNT(*) FROM message m
-            WHERE m.chat = c.chat AND m.fromMe = 0
-                AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
-                -- The rule `isMoneyForMe` holds for notifications too.
-                AND (m.type != \(MessageType.boost) OR EXISTS (
-                    SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
+            WHERE m.chat = c.chat AND \(countsAsUnreadSQL)
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
         ) AS unread, (
             SELECT COUNT(*) FROM message m
@@ -599,10 +648,12 @@ extension Storage {
             .values(in: pool)
     }
 
-    func lastReads() throws -> [String: Int64] {
+    /// Read markers moved here and not yet sent to the server.
+    func pendingReads() throws -> [String: Int64] {
         try pool.read { db in
             var reads: [String: Int64] = [:]
-            for row in try Row.fetchAll(db, sql: "SELECT chat, lastRead FROM chatState WHERE lastRead IS NOT NULL") {
+            let sql = "SELECT chat, lastRead FROM chatState WHERE readPending != 0 AND lastRead IS NOT NULL"
+            for row in try Row.fetchAll(db, sql: sql) {
                 reads[row["chat"]] = row["lastRead"]
             }
             return reads
@@ -611,9 +662,11 @@ extension Storage {
 
     /// The newest server index in one chat, which is what a read marker points at.
     func highestServerIndex(in chat: String) throws -> Int64? {
-        try pool.read { db in
-            try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message WHERE chat = ?", arguments: [chat])
-        }
+        try pool.read { db in try Self.highestServerIndex(in: chat, db) }
+    }
+
+    private static func highestServerIndex(in chat: String, _ db: Database) throws -> Int64? {
+        try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message WHERE chat = ?", arguments: [chat])
     }
 
     public func message(id: Int64) throws -> Message? {
@@ -779,7 +832,9 @@ extension Storage {
     /// The newest 200 messages of one chat, oldest first, re-emitted whenever they change.
     public func messages(in chat: String) -> some AsyncSequence<[Message], any Error> {
         ValueObservation
-            .trackingConstantRegion { db in try Message.fetchAll(db, sql: Self.messagesSQL, arguments: [chat]) }
+            .trackingConstantRegion { db in
+                try Message.fetchAll(db, sql: Self.messagesSQL, arguments: [chat, Self.pageSize])
+            }
             .removeDuplicates()
             .values(in: pool)
     }
@@ -791,7 +846,10 @@ extension Storage {
     /// A chat's main conversation, re-emitted whenever it changes: in a tribe
     /// with threads collapsed as the Mac app shows them, in a DM every
     /// message; plus the parents quoted and the collapsed threads.
-    public func timeline(in chat: String) -> some AsyncSequence<Timeline, any Error> {
+    ///
+    /// `limit` (at least the newest 200) reaches further back for a message
+    /// older than those; see `timelineLimit(reaching:)`.
+    public func timeline(in chat: String, limit: Int = pageSize) -> some AsyncSequence<Timeline, any Error> {
         // Not a constant region: read markers are read only once there are threads.
         ValueObservation
             .tracking { db in
@@ -799,7 +857,7 @@ extension Storage {
                     db, sql: "SELECT EXISTS (SELECT 1 FROM tribe WHERE pubkey = ?)", arguments: [chat]
                 ) ?? false
                 let messages = try Message.fetchAll(
-                    db, sql: isTribe ? Self.tribeTimelineSQL : Self.messagesSQL, arguments: [chat]
+                    db, sql: isTribe ? Self.tribeTimelineSQL : Self.messagesSQL, arguments: [chat, limit]
                 )
                 var threads: [String: ThreadSummary] = [:]
                 let threadUUIDs = Set(messages.compactMap(\.threadUUID))
@@ -825,7 +883,9 @@ extension Storage {
     public func thread(_ uuid: String, in chat: String) -> some AsyncSequence<ChatThread, any Error> {
         ValueObservation
             .trackingConstantRegion { db in
-                let messages = try Message.fetchAll(db, sql: Self.threadMessagesSQL, arguments: [chat, uuid])
+                let messages = try Message.fetchAll(
+                    db, sql: Self.threadMessagesSQL, arguments: [chat, uuid, Self.pageSize]
+                )
                 let original = try Self.message(uuid: uuid, in: chat, db)
                 return ChatThread(
                     original: original,
@@ -945,7 +1005,8 @@ extension Storage {
                 alias: sender.alias, photoURL: sender.photoURL, fromMe: boost.fromMe,
                 amountMsat: boost.amountMsat ?? 0,
                 pendingSince: boost.fromMe && boost.delivery == .pending ? boost.date : nil,
-                unsettled: boost.fromMe && boost.delivery == .unsettled
+                unsettled: boost.fromMe && boost.delivery == .unsettled,
+                serverIndex: boost.serverIndex
             ))
         }
         return summaries
@@ -1032,7 +1093,8 @@ extension Storage {
         var messages: [(message: Message, trustSender: Bool, replaces: String?)] = []
         /// Send statuses by tag; each only moves a row forward (`setStatus`).
         var statuses: [(tag: String, status: String)] = []
-        /// Read markers from the server; a marker only ever moves forward.
+        /// Read markers from the server. They replace ours, lower ones too
+        /// (marked unread on another device), except where ours is pending.
         var reads: [String: Int64] = [:]
         var mutes: [String: Int] = [:]
         /// An outgoing row sent again: it takes the new send's uuid, tag and
@@ -1120,7 +1182,7 @@ extension Storage {
                 }
             }
             for (chat, index) in commit.reads {
-                try Self.setRead(db, chat: chat, index: index)
+                try Self.applyServerRead(db, chat: chat, index: index)
             }
             received += try fresh.filter { try Self.isMoneyForMe($0, db) }
             for (chat, level) in commit.mutes {
@@ -1290,13 +1352,25 @@ extension Storage {
         )
     }
 
-    private static func setRead(_ db: Database, chat: String, index: Int64) throws {
+    /// `chatState.readPending`: a marker moved here and not yet sent.
+    enum ReadPending: Int {
+        case none = 0
+        /// Read: a server marker at or past it makes it moot.
+        case read = 1
+        /// Marked unread: sent as it is, whatever the server holds.
+        case unread = 2
+    }
+
+    /// A server marker replaces ours unless ours is still to be sent; a
+    /// pending read gives way to a server marker at or past it.
+    private static func applyServerRead(_ db: Database, chat: String, index: Int64) throws {
         try db.execute(
             sql: """
                 INSERT INTO chatState (chat, lastRead) VALUES (?, ?)
-                ON CONFLICT(chat) DO UPDATE SET lastRead = MAX(COALESCE(lastRead, -1), excluded.lastRead)
+                ON CONFLICT(chat) DO UPDATE SET lastRead = excluded.lastRead, readPending = 0
+                WHERE readPending = 0 OR (readPending = ? AND excluded.lastRead >= COALESCE(lastRead, -1))
                 """,
-            arguments: [chat, index]
+            arguments: [chat, index, ReadPending.read.rawValue]
         )
     }
 
@@ -1310,13 +1384,61 @@ extension Storage {
         )
     }
 
-    /// Returns whether the marker moved.
-    func setRead(chat: String, index: Int64) throws -> Bool {
+    /// Moves this device's read marker and holds it as pending until the
+    /// server has it: a read only forward, an unread either way. Returns
+    /// whether it moved.
+    func setRead(chat: String, index: Int64, as kind: ReadPending) throws -> Bool {
         try pool.write { db in
             let before = try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [chat])
-            guard (before ?? -1) < index else { return false }
-            try Self.setRead(db, chat: chat, index: index)
+            guard before != index, kind != .read || (before ?? -1) < index else { return false }
+            try db.execute(
+                sql: """
+                    INSERT INTO chatState (chat, lastRead, readPending) VALUES (?, ?, ?)
+                    ON CONFLICT(chat) DO UPDATE SET lastRead = excluded.lastRead, readPending = excluded.readPending
+                    """,
+                arguments: [chat, index, kind.rawValue]
+            )
             return true
+        }
+    }
+
+    /// The server has this marker: unless it moved again meanwhile, the
+    /// server's markers replace it from now on.
+    func readSent(chat: String, index: Int64) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE chatState SET readPending = 0 WHERE chat = ? AND lastRead = ?", arguments: [chat, index]
+            )
+        }
+    }
+
+    /// After a send in `chat`: the server moves its marker to the sent
+    /// message, so everything stored there is read and nothing is left to send.
+    func readBySending(in chat: String) throws {
+        try pool.write { db in
+            guard let newest = try Self.highestServerIndex(in: chat, db) else { return }
+            try db.execute(
+                sql: """
+                    INSERT INTO chatState (chat, lastRead) VALUES (?, ?)
+                    ON CONFLICT(chat) DO UPDATE SET
+                        lastRead = MAX(COALESCE(lastRead, -1), excluded.lastRead), readPending = 0
+                    """,
+                arguments: [chat, newest]
+            )
+        }
+    }
+
+    /// The server index of the newest message in `chat` that counts as
+    /// unread (`countsAsUnreadSQL`): what "Mark as unread" leaves unread.
+    public func newestIncomingIndex(in chat: String) throws -> Int64? {
+        try pool.read { db in
+            try Int64.fetchOne(
+                db,
+                sql: """
+                    SELECT MAX(m.serverIndex) FROM message m WHERE m.chat = ? AND \(Self.countsAsUnreadSQL)
+                    """,
+                arguments: [chat]
+            )
         }
     }
 

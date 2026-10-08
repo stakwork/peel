@@ -29,7 +29,9 @@ struct PeelCommand {
           discard <id>                drop an undelivered message
           delete <id>                 delete a message for everyone (yours, or any in a tribe you own)
           unread                      unread counts and mute levels by chat
-          read <pubkey>               mark a chat read up to its newest message
+          read <pubkey>               mark a chat read up to its newest message (offline: sent on the next connect)
+          mark-unread <pubkey> [index]  mark a chat unread from a message (server index), else from its
+                                      newest incoming message
           mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
           send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread)
           download <id> <out path>    download and decrypt an attachment to a new file (never opened)
@@ -287,22 +289,34 @@ struct PeelCommand {
             for try await states in storage.readStates() {
                 for state in states.values.sorted(by: { $0.chat < $1.chat }) {
                     print("\(state.chat)  unread \(state.unread)  mentions \(state.mentions)  mute \(state.mute)"
-                        + "  shown \(state.shownUnread)")
+                        + "  shown \(state.shownUnread)  last read \(state.lastRead.map(String.init) ?? "none")")
                 }
                 break
             }
 
-        case "read", "mute":
+        case "read", "mark-unread":
+            // Offline, the marker is kept as pending and sent on the next connect.
             guard let pubkey = arguments.next() else { throw PeelError("\(command) needs a pubkey") }
-            let session = try await Session(load()).connect(insecure: insecure)
+            let session = try await Session(load())
+            await session.connectIfPossible(insecure: insecure)
             if command == "read" {
                 try await session.engine.markRead(pubkey)
             } else {
-                guard let level = arguments.next().flatMap({ Int($0) }).flatMap(MuteLevel.init(rawValue:)) else {
-                    throw PeelError("mute needs a level: 0, 1 or 2")
+                let index = try arguments.next().map { text in
+                    guard let index = Int64(text) else { throw PeelError("mark-unread needs a server index") }
+                    return index
                 }
-                try await session.engine.setMute(pubkey, level: level)
+                try await session.engine.markUnread(pubkey, fromServerIndex: index)
             }
+            try await session.finish(after: wait)
+
+        case "mute":
+            guard let pubkey = arguments.next() else { throw PeelError("mute needs a pubkey") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            guard let level = arguments.next().flatMap({ Int($0) }).flatMap(MuteLevel.init(rawValue:)) else {
+                throw PeelError("mute needs a level: 0, 1 or 2")
+            }
+            try await session.engine.setMute(pubkey, level: level)
             try await session.finish(after: wait)
 
         case "tribes":

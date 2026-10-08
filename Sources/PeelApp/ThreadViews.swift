@@ -167,9 +167,7 @@ private struct ThreadCard: View {
         let author = model.sender(of: original)
         let unread = summary.unread > 0
         Button {
-            withAnimation(.easeOut(duration: 0.2)) {
-                model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
-            }
+            withAnimation(.easeOut(duration: 0.2)) { model.openThread(summary) }
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Circle()
@@ -227,9 +225,8 @@ private struct ThreadCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .peelMenu {
-            let thread = ThreadRef(chat: summary.chat, uuid: summary.uuid)
             var entries: [MenuEntry] = [.button("Open thread", systemImage: "bubble.left") {
-                withAnimation(.easeOut(duration: 0.2)) { model.openThread(thread) }
+                withAnimation(.easeOut(duration: 0.2)) { model.openThread(summary) }
             }]
             if summary.unread > 0 {
                 entries.append(.button("Mark as read", systemImage: "checkmark.circle") {

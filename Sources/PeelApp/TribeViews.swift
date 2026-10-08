@@ -367,6 +367,9 @@ struct PinnedMessageBar: View {
         .padding(.vertical, 7)
         .background(Theme.panel)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+        // Unpin keeps its own clicks; anywhere else goes to the message.
+        .contentShape(Rectangle())
+        .onTapGesture { model.focus(on: message) }
         .peelMenu {
             var entries: [MenuEntry] = []
             if let text = message.content?.trimmed.nilIfEmpty {
@@ -474,7 +477,7 @@ private struct MentionRow: View {
     var body: some View {
         let alias = message.senderAlias
         Button {
-            model.destination = .chat(message.chat)
+            model.focus(on: message)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Avatar(name: alias ?? "?", url: message.senderPhotoURL, size: 28)
@@ -505,7 +508,7 @@ private struct MentionRow: View {
         .buttonStyle(SidebarRowStyle(selected: false))
         .peelMenu {
             var entries: [MenuEntry] = [.button("Open in #\(tribeName ?? "tribe")", systemImage: "number") {
-                model.destination = .chat(message.chat)
+                model.focus(on: message)
             }]
             if let text = message.content?.trimmed.nilIfEmpty {
                 entries.append(.copyText(text))

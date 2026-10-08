@@ -408,6 +408,21 @@ struct DayDivider: View {
     }
 }
 
+/// "New messages" above the first message that was unread when the chat
+/// opened; blue, because blue is unread.
+struct NewMessagesDivider: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Theme.accent.frame(height: 1)
+            Text("New messages")
+                .font(Theme.font(12, .semibold))
+                .foregroundStyle(Theme.accent)
+                .fixedSize()
+        }
+        .padding(.vertical, 6)
+    }
+}
+
 /// "Not delivered" (or "Not uploaded", or for a payment or boost "Not
 /// sent") with Retry and Discard. Discard asks once, in place. A payment's
 /// Retry goes through `PaymentAttempt`: over the threshold it first asks

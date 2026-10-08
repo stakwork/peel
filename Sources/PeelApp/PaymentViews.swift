@@ -23,9 +23,11 @@ extension AppModel {
         guard let id = message.id else { return }
         switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id) }) {
         case .refused(let reason): conversationNotices[message.chat] = "Could not boost: \(reason)"
-        case .sent: if conversationNotices[message.chat]?.hasPrefix("Could not boost") == true {
-            conversationNotices[message.chat] = nil
-        }
+        case .sent:
+            sent(in: message.chat)
+            if conversationNotices[message.chat]?.hasPrefix("Could not boost") == true {
+                conversationNotices[message.chat] = nil
+            }
         case .needsConfirmation, .busy: break
         }
     }
@@ -51,9 +53,11 @@ extension AppModel {
 
     /// Sends sats to a contact in their chat, with an optional note.
     func sendPayment(to chat: String, amountMsat: UInt64, note: String, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        await pay("pay \(chat)") {
+        let outcome = await pay("pay \(chat)") {
             try await $0.sendPayment(to: chat, amountMsat: amountMsat, text: note.trimmed, confirmedMsat: confirmedMsat)
         }
+        if case .sent = outcome { sent(in: chat) }
+        return outcome
     }
 
     /// Sends a failed payment or boost again, for the amount it was for.

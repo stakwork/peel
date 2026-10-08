@@ -180,7 +180,7 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    `phase2/status-and-composer`). The engine asks for `getReads` and
    `getMutes` each time it comes online; the replies land in a new
    `chatState` table (migration v4: `lastRead` server index, `muteLevel`).
-   A read marker only moves forward, and when the server's marker is behind
+   (Superseded by "Mark unread and the read-marker fix" below.) A read marker only moves forward, and when the server's marker is behind
    ours (read while offline) the engine sends `read` again.
    `Engine.markRead(chat)` runs when a chat is shown with the window in front
    and whenever a message lands in the open chat; `Engine.setMute(chat,
@@ -194,7 +194,186 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    After a restore the engine asks again once history is in, because the
    core drops markers for contacts it has not rebuilt yet (verified: a
    restored profile came back read and muted).
-   Open: "mentions only" (level 1) has no UI until tribes; no mark-unread.
+   Open: "mentions only" (level 1) has no UI until tribes.
+
+   **Mark unread and the read-marker fix** (2026-10-07, branch
+   `phase3/unread`, migration v12). The rules above ("a marker only moves
+   forward", "send `read` again when the server is behind") broke mark
+   unread on the official apps: the mixer stores whatever index it is sent,
+   lower too (`mixer/src/handler.rs` READ, `db/read.rs`), and the official
+   apps apply the server's markers as truth (`Chat.updateMessageReadStatus`),
+   but Peel ignored a lower one and pushed its own higher marker back on the
+   next `getreads`. Now:
+   - `chatState.readPending` marks a marker moved here and not yet sent.
+     Markers in a `getreads` reply replace ours, lower ones included, except
+     where ours is pending; the engine then publishes only the pending ones
+     and clears the flag once sent (`Storage.readSent`, only if the marker
+     has not moved again). A chat whose `read` was published after the
+     `getreads` request went out is skipped when its reply is applied
+     (`Engine.readsSentSinceGetReads`): the mixer handles each request in its
+     own task, so the reply may predate the marker.
+   - `Engine.markRead` still only moves forward (the server's marker may be
+     past what is stored here); offline it stays pending.
+   - `Engine.markUnread(chat, fromServerIndex:)` sets the marker to the
+     index − 1 (unread counts `serverIndex > lastRead`); `markUnread(chat)`
+     uses the newest incoming message, so the chat counts one, as the
+     official apps' chat-level "Mark as Unread" (`setReadLevel(previousMsg)`).
+   - Sending: the mixer moves the marker to the sent message
+     (`send.rs` 318–320), so a delivered send marks the chat read locally
+     too, not pending (`Storage.readBySending`).
+   - Threads have no marker of their own: a thread's unread is its chat's
+     marker, so marking unread from a thread message marks the chat.
+   - CLI: `read` and `mark-unread <pubkey> [server index]` run offline too
+     (the marker waits as pending); `unread` prints the marker.
+   App: "Mark unread from here" in an incoming message's menu, "Mark as
+   unread" in a sidebar row's menu (when the chat has an incoming message
+   and nothing unread). After a manual unread in the open chat it is not
+   marked read again until you leave it, scroll back to its bottom or send.
+   A "New messages" divider (blue) goes above the first incoming message
+   past the marker the chat had when it was opened (captured before marking
+   it read); the chat opens scrolled to it, else at the bottom. It stays
+   until you change chats or send; a manual unread moves it. The thread
+   panel uses the same captured marker. "Incoming" is what counts as unread
+   (`Storage.countsAsUnreadSQL`, from the boosts branch): someone else's
+   text, attachment or payment, or their boost on your message; with only
+   new boosts, the divider goes above the first boosted message of yours.
+   Chat-level "Mark as unread" uses the newest such message.
+   Verified on the local stack (`ur-*` profiles, Alice on two devices
+   restored from the same words, Bob): device 2 marks unread from #7 →
+   device 1 reconnects, shows 3 unread at marker 6, and device 2 reconnecting
+   again still reads 6 (nothing pushed back); device 2 reads with the broker
+   down (marker 9, pending) → broker back → reconnect publishes it, pending
+   clears, device 1 picks up 9; with 3 unread, Alice sends → local marker
+   read at once, device 2 picks up the server's 10. Bundled app on
+   `ur-alice`: the divider, the message menu and the sidebar menu
+   (screenshots in the session). Not exercised by hand: clicking the menu
+   items in the app, the hold on the open chat and its release at the bottom.
+
+   **Jump to a message** (same branch). `AppModel.focus(on:inThread:)` opens
+   a message's chat scrolled to it (anchor centre) and lights the row (the
+   selection tint, held 0.4 s, then fading out over 1.5 s); the quote click
+   already did this in `MessageList.go(to:)`, which both now share. Used by
+   the Mentions list, a notification click (the notification carries the
+   message id; a summary notification its first new message), the Threads
+   list (the thread panel, at the first new reply when some are new) and the
+   pinned bar (click anywhere but Unpin). A message folded into a collapsed
+   thread opens that thread's panel and lights it there. One older than the
+   newest 200 is loaded with everything after it
+   (`Storage.timelineLimit(reaching:)`, counted once when you jump, then
+   `timeline(in:limit:)`: the limit grows to reach it, plus 20 older ones;
+   not when the message already has a row, a collapsed thread's included); one deleted since opens the chat with "That message was
+   deleted". It takes precedence over the "New messages" position.
+   Verified in the bundled app on `ur-alice` (220 messages, the target the
+   8th, outside the newest 200): the longer timeline loaded, the list
+   scrolled to it and the row lit and faded (screenshots). Found while
+   verifying: the list showing before the reload took the target, did not
+   find it and gave up; the anchor is now set before `focus`, and a list
+   gives up only on a target within what it has loaded. Scrolling from the
+   new list's `onAppear` was undone by its initial bottom anchor; it waits
+   0.1 s. Not exercised by hand: Mentions, a notification click, the Threads
+   list and the pinned bar (each only calls `focus(on:)`; no tribe on this
+   stack), and a deleted target. Known limit: for a very old target the
+   timeline holds everything after it (no gap), and the lazy list can land
+   the row near the top rather than the centre.
+
+   Review (`/code-review` high, `/simplify`, `/security-review`). Fixed: a
+   pending read now gives way to a server marker at or past it (pending is
+   `read` or `unread`; only an unread is sent whatever the server holds);
+   mark read/unread need a core contact, so nothing stays pending for good;
+   reaching the bottom ends the hold only when scrolled by hand (not by a
+   new message's auto-scroll) and only in the chat's list; a mark unread
+   that returns after leaving and coming back does nothing; scrolling to
+   "New messages" targets its row's id (it shares the row's view); a failed
+   local write after a delivered send no longer fails the send; one
+   `markUnread(_:fromServerIndex:)`; shared `highestServerIndex` query;
+   fewer row rebuilds. Security review: no findings. Not applied, with reasons:
+   - Markers moved ahead of the server by an older build (read offline, then
+     upgraded before reconnecting) are replaced by the server's on first
+     connect: marking them all pending in the migration would push them over
+     any unread made on the official apps, the bug this fixes.
+   - Keeping a marker pending until a `getReads` reply confirms it, instead
+     of `readsSentSinceGetReads`: a reply cannot be told apart from one sent
+     before the marker, so another device's later change would be pushed
+     back; the per-request set is the narrower rule.
+   - A send racing a mark unread (`readBySending` overrides the pending
+     unread locally): rare; the next `getReads` brings the server's marker.
+   - "Mark unread from here" on a message past a lower marker moves the
+     marker forward (earlier messages become read): intended, as Slack's.
+   - The sidebar menu's `newestIncomingIndex` query on the main actor: one
+     indexed query when the menu opens; folding it into `readStates` would
+     add a subquery per chat on every change.
+   - Sharing one view between the day and "New messages" dividers, and one
+     upsert helper for the three `chatState` writes: different shapes and
+     rules; small.
+
+   Rebased onto the boosts branch (v11 before this v12). The hover bar is
+   Reply, Boost, More; the message menu has "Boost…" and "Mark unread from
+   here"; payment rows take the divider and the jump highlight.
+   Second `/code-review` (high, the jump and the rebase). Fixed: jumping to a
+   thread's original already on screen (the pinned bar) no longer reloads
+   everything since it; the reach-back count runs once per jump, not on
+   every change; a list judged how far back it was loaded by a collapsed
+   thread's original instead of its row's time; the Threads list opens at
+   the first new reply, not the newest; leaving "Mark unread" and the
+   divider happens only once a send has gone, and boosts and payments do it
+   too; `markRead` moves the local marker again for a chat without a core
+   contact (it is sent once there is one); a failed storage read no longer
+   says "That message was deleted"; "Mark unread from here" on a run of
+   images starts at its first image. Not applied, with reasons:
+   - `readsSentSinceGetReads` filters every commit's markers, not only the
+     `getreads` reply: only that reply carries markers (`handler.rs`
+     GET_READS sets `last_read`), and the set clears with each request.
+   - The 0.1 s wait before scrolling to a focused message on a new list: a
+     list slower to lay out could still land at the bottom; a retry until
+     the row is visible needs scroll-position tracking the list lacks.
+   - Resending a failed message does not end "Mark unread" in the app (the
+     engine still marks the chat read): rare.
+
+   **Jump to newest** (same branch). Scrolled up more than a screen from
+   the bottom, a conversation or thread panel shows a round button with a
+   down arrow at its bottom-right, over the list above the composer
+   (`menuBoxed`, fading in and out); new messages that arrive below meanwhile
+   no longer pull the list down (your own still do) and are counted on it
+   in an accent badge, by the same rule as "New messages" (others' text,
+   attachments and payments). Click, End or Command-Down scrolls smoothly to
+   the newest, and in the chat counts as reaching the bottom (ends a "Mark
+   unread" hold, reads the chat). Verified in the bundled app on `ur-alice`:
+   jumped to an old message, Bob sent three, the button read "3"
+   (screenshot). Not exercised by hand: the click and the shortcuts.
+   The shortcuts are on the chat's list only, and only while its composer
+   is empty (End and Command-Down move the cursor in a draft). Opened at
+   "New messages" more than a screen up, the count starts with the unread
+   below it. `/code-review` (high) on this: fixed collapsed threads (follow
+   and count by their newest reply), shortcuts clashing between the chat
+   and the thread panel, the count reset by a resize, a missing count when
+   opened at the divider; one `Message.countsAsUnread(after:)` for the
+   divider and the count. Not applied: whether the list's bottom anchor for
+   size changes still nudges the reading position when a tall row arrives
+   below (not seen; needs a hand check).
+
+   Rebased onto main with #22 (relative times), #24 (one-tap boost) and #25
+   (copy feedback): the hover bar is Reply, the one-tap Boost bolt, More;
+   the message menu has Reply, "Boost 100 sats" (B), "Boost…", the copy
+   items with the Copied pill, "Mark unread from here". A one-tap boost
+   ends a "Mark unread" hold like any send. `/simplify` and
+   `/security-review` on the jump work (security: no findings). Applied:
+   the jump button's badge is `UnreadBadge`; it reads the draft itself (typing
+   no longer redraws the list); the grown timeline drops back to the newest
+   200 once the chat's list is at its bottom; one page-size clamp; the
+   thread opens through `openThread(of:)`; `firstUnreadReply` uses
+   `countsAsUnreadSQL` (boosts excluded: they have no row to open at); one
+   loop for the two shortcuts. `/code-review` (low) on the merge: fixed a
+   jump into a chat not open losing its longer timeline as the chat opened.
+   Not applied: an "initial scroll target" in place of the 0.1 s wait,
+   anchored timeline windows instead of a growing limit, one open-chat state
+   struct for the four per-chat fields, `.onKeyPress` for the shortcuts, a
+   shared flash modifier for message and payment rows, and taking the
+   focus reads off the main actor: each is a broader change than this item.
+
+   Re-checked after the rebase on a fresh local stack: chat-level
+   `mark-unread` → 1 unread, the bundled app shows "New messages" above the
+   newest of Bob's messages, and a jump to an earlier message lights its row
+   and fades out over about 1.2 s while the divider stays.
 8. **Send failures.** Done 2026-10-07. A sent message shows a green bolt by
    its time once the server confirms it (`COMPLETE`, as the official apps),
    fades while pending, and shows "Not delivered · Retry · Discard" when it

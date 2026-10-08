@@ -44,6 +44,13 @@ enum Theme {
     /// Behind inline code and code blocks: a translucent step darker in
     /// light, lighter in dark, so it still shows on a hovered or tinted row.
     static let codeFill = Color.primary.opacity(0.07)
+    /// The call window (board C3): darker than the conversation, so the
+    /// tiles (`quote`) stand out; its title bar's rule, the name tags over
+    /// tiles and video, and the line between a control and its chevron.
+    static let callBackground = Color(light: 0xE9ECEF, dark: 0x0F161D)
+    static let callDivider = Color(light: 0xDCE0E3, dark: 0x1E2731)
+    static let callTag = Color(light: 0xFFFFFF, dark: 0x0A0E13, darkOpacity: 0.72)
+    static let callChevronLine = Color(light: 0xDCE0E3, dark: 0x2F3D4A)
     /// PrimaryGreen: connected, and a message the server confirmed.
     static let confirmed = Color(light: 0x49C998, dark: 0x49C998)
     /// SphinxOrange: not connected. Also the boost bolt, from phase 4.

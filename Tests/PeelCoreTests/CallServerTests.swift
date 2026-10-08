@@ -168,6 +168,17 @@ struct CallPresenceTests {
         #expect(CallServer.participant(["identity": "x", "avatarUrl": url])?.avatarURL == nil)
     }
 
+    @Test func readsRoomParticipants() {
+        let photo = #"{"profilePictureUrl":"https://example.com/a.jpg"}"#
+        let person = CallParticipant(identity: "x", name: "Al\u{1B}ice\n", metadata: photo)
+        #expect(person?.nickname == "Alice")
+        #expect(person?.avatarURL?.absoluteString == "https://example.com/a.jpg")
+        #expect(CallParticipant(identity: "x", name: nil, metadata: #"{"profilePictureUrl":"https://10.0.0.1/a.jpg"}"#)?.avatarURL == nil)
+        #expect(CallParticipant(identity: "x", name: nil, metadata: "not json")?.avatarURL == nil)
+        #expect(CallParticipant(identity: "x", name: nil, metadata: nil)?.nickname == "")
+        #expect(CallParticipant(identity: "x\u{07}", name: "a", metadata: nil) == nil)
+    }
+
     @Test func cleansNames() {
         let long = String(repeating: "a", count: 500)
         #expect(CallServer.participant(["identity": "x", "nickname": "Mal\u{1B}[2Jlory\n"])?.nickname == "Mal[2Jlory")

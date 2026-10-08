@@ -121,10 +121,12 @@ final class AppModel {
     /// The open chat's newest calls under 12 hours, at most three, newest
     /// first: what the header watches. Set with the rows, when it changes.
     var recentCalls: [CallLink] = []
-    /// The call this Mac is on (the placeholder window until PR 5).
-    var call: CallPlaceholder? {
+    /// The call this Mac is on, and its window.
+    var call: CallSession? {
         didSet { refreshLiveCallChats() }
     }
+    /// The goodbye of the calls left, which a quit waits for.
+    @ObservationIgnored var callLeaving: Task<Void, Never>?
     /// Chats with a watched call someone is on, or the one you are on: the
     /// sidebar's green phone. Kept apart so presence ticks redraw no row
     /// whose answer did not change.

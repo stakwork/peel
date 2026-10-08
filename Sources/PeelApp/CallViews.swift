@@ -72,22 +72,21 @@ extension AppModel {
     }
 
 
-    /// Why another call cannot start or be joined now: you are on one, and
-    /// leaving it is your choice (PR 5's window asks in place).
-    private func busy(with room: String?) -> String? {
+    /// The chat of the call you are on, when it is not `room`'s: joining
+    /// or starting another asks in place first ("Leave the call in #design
+    /// and join?"), never leaving it silently.
+    func otherCall(than room: String?) -> String? {
         guard let call, call.isOn, call.link.room != room else { return nil }
-        return "You're on the call in \(chatTitle(call.chat)); leave it first."
+        return call.title
     }
 
-    /// Joins a call: a ticket from the call server, then the placeholder
-    /// window's connection (mic and camera off). Returns whether there is a
-    /// call to show; on failure the reason shows beside Join.
-    func joinCall(_ link: CallLink, in chat: String) async -> Bool {
+    /// Joins a call: a ticket from the call server, then the call window's
+    /// room, with the microphone on and the camera off unless `camera`.
+    /// Returns whether there is a call to show; on failure the reason shows
+    /// beside Join. The call you were on (its leaving already confirmed)
+    /// goes only once the ticket has come, so a failed join leaves you on it.
+    func joinCall(_ link: CallLink, in chat: String, camera: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
-        if let busy = busy(with: link.room) {
-            callFailures[link.room] = busy
-            return false
-        }
         guard joiningRoom == nil, let engine else { return false }
         joiningRoom = link.room
         defer { joiningRoom = nil }
@@ -95,9 +94,8 @@ extension AppModel {
         do {
             let ticket = try await engine.callTicket(for: link, in: chat)
             guard self.engine === engine else { return false }
-            // A failed placeholder of another room goes.
             leaveCall()
-            call = CallPlaceholder(ticket: ticket, link: link, chat: chat, title: chatTitle(chat))
+            call = CallSession(ticket: ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
             return true
         } catch {
             callFailures[link.room] = PeelError.readable(error).capitalizedFirst
@@ -106,28 +104,53 @@ extension AppModel {
     }
 
     /// Starts a call in `chat` (the call message, free in a DM and 3 sats
-    /// in a tribe) and joins it. Nothing is sent while you are on a call
-    /// or joining one.
+    /// in a tribe) and joins it, with your camera on for a video call.
+    /// Nothing is sent while a join or another start runs.
     func startCall(in chat: String, audioOnly: Bool) async -> Bool {
-        if let busy = busy(with: nil) {
-            conversationNotices[chat] = busy
-            return false
-        }
         guard startingCallIn == nil, joiningRoom == nil, let engine else { return false }
         startingCallIn = chat
         defer { startingCallIn = nil }
         do {
             let link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
-            return await joinCall(link, in: chat)
+            return await joinCall(link, in: chat, camera: !audioOnly)
         } catch {
             conversationNotices[chat] = "Could not start the call: \(PeelError.readable(error))"
             return false
         }
     }
 
+    /// Leaves the call you are on; its window closes. The room says
+    /// goodbye in the background (`callLeaving`).
     func leaveCall() {
-        call?.leave()
-        call = nil
+        guard let call else { return }
+        self.call = nil
+        let earlier = callLeaving
+        callLeaving = Task {
+            await earlier?.value
+            await call.leave()
+        }
+    }
+
+    /// Leaves, and waits until every room left has said goodbye: when Peel quits.
+    func endCall() async {
+        leaveCall()
+        await callLeaving?.value
+    }
+
+    /// A call whose connection was lost, joined again with a new ticket.
+    func rejoinCall() {
+        guard let call, !call.isOn else { return }
+        Task { _ = await joinCall(call.link, in: call.chat, camera: call.wantsCamera) }
+    }
+
+    /// Someone on a call: their name ("Guest" when they sent none) and
+    /// photo as they sent them, a hue keyed as for a tribe member, and you
+    /// as yourself.
+    func avatar(of person: CallParticipant) -> (name: String, photoURL: String?, hue: PersonHue) {
+        avatar(
+            fromMe: person.identity == call?.identity, alias: person.nickname.isEmpty ? "Guest" : person.nickname,
+            photoURL: person.avatarURL?.absoluteString, chat: person.identity, inTribe: true
+        )
     }
 
     /// "#tribe" or the contact's name, for the call window.
@@ -151,6 +174,8 @@ struct CallCard: View {
     @Environment(\.openWindow) private var openWindow
     let row: ChatRow
     let link: CallLink
+    /// The call you are on elsewhere, while Join asks to leave it (C5).
+    @State private var leaving: String?
 
     static let width: CGFloat = 320
 
@@ -189,9 +214,19 @@ struct CallCard: View {
                     Button("Discard") { Task { await model.discard(message) } }
                         .buttonStyle(GhostButtonStyle())
                         .help("Remove this call, which was never sent")
-                } else {
+                } else if leaving == nil {
                     button(onIt)
                 }
+            }
+            if let leaving {
+                VStack(spacing: 0) {
+                    Theme.divider.frame(height: 1).padding(.bottom, 10)
+                    CallSwitchConfirm(
+                        other: leaving, joining: true, working: model.joiningRoom == link.room,
+                        cancel: { self.leaving = nil }, confirm: join
+                    )
+                }
+                .padding(.top, 2)
             }
             if let failure = model.callFailures[link.room] {
                 Text(failure)
@@ -243,13 +278,21 @@ struct CallCard: View {
         } else {
             let joining = model.joiningRoom == link.room
             Button {
-                model.openingCallWindow(openWindow) { await model.joinCall(link, in: row.message.chat) }
+                if let other = model.otherCall(than: link.room) { leaving = other } else { join() }
             } label: {
                 Text("Join").buttonProgress(joining)
             }
             .buttonStyle(GhostButtonStyle(prominent: true))
             .disabled(model.joiningRoom != nil && !joining)
             .help("Join with your microphone and camera off")
+        }
+    }
+
+    private func join() {
+        model.openingCallWindow(openWindow) {
+            let joined = await model.joinCall(link, in: row.message.chat)
+            leaving = nil
+            return joined
         }
     }
 
@@ -270,9 +313,12 @@ struct CallCard: View {
 }
 
 /// The green dot of someone on a call (`#49C998`, Sphinx's online green).
+/// Grey (`secondaryText`) for a call that is not connected.
 struct OnlineDot: View {
+    var color = Theme.confirmed
+
     var body: some View {
-        Circle().fill(Theme.confirmed).frame(width: 7, height: 7).accessibilityHidden(true)
+        Circle().fill(color).frame(width: 7, height: 7).accessibilityHidden(true)
     }
 }
 
@@ -288,14 +334,11 @@ struct CallPeopleStack: View {
     var body: some View {
         HStack(spacing: -7) {
             ForEach(people.prefix(3)) { person in
-                let shown = model.avatar(
-                    fromMe: person.identity == model.call?.identity, alias: person.nickname,
-                    photoURL: person.avatarURL?.absoluteString, chat: person.identity, inTribe: true
-                )
+                let shown = model.avatar(of: person)
                 Avatar(name: shown.name, url: shown.photoURL, size: size, hue: shown.hue)
                 .padding(2)
                 .background(border, in: Circle())
-                .help(person.nickname)
+                .help(shown.name)
             }
             if people.count > 3 {
                 Text("+\(people.count - 3)")
@@ -316,7 +359,7 @@ struct CallPeopleStack: View {
 /// The call button in a chat's header: a menu with Audio call (⌥⌘A) and
 /// Video call (⌥⌘V). While a recent call here has someone on it, "● Join · N"
 /// joins the newest such call instead, with "Start a new call" behind its
-/// chevron.
+/// chevron. On another call, either asks in place to leave it first (C5).
 struct CallHeaderButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -324,6 +367,13 @@ struct CallHeaderButton: View {
     let chat: String
 
     @State private var frame: CGRect = .zero
+    /// What waits for "Leave and join" (or start), and the call it leaves.
+    @State private var pending: (action: Pending, other: String)?
+
+    private enum Pending {
+        case join(CallLink)
+        case start(audioOnly: Bool)
+    }
 
     var body: some View {
         // An account with no call server has no calls to start.
@@ -334,7 +384,14 @@ struct CallHeaderButton: View {
         let recent = model.recentCalls
         let live = recent.first { model.presence(of: $0.room).isLive }
         HStack(spacing: 8) {
-            if let live {
+            if let pending {
+                let joining: Bool = if case .join = pending.action { true } else { false }
+                CallSwitchConfirm(
+                    other: pending.other, joining: joining, inline: true,
+                    working: model.joiningRoom != nil || model.startingCallIn == chat,
+                    cancel: { self.pending = nil }, confirm: { run(pending.action) }
+                )
+            } else if let live {
                 if let failure = model.callFailures[live.room] {
                     Text(failure)
                         .font(Theme.font(12))
@@ -363,6 +420,9 @@ struct CallHeaderButton: View {
             .disabled(model.startingCallIn != nil)
             .accessibilityHidden(true)
         }
+        // A tribe's header is kept when another tribe opens: a question
+        // asked in one chat is never answered in the next.
+        .onChange(of: chat) { pending = nil }
         // The header's own watch, while the chat is open.
         .task(id: recent.map(\.room)) {
             await withTaskGroup(of: Void.self) { group in
@@ -379,7 +439,7 @@ struct CallHeaderButton: View {
         let joining = model.joiningRoom == live.room
         return HStack(spacing: 0) {
             Button {
-                model.openingCallWindow(openWindow) { await model.joinCall(live, in: chat) }
+                ask(.join(live), leaving: model.otherCall(than: live.room))
             } label: {
                 HStack(spacing: 7) {
                     OnlineDot()
@@ -422,6 +482,129 @@ struct CallHeaderButton: View {
     }
 
     private func start(audioOnly: Bool) {
-        model.openingCallWindow(openWindow) { await model.startCall(in: chat, audioOnly: audioOnly) }
+        ask(.start(audioOnly: audioOnly), leaving: model.otherCall(than: nil))
+    }
+
+    /// Runs `action` at once, or first asks to leave the call you are on.
+    private func ask(_ action: Pending, leaving other: String?) {
+        if let other { pending = (action, other) } else { run(action) }
+    }
+
+    private func run(_ action: Pending) {
+        model.openingCallWindow(openWindow) {
+            let done = switch action {
+            case .join(let link): await model.joinCall(link, in: chat)
+            case .start(let audioOnly): await model.startCall(in: chat, audioOnly: audioOnly)
+            }
+            pending = nil
+            return done
+        }
+    }
+}
+
+// MARK: - Switching calls (C5)
+
+/// The in-place confirm when joining or starting a call while on another:
+/// "Leave the call in #design and join?", Cancel and the blue commit.
+struct CallSwitchConfirm: View {
+    let other: String
+    /// Joining a call, or else starting one.
+    let joining: Bool
+    /// One line, for the header; the card stacks it.
+    var inline = false
+    let working: Bool
+    let cancel: () -> Void
+    let confirm: () -> Void
+
+    var body: some View {
+        let text = Text("Leave the call in ") + Text(other).fontWeight(.semibold)
+            + Text(joining ? " and join?" : " and start a new one?")
+        let commit = joining ? "Leave and join" : "Leave and start"
+        let buttons = HStack(spacing: 8) {
+            Button("Cancel", action: cancel)
+                .buttonStyle(GhostButtonStyle())
+            Button(action: confirm) { Text(commit).buttonProgress(working) }
+                .buttonStyle(GhostButtonStyle(prominent: true))
+                .disabled(working)
+        }
+        Group {
+            if inline {
+                HStack(spacing: 10) {
+                    text.lineLimit(1).truncationMode(.middle)
+                    buttons
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 9) {
+                    text.fixedSize(horizontal: false, vertical: true)
+                    buttons.frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
+        .font(Theme.font(13.5))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Switch calls")
+    }
+}
+
+// MARK: - On a call (C4)
+
+/// At the foot of the sidebar while you are on a call, like a huddle bar:
+/// the chat, the running time, who is on it, Mute and "Return to call".
+struct OnCallBar: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    let call: CallSession
+
+    var body: some View {
+        let people = call.people
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                OnlineDot(color: call.state == .connected ? Theme.confirmed : Theme.secondaryText)
+                ChatTitle(title: call.title)
+                    .font(Theme.font(13, .bold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                CallStatusText(call: call, size: 12)
+            }
+            HStack(spacing: 7) {
+                CallPeopleStack(people: people, size: 20, border: Theme.quote)
+                Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
+                    .font(Theme.font(12.5))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+            }
+            .frame(minHeight: 20)
+            HStack(spacing: 6) {
+                let label = call.micOn ? "Mute" : "Unmute"
+                Button(action: call.toggleMicrophone) {
+                    Image(systemName: call.micOn ? "mic" : "mic.slash")
+                        .font(.system(size: 13))
+                        .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
+                        .frame(width: 30, height: 30)
+                        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(call.micAccess == .refused)
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .help("\(label) (⌘⇧A)")
+                .accessibilityLabel(label)
+                Button { openWindow(id: CallWindow.id) } label: {
+                    Label("Return to call", systemImage: "arrow.up.forward.square")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GhostButtonStyle())
+                .help("Bring the call window forward")
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("On a call in \(call.title)")
     }
 }

@@ -213,6 +213,9 @@ struct Sidebar: View {
                 .padding(.bottom, 12)
             }
             .scrollIndicators(.automatic)
+            if let call = model.call {
+                OnCallBar(call: call)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 34) // clear of the window's traffic lights

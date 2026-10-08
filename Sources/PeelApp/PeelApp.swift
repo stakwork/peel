@@ -5,6 +5,9 @@ import LiveKit
 @main
 struct PeelApp: App {
     @State private var model = AppModel()
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+    #endif
 
     init() {
         // Everything this process creates (database, journal) is private to the user.
@@ -22,7 +25,12 @@ struct PeelApp: App {
                 #if os(macOS)
                 .frame(minWidth: 760, minHeight: 460)
                 #endif
-                .task { await model.start() }
+                .task {
+                    #if os(macOS)
+                    delegate.model = model
+                    #endif
+                    await model.start()
+                }
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
@@ -51,17 +59,18 @@ struct PeelApp: App {
         #endif
 
         #if os(macOS)
-        // The call you are on (a placeholder until the call window, PR 5).
+        // The call you are on: 960 × 640 at first, then where you left it.
         Window("Call", id: CallWindow.id) {
             CallWindow()
                 .environment(model)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
         }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 960, height: 640)
         .commandsRemoved()
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
-        .windowResizability(.contentSize)
 
         // Development only; never listed, restored or opened without
         // `-callTestToken` and a development profile.
@@ -74,6 +83,32 @@ struct PeelApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+/// Holds a quit until the call you are on has left its room, so the others
+/// see you go at once rather than when the server gives up on you.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: AppModel?
+    private var quitting = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.call != nil || model.callLeaving != nil else { return .terminateNow }
+        quitting = false
+        // Whichever comes first: the goodbye, or two seconds, so a quit
+        // never waits on a dead network.
+        Task { await model.endCall(); quit(sender) }
+        Task { try? await Task.sleep(for: .seconds(2)); quit(sender) }
+        return .terminateLater
+    }
+
+    private func quit(_ sender: NSApplication) {
+        guard !quitting else { return }
+        quitting = true
+        sender.reply(toApplicationShouldTerminate: true)
+    }
+}
+#endif
 
 struct RootView: View {
     @Environment(AppModel.self) private var model

@@ -656,6 +656,7 @@ merged. Batches marked **behaviour** need Tom's eye.
 - **Batch 4:** in review (2026-10-08). 1.13's end marker left as it is: since #84 the list ends flush on its last row (checked on a copy of `og-div2`), so no scrolling changed for it.
 - **Batch 7:** in review (2026-10-08). Left as they are: the decodes that throw or read `Data` (their errors are what the caller reports), the `json_extract(sender,'$.alias')` copies and the `senderAlias` column (5.1, optional), and 3.3's contact lookups (batch 13). `threads()` now finds a reply of ours in the thread's own chat only, which every reply of ours is.
 - **Batch 10:** in review (2026-10-08). `UserFiles.saveToDownloads` is added but not yet used: `ChatModel` and `WebPane` move to it in batch 12. A memes token's `exp` is now read only from a three-part JWT of at most 8 KB, as a call token's is; any other token is used for one call, as one with no `exp` was.
+- **Batch 12:** in review (2026-10-08). Photos now share `ImageCache`'s code in its own 64 MB instance, so the viewer's full-size images never push them out; posters count towards a 64 MB limit. Left as they are: 3.6's never-trimmed `attachmentHandles` and `Notifier.posted` (`AppModel` and `Notifier` were not this batch's files). Saving to Downloads with no Downloads folder now says so, where it silently did nothing.
 
 ### Waves
 

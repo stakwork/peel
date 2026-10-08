@@ -152,8 +152,7 @@ struct ImageTile: View {
             }
             .buttonStyle(.plain)
             .disabled(image == nil)
-            // Again once an upload of ours is done (a retry claims no preview).
-            .task(id: "\(message.id ?? 0)/\(message.upload ?? "")") { await model.download(message) }
+            .autoDownload(message)
             .task(id: handle.file) {
                 if let file = handle.file { loaded = await ImageCache.shared.image(file, maxPixels: pixels) }
             }
@@ -163,38 +162,24 @@ struct ImageTile: View {
     /// At its own shape, as large as `displaySize` but narrower when the
     /// column is (a thread panel, a narrow window): never past its edge.
     private func picture(_ handle: AttachmentHandle) -> some View {
-        let frame = size.map { CGSize(width: $0, height: $0) } ?? displaySize
-        return Color.clear
-            .aspectRatio(frame.width / frame.height, contentMode: .fit)
-            .frame(maxWidth: frame.width)
-            .overlay {
-                if let image {
-                    Image(decorative: image, scale: 1).resizable().scaledToFill()
-                } else {
-                    Theme.quote.overlay {
-                        if case .failed = handle.state {
-                            Label("Image not available", systemImage: "photo")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
-                        } else {
-                            ProgressView().controlSize(.small)
-                        }
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1).resizable().scaledToFill()
+            } else {
+                Theme.quote.overlay {
+                    if handle.failureReason != nil {
+                        Label("Image not available", systemImage: "photo")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    } else {
+                        ProgressView().controlSize(.small)
                     }
                 }
             }
-            .overlay(alignment: .bottom) {
-                if message.fromMe, message.uploadState == .pending {
-                    TransferBar(label: "Uploading", progress: handle.progress)
-                        .padding(8)
-                }
-            }
-        .attachmentTile()
-        .help(failure(handle) ?? "")
+        }
+        .attachmentTile(fitted: displaySize, message: message, handle: handle)
+        .help(handle.failureReason ?? "")
         .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Image")
-    }
-
-    private func failure(_ handle: AttachmentHandle) -> String? {
-        if case .failed(let reason) = handle.state { reason } else { nil }
     }
 
     private var displaySize: CGSize {
@@ -253,18 +238,7 @@ struct FileCard: View {
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
-                if message.fromMe, message.uploadState == .pending {
-                    TransferBar(label: "Uploading", progress: handle.progress)
-                } else if case .downloading = handle.state {
-                    TransferBar(label: "Downloading", progress: handle.progress)
-                } else if let saved = handle.savedTo {
-                    SavedNote(file: saved)
-                } else if case .failed(let reason) = handle.state {
-                    Text(reason)
-                        .font(Theme.font(11))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(2)
-                }
+                AttachmentStatus(message: message, handle: handle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 8)
@@ -290,6 +264,31 @@ struct FileCard: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Under a file or recording: its upload or download with a bar, then
+/// "Saved to Downloads", or why its download failed. A recording's play
+/// button and line already show it waiting or failed, so for one the bar
+/// waits for the first bytes and no reason shows.
+struct AttachmentStatus: View {
+    let message: Message
+    let handle: AttachmentHandle
+    var isRecording = false
+
+    var body: some View {
+        if message.fromMe, message.uploadState == .pending {
+            TransferBar(label: "Uploading", progress: handle.progress)
+        } else if case .downloading = handle.state, !isRecording || handle.progress != nil {
+            TransferBar(label: "Downloading", progress: handle.progress)
+        } else if let saved = handle.savedTo {
+            SavedNote(file: saved)
+        } else if !isRecording, let reason = handle.failureReason {
+            Text(reason)
+                .font(Theme.font(11))
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(2)
         }
     }
 }
@@ -320,6 +319,28 @@ extension View {
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
     }
 
+    /// An image or video tile filled by this view: at `size`'s shape, as
+    /// large as `size` but narrower when the column is (a thread panel, a
+    /// narrow window), never past its edge; ours with its upload over it.
+    func attachmentTile(fitted size: CGSize, message: Message, handle: AttachmentHandle) -> some View {
+        Color.clear
+            .aspectRatio(size.width / size.height, contentMode: .fit)
+            .frame(maxWidth: size.width)
+            .overlay { self }
+            .overlay(alignment: .bottom) {
+                if message.fromMe, message.uploadState == .pending {
+                    TransferBar(label: "Uploading", progress: handle.progress).padding(8)
+                }
+            }
+            .attachmentTile()
+    }
+
+    /// Downloads `message`'s attachment as it shows (`AppModel.autoDownload`),
+    /// and again once an upload of ours is done (a retry claims no preview).
+    func autoDownload(_ message: Message) -> some View {
+        modifier(AutoDownload(message: message))
+    }
+
     /// A file or audio card: as wide as a column allows, up to 300 pt.
     func attachmentCard() -> some View {
         padding(.horizontal, 12)
@@ -327,6 +348,15 @@ extension View {
             .frame(maxWidth: 300, alignment: .leading)
             .background(Theme.quote, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .foregroundStyle(Theme.text)
+    }
+}
+
+private struct AutoDownload: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let message: Message
+
+    func body(content: Content) -> some View {
+        content.task(id: "\(message.id ?? 0)/\(message.upload ?? "")") { await model.autoDownload(message) }
     }
 }
 

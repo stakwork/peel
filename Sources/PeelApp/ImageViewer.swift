@@ -38,7 +38,7 @@ struct ImageViewer: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        } else if case .failed(let reason) = handle.state {
+                        } else if let reason = handle.failureReason {
                             Text(reason)
                                 .font(Theme.font(13))
                                 .foregroundStyle(Theme.secondaryText)

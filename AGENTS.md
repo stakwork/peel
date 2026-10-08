@@ -122,8 +122,8 @@ is a short plan. Update the status and the journal when you finish something.
   `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
-  `Avatar` (people's and tribes' icons,
-  `PhotoCache`, `AppIcon`), `Styles` (the `…Boxed` helpers), `Clipboard`,
+  `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
+  (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),

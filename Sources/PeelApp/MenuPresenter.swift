@@ -109,7 +109,7 @@ final class MenuPresenter {
         if panelID != id { closePanel() }
         panelID = id
         panelClosed = closed
-        panelWindow.present(environment(AnyView(content.menuBoxed())), anchor: anchor, from: host)
+        panelWindow.present(environment(AnyView(PanelBox(content: content))), anchor: anchor, from: host)
         startMonitoring()
         #endif
     }
@@ -404,5 +404,23 @@ private struct MenuRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(item.checked ? .isSelected : [])
+    }
+}
+
+/// A panel in the menu box, unless it draws its own (`DrawsOwnPanelBox`).
+/// The box goes behind the content, so finding out never rebuilds the panel.
+private struct PanelBox: View {
+    private static let radius: CGFloat = 8
+    let content: AnyView
+    @State private var ownBox = false
+
+    var body: some View {
+        content
+            .onPreferenceChange(DrawsOwnPanelBox.self) { ownBox = $0 }
+            .background { if !ownBox { Color.clear.menuBoxed(cornerRadius: Self.radius) } }
+            // The border again over the content, where `content.menuBoxed()` drew it.
+            .overlay {
+                if !ownBox { RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Theme.divider) }
+            }
     }
 }

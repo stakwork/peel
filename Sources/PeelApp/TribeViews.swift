@@ -2,9 +2,10 @@ import SwiftUI
 import PeelCore
 
 /// Create a tribe, or edit one this account owns: what the Mac app's tribe
-/// form sets. Prices in sats and the escrow time in hours, as people think
-/// of them; the engine sends msat and milliseconds. Editing also holds
-/// Delete, confirmed in place.
+/// form sets, in the form system's sections (Basics, Pricing, Access).
+/// Prices in sats and the escrow time in hours, as people think of them;
+/// the engine sends msat and milliseconds. Editing also holds Delete, its
+/// own section, confirmed in place.
 struct TribeSettingsForm: View {
     @Environment(AppModel.self) private var model
     /// The tribe being edited, or nil to create one.
@@ -25,79 +26,116 @@ struct TribeSettingsForm: View {
     /// What is on its way: Create or Save (which spins), or Delete.
     @State private var working: Action?
     @State private var problem: String?
+    /// What is wrong with one field, shown under its row until a field changes.
+    @State private var fieldProblem: FieldProblem?
 
     private enum Action { case save, delete }
+    /// A field that can have its own problem, named as the engine's words name it.
+    private enum Field: String {
+        case name, photo = "image", priceToJoin = "price to join", pricePerMessage = "price per message"
+        case escrow, escrowHours = "escrow time"
+
+        /// The field an engine refusal is about, if it is about one.
+        init?(_ failure: Engine.Failure) {
+            switch failure {
+            case .tribeNeedsName: self = .name
+            case .tribeImageNotHTTPS: self = .photo
+            default: return nil
+            }
+        }
+    }
+
+    private struct FieldProblem: Error {
+        let field: Field
+        let text: String
+    }
 
     private var loaded: Bool { editing == nil || original != nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe")
-                .font(Theme.font(15, .bold))
+        // Its own buttons do not close it while a save or delete runs.
+        FormPopover(title: editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
             if loaded {
                 fields
-            } else if problem == nil {
-                TribeServerProgress()
-            }
-            if editing != nil, loaded {
-                Theme.divider.frame(height: 1)
-                HStack {
-                    InlineConfirm(trigger: "Delete tribe", prompt: "Delete it for everyone?", confirm: "Delete") {
+                if let editing {
+                    FormDestructiveSection(
+                        trigger: "Delete tribe…", prompt: "Delete #\(editing.displayName) for everyone?", confirm: "Delete"
+                    ) {
                         await delete()
                     }
-                    .disabled(working != nil)
-                    Spacer()
+                    .disabled(working == .save)
                 }
+            } else if problem == nil {
+                TribeServerProgress().padding(.vertical, 12)
             }
+        } footer: {
             FormFooter(problem: problem) {
+                Button("Cancel", action: done)
+                    .buttonStyle(FormButtonStyle())
+                    .disabled(working != nil)
                 Button { Task { await save() } } label: {
                     Text(editing == nil ? "Create" : "Save").buttonProgress(working == .save)
                 }
-                .buttonStyle(GhostButtonStyle(prominent: true))
+                .buttonStyle(FormButtonStyle(kind: .primary))
                 .keyboardShortcut(.defaultAction)
-                .disabled(working != nil || !loaded || name.trimmed.isEmpty)
+                // Not off while it saves, so it keeps its fill under the
+                // spinner; `save` ignores a second click.
+                .disabled(working == .delete || !loaded || name.trimmed.isEmpty)
             }
         }
-        .padding(16)
-        .frame(width: 360)
+        .onChange(of: [name, photoURL, priceToJoin, pricePerMessage, escrow, escrowHours]) {
+            if fieldProblem != nil { fieldProblem = nil }
+        }
         .task { await load() }
     }
 
-    private var fields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-            TextField("What it is about", text: $summary, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
-            TextField("Image link (https)", text: $photoURL)
-                .textFieldStyle(.roundedBorder)
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
-                GridRow {
-                    SectionLabel("Price to join", weight: .regular)
-                    SectionLabel("Price per message", weight: .regular)
-                }
-                GridRow {
-                    AmountField(text: $priceToJoin, unit: "sats")
-                    AmountField(text: $pricePerMessage, unit: "sats")
-                }
-                GridRow {
-                    SectionLabel("Escrow per message", weight: .regular)
-                    SectionLabel("Paid back after", weight: .regular)
-                }
-                GridRow {
-                    AmountField(text: $escrow, unit: "sats")
-                    AmountField(text: $escrowHours, unit: "hours")
-                }
+    @ViewBuilder private var fields: some View {
+        FormSection("Basics") {
+            FormRow(label: "Name", problem: problem(.name)) {
+                FormTextField(label: "Name", prompt: "Required", text: $name, problem: problem(.name) != nil)
             }
-            Toggle(isOn: $isPrivate) {
-                ToggleLabel("Private", detail: "People ask to join and you approve them.")
+            FormRow(label: "What it is about", stacked: true) {
+                FormTextField(
+                    label: "What it is about", prompt: "Shown in the tribes directory and the header",
+                    text: $summary, axis: .vertical
+                )
             }
-            Toggle(isOn: $unlisted) {
-                ToggleLabel("Unlisted", detail: "Not shown in the tribes directory; joined by link only.")
+            FormRow(label: "Image link", problem: problem(.photo)) {
+                HStack(spacing: 8) {
+                    FormTextField(label: "Image link", prompt: "https://", text: $photoURL, problem: problem(.photo) != nil)
+                    // The tribe's image while the link is the one it has, its
+                    // initial otherwise: nothing is fetched while you type.
+                    TribeIcon(
+                        name: name.trimmed.nilIfEmpty ?? "?",
+                        url: original?.photoURL.flatMap { $0 == photoURL.trimmed ? $0 : nil },
+                        pubkey: editing?.pubkey ?? "", size: 22
+                    )
+                }
             }
         }
-        .toggleStyle(.checkbox)
+        FormSection("Pricing") {
+            amountRow("Price to join", text: $priceToJoin, unit: "sats", field: .priceToJoin)
+            amountRow("Price per message", text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
+            amountRow("Escrow per message", detail: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
+            amountRow("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
+        }
+        FormSection("Access") {
+            FormSwitchRow(label: "Private", detail: "People ask to join and you approve them.", isOn: $isPrivate)
+            FormSwitchRow(label: "Unlisted", detail: "Not shown in the tribes directory; joined by link only.", isOn: $unlisted)
+        }
+    }
+
+    private func amountRow(
+        _ label: String, detail: String? = nil, text: Binding<String>, unit: String, field: Field
+    ) -> some View {
+        let problem = problem(field)
+        return FormRow(label: label, detail: detail, problem: problem) {
+            FormNumberField(label: label, text: text, unit: unit, problem: problem != nil)
+        }
+    }
+
+    private func problem(_ field: Field) -> String? {
+        fieldProblem?.field == field ? fieldProblem?.text : nil
     }
 
     private func load() async {
@@ -130,16 +168,23 @@ struct TribeSettingsForm: View {
     private func settings() throws -> TribeSettings {
         /// A field still showing what the tribe had sends exactly that, even
         /// where the shown text was rounded (an escrow time of 20 minutes).
-        func value(_ text: String, unit: UInt64, of what: String, _ stored: KeyPath<TribeSettings, UInt64>) throws -> UInt64 {
+        /// A number that does not parse is that field's problem.
+        func value(
+            _ text: String, unit: UInt64, _ stored: KeyPath<TribeSettings, UInt64>, _ field: Field
+        ) throws -> UInt64 {
             if let original, text == Self.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
-            return try Sats.parse(text, unit: unit, of: what)
+            do {
+                return try Sats.parse(text, unit: unit, of: field.rawValue)
+            } catch {
+                throw FieldProblem(field: field, text: Formatting.sentence(error))
+            }
         }
         return TribeSettings(
             name: name, summary: summary, photoURL: photoURL,
-            pricePerMessageMsat: try value(pricePerMessage, unit: 1000, of: "price per message", \.pricePerMessageMsat),
-            priceToJoinMsat: try value(priceToJoin, unit: 1000, of: "price to join", \.priceToJoinMsat),
-            escrowMsat: try value(escrow, unit: 1000, of: "escrow", \.escrowMsat),
-            escrowMillis: try value(escrowHours, unit: 3_600_000, of: "escrow time", \.escrowMillis),
+            pricePerMessageMsat: try value(pricePerMessage, unit: 1000, \.pricePerMessageMsat, .pricePerMessage),
+            priceToJoinMsat: try value(priceToJoin, unit: 1000, \.priceToJoinMsat, .priceToJoin),
+            escrowMsat: try value(escrow, unit: 1000, \.escrowMsat, .escrow),
+            escrowMillis: try value(escrowHours, unit: 3_600_000, \.escrowMillis, .escrowHours),
             isPrivate: isPrivate, unlisted: unlisted
         )
     }
@@ -149,6 +194,7 @@ struct TribeSettingsForm: View {
         working = .save
         defer { working = nil }
         problem = nil
+        fieldProblem = nil
         do {
             if let editing {
                 try await model.updateTribe(editing.pubkey, try settings())
@@ -156,6 +202,14 @@ struct TribeSettingsForm: View {
                 try await model.createTribe(try settings())
             }
             done()
+        } catch let error as FieldProblem {
+            fieldProblem = error
+        } catch let failure as Engine.Failure {
+            if let field = Field(failure) {
+                fieldProblem = FieldProblem(field: field, text: Formatting.sentence(failure))
+            } else {
+                problem = PeelError.readable(failure)
+            }
         } catch {
             problem = PeelError.readable(error)
         }
@@ -174,57 +228,15 @@ struct TribeSettingsForm: View {
     }
 }
 
-/// A number field with its unit after it.
-private struct AmountField: View {
-    @Binding var text: String
-    let unit: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            TextField("0", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .monospacedDigit()
-                .multilineTextAlignment(.trailing)
-            Text(unit)
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 36, alignment: .leading)
-        }
-    }
-}
-
-private struct ToggleLabel: View {
-    let title: String
-    let detail: String
-
-    init(_ title: String, detail: String) {
-        self.title = title
-        self.detail = detail
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(Theme.font(13))
-            Text(detail)
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-        }
-    }
-}
-
 /// A small secondary label: a heading inside a popover list, or a field's name.
 struct SectionLabel: View {
     let text: String
-    var weight: Font.Weight = .medium
 
-    init(_ text: String, weight: Font.Weight = .medium) {
-        self.text = text
-        self.weight = weight
-    }
+    init(_ text: String) { self.text = text }
 
     var body: some View {
         Text(text)
-            .font(Theme.font(12, weight))
+            .font(Theme.font(12, .medium))
             .foregroundStyle(Theme.secondaryText)
     }
 }

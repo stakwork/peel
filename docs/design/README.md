@@ -392,6 +392,103 @@ spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
 checked under its field) stays where it is.
 
+## Forms (direction A)
+
+Tom picked direction A on 2026-10-08, "Grouped, like System Settings",
+with one change: Join a tribe is a single field and stays compact, with
+no settings-pane layout. Inset grouped sections sit on a recessed
+popover. Each row has its label on the left and its value on the right.
+The components are in `Sources/PeelApp/FormKit.swift`.
+
+Step 1 applies the system to Create a tribe and Edit tribe
+(`TribeSettingsForm`). Every field there now has a label: Name, "What it
+is about" and Image link were placeholder-only before. Step 2, after the
+wave 1 cleanup merges, applies it to the other forms:
+
+- Join a tribe, which takes the compact popover;
+- Add contact and Invite;
+- the payment panels;
+- Account;
+- Onboarding;
+- the tribe header (H1: Call plus More).
+
+Step 2 also retires these helpers:
+
+- `fieldBoxed`;
+- `OnboardingView.boxed()`;
+- the radius-7 payment boxes;
+- `GhostButtonStyle` in forms;
+- the hand-rolled confirms (second review, section 10).
+
+### Tokens
+
+The new tokens are in `Theme.swift`, with the rest of the palette. The
+translucent ones use `Color(light:lightOpacity:dark:darkOpacity:)`.
+Peel is dark only for now, and its floating windows are always dark. The
+light values are kept for later, as the other light values are (see
+Colour).
+
+| Token | Dark | Light | For |
+|---|---|---|---|
+| `fieldFill` | white 5.5% | `#141E2D` 5% | a hovered field, a boxed number field, a disabled primary button |
+| `formEdge` | white 7% | `#141E2D` 8% | the hairline around the popover, the sections and a disabled primary button |
+| `focusRing` | `#618AFF` 28% | `#3F68E0` 22% | the 3 pt ring outside a focused field |
+| `problemRing` | `#FFBC58` 20% | `#A86400` 16% | the 3 pt ring outside a field with a problem |
+| `switchOff` | white 16% | `#141E2D` 16% | a switch that is off |
+| `switchKnob` | `#F4F6F8` | `#FFFFFF` | a switch's knob |
+| `popoverShadow` | black 50% | `#141E2D` 18% | the popover's shadow (radius 10, y 4) |
+| `sectionShadow` | none | `#141E2D` 4% | lifts a section in light |
+
+The surfaces are the existing tokens:
+
+- the popover is `sidebar`;
+- a section is `menu`;
+- a focused field's well is `input`;
+- its 1 pt ring is `accent`;
+- a problem's 1 pt ring and its text are `attention`, amber rather than red, since nothing was lost;
+- a destructive action is `destructive`.
+
+### Components
+
+- **`FormPopover(title:compact:close:content:footer:)`.**
+  - The full form is 372 wide with a corner radius of 12. It has a 15 pt bold title, a close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
+  - It draws its own box. The `DrawsOwnPanelBox` preference tells the presenter (`MenuPresenter.showPanel`) to leave out the menu box it gives other panels.
+  - The shadow sits on the box only, so the labels cast none. It fits inside the 14 pt margin that `FloatingWindow` leaves.
+  - `compact: true` (320 wide) is for Join. It puts boxed fields straight on the popover, with no sections.
+- **`FormSection("Basics") { rows }`.**
+  - Its title is 11 pt semibold in the secondary colour.
+  - The rows sit on a `menu` card with a corner radius of 9 and a `formEdge` hairline, with a `divider` line between rows.
+- **`FormRow(label:detail:stacked:problem:) { value }`.**
+  - A row is at least 38 tall, with 12 pt of padding.
+  - The label column is 118 wide, at 13 pt, with an 11 pt secondary `detail` line under it. The value sits on the right.
+  - `stacked` puts the value under the label, for "What it is about".
+  - `problem` shows 11 pt amber text, right-aligned, under the row.
+- **`FormTextField(label:prompt:text:axis:boxed:problem:)`.**
+  - The field is 26 tall, with a corner radius of 6.
+  - At rest it has no box and its text sits on the right. Under the pointer it gets a `fieldFill`. While focused it becomes an `input` well with a 1 pt `accent` ring, a 3 pt `focusRing` outside it, and its text on the left.
+  - With a problem it gets the amber rings instead.
+  - `axis: .vertical` gives two to four lines, aligned with the label above it. `boxed` keeps the fill at rest, for the compact popover.
+  - The label is the field's accessibility name, and the prompt is its placeholder.
+- **`FormNumberField(label:text:unit:problem:)`.**
+  - It is 108 by 26 and always boxed, with tabular, right-aligned digits and the unit inside it in the secondary colour.
+  - It shows the same focus and problem rings as a text field.
+- **`FormSwitchRow(label:detail:isOn:)` and `FormSwitchStyle`.**
+  - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
+  - The knob moves with a short spring (0.22 s).
+  - VoiceOver reads it as a toggle.
+- **`FormButtonStyle(kind:)`.** Every kind is 28 tall, with a corner radius of 7, 12 pt of horizontal padding and 13 pt text.
+  - `.primary` is `button`, semibold, with `buttonText`. It is a little brighter under the pointer and darker while pressed. When disabled it becomes a quiet chip: `fieldFill`, tertiary text and a `formEdge` hairline, never a faded blue.
+  - `.secondary` has a `divider` outline, and `hover` under the pointer.
+  - `.destructive` is outlined, with `destructive` text. It is the second click of an in-place confirm.
+  - The spinner goes in the label (`buttonProgress`).
+- **`FormDestructiveSection(trigger:prompt:confirm:action:)`.**
+  - The destructive action is its own card at the end of the form, a full-width red row ("Delete tribe…").
+  - A click turns that row into the question ("Delete #hive for everyone?") with Cancel and Delete. It is confirmed in place, never in a dialog.
+
+Renders of Create and Edit in both themes are kept outside the repo, side
+by side with the design page. They show each form at rest, while focused,
+with a problem, and with Delete's confirm.
+
 ## What the engine needs
 
 Each part of the layout depends on something below the UI. Most of it exists

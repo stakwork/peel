@@ -22,8 +22,9 @@ Status: done; the Mac app is in its first daily-use trial.
   the topic's child index, message upsert that cannot cross conversations,
   `msgsTotal`-driven history paging, persisted unique clock, library hash lock.
 - Mac app shell: onboarding, conversation list, conversation view with
-  composer, connection status, reconnect with backoff. App icon rendered from
-  `Assets/peel.svg`.
+  composer, connection status, reconnect with backoff. App icon compiled from
+  `Assets/AppIcon.icon`, so macOS 26 masks it itself instead of putting it on
+  a white plate.
 - CLI harness: `init`, `signup`, `add`, `send`, `listen`, `contacts`, `whoami`.
 
 ## Learned

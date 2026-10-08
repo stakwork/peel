@@ -15,7 +15,8 @@ import UserNotifications
 /// that are past the chat's read marker, by the chat's mute level (all, only
 /// those that mention this account, or none); a request to join a tribe this
 /// account owns; a call someone started (`CallLink.isAnnounced`), as
-/// "Started a call" under who started it, never a ring. Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
+/// "Started a call" under who started it, never a ring; someone adding this
+/// account as a contact (`contactAdded`). Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
 /// at once from one chat (a catch-up after sleep) become one summary.
 /// Sats received notify too, one notification per arrival however many
 /// payments it holds (`moneyReceived`).
@@ -211,6 +212,24 @@ final class Notifier {
             }
             chatsShown.insert(chat)
         }
+    }
+
+    // MARK: Contacts
+
+    /// Someone added this account (`Engine.Event.contactAdded`): the core
+    /// accepted them already, so this is news, not a request. Not held to the
+    /// read marker (answering them moves the server's past their key exchange
+    /// at once); quiet for their chat open in front of you, and when muted.
+    func contactAdded(_ message: Message) {
+        guard let center, permission == .allowed, let model, storage != nil,
+              message.uuid.map({ posted.insert($0).inserted }) ?? true else { return }
+        let locked = model.phase != .ready || model.isLockDue
+        if model.isFrontmost, !locked, model.selectedChat == message.chat { return }
+        guard (model.readStates[message.chat]?.mute ?? .all).notifies(message) else { return }
+        let (name, _) = names(message.chat, sender: message.senderAlias)
+        post(center, id: "contact-\(message.uuid ?? UUID().uuidString)", chat: message.chat, message: nil,
+             locked: locked, title: name, subtitle: nil, body: "Added you as a contact", hidden: "New contact")
+        chatsShown.insert(message.chat)
     }
 
     // MARK: Money

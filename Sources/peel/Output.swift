@@ -78,6 +78,8 @@ struct Session {
             "received \(Sats.format(msat: message.amountMsat ?? 0)) in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
         case .invoicePaid(let invoice):
             "invoice paid \(invoice.paymentHash) (\(invoice.status.rawValue), \(Sats.format(msat: invoice.paidMsat ?? 0)))"
+        case .contactAdded(let message):
+            "new contact: \(message.senderAlias ?? "someone") (\(message.chat)) added this account"
         }
     }
 }

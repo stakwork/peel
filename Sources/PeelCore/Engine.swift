@@ -89,6 +89,9 @@ public actor Engine {
     /// Invoices being paid in this session, so a second click can never
     /// pay one twice while the first is being sent.
     var payingInvoices: Set<String> = []
+    /// An invite being cancelled: the server answers with the balance
+    /// alone, so one at a time (`cancelInvite`).
+    var cancellingInvite = false
 
     /// Attachments: the decrypted cache and the uploads waiting to go, and
     /// the memes server's bearer token (memory only).
@@ -362,7 +365,8 @@ public actor Engine {
     /// then the in-memory bookkeeping and events.
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
-        outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = []
+        outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
+        invites: [InviteRecord] = []
     ) throws -> FollowUps {
         var followUps = FollowUps()
         var commit = Storage.Commit()
@@ -404,6 +408,10 @@ public actor Engine {
             commit.messages.append((outgoing, trustSender: false, replaces: nil))
         }
         commit.invoices = invoices
+        commit.invites = invites
+        // Only history pages carry a total.
+        let arrival: Arrival = result.msgsTotal == nil ? .live : restoring ? .restore : .history
+        commit.marksNewContacts = arrival != .restore
         // A send the asynchronous way lists the payment first, then its ping.
         if result.asyncpayTopic != nil, let main = result.msgs.first?.paymentHash {
             commit.pings = result.msgs.dropFirst().compactMap(\.paymentHash).filter { $0 != main }.map { ($0, main) }
@@ -522,7 +530,8 @@ public actor Engine {
         var purged: [String] = []
         var received: [Message] = []
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
-        let stored = try storage.apply(commit, purged: &purged, received: &received)
+        var addedUs: [Message] = []
+        let stored = try storage.apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
         // A deleted attachment's decrypted copy goes with it.
         let deletedFiles = purged.compactMap { body -> URL? in
             guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
@@ -575,8 +584,6 @@ public actor Engine {
         if let balance = result.newBalance {
             emit.yield(.balance(msat: balance))
         }
-        // Only history pages carry a total.
-        let arrival: Arrival = result.msgsTotal == nil ? .live : restoring ? .restore : .history
         for message in stored {
             emit.yield(.message(message, arrival))
         }
@@ -586,6 +593,9 @@ public actor Engine {
         }
         for message in received where arrival != .restore {
             emit.yield(.moneyReceived(message))
+        }
+        for message in addedUs {
+            emit.yield(.contactAdded(message))
         }
         // What the server said, then what its records settled.
         if let sent {
@@ -855,12 +865,14 @@ public actor Engine {
         )
         // Invoices we pay are tracked the same way.
         let invoices = try storage.pendingInvoicePayments()
-        guard !pending.isEmpty || !invoices.isEmpty else { return }
+        // And the payments that fund invites.
+        let invites = try storage.sendingInvites()
+        guard !pending.isEmpty || !invoices.isEmpty || !invites.isEmpty else { return }
         let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout)
         unrecordedPayments = Set(pending.compactMap { message in
             MessageType.moneySends.contains(message.type) && message.date < cutoff ? message.tag : nil
-        } + invoices.compactMap { $0.created < cutoff ? $0.tag : nil })
-        let tags = pending.compactMap(\.tag) + invoices.compactMap(\.tag)
+        } + invoices.compactMap { $0.created < cutoff ? $0.tag : nil } + invites.compactMap { $0.created < cutoff ? $0.tag : nil })
+        let tags = pending.compactMap(\.tag) + invoices.compactMap(\.tag) + invites.compactMap(\.tag)
         try await run { time, state in
             try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: tags, pubkey: nil)
         }

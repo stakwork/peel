@@ -39,6 +39,12 @@ extension Engine {
         /// stored: `paid`, or `underpaid` with what arrived in `paidMsat`.
         /// Once per invoice: a settle repeated later is not sent again.
         case invoicePaid(InvoiceRecord)
+        /// Someone added this account: their key exchange (type 10), seen
+        /// for the first time, live or catching up, never in a restore. The
+        /// core has already accepted them (there is nothing to answer); the
+        /// contact is marked new until their chat is opened. Follows its
+        /// `.message`.
+        case contactAdded(Message)
 
         public enum Direction: Sendable {
             case upload, download
@@ -116,8 +122,8 @@ extension Engine {
         case invalidAmount
         case balanceUnknown
         case insufficientBalance
-        /// Over the confirmation threshold: show the amount, then call again
-        /// with it as `confirmedMsat`.
+        /// Over the confirmation threshold (an invite, always): show the
+        /// amount, then call again with it as `confirmedMsat`.
         case needsConfirmation(amountMsat: UInt64)
         case notBoostable
         case paymentToTribe
@@ -173,6 +179,21 @@ extension Engine {
         case publicTribeTimeZone
         /// A tribe's local time is per member.
         case memberNeeded
+        case notAContactCode
+        /// A bare key, or a link naming only one: no way to reach them.
+        case keyWithoutRoute
+        case inviteWithoutInviter
+        case tribeLinkNotContact
+        case ownContactInfo
+        case noSuchInvite
+        case inviteNotPending
+        /// The server sent no sats back for a cancelled invite.
+        case inviteNotRefunded
+        case inviteNotConfirmed
+        case inviteFailed
+        case nicknameTooLong
+        case inviteMessageTooLong
+        case cancelInProgress
 
         public var description: String {
             switch self {
@@ -186,7 +207,7 @@ extension Engine {
             case .invalidAmount: "the amount must be more than nothing"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
-            case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) is over the confirmation threshold; confirm it first"
+            case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) needs confirming first"
             case .notBoostable: "only someone else's delivered message can be boosted"
             case .paymentToTribe: "a payment to a tribe goes to the tribes server; boost a message instead"
             case .noteTooLong: "the note is too long to go with a payment"
@@ -253,6 +274,20 @@ extension Engine {
             case .unknownTimeZone(let identifier): "unknown time zone \(identifier); use a name like Europe/London"
             case .publicTribeTimeZone: "your time zone is never sent in public tribes"
             case .memberNeeded: "a tribe has a local time per member; name the member"
+            case .notAContactCode: "that is not contact info, an invite or a Sphinx link"
+            case .keyWithoutRoute: "that names only a key, not how to reach it; ask for their whole contact info"
+            case .inviteWithoutInviter: "that invite names nobody to add"
+            case .tribeLinkNotContact: "that is a tribe link; join it from Join a tribe"
+            case .ownContactInfo: "that is this account's own contact info"
+            case .noSuchInvite: "there is no such invite"
+            case .inviteNotPending: "that invite is no longer waiting to be used"
+            case .inviteNotRefunded:
+                "the server has sent no sats back yet; the invite may have been used. Ask again, or remove it from the list"
+            case .inviteFailed: "the server refused the invite's payment; no sats moved"
+            case .inviteNotConfirmed: "the server has not confirmed the invite yet; it shows once it does"
+            case .nicknameTooLong: "the nickname is too long"
+            case .inviteMessageTooLong: "the message is too long"
+            case .cancelInProgress: "an invite is already being cancelled"
             }
         }
     }
@@ -276,7 +311,7 @@ extension Engine {
     }
 
     /// What an invite code carries: where to connect and who sent it.
-    public struct Invite: Sendable {
+    public struct Invite: Sendable, Equatable {
         public let code: String
         public let server: String?
         public let inviterContactInfo: String?

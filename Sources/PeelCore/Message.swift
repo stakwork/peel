@@ -299,6 +299,11 @@ public enum MessageType {
     public static let call = 32
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
+    /// Someone adding this account: the first message of a key exchange,
+    /// which the core answers on its own (type 11, `contactKeyConfirmation`).
+    /// From someone who used one of our invites, its sender names the code.
+    public static let contactKey = 10
+    public static let contactKeyConfirmation = 11
 }
 
 /// What a message says about who sent it. Self-declared: trust it only when the
@@ -311,9 +316,11 @@ struct SenderInfo: Decodable {
     let host: String?
     /// Set by a tribes server on what it forwards: 0 when the owner sent it.
     let role: Int?
+    /// On a key exchange (type 10): the invite code the sender joined with.
+    let code: String?
 
     enum CodingKeys: String, CodingKey {
-        case pubkey, alias, host, role
+        case pubkey, alias, host, role, code
         case photoURL = "photo_url"
     }
 }

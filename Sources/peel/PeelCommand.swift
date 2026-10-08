@@ -16,7 +16,14 @@ struct PeelCommand {
           rename <name>               the name others see on messages sent from now on
           upload-photo <picture>      upload a picture to the memes server and make it this account's photo
           contacts                    contacts known to the core
-          add <contact-info> [name]   start a key exchange with a contact
+          add <code|picture> [name]   start a key exchange with someone: their contact info, a
+                                      sphinx.chat share_contact link, an invite (adds its inviter), or a
+                                      picture with one of those in a QR code
+          scan <picture>              the QR codes in a picture and what each one is
+          invite <sats>               make an invite with sats for someone new and print it (--nickname
+                                      <name>, --message <text>, kept here only; always asks: --yes)
+          invites                     invites waiting to be used
+          invite-cancel <code>        cancel an invite and get its sats back (code from invites)
           send <pubkey> <text>        send a text message to a contact or a tribe
                                       (--reply <uuid> answers a message, --thread <uuid> posts in its thread)
           listen                      stay connected, reconnecting as needed, and print what arrives
@@ -131,6 +138,7 @@ struct PeelCommand {
             return
         }
         if try await invocation.account(command) { return }
+        if try await invocation.contacts(command) { return }
         if try await invocation.chat(command) { return }
         if try await invocation.tribes(command) { return }
         if try await invocation.money(command) { return }
@@ -161,6 +169,8 @@ struct Invocation {
     let priceOption: String?
     let callServer: String?
     let audioOnly: Bool
+    let nickname: String?
+    let inviteMessage: String?
 
     /// Takes the options out of `arguments`, in this order; what is left is
     /// the command and its own arguments.
@@ -186,6 +196,8 @@ struct Invocation {
         priceOption = arguments.option("--price")
         callServer = arguments.option("--call-server")
         audioOnly = arguments.flag("--audio")
+        nickname = arguments.option("--nickname")
+        inviteMessage = arguments.option("--message")
         self.arguments = arguments
     }
 

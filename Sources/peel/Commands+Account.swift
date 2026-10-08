@@ -3,7 +3,7 @@ import PeelCore
 
 extension Invocation {
     /// Runs `command` if it is an account command: create and restore, who and
-    /// what this account is, contacts. False if it is not one.
+    /// what this account is, its contacts. False if it is not one.
     mutating func account(_ command: String) async throws -> Bool {
         switch command {
         case "init":
@@ -61,12 +61,6 @@ extension Invocation {
             for contact in try Engine.contacts(in: storage) {
                 print("\(contact.pubkey)  \(contact.contactKey == nil ? "pending" : "ready")")
             }
-
-        case "add":
-            guard let info = arguments.next() else { throw PeelError("add needs contact info") }
-            let session = try await Session(load()).connect(insecure: insecure)
-            try await session.engine.addContact(info, alias: arguments.next())
-            try await session.finish(after: wait)
 
         default:
             return false

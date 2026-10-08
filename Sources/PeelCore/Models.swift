@@ -85,6 +85,10 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     public var muteLevel: Int
     /// The server index of the newest message read, if any.
     public var lastRead: Int64? = nil
+    /// A contact who added this account, live or while it was offline, and
+    /// whose chat has not been read on this Mac since. The core accepts them
+    /// at once: there is no request to answer.
+    public var isNew = false
 
     public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
 

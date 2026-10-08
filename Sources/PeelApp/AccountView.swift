@@ -185,22 +185,10 @@ private struct IdentitySection: View {
 /// The QR code and contact info someone needs to add this account.
 private struct ContactInfoSection: View {
     @Environment(AppModel.self) private var model
-    @State private var code: CGImage?
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8).fill(.white)
-                if let code {
-                    Image(decorative: code, scale: 1)
-                        .interpolation(.none)
-                        .resizable()
-                        .padding(8)
-                }
-            }
-            .frame(width: 132, height: 132)
-            .opacity(model.myContactInfo == nil ? 0.3 : 1)
-            .accessibilityLabel("QR code of your contact info")
+            QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your contact info")
                     .font(Theme.font(15, .bold))
@@ -221,9 +209,29 @@ private struct ContactInfoSection: View {
         }
         .padding(18)
         .panelBoxed()
-        .task(id: model.myContactInfo) {
-            code = model.myContactInfo.flatMap(QRCode.image)
+    }
+}
+
+/// A QR code on white, 132 pt; faint and empty while `text` is nil.
+struct QRCodeTile: View {
+    let text: String?
+    let label: String
+    @State private var code: CGImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8).fill(.white)
+            if let code, text != nil {
+                Image(decorative: code, scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+                    .padding(8)
+            }
         }
+        .frame(width: 132, height: 132)
+        .opacity(text == nil ? 0.3 : 1)
+        .accessibilityLabel(label)
+        .task(id: text) { code = text.flatMap(QRCode.image) }
     }
 }
 

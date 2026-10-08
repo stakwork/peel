@@ -45,6 +45,11 @@ extension Storage {
         /// Pings sent with an asynchronous payment: the ping's payment hash
         /// and the payment's.
         var pings: [(rhash: String, forHash: String)] = []
+        /// Invites made here, written before their payment is published.
+        var invites: [InviteRecord] = []
+        /// Whether someone adding this account (type 10, first seen) marks
+        /// the contact new: not in a restore, which replays old ones.
+        var marksNewContacts = false
     }
 
     /// Returns the stored rows; messages the upsert rejected are left out.
@@ -60,12 +65,21 @@ extension Storage {
         return try apply(commit, purged: &purged, received: &received)
     }
 
+    func apply(_ commit: Commit, purged: inout [String], received: inout [Message]) throws -> [Message] {
+        var addedUs: [Message] = []
+        return try apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
+    }
+
     /// As `apply`, also giving the sats that reached this account in this
     /// commit (`received`): direct payments to it and boosts on its own
     /// messages, stored for the first time, with real sats (never an amount
     /// only declared), not deleted and past the chat's read marker (so a
-    /// restore or catch-up of what was already seen stays quiet).
-    func apply(_ commit: Commit, purged: inout [String], received: inout [Message]) throws -> [Message] {
+    /// restore or catch-up of what was already seen stays quiet), and the
+    /// key exchanges of people adding this account seen for the first time
+    /// (`addedUs`, only with `marksNewContacts`).
+    func apply(
+        _ commit: Commit, purged: inout [String], received: inout [Message], addedUs: inout [Message]
+    ) throws -> [Message] {
         try pool.write { db in
             for (key, value) in commit.state {
                 try CoreStateRow(key: key, value: value).upsert(db)
@@ -94,14 +108,27 @@ extension Storage {
             var fresh: [Message] = []
             for (message, trustSender, replaces) in commit.messages {
                 let money = !message.fromMe && MessageType.payments.contains(message.type)
-                let isNew = try money && !(Bool.fetchOne(
+                let addsUs = commit.marksNewContacts && trustSender && !message.fromMe
+                    && message.type == MessageType.contactKey
+                let isNew = try (money || addsUs) && !(Bool.fetchOne(
                     db, sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)", arguments: [message.uuid]
                 ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 stored.append(row)
-                if isNew { fresh.append(row) }
+                if isNew, money { fresh.append(row) }
+                if isNew, addsUs {
+                    addedUs.append(row)
+                    try db.execute(
+                        sql: "INSERT INTO contact (pubkey, isNew) VALUES (?, 1) ON CONFLICT(pubkey) DO UPDATE SET isNew = 1",
+                        arguments: [row.chat]
+                    )
+                }
                 if trustSender, let info = message.senderInfo {
                     try Self.upsertContact(db, pubkey: row.chat, alias: info.alias, photoURL: info.photoURL)
+                    // Someone who joined with one of our invites adds us with its code.
+                    if row.type == MessageType.contactKey, !row.fromMe, let code = info.code {
+                        try Self.markInviteUsed(code: code, by: row.chat, db)
+                    }
                 }
             }
             // After every message of the batch, so a delete finds its target
@@ -119,6 +146,9 @@ extension Storage {
             for invoice in commit.invoices {
                 try Self.insert(invoice, db)
             }
+            for invite in commit.invites {
+                try invite.insert(db)
+            }
             for (rhash, forHash) in commit.pings {
                 try db.execute(
                     sql: "INSERT OR IGNORE INTO paymentPing (rhash, forHash) VALUES (?, ?)", arguments: [rhash, forHash]
@@ -126,6 +156,7 @@ extension Storage {
             }
             for (tag, status) in commit.statuses {
                 try Self.setStatus(db, status, tag: tag, error: commit.sendErrors[tag])
+                try Self.setInviteStatus(db, status, tag: tag)
                 if status == Message.Delivery.delivered.rawValue,
                    let delete = try Message.fetchOne(
                        db, sql: "SELECT * FROM message WHERE tag = ? AND fromMe = 1 AND type = ?",
@@ -551,6 +582,51 @@ extension Storage {
                 sql: "UPDATE message SET fileName = COALESCE(fileName, ?), fileSize = ? WHERE id = ?",
                 arguments: [name, size, id]
             )
+        }
+    }
+
+    /// An invite's funding payment, as the server reported it: only one
+    /// still on its way moves, to ready or failed.
+    private static func setInviteStatus(_ db: Database, _ status: String, tag: String) throws {
+        let next: InviteRecord.Status
+        switch Message.Delivery(rawValue: status) {
+        case .delivered?: next = .ready
+        case .failed?: next = .failed
+        default: return
+        }
+        try db.execute(
+            sql: "UPDATE invite SET status = ? WHERE tag = ? AND status = ?",
+            arguments: [next.rawValue, tag, InviteRecord.Status.sending.rawValue]
+        )
+    }
+
+    private static func markInviteUsed(code: String, by pubkey: String, _ db: Database) throws {
+        let pending = InviteRecord.pendingStatuses.map(\.rawValue)
+        try db.execute(
+            sql: """
+                UPDATE invite SET status = ?, usedBy = ?
+                WHERE code = ? AND status IN (\(databaseQuestionMarks(count: pending.count)))
+                """,
+            arguments: StatementArguments([InviteRecord.Status.used.rawValue, pubkey, code.lowercased()] + pending)
+        )
+    }
+
+    /// Moves an invite from one of `from` to `status`; false when it was in none.
+    func setInviteStatus(code: String, to status: InviteRecord.Status, from: [InviteRecord.Status]) throws -> Bool {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE invite SET status = ? WHERE code = ? AND status IN (\(databaseQuestionMarks(count: from.count)))",
+                arguments: StatementArguments([status.rawValue, code] + from.map(\.rawValue))
+            )
+            return db.changesCount > 0
+        }
+    }
+
+    /// The contact's chat was opened: no longer new. False if it was not.
+    func clearNewContact(_ pubkey: String) throws -> Bool {
+        try pool.write { db in
+            try db.execute(sql: "UPDATE contact SET isNew = 0 WHERE pubkey = ? AND isNew = 1", arguments: [pubkey])
+            return db.changesCount > 0
         }
     }
 

@@ -257,6 +257,8 @@ extension Engine {
     /// server's may be past what is stored here). Offline, the marker waits
     /// as pending and goes once the server answers `getReads`.
     public func markRead(_ chat: String) async throws {
+        // Someone who added this account is new until their chat is read.
+        _ = try storage.clearNewContact(chat)
         guard let index = try storage.highestServerIndex(in: chat),
               try storage.setRead(chat: chat, index: index, as: .read) else { return }
         try await publishRead(chat, index: index)

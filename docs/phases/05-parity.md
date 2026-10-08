@@ -7,9 +7,11 @@ Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" 
 The web pane (branch `feat/web-pane`, in review): links and a tribe's apps
 open beside the chat. See "Web window" below.
 
-**Open**, in this order (Tom, 2026-10-08 evening: after calls and the file
-splits, see `../PLAN.md`):
-- Contacts UI: "Contacts" below.
+**Built (2026-10-08, `feat/contacts`):** contacts: adding by a scanned QR
+picture or pasted code, invites with sats, new contacts who added you. See
+"Contacts" below.
+
+**Open:** nothing else in this phase before the v1 extras below.
 
 **Moved to the v1 extras step** (`10-v1-extras.md`, after the polish pass),
 with search and ⌘K, Markdown, voice messages and Giphy:
@@ -26,10 +28,108 @@ below).
 
 ## Contacts
 
-Add by contact info or QR, share your own QR and contact string, create
-invites with sats (`makeInvite`, `cancelInvite`), inbound requests. Adding by
-contact info and showing your QR exist (the sidebar's "Add contact", the
-Account screen); scanning a QR, invites and inbound requests do not.
+Built 2026-10-08 (`feat/contacts`). Adding by contact info and your own QR
+were already there (the sidebar's "Add contact", the Account screen).
+
+**What the official apps do** (checked in `sphinx-mac-v2` and the core):
+- `make_invite` is a keysend of the amount to this account's own server
+  carrying a new 32-byte code (`AsyncPay::Invite`); the server keeps the
+  sats, less `INVITE_PRICE` if it sets one, under the code. `new_invite` is
+  the whole link (`sphinx.chat://?action=i&d=…&c=…`); the core keeps no
+  record. The Mac app shows the code only once the funding payment's tag
+  reports COMPLETE, and keeps the nickname and welcome message locally (the
+  message is never sent anywhere). No minimum, no balance check in Swift.
+- `cancel_invite` publishes the code; the mixer refunds the sats to the
+  account and publishes the new balance. An invite already used gets no
+  answer at all. Anyone holding the code can cancel it.
+- Whoever signs up with an invite adds the inviter with the code in the key
+  exchange's sender (`sender.code`, type 10); the Mac app matches it to the
+  invite's placeholder contact.
+- Someone adding you is accepted by the core at once (type 10 answered with
+  11 when it carries the 3-sat price to meet): there is no pending request,
+  no accept or decline in the core or the official app.
+- The Mac app scans QR codes only at signup (camera); after that, contacts
+  come by pasted contact info or a `share_contact` link.
+
+**What Peel does:**
+- **Add contact** (`ContactsViews.swift`, `Engine.addContact(code:)`): type
+  or paste contact info, a `share_contact` link or an invite (its inviter is
+  added; the invite itself is for a new account, so its code is never used
+  and its sats stay in it); or read a QR code from a picture: dropped on the
+  form (files, image data and the screenshot thumbnail's promised file, read
+  as the composer reads drops), pasted, or chosen. Vision
+  (`VNDetectBarcodesRequest`) reads it (`QRImage`, size- and pixel-limited);
+  with several codes, the first that names someone. `ContactCode` is strict:
+  two compressed keys and a channel id, `sphinx.chat://` links with no host
+  or path and only those actions; a bare key, a tribe link, this account's
+  own info are refused with the reason. Someone already a contact is not
+  added again (their chat opens).
+- **No camera** (decided here): the entitlement exists for calls, but a
+  scanner needs a capture session, a preview and a first camera prompt that
+  belongs to Tom's daily Peel too; a screenshot or photo of the phone does
+  the same job on a Mac. Revisit for the iPhone.
+- **Invites** (`Engine.makeInvite`, `cancelInvite`, `forgetInvite`; the
+  `invite` table, migration v16): "Invite someone" under Direct messages:
+  amount, nickname and message (only you see them). Balance and connection
+  are checked first, then every invite is confirmed with its amount in
+  place ("Invite 2,000 sats", click again), whatever the threshold, then
+  `checkPayment` runs as for any payment. The form says the server may keep
+  a fee (the production price is not known). The invite is written before
+  its payment is published and shows its QR, Copy invite, Copy QR and Share
+  once the server confirms. Pending invites sit under Direct messages; one
+  opens its detail with Cancel invite, confirmed in place. A cancel counts
+  once the balance rises by at most the invite's amount; with no answer it
+  stays "cancelling", with Ask again and Remove from list (it may have been
+  used). An invite is marked used when the key exchange that names its code
+  arrives from its new account.
+- **New contacts**: someone who adds you (type 10 from a verified sender,
+  first seen, live or catching up, never in a restore) gets a "New" badge
+  in the sidebar until their chat is read here, and one "Added you as a
+  contact" notification (`Engine.Event.contactAdded`), quiet for their chat
+  open in front of you and when muted. No accept or decline: the core has
+  already accepted them.
+- **CLI** (`Commands+Contacts.swift`): `add <code|picture>`, `scan
+  <picture>`, `invite <sats> [--nickname --message] --yes`, `invites`,
+  `invite-cancel <code>`.
+
+**Verified (2026-10-08)** on a local stack (broker 2213, mixer 8193),
+development profiles `kx-*`: Bob added Alice from a QR picture (CLI `add
+<png>`), the key exchange completed both ways; Alice made a 3-sat invite
+(refused without `--yes`), Carol signed up with it, had the sats and Alice
+as a contact, and Alice's invite became used; a 4-sat invite cancelled and
+the balance came back; Dave added Alice while the app was open and "New"
+showed beside him. App screenshots, light and dark (rendered from a scratch
+build, not committed): the sidebar with a pending invite and "New", Add
+contact with a read code, the armed invite form, an invite's detail.
+
+Not exercised by hand (no input automation): dropping or pasting a picture
+in the app, the in-place confirms, Copy and Share, notifications.
+
+**Review (2026-10-08):** `/code-review` (high), `/simplify` (four angles)
+and `/security-review` ran. Fixed: a scanned code's problem shows at once;
+a cancel never counts a rise it cannot be (unknown balance, more than the
+invite) and no longer puts a maybe-refunded invite back to ready; a
+publish that fails before sending marks the invite failed; balance and
+connection are checked before asking to confirm; "New" clears with the
+chat's read marker in the engine (`markRead`), not from the view; one
+contact-info validator (`contactInfoParts` uses `ContactCode`); drops and
+pastes go through `PasteboardFiles` (promised screenshots, JPEG and HEIC);
+the shared `SatsField`, `BalanceLine`, `QRCodeTile`, `shortKey` and a
+shared `capitalizedFirst`; the invite detail observes its own row.
+Security review found nothing to fix.
+Not applied, with reasons:
+- `Storage.apply` returning one result struct instead of growing `inout`
+  outputs (`received`, now `addedUs`): touches every caller; worth doing
+  with the next output.
+- One store of "records tracked by payment tag" (messages, invoices,
+  invites) and one status write: invites follow the invoices' pattern; a
+  shared one is a refactor of its own.
+- One notification gate shared by messages, money and new contacts:
+  `Notifier` already has two; folding three is a separate change.
+- Sharing the dashed "unknown person" icon with Payments: different sizes
+  and roles; revisit in the polish pass.
+- Tribe invites (`tribe_host`/`tribe_pubkey` in the link): production's
+  default tribe is empty, so the official app passes none in effect.
 
 ## Web window
 

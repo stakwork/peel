@@ -657,6 +657,33 @@ with what may open in `Sources/PeelCore/WebPage.swift`.
   sticks for this account only. Account › Security › Website data clears it
   with the usual inline confirm.
 
+## Contacts
+
+Built 2026-10-08 (`ContactsViews.swift`); details in
+`../phases/05-parity.md`, "Contacts".
+
+- **Direct messages ends** with pending invites (a dashed envelope ring,
+  the nickname, the amount in the time column; "Sending…" or
+  "Cancelling…" while they are), then "Add contact" and "Invite someone",
+  each a popover beside its row.
+- **Add contact:** one field (contact info, invite or Sphinx link), a
+  dashed drop zone ("Drop a picture of their QR code here", Paste, Choose
+  picture…; it lights blue while a drag is over the form), who the code adds
+  (avatar, name or short key, and for an invite that its sats stay in it),
+  an optional name, Add. Why a code adds nobody shows quietly in the
+  footer, never red. No camera.
+- **Invite someone:** amount (the shared sats field), nickname and message
+  ("only you see it"), a line that the sats leave now and the server may
+  keep a fee, the balance, and the money button: "Invite", then orange
+  "Invite 2,000 sats" with "Click again to confirm", always.
+- **An invite:** the QR tile (the Account screen's, shared), nickname,
+  amount, when it was made and its state, the private message; Copy invite,
+  Copy QR, Share; Cancel invite confirmed in place.
+- **New contacts:** someone who added you shows "New" (accent capsule, the
+  unread badge's shape) in their row until their chat is read; a
+  notification says "Added you as a contact". There is no request to
+  accept: the core accepts at once, as in the official apps.
+
 ## Time zones
 
 Researched and designed 2026-10-08, second pass after Tom's review the same

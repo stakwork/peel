@@ -250,6 +250,27 @@ extension Storage {
                 t.add(column: "secondBrainURL", .text)
             }
         }
+        migrator.registerMigration("v16") { db in
+            // Invites made here with sats: the core keeps no record of them
+            // and the server only the code. `tag` is the funding payment's,
+            // which the server confirms; status as `InviteRecord.Status`.
+            try db.create(table: "invite") { t in
+                t.primaryKey("code", .text)
+                t.column("link", .text).notNull()
+                t.column("amountMsat", .integer).notNull()
+                t.column("nickname", .text)
+                t.column("message", .text)
+                t.column("tag", .text)
+                t.column("status", .text).notNull()
+                t.column("createdAt", .integer).notNull()
+                t.column("usedBy", .text)
+            }
+            try db.execute(sql: "CREATE INDEX invite_tag ON invite (tag) WHERE tag IS NOT NULL")
+            // Someone who added this account, until their chat is opened here.
+            try db.alter(table: "contact") { t in
+                t.add(column: "isNew", .boolean).notNull().defaults(to: false)
+            }
+        }
         return migrator
     }
 }

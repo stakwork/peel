@@ -1,19 +1,20 @@
 #!/bin/sh
-# Renders Assets/peel.svg into Assets/AppIcon.icns for the app bundle.
+# Compiles Assets/AppIcon.icon (an Icon Composer file) into Assets/Assets.car and
+# Assets/AppIcon.icns. macOS 26 draws the icon from Assets.car under its own mask;
+# macOS 15 uses the pre-masked .icns. An icon shipped only as a hand-shaped .icns
+# gets put on a white plate by macOS 26.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
-qlmanage -t -s 1024 -o "$WORK" "$ROOT/Assets/peel.svg" >/dev/null 2>&1
-MASTER="$WORK/peel.svg.png"
-[ -f "$MASTER" ] || { echo "could not rasterise Assets/peel.svg" >&2; exit 1; }
-SET="$WORK/AppIcon.iconset"
-mkdir -p "$SET"
-for size in 16 32 128 256 512; do
-  sips -z $size $size "$MASTER" --out "$SET/icon_${size}x${size}.png" >/dev/null
-  double=$((size * 2))
-  sips -z $double $double "$MASTER" --out "$SET/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$SET" -o "$ROOT/Assets/AppIcon.icns"
-cp "$MASTER" "$ROOT/Assets/peel-1024.png"
+xcrun actool "$ROOT/Assets/AppIcon.icon" --compile "$WORK" \
+  --platform macosx --minimum-deployment-target 15.0 --app-icon AppIcon \
+  --output-partial-info-plist "$WORK/partial.plist" \
+  --output-format human-readable-text > "$WORK/actool.log" 2>&1 || true
+if [ ! -f "$WORK/Assets.car" ] || [ ! -f "$WORK/AppIcon.icns" ]; then
+  cat "$WORK/actool.log" >&2
+  echo "could not compile Assets/AppIcon.icon" >&2
+  exit 1
+fi
+cp "$WORK/Assets.car" "$WORK/AppIcon.icns" "$ROOT/Assets/"
 rm -rf "$WORK"
-echo "wrote Assets/AppIcon.icns"
+echo "wrote Assets/Assets.car and Assets/AppIcon.icns"

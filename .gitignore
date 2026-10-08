@@ -7,7 +7,6 @@ xcuserdata/
 # Produced by scripts/build-ffi.sh
 Vendor/sphinxrsFFI.xcframework/
 Sources/Sphinxrs/sphinxrs.swift
-peel-1024.png
 !scripts/provision/Provision.xcodeproj/
 
 # Session worktrees and settings of the Claude desktop app

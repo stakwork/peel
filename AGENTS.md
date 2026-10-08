@@ -47,7 +47,9 @@ in progress and what comes next. Update it when you finish something.
   embeds a provisioning profile and the Keychain entitlements (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
-- `scripts/build-icon.sh` — renders `Assets/peel.svg` into `Assets/AppIcon.icns`
+- `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon
+  Composer) into `Assets/Assets.car` and `Assets/AppIcon.icns`; rerun after
+  changing the icon. `Assets/peel.svg` is the flat logo for docs and pages
 
 ## Build and run
 

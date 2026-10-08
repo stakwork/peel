@@ -154,15 +154,7 @@ struct SearchField: View {
     @Binding var text: String
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
-            TextField("Search", text: $text)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-        }
-        .foregroundStyle(Theme.secondaryText)
-        .fieldBoxed()
+        FormTextField(label: "Search", prompt: "Search", text: $text, boxed: true, systemImage: "magnifyingglass")
     }
 }
 

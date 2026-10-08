@@ -133,13 +133,14 @@ struct ProblemText: View {
 }
 
 /// A popover form's last row: what went wrong, and its buttons (the one
-/// running shows its spinner inside it, `buttonProgress`).
+/// running shows its spinner inside it, `buttonProgress`), lined up on
+/// their text, so a money button's "Click again to confirm" hangs below.
 struct FormFooter<Buttons: View>: View {
     let problem: String?
     @ViewBuilder let buttons: Buttons
 
     var body: some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline) {
             if let problem { ProblemText(problem) }
             Spacer()
             buttons

@@ -338,7 +338,7 @@ struct TribeMembersPanel: View {
                         MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member),
                                   note: isMe ? "you, owner" : nil) {
                             if let pubkey = member.pubkey, !isMe, canManage {
-                                InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)", compact: true) {
+                                InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)", style: .text) {
                                     await kick(pubkey)
                                 }
                                 .font(Theme.font(12, .medium))
@@ -524,14 +524,7 @@ struct UndeliveredActions: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if confirmingDiscard {
-                Text("Discard this \(what)?")
-                    .foregroundStyle(Theme.secondaryText)
-                Button("Discard") { Task { await model.discard(message) } }
-                    .foregroundStyle(Theme.destructive)
-                Button("Keep") { confirmingDiscard = false }
-                    .foregroundStyle(Theme.accent)
-            } else if let armed = attempt.armed {
+            if let armed = attempt.armed {
                 Button { Task { await retry() } } label: {
                     Text("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))")
                         .buttonProgress(attempt.working, size: .mini)
@@ -543,14 +536,21 @@ struct UndeliveredActions: View {
                 Button("Cancel") { attempt.armed = nil }
                     .foregroundStyle(Theme.secondaryText)
             } else {
-                Text(label)
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-                Button { Task { await retry() } } label: { Text("Retry").buttonProgress(attempt.working, size: .mini) }
-                    .foregroundStyle(Theme.accent)
-                    .disabled(attempt.working)
-                Button("Discard") { confirmingDiscard = true }
-                    .foregroundStyle(Theme.secondaryText)
+                if !confirmingDiscard {
+                    Text(label)
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                    Button { Task { await retry() } } label: { Text("Retry").buttonProgress(attempt.working, size: .mini) }
+                        .foregroundStyle(Theme.accent)
+                        .disabled(attempt.working)
+                }
+                InlineConfirm(
+                    trigger: "Discard", prompt: "Discard this \(what)?", confirm: "Discard", style: .text,
+                    confirming: $confirmingDiscard
+                ) {
+                    await model.discard(message)
+                }
+                .foregroundStyle(Theme.secondaryText)
             }
             if let problem = attempt.problem {
                 ProblemText(problem)

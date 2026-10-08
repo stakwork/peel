@@ -156,9 +156,11 @@ struct PayButton: View {
                     .fixedSize()
                     .buttonProgress(attempt.working)
             }
-            .buttonStyle(GhostButtonStyle(prominent: true, fill: attempt.armed == nil ? nil : Theme.attention))
+            .buttonStyle(FormButtonStyle(kind: .primary, fill: attempt.armed == nil ? nil : Theme.attention))
             .keyboardShortcut(isDefault ? .defaultAction : nil)
-            .disabled(totalMsat == nil || attempt.working)
+            // Not off while it sends, so it keeps its fill under the spinner;
+            // `PaymentAttempt.run` ignores a second click.
+            .disabled(totalMsat == nil)
             if attempt.armed != nil {
                 ConfirmHint()
             }
@@ -173,6 +175,7 @@ struct ConfirmHint: View {
         Text("Click again to confirm")
             .font(Theme.font(11))
             .foregroundStyle(Theme.secondaryText)
+            .fixedSize()
     }
 }
 
@@ -188,25 +191,17 @@ struct BalanceLine: View {
     }
 }
 
-/// A field for a whole number of sats.
+/// A field for a whole number of sats: the form's number field, digits only.
 struct SatsField: View {
-    let placeholder: String
+    let label: String
     @Binding var text: String
 
     var body: some View {
-        HStack(spacing: 6) {
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .monospacedDigit()
-                .onChange(of: text) { _, value in
-                    let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(12))
-                    if digits != value { text = digits }
-                }
-            Text("sats")
-                .foregroundStyle(Theme.secondaryText)
-        }
-        .font(Theme.font(13))
-        .fieldBoxed()
+        FormNumberField(label: label, text: $text, unit: "sats")
+            .onChange(of: text) { _, value in
+                let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(12))
+                if digits != value { text = digits }
+            }
     }
 }
 
@@ -230,37 +225,48 @@ struct SendSatsPanel: View {
 
     var body: some View {
         let amountMsat = Sats.msat(amount)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(mode == .send ? "Send sats to \(name)" : "Request sats from \(name)")
-                    .font(Theme.font(15, .bold))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
+        FormPopover(title: mode == .send ? "Send sats to \(name)" : "Request sats from \(name)", close: done) {
+            SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
+                .padding(.top, 8)
+            FormSection {
+                FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                FormRow(label: mode == .send ? "Note" : "What it's for") {
+                    FormTextField(label: mode == .send ? "Note" : "What it's for", prompt: "Optional", text: $note)
+                }
             }
-            SatsField(placeholder: "Amount", text: $amount)
-            TextField(mode == .send ? "Note (optional)" : "What it's for (optional)", text: $note)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-                .fieldBoxed()
+            Group {
+                if mode == .send {
+                    BalanceLine()
+                } else {
+                    Text("\(name) gets an invoice in this chat, payable for an hour.")
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 8)
+        } footer: {
             switch mode {
             case .send:
-                BalanceLine()
                 FormFooter(problem: attempt.problem) {
+                    Button("Cancel", action: done)
+                        .buttonStyle(FormButtonStyle())
+                        .disabled(attempt.working)
                     PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
                         guard let amountMsat else { return .refused("Enter an amount.") }
                         return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, confirmedMsat: confirmed)
                     }, sent: done)
                 }
             case .request:
-                Text("\(name) gets an invoice in this chat, payable for an hour.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
                 FormFooter(problem: requestProblem) {
+                    Button("Cancel", action: done)
+                        .buttonStyle(FormButtonStyle())
+                        .disabled(requesting)
                     Button {
-                        guard let amountMsat else { return }
+                        // Not twice: the button stays on, keeping its fill under the spinner.
+                        guard let amountMsat, !requesting else { return }
+                        requesting = true
                         Task {
-                            requesting = true
                             defer { requesting = false }
                             do {
                                 try await model.requestPayment(from: chat, amountMsat: amountMsat, memo: note)
@@ -270,14 +276,12 @@ struct SendSatsPanel: View {
                             }
                         }
                     } label: { Text("Request").buttonProgress(requesting) }
-                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .buttonStyle(FormButtonStyle(kind: .primary))
                     .keyboardShortcut(.defaultAction)
-                    .disabled(amountMsat == nil || requesting)
+                    .disabled(amountMsat == nil)
                 }
             }
         }
-        .padding(16)
-        .frame(width: 300)
         // A new note is a new payment: ask again over the threshold.
         .onChange(of: note) {
             attempt.armed = nil
@@ -287,7 +291,8 @@ struct SendSatsPanel: View {
     }
 }
 
-/// Two or three choices side by side, the chosen one filled, as on the boards.
+/// Two or three choices side by side, the chosen one filled, as on the
+/// boards; on the form's soft fill, as a boxed field is.
 struct SegmentedChoice<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(Value, String)]
@@ -310,8 +315,8 @@ struct SegmentedChoice<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(Theme.input, in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider))
+        .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.formEdge))
     }
 }
 
@@ -649,8 +654,7 @@ struct BoostAmountRow: View {
                 .fixedSize()
                 if let custom {
                     let typed = Sats.msat(custom)
-                    SatsField(placeholder: "Amount", text: Binding(get: { custom }, set: { self.custom = $0 }))
-                        .frame(width: 120)
+                    SatsField(label: "Boost amount", text: Binding(get: { custom }, set: { self.custom = $0 }))
                     PayButton(verb: "Save", totalMsat: typed, attempt: attempt, send: { confirmed in
                         guard let typed else { return .refused("Enter an amount.") }
                         return await model.setBoostAmount(msat: typed, confirmedMsat: confirmed)

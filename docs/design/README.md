@@ -405,23 +405,36 @@ The components are in `Sources/PeelApp/FormKit.swift`.
 
 Step 1 applies the system to Create a tribe and Edit tribe
 (`TribeSettingsForm`). Every field there now has a label: Name, "What it
-is about" and Image link were placeholder-only before. Step 2, after the
-wave 1 cleanup merges, applies it to the other forms:
+is about" and Image link were placeholder-only before.
 
-- Join a tribe, which takes the compact popover;
-- Add contact and Invite;
-- the payment panels;
-- Account;
-- Onboarding;
-- the tribe header (H1: Call plus More).
+Step 2 applies it to every other form:
 
-Step 2 also retires these helpers:
+- Join a tribe takes the compact popover: the link boxed, the tribe on a
+  card under it, Cancel and Look up, then Join. Return still looks up,
+  then joins (#78); over the threshold Join turns orange and asks again
+  (#89).
+- Add contact, Invite someone and an invite's detail are full popovers
+  with sections.
+- Send or request sats is a popover; Receive and Pay an invoice keep their
+  pane, with sections in it. An invoice Peel cannot read is the field's
+  problem.
+- Account: its groups are `FormSection`s, its rows keep a 150 pt label
+  column (the page is wider than a popover) with `FormLabel`, its fields
+  are boxed `FormTextField`s and its buttons `FormButtonStyle`. Forget
+  account is the page's destructive section.
+- Onboarding: the invite and name are rows in a section; the PIN's and the
+  twelve words' cells are boxed fields (`FieldChrome`), the one being
+  typed in ringed.
+- The sidebar's search, the time zone search and a paid attachment's
+  price are boxed form fields too.
 
-- `fieldBoxed`;
-- `OnboardingView.boxed()`;
-- the radius-7 payment boxes;
-- `GhostButtonStyle` in forms;
-- the hand-rolled confirms (second review, section 10).
+The tribe header (H1) is its own change. Step 2 retired `fieldBoxed`,
+`OnboardingView.boxed()` and `onboardingField()`, the radius-7 input
+boxes, `GhostButtonStyle` in forms, and the hand-rolled confirms:
+`InlineConfirm` moved into FormKit and is the one in-place confirm, used
+by `FormDestructiveSection`, `ForgetAccountControl`, Discard on an
+undelivered message and Copy words. `CallSwitchConfirm` stays its own: it
+is a choice between two calls, not a confirm.
 
 ### Tokens
 
@@ -466,15 +479,18 @@ The surfaces are the existing tokens:
   - The label column is 118 wide, at 13 pt, with an 11 pt secondary `detail` line under it. The value sits on the right.
   - `stacked` puts the value under the label, for "What it is about".
   - `problem` shows 11 pt amber text, right-aligned, under the row.
-- **`FormTextField(label:prompt:text:axis:boxed:problem:)`.**
+- **`FormTextField(label:prompt:text:axis:boxed:problem:systemImage:monospaced:focusOnAppear:)`.**
   - The field is 26 tall, with a corner radius of 6.
   - At rest it has no box and its text sits on the right. Under the pointer it gets a `fieldFill`. While focused it becomes an `input` well with a 1 pt `accent` ring, a 3 pt `focusRing` outside it, and its text on the left.
+  - The field itself always reads left: AppKit ends editing when a field's alignment changes, so step 1's field lost the keyboard the moment it was clicked. At rest a label on the section's `menu` card covers it with the text on the right, and clicks go through to the field. A resting field therefore belongs in a `FormRow` on a `FormSection`.
+  - `systemImage` puts an icon before the text (a search), `monospaced` is for an invoice, `focusOnAppear` takes the keyboard (the time zone search).
   - With a problem it gets the amber rings instead.
   - `axis: .vertical` gives two to four lines, aligned with the label above it. `boxed` keeps the fill at rest, for the compact popover.
   - The label is the field's accessibility name, and the prompt is its placeholder.
-- **`FormNumberField(label:text:unit:problem:)`.**
-  - It is 108 by 26 and always boxed, with tabular, right-aligned digits and the unit inside it in the secondary colour.
-  - It shows the same focus and problem rings as a text field.
+- **`FormNumberField(label:text:unit:prompt:problem:)`.**
+  - It is 108 by 26 and always boxed, with tabular, right-aligned digits and the unit inside it in the secondary colour. The prompt is "0" unless given ("Free" for a price).
+  - It shows the same focus and problem rings as a text field. `SatsField` is one that takes digits only.
+- **`FieldChrome(focused:hovering:boxed:problem:)`.** The fills and rings of every field, also the PIN's and the twelve words' cells.
 - **`FormSwitchRow(label:detail:isOn:)` and `FormSwitchStyle`.**
   - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
   - The knob moves with a short spring (0.22 s).
@@ -483,14 +499,19 @@ The surfaces are the existing tokens:
   - `.primary` is `button`, semibold, with `buttonText`. It is a little brighter under the pointer and darker while pressed. When disabled it becomes a quiet chip: `fieldFill`, tertiary text and a `formEdge` hairline, never a faded blue.
   - `.secondary` has a `divider` outline, and `hover` under the pointer.
   - `.destructive` is outlined, with `destructive` text. It is the second click of an in-place confirm.
-  - The spinner goes in the label (`buttonProgress`).
-- **`FormDestructiveSection(trigger:prompt:confirm:action:)`.**
-  - The destructive action is its own card at the end of the form, a full-width red row ("Delete tribe…").
-  - A click turns that row into the question ("Delete #hive for everyone?") with Cancel and Delete. It is confirmed in place, never in a dialog.
+  - `fill` replaces a primary's colour: `attention` for a money button waiting for its second click (`PayButton`).
+  - The spinner goes in the label (`buttonProgress`). A commit button stays on while it runs, keeping its fill under the spinner; its action ignores a second click.
+- **`FormFooter`** lines its problem and buttons up on their text, so "Click again to confirm" hangs under a money button.
+- **`FormDestructiveSection(trigger:prompt:explanation:confirm:action:)`.**
+  - The destructive action is its own card at the end of the form, a full-width red row ("Delete tribe…", "Forget this account on this Mac…").
+  - A click turns that row into the question ("Delete #hive for everyone?", or the explanation above the buttons) with Cancel and Delete. It is confirmed in place, never in a dialog.
+- **`InlineConfirm(trigger:prompt:explanation:confirm:confirmKind:style:alignment:confirming:action:)`.** The one in-place confirm: the trigger, then the prompt with Cancel and the action, off while it runs.
+  - `.buttons` (form buttons: Clear website data, Leave tribe, Cancel invite), `.text` (a row's text buttons: Remove a member, Discard, the lock screen's Forget), `.section` (`FormDestructiveSection`).
+  - `confirmKind: .primary` for a second click that loses nothing (Copy words). `confirming` hands the state out, so the row can hide what stands beside it, or cancel it.
 
-Renders of Create and Edit in both themes are kept outside the repo, side
-by side with the design page. They show each form at rest, while focused,
-with a problem, and with Delete's confirm.
+Renders of every form in both themes (at rest, focused, with a problem
+and confirming), and Join side by side with the design page, are kept
+outside the repo.
 
 ## What the engine needs
 

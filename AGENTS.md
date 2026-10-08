@@ -142,8 +142,9 @@ is a short plan. Update the status and the journal when you finish something.
   `buttonProgress`, the spinner inside a running button);
   `FormKit` (the form system, direction A: `FormPopover`, `FormSection`,
   `FormRow`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
-  `FormButtonStyle` and `FormDestructiveSection`, over the form tokens in `Theme`; used by
-  Create and Edit tribe so far, see `docs/design/README.md`, "Forms");
+  `FormButtonStyle`, `FormDestructiveSection`, `FieldChrome` and
+  `InlineConfirm`, the one in-place confirm, over the form tokens in `Theme`; used by
+  every form, see `docs/design/README.md`, "Forms");
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
   time, the hover card, a chat's details panel with the time zone switch);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's

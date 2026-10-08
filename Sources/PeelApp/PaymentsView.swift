@@ -830,19 +830,18 @@ private struct ReceivePane: View {
 
     @ViewBuilder private var form: some View {
         let amountMsat = Sats.msat(amount)
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Amount").font(Theme.font(12.5)).foregroundStyle(Theme.secondaryText)
-            SatsField(placeholder: "Amount", text: $amount)
+        VStack(alignment: .leading, spacing: 6) {
+            FormSection {
+                FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                FormRow(label: "Memo") {
+                    FormTextField(label: "Memo", prompt: "What it's for (optional)", text: $memo)
+                }
+            }
+            .padding(.top, -14)
             Text("Lightning invoices from Peel name an amount; the payer cannot choose one.")
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
-        }
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Memo").font(Theme.font(12.5)).foregroundStyle(Theme.secondaryText)
-            TextField("What it's for (optional)", text: $memo)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-                .fieldBoxed()
+                .padding(.horizontal, 4)
         }
         FormFooter(problem: problem) {
             Button {
@@ -852,13 +851,16 @@ private struct ReceivePane: View {
                 Text(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice")
                     .buttonProgress(working)
             }
-            .buttonStyle(GhostButtonStyle(prominent: true))
+            .buttonStyle(FormButtonStyle(kind: .primary))
             .keyboardShortcut(.defaultAction)
-            .disabled(amountMsat == nil || working)
+            // Not off while it runs, so it keeps its fill under the spinner;
+            // `create` ignores a second click.
+            .disabled(amountMsat == nil)
         }
     }
 
     private func create(_ msat: UInt64) async {
+        guard !working else { return }
         working = true
         defer { working = false }
         do {
@@ -886,9 +888,9 @@ private struct ReceivePane: View {
                 .textSelection(.enabled)
             HStack(spacing: 8) {
                 CopyButton("Copy invoice", text: invoice.bolt11)
-                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .buttonStyle(FormButtonStyle(kind: .primary))
                 CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(invoice.bolt11.uppercased()) }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(FormButtonStyle())
             }
         }
         .frame(maxWidth: .infinity)
@@ -928,13 +930,13 @@ private struct ReceivePane: View {
         ])
         HStack(spacing: 8) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(FormButtonStyle())
             Button {
                 self.invoice = nil
                 amount = ""
                 memo = ""
             } label: { Text("New invoice").frame(maxWidth: .infinity) }
-                .buttonStyle(GhostButtonStyle(prominent: true))
+                .buttonStyle(FormButtonStyle(kind: .primary))
         }
     }
 }
@@ -1071,19 +1073,20 @@ private struct PayInvoicePane: View {
 
     var body: some View {
         PaneFrame(title: "Pay an invoice", close: close) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Invoice").font(Theme.font(12.5)).foregroundStyle(Theme.secondaryText)
-                TextEditor(text: $text)
-                    .font(.system(size: 12, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .frame(height: 58)
-                    .padding(4)
-                    .background(Theme.input, in: RoundedRectangle(cornerRadius: 7))
-                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider))
-                Text(!text.trimmed.isEmpty && invoice == nil
-                     ? "That is not an invoice Peel can read." : "Paste one, or drop it anywhere on the window.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+            let unreadable = !text.trimmed.isEmpty && invoice == nil
+            VStack(alignment: .leading, spacing: 6) {
+                FormSection {
+                    FormRow(label: "Invoice", stacked: true, problem: unreadable ? "That is not an invoice Peel can read." : nil) {
+                        FormTextField(label: "Invoice", prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
+                    }
+                }
+                .padding(.top, -14)
+                if !unreadable {
+                    Text("Paste one, or drop it anywhere on the window.")
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .padding(.horizontal, 4)
+                }
             }
             if let invoice {
                 UntilExpiry(invoice: invoice) { expired in details(invoice, expired: expired) }
@@ -1132,10 +1135,10 @@ private struct PayInvoicePane: View {
                     blocker(problem, invoice: invoice, paidAt: checked.paidAt, sent: sent)
                 }
                 HStack(spacing: 8) {
-                    Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
+                    Button("Cancel", action: close).buttonStyle(FormButtonStyle())
                     Spacer()
                     Button("Pay") {}
-                        .buttonStyle(GhostButtonStyle(prominent: true))
+                        .buttonStyle(FormButtonStyle(kind: .primary))
                         .disabled(true)
                 }
             }
@@ -1155,7 +1158,7 @@ private struct PayInvoicePane: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             FormFooter(problem: attempt.problem) {
-                Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
+                Button("Cancel", action: close).buttonStyle(FormButtonStyle())
                 PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                     await model.payInvoice(invoice, confirmedMsat: confirmed)
                 }, sent: {}, namesAmount: false)
@@ -1237,7 +1240,7 @@ private struct PayInvoicePane: View {
                 HStack {
                     if let item { PaneLink(title: "Show the payment") { show(item.id) } }
                     Spacer()
-                    Button("Done", action: close).buttonStyle(GhostButtonStyle())
+                    Button("Done", action: close).buttonStyle(FormButtonStyle())
                 }
             }
         case .unsettled:

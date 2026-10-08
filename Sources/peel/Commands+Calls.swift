@@ -44,7 +44,7 @@ extension Invocation {
 
 /// The call a stored message links to (with its chat), or a link given
 /// as is, checked against the account's call server.
-func callLink(_ target: String, engine: Engine) async throws -> (CallLink, String?) {
+private func callLink(_ target: String, engine: Engine) async throws -> (CallLink, String?) {
     if let id = Int64(target) {
         guard let message = try engine.storage.message(id: id), let link = await engine.callLink(in: message) else {
             throw PeelError("message \(id) is not a call on this account's call server")
@@ -57,7 +57,7 @@ func callLink(_ target: String, engine: Engine) async throws -> (CallLink, Strin
     return (link, nil)
 }
 
-func describe(_ presence: CallPresence) -> String {
+private func describe(_ presence: CallPresence) -> String {
     switch presence {
     case .unknown: "presence: not known"
     case .ended: "presence: call ended"

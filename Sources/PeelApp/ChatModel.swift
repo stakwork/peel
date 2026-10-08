@@ -256,10 +256,17 @@ extension AppModel {
             let caption = index == files.count - 1 ? text : ""
             do {
                 // Shown from this Mac while it uploads.
-                try await engine.sendAttachment(
+                let id = try await engine.sendAttachment(
                     file, text: caption, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats
                 ) {
                     [weak self] id in Task { @MainActor in self?.attachment(id).localFile = file }
+                }
+                // A pasted or promised file of Peel's is done with once
+                // uploaded: the engine keeps its own copy in the cache. One
+                // whose upload failed stays as the row's preview until the
+                // account closes.
+                if IncomingFiles.owns(file), (try? engine.storage.message(id: id))?.uploadState == .done {
+                    release(file)
                 }
                 if !caption.isEmpty { captionSent = true }
                 sent(in: chat)
@@ -298,8 +305,42 @@ extension AppModel {
         composerFocus[composer, default: 0] += 1
     }
 
+    #if os(macOS)
+    /// Files dropped or pasted, into the tray in their order; what could not
+    /// be had is said in the conversation.
+    func attach(_ items: [PasteboardFiles.Item], to composer: ComposerID) {
+        let account = engine
+        Task {
+            let (files, refused) = await PasteboardFiles.files(from: items)
+            // The account closed or changed while they were written.
+            guard let account, account === engine else {
+                files.forEach { IncomingFiles.discard($0) }
+                return
+            }
+            addFiles(files, to: composer)
+            if !refused.isEmpty {
+                conversationNotices[composer.chat] = "Could not attach: " + refused.joined(separator: "; ")
+            }
+        }
+    }
+
+    /// Shows or clears the drop overlay over `composer`'s conversation.
+    func dropTargeted(_ targeted: Bool, composer: ComposerID) {
+        if targeted { dropTarget = composer } else if dropTarget == composer { dropTarget = nil }
+    }
+    #endif
+
     func removeFile(_ url: URL, from composer: ComposerID) {
         pendingFiles[composer]?.removeAll { $0 == url }
+        release(url)
+    }
+
+    /// Removes a pasted or promised file of Peel's, and any preview of a sent
+    /// row still pointing at it; any other file is left alone.
+    private func release(_ file: URL) {
+        guard IncomingFiles.owns(file) else { return }
+        for handle in attachmentHandles.values where handle.localFile == file { handle.localFile = nil }
+        IncomingFiles.discard(file)
     }
 
     /// Picks files to attach, beside the window.

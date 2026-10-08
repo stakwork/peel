@@ -72,6 +72,8 @@ final class AppModel {
     var replyTargets: [ComposerID: Message] = [:]
     /// Files waiting in each composer until it sends.
     var pendingFiles: [ComposerID: [URL]] = [:]
+    /// The composer files are being dragged towards, for its overlay.
+    var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
     var attachmentPrices: [ComposerID: String] = [:]
     /// Bumped to put the cursor in a composer.
@@ -692,6 +694,9 @@ final class AppModel {
         openThread = nil
         threads = []
         replyTargets = [:]
+        // Peel's own pasted or promised files: in a tray, or under a failed upload.
+        (pendingFiles.values.joined() + attachmentHandles.values.compactMap(\.localFile))
+            .forEach { IncomingFiles.discard($0) }
         pendingFiles = [:]
         viewer = nil
         attachmentHandles = [:]

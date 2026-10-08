@@ -71,7 +71,9 @@ struct Composer: View {
         ComposerField(
             text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0, submit: send,
             mention: $mention, insertion: insertion, suggestionKey: handle,
-            escape: { withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) } }
+            escape: { withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) } },
+            attach: { model.attach($0, to: composer) },
+            dropTargeted: { model.dropTargeted($0, composer: composer) }
         )
         .onChange(of: mention) { highlighted = 0 }
         .task(id: mention != nil) {

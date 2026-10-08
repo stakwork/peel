@@ -508,14 +508,15 @@ and what was not in `../phases/04-money.md`.
 
 ## Time zones
 
-Researched and designed 2026-10-08; not built. Boards T1–T5 on the "Peel
-layout directions" canvas (row "Time zones"). To be built after the current
-cleanup (plan at the end of this section).
+Researched and designed 2026-10-08, second pass after Tom's review the same
+day; not built. Boards T1–T5 and T3a–T3c on the "Peel layout directions"
+canvas (row "Time zones"). To be built after the current cleanup (plan at
+the end of this section).
 
 The official apps let each person share their time zone, and show the other
 side's local time in a DM header and on tribe messages. Peel keeps their
-wire format exactly and changes where the time shows: once, where it helps,
-never as a second timestamp on every row.
+wire format exactly and changes how the time shows: quietly, once per run
+at most, never as a second timestamp on every message.
 
 ### What the official apps do (checked 2026-10-08)
 
@@ -613,25 +614,45 @@ build bodies without `metadata` (`Sources/PeelCore/Engine.swift:698`), and
 raw body of every incoming message is kept (the `body` column), so the time
 zones already received can be recovered from history.
 
-### Decision (recommended: option A, boards T1, T2, T4)
+### Decision (recommended: T1 + T2 + T4 + T3a)
 
-- **One place for a person's time: their hover card.** Hover a name or
-  avatar anywhere (a DM, a tribe, a thread) and a card opens beside it:
-  photo, name, short key, then "**14:05** local time · 6 h behind", with the
-  offset they sent under it. It is the only place the time shows in tribes
-  and threads.
-- **DM header, one line.** Under the contact's name, in secondary text:
-  "02:14 local time · 6 h ahead". Only when their offset differs from
-  yours; the same zone shows nothing. It moves on with the minute.
-- **No second timestamp on rows.** Times stay in your zone. Hovering a
-  message's time shows a tooltip with both: "20:02 your time · 02:02 for
-  Evan".
-- **A late-hours hint in a DM.** Between 22:00 and 07:00 their time, a quiet
-  line above the composer: "It's 02:14 for Evan." Secondary text and a moon,
-  no colour, never a warning; sending is never held back.
-- **Wording.** "6 h ahead", "3 h 30 min behind", "same time as you". Times
-  follow the system's 24- or 12-hour setting, tabular figures. The zone
-  itself shows only in the hover card, as the sender wrote it ("GMT+7").
+Tom, 2026-10-08, on the first boards: T1 yes but without the late-hours
+hint (dropped); keep the local time and offset in the DM header and at the
+top of the profile; T2 and T4 yes; he likes the sender's local time on each
+run, but not T3's chip. T3a–T3c redo that; T3a is recommended.
+
+- **DM header and profile top, one line** (T1). Under the contact's name,
+  in secondary text: "02:14 local time · 6 h ahead". The same line sits
+  under the name at the top of the contact's profile. Only when their
+  offset differs from yours; the same zone shows nothing. It moves on with
+  the minute.
+- **Hover card** (T2). Hover a name or avatar anywhere (a DM, a tribe, a
+  thread) and a card opens beside it: photo, name, short key, then
+  "**14:05** local time · 6 h behind", with the offset they sent under it.
+- **The sender's local time on each run** (T3a). In the run header, after
+  your time: "Lena Okafor  20:05  · 14:05 local". Rules:
+  - the run header only, never on a continuation message;
+  - only when the sender's offset differs from yours; your own runs never;
+    anyone who sends no offset never (agents, by default);
+  - always visible, in a tertiary colour, `#808D9E` (5:1 on the
+    conversation background, 4.7:1 on the thread panel), 12 pt, tabular
+    figures, so the times do not jitter run to run;
+  - the time *they had when they wrote it*: the offset on the run's first
+    message, else their latest one if it is within 90 days of that message,
+    else nothing;
+  - in DMs as well as tribes: the header says what time it is there now,
+    the run says what time it was when they wrote;
+  - narrow widths (the thread panel, 360 pt, or a narrow window): the
+    label stays while the header fits on one line; when it would wrap, it
+    drops out and the tooltip and hover card still carry it. A run header
+    never wraps for it;
+  - VoiceOver reads it as "14:05 local time for Lena Okafor".
+- **No second timestamp on messages.** Hovering any message's time shows
+  a tooltip with both: "20:02 your time · 02:02 for Evan".
+- **Wording.** "6 h ahead", "3 h 30 min behind", "same time as you"; on
+  runs just "14:05 local". Times follow the system's 24- or 12-hour
+  setting. The zone itself shows only in the hover card, as the sender
+  wrote it ("GMT+7").
 - **Settings,** a "Time zone" group in Account: "Share my time zone" (a
   switch, on by default, as in the official apps) and "Time zone":
   "Automatic · Europe/London (GMT+1)", or one chosen from a searchable Peel
@@ -643,16 +664,35 @@ zones already received can be recovered from history.
 - **One switch for the account** in v1, not one per conversation (open
   question 2).
 
-Options B and C were mocked and are not recommended:
+**Always visible or on hover?** Always visible (T3a), for four reasons:
 
-- **B, a chip on each run in a tribe** (board T3): "◷ 20:05" beside the
-  sender's name and time when their offset differs. Closest to the official
-  apps, but it is the second timestamp again, on most rows of a global
-  tribe.
-- **C, the hover card only** (board T1 without its header line and hint):
-  the quietest, but in a DM, where it matters most, you have to go looking.
+1. The point is noticing what you were not looking for: that Priya wrote at
+   00:37, so her "before I sleep" is tonight, not tomorrow. On hover you
+   only learn it if you already suspected it.
+2. Hover already exists: the tooltip on every message time (T1) and the
+   hover card (T2). A third hover would repeat them.
+3. Hover is invisible to keyboard and VoiceOver users unless built twice,
+   and a trackpad hover over a scrolling list flickers.
+4. It is cheap where it is shown: one quiet run header, and in a busy
+   global tribe the runs that carry it are exactly the ones whose senders
+   are elsewhere. A tribe of one city shows nothing at all.
+
+The other variants, kept on the canvas:
+
+- **T3b, on hover only:** the same label in the same place, revealed when
+  any message of the run is hovered (the space is not reserved, nothing
+  follows it on the line, so nothing shifts). Cleanest at rest, and fails
+  reasons 1 to 3.
+- **T3c, the first run of the day per sender:** fewer labels in a chatty
+  tribe, but its absence then means nothing ("same zone" or "already said
+  today"?) and Lena's 20:12 run reads as if her time were unknown. Worth
+  revisiting only if T3a is too busy in practice.
+- **T3, the first chip** (outlined "◷ 14:05" beside the time): kept for
+  comparison; the outline made it read as a control.
+- **C, the hover card only:** the quietest, but you have to go looking.
 
 Board T5 shows the edge cases: a contact who shares nothing and an agent.
+The late-hours hint above the composer (first pass) is dropped.
 
 ### Conventions on the wire
 
@@ -729,8 +769,11 @@ Board T5 shows the edge cases: a contact who shares nothing and an agent.
    `wouldBeSplit` counts it. Verify on the local test server, then with the
    throwaway account against the official Mac app: Peel's offset shows in
    its DM header and tribe rows, and the Mac's shows in Peel.
-3. App: the hover card (wanted for names anyway), the DM header line, the
-   time tooltip, the late-hours hint.
+3. App: the hover card (wanted for names anyway), the DM header and
+   profile line, the local time on run headers (with the one-line rule at
+   narrow widths), the time tooltip. The run label needs each message's own
+   offset, so the query in step 1 returns it per message as well as the
+   latest per sender.
 4. App: the "Time zone" group in Account with the searchable zone menu.
 5. CLI: `whoami` prints the zone being sent; `contacts` prints each
    contact's local time.
@@ -748,5 +791,9 @@ Board T5 shows the edge cases: a contact who shares nothing and an agent.
    fresh offsets, simpler. Android sends only after a change.
 4. **Reciprocity:** with yours hidden, do you still see theirs? Recommended
    yes, as in Slack and the official apps.
-5. **The late-hours hint:** keep it, or more than you want?
-6. **Report the Mac and iOS DM switch bug upstream?**
+5. **Run label: always visible (T3a, recommended) or on hover (T3b)?** And
+   if T3a feels busy in a large tribe, fall back to T3c's once-a-day rule,
+   or a per-tribe off switch?
+6. **"14:05 local" or a glyph** ("◷ 14:05")? The word reads without
+   learning; the glyph is shorter at narrow widths.
+7. **Report the Mac and iOS DM switch bug upstream?**

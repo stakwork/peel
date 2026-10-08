@@ -64,6 +64,16 @@ public enum MuteLevel: Int, Sendable {
     case all = 0
     case mentionsOnly = 1
     case muted = 2
+
+    /// Whether a notification for `message` gets through: every message,
+    /// only those that mention this account (a call mentions nobody), or none.
+    public func notifies(_ message: Message) -> Bool {
+        switch self {
+        case .all: true
+        case .mentionsOnly: message.mentionsMe
+        case .muted: false
+        }
+    }
 }
 
 /// Unread count and mute level for one chat.

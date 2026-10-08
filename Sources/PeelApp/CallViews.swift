@@ -14,14 +14,6 @@ extension CallPresence {
 // MARK: - The model's calls
 
 extension AppModel {
-    /// Presence is asked only for calls younger than this: older ones are
-    /// over, and each subscription tells the call server what you watch.
-    static let presenceAge: TimeInterval = 12 * 60 * 60
-
-    func isRecent(_ date: Date, now: Date = .now) -> Bool {
-        now.timeIntervalSince(date) < Self.presenceAge
-    }
-
     func presence(of room: String) -> CallPresence {
         callPresence[room] ?? .unknown
     }
@@ -46,8 +38,10 @@ extension AppModel {
     func refreshRecentCalls() {
         let now = Date.now
         // A row's date is its newest message's, never older than its call.
-        let recent = chatRows.reversed().lazy.prefix { self.isRecent($0.date, now: now) }
-        let calls = Array(recent.filter { self.isRecent($0.message.date, now: now) }.compactMap(\.call).prefix(3))
+        // Presence is asked only for recent calls (`CallLink.isRecent`): older
+        // ones are over, and each subscription tells the call server what you watch.
+        let recent = chatRows.reversed().lazy.prefix { now.timeIntervalSince($0.date) < CallLink.liveAge }
+        let calls = Array(recent.filter { CallLink.isRecent($0.message.date, now: now) }.compactMap(\.call).prefix(3))
         if calls != recentCalls { recentCalls = calls }
     }
 
@@ -208,7 +202,7 @@ struct CallCard: View {
                         case .ended: line("Call ended")
                         case .unknown:
                             // So the card does not grow under the reader when it does.
-                            if model.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
+                            if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
                         }
                     }
                 }
@@ -250,7 +244,7 @@ struct CallCard: View {
         .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
         // Only while the card is drawn, and only for a recent call.
         .task(id: link.room) {
-            guard model.isRecent(message.date), !notSent else { return }
+            guard CallLink.isRecent(message.date), !notSent else { return }
             await model.watchCall(link, in: message.chat)
         }
     }

@@ -241,8 +241,9 @@ struct CallTicketFetchTests {
 }
 
 /// A loopback HTTP server that answers every request with one cacheable,
-/// cookie-setting JSON reply, and records each request's head.
-private final class HTTPStub: Sendable {
+/// cookie-setting JSON reply, and records each request's head. Also serves
+/// the tribes registry in `AuditMoneyTests`.
+final class HTTPStub: Sendable {
     private let listener: NWListener
     private let heads = OSAllocatedUnfairLock(initialState: [String]())
     let port: UInt16

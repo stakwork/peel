@@ -20,8 +20,10 @@ extension Invocation {
         case "tribe-join":
             guard let link = arguments.next() else { throw PeelError("tribe-join needs a tribe link") }
             let session = try await Session(load()).connect(insecure: insecure)
-            let tribe = try await session.engine.joinTribe(link: link)
-            print("joined #\(tribe.displayName) \(tribe.pubkey)")
+            try await confirming(confirmed) {
+                let tribe = try await session.engine.joinTribe(link: link, confirmedMsat: $0)
+                print("joined #\(tribe.displayName) \(tribe.pubkey)")
+            }
             try await session.finish(after: wait)
 
         case "tribe-members":

@@ -129,6 +129,31 @@ struct AuditMoneyTests {
         }
     }
 
+    /// The price to join (F5) is held to the balance and the threshold, as a
+    /// payment: refused over the balance, asked over the threshold, and
+    /// nothing recorded until it may go.
+    @Test func aJoinIsHeldToTheBalanceAndTheThreshold() async throws {
+        let stub = try await HTTPStub { _ in
+            #"{"pubkey":"\#(tribe)","route_hint":"0:0:0","name":"Paid","price_to_join":200000}"#
+        }
+        defer { stub.stop() }
+        let link = "sphinx.chat://?action=tribeV2&pubkey=\(tribe)&host=127.0.0.1:\(stub.port)"
+
+        let (engine, storage) = try engine(balanceMsat: 150_000)
+        await #expect(throws: Engine.Failure.insufficientBalance) {
+            try await engine.joinTribe(link: link, agreedJoinMsat: 200_000, confirmedMsat: 200_000)
+        }
+        try storage.set("1000000", for: .balanceMsat)
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 200_000)) {
+            try await engine.joinTribe(link: link, agreedJoinMsat: 200_000)
+        }
+        #expect(try storage.tribes().isEmpty)
+        // Confirmed, it goes past the gate to the (absent) connection.
+        await #expect(throws: Engine.Failure.notConnected) {
+            try await engine.joinTribe(link: link, agreedJoinMsat: 200_000, confirmedMsat: 200_000)
+        }
+    }
+
     /// Prices come from the tribes server: a sum that would wrap saturates.
     @Test func aTribesPriceNeverWraps() {
         #expect(Tribe.messageAmount(pricePerMessage: .max, escrow: .max) == UInt64(Int64.max))

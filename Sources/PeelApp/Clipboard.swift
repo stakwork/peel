@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelCore
 
 enum Clipboard {
     /// Returns whether it copied, like `copyImage`, for `CopyButton` and `MenuEntry.copy`.
@@ -50,6 +51,19 @@ enum Clipboard {
         guard let copied = secretChangeCount else { return }
         secretChangeCount = nil
         if NSPasteboard.general.changeCount == copied { NSPasteboard.general.clearContents() }
+        #endif
+    }
+
+    /// Clears twelve words pasted into the restore form, if the clipboard
+    /// still holds those words. A paste cannot be marked concealed after the
+    /// fact, so it is cleared once read (audit F9). Fewer words (typing with
+    /// spaces) leave the clipboard unread.
+    @MainActor static func clearPasted(words: [String]) {
+        guard words.count >= 12, let text = paste(), Engine.words(in: text) == words else { return }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        #else
+        UIPasteboard.general.items = []
         #endif
     }
 

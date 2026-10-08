@@ -52,7 +52,8 @@ struct PeelCommand {
           download <id> <out path>    download and decrypt an attachment to a new file (never opened)
 
           tribes                      tribes this account is in
-          tribe-join <link>           join from a sphinx.chat://?action=tribeV2 link
+          tribe-join <link>           join from a sphinx.chat://?action=tribeV2 link, paying its price to
+                                      join (--yes over the confirmation threshold)
           tribe-members <pubkey>      a tribe's members (the full list only for its owner)
           tribe-leave <pubkey>        leave a tribe
           tribe-create <name>         create a tribe owned by this account on its tribes server

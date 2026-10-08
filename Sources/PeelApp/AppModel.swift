@@ -210,11 +210,13 @@ final class AppModel {
     /// The open account's observations and event loop, cancelled when it closes.
     /// Their loops skip what a stream still hands over after that.
     private var accountTasks: [Task<Void, Never>] = []
-    /// When the PIN was last entered. The PIN itself is never kept.
-    private var unlockedAt: Date?
+    /// When the person last used Peel: the PIN entered, then each key press,
+    /// click or scroll in its windows (`noteActivity`). The PIN timeout
+    /// counts from here. The PIN itself is never kept.
+    @ObservationIgnored private var lastActiveAt: Date?
 
-    /// Hours after which the app asks for the PIN again when it comes to the
-    /// front; 0 means only at launch. Kept with the account; an account that
+    /// Hours without use after which the app asks for the PIN again, in
+    /// front or not; 0 means only at launch. Kept with the account; an account that
     /// has never set it here takes the `pinTimeoutHours` default earlier
     /// builds read, which is left in place.
     private(set) var pinTimeoutHours = 0
@@ -401,7 +403,7 @@ final class AppModel {
     }
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
-    /// comes to the front.
+    /// comes to the front, and every 30 seconds by `lockWhenIdle`.
     func lockIfDue() {
         guard isLockDue else { return }
         Clipboard.clearSecret()
@@ -409,11 +411,27 @@ final class AppModel {
         phase = .locked
     }
 
-    /// The PIN timeout has passed, though Peel may not have come to the front
-    /// to lock yet; notifications already say nothing.
+    /// Peel has gone unused for the PIN timeout, though it may not have
+    /// locked yet; notifications already say nothing.
     var isLockDue: Bool {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let unlockedAt else { return false }
-        return Date.now.timeIntervalSince(unlockedAt) > Double(pinTimeoutHours) * 3600
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let lastActiveAt else { return false }
+        return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
+    }
+
+    /// The person used Peel (a key, a click, a scroll in its windows). Once
+    /// the lock is due, using it no longer puts the lock off.
+    func noteActivity() {
+        guard phase == .ready, !isLockDue else { return }
+        lastActiveAt = .now
+    }
+
+    /// Locks once Peel has gone unused for the PIN timeout, also while it
+    /// stays in front (audit F7), until the task is cancelled.
+    func lockWhenIdle() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(30))
+            lockIfDue()
+        }
     }
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
@@ -449,7 +467,7 @@ final class AppModel {
 
     /// Opens the main window, from onboarding or the lock screen.
     func enterApp() {
-        unlockedAt = .now
+        lastActiveAt = .now
         phase = .ready
         Task { await notifier.refreshPermission() }
     }
@@ -659,11 +677,13 @@ final class AppModel {
         return try await engine.tribeInfo(link: link)
     }
 
-    /// Joins a tribe from its link, paying only the price shown, and opens it.
-    func joinTribe(_ link: String, agreedJoinMsat: UInt64) async throws {
-        guard let engine else { return }
-        let tribe = try await engine.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat)
-        destination = .chat(tribe.pubkey)
+    /// Joins a tribe from its link, paying only the price shown, through the
+    /// engine's payment checks, and opens it.
+    func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
+        await pay("join tribe") {
+            let tribe = try await $0.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat, confirmedMsat: confirmedMsat)
+            destination = .chat(tribe.pubkey)
+        }
     }
 
     func leaveTribe(_ pubkey: String) async throws {
@@ -850,7 +870,7 @@ final class AppModel {
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
         senderZoneCache = [:]
-        unlockedAt = nil
+        lastActiveAt = nil
         notifier.reset()
     }
 

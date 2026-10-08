@@ -57,6 +57,39 @@ signing identity is on it.
 Nothing found lets a remote stranger read the words or take the balance at
 once.
 
+## Tom's decisions, 2026-10-08
+
+| Finding | Decision | Where |
+|---|---|---|
+| F1, tribe price raises | Leave: an accepted risk | below |
+| F2, the core's 3-sat contact reply | Leave as it is | below |
+| F4, the six-digit PIN design | Leave as it is | below |
+| F5, joining pays in one click | **Fixed** | `fix/audit-a-followups` |
+| F7, the lock never falls while Peel is in front | **Fixed** | `fix/audit-a-followups` |
+| F8, no limit on PIN attempts | Leave as it is | below |
+| F9, pasted words stay on the clipboard | **Fixed** (the paste; a crash before the 60 s clear of copied words is unchanged) | `fix/audit-a-followups` |
+
+The follow-up fixes:
+
+- **F5.** `Engine.joinTribe` holds the price to join to `checkPayment`
+  (the balance, then the threshold) after the agreed-price check and
+  before anything is recorded, and refuses offline before the core takes
+  the join into its state. The app's Join is a `PayButton` over a
+  `PaymentAttempt`, as add contact (#80): over the threshold it arms in
+  place and the next click (or Return, from the link field) joins. The CLI's
+  `tribe-join` goes through `confirming` (`--yes`). Test:
+  `AuditMoneyTests.aJoinIsHeldToTheBalanceAndTheThreshold`, against a
+  loopback registry stub.
+- **F7.** The PIN timeout now counts from the person's last use of Peel
+  (the PIN, then each key press, click or scroll in its windows, seen by a
+  local event monitor) rather than from the unlock, and a 30-second check
+  locks once it has passed, in front or not. Using Peel once the lock is
+  due no longer puts it off. The default (0, only at launch) and the
+  settings are unchanged. No test: it is app state and timers.
+- **F9.** A paste of twelve words into the restore boxes (the button or
+  ⌘V) clears the clipboard at once, only if it still holds those words
+  (`Clipboard.clearPasted`). No test: it is the system pasteboard.
+
 Two money bugs found here were already fixed by #80 (cleanup batch 1),
 which merged first: an invite whose confirmation timed out could be paid
 for twice (F3), and adding a contact paid 5 sats with no check (F6). This
@@ -75,7 +108,7 @@ PR adds tests and the report; it changes no code.
 | S7 | A PIN typed with non-ASCII digits can't be retyped | `PIN.validate` accepts six ASCII digits only (`SecretStore.swift:36-40`). | **holds**; test `aPINIsSixASCIIDigits` |
 | S8 | Online PIN guessing at the lock screen | `LockView.unlock` (`LockView.swift:38-48`) and the words reveal (`AccountView.swift:572-586`) allow unlimited attempts. Each costs about 0.45 s, so the whole space takes days at the keyboard of an unlocked Mac. | **weak** (F8) |
 | S9 | The PIN is bypassed | Opening needs `loadMnemonic(pin:)` (`Account.swift:14`). Unlocking a live session re-derives the key (`AppModel.swift:287-296`). Showing the words (`Profile.swift:54`) and changing the PIN (`SecretStore.swift:106-112`) each check the PIN again. | **holds** |
-| S10 | The lock doesn't lock | The lock is the UI only. The engine stays connected with the seed in memory (`AppModel.swift:405-417`). The timeout is checked only when Peel comes to the front (`PeelApp.swift:41-42`), so a Peel left frontmost never relocks. The default timeout is 0, which means "only at launch". | **weak** (F7) |
+| S10 | The lock doesn't lock | The lock is the UI only. The engine stays connected with the seed in memory (`AppModel.swift:405-417`). The timeout is checked only when Peel comes to the front (`PeelApp.swift:41-42`), so a Peel left frontmost never relocks. The default timeout is 0, which means "only at launch". | **weak** (F7); **fixed** in the follow-up |
 | S11 | The development profile's file is readable by others or overwritten | It is created with `O_CREAT\|O_EXCL`, mode 0600, in a 0700 folder (`SecretStore.swift:257-268`). | **holds**; test `theDevelopmentFileIsOwnerOnlyAndNeverOverwritten` |
 | S12 | The CLI opens the real account | The CLI opens only `.development` profiles under `Peel/dev/` and refuses `default` (`PeelCommand.swift:130-135`). An app profile can't be named `dev` (`Profile.swift:21-24`). | **holds**; test `developmentProfilesLiveApartFromTheApps` |
 | S13 | The profile folder is readable by others | `Storage.init` creates the folder 0700 and forces 0700 on one that already exists (`Storage.swift:18-21`). The lock file is 0600. | **holds**; test `theProfileFolderIsOwnerOnly` |
@@ -84,7 +117,7 @@ PR adds tests and the report; it changes no code.
 | S16 | Logs or stdout carry secrets | PeelCore has no `print` or `Logger`. The app prints only in `CallTestRoom`. The core's own `println!`/`eprintln!` lines (chunking, onion diagnostics) carry lengths and indexes, never keys, and a GUI app's stdout goes nowhere. | **holds** |
 | S17 | Notifications leak while locked | `Notifier.post` replaces the title and body when locked or when a lock is due (`Notifier.swift:299-307`). Notifications are cleared on lock and on quit (`AppModel.swift:405-423`). | **holds** |
 | S18 | Copied words linger or sync | `copySecret` marks the copy current-host-only and concealed, and clears it after 60 s unless something else was copied (each task keeps its own change count; second review 1.12 is fixed). It is also cleared on lock, on account switch and on quit (`Clipboard.swift:26-54`, `AppModel.swift:407,421,795`). Copying needs a second click with a warning (`AccountView.swift:518-543`). A crash or force quit leaves the words on the clipboard. | **holds**; the crash case is **weak** (F9) |
-| S19 | Pasted words linger | "Paste twelve words" reads the clipboard and leaves the words there (`OnboardingView.swift:421-427`). | **weak** (F9) |
+| S19 | Pasted words linger | "Paste twelve words" reads the clipboard and leaves the words there (`OnboardingView.swift:421-427`). | **weak** (F9); **fixed** in the follow-up |
 | S20 | Shown words linger on screen or in memory | The words hide after 30 s, when Peel leaves the front, or when the screen closes. A PIN check still running when the words are hidden can't show them after all (`AccountView.swift:442-596`). Onboarding drops its copy on "Open Peel" (`OnboardingView.swift:143`). Swift strings are never zeroed, and the seed lives as a `String` for the whole session and is copied into every core call. | **weak** (F10; this is how Swift works) |
 | S21 | Forget account destroys the words without the PIN | It is allowed from the lock screen on purpose, for a lost PIN, and confirmed in place with what it deletes (`LockView.swift:28-33`). Someone at the Mac can delete the local copy but cannot read it. | **holds** by design; Tom should know it |
 
@@ -110,7 +143,7 @@ checks, in order:
 | M8 | Retrying a payment, boost or tribe message | Payments are retried only once failed, for the same amount and through `checkPayment`. A tribe message is never retried at a raised price (`Engine+Messages.swift:111-141`). | **holds**; `MoneyRefusalTests`, new test `aRetriedTribeMessageNeverPaysARaisedPrice` |
 | M9 | Invites | Balance and connection first, then always a confirmation for the exact amount, then `checkPayment` (`Engine+Contacts.swift:51-60`). A timeout used to throw: the app showed it as a refusal and left the form armable, so a second confirm paid again. | **was vulnerable, fixed by #80** (F3) |
 | M10 | Tribe messages, attachments, deletes, leaves, membership messages, calls | Each pays `tribe.messageAmountMsat`, the registry's current price, with no balance, threshold or agreed-price check (`Engine+Messages.swift:196`, `Engine+Tribes.swift:90-99`). The price follows the registry on every refresh (`Tribe.swift:344-349` via `Engine+Tribes.swift:448-452`). Only the header shows it (`ConversationView.swift:146-152`). | **accepted risk**, Tom's decision 2026-10-08 (F1) |
-| M11 | Joining a tribe | The app passes the price it showed and the engine refuses if it changed (`Engine+Tribes.swift:40-42`). There is no balance or threshold check: one click pays any price to join. The CLI passes no agreed price. | **weak** (F5) |
+| M11 | Joining a tribe | The app passes the price it showed and the engine refuses if it changed (`Engine+Tribes.swift:40-42`). There is no balance or threshold check: one click pays any price to join. The CLI passes no agreed price. | **weak** (F5); **fixed** in the follow-up |
 | M12 | Adding a contact | Since #80, `addContact(code:)` needs a connection, then `checkPayment(keyExchangeMsat, .threshold(confirmedMsat))` before the key exchange; the app and CLI confirm through it. The unchecked core call (`Engine+Messages.swift`) is reached otherwise only by signup's add of the inviter. | **holds** since #80 (F6) |
 | M13 | A received message triggers a spend | Peel's own receive path spends nothing. But every live type 10 (key exchange) makes the core build a confirmation carrying `PRICE_TO_MEET` = 3 sats (core `handle_msg.rs:121-151`, `mod.rs:43`), from a stranger or an existing contact alike. Peel publishes whatever the core returns (`Engine.swift:787-793` → `run` → `complete`). | **vulnerable** (F2) |
 | M14 | Amount overflow | `checkPayment` and `invoiceProblem` add with overflow checks. The boost total, the token price × 1000, `Sats.msat` and the tribe price sum (which saturates) all refuse to wrap. | **holds**; new tests `anAmountAndItsReserveNeverWrap`, `aTribesPriceNeverWraps`, `typedSatsAreWholeASCIIAndCountable` |
@@ -167,7 +200,7 @@ checks, in order:
   - Hold any price over the threshold to `checkPayment`.
   - The app needs an "accept new price" control in the tribe header.
 
-**F2. Anyone can make Peel pay them 3 sats per message (medium, open; inherited from the core).**
+**F2. Anyone can make Peel pay them 3 sats per message (medium; inherited from the core; left as it is, Tom's decision 2026-10-08).**
 
 - The core answers every live type 10 with a confirmation key exchange
   that pays `PRICE_TO_MEET` (3 sats). That includes a repeat from a
@@ -200,7 +233,7 @@ checks, in order:
 - No unit test: it needs a connected transport, so check it on the local
   stack.
 
-**F4. Six digits, and the Keychain wall has a door on a developer Mac (medium, open; design).**
+**F4. Six digits, and the Keychain wall has a door on a developer Mac (medium; design; left as it is, Tom's decision 2026-10-08).**
 
 - The PIN slows offline guessing by minutes at most, as the code says.
 - The data-protection Keychain restricts the item to the team's access
@@ -218,7 +251,7 @@ checks, in order:
   - Wrap the PIN box key with a Secure Enclave key.
 - Both change the unlock flow, so Tom decides.
 
-**F5. Joining a tribe pays any price in one click (low, open).**
+**F5. Joining a tribe pays any price in one click (low; fixed in the follow-up, Tom's decision 2026-10-08).**
 
 - The app makes sure the price paid is the one shown. Neither the balance
   nor the threshold applies.
@@ -239,7 +272,7 @@ checks, in order:
 - The only unchecked caller left is signup adding the inviter, on a new
   account funded by the invite. That is fine as it stands.
 
-**F7. The lock is a curtain, and it only falls when Peel comes to the front (low, open).**
+**F7. The lock is a curtain, and it only falls when Peel comes to the front (low; fixed in the follow-up, Tom's decision 2026-10-08: lock on idle, from the last use of Peel).**
 
 - With a timeout set, a Peel left frontmost past it stays open, and so
   does the Mac after a screen lock. With the default (0) it never relocks.
@@ -249,14 +282,14 @@ checks, in order:
 - *Fix:* also lock on `NSWorkspace.screensDidSleepNotification` and the
   session-resign notifications, and run a timer for the due time.
 
-**F8. Unlimited PIN attempts (low, open).**
+**F8. Unlimited PIN attempts (low; left as it is, Tom's decision 2026-10-08).**
 
 - About 0.45 s each, so days for the whole space, and only at the
   unlocked Mac.
 - *Fix:* back off after 5 wrong PINs (30 s, doubling), in `AppModel.unlock`
   and `revealWords`, kept in memory only.
 
-**F9. Words left on the clipboard (low, open).**
+**F9. Words left on the clipboard (low; the paste fixed in the follow-up, Tom's decision 2026-10-08).**
 
 - After "Paste twelve words", or after a crash before the 60 s clear.
 - *Fix:* clear the clipboard after a paste that filled all twelve boxes
@@ -291,13 +324,10 @@ checks, in order:
 
 ## Left, in suggested order
 
-1. F2: a decision from Tom (may Peel drop or cap the core's automatic
-   confirmations), then a local-stack test. F1 is not left: Tom accepted
-   it on 2026-10-08.
-2. F4: a decision on `.userPresence` or a Secure Enclave key.
-3. F5: small, like #80's add-contact gate.
-4. F7, F8 and F9: small app changes.
-5. F11: with the second review's 2.2.
+Tom decided on 2026-10-08 (see "Tom's decisions" above): F5, F7 and F9 are
+fixed in the follow-up; F1, F2, F4 and F8 stay as they are. What remains:
+
+1. F11: with the second review's 2.2.
 
 ## Passes on this diff
 

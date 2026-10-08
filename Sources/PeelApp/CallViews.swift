@@ -168,7 +168,7 @@ private extension String {
 /// A call in the timeline, under its sender's run header: audio or video,
 /// who is on it, and Join. Colour shows only while someone is on it; with
 /// no word from the call server (or an old call) there is no count at all,
-/// never a guessed zero.
+/// never a guessed zero; a recent call keeps the line's room empty meanwhile.
 struct CallCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
@@ -178,6 +178,8 @@ struct CallCard: View {
     @State private var leaving: String?
 
     static let width: CGFloat = 320
+    /// The status line's height, kept empty until the call server answers.
+    private static let lineHeight: CGFloat = 24
 
     var body: some View {
         let message = row.message
@@ -204,7 +206,9 @@ struct CallCard: View {
                             who(people, "\(people.count) on the call")
                         case .live: line("No one on the call")
                         case .ended: line("Call ended")
-                        case .unknown: EmptyView()
+                        case .unknown:
+                            // So the card does not grow under the reader when it does.
+                            if model.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
                         }
                     }
                 }
@@ -255,7 +259,7 @@ struct CallCard: View {
         Text(text)
             .font(Theme.font(12.5))
             .foregroundStyle(Theme.secondaryText)
-            .frame(minHeight: 24)
+            .frame(minHeight: Self.lineHeight)
     }
 
     private func who(_ people: [CallParticipant], _ text: String) -> some View {
@@ -267,7 +271,7 @@ struct CallCard: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
         }
-        .frame(minHeight: 24)
+        .frame(minHeight: Self.lineHeight)
     }
 
     @ViewBuilder private func button(_ onIt: Bool) -> some View {

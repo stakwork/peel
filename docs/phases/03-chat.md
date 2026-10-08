@@ -2032,3 +2032,72 @@ download arrow; the official Mac app plays it.
   first, scroll away, change chat, double-click and the corner button into
   the viewer, Space and Escape there, Load on the large one, Download and
   Show in Finder.
+
+## The list's end after late height changes (branch `fix/open-bottom-gap`, 2026-10-08)
+
+From Tom's real account: opening #Universe: AI, whose newest message is a
+call card, left the list not flush with its last row.
+
+Done means: the list ends flush with its last row above the composer (the
+12 pt padding aside) after any late height change, while #41's rules hold:
+a reader who scrolled up, jumped to a quote or opened at "New messages" is
+never moved.
+
+What was found, on the local stack (tribes of 45 and 200 rows, a presence
+stub answering an empty `current_participants` 1.5 s after subscribe,
+the scroll geometry logged from a debug build):
+
+- Every recent call card grew 20 pt after the list had reached its end:
+  `.unknown` drew no status line, then "No one on the call" arrived
+  (56 to 76 pt, logged on every open).
+- `.defaultScrollAnchor(.bottom, for: .sizeChanges)` held only a list
+  exactly at its end, and not one opened with `scrollTo(divider)`, which
+  anchors on the divider instead. Opened at "New messages" a few rows from
+  the end, the end stayed 20 pt short per card (40 pt with two cards, the
+  last message hidden) and the jump pill said "2 new messages" with
+  nothing more to see. At the end without a divider it went short in 1 of
+  3 launches.
+- The lazy stack's estimated height swings on open (24 024 to 12 084 pt
+  for 200 rows), and a scroll asked for inside a geometry callback was
+  sometimes lost.
+- Not reproduced: a blank gap *past* the end. A simulated 164 pt shrink
+  at the end was clamped every time; the geometry once reported a list
+  197 pt past its end that was drawn flush. Tom's 150–200 pt gap may come
+  from rows the local stack has no copy of (images, videos, real presence
+  sequences).
+
+Changed:
+
+- `CallCard` keeps the status line's room (24 pt, `lineHeight`, shared
+  with `line` and `who`) while a recent call's presence is unknown, so it
+  no longer grows when the call server answers. Rows should reserve their
+  final size, as images do with their aspect ratio; the list's re-pin is
+  the backstop for those that cannot.
+- `MessageList`: when the content's height changes under a list that was
+  at its bottom and is `following`, with no scroll in progress, it goes
+  back to the end marker after the layout pass (`repin`, one per burst).
+  `scrollToNewest` repins when its animation completes. The height rides
+  on `BottomDistance`; the rest of its action still runs only when the
+  position crosses its lines.
+
+Before and after on the local stack: before, the newest call card cut off
+under the composer with a "2 new messages" pill; after, flush with no pill;
+a plain last message flush in both.
+
+Reviews. `/code-review high`, applied: the re-pin requires `following` (a
+list opened at "New messages" or jumped to a quote stays put); one geometry
+callback, so the jump pill no longer flickers on a re-pin; the deferred
+scroll re-checks `following` and hand scrolling and is coalesced; no
+re-pin after a keyboard page scroll (only after Peel's own animation);
+the 24 pt shared; rebased on main (video players, run spacing). Not
+applied: a card whose presence never comes keeps an empty 24 pt line until
+the call is 12 hours old (the feed reconnects with backoff, so it is "no
+word yet"); a height change during a hand scroll's deceleration is not
+retried. `/simplify`: the animation completion calls `repin` (one path),
+comment names what does not reserve its size; not applied: dropping
+`atEnd` and the `repinning` flag (both keep work off ordinary frames), a
+`toEnd` helper (would touch #41's lines). `/security-review`: no findings.
+
+Pre-existing, not changed: opening at "New messages" far up a list whose
+rows are only estimated lands at the end, not at the divider (40 unread of
+42 rows, before and after).

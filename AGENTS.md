@@ -99,7 +99,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ImageViewer`, `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
-  watching) and `CallPlaceholder` (the minimal call window until PR 5);
+  watching, the in-place switch confirm, the sidebar's on-a-call bar),
+  `CallSession` (the call you are on: the LiveKit room, microphone, camera
+  and devices) and `CallWindow` (the grid and the control bar);
   `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
   `buttonProgress`, the spinner inside a running button);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local

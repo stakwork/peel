@@ -33,6 +33,22 @@ public struct CallParticipant: Sendable, Equatable, Identifiable {
     public var id: String { identity }
 }
 
+extension CallParticipant {
+    /// Someone in the media room itself, from the name and metadata
+    /// (`{"profilePictureUrl":…}`) they joined with, cleaned as the
+    /// presence feed's are. Nil for an identity the feed would refuse.
+    public init?(identity: String, name: String?, metadata: String?) {
+        var fields: [String: Any] = ["identity": identity]
+        fields["nickname"] = name
+        if let metadata, metadata.utf8.count <= 4096,
+           let json = try? JSONSerialization.jsonObject(with: Data(metadata.utf8)) as? [String: Any] {
+            fields["avatarUrl"] = json["profilePictureUrl"]
+        }
+        guard let participant = CallServer.participant(fields) else { return nil }
+        self = participant
+    }
+}
+
 /// Who is on a call, as far as the call server says.
 public enum CallPresence: Sendable, Equatable {
     /// No answer from the call server yet, or the connection to it dropped.

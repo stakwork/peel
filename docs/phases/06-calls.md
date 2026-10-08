@@ -2,7 +2,7 @@
 
 Status: **PRs 1 to 4 merged** (the call link and message, #44; the ticket
 and presence, #54; LiveKit in the bundle, #55; the card and header, #59);
-PRs 5 to 8 open. Finishing calls is first in the order Tom set on the
+PR 5 (the window) in review; PRs 6 to 8 open. Finishing calls is first in the order Tom set on the
 evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
@@ -27,6 +27,8 @@ decided (Tom, 2026-10-08; see "Decided" below).
   sidebar order, and a placeholder join window
   (`Sources/PeelApp/CallPlaceholder.swift`) until PR 5; see the PR 4
   journal.
+- Built (PR 5): `CallSession` and `CallWindow` replace the placeholder;
+  the on-a-call bar and the in-place switch confirm; see the PR 5 journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), and PRs 4 to 8 (the card, the window, screen
   share, notifications, the record); one mic-allowed run of the test room (PR 3
@@ -1026,6 +1028,116 @@ the build, so it lands before any UI depends on it.
   - `AppModel.callServer` is read once per account: no UI changes it yet.
   - `MenuShortcut` as a modifier set: one flag is enough for now.
   - The placeholder's once-a-second count: PR 5 replaces the window.
+
+## PR 5 journal (2026-10-08)
+
+- **Built** (boards C3, C4, C5), in PeelApp, plus one PeelCore helper:
+  - `CallSession` (`Sources/PeelApp/CallSession.swift`) owns the LiveKit
+    `Room` for one call. Tiles, your mic and camera state and the
+    connection state are worked out from the room's `objectWillChange`
+    (throttled to ten a second; audio levels fire it constantly), with
+    each person's name and metadata read once. Mic on at join; camera off
+    except for the person who starts a video call (Tom's default). Access
+    is asked from macOS (`AVCaptureDevice.requestAccess`) before LiveKit
+    touches a device, so an unanswered prompt never holds the room, and
+    nothing is published once you have left. Camera off unpublishes, so
+    the camera chosen while off is the one that opens. Devices: LiveKit's
+    `AudioManager` for microphones and speakers, `CameraCapturer` for
+    cameras; a mic or speaker unplugged mid-call falls back to the default
+    with a quiet line; an unplugged camera turns off. States: connecting,
+    connected, reconnecting (LiveKit's own resume and full reconnect), and
+    lost, with "Lost the connection to the call · Rejoin" (a new ticket,
+    the camera as you had it).
+  - `CallParticipant(identity:name:metadata:)` in PeelCore reads a room
+    participant through the presence feed's cleaning (names without
+    control characters, photos only public https); tested.
+  - `CallWindow`: the title bar ("#design 24:12", or the connection's
+    state), the grid (1, 2 side by side at 16:11, 2×2 up to four, three or
+    four across beyond, scrolling under 140 pt tiles), avatars in person
+    hues with the camera off, the accent edge while someone speaks, a
+    muted mic on the name tag; the bar: Mute (⌘⇧A) and Camera (⌘⇧V), each
+    with a chevron to Peel's device menu (Microphone, Speaker, Camera,
+    with checks), and Leave in `#ED7474` with dark text (⌘W). No Share
+    button: the board's bar keeps its layout without it; PR 6 adds it.
+    Refused access disables the control and says "Peel can't use the
+    microphone · Open System Settings". 960 × 640 at first; closing it
+    leaves; it closes when the call goes from anywhere else.
+  - The sidebar's on-a-call bar (`OnCallBar`): the chat, the running
+    time, up to three avatars and "+N", "N on the call", Mute and "Return
+    to call". The header pill's "Open · N" is #59's.
+  - One call at a time: Join on another call's card, or the header's
+    Join or Audio/Video call (and ⌥⌘A/⌥⌘V), first asks in place, "Leave
+    the call in **#design** and join?" with Cancel and the blue "Leave and
+    join" ("Leave and start" in the header). The call you are on goes only
+    once the new ticket has come, so a failed join leaves you on it. The
+    header's question is dropped when another chat opens.
+  - Leaving cleanly: Leave, ⌘W, a switch, forgetting the account
+    (`resetAccountState`) and quitting all disconnect the room; a quit is
+    held (`applicationShouldTerminate`) until every room left has said
+    goodbye, or two seconds.
+- **Verified** on a local stack (broker 2011, tribes 8911, mixer 8111,
+  `livekit-server --dev` on 7980/7981/7982 with a config, PR 4's stub
+  copied to 8913 with the LiveKit port as an argument), profiles
+  `p5-alice` and `p5-bob` in a tribe, joined at launch through a scratch
+  hook that was never committed (this session cannot click):
+  - Two Peels in one call: the 2-person layout, both tiles named and in
+    their hues; the sidebar bar ("#design 00:16", two avatars, "2 on the
+    call", Mute, Return to call); the card's "You're on this call" with
+    Open; the header's "Open · 2".
+  - `lk load-test` video publishers: the 2×2 layout with live video in
+    the tiles (LiveKit's test publishers send video with no source, so the
+    camera is the first video that is not a screen share), "Guest" for a
+    publisher with no name, the muted icon on tags.
+  - Both apps published their microphones (`addTrack` in LiveKit's log);
+    a quit sent LiveKit's leave (`CLIENT_REQUEST_LEAVE`) before exit.
+  - Seven on the call (`lk load-test` with five video publishers, two
+    of them with audio, plus both Peels): three across, the sidebar's
+    three avatars, "+4" and "7 on the call", the header's "Open · 7".
+  - Connection loss: with the call stub (the signal path) and LiveKit
+    killed, "Reconnecting…", then "Disconnected" in the title and the
+    sidebar (grey dot), only your tile, and "Lost the connection to the
+    call · Rejoin". With both restarted three seconds later LiveKit's
+    resume was refused ("could not restart participant": a new server
+    knows no one) and its full reconnect came as it gave up, so the call
+    still ended lost; Rejoin, a new ticket, is the way back. With only
+    the signal path dropped and the media server alive, the call stayed
+    connected and media kept flowing; with only LiveKit killed behind the
+    stub's half-open proxy, LiveKit 2.10.2 noticed nothing for two
+    minutes (frozen video, still "connected"), which a real server
+    without the proxy would not show.
+  - Quitting both apps during the call, and after the server had gone,
+    exited at once.
+- **Left as is**: the sidebar's green phone stays on your call's tribe
+  while that call is lost (the live set is worked out when the call
+  changes, not its state); unnamed participants are all "Guest" in one
+  hue.
+- **Not verified**: a reconnect that recovers (`.reconnecting` back to
+  `.connected`); clicking anything (the device
+  menu, Mute, Camera, Leave, Rejoin, the switch confirm, Return to call,
+  Open System Settings); the camera (its prompt was never answered);
+  unplugging a device; refused access. Tom: `.build/PeelCallWindowTest.app`.
+- **Reviews**: `/code-review` (high): the audio-device handler kept by
+  the newest session only; quit no longer waits past two seconds; the
+  header's question dropped on a chat change; nothing published after
+  leaving during a permission prompt; Rejoin keeps your camera and shows
+  why it failed in the window; people read once per name and metadata;
+  one `avatar(of:)` for the card, the bar and the tiles. `/simplify`: one
+  status view that ticks only while connected; shortcuts on the controls
+  themselves; one `joining` flag for the confirm; a stored `people` so
+  speaking does not redraw the sidebar; camera notifications only for
+  video devices; `Duration` formatting; `OnlineDot(color:)`; quits wait
+  for rooms already left. `/security-review`: no findings at confidence
+  8 or above. Not applied, with reasons:
+  - Leaving while still connecting waits for the connect to finish (as
+    PR 3 decided), so a slow connect delays the leave.
+  - A participant whose identity the presence rules refuse (control
+    characters, over 256 bytes) gets no tile; identities come from the
+    call server's token.
+  - The audio-device handler and the switch question stay out of
+    `AppModel`, which does not import LiveKit, and the question belongs to
+    the button that asked (as other in-place confirms do).
+  - `PaneLink` and `Notifier`'s settings opener are not shared: both sit
+    outside this PR.
 
 ## Decided (Tom, 2026-10-08)
 

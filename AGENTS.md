@@ -278,6 +278,14 @@ hosts, codes and the attachment cipher). Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
 
+`Tests/PeelIntegrationTests` runs journeys through the real core against a
+local stack that `scripts/test-stack.sh` starts on random ports (never 1883
+or 8000); opt-in, see `docs/testing.md`:
+
+```sh
+PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
+```
+
 ### Local LiveKit server
 
 For the development test room (`Sources/PeelApp/CallTestRoom.swift`;

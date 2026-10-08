@@ -2101,3 +2101,46 @@ comment names what does not reserve its size; not applied: dropping
 Pre-existing, not changed: opening at "New messages" far up a list whose
 rows are only estimated lands at the end, not at the divider (40 unread of
 42 rows, before and after).
+
+## The blank space under the last row (branch `fix/bottom-gap-2`, 2026-10-08)
+
+From Tom's real account, after #68: #Universe: AI, whose newest message is
+a call card, still showed about 80 pt of empty space between that card and
+the composer. It stayed through scrolling and through the jump button, so
+it was content at the end of the list, not an over-scroll.
+
+Done means: a message with nothing to show takes no room in the list.
+
+What was found: `ChatRow.rows` made a `.message` row for every text or call
+message, and `MessageRow` drew nothing for one with no words while keeping
+its padding and the hidden hover time in its gutter. Reproduced on a copy
+of `gap-alice` with three empty type-32 messages after the call card: rows
+of 22, 22 and 24 pt at the list's end, the same picture as Tom's
+screenshot. Which messages make Tom's gap is not known yet; the debug
+build's log (row kinds, types and heights only) will say.
+
+Changed: `Message.isBlank` (PeelCore, tested): a text or call message whose
+shown text is nothing but spaces or invisible (format) characters, not
+deleted, and not our own pending or failed send (that row offers Retry and
+Discard). `ChatRow.rows` leaves those out unless the row would still show
+something: a collapsed thread (its newest message places the thread's
+row), a quote, or boosts. "New messages" goes to the next message that
+counts.
+
+Before and after on the local stack (the copy above): before, about 80 pt
+of blank list under the call card; after, flush with the composer, also
+after going to another chat and back, and "New messages" still opens at
+the same row.
+
+Reviews. `/code-review high`, applied: our unsent blank keeps its row
+(Retry, Discard); a blank reply or boosted blank keeps its row (the quote
+or chip shows); zero-width and other format characters count as blank.
+`/simplify`: comment ties the unsent rule to `isDiscardable`; kept the
+skip in `ChatRow.rows` rather than Storage's timeline SQL (it needs the
+threads, boosts and parents that meet only there). Follow-ups, not done:
+
+- Blanks still count as unread (`countsAsUnreadSQL`): a badge with nothing
+  new to see. A stored column from `Message.isBlank` would fix this, the
+  thread's "N replies" count and the sidebar preview at once.
+- A quote of a blank parent goes nowhere.
+- An image, a blank and an image within a minute now share one grid.

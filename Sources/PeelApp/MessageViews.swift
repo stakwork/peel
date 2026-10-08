@@ -116,10 +116,15 @@ struct ChatRow: Identifiable {
         var newAfter = newAfter
         for message in messages {
             // A collapsed thread's row stands for its newest message, which this is.
+            let collapsed = message.threadUUID.flatMap { threads[$0] }
+            // No row that would draw nothing (blank space under the last
+            // row, Tom 2026-10-08): "New messages" goes to the next.
+            if message.isBlank, collapsed == nil, message.uuid.flatMap({ boosts[$0] }) == nil,
+               quote(message, parents: parents, threadRoot: threadRoot) == nil { continue }
             // What counts as unread (`Storage.readStates`): text, attachments, payments.
             let startsNew = newAfter.map { message.countsAsUnread(after: $0) } ?? false
             if startsNew { newAfter = nil }
-            if let thread = message.threadUUID, let summary = threads[thread] {
+            if let summary = collapsed {
                 var row = row(summary.original, kind: .message, id: "t\(summary.uuid)", inTribe: inTribe, people: people)
                 row.startsNew = startsNew
                 row.latest = message

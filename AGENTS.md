@@ -59,6 +59,10 @@ is a short plan. Update the status and the journal when you finish something.
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
+  - `NotificationPolicy.swift` — what notifies (messages, payment
+    requests, announced calls, join requests to owned tribes) and the one
+    "quiet here" rule (the chat in view, its mute level) that messages,
+    calls, money and new contacts share
   - `PersonHue.swift` — a person's colour (direction D): the official apps'
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the

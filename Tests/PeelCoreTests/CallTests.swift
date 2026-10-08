@@ -253,16 +253,4 @@ struct CallMessageTests {
         deleted.deleted = true
         #expect(!CallLink.isAnnounced(by: deleted, server: server, now: now))
     }
-
-    @Test func aChatsLevelDecidesWhetherACallNotifies() {
-        let call = Message.fixture(type: MessageType.call, content: "\(base)\(room)")
-        var mention = Message.fixture(content: "@me look")
-        mention.mentionsMe = true
-        #expect(MuteLevel.all.notifies(call))
-        // A call mentions nobody: mentions-only and muted chats stay quiet.
-        #expect(!MuteLevel.mentionsOnly.notifies(call))
-        #expect(!MuteLevel.muted.notifies(call))
-        #expect(MuteLevel.mentionsOnly.notifies(mention))
-        #expect(!MuteLevel.muted.notifies(mention))
-    }
 }

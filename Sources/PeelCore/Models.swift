@@ -68,12 +68,13 @@ public enum MuteLevel: Int, Sendable {
     case mentionsOnly = 1
     case muted = 2
 
-    /// Whether a notification for `message` gets through: every message,
-    /// only those that mention this account (a call mentions nobody), or none.
-    public func notifies(_ message: Message) -> Bool {
+    /// Whether a notification gets through: for everything, only for what
+    /// mentions this account (a call, sats or a new contact mention nobody),
+    /// or for nothing. `NotificationPolicy.isQuiet` asks it.
+    public func notifies(mentioningMe: Bool) -> Bool {
         switch self {
         case .all: true
-        case .mentionsOnly: message.mentionsMe
+        case .mentionsOnly: mentioningMe
         case .muted: false
         }
     }

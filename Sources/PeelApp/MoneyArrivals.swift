@@ -1,11 +1,11 @@
 import SwiftUI
 import PeelCore
 
-/// Sats that reached this account: a payment, boost or purchase to it
+/// Sats that reached this account: a payment or boost to it
 /// (`Engine.Event.moneyReceived`), or an invoice made here, paid
 /// (`.invoicePaid`). The engine tells each payment once.
 struct Receipt: Sendable {
-    enum Kind: Sendable { case payment, boost, purchase, invoice }
+    enum Kind: Sendable { case payment, boost, invoice }
 
     let kind: Kind
     let msat: Int64
@@ -17,11 +17,7 @@ struct Receipt: Sendable {
     let note: String?
 
     init(_ message: Message) {
-        kind = switch message.type {
-        case MessageType.boost: .boost
-        case MessageType.purchase: .purchase
-        default: .payment
-        }
+        kind = message.type == MessageType.boost ? .boost : .payment
         msat = message.msat ?? 0
         chat = message.chat
         messageID = message.id

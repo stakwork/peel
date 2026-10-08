@@ -406,7 +406,7 @@ private struct BoostChip: View {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
-                        Avatar(name: avatar.name, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
+                        Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
                             .padding(1)
                             .background(fill, in: Circle())
                             .zIndex(Double(Self.shownBoosters - index))
@@ -465,12 +465,11 @@ private struct BoostersPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
-                        let name = boost.fromMe ? "You" : boost.alias ?? "Someone"
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
                         HStack(spacing: 8) {
-                            Avatar(name: avatar.name, url: avatar.photoURL, size: 22, hue: avatar.hue)
-                            Text(name)
+                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: 22, hue: avatar.hue)
+                            Text(avatar.label)
                                 .font(Theme.font(13))
                                 .foregroundStyle(avatar.hue.name)
                                 .lineLimit(1)
@@ -534,6 +533,8 @@ struct NotSettled: View {
 /// ours the delivery bolt, the wait or Retry.
 struct PaymentRow: View {
     let row: ChatRow
+    /// Lit for a moment, just jumped to.
+    var flashed = false
 
     @State private var hovering = false
 
@@ -548,17 +549,7 @@ struct PaymentRow: View {
                 .background(Theme.attention.opacity(message.deleted ? 0.06 : 0.14), in: Circle())
                 .frame(width: MessageRow.avatarSize)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    headline
-                    Text(message.date, format: .dateTime.hour().minute())
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .help(message.date.formatted(date: .complete, time: .shortened))
-                    if message.fromMe, message.delivery == .delivered {
-                        DeliveredBolt()
-                    }
-                }
+                RunHeader(row: row, headline: headline)
                 if !message.deleted, let note = message.content?.trimmed.nilIfEmpty {
                     MessageText(text: note, chat: message.chat)
                 }
@@ -572,18 +563,12 @@ struct PaymentRow: View {
                 }
             }
             .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
-            .opacity(message.fromMe && message.delivery == .pending ? 0.6 : 1)
+            .opacity(message.isSending() ? 0.6 : 1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background {
-            if hovering {
-                Theme.hover.opacity(0.55)
-            } else if message.fromMe {
-                Theme.accent.opacity(0.06)
-            }
-        }
+        .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .peelMenu(source: row.id) {
@@ -591,23 +576,24 @@ struct PaymentRow: View {
         }
     }
 
-    @ViewBuilder private var headline: some View {
-        let who = row.alias ?? "Someone"
+    /// In the run header, in place of the sender's name.
+    private var headline: Text {
+        let who = row.sender.name
         if message.deleted {
-            Text("This payment has been deleted")
+            return Text("This payment has been deleted")
                 .font(Theme.font(13))
                 .italic()
                 .foregroundStyle(Theme.secondaryText)
         } else if let msat = message.amountMsat, msat > 0 {
             let amount = Text(Sats.format(msat: msat)).font(Theme.font(14, .semibold))
-            (message.fromMe ? Text("You sent ") + amount : Text("\(who) sent you ") + amount)
+            return (message.fromMe ? Text("You sent ") + amount : Text("\(who) sent you ") + amount)
                 .font(Theme.font(14))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
         } else {
             // A contact's type 5 that carried no sats: whatever it declared
             // is not money received.
-            Text(message.fromMe ? "You sent a payment" : "\(who) sent a payment with no sats")
+            return Text(message.fromMe ? "You sent a payment" : "\(who) sent a payment with no sats")
                 .font(Theme.font(14))
                 .foregroundStyle(Theme.secondaryText)
         }

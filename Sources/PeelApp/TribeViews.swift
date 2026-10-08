@@ -301,7 +301,7 @@ struct JoinRequestNote: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("\(message.senderAlias ?? "Someone") wants to join")
+            Text("\(message.senderAlias ?? Sender.unnamed) wants to join")
             if let approved {
                 Text(approved ? "· Approved" : "· Declined")
             } else if canAnswer {
@@ -328,7 +328,7 @@ struct PinnedMessageBar: View {
             Image(systemName: "pin.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
-            Text(message.fromMe ? "You" : message.senderAlias ?? "Someone")
+            Text(message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed)
                 .font(Theme.font(12, .medium))
             Text(message.preview)
                 .font(Theme.font(12))
@@ -464,7 +464,7 @@ private struct MentionRow: View {
                 Avatar(name: alias ?? "?", url: details.photoURL, size: 28, hue: hue)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(alias ?? "Someone")
+                        Text(alias ?? Sender.unnamed)
                             .font(Theme.font(13, .medium))
                             .foregroundStyle(hue.name)
                         Text("in #\(tribeName ?? String(message.chat.prefix(12)))")

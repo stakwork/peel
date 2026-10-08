@@ -65,7 +65,7 @@ struct ThreadSummaryLine: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let latest = summary.latest {
-                    let who = model.sender(of: latest).name
+                    let who = model.sender(of: latest).label
                     TimelineView(.everyMinute) { context in
                         Text("\(who) replied \(Formatting.relative(latest.date, now: context.date))")
                             .font(Theme.font(12))
@@ -107,7 +107,7 @@ struct ParticipantAvatars: View {
             ForEach(Array(participants.prefix(3).enumerated()), id: \.offset) { _, person in
                 let avatar = model.avatar(fromMe: person.fromMe, alias: person.alias, photoURL: person.photoURL,
                                           chat: chat, inTribe: inTribe)
-                Avatar(name: avatar.name, url: avatar.photoURL, size: size, hue: avatar.hue)
+                Avatar(name: avatar.avatarName, url: avatar.photoURL, size: size, hue: avatar.hue)
                     .overlay(Circle().strokeBorder(Theme.background, lineWidth: 1.5))
             }
         }
@@ -189,7 +189,7 @@ private struct ThreadCard: View {
                             .foregroundStyle(Theme.secondaryText)
                         }
                     }
-                    (Text(author.name + " ").font(Theme.font(14, .bold)).foregroundColor(author.hue.name)
+                    (Text(author.label + " ").font(Theme.font(14, .bold)).foregroundColor(author.hue.name)
                         + Text(original.preview).font(Theme.font(14, unread ? .bold : .regular))
                         .foregroundColor(unread ? Theme.text : Theme.text.opacity(0.85)))
                         .lineLimit(1)
@@ -206,7 +206,7 @@ private struct ThreadCard: View {
                             let sender = model.sender(of: latest)
                             Text("·").foregroundStyle(Theme.secondaryText)
                             Avatar(name: sender.avatarName, url: sender.photoURL, size: 16, hue: sender.hue)
-                            (Text(sender.name + ": ")
+                            (Text(sender.label + ": ")
                                 .font(Theme.font(13, .medium))
                                 .foregroundColor(sender.hue.name)
                                 + Text(latest.preview))

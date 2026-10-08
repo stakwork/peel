@@ -127,7 +127,7 @@ extension PaymentItem {
         switch kind {
         case .invoice: return incoming ? "Invoice paid" : "Lightning invoice"
         case .keysend: return "Keysend"
-        case .payment, .boost, .purchase, .messageFee: return chatName ?? "Someone"
+        case .payment, .boost, .purchase, .messageFee: return chatName ?? Sender.unnamed
         }
     }
 
@@ -680,7 +680,7 @@ private struct QuotedMessage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             let sender = model.sender(of: message)
-            (Text(sender.name).fontWeight(.semibold).foregroundColor(sender.hue.name)
+            (Text(sender.label).fontWeight(.semibold).foregroundColor(sender.hue.name)
                 + Text(" · \(Formatting.when(message.date))"))
                 .font(Theme.font(12))
                 .monospacedDigit()
@@ -1270,6 +1270,8 @@ private struct PayInvoicePane: View {
 struct PaymentRequestRow: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
+    /// Lit for a moment, just jumped to.
+    var flashed = false
 
     @State private var attempt = PaymentAttempt()
     @State private var hovering = false
@@ -1278,7 +1280,8 @@ struct PaymentRequestRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: MessageRow.gutterSpacing) {
-            Avatar(name: row.alias ?? "?", url: row.photoURL, size: MessageRow.avatarSize, hue: row.hue)
+            Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: MessageRow.avatarSize,
+                   hue: row.sender.hue)
             VStack(alignment: .leading, spacing: 4) {
                 RunHeader(row: row)
                 card
@@ -1290,9 +1293,7 @@ struct PaymentRequestRow: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background {
-            if hovering { Theme.hover.opacity(0.55) } else if message.fromMe { Theme.accent.opacity(0.06) }
-        }
+        .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
     }
@@ -1305,7 +1306,7 @@ struct PaymentRequestRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "bolt")
                     .font(.system(size: 11))
-                Text(message.fromMe ? "You requested" : "\(row.alias ?? "Someone") requested")
+                Text("\(row.sender.label) requested")
                 Spacer(minLength: 8)
                 if case .paid = request?.state {
                     Label("Paid", systemImage: "checkmark")
@@ -1326,7 +1327,7 @@ struct PaymentRequestRow: View {
                     Text(invoice.memo).font(Theme.font(13.5)).fixedSize(horizontal: false, vertical: true)
                 }
                 if !message.fromMe, request?.paysRequester == false {
-                    Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.alias ?? "them").")
+                    Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.attention)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1341,8 +1342,7 @@ struct PaymentRequestRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(width: 320, alignment: .leading)
-        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.divider))
+        .cardBoxed()
         .padding(.top, 2)
     }
 

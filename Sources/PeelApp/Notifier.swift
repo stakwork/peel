@@ -199,7 +199,7 @@ final class Notifier {
             for message in single {
                 let (name, place) = names(chat, sender: message.senderAlias)
                 post(center, id: message.uuid ?? UUID().uuidString, chat: chat, message: message.id, locked: locked,
-                     title: place == nil ? name : message.senderAlias ?? "Someone",
+                     title: place == nil ? name : message.senderAlias ?? Sender.unnamed,
                      subtitle: place, body: body(of: message))
             }
             chatsShown.insert(chat)
@@ -260,7 +260,7 @@ final class Notifier {
     /// and, for a tribe, "#name" as the place.
     private func names(_ chat: String, sender: String?) -> (name: String, place: String?) {
         let conversation = model?.conversations.first { $0.chat == chat }
-        let name = conversation?.name ?? sender ?? "Someone"
+        let name = conversation?.name ?? sender ?? Sender.unnamed
         return (name, conversation?.isTribe == true ? "#\(name)" : nil)
     }
 
@@ -270,7 +270,7 @@ final class Notifier {
         guard let chat = receipt.chat else { return "an invoice" }
         let (name, place) = names(chat, sender: receipt.senderAlias)
         guard let place else { return name }
-        return "\(receipt.senderAlias ?? "Someone") in \(place)"
+        return "\(receipt.senderAlias ?? Sender.unnamed) in \(place)"
     }
 
     private func describe(_ receipt: Receipt, from source: String) -> String {
@@ -290,7 +290,7 @@ final class Notifier {
 
     private func body(of message: Message) -> String {
         if message.type == MessageType.memberRequest {
-            return "\(message.senderAlias ?? "Someone") wants to join"
+            return "\(message.senderAlias ?? Sender.unnamed) wants to join"
         }
         // The title names who, the subtitle the tribe.
         if message.type == MessageType.call { return "Started a call" }

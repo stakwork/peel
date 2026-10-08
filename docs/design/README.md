@@ -84,7 +84,10 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   Quotes, attachments, thread summaries, Retry and the deleted placeholder
   sit in the row. Hovering lights the row and shows Reply, Boost (others'
   messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
-  centred line ("carol joined").
+  centred line ("carol joined"). Someone who sent no name is "Someone"
+  everywhere (rows, quotes, notifications), with "?" as their initials.
+  Payments and payment requests share the rows' chrome (`rowChrome`) and
+  run header; cards in a chat are `cardBoxed`.
 - **Day dividers** ("Today", "Yesterday", then dates).
 - **New messages divider**: a blue line with "New messages" (12 semibold,
   accent) on the right, above the first incoming message that was unread

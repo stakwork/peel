@@ -79,10 +79,10 @@ struct SidebarHeader: View {
                 presenter?.show(entries, at: frame, source: "you")
             } label: {
                 HStack(spacing: 9) {
-                    Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 30, hue: model.myHue)
+                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 30, hue: model.myHue)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 5) {
-                            Text(model.myAlias ?? "You")
+                            Text(model.me.name)
                                 .font(Theme.font(15, .bold))
                                 .lineLimit(1)
                             Image(systemName: "chevron.down")
@@ -119,7 +119,7 @@ struct SidebarHeader: View {
             actions.append(.copy("Copy contact info", text: info))
         }
         return .sections(
-            [.view(AnyView(MenuIdentity(name: model.myAlias ?? "You", detail: detail, photoURL: model.myPhotoURL,
+            [.view(AnyView(MenuIdentity(name: model.me.name, detail: detail, photoURL: model.myPhotoURL,
                                         hue: model.myHue)))],
             actions
         )

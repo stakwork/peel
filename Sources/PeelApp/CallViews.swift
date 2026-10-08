@@ -205,7 +205,7 @@ extension AppModel {
     /// Someone on a call: their name ("Guest" when they sent none) and
     /// photo as they sent them, a hue keyed as for a tribe member, and you
     /// as yourself.
-    func avatar(of person: CallParticipant) -> (name: String, photoURL: String?, hue: PersonHue) {
+    func avatar(of person: CallParticipant) -> Sender {
         avatar(
             fromMe: person.identity == call?.identity, alias: person.nickname.isEmpty ? "Guest" : person.nickname,
             photoURL: person.avatarURL?.absoluteString, chat: person.identity, inTribe: true
@@ -298,8 +298,7 @@ struct CallCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(width: Self.width, alignment: .leading)
-        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider) }
+        .cardBoxed()
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
@@ -394,7 +393,7 @@ struct CallPeopleStack: View {
         HStack(spacing: -7) {
             ForEach(people.prefix(3)) { person in
                 let shown = model.avatar(of: person)
-                Avatar(name: shown.name, url: shown.photoURL, size: size, hue: shown.hue)
+                Avatar(name: shown.avatarName, url: shown.photoURL, size: size, hue: shown.hue)
                 .padding(2)
                 .background(border, in: Circle())
                 .help(shown.name)
@@ -662,8 +661,7 @@ struct OnCallBar: View {
         .padding(.vertical, 10)
         .padding(.leading, 12)
         .padding(.trailing, 10)
-        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider) }
+        .cardBoxed()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("On a call in \(call.title)")
     }

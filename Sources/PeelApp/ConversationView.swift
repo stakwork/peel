@@ -381,7 +381,7 @@ struct TribeMembersPanel: View {
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
-                        MemberRow(alias: model.myAlias ?? "You", photoURL: model.myPhotoURL, hue: model.myHue, note: "you")
+                        MemberRow(alias: model.me.name, photoURL: model.myPhotoURL, hue: model.myHue, note: "you")
                     }
                     ForEach(confirmed) { member in
                         let isMe = member.pubkey != nil && member.pubkey == me
@@ -496,13 +496,13 @@ struct MembershipNote: View {
     let message: Message
 
     private var text: String {
-        let who = message.fromMe ? "You" : message.senderAlias ?? "Someone"
+        let who = message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed
         switch message.type {
         case MessageType.groupLeave: return "\(who) left"
         case MessageType.groupKick: return "The owner removed you from this tribe"
         case MessageType.memberRequest: return "You asked to join"
         // The tribe names the approved member as the sender.
-        case MessageType.memberApprove: return "\(message.senderAlias ?? "Someone") was approved"
+        case MessageType.memberApprove: return "\(message.senderAlias ?? Sender.unnamed) was approved"
         case MessageType.memberReject:
             return message.fromMe ? "You declined a request to join" : "The owner declined your request to join"
         case MessageType.tribeDelete: return "The owner deleted this tribe"

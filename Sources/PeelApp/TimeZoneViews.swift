@@ -159,9 +159,9 @@ struct PersonRef: Hashable {
         guard !row.message.fromMe, !row.inTribe || row.member != nil else { return nil }
         alias = row.member
         chat = row.message.chat
-        name = row.alias ?? "Someone"
-        photoURL = row.photoURL
-        hue = row.hue
+        name = row.sender.name
+        photoURL = row.sender.photoURL
+        hue = row.sender.hue
     }
 }
 

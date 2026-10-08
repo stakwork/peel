@@ -84,7 +84,7 @@ struct LockedAttachment: View {
 
     @ViewBuilder private var footer: some View {
         let price = message.attachmentPriceMsat ?? 0
-        let seller = row.alias ?? "The sender"
+        let seller = row.sender.name
         switch state {
         case .processing:
             HStack(spacing: 8) {

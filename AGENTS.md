@@ -115,7 +115,10 @@ is a short plan. Update the status and the journal when you finish something.
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
-  and devices) and `CallWindow` (the grid and the control bar);
+  and devices), `CallWindow` (the grid, the focus layout with its strip,
+  keep on top and the control bar) and `CallScreenShare` (the system picker,
+  the capture into a LiveKit buffer track, Peel's windows left out of display
+  shares);
   `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
   `buttonProgress`, the spinner inside a running button);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local

@@ -18,19 +18,27 @@ final class CallSession {
         case lost
     }
 
-    /// One person in the grid. Names and photos are what each joiner sent.
+    /// One person in the grid, or a screen they share. Names and photos
+    /// are what each joiner sent.
     struct Tile: Identifiable, Equatable {
+        struct ID: Hashable {
+            let identity: String
+            let isScreen: Bool
+        }
+
         let person: CallParticipant
         let isYou: Bool
+        /// Their shared screen rather than them.
+        let isScreen: Bool
         var speaking: Bool
         var muted: Bool
-        /// Their camera, while it is on and arriving.
+        /// Their camera while it is on and arriving, or the screen they share.
         var video: VideoTrack?
-        var id: String { person.identity }
+        var id: ID { ID(identity: person.identity, isScreen: isScreen) }
 
         static func == (a: Tile, b: Tile) -> Bool {
-            a.person == b.person && a.isYou == b.isYou && a.speaking == b.speaking && a.muted == b.muted
-                && a.video === b.video
+            a.person == b.person && a.isYou == b.isYou && a.isScreen == b.isScreen && a.speaking == b.speaking
+                && a.muted == b.muted && a.video === b.video
         }
     }
 
@@ -69,6 +77,13 @@ final class CallSession {
     private(set) var camera: String?
     /// A device that went away mid-call, said quietly under the bar.
     private(set) var deviceNotice: String?
+    /// What you share, while you share it (and while it is being published).
+    var sharing: ScreenShare.Content? { share?.content }
+    /// The tile shown large with the others in a strip beside it; nil for
+    /// the grid. A screen someone starts sharing takes it.
+    private(set) var focus: Tile.ID?
+    /// The call window floats above other apps' windows, for this call.
+    var keepOnTop = false
 
     @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
     @ObservationIgnored private var connecting: Task<Void, Never>?
@@ -76,6 +91,12 @@ final class CallSession {
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
     @ObservationIgnored private var switchingCamera = false
+    @ObservationIgnored private var switchingShare = false
+    private var share: ScreenShare?
+    @ObservationIgnored private var sharePublication: LocalTrackPublication?
+    /// Every screen track seen on this call, so one that comes back after
+    /// a pause or a reconnect does not take the focus again.
+    @ObservationIgnored private var seenScreenTracks: Set<String> = []
     @ObservationIgnored private var changes: AnyCancellable?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     /// Each person as last read, by identity, with the name and metadata
@@ -176,6 +197,7 @@ final class CallSession {
         leaving = true
         connecting?.cancel()
         await connecting?.value
+        await stopSharing()
         changes = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
@@ -252,6 +274,78 @@ final class CallSession {
         }
         micAccess = access(.audio)
         cameraAccess = access(.video)
+    }
+
+    // MARK: Screen share
+
+    /// Opens macOS's picker.
+    func startScreenShare() {
+        Task { await startSharing() }
+    }
+
+    func stopScreenShare() {
+        Task { await stopSharing() }
+    }
+
+    private func startSharing() async {
+        guard !switchingShare, !leaving, share == nil, state == .connected else { return }
+        switchingShare = true
+        defer { switchingShare = false }
+        // Nothing is shared unless the picker returned something and the
+        // call is still on when it did.
+        guard let filter = await ScreenShare.pick(), !leaving, state == .connected else { return }
+        let started: ScreenShare
+        do {
+            started = try await ScreenShare.start(filter) { [weak self] in self?.shareEnded() }
+        } catch {
+            deviceNotice = "Could not start sharing"
+            return
+        }
+        // Stop shows at once: the screen is being captured from here.
+        share = started
+        if leaving || started.ended { return await stopSharing() }
+        do {
+            let publication = try await room.localParticipant.publish(videoTrack: started.track)
+            // Stopped while it was being published.
+            guard share === started else {
+                try? await room.localParticipant.unpublish(publication: publication)
+                return
+            }
+            sharePublication = publication
+        } catch {
+            await stopSharing()
+            deviceNotice = "Could not start sharing"
+        }
+        refresh()
+    }
+
+    /// macOS ended a capture (Stop in the menu bar, a closed window): the
+    /// share stops if it is the one still running.
+    private func shareEnded() {
+        guard share?.ended == true else { return }
+        stopScreenShare()
+    }
+
+    private func stopSharing() async {
+        guard let share else { return }
+        self.share = nil
+        await share.stop()
+        if let publication = sharePublication {
+            sharePublication = nil
+            try? await room.localParticipant.unpublish(publication: publication)
+        }
+        refresh()
+    }
+
+    // MARK: Focus
+
+    /// Click a tile to focus it; click the focused one for the grid again.
+    func toggleFocus(_ id: Tile.ID) {
+        focus = focus == id ? nil : id
+    }
+
+    func showGrid() {
+        focus = nil
     }
 
     // MARK: Devices
@@ -331,12 +425,14 @@ final class CallSession {
         let others = room.remoteParticipants.values.sorted {
             ($0.joinedAt ?? .distantPast, $0.identity?.stringValue ?? "") < ($1.joinedAt ?? .distantPast, $1.identity?.stringValue ?? "")
         }
-        var next = others.compactMap { tile($0, isYou: false) }
-        if let you = tile(local, isYou: true) { next.append(you) }
+        // Shared screens first, then people; you last in each.
+        let everyone: [(Participant, Bool)] = others.map { ($0, false) } + [(local, true)]
+        let next = [true, false].flatMap { screen in everyone.compactMap { tile($0.0, isYou: $0.1, screen: screen) } }
         if next != tiles {
             tiles = next
-            let everyone = next.map(\.person)
+            let everyone = next.filter { !$0.isScreen }.map(\.person)
             if everyone != people { people = everyone }
+            refocus()
         }
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
@@ -354,23 +450,46 @@ final class CallSession {
         case .disconnected, .disconnecting:
             now = connectedAt == nil && !failed ? .connecting : .lost
         }
-        if now != state { state = now }
+        if now != state {
+            state = now
+            // No one sees it any more; stop capturing.
+            if now == .lost, share != nil { stopScreenShare() }
+        }
     }
 
-    private func tile(_ participant: Participant, isYou: Bool) -> Tile? {
-        let id = isYou ? identity : participant.identity?.stringValue
-        guard let id, let person = person(id, name: participant.name, metadata: participant.metadata) else { return nil }
+    /// A screen someone shares that was not there before takes the focus
+    /// (the newest, when several start); your own never does. When the
+    /// focused tile goes, the newest screen still shared takes it after a
+    /// screen, and the grid comes back after a person.
+    private func refocus() {
+        let shared = tiles.filter { $0.isScreen && !$0.isYou }
+        let started = shared.filter { tile in
+            tile.video?.sid.map { seenScreenTracks.insert($0.stringValue).inserted } ?? false
+        }
+        if let newest = started.last?.id {
+            focus = newest
+        } else if let focus, !tiles.contains(where: { $0.id == focus }) {
+            self.focus = focus.isScreen ? shared.last?.id : nil
+        }
+    }
+
+    /// Their tile, or the tile of the screen they share (nil when they share none).
+    private func tile(_ participant: Participant, isYou: Bool, screen: Bool) -> Tile? {
+        let video = Self.video(of: participant, screen: screen)
+        guard !screen || video != nil, let id = isYou ? identity : participant.identity?.stringValue,
+              let person = person(id, name: participant.name, metadata: participant.metadata)
+        else { return nil }
         return Tile(
-            person: person, isYou: isYou, speaking: participant.isSpeaking,
-            muted: !participant.isMicrophoneEnabled(), video: Self.camera(of: participant)
+            person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
+            muted: !screen && !participant.isMicrophoneEnabled(), video: video
         )
     }
 
-    /// Their camera: the first video that is not a screen share, since
-    /// some clients publish it with no source.
-    private static func camera(of participant: Participant) -> VideoTrack? {
+    /// The screen they share, or their camera: the first video that is not
+    /// a screen share, since some clients publish it with no source.
+    private static func video(of participant: Participant, screen: Bool) -> VideoTrack? {
         participant.videoTracks
-            .first { $0.source != .screenShareVideo && !$0.isMuted && $0.isSubscribed }
+            .first { ($0.source == .screenShareVideo) == screen && !$0.isMuted && $0.isSubscribed }
             .flatMap { $0.track as? VideoTrack }
     }
 

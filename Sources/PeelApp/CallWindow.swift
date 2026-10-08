@@ -55,16 +55,38 @@ struct CallStatusText: View {
 
 private struct CallRoomView: View {
     let call: CallSession
+    @State private var window: NSWindow?
 
     var body: some View {
         VStack(spacing: 0) {
             titleBar
-            CallGrid(call: call)
+            CallStage(call: call)
             CallControls(call: call)
+        }
+        .background(WindowReader { window = $0 })
+        .onChange(of: window) {
+            window?.collectionBehavior.insert(.fullScreenPrimary)
+            keepOnTopChanged()
+        }
+        .onChange(of: call.keepOnTop) { keepOnTopChanged() }
+        .background {
+            // Escape goes back to the grid. A button rather than
+            // `onExitCommand`, which needs a focused view the call window
+            // usually lacks.
+            Button("Show everyone", action: call.showGrid)
+                .keyboardShortcut(.cancelAction)
+                .disabled(call.focus == nil)
+                .opacity(0)
+                .accessibilityHidden(true)
         }
     }
 
-    /// The chat and the running time, centred in the title bar.
+    private func keepOnTopChanged() {
+        window?.level = call.keepOnTop ? .floating : .normal
+    }
+
+    /// The chat and the running time, centred in the title bar; Keep on top
+    /// at its right.
     private var titleBar: some View {
         HStack(spacing: 8) {
             ChatTitle(title: call.title)
@@ -75,7 +97,59 @@ private struct CallRoomView: View {
         .padding(.horizontal, 80)
         .frame(maxWidth: .infinity)
         .frame(height: 38)
+        .overlay(alignment: .trailing) { keepOnTop.padding(.trailing, 10) }
         .overlay(alignment: .bottom) { Theme.callDivider.frame(height: 1) }
+    }
+
+    private var keepOnTop: some View {
+        let on = call.keepOnTop
+        return HoverIconButton(help: on ? "Stop keeping the call above other windows" : "Keep the call above other windows") {
+            call.keepOnTop.toggle()
+        } label: {
+            if on {
+                Image(systemName: "pin.fill").foregroundStyle(Theme.accent)
+            } else {
+                Image(systemName: "pin")
+            }
+        }
+        .accessibilityValue(on ? "On" : "Off")
+    }
+}
+
+/// The grid, or the focused tile large with everyone else in a strip
+/// beside it (board C3's screen-share layout).
+private struct CallStage: View {
+    let call: CallSession
+
+    var body: some View {
+        if let focus = call.focus, let main = call.tiles.first(where: { $0.id == focus }) {
+            let others = call.tiles.filter { $0.id != focus }
+            HStack(spacing: CallGrid.gap) {
+                CallTileView(tile: main, avatarSize: 96, focused: true) { call.toggleFocus(main.id) }
+                if !others.isEmpty { strip(others) }
+            }
+            .padding(16)
+        } else {
+            CallGrid(call: call)
+        }
+    }
+
+    /// Everyone else, 200 pt wide, scrolling when they do not fit.
+    private func strip(_ tiles: [CallSession.Tile]) -> some View {
+        GeometryReader { geometry in
+            let fill = (geometry.size.height - CallGrid.gap * CGFloat(tiles.count - 1)) / CGFloat(tiles.count)
+            let height = min(150, max(112, fill))
+            ScrollView {
+                LazyVStack(spacing: CallGrid.gap) {
+                    ForEach(tiles) { tile in
+                        CallTileView(tile: tile, avatarSize: 52, focused: false) { call.toggleFocus(tile.id) }
+                            .frame(height: height)
+                    }
+                }
+            }
+            .scrollIndicators(.automatic)
+        }
+        .frame(width: 200)
     }
 }
 
@@ -99,7 +173,7 @@ struct ChatTitle: View {
 private struct CallGrid: View {
     let call: CallSession
 
-    private static let gap: CGFloat = 10
+    static let gap: CGFloat = 10
     private static let minTile: CGFloat = 140
 
     var body: some View {
@@ -121,7 +195,7 @@ private struct CallGrid: View {
                     spacing: Self.gap
                 ) {
                     ForEach(tiles) { tile in
-                        CallTileView(tile: tile, avatarSize: min(96, height * 0.4))
+                        CallTileView(tile: tile, avatarSize: min(96, height * 0.4), focused: false) { call.toggleFocus(tile.id) }
                             .frame(width: tileWidth, height: height)
                     }
                 }
@@ -133,23 +207,37 @@ private struct CallGrid: View {
     }
 }
 
+/// A person or a shared screen. A click focuses it, or, on the focused
+/// tile, goes back to the grid.
 private struct CallTileView: View {
     @Environment(AppModel.self) private var model
     let tile: CallSession.Tile
     let avatarSize: CGFloat
+    let focused: Bool
+    let click: () -> Void
 
     var body: some View {
         let shown = model.avatar(of: tile.person)
-        let name = tile.isYou ? "You" : shown.name
+        let name = tile.isScreen
+            ? (tile.isYou ? "Your screen" : "\(shown.name)’s screen")
+            : (tile.isYou ? "You" : shown.name)
         ZStack(alignment: .bottomLeading) {
-            Theme.quote
+            tile.isScreen ? Theme.callBackground : Theme.quote
             if let video = tile.video {
-                SwiftUIVideoView(video, layoutMode: .fill)
+                // A screen is never cropped.
+                // Clicks go to the tile, not to LiveKit's view.
+                SwiftUIVideoView(video, layoutMode: tile.isScreen ? .fit : .fill)
+                    .allowsHitTesting(false)
             } else {
                 Avatar(name: shown.name, url: shown.photoURL, size: avatarSize, hue: shown.hue)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             HStack(spacing: 6) {
+                if tile.isScreen {
+                    Image(systemName: "rectangle.inset.filled.and.person.filled")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.secondaryText)
+                }
                 if tile.muted {
                     Image(systemName: "mic.slash")
                         .font(.system(size: 11))
@@ -167,14 +255,20 @@ private struct CallTileView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            // The accent edge while they speak.
+            // The accent edge while they speak; a screen's own edge.
             if tile.speaking {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 2)
+            } else if tile.isScreen {
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.divider, lineWidth: 1)
             }
         }
-        .help(name)
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onTapGesture(perform: click)
+        .help(focused ? "\(name) · Click or press Escape to see everyone" : "\(name) · Click to focus")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tile.speaking ? "\(name), speaking" : name)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(focused ? "Shows everyone" : "Shows this large")
     }
 }
 
@@ -201,18 +295,12 @@ private struct CallControls: View {
                     label: call.cameraOn ? "Turn camera off" : "Turn camera on", key: "V",
                     refused: call.cameraAccess == .refused, action: call.toggleCamera
                 )
+                share
                 Button {
                     model.leaveCall()
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "phone.down.fill").font(.system(size: 14))
-                        Text("Leave").font(Theme.font(13.5, .bold))
-                    }
-                    .foregroundStyle(Theme.buttonText)
-                    .padding(.horizontal, 18)
-                    .frame(height: 44)
-                    .background(Theme.destructive, in: RoundedRectangle(cornerRadius: 10))
-                    .contentShape(Rectangle())
+                    pill("phone.down.fill", "Leave", weight: .bold, text: Theme.buttonText, fill: Theme.destructive)
+                        .padding(.horizontal, 4)
                 }
                 .buttonStyle(.plain)
                 .help("Leave the call (⌘W)")
@@ -222,6 +310,32 @@ private struct CallControls: View {
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, 18)
+    }
+
+    /// Share opens macOS's picker; while you share it is filled and stops it.
+    private var share: some View {
+        let on = call.sharing != nil
+        return Button { on ? call.stopScreenShare() : call.startScreenShare() } label: {
+            pill("rectangle.inset.filled.and.person.filled", on ? "Stop sharing" : "Share", weight: .medium,
+                 text: on ? Theme.buttonText : Theme.text, fill: on ? Theme.accent : Theme.hover)
+        }
+        .buttonStyle(.plain)
+        .disabled(!on && call.state != .connected)
+        .keyboardShortcut("s", modifiers: [.command, .shift])
+        .help(on ? "Stop sharing (⌘⇧S)" : "Share your screen, a window or an app (⌘⇧S)")
+    }
+
+    /// A labelled control in the bar: Share and Leave.
+    private func pill(_ systemImage: String, _ title: String, weight: Font.Weight, text: Color, fill: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage).font(.system(size: 14))
+            Text(title).font(Theme.font(13.5, weight))
+        }
+        .foregroundStyle(text)
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(fill, in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
     }
 
     /// A control and its chevron, which opens the device menu.
@@ -264,6 +378,9 @@ private struct CallControls: View {
     /// Quiet lines under the bar: access macOS refused, a device that went,
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
+        if let sharing = call.sharing {
+            note(sharing.note, action: "Stop", perform: call.stopScreenShare)
+        }
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }
         if !refused.isEmpty {

@@ -45,6 +45,28 @@ struct MessageTests {
         #expect(BodyFields.decode(nil) == nil)
     }
 
+    @Test func blankIsATextOrCallWithNoWords() {
+        #expect(Message.fixture(content: "").isBlank)
+        #expect(Message.fixture(content: nil).isBlank)
+        #expect(Message.fixture(content: " \n ").isBlank)
+        #expect(Message.fixture(content: "\u{200B}\u{FEFF}").isBlank)
+        // Ours, unsent: its row offers Retry and Discard.
+        #expect(!Message.fixture(fromMe: true, content: "", status: "FAILED").isBlank)
+        #expect(!Message.fixture(fromMe: true, content: "", status: "PENDING").isBlank)
+        #expect(Message.fixture(fromMe: true, content: "", status: "COMPLETE").isBlank)
+        #expect(Message.fixture(type: MessageType.call, content: "").isBlank)
+        #expect(!Message.fixture(content: "hi").isBlank)
+        // A call Peel cannot join still shows its link as text.
+        #expect(!Message.fixture(type: MessageType.call, content: "https://meet.example/x").isBlank)
+        // An attachment shows its file, a note and a payment their own lines.
+        #expect(!Message.fixture(type: MessageType.attachment, content: "").isBlank)
+        #expect(!Message.fixture(type: MessageType.groupJoin, content: "").isBlank)
+        #expect(!Message.fixture(type: MessageType.directPayment, content: "").isBlank)
+        var deleted = Message.fixture(content: "")
+        deleted.deleted = true
+        #expect(!deleted.isBlank)
+    }
+
     @Test func millisecondDates() {
         let date = Date(millisecondsSince1970: 1_700_000_000_123)
         #expect(date.millisecondsSince1970 == 1_700_000_000_123)

@@ -165,6 +165,17 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         return CallLink.linkText(in: text) ?? text
     }
 
+    /// A text or call message with no words (nothing but spaces or invisible
+    /// characters): nothing of its own to show. A deleted one still shows
+    /// that it was deleted, an attachment its file, and our own unsent one
+    /// its Retry and Discard (any pending or failed send, not only once
+    /// `isDiscardable`, so the rows do not change with the clock).
+    public var isBlank: Bool {
+        guard type == MessageType.text || type == MessageType.call, !deleted,
+              delivery != .pending, delivery != .failed else { return false }
+        return shownText.unicodeScalars.allSatisfy { $0.properties.isWhitespace || $0.properties.generalCategory == .format }
+    }
+
     /// Unread past `marker`, as a row counts it (`Storage.readStates` also
     /// counts others' boosts on our messages): someone else's text,
     /// attachment or payment.

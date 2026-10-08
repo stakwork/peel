@@ -17,6 +17,12 @@ struct MainView: View {
             PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
             VStack(spacing: 0) {
                 Detail()
+                if let notice = model.notice {
+                    NoticeBar(text: notice) { model.notice = nil }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Theme.background)
+                }
                 if model.usesFileSecrets {
                     FileSecretsBanner()
                 }
@@ -605,7 +611,7 @@ struct JoinTribeForm: View {
             info = found
             problem = nil
         } catch {
-            if link == looked { problem = "\(error)" }
+            if link == looked { problem = PeelError.readable(error) }
         }
     }
 
@@ -617,7 +623,7 @@ struct JoinTribeForm: View {
             try await model.joinTribe(link, agreedJoinMsat: info.joinAmountMsat)
             done()
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
         }
     }
 }
@@ -681,7 +687,7 @@ struct AddContactForm: View {
             try await model.addContact(contactInfo, alias: name)
             done()
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
         }
     }
 }

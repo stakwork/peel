@@ -108,7 +108,7 @@ struct TribeSettingsForm: View {
             unlisted = settings.unlisted
             original = settings
         } catch {
-            problem = "Could not load the tribe: \(error)"
+            problem = "Could not load the tribe: \(PeelError.readable(error))"
         }
     }
 
@@ -149,7 +149,7 @@ struct TribeSettingsForm: View {
             }
             done()
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
         }
     }
 
@@ -161,7 +161,7 @@ struct TribeSettingsForm: View {
             try await model.deleteTribe(editing.pubkey)
             done()
         } catch {
-            problem = "Could not delete: \(error)"
+            problem = "Could not delete: \(PeelError.readable(error))"
         }
     }
 }
@@ -418,7 +418,7 @@ struct TribeStatusBar: View {
                 do {
                     try await model.leaveTribe(tribe.pubkey)
                 } catch {
-                    problem = "Could not remove: \(error)"
+                    problem = "Could not remove: \(PeelError.readable(error))"
                 }
             }
         }
@@ -463,7 +463,7 @@ struct MentionsView: View {
                 guard let updates = model.mentionUpdates() else { return }
                 for try await rows in updates { mentions = rows }
             } catch {
-                problem = "\(error)"
+                problem = PeelError.readable(error)
             }
         }
     }

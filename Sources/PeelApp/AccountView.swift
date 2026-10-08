@@ -155,7 +155,7 @@ private struct IdentitySection: View {
             try await model.uploadPhoto(file)
             editing = false
         } catch {
-            problem = "Could not upload the picture: \(error)"
+            problem = "Could not upload the picture: \(PeelError.readable(error))"
         }
     }
 
@@ -167,7 +167,7 @@ private struct IdentitySection: View {
             try await model.setPhotoURL(url)
             editing = false
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
         }
     }
 }
@@ -286,7 +286,7 @@ private struct NameRow: View {
             try await model.setName(draft)
             editing = false
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
         }
     }
 }
@@ -375,7 +375,7 @@ private struct ChangePINRow: View {
         } catch SecretStoreFailure.wrongPIN {
             reset(to: .old, note: "That was not your current PIN. Enter it again.")
         } catch {
-            reset(to: .new, note: "\(error) Choose the new PIN again.")
+            reset(to: .new, note: "Could not change the PIN: \(PeelError.readable(error)). Choose the new PIN again.")
         }
     }
 }
@@ -399,7 +399,7 @@ private struct PINTimeoutRow: View {
                             try await model.setPINTimeout(hours: hours)
                             problem = nil
                         } catch {
-                            problem = "\(error)"
+                            problem = PeelError.readable(error)
                         }
                     }
                 }
@@ -645,7 +645,7 @@ private struct NotificationTextRow: View {
                             try await model.setNotificationShowsText(shows)
                             problem = nil
                         } catch {
-                            problem = "\(error)"
+                            problem = PeelError.readable(error)
                         }
                     }
                 }

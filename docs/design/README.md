@@ -315,8 +315,9 @@ The layout can be built before the features behind it, with empty states:
 - Delivery and reads (2026-10-07): the connection bolt in the header; a green
   bolt beside the time of a message the server confirmed; "Not delivered ·
   Retry · Discard" under a failed one; chat errors in a quiet bar above the
-  composer; unread direct messages bold with a blue count, muted ones dimmed
-  with a crossed-out bell (Mute / Unmute in the row's context menu). Times
+  composer, and errors that belong to no chat (the engine's own) in the same
+  bar along the bottom of the window until dismissed; unread direct messages
+  bold with a blue count, muted ones dimmed with a crossed-out bell (Mute / Unmute in the row's context menu). Times
   show under the last message of a run and beside any bubble on hover.
 - Conversation: header with the name and short key, day dividers, bubbles,
   the composer with the round send arrow. A banner at the bottom on

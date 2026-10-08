@@ -207,7 +207,7 @@ struct OnboardingView: View {
             pin = ""
             confirmation = ""
         } catch {
-            problem = "\(error)"
+            problem = PeelError.readable(error)
             confirmation = ""
         }
     }

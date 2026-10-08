@@ -103,6 +103,8 @@ final class AppModel {
     @ObservationIgnored var moneyInFlight: Set<String> = []
     /// What the one-tap Boost tips (the engine's boost amount).
     var boostAmountMsat = Engine.defaultBoostAmountMsat
+    /// The latest error that belongs to no conversation (the engine's own,
+    /// a failed observation), shown across the main window until dismissed.
     var notice: String?
     /// The latest error that belongs to a conversation, shown inside it.
     var conversationNotices: [String: String] = [:]
@@ -162,7 +164,7 @@ final class AppModel {
                 profile = try Profile(name: "default", kind: .app)
             }
         } catch {
-            notice = "\(error)"
+            notice = PeelError.readable(error)
         }
         notifier.model = self
     }
@@ -206,7 +208,7 @@ final class AppModel {
             try await open(profile, pin: "")
             enterApp()
         } catch {
-            notice = "\(error)"
+            notice = PeelError.readable(error)
             phase = .onboarding
         }
     }
@@ -239,7 +241,7 @@ final class AppModel {
         } catch {
             phase = .loading
             await start()
-            notice = "Could not forget the account: \(error)"
+            notice = "Could not forget the account: \(PeelError.readable(error))"
             throw error
         }
     }
@@ -528,7 +530,7 @@ final class AppModel {
             do {
                 try await engine.markRead(chat)
             } catch {
-                conversationNotices[chat] = "Could not mark as read: \(error)"
+                conversationNotices[chat] = "Could not mark as read: \(PeelError.readable(error))"
             }
         }
     }
@@ -693,6 +695,7 @@ final class AppModel {
         threadRows = []
         readStates = [:]
         conversationNotices = [:]
+        notice = nil
         restoreProgress = RestoreProgress()
         myAlias = nil
         myPhotoURL = nil
@@ -707,6 +710,8 @@ final class AppModel {
     }
 
     private func attach(_ engine: Engine) async {
+        // An error from before this account opened no longer applies.
+        notice = nil
         self.engine = engine
         let storage = engine.storage
         myAlias = await engine.myAlias
@@ -794,7 +799,7 @@ final class AppModel {
                 }
             }
         } catch {
-            notice = "\(error)"
+            notice = PeelError.readable(error)
         }
     }
 
@@ -807,7 +812,7 @@ final class AppModel {
                 markSelectedChatRead()
             }
         } catch {
-            notice = "\(error)"
+            notice = PeelError.readable(error)
         }
     }
 
@@ -829,7 +834,7 @@ final class AppModel {
                     rebuildChatRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = "\(error)" }
+                if !Task.isCancelled { notice = PeelError.readable(error) }
             }
         }
         tribeTask = Task {
@@ -838,7 +843,7 @@ final class AppModel {
                     selectedTribe = tribe
                 }
             } catch {
-                if !Task.isCancelled { notice = "\(error)" }
+                if !Task.isCancelled { notice = PeelError.readable(error) }
             }
         }
     }
@@ -856,7 +861,7 @@ final class AppModel {
                     rebuildThreadRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = "\(error)" }
+                if !Task.isCancelled { notice = PeelError.readable(error) }
             }
         }
     }
@@ -867,7 +872,7 @@ final class AppModel {
                 threads = rows
             }
         } catch {
-            notice = "\(error)"
+            notice = PeelError.readable(error)
         }
     }
 }

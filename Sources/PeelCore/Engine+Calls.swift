@@ -45,7 +45,9 @@ extension Engine {
     }
 
     /// Who is on a call, from the call server's presence feed, until the
-    /// stream is dropped. Ask only for calls on screen and recent.
+    /// stream is dropped. Ask only for recent calls (`CallLink.mayBeLive`),
+    /// and only a few: each subscription tells the call server a room you
+    /// watch (`WatchedCall.limit` across chats, plus what is on screen).
     public func callPresence(of link: CallLink) async throws -> AsyncStream<CallPresence> {
         try await callConnection(for: link).presence(room: link.room)
     }

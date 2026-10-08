@@ -29,34 +29,99 @@ extension AppModel {
         Task { if await action() { openWindow(id: CallWindow.id) } }
     }
 
-    func refreshLiveCallChats() {
-        var chats = Set(callPresence.filter(\.value.isLive).flatMap { callWatchers[$0.key]?.values ?? [:].values })
-        if let call { chats.insert(call.chat) }
-        if chats != liveCallChats { liveCallChats = chats }
+    func refreshLiveCallCounts() {
+        var counts: [String: Int] = [:]
+        for (room, presence) in callPresence {
+            guard presence.isLive, let count = presence.people?.count else { continue }
+            for chat in Set(callWatchers[room, default: [:]].values) { counts[chat] = max(counts[chat] ?? 0, count) }
+        }
+        if counts != liveCallCounts { liveCallCounts = counts }
+    }
+
+    /// How many are on a call in `chat` now, for its sidebar row: its
+    /// busiest watched call, or the one you are on there.
+    func liveCallCount(in chat: String) -> Int {
+        let yours = call.flatMap { $0.chat == chat && $0.isOn ? $0.people.count : nil } ?? 0
+        return max(liveCallCounts[chat] ?? 0, yours)
+    }
+
+    /// Follows the messages that may be recent calls, in every chat.
+    func observeRecentCalls(_ storage: Storage) async {
+        do {
+            for try await messages in storage.recentCallMessages() where !Task.isCancelled {
+                recentCallMessages = messages
+                refreshCallWatches()
+            }
+        } catch {
+            if !Task.isCancelled { notice = PeelError.readable(error) }
+        }
+    }
+
+    /// Watches the newest recent call in each chat (`WatchedCall.watched`,
+    /// at most eight) while the app is unlocked, whatever chat is open, so
+    /// the sidebar knows and a card shows its count at once. A watch stops
+    /// when its call ages out (a wake-up at the soonest), its chat is left
+    /// or deleted (it drops out of storage's list), on lock and on an
+    /// account change (`stopWatchingCalls`). The call server reconnects a
+    /// dropped feed with backoff.
+    func refreshCallWatches() {
+        let messages = phase == .ready ? recentCallMessages : []
+        let calls = WatchedCall.watched(in: messages, server: callServer)
+        // One watch per call and chat: the same link posted in two chats lights both.
+        let wanted = Dictionary(calls.map { ("\($0.chat) \($0.link.room)", $0) }, uniquingKeysWith: { first, _ in first })
+        for (key, task) in callWatches where wanted[key] == nil {
+            task.cancel()
+            callWatches[key] = nil
+        }
+        for (key, watched) in wanted where callWatches[key] == nil {
+            callWatches[key] = Task {
+                await self.watchCall(watched.link, in: watched.chat)
+                // Ended on its own (no engine, a refusal, the feed closed):
+                // the next refresh starts it again, never in a loop.
+                if !Task.isCancelled { self.callWatches[key] = nil }
+            }
+        }
+        callWatchExpiry?.cancel()
+        callWatchExpiry = WatchedCall.nextChange(of: calls, in: messages).map { next in
+            Task {
+                try? await Task.sleep(for: .seconds(max(1, next.timeIntervalSinceNow)))
+                if !Task.isCancelled { refreshCallWatches() }
+            }
+        }
+    }
+
+    func stopWatchingCalls() {
+        recentCallMessages = []
+        refreshCallWatches()
     }
 
     func refreshRecentCalls() {
         let now = Date.now
         // A row's date is its newest message's, never older than its call.
-        // Presence is asked only for recent calls (`CallLink.isRecent`): older
-        // ones are over, and each subscription tells the call server what you watch.
+        // Presence is asked only for calls that may be live (`CallLink.mayBeLive`).
         let recent = chatRows.reversed().lazy.prefix { now.timeIntervalSince($0.date) < CallLink.liveAge }
-        let calls = Array(recent.filter { CallLink.isRecent($0.message.date, now: now) }.compactMap(\.call).prefix(3))
+        let calls = Array(recent.filter { CallLink.mayBeLive($0.message, now: now) }.compactMap(\.call).prefix(3))
         if calls != recentCalls { recentCalls = calls }
     }
 
     /// Who is on `link`'s call, kept in `callPresence` until the task
-    /// watching is cancelled (a card scrolled away, the chat closed). The
+    /// watching is cancelled (a card scrolled away, the chat closed, a
+    /// model watch stopped by `refreshCallWatches`). The
     /// engine shares one subscription per room between watchers.
     func watchCall(_ link: CallLink, in chat: String) async {
         guard let engine else { return }
         let room = link.room, id = UUID()
         callWatchers[room, default: [:]][id] = chat
+        // A room already known lights its new chat at once.
+        refreshLiveCallCounts()
         defer {
             callWatchers[room]?[id] = nil
             if callWatchers[room]?.isEmpty != false {
                 callWatchers[room] = nil
+                // Its didSet works the counts out again.
                 callPresence[room] = nil
+            } else {
+                refreshLiveCallCounts()
             }
         }
         guard let stream = try? await engine.callPresence(of: link) else { return }
@@ -175,7 +240,7 @@ struct CallCard: View {
         let message = row.message
         let presence = model.presence(of: link.room)
         let onIt = model.isOnCall(link.room)
-        let notSent = message.fromMe && message.delivery == .failed
+        let notSent = message.notSent
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
@@ -240,7 +305,7 @@ struct CallCard: View {
         .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
         // Only while the card is drawn, and only for a recent call.
         .task(id: link.room) {
-            guard CallLink.isRecent(message.date), !notSent else { return }
+            guard CallLink.mayBeLive(message) else { return }
             await model.watchCall(link, in: message.chat)
         }
     }
@@ -417,7 +482,8 @@ struct CallHeaderButton: View {
         // A tribe's header is kept when another tribe opens: a question
         // asked in one chat is never answered in the next.
         .onChange(of: chat) { pending = nil }
-        // The header's own watch, while the chat is open.
+        // The header's own watch, while the chat is open: the model watches
+        // only each chat's newest call (`refreshCallWatches`), this the next two.
         .task(id: recent.map(\.room)) {
             await withTaskGroup(of: Void.self) { group in
                 for link in recent {

@@ -119,8 +119,11 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// One of ours that never went and may be dropped: a retryable send, or
     /// a failed call, which is never sent again (its room would be stale).
     public var isDiscardable: Bool {
-        isRetryable() || (fromMe && !deleted && type == MessageType.call && delivery == .failed)
+        isRetryable() || (notSent && !deleted && type == MessageType.call)
     }
+
+    /// One of ours the server refused or never took.
+    public var notSent: Bool { fromMe && delivery == .failed }
 
     /// Someone else's message that can be boosted, as the Mac app allows it.
     public var isBoostable: Bool {

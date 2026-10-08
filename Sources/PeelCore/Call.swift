@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 /// A LiveKit call link as the official apps post them:
 /// `https://<call server>/rooms/sphinx.call.<name>`, with `startAudioOnly=true`
@@ -194,5 +195,83 @@ public struct CallLink: Sendable, Equatable {
 
     private static func port(_ port: Int?, _ scheme: String) -> Int {
         port ?? (scheme == "https" ? 443 : 80)
+    }
+}
+
+// MARK: - Watched calls
+
+/// A recent call whose presence the app keeps while it may still be going,
+/// whether or not its chat is open: what the sidebar's green phone reads.
+public struct WatchedCall: Sendable, Equatable {
+    public let chat: String
+    public let link: CallLink
+    public let date: Date
+
+    /// When it ages out of `CallLink.isRecent`.
+    public var expires: Date { date.addingTimeInterval(CallLink.liveAge) }
+
+    /// How many calls are watched at once, across chats: each one tells the
+    /// call server a room you are watching.
+    public static let limit = 8
+
+    /// The calls to watch, newest first, from `messages` newest first (as
+    /// `Storage.recentCallMessages` lists them): in each chat its newest
+    /// call (a call message, or text that is only a call link) valid
+    /// against `server` that `mayBeLive`, at most `limit` of them. None
+    /// without a call server.
+    public static func watched(in messages: [Message], server: String?, now: Date = .now) -> [WatchedCall] {
+        guard let server else { return [] }
+        var chats = Set<String>()
+        var calls: [WatchedCall] = []
+        for message in messages where calls.count < limit && !chats.contains(message.chat) {
+            guard CallLink.mayBeLive(message, now: now), let link = CallLink(in: message, server: server) else { continue }
+            chats.insert(message.chat)
+            calls.append(WatchedCall(chat: message.chat, link: link, date: message.date))
+        }
+        return calls
+    }
+
+    /// When the calls to watch next change with the clock alone: the
+    /// soonest that one watched ages out, or that a call dated ahead of
+    /// this Mac's clock (`CallLink.clockSkew`) becomes recent.
+    public static func nextChange(of watched: [WatchedCall], in messages: [Message], now: Date = .now) -> Date? {
+        let ahead = messages.map { $0.date.addingTimeInterval(-CallLink.clockSkew) }.filter { $0 > now }
+        return (watched.map(\.expires) + ahead).min()
+    }
+}
+
+extension CallLink {
+    /// Whether people may still be on a message's call, so its presence is
+    /// worth asking for: it is recent, and not a call of yours that was
+    /// never sent.
+    public static func mayBeLive(_ message: Message, now: Date = .now) -> Bool {
+        isRecent(message.date, now: now) && !message.notSent
+    }
+}
+
+extension Storage {
+    /// The messages that may be recent calls in the chats the sidebar
+    /// shows, newest first, at most 500: call messages and text holding a
+    /// room name, not deleted. A coarse filter, re-emitted whenever they
+    /// change: the cutoff moves only when the query runs again, so
+    /// `WatchedCall.watched` holds the age rule.
+    public func recentCallMessages() -> some AsyncSequence<[Message], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in
+                let since = Date.now.addingTimeInterval(-CallLink.liveAge).millisecondsSince1970
+                return try Message.fetchAll(
+                    db, sql: """
+                    SELECT m.* FROM (\(Self.chatsSQL)) c
+                    JOIN message m ON m.chat = c.chat
+                    WHERE m.timestamp >= ? AND m.deleted = 0
+                        AND (m.type = \(MessageType.call)
+                            OR (m.type = \(MessageType.text) AND instr(m.content, '\(CallLink.roomPrefix)') > 0))
+                    ORDER BY m.timestamp DESC, m.id DESC LIMIT 500
+                    """,
+                    arguments: [since]
+                )
+            }
+            .removeDuplicates()
+            .values(in: pool)
     }
 }

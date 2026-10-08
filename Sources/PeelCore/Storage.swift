@@ -80,7 +80,8 @@ extension Storage {
         try value(for: .balanceMsat).flatMap { UInt64($0) }
     }
 
-    public func set(_ value: String, for setting: Setting) throws {
+    /// Internal: the app and the CLI change settings through `Engine`.
+    func set(_ value: String, for setting: Setting) throws {
         try pool.write { db in try SettingRow(key: setting.rawValue, value: value).upsert(db) }
     }
 }

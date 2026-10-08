@@ -30,7 +30,8 @@ is a short plan. Update the status and the journal when you finish something.
     pasteboard items attach, image bytes and promised files written to Peel's
     own temp folder and checked
   - `MessageMarkup.swift` — how message text reads: paragraphs, list items,
-    fenced code, and inline code, https links and mentions
+    fenced code, and inline code, https links and mentions; `plainText`, the
+    one line that previews show
   - `TimeZones.swift` — time zones: the offset in a message's `metadata`
     (sent unless the chat's switch is off, never to a public tribe; read
     with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
@@ -137,7 +138,7 @@ independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); person colours (`PersonHue`: the key
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
-code, fences, links, mentions); call links (both forms, hosts, room names,
+code, fences, links, mentions, plain-text previews); call links (both forms, hosts, room names,
 query keys) and the call server setting; time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local

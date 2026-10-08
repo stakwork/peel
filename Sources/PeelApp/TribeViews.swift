@@ -356,7 +356,7 @@ struct PinnedMessageBar: View {
                 .foregroundStyle(Theme.secondaryText)
             Text(message.fromMe ? "You" : message.senderAlias ?? "Someone")
                 .font(Theme.font(12, .medium))
-            Text(message.content ?? "")
+            Text(message.preview)
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)

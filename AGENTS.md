@@ -23,6 +23,10 @@ is a short plan. Update the status and the journal when you finish something.
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
     account's call server, and makes new rooms (phase 6)
+  - `CallServer.swift` — the call server: `CallTicket` (`GET
+    /api/connection-details`, the media server allowlist, the token's claims;
+    never stored or logged) and the `/ws` presence feed (`CallPresence`), one
+    per engine
   - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
     media tokens, the memes server (sign-in, upload, download), what a file
     is by its bytes, and the profile's `media/` cache and outbox
@@ -139,7 +143,10 @@ cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); p
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions, plain-text previews); call links (both forms, hosts, room names,
-query keys) and the call server setting; time zones (the offset's format and
+query keys) and the call server setting; call tickets (strict query encoding,
+the media server allowlist, token claims, the token never described, and a
+fetch from an in-process loopback stub that leaves no cookie or URL cache) and
+the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
 times, the v14 column on stored history); and the whole migration chain from a v1

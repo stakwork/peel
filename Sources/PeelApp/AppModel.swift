@@ -147,6 +147,9 @@ final class AppModel {
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var tribeTask: Task<Void, Never>?
+    /// The open account's observations and event loop, cancelled when it closes.
+    /// Their loops skip what a stream still hands over after that.
+    private var accountTasks: [Task<Void, Never>] = []
     /// When the PIN was last entered. The PIN itself is never kept.
     private var unlockedAt: Date?
 
@@ -232,7 +235,7 @@ final class AppModel {
     /// the lock screen while the words remain, onboarding once they are gone.
     func forgetAccount() async throws {
         guard let profile else { return }
-        await engine?.disconnect()
+        await engine?.close()
         engine = nil
         resetAccountState()
         do {
@@ -680,6 +683,8 @@ final class AppModel {
 
     /// Drops everything shown about the account that was open.
     private func resetAccountState() {
+        accountTasks.forEach { $0.cancel() }
+        accountTasks = []
         Clipboard.clearSecret()
         conversations = []
         destination = nil
@@ -724,18 +729,23 @@ final class AppModel {
         paymentConfirmationMsat = (try? await engine.paymentConfirmationMsat()) ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = (try? await engine.boostAmountMsat()) ?? Engine.defaultBoostAmountMsat
         connection = await engine.connection
-        notifier.attach(storage, showsText: (try? await engine.notificationShowsText()) ?? false)
+        let showsText = (try? await engine.notificationShowsText()) ?? false
+        // Forgotten while loading.
+        guard self.engine === engine else { return }
+        notifier.attach(storage, showsText: showsText)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
-        Task { await self.observeConversations(storage) }
-        Task { await self.observeReadStates(storage) }
-        Task { await self.observeThreads(storage) }
-        Task { await self.consumeEvents(engine) }
+        accountTasks = [
+            Task { await self.observeConversations(storage) },
+            Task { await self.observeReadStates(storage) },
+            Task { await self.observeThreads(storage) },
+            Task { await self.consumeEvents(engine) },
+        ]
         await engine.start()
     }
 
     private func consumeEvents(_ engine: Engine) async {
-        for await event in engine.events {
+        for await event in engine.events where !Task.isCancelled {
             switch event {
             case .connection(let state):
                 connection = state
@@ -788,7 +798,7 @@ final class AppModel {
 
     private func observeConversations(_ storage: Storage) async {
         do {
-            for try await rows in storage.conversations() {
+            for try await rows in storage.conversations() where !Task.isCancelled {
                 let open = { (rows: [Conversation]) in rows.first { $0.chat == self.selectedChat } }
                 let changed = open(conversations) != open(rows)
                 conversations = rows
@@ -799,20 +809,20 @@ final class AppModel {
                 }
             }
         } catch {
-            notice = PeelError.readable(error)
+            if !Task.isCancelled { notice = PeelError.readable(error) }
         }
     }
 
     private func observeReadStates(_ storage: Storage) async {
         do {
-            for try await states in storage.readStates() {
+            for try await states in storage.readStates() where !Task.isCancelled {
                 let previous = readStates
                 readStates = states
                 notifier.readStatesChanged(to: states, from: previous, unread: unreadCount)
                 markSelectedChatRead()
             }
         } catch {
-            notice = PeelError.readable(error)
+            if !Task.isCancelled { notice = PeelError.readable(error) }
         }
     }
 
@@ -829,7 +839,7 @@ final class AppModel {
             do {
                 for try await timeline in storage.timeline(
                     in: chat, limit: timelineLimit ?? Storage.pageSize
-                ) {
+                ) where !Task.isCancelled {
                     self.timeline = timeline
                     rebuildChatRows()
                 }
@@ -839,7 +849,7 @@ final class AppModel {
         }
         tribeTask = Task {
             do {
-                for try await tribe in storage.tribe(chat) {
+                for try await tribe in storage.tribe(chat) where !Task.isCancelled {
                     selectedTribe = tribe
                 }
             } catch {
@@ -856,7 +866,7 @@ final class AppModel {
         guard let storage = engine?.storage, let open = openThread else { return }
         threadTask = Task {
             do {
-                for try await thread in storage.thread(open.uuid, in: open.chat) {
+                for try await thread in storage.thread(open.uuid, in: open.chat) where !Task.isCancelled {
                     self.thread = thread
                     rebuildThreadRows()
                 }
@@ -868,11 +878,11 @@ final class AppModel {
 
     private func observeThreads(_ storage: Storage) async {
         do {
-            for try await rows in storage.threads() {
+            for try await rows in storage.threads() where !Task.isCancelled {
                 threads = rows
             }
         } catch {
-            notice = PeelError.readable(error)
+            if !Task.isCancelled { notice = PeelError.readable(error) }
         }
     }
 }

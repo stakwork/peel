@@ -210,6 +210,8 @@ public actor Engine {
     private var listener: Task<Void, Never>?
     private var keepConnected = false
     private var reconnectTask: Task<Void, Never>?
+    /// Set by `close()`; nothing connects or refreshes after it.
+    private var closed = false
 
     /// Payments waiting for us while we were offline: payment hash and tag → the
     /// ping time to acknowledge once the payment lands.
@@ -246,7 +248,8 @@ public actor Engine {
     private var echoedAliases: [String: Set<String>]
     /// The background re-check of stored messages for mentions; see `checkMentionsIfNeeded`.
     private var mentionScan: Task<Void, Never>?
-    private var refreshingTribes = false
+    /// The background registry refresh; see `refreshTribesInBackground`.
+    private var tribeRefresh: Task<Void, Never>?
     private var tribesNeedRefresh = false
     /// A page of payment history asked for and not yet answered; the
     /// answer lands here (see `fetchPaymentHistory`).
@@ -516,6 +519,7 @@ public actor Engine {
     public func start(allowUntrustedCertificate: Bool = false) {
         // Accounts restored before the restore learned to recover the photo
         // get it on their first start instead.
+        guard !closed else { return }
         if !restoring { recoverOwnPhoto() }
         self.allowUntrustedCertificate = allowUntrustedCertificate
         keepConnected = true
@@ -534,8 +538,19 @@ public actor Engine {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
+        tribeRefresh?.cancel()
+        tribeRefresh = nil
         await teardown()
         setConnection(.offline(retryIn: nil))
+    }
+
+    /// Disconnects for good and ends `events`, so whoever follows them lets
+    /// go of this engine. For an account being closed: it does not connect again.
+    public func close() async {
+        closed = true
+        await disconnect()
+        historyWatchdog?.cancel()
+        emit.finish()
     }
 
     private func establish(inviteCode: String?) async throws {
@@ -553,6 +568,8 @@ public actor Engine {
             )
             do {
                 try await transport.connect()
+                // Closed or disconnected while connecting.
+                if closed || Task.isCancelled { throw CancellationError() }
             } catch {
                 await transport.close()
                 throw error
@@ -2020,22 +2037,29 @@ public actor Engine {
         try? setTribeHost(host)
     }
 
+    /// Runs `refreshTribes` in the background. A call while it runs makes it
+    /// go round once more instead of starting a second one; `disconnect` cancels it.
+    private func refreshTribesInBackground() {
+        guard !closed else { return }
+        tribesNeedRefresh = true
+        guard tribeRefresh == nil else { return }
+        tribeRefresh = Task { [weak self] in
+            await self?.recordConfiguredTribeHost()
+            await self?.refreshTribes()
+        }
+    }
+
     /// Takes the registry's current name, photo and prices for each joined
     /// tribe, a few at a time, and saves what changed in one write. Failures
-    /// leave what is stored. A call while a refresh runs makes it go round
-    /// once more instead of starting a second one.
+    /// leave what is stored.
     private func refreshTribes() async {
-        tribesNeedRefresh = true
-        guard !refreshingTribes else { return }
-        refreshingTribes = true
-        defer { refreshingTribes = false }
-        while tribesNeedRefresh {
+        while tribesNeedRefresh, !Task.isCancelled {
             tribesNeedRefresh = false
             let joined = tribes.values.compactMap { tribe in tribe.left ? nil : tribe.host.map { (tribe.pubkey, $0) } }
             let infos = await withTaskGroup(of: TribeInfo?.self) { group in
                 var pending = joined[...]
                 func addNext() {
-                    guard let (pubkey, host) = pending.popFirst() else { return }
+                    guard !Task.isCancelled, let (pubkey, host) = pending.popFirst() else { return }
                     group.addTask { try? await TribeInfo.fetch(pubkey: pubkey, host: host) }
                 }
                 for _ in 0..<4 { addNext() }
@@ -2051,6 +2075,7 @@ public actor Engine {
                 current.update(from: info)
                 return current == tribes[info.pubkey] ? nil : current
             }
+            guard !Task.isCancelled else { break }
             do {
                 try storage.save(changed)
                 for tribe in changed { tribes[tribe.pubkey] = tribe }
@@ -2058,6 +2083,8 @@ public actor Engine {
                 emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
             }
         }
+        // A cancelled refresh has already been replaced or stopped.
+        if !Task.isCancelled { tribeRefresh = nil }
     }
 
     /// Asks the server for messages newer than the newest one stored locally.
@@ -2395,9 +2422,7 @@ public actor Engine {
                 try Sphinxrs.pingDone(seed: seed, uniqueTime: time, state: state, pingTs: pingTime)
             }
         }
-        if followUps.discoveredTribes {
-            Task { [weak self] in await self?.refreshTribes() }
-        }
+        if followUps.discoveredTribes { refreshTribesInBackground() }
         for purchase in followUps.purchases {
             do {
                 try await answerPurchase(purchase)
@@ -2518,10 +2543,7 @@ public actor Engine {
     /// catch up from the newest message stored.
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
-        Task { [weak self] in
-            await self?.recordConfiguredTribeHost()
-            await self?.refreshTribes()
-        }
+        refreshTribesInBackground()
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)

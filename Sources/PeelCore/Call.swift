@@ -48,6 +48,30 @@ public struct CallLink: Sendable, Equatable {
         self.init(message: content, server: server)
     }
 
+    /// Calls younger than this may still be going: a card asks who is on
+    /// them. Older ones are over.
+    public static let liveAge: TimeInterval = 12 * 60 * 60
+    /// Only a call this fresh notifies: a Mac waking hours later must not
+    /// say "Started a call" about one long over.
+    public static let notifyAge: TimeInterval = 10 * 60
+    /// How far ahead of this Mac's clock a sender's may be. A call dated
+    /// later than that is not taken as recent, or it would stay so for good.
+    static let clockSkew: TimeInterval = 5 * 60
+
+    public static func isRecent(_ date: Date, now: Date = .now) -> Bool {
+        (-clockSkew..<liveAge).contains(now.timeIntervalSince(date))
+    }
+
+    /// Whether a message announces a call, for a notification: someone
+    /// else's call message (type 32; text that is only a link stays a
+    /// message), at most `notifyAge` old, whose link passes the checks
+    /// against `server`. Never without a call server.
+    public static func isAnnounced(by message: Message, server: String?, now: Date = .now) -> Bool {
+        guard let server, !message.fromMe, message.type == MessageType.call,
+              (-clockSkew...notifyAge).contains(now.timeIntervalSince(message.date)) else { return false }
+        return CallLink(in: message, server: server) != nil
+    }
+
     /// What a call message's content links to, unchecked: the `call::`
     /// form's link, or the content itself. A call message that is not a
     /// valid call shows this as plain text.

@@ -14,7 +14,8 @@ import UserNotifications
 /// What notifies, as the official Mac app decides it: messages from others
 /// that are past the chat's read marker, by the chat's mute level (all, only
 /// those that mention this account, or none); a request to join a tribe this
-/// account owns. Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
+/// account owns; a call someone started (`CallLink.isAnnounced`), as
+/// "Started a call" under who started it, never a ring. Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
 /// at once from one chat (a catch-up after sleep) become one summary.
 /// Sats received notify too, one notification per arrival however many
 /// payments it holds (`moneyReceived`).
@@ -152,13 +153,14 @@ final class Notifier {
     // MARK: Messages
 
     func received(_ message: Message, _ arrival: Engine.Arrival) {
-        guard center != nil, permission == .allowed, !message.fromMe, !message.deleted,
-              message.isContent || message.type == MessageType.memberRequest else { return }
+        guard center != nil, permission == .allowed, !message.fromMe, !message.deleted else { return }
         switch arrival {
         case .live: break
         case .history: guard !firstSync else { return }
         case .restore: return
         }
+        guard message.isContent || message.type == MessageType.memberRequest
+              || CallLink.isAnnounced(by: message, server: model?.callServer) else { return }
         pending.append(message)
         if flushTask == nil {
             flushTask = Task { [weak self] in
@@ -189,23 +191,23 @@ final class Notifier {
             let shown = messages.filter { message in
                 guard (message.serverIndex ?? .max) > marker else { return false }
                 if message.type == MessageType.memberRequest, !owned.contains(chat) { return false }
-                switch state?.mute ?? .all {
-                case .all: return true
-                case .mentionsOnly: return message.mentionsMe
-                case .muted: return false
-                }
+                return (state?.mute ?? .all).notifies(message)
             }
-            guard let last = shown.last else { continue }
-            let (name, place) = names(chat, sender: last.senderAlias)
-            if shown.count > Self.summaryAbove {
-                post(center, id: "summary-\(chat)", chat: chat, message: shown.first?.id, locked: locked,
-                     title: place ?? name, subtitle: nil, body: "\(shown.count) new messages")
-            } else {
-                for message in shown {
-                    post(center, id: message.uuid ?? UUID().uuidString, chat: chat, message: message.id, locked: locked,
-                         title: place == nil ? name : message.senderAlias ?? "Someone",
-                         subtitle: place, body: body(of: message))
-                }
+            guard !shown.isEmpty else { continue }
+            // A call always shows on its own; more than a few others become one summary.
+            let others = shown.filter { $0.type != MessageType.call }
+            var single = shown
+            if others.count > Self.summaryAbove {
+                single = shown.filter { $0.type == MessageType.call }
+                let (name, place) = names(chat, sender: others.last?.senderAlias)
+                post(center, id: "summary-\(chat)", chat: chat, message: others.first?.id, locked: locked,
+                     title: place ?? name, subtitle: nil, body: "\(others.count) new messages")
+            }
+            for message in single {
+                let (name, place) = names(chat, sender: message.senderAlias)
+                post(center, id: message.uuid ?? UUID().uuidString, chat: chat, message: message.id, locked: locked,
+                     title: place == nil ? name : message.senderAlias ?? "Someone",
+                     subtitle: place, body: body(of: message))
             }
             chatsShown.insert(chat)
         }
@@ -268,6 +270,8 @@ final class Notifier {
         if message.type == MessageType.memberRequest {
             return "\(message.senderAlias ?? "Someone") wants to join"
         }
+        // The title names who, the subtitle the tribe.
+        if message.type == MessageType.call { return "Started a call" }
         // Text, or for an attachment what it is ("Image", "File: notes.pdf").
         guard showsText, let preview = message.preview.nilIfEmpty else { return Self.hiddenText }
         return String(preview.prefix(400))

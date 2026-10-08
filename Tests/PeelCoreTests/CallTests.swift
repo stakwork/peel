@@ -222,4 +222,47 @@ struct CallMessageTests {
         #expect(CallLink(in: call, server: "calls.example.com") == nil)
         #expect(CallLink(in: .fixture(type: MessageType.text, content: "hello"), server: server) == nil)
     }
+
+    @Test func onlySomeoneElsesRecentValidCallIsAnnounced() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func call(fromMe: Bool = false, type: Int = MessageType.call, content: String = "\(base)\(room)",
+                  age: TimeInterval = 60) -> Message {
+            .fixture(type: type, fromMe: fromMe, content: content,
+                     timestamp: Int64((now.timeIntervalSince1970 - age) * 1000))
+        }
+        #expect(CallLink.isAnnounced(by: call(), server: server, now: now))
+        #expect(CallLink.isAnnounced(by: call(content: #"call::{"link":"\#(base)\#(room)"}"#), server: server, now: now))
+        // Your own call, from this Mac or another of yours.
+        #expect(!CallLink.isAnnounced(by: call(fromMe: true), server: server, now: now))
+        // At most ten minutes old: at the edge, just past it, and a call the
+        // card still counts as live but too old to announce.
+        #expect(CallLink.isAnnounced(by: call(age: CallLink.notifyAge), server: server, now: now))
+        #expect(!CallLink.isAnnounced(by: call(age: CallLink.notifyAge + 1), server: server, now: now))
+        #expect(CallLink.isRecent(now.addingTimeInterval(-3600), now: now))
+        #expect(!CallLink.isAnnounced(by: call(age: 3600), server: server, now: now))
+        // A sender's clock a little ahead is fine; a date far in the future is never recent.
+        #expect(CallLink.isAnnounced(by: call(age: -60), server: server, now: now))
+        #expect(!CallLink.isAnnounced(by: call(age: -CallLink.clockSkew - 1), server: server, now: now))
+        // A link that fails the checks, a Jitsi link, no call server.
+        #expect(!CallLink.isAnnounced(by: call(content: "https://evil.example/rooms/\(room)"), server: server, now: now))
+        #expect(!CallLink.isAnnounced(by: call(content: "https://jitsi.sphinx.chat/sphinx.call.1"), server: server, now: now))
+        #expect(!CallLink.isAnnounced(by: call(), server: nil, now: now))
+        // Text that is only a call link notifies as a message, not a call.
+        #expect(!CallLink.isAnnounced(by: call(type: MessageType.text), server: server, now: now))
+        var deleted = call()
+        deleted.deleted = true
+        #expect(!CallLink.isAnnounced(by: deleted, server: server, now: now))
+    }
+
+    @Test func aChatsLevelDecidesWhetherACallNotifies() {
+        let call = Message.fixture(type: MessageType.call, content: "\(base)\(room)")
+        var mention = Message.fixture(content: "@me look")
+        mention.mentionsMe = true
+        #expect(MuteLevel.all.notifies(call))
+        // A call mentions nobody: mentions-only and muted chats stay quiet.
+        #expect(!MuteLevel.mentionsOnly.notifies(call))
+        #expect(!MuteLevel.muted.notifies(call))
+        #expect(MuteLevel.mentionsOnly.notifies(mention))
+        #expect(!MuteLevel.muted.notifies(mention))
+    }
 }

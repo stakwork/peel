@@ -225,7 +225,8 @@ cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); p
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions, plain-text previews); call links (both forms, hosts, room names,
-query keys) and the call server setting; call tickets (strict query encoding,
+query keys) and the call server setting; which calls notify (someone
+else's, recent, valid) and the chat's notification level; call tickets (strict query encoding,
 the media server allowlist, token claims, the token never described, and a
 fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and

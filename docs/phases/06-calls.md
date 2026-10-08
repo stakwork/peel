@@ -29,9 +29,10 @@ decided (Tom, 2026-10-08; see "Decided" below).
   journal.
 - Built (PR 5): `CallSession` and `CallWindow` replace the placeholder;
   the on-a-call bar and the in-place switch confirm; see the PR 5 journal.
+- Built (PR 7): a call someone starts is an ordinary message notification
+  ("Started a call" under who started it), never a ring; see the PR 7 journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
-  see the PR 2 journal), and PRs 4 to 8 (the card, the window, screen
-  share, notifications, the record); one mic-allowed run of the test room (PR 3
+  see the PR 2 journal), PRs 6 and 8 (screen share, the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
 - Decided in PR 1, done in PR 4: calls joined `shownInChats`,
   `unreadTypes` and the preview with the card.
@@ -225,7 +226,7 @@ built for them yet:
 | C3 Call window | The grid with 2, 4 and 1-plus-screen-share layouts; the control bar; the device menu |
 | C4 On a call | The bar in the main window's sidebar while you are on a call |
 | C5 Switching calls | The in-place confirm when you join a second call |
-| C6 Notification | A DM call notification with Join |
+| C6 Notification | A DM call notification, as a message's (no Join, no ring: PR 7) |
 
 ### The call card (in the timeline)
 
@@ -316,17 +317,24 @@ built for them yet:
 
 ### Incoming calls
 
-- **A notification, not a ring**: neither official app rings. A **live**
-  type 32 (never history, and only if its timestamp is within two minutes)
-  whose link passes `CallLink` validation posts through `Notifier` (a type
-  32 with any other link is never announced as a call):
-  - In a DM: "Alice started a video call", with a **Join** action.
-  - In a tribe: "Alice started a call in #design", following that tribe's
-    notification level (muted or mentions-only tribes stay quiet).
-  - Clicking the notification opens the chat at the card; Join joins
-    directly.
-- No sound loop, no full-screen prompt and no missed-call state in v1. The
-  card already says who is on the call.
+- **A notification, not a ring** (Tom, 2026-10-08: "We definitely don't
+  want a ring … It should just be like a Tribe message, and then you view
+  it in the Tribe."). Neither official app rings. Someone else's type 32
+  whose link passes `CallLink` validation, at most ten minutes old
+  (`CallLink.notifyAge`; the card's 12-hour live window is separate, so a
+  Mac waking hours later never announces a call long over), posts through
+  `Notifier` like a message, on the same arrivals (live, or a catch-up
+  after the first history; never a restore). A type 32 with any other
+  link, and text that is only a call link, is never announced as a call.
+  - The body is "Started a call". The title names who started it, and in
+    a tribe the subtitle names the tribe ("#design"), as for a message.
+  - Both follow the chat's notification level: a call mentions nobody, so
+    muted and mentions-only chats stay quiet.
+  - Clicking the notification opens the chat at the card, as a message
+    notification opens its message. It never joins; you join from the card.
+- No Join action, no ring, no sound beyond a message notification's, no
+  call window or full-screen prompt, and no missed-call state. The card
+  already says who is on the call.
 
 ## Engine and app split (agent-native)
 
@@ -643,10 +651,11 @@ simplify, security-review) and updates this file.
 6. **App: screen share.**
    - The system picker with `SCStream` and `BufferCapturer`, Peel's own
      windows left out of display shares, and the main-tile layout.
-7. **Notifications.**
-   - Live type 32 posts through `Notifier` with a Join action, following
-     tribe levels, only when its link passes `CallLink` validation. History
-     never notifies.
+7. **Notifications.** No ring (Tom, 2026-10-08): see "Incoming calls".
+   - A type 32 from someone else, at most ten minutes old, posts through
+     `Notifier` like a message ("Started a call"), following the
+     chat's level, only when its link passes `CallLink` validation. A click
+     opens the chat at the card; no Join action.
 8. **Record.** Update `AGENTS.md` (layout, the local LiveKit stack),
    `docs/design/README.md` (Calls section, status), `docs/PLAN.md`, and this
    file.
@@ -1138,6 +1147,69 @@ the build, so it lands before any UI depends on it.
     the button that asked (as other in-place confirms do).
   - `PaneLink` and `Notifier`'s settings opener are not shared: both sit
     outside this PR.
+
+## PR 7 journal (2026-10-08)
+
+- **Decided** (Tom, 2026-10-08): no ring. A call is an incoming alert like
+  a tribe message, viewed in the chat. This replaces the plan's Join action
+  and its two-minute, live-only window (see "Incoming calls"). After
+  review, the coordinator set the notification window to ten minutes
+  (`CallLink.notifyAge`) and the body to "Started a call", which the title
+  and subtitle already qualify; Tom can change either.
+- **Built**:
+  - `CallLink.isAnnounced(by:server:now:)` (PeelCore): someone else's type 32,
+    not deleted, at most `CallLink.notifyAge` (10 minutes) old and at most
+    5 minutes ahead of this Mac's clock, whose link validates against the
+    account's call server. `liveAge` (12 hours) and `CallLink.isRecent`
+    move here from `AppModel.presenceAge`, and `isRecent` now also refuses
+    a date more than 5 minutes in the future, which would otherwise stay
+    recent for good.
+  - `MuteLevel.notifies(_:)` (PeelCore): the chat-level rule `Notifier`
+    already applied, now shared and tested.
+  - `Notifier` lets an announced call in beside text, attachments and join
+    requests; its body is "Started a call" under the usual title (the
+    contact, or the sender with "#tribe" as subtitle). A call is never
+    folded into the "N new messages" summary. Sound, grouping, the locked and
+    hidden-text rules, and the click (`openFromNotification`, which
+    focuses the message) are the message path's, unchanged.
+- **No Join action**: joining from a notification would skip the card's
+  in-place "Leave the call in #design and join?" confirm and needs the
+  window-opening action only views hold; Tom joins from the card.
+- **Tests**: `CallTests` covers who is announced (own calls, the
+  ten-minute edge, a call live for the card but too old to announce, clock
+  skew, links that fail validation, Jitsi, no call server, text links,
+  deleted) and the chat level (all, mentions-only, muted).
+- **Verified on the local stack** (broker 1979, tribes 8879, mixer 8079,
+  call server `127.0.0.1:7899` with nothing on it: no call-server or
+  production requests), profiles `cn-alice`, `cn-bob`, `cn-carol`, bob in
+  `.build/PeelNotifyTest.app` in the background, with a temporary
+  (uncommitted) hook that logged each posted request and called the click
+  handler with its `userInfo`:
+  - DM video call: title "cn-alice"; the click opened the DM at the
+    card.
+  - Tribe audio call: "cnalice", subtitle "#Design Crew"; the click opened
+    the tribe at the card. (The run used the earlier "Alice started a call
+    …" body; only the body text and the window changed after it.)
+  - Tribe muted, DM all: only the DM call posted. Both mentions-only:
+    nothing posted, while both calls arrived (unread 4 each).
+- **Not verified**: a real click in Notification Center (the test bundle
+  shares `dev.peel.mac` with Tom's running Peel, so a click could go to
+  it); the hook called the same handler with the posted `userInfo`.
+- **Reviews**: `/code-review` (high): each notification names its own
+  sender (a batch could name the last one's); a future-dated call is not
+  recent; the link is parsed only after the arrival checks; a call is
+  never hidden in a summary; the status lines. `/simplify`: the
+  `AppModel.isRecent` wrapper removed; `isAnnounced` a Bool rather than a
+  failable init; the summary split. `/security-review`: no findings at
+  confidence 8 or above (checked: locked and hidden-text notifications,
+  the click opening only the chat with no join or URL, validation against
+  the call server, mute levels, the clock-skew bound). Not applied, with
+  reasons:
+  - A `NotificationKind` in PeelCore for every type that notifies: three
+    types, one switch; worth it when a fourth arrives.
+  - One mute rule shared with `ChatReadState.shownUnread` and
+    `moneyReceived`: counts and receipts are not messages, and it would
+    touch code outside this PR.
 
 ## Decided (Tom, 2026-10-08)
 

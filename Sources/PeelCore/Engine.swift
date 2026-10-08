@@ -2134,17 +2134,26 @@ public actor Engine {
     /// the tribe forwards it to the owner alone. The owner's answers reach a
     /// member from the tribe itself: a rejection or a removal, which the
     /// tribes server sends only to that member and the owner, and the
-    /// tribe's deletion. A member who is pending, declined or removed gets
-    /// nothing else from the tribe, so an approval or a join that reaches
-    /// them means they are in, which is how a restore (with no request in
-    /// history) sees a declined member who asked again and was approved.
-    /// The tribes server marks what the owner sends with role 0, including
+    /// tribe's deletion. Someone else's join never concerns us. The owner's
+    /// approval goes to every member, naming the approved one by their alias
+    /// in the tribe, so it lets us in only when it names us (`approvalNamesUs`:
+    /// the alias we send, `sent`, and those the tribe `echoed`). That is how a
+    /// restore (with no request in history) sees a declined or removed member
+    /// who asked again and was approved, while another member's approval or
+    /// join heard after our removal leaves us out. Names are all an approval
+    /// carries (the server drops the member key), so this can miss: a member
+    /// renamed between asking and the approval, restored before anything of
+    /// theirs echoed the old name, stays out. A member who is out hears no
+    /// approvals live, so a wrong match (another `name_2`) needs history
+    /// replayed out of order. The tribes server marks what the owner sends with role 0, including
     /// the join it sends the owner on creation, so our own message with it
     /// says this account owns the tribe, as after a restore.
     /// A restore (`replaying`) leaves deleted tribes out, as the Mac app does
     /// (it restores only tribes the registry still serves); a deletion heard
     /// otherwise keeps its bar so the user sees what happened.
-    static func membership(after message: Message, in tribe: Tribe, replaying: Bool) -> Tribe? {
+    static func membership(
+        after message: Message, in tribe: Tribe, sent: String, echoed: Set<String>, replaying: Bool
+    ) -> Tribe? {
         var changed = tribe
         if message.fromMe {
             if message.senderInfo?.role == 0 { changed.isOwner = true }
@@ -2154,8 +2163,8 @@ public actor Engine {
             case MessageType.groupLeave: changed.left = true
             default: break
             }
-        } else if [MessageType.tribeDelete, MessageType.groupKick, MessageType.memberReject].contains(message.type),
-                  message.senderInfo?.role != 0 {
+        } else if [MessageType.tribeDelete, MessageType.groupKick, MessageType.memberReject, MessageType.memberApprove]
+                    .contains(message.type), message.senderInfo?.role != 0 {
             // The owner's decisions carry the owner's role; the tribes server
             // already refuses them from anyone else, and this does not rely on it.
             return nil
@@ -2165,8 +2174,11 @@ public actor Engine {
             if replaying { changed.left = true }
         } else if !tribe.isOwner {
             switch message.type {
-            case MessageType.memberApprove, MessageType.groupJoin:
-                if [.pending, .rejected, .removed].contains(tribe.status) { changed.status = .active }
+            case MessageType.memberApprove:
+                if let alias = message.senderAlias, approvalNamesUs(alias, sent: sent, echoed: echoed),
+                   [.pending, .rejected, .removed].contains(tribe.status) {
+                    changed.status = .active
+                }
             case MessageType.memberReject: changed.status = .rejected
             case MessageType.groupKick: changed.status = .removed
             default: break
@@ -2419,7 +2431,9 @@ public actor Engine {
                 followUps.discoveredTribes = true
             }
             if let tribe = knownTribes[message.chat],
-               let changed = Self.membership(after: message, in: tribe, replaying: restoring) {
+               let changed = Self.membership(
+                   after: message, in: tribe, sent: sentAlias, echoed: echoedAliases[message.chat] ?? [],
+                   replaying: restoring) {
                 knownTribes[tribe.pubkey] = changed
                 commit.tribes.append(changed)
             }

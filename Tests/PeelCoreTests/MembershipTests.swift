@@ -10,6 +10,7 @@ struct MembershipCase: Sendable, CustomTestStringConvertible {
     var tribe = Tribe(pubkey: tribeKey)
     let type: Int
     var fromMe = false
+    var alias: String? = "x"
     /// The role the tribes server stamped on it: 0 when the owner sent it.
     var role: Int?
     var replaying = false
@@ -17,9 +18,12 @@ struct MembershipCase: Sendable, CustomTestStringConvertible {
     let expected: Tribe?
 
     func message() -> Message {
-        .fixture(uuid: uuid(1), type: type, chat: tribeKey, fromMe: fromMe, sender: sender(alias: "x", role: role))
+        .fixture(uuid: uuid(1), type: type, chat: tribeKey, fromMe: fromMe, sender: sender(alias: alias, role: role))
     }
 }
+
+/// What the tribe calls this account.
+private let ourAlias = "me"
 
 private func tribe(
     isOwner: Bool = false, left: Bool = false, status: Tribe.Status = .active
@@ -75,14 +79,31 @@ struct MembershipTests {
                        type: MessageType.memberReject, role: 0, expected: nil),
 
         // Approvals and joins reach a waiting, declined or removed member only once let in.
-        MembershipCase(testDescription: "an approval lets a pending member in", tribe: tribe(status: .pending),
-                       type: MessageType.memberApprove, role: 0, expected: tribe()),
-        MembershipCase(testDescription: "a join lets a declined member in", tribe: tribe(status: .rejected),
-                       type: MessageType.groupJoin, expected: tribe()),
-        // Not asserted: a removed member is made active again by any join
-        // or approval, with no owner's role needed, unlike a kick. On a
-        // restore or out-of-order history another member's join after our
-        // kick would reopen the tribe. Left for a separate fix.
+        // Only the owner's approval of us lets us in: it names the approved member by alias.
+        MembershipCase(testDescription: "the owner's approval lets a pending member in", tribe: tribe(status: .pending),
+                       type: MessageType.memberApprove, alias: ourAlias, role: 0, expected: tribe()),
+        MembershipCase(testDescription: "the owner's approval lets a declined member in", tribe: tribe(status: .rejected),
+                       type: MessageType.memberApprove, alias: ourAlias, role: 0, expected: tribe()),
+        MembershipCase(testDescription: "the owner's approval lets a removed member back", tribe: tribe(status: .removed),
+                       type: MessageType.memberApprove, alias: ourAlias, role: 0, expected: tribe()),
+        MembershipCase(testDescription: "an approval of our name made unique lets us in", tribe: tribe(status: .pending),
+                       type: MessageType.memberApprove, alias: ourAlias + "_2", role: 0, expected: tribe()),
+        MembershipCase(testDescription: "an approval of us without a role is ignored", tribe: tribe(status: .removed),
+                       type: MessageType.memberApprove, alias: ourAlias, expected: nil),
+        MembershipCase(testDescription: "an approval of us from a member is ignored", tribe: tribe(status: .removed),
+                       type: MessageType.memberApprove, alias: ourAlias, role: 1, expected: nil),
+        MembershipCase(testDescription: "another member's approval leaves a removed member out",
+                       tribe: tribe(status: .removed), type: MessageType.memberApprove, role: 0, expected: nil),
+        MembershipCase(testDescription: "another member's approval leaves a pending member waiting",
+                       tribe: tribe(status: .pending), type: MessageType.memberApprove, role: 0, expected: nil),
+        MembershipCase(testDescription: "an approval without an alias changes nothing", tribe: tribe(status: .pending),
+                       type: MessageType.memberApprove, alias: nil, role: 0, expected: nil),
+        MembershipCase(testDescription: "another member's join leaves a removed member out", tribe: tribe(status: .removed),
+                       type: MessageType.groupJoin, expected: nil),
+        MembershipCase(testDescription: "a join, even naming us, never lets a declined member in", tribe: tribe(status: .rejected),
+                       type: MessageType.groupJoin, alias: ourAlias, role: 0, expected: nil),
+        MembershipCase(testDescription: "an approval of us changes nothing for the owner", tribe: tribe(isOwner: true),
+                       type: MessageType.memberApprove, alias: ourAlias, role: 0, expected: nil),
         MembershipCase(testDescription: "a join does not bring back a deleted tribe", tribe: tribe(status: .deleted),
                        type: MessageType.groupJoin, expected: nil),
         MembershipCase(testDescription: "a join changes nothing for an active member",
@@ -91,7 +112,19 @@ struct MembershipTests {
                        type: MessageType.text, role: 0, expected: nil),
     ])
     func membershipAfterAMessage(_ test: MembershipCase) {
-        #expect(Engine.membership(after: test.message(), in: test.tribe, replaying: test.replaying) == test.expected)
+        let changed = Engine.membership(after: test.message(), in: test.tribe, sent: ourAlias, echoed: [], replaying: test.replaying)
+        #expect(changed == test.expected)
+    }
+
+    /// What we send, its `_2`, and what the tribe echoed; once it echoed
+    /// `me_2`, the plain `me` is someone else's.
+    @Test func whichApprovalsNameUs() {
+        #expect(approvalNamesUs("me", sent: "me", echoed: []))
+        #expect(approvalNamesUs("me_2", sent: "me", echoed: []))
+        #expect(approvalNamesUs("old", sent: "me", echoed: ["old"]))
+        #expect(!approvalNamesUs("old_2", sent: "me", echoed: ["old"]))
+        #expect(!approvalNamesUs("me", sent: "me", echoed: ["me_2"]))
+        #expect(!approvalNamesUs("you", sent: "me", echoed: []))
     }
 }
 

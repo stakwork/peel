@@ -5,17 +5,6 @@ import Testing
 /// A 1×1 PNG.
 private let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
 
-private func hex(_ text: String) -> Data {
-    var data = Data()
-    var index = text.startIndex
-    while index < text.endIndex {
-        let next = text.index(index, offsetBy: 2)
-        data.append(UInt8(text[index..<next], radix: 16)!)
-        index = next
-    }
-    return data
-}
-
 struct MediaCryptoTests {
     @Test func newKeyIsHexOfThirtyTwoLettersAndDigits() {
         let key = MediaCrypto.newKey()

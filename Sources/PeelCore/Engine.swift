@@ -1951,7 +1951,7 @@ public actor Engine {
     /// from a host of their choosing.
     /// A chat the core holds a contact key for goes into `notTribes`, so it
     /// is looked up once per call.
-    private func discoveredTribe(
+    func discoveredTribe(
         _ message: Message, trustSender: Bool, state: [String: Data], notTribes: inout Set<String>
     ) throws -> Tribe? {
         guard trustSender || message.fromMe, let host = message.senderInfo?.host?.nilIfEmpty,
@@ -1981,7 +1981,7 @@ public actor Engine {
     /// A restore (`replaying`) leaves deleted tribes out, as the Mac app does
     /// (it restores only tribes the registry still serves); a deletion heard
     /// otherwise keeps its bar so the user sees what happened.
-    private static func membership(after message: Message, in tribe: Tribe, replaying: Bool) -> Tribe? {
+    static func membership(after message: Message, in tribe: Tribe, replaying: Bool) -> Tribe? {
         var changed = tribe
         if message.fromMe {
             if message.senderInfo?.role == 0 { changed.isOwner = true }

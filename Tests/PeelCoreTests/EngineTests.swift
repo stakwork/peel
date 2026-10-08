@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import PeelCore
 
-private let abandon = Array(repeating: "abandon", count: 11) + ["about"]
-
 struct MnemonicTests {
     @Test func wordsSplitOnWhitespaceAndCommasAndLowercase() {
         #expect(Engine.words(in: "  Apple, BANANA\ncherry\t,, date ") == ["apple", "banana", "cherry", "date"])
@@ -80,7 +78,7 @@ struct EngineOfflineTests {
 
     @Test func freshAccountIsUnregisteredWithNoContacts() async throws {
         let storage = try profile.storage()
-        let engine = try Engine(mnemonic: abandon.joined(separator: " "), storage: storage)
+        let engine = try testEngine(storage)
         #expect(await engine.isRegistered == false)
         #expect(try await engine.contacts().isEmpty)
         #expect(try Engine.contacts(in: storage).isEmpty)
@@ -88,16 +86,15 @@ struct EngineOfflineTests {
     }
 
     @Test func deviceIDIsCreatedOnceAndKept() throws {
-        let words = abandon.joined(separator: " ")
         let deviceID: String?
         do {
             let storage = try profile.storage()
-            _ = try Engine(mnemonic: words, storage: storage)
+            _ = try testEngine(storage)
             deviceID = try storage.value(for: .deviceID)
         }
         #expect(deviceID != nil)
         let storage = try profile.storage()
-        _ = try Engine(mnemonic: words, storage: storage)
+        _ = try testEngine(storage)
         #expect(try storage.value(for: .deviceID) == deviceID)
     }
 

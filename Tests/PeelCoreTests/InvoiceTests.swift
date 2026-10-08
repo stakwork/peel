@@ -3,13 +3,6 @@ import GRDB
 import Testing
 @testable import PeelCore
 
-/// BOLT 11's own test vectors: 2,500 µBTC for "1 cup coffee", expired in
-/// 2017, and a donation that names no amount.
-private let coffee = "lnbc2500u1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpu9qrsgquk0rl77nj30yxdy8j9vdx85fkpmdla2087ne0xh8nhedh8w27kyke0lp53ut353s06fv3qfegext0eh0ymjpf39tuven09sam30g4vgpfna3rh"
-private let donation = "lnbc1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaq9qrsgq357wnc5r2ueh7ck6q93dj32dlqnls087fxdwk8qakdyafkq3yap9us6v52vjjsrvywa6rt52cm9r9zqt8r2t7mlcwspyetp5h2tztugp9lfyql"
-private let coffeeHash = "0001020304050607080900010203040506070809000102030405060708090102"
-private let coffeePayee = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad"
-
 /// A media token as the core writes it, selling for `price` sats when given.
 private func token(muid: String = "muid1", price: UInt64? = nil) -> String {
     let host = MediaToken.base64URLEncode(Data("127.0.0.1:8994".utf8))
@@ -212,14 +205,6 @@ struct InvoiceTests {
     }
 
     // MARK: Requests in a chat
-
-    private func request(fromMe: Bool, id: Int = 1) -> Message {
-        .fixture(
-            uuid: uuid(id), type: MessageType.invoice, chat: fromMe ? dm : coffeePayee, fromMe: fromMe,
-            body: #"{"content":"coffee","invoice":"\#(coffee)"}"#, content: "coffee", paymentHash: coffeeHash,
-            amountMsat: 250_000_000
-        )
-    }
 
     @Test func theirRequestFollowsOurPaymentOfIt() async throws {
         let storage = try profile.storage()

@@ -141,7 +141,7 @@ struct TribeHeader: View {
         guard let tribe else { return nil }
         return [
             tribe.isPrivate ? "Private" : nil, tribe.summary?.trimmed.nilIfEmpty,
-            "\(Formatting.sats(msat: tribe.messageAmountMsat)) a message",
+            "\(Sats.format(msat: tribe.messageAmountMsat)) a message",
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -458,7 +458,7 @@ struct UndeliveredActions: View {
                 Button("Keep") { confirmingDiscard = false }
                     .foregroundStyle(Theme.accent)
             } else if let armed = attempt.armed {
-                Button("\(message.type == MessageType.boost ? "Boost" : "Send") \(Formatting.sats(msat: armed))") {
+                Button("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))") {
                     Task { await retry() }
                 }
                 .monospacedDigit()
@@ -490,7 +490,7 @@ struct UndeliveredActions: View {
         if message.uploadState == .failed { return "Not uploaded" }
         guard isPayment else { return "Not delivered" }
         if message.type == MessageType.boost, let msat = message.amountMsat {
-            return "Boost of \(Formatting.sats(msat: msat)) not sent"
+            return "Boost of \(Sats.format(msat: msat)) not sent"
         }
         return "Not sent"
     }

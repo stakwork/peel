@@ -334,26 +334,6 @@ extension Tribe {
     }
 }
 
-/// An amount someone typed, in a unit bigger than the one sent: sats for
-/// msat (1000), hours for milliseconds (3,600,000). Decimals are fine as long
-/// as the result is a whole number of the smaller unit ("1.5" sats is
-/// 1500 msat); blank is zero. Capped at what the tribes server can hold.
-public func amount(_ text: String, unit: UInt64, of what: String) throws -> UInt64 {
-    let text = text.trimmingCharacters(in: .whitespaces)
-    guard !text.isEmpty else { return 0 }
-    guard text.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }), text.filter({ $0 == "." }).count <= 1,
-          let value = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
-        throw PeelError("the \(what) must be a number")
-    }
-    let scaled = value * Decimal(unit)
-    guard scaled <= Decimal(Int64.max) else { throw PeelError("the \(what) is too large") }
-    var whole = Decimal()
-    var copy = scaled
-    NSDecimalRound(&whole, &copy, 0, .plain)
-    guard whole == scaled else { throw PeelError("the \(what) is finer than the network can carry") }
-    return UInt64(truncating: whole as NSDecimalNumber)
-}
-
 /// A mention is `@alias` in a tribe message's text; no other field marks it.
 /// The official apps insert `@alias ` from their autocomplete, and they and
 /// the tribes server disagree on how strictly to read it: the server pushes

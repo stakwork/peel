@@ -1213,3 +1213,34 @@ a server-reported onion refusal.
 fill `rr.invoice` or forge an incoming history row for our hash; checks and
 confirmation run before the own-server `pay`; queries are bound; no secrets
 in the new errors.
+
+## Whole sats everywhere (2026-10-08, branch `refactor/sats-format`)
+
+Tom's rule (2026-10-08): amounts show as whole sats, never decimals. Refactor
+plan row 5 of `docs/reviews/2026-10-08-architecture.md`.
+
+- One formatter in PeelCore, `Sats` (`Sats.swift`): `format(msat:)` ("1 sat",
+  "21 sats", "1,210 sats"), `number(msat:)` for chips and lists, and
+  `format(msat:of:)` for "1 of 2 sats" (an underpaid invoice, a short
+  attachment purchase), which falls back to msat for both where dropping the
+  rest of a sat would hide a shortfall. Negatives read as 0. `Sats.msat` and
+  `Sats.parse` (was the free `amount(_:unit:of:)`) sit beside it.
+- Rounding is the official apps': the rest of a sat dropped (`amount / 1000`
+  in sphinx-mac-v2 `UserData.getBalanceSats`, `SphinxOnionManager+ChatExtension`
+  message amounts, `PaymentTransaction`, the tribe price labels; same in
+  sphinx-ios-v2). So 1,999 msat is "1 sat" and anything under a sat "0 sats".
+- Used by the app (the `Formatting.sats` overloads and `satsNumber` are gone),
+  `Engine.Failure.needsConfirmation`, the attachment purchase notice, the
+  underpaid note in `PaymentHistory`, and every amount the CLI prints. The
+  payment detail still shows the exact msat beside the sats; the CLI keeps
+  "(N msat)" where it printed it.
+- Display only: nothing sent, charged or confirmed changed. The tribe settings
+  form still edits prices as typed decimals (it is an input, and must
+  round-trip exactly).
+- Reviews: `/code-review` flagged that truncation makes armed Pay buttons,
+  sub-sat routing fees and attachment prices read low ("0 sats" next to
+  "None"), and the insufficient-balance sum can look enough; these follow the
+  rule and the official apps, left as is. Applied: the invoice row's partly
+  paid footer uses `format(msat:of:)`. `/simplify`: one truncation helper;
+  skipped renaming `Sats.parse` (also parses hours) and merging it with
+  `Sats.msat`. `/security-review`: no findings.

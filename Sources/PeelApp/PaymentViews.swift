@@ -35,7 +35,7 @@ extension AppModel {
     /// "Boost 100 sats": the boost amount only, as the hover bar and menu
     /// name it. Neither official app shows a tribe's price on a boost (the
     /// chip's total then includes it, as theirs does).
-    var quickBoostLabel: String { "Boost \(Formatting.sats(msat: boostAmountMsat))" }
+    var quickBoostLabel: String { "Boost \(Sats.format(msat: boostAmountMsat))" }
 
     /// Over the confirmation threshold the engine asks first, as for a payment.
     func setBoostAmount(msat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
@@ -85,18 +85,6 @@ extension AppModel {
     func setPaymentConfirmation(msat: UInt64) async throws {
         try await signedIn().setPaymentConfirmation(msat: msat)
         paymentConfirmationMsat = msat
-    }
-}
-
-extension Formatting {
-    /// "1,210": whole sats, for chips and lists.
-    static func satsNumber(msat: Int64) -> String {
-        (max(msat, 0) / 1000).formatted()
-    }
-
-    /// As `sats(msat:)` for a stored amount, never below nothing.
-    static func sats(msat: Int64) -> String {
-        sats(msat: UInt64(max(msat, 0)))
     }
 }
 
@@ -162,7 +150,7 @@ struct PayButton: View {
             Button {
                 Task { if await attempt.run(send) { sent() } }
             } label: {
-                Text(attempt.armed.flatMap { namesAmount ? "\(verb) \(Formatting.sats(msat: $0))" : nil } ?? verb)
+                Text(attempt.armed.flatMap { namesAmount ? "\(verb) \(Sats.format(msat: $0))" : nil } ?? verb)
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
@@ -192,7 +180,7 @@ private struct BalanceLine: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Text(model.balanceMsat.map { "Balance \(Formatting.sats(msat: $0))" } ?? "Balance known once connected")
+        Text(model.balanceMsat.map { "Balance \(Sats.format(msat: $0))" } ?? "Balance known once connected")
             .font(Theme.font(12))
             .monospacedDigit()
             .foregroundStyle(Theme.secondaryText)
@@ -345,7 +333,7 @@ struct BoostLine: View {
                 WaitingForServer(since: since, what: "Boost")
             }
             ForEach(Array(boosts.unsettled.enumerated()), id: \.offset) { _, boost in
-                NotSettled(what: "Boost of \(Formatting.sats(msat: boost.amountMsat))")
+                NotSettled(what: "Boost of \(Sats.format(msat: boost.amountMsat))")
             }
             ForEach(boosts.failed, id: \.id) { boost in
                 UndeliveredActions(message: boost)
@@ -390,7 +378,7 @@ private struct BoostChip: View {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(pending ? Theme.secondaryText : Theme.attention)
-                (Text(Formatting.satsNumber(msat: boosts.totalMsat)).font(Theme.font(12, .semibold))
+                (Text(Sats.number(msat: boosts.totalMsat)).font(Theme.font(12, .semibold))
                     .foregroundColor(Theme.text)
                     + Text(" sats").font(Theme.font(12)).foregroundColor(Theme.secondaryText))
                 HStack(spacing: -Self.overlap) {
@@ -426,7 +414,7 @@ private struct BoostChip: View {
 
     private var help: String {
         let count = boosts.count == 1 ? "1 boost" : "\(boosts.count) boosts"
-        return "\(Formatting.sats(msat: boosts.totalMsat)) from \(count)"
+        return "\(Sats.format(msat: boosts.totalMsat)) from \(count)"
             + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
     }
 }
@@ -442,7 +430,7 @@ private struct BoostersPanel: View {
                 Text("Boosts")
                     .font(Theme.font(14, .bold))
                 Spacer()
-                Text(Formatting.sats(msat: boosts.totalMsat))
+                Text(Sats.format(msat: boosts.totalMsat))
                     .font(Theme.font(13, .semibold))
                     .monospacedDigit()
             }
@@ -462,7 +450,7 @@ private struct BoostersPanel: View {
                                     .font(Theme.font(12))
                                     .foregroundStyle(Theme.secondaryText)
                             }
-                            Text(Formatting.sats(msat: boost.amountMsat))
+                            Text(Sats.format(msat: boost.amountMsat))
                                 .font(Theme.font(13))
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.secondaryText)
@@ -584,7 +572,7 @@ struct PaymentRow: View {
                 .italic()
                 .foregroundStyle(Theme.secondaryText)
         } else if let msat = message.amountMsat, msat > 0 {
-            let amount = Text(Formatting.sats(msat: msat)).font(Theme.font(14, .semibold))
+            let amount = Text(Sats.format(msat: msat)).font(Theme.font(14, .semibold))
             (message.fromMe ? Text("You sent ") + amount : Text("\(who) sent you ") + amount)
                 .font(Theme.font(14))
                 .monospacedDigit()
@@ -624,7 +612,7 @@ struct BoostAmountRow: View {
             HStack(alignment: .top, spacing: 8) {
                 PeelDropdown(
                     selection: custom == nil ? current : Self.other,
-                    options: presets(Self.choices, including: current).map { ($0, Formatting.sats(msat: $0)) }
+                    options: presets(Self.choices, including: current).map { ($0, Sats.format(msat: $0)) }
                         + [(Self.other, "Custom…")]
                 ) { msat in
                     attempt.armed = nil
@@ -668,7 +656,7 @@ struct PaymentConfirmationRow: View {
             PeelDropdown(
                 selection: current,
                 options: presets(Self.choices, including: current)
-                    .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Formatting.sats(msat: $0))") }
+                    .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") }
             ) { msat in
                 Task {
                     do {

@@ -249,7 +249,7 @@ struct SidebarHeader: View {
                                 .foregroundStyle(Theme.secondaryText)
                         }
                         if let balance = model.balanceMsat {
-                            Text(Formatting.sats(msat: balance))
+                            Text(Sats.format(msat: balance))
                                 .font(Theme.font(12))
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.secondaryText)
@@ -275,7 +275,7 @@ struct SidebarHeader: View {
     /// contact info. Receiving sats and invites join it when they are built.
     private var entries: [MenuEntry] {
         let detail = [model.myPubkey.map { "\($0.prefix(6))…\($0.suffix(4))" },
-                      model.balanceMsat.map { Formatting.sats(msat: $0) }].compactMap { $0 }.joined(separator: " · ")
+                      model.balanceMsat.map { Sats.format(msat: $0) }].compactMap { $0 }.joined(separator: " · ")
         var actions: [MenuEntry] = [
             .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
         ]
@@ -646,7 +646,7 @@ struct JoinTribeForm: View {
                                 .foregroundStyle(Theme.secondaryText)
                                 .lineLimit(3)
                         }
-                        Text("Joining costs \(Formatting.sats(msat: info.joinAmountMsat)) · \(Formatting.sats(msat: info.messageAmountMsat)) a message")
+                        Text("Joining costs \(Sats.format(msat: info.joinAmountMsat)) · \(Sats.format(msat: info.messageAmountMsat)) a message")
                             .font(Theme.font(12))
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
@@ -1165,15 +1165,5 @@ enum Formatting {
             let sameYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
             return date.formatted(sameYear ? style : style.year())
         }
-    }
-
-    /// Sats from msat, exact, since prices are shown before paying: "1 sat",
-    /// "3 sats", "1.999 sats".
-    static func sats(msat: UInt64) -> String {
-        guard msat % 1000 != 0 else {
-            let sats = msat / 1000
-            return "\(sats.formatted()) \(sats == 1 ? "sat" : "sats")"
-        }
-        return "\((Decimal(msat) / 1000).formatted()) sats"
     }
 }

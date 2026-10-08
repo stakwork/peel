@@ -20,7 +20,7 @@ struct AccountView: View {
                         NameRow()
                         GroupDivider()
                         SettingsRow("Balance") {
-                            Text(model.balanceMsat.map { Formatting.sats(msat: $0) } ?? "Known once connected")
+                            Text(model.balanceMsat.map { Sats.format(msat: $0) } ?? "Known once connected")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }

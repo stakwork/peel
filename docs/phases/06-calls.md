@@ -1,7 +1,8 @@
 # Phase 6 — Calls
 
-Status: **PRs 1 and 2 built** (the call link and message, #44; the ticket
-and presence, branch `feat/calls-token`); PRs 3 to 8 open. Plan and boards
+Status: **PRs 1 to 3 built** (the call link and message, #44; the ticket
+and presence, #54; LiveKit in the bundle, branch `feat/calls-livekit`); PRs
+4 to 8 open. Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
 
@@ -15,9 +16,15 @@ decided (Tom, 2026-10-08; see "Decided" below).
   `Engine.callPresence(of:)` returns an `AsyncStream<CallPresence>`
   (`.unknown`, `.live([CallParticipant])`, `.ended`); CLI `call-ticket` and
   `call-who`; tests in `Tests/PeelCoreTests/CallServerTests.swift`.
+- Built (PR 3): LiveKit **2.10.2** in `PeelApp` only (not 2.17: see the PR 3
+  journal), `LiveKitWebRTC.framework` embedded and signed by
+  `scripts/bundle-app.sh` and `scripts/sign-app.sh`, the microphone and
+  camera usage strings and entitlements, and a development-only test room
+  (`Sources/PeelApp/CallTestRoom.swift`).
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), and everything from PR 3 on (LiveKit, the card, the
-  window, notifications).
+  window, notifications); one mic-allowed run of the test room (PR 3
+  journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
 - Decided in PR 1: calls stay out of `shownInChats`, `unreadTypes` and the
   preview until PR 4 has the card (see "Engine and app split", Storage).
 
@@ -492,7 +499,8 @@ built for them yet:
 
 ## LiveKit on macOS
 
-- **SDK**: `livekit/client-sdk-swift`, latest **2.17.0** (2026-09-14). Its
+- **SDK** (PR 3 pins **2.10.2**, not 2.17; see the PR 3 journal):
+  `livekit/client-sdk-swift`, latest **2.17.0** (2026-09-14). Its
   manifest is `swift-tools-version:6.1` with macOS 10.15 as the minimum,
   and the README says it is "compiled using Swift 6.1 with full support for
   strict concurrency" (no `@preconcurrency` needed). The local toolchain is
@@ -804,6 +812,122 @@ the build, so it lands before any UI depends on it.
   - A one-shot "who is on it now" engine op: PR 4's card uses the stream.
   - IPv6 loopback call servers compare brackets inconsistently and are
     refused; none is used.
+
+## PR 3 journal (2026-10-08)
+
+- **Why 2.10.2, not 2.17.0.** From 2.11.0 (2026-01-12, "Integrate UniFFI")
+  LiveKit depends on `livekit-uniffi-xcframework`, a Rust library whose C
+  header defines `struct RustBuffer` with `uint64_t capacity, len`. The
+  core's `sphinxrsFFI.h`, from an older UniFFI, defines it with `int32_t`.
+  Both sit behind the same guard (`UNIFFI_SHARED_HEADER_V4`; UniFFI never
+  bumped it), so any Swift file that sees both clang modules fails to
+  compile ("'RustBuffer::capacity' from module 'RustLiveKitUniFFI' is not
+  present in definition of 'struct RustBuffer' in module 'sphinxrsFFI'").
+  This is a header clash, not a link one: the library is dynamic and none
+  of its 374 exported symbols is among the 996 that `libsphinxrs.a`
+  defines.
+  - `internal import Sphinxrs` in `Engine.swift` and `Invoice.swift` does
+    not help: PeelCore builds, but clang still loads `sphinxrsFFI` into
+    PeelApp.
+  - 2.10.2 (2025-12-15) is the newest release without the UniFFI library.
+    The official Mac app ships 2.8.1 with the same core, so the pairing is
+    proven. It brings WebRTC 137.7151.10 (the official app's is 137) and,
+    statically, `swift-protobuf`, `jwt-kit`, `swift-crypto` and
+    `swift-asn1`, in PeelApp only.
+  - Its manifest caps `swift-collections` below 1.3, and resolution is
+    package-wide, so the whole package (NIO and mqtt-nio in PeelCore
+    included) drops from 1.7.1 to 1.2.1. Nothing in Peel uses it directly;
+    builds and tests pass. A later NIO that needs 1.3 would not resolve
+    until LiveKit moves on, which the long-term fix below does.
+  - What 2.10.2 lacks against 2.17: a `swift-tools-version:6.1` manifest
+    and the README's "full support for strict concurrency" (2.10 is Swift
+    5.9 tools; Peel's own code is unaffected, it is a MainActor caller),
+    protocol v16 and "Room moved" handling, the reconnect and task
+    cancellation fixes of 2.11, the WebRTC 144 and 150 updates, and the
+    later agent and data-track features Peel does not use.
+  - **Long-term fix**: upgrade the core bindings' UniFFI (sphinx-rs,
+    `scripts/build-ffi.sh`, a new `Vendor/sphinxrs.lock`) so the
+    `RustBuffer` layouts match, then move LiveKit to latest. Not in this PR.
+- **Bundle** (`scripts/bundle-app.sh`): every framework the executable
+  loads through `@rpath` (read from `otool -L`; today only
+  `LiveKitWebRTC.framework`) goes into `Contents/Frameworks` with `ditto
+  --arch` for this Mac's architecture, without `Headers` or `Modules`. The
+  `@executable_path/../Frameworks` rpath is a linker flag on PeelApp in
+  `Package.swift`, so the executable needs no patching. `LiveKit_LiveKit.bundle` holds only the privacy manifest and
+  LiveKit never reads `Bundle.module`, so it is left out, as GRDB's and the
+  NIO bundles already are.
+- **Signing** (`scripts/sign-app.sh`): every framework in
+  `Contents/Frameworks` is signed with Peel's identity and hardened runtime
+  before the app (inside out); the closing check is now `codesign --verify
+  --deep --strict`. Without an identity it now refuses outright: an ad-hoc
+  app could not load the embedded framework under library validation, and
+  could not use the Keychain anyway.
+- **Permissions**: `NSMicrophoneUsageDescription` ("Peel uses the
+  microphone so people on a call can hear you.") and
+  `NSCameraUsageDescription` ("Peel uses the camera when you turn on video
+  in a call."); `com.apple.security.device.audio-input` and `.camera` in
+  `scripts/provision/Provision.entitlements`. The App ID is unchanged.
+  - The stub check is split in two: `profile_is_current` (app ID,
+    certificate, two days left, as before) and `stub_has_entitlements`
+    (every key in `Provision.entitlements` is in the stub's signature).
+    When only the second fails, the profile is kept and the stub is just
+    built again with it, with no request to Apple (this machine's Xcode
+    reported "No Accounts" when asked for a new profile).
+- **The test room** (`CallTestRoom.swift`): only with a development profile
+  and `-callTestToken <jwt>` (`-callTestURL` defaults to
+  `ws://127.0.0.1:7880` and must be loopback `ws://`). The window opens at
+  launch and joins; Window > Join Test Room opens it again; without the
+  token nothing is listed (`.commandsRemoved()`, no restoration, and
+  `defaultLaunchBehavior` presents it only when the test is on). It publishes the
+  microphone and shows the connection and every audio track, polling once a
+  second, and prints each change to stdout (never the URL or token).
+  LiveKit's log level is `warning` app-wide.
+  - Local stack: `brew install livekit livekit-cli`, `livekit-server --dev
+    --bind 127.0.0.1`, `lk token create --api-key devkey --api-secret secret
+    --join --room peel-test --identity <id> --valid-for 2h`, then
+    `open -n --stdout <file> .build/PeelCallsTest.app --args -profile <dev>
+    -callTestToken <jwt>`. `lk load-test --audio-publishers 1` adds a
+    synthetic remote audio track.
+- **Verified**:
+  - `codesign --verify --deep --strict` passes; app and framework carry team
+    `T3M78XC3UV` with hardened runtime; the app's entitlements have
+    audio-input, camera and the access group. The second bundle reused the
+    stub (no fetch), as the weekly re-sign will.
+  - The CLI (`.build/debug/peel`) links nothing from LiveKit or WebRTC.
+  - A fresh development profile launched from `.build`, connected to the
+    local server (`.connected`, identity from the token), and saw a remote
+    participant's microphone publication.
+  - The microphone prompt shows the new wording ("Peel uses the microphone
+    so people on a call can hear you."), titled with the bundle's file name.
+- **Not verified**: publishing the microphone and subscribing to remote
+  audio. The prompt cannot be clicked headlessly, and until it is answered
+  WebRTC's worker thread waits on it (seen in a `sample`), so neither
+  happens. One manual run with Allow clicked is open; the grant follows the
+  signature, so it holds for later builds. Two Peel instances seeing each
+  other's tracks waits on the same click.
+- **Size** (debug bundle, as `run-app.sh` builds it): 47 MB (48,140 KB)
+  before, 78 MB (79,760 KB) after. WebRTC thinned to arm64 is about 13 MB;
+  the rest is the larger executable (LiveKit, protobuf, jwt-kit, crypto).
+  WebRTC is linked, so dyld loads it at every launch; not measured.
+- **Reviews**: `/code-review` (high): a join still in flight when the window
+  closes now finishes before the room disconnects; the window is never
+  restored and opens at launch only when the test is on (not again with a
+  new main window); `-callTestURL` is read with `URL.host`, lowercased, so
+  `[::1]` passes, and a rejected one says why; rows are keyed by index; the
+  gate is the profile's kind, not a second read of `-profile`; the
+  `swift-collections` downgrade is recorded above. `/simplify`: frameworks
+  found from `otool -L` rather than named; the rpath moved to
+  `Package.swift`; one `sign` helper; the stub check split in two;
+  WebRTC thinned to this Mac's architecture; the launcher modifier
+  replaced by `defaultLaunchBehavior`. `/security-review` (entitlements,
+  framework signing, permissions, test room gating): no findings at
+  confidence 8 or above. Not applied, with reasons:
+  - Caching the signed framework between bundles: a 13 MB re-sign per
+    build is small.
+  - Plain `--verify --strict` instead of `--deep`: the brief asks for the
+    deep check, and it costs one more hash of 13 MB.
+  - Loading WebRTC lazily: it is a linked SwiftPM product and calls ship
+    in PR 5; measure the launch cost once instead.
 
 ## Decided (Tom, 2026-10-08)
 

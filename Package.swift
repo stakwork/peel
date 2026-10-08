@@ -14,6 +14,8 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.0.0"),
+        // Calls: media for the app only (docs/phases/06-calls.md, "LiveKit on macOS").
+        .package(url: "https://github.com/livekit/client-sdk-swift.git", exact: "2.10.2"),
     ],
     targets: [
         // Rust core, built by scripts/build-ffi.sh.
@@ -36,7 +38,13 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "peel", dependencies: ["PeelCore"]),
-        .executableTarget(name: "PeelApp", dependencies: ["PeelCore"]),
+        // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
+        .executableTarget(
+            name: "PeelApp",
+            dependencies: ["PeelCore", .product(name: "LiveKit", package: "client-sdk-swift")],
+            // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+        ),
         .testTarget(
             name: "PeelCoreTests",
             dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]

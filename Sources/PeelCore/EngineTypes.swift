@@ -185,6 +185,9 @@ extension Engine {
         case inviteWithoutInviter
         case tribeLinkNotContact
         case ownContactInfo
+        /// Under the key exchange's 5 sats, or a new account the server has
+        /// sent no balance yet (it sends none until one changes).
+        case contactNeedsSats
         case noSuchInvite
         case inviteNotPending
         /// The server sent no sats back for a cancelled invite.
@@ -279,6 +282,7 @@ extension Engine {
             case .inviteWithoutInviter: "that invite names nobody to add"
             case .tribeLinkNotContact: "that is a tribe link; join it from Join a tribe"
             case .ownContactInfo: "that is this account's own contact info"
+            case .contactNeedsSats: "adding a contact needs \(Sats.format(msat: Engine.keyExchangeMsat))"
             case .noSuchInvite: "there is no such invite"
             case .inviteNotPending: "that invite is no longer waiting to be used"
             case .inviteNotRefunded:

@@ -18,13 +18,14 @@ private func mediaToken(host: String = memesHost, amt: String? = nil) -> String 
 struct AuditMoneyTests {
     let profile = TempProfile()
 
-    private func engine(balanceMsat: UInt64? = 1_000_000, tribes: [Tribe] = [], messages: [Message] = []) throws
-        -> (Engine, Storage)
-    {
+    private func engine(
+        balanceMsat: UInt64? = 1_000_000, server: String? = nil, tribes: [Tribe] = [], messages: [Message] = []
+    ) throws -> (Engine, Storage) {
         let storage = try profile.storage()
         try storage.save(tribes)
         var settings: [Setting: String] = [.memesHost: memesHost]
         settings[.balanceMsat] = balanceMsat.map(String.init)
+        settings[.server] = server
         _ = try storage.apply(Storage.Commit(
             state: coreContact(seller, contactKey: key3G), settings: settings, contacts: [(seller, true)],
             messages: messages.map { ($0, false, nil) }
@@ -139,7 +140,8 @@ struct AuditMoneyTests {
         defer { stub.stop() }
         let link = "sphinx.chat://?action=tribeV2&pubkey=\(tribe)&host=127.0.0.1:\(stub.port)"
 
-        let (engine, storage) = try engine(balanceMsat: 150_000)
+        // A loopback tribe link is for an account on a local test stack.
+        let (engine, storage) = try engine(balanceMsat: 150_000, server: "mqtt://127.0.0.1:1")
         await #expect(throws: Engine.Failure.insufficientBalance) {
             try await engine.joinTribe(link: link, agreedJoinMsat: 200_000, confirmedMsat: 200_000)
         }

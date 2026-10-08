@@ -153,9 +153,10 @@ Findings:
    reports no balance until one changes, and since #80 `addContact` puts
    its 5 sats through `checkPayment`, which refuses an unknown balance:
    "the balance is not known yet; connect first", though the account is
-   connected. Before #80 the key exchange went out. Whether an empty
-   account should be told it needs sats, or be able to add contacts, is
-   Tom's call.
+   connected. Before #80 the key exchange went out. Decided: connected,
+   no balance yet counts as 0 sats, so the account is told "Adding a
+   contact needs 5 sats." (`contactNeedsSats`); offline it is still told
+   it is not connected.
 
 Not built: invoices paid and received (the server makes invoices only with
 a Lightning node, so this needs a regtest bitcoind and CLN behind the

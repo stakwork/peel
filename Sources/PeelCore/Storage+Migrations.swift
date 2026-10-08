@@ -271,6 +271,18 @@ extension Storage {
                 t.add(column: "isNew", .boolean).notNull().defaults(to: false)
             }
         }
+        migrator.registerMigration("v17") { db in
+            // A text or call with no words (`Message.hasNoWords`), which the
+            // list hides, so counts and previews leave it out too. Set when
+            // stored; `Storage.markNoWords` fills it in for rows stored before.
+            // `message_unread` takes the column, so unread counts read it
+            // from the index rather than from each row.
+            try db.execute(sql: """
+                ALTER TABLE message ADD COLUMN noWords BOOLEAN NOT NULL DEFAULT 0;
+                DROP INDEX message_unread;
+                CREATE INDEX message_unread ON message (chat, fromMe, type, serverIndex, noWords);
+                """)
+        }
         return migrator
     }
 }

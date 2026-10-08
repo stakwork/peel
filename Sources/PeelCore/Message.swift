@@ -159,28 +159,43 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// The words a row shows, trimmed: the content, or for a call message
     /// the link it carries (all a call Peel cannot join shows, as plain text).
-    public var shownText: String {
+    public var shownText: String { Self.shownText(type: type, content: content) }
+
+    private static func shownText(type: Int, content: String?) -> String {
         let text = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard type == MessageType.call else { return text }
         return CallLink.linkText(in: text) ?? text
     }
 
     /// A text or call message with no words (nothing but spaces or invisible
-    /// characters): nothing of its own to show. A deleted one still shows
-    /// that it was deleted, an attachment its file, and our own unsent one
-    /// its Retry and Discard (any pending or failed send, not only once
-    /// `isDiscardable`, so the rows do not change with the clock).
+    /// characters), whatever its status: what the `noWords` column stores
+    /// (and keeps through a delete), which unread counts, threads and
+    /// previews leave out. A deleted one still shows that it was deleted,
+    /// and an attachment its file.
+    public var hasNoWords: Bool { !deleted && Self.hasNoWords(type: type, content: content) }
+
+    /// The rule of `hasNoWords` for a message that is not deleted. Raise
+    /// `Storage.noWordsVersion` when it changes, and check that
+    /// `Storage.markNoWords` still reads every row it could mark.
+    static func hasNoWords(type: Int, content: String?) -> Bool {
+        guard type == MessageType.text || type == MessageType.call else { return false }
+        return shownText(type: type, content: content).unicodeScalars
+            .allSatisfy { $0.properties.isWhitespace || $0.properties.generalCategory == .format }
+    }
+
+    /// A message with no words and nothing of its own to show: our own
+    /// unsent one still shows its Retry and Discard (any pending or failed
+    /// send, not only once `isDiscardable`, so the rows do not change with
+    /// the clock).
     public var isBlank: Bool {
-        guard type == MessageType.text || type == MessageType.call, !deleted,
-              delivery != .pending, delivery != .failed else { return false }
-        return shownText.unicodeScalars.allSatisfy { $0.properties.isWhitespace || $0.properties.generalCategory == .format }
+        hasNoWords && delivery != .pending && delivery != .failed
     }
 
     /// Unread past `marker`, as a row counts it (`Storage.readStates` also
     /// counts others' boosts on our messages): someone else's text,
-    /// attachment or payment.
+    /// attachment or payment, if it has words.
     public func countsAsUnread(after marker: Int64) -> Bool {
-        !fromMe && MessageType.unreadTypes.contains(type) && (serverIndex ?? -1) > marker
+        !fromMe && MessageType.unreadTypes.contains(type) && (serverIndex ?? -1) > marker && !hasNoWords
     }
 
     /// Whether a reply or a thread message can name this one: text or an

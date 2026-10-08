@@ -46,28 +46,38 @@ extension Storage {
         let only = chats.map { "AND chat IN (\(databaseQuestionMarks(count: $0.count)))" } ?? ""
         let plain: Set = [sent]
         let aliasesByChat = echoed.mapValues { ownTribeAliases(sent: sent, echoed: $0) }
+        try inChunks(of: chunk) { db, after in
+            try Row.fetchAll(
+                db, sql: """
+                    SELECT id, chat, content, mentionsMe FROM message
+                    WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
+                      AND type IN (\(MessageType.contentSQL)) AND chat IN (\(Self.tribeChats)) \(only)
+                    ORDER BY id LIMIT ?
+                    """,
+                arguments: [after] + StatementArguments(Array(chats ?? [])) + [chunk]
+            )
+        } update: { db, row in
+            let mentioned = PeelCore.mentions(row["content"], aliases: aliasesByChat[row["chat"]] ?? plain)
+            if mentioned != row["mentionsMe"] {
+                try db.execute(
+                    sql: "UPDATE message SET mentionsMe = ? WHERE id = ?",
+                    arguments: [mentioned, row["id"] as Int64]
+                )
+            }
+        }
+    }
+
+    /// Goes over message rows by id, a chunk at a time, each chunk its own
+    /// transaction so other writes go on alongside: `fetch` reads the rows
+    /// after an id (at most `chunk`, ordered by id), `update` writes one.
+    func inChunks(
+        of chunk: Int, _ fetch: (Database, Int64) throws -> [Row], update: (Database, Row) throws -> Void
+    ) throws {
         var after: Int64 = 0
         while true {
-            let arguments: StatementArguments = [after] + StatementArguments(Array(chats ?? [])) + [chunk]
             let last: Int64? = try pool.write { db in
-                let rows = try Row.fetchAll(
-                    db, sql: """
-                        SELECT id, chat, content, mentionsMe FROM message
-                        WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
-                          AND type IN (\(MessageType.contentSQL)) AND chat IN (\(Self.tribeChats)) \(only)
-                        ORDER BY id LIMIT ?
-                        """,
-                    arguments: arguments
-                )
-                for row in rows {
-                    let mentioned = PeelCore.mentions(row["content"], aliases: aliasesByChat[row["chat"]] ?? plain)
-                    if mentioned != row["mentionsMe"] {
-                        try db.execute(
-                            sql: "UPDATE message SET mentionsMe = ? WHERE id = ?",
-                            arguments: [mentioned, row["id"] as Int64]
-                        )
-                    }
-                }
+                let rows = try fetch(db, after)
+                for row in rows { try update(db, row) }
                 return rows.count < chunk ? nil : rows.last?["id"]
             }
             guard let last else { return }
@@ -92,13 +102,13 @@ extension Storage {
         """
 
     /// The newest text, attachment, direct payment or call (a payment or a
-    /// call only while not deleted) gives each conversation its place in
-    /// the sidebar.
+    /// call only while not deleted; none with no words) gives each
+    /// conversation its place in the sidebar.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
-            SELECT id FROM message WHERE chat = c.chat AND (type IN (\(MessageType.contentSQL))
+            SELECT id FROM message WHERE chat = c.chat AND noWords = 0 AND (type IN (\(MessageType.contentSQL))
                 OR (type IN (\(MessageType.directPayment), \(MessageType.call)) AND deleted = 0))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
@@ -131,9 +141,10 @@ extension Storage {
     /// `message_mentions`. A message deleted after it arrived still counts,
     /// as before payments (it was news when it came).
     /// What counts as unread, for a message `m` past the marker: someone
-    /// else's text, attachment or payment, or their boost on our message.
+    /// else's text, attachment or payment with words (`Message.hasNoWords`,
+    /// read from `message_unread`), or their boost on our message.
     static let countsAsUnreadSQL = """
-        m.fromMe = 0
+        m.fromMe = 0 AND m.noWords = 0
             AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
             -- The rule `isMoneyForMe` holds for notifications too.
             AND (m.type != \(MessageType.boost) OR EXISTS (

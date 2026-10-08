@@ -154,7 +154,7 @@ final class Notifier {
     // MARK: Messages
 
     func received(_ message: Message, _ arrival: Engine.Arrival) {
-        guard center != nil, permission == .allowed, !message.fromMe, !message.deleted else { return }
+        guard center != nil, permission == .allowed, !message.fromMe, !message.deleted, !message.hasNoWords else { return }
         switch arrival {
         case .live: break
         case .history: guard !firstSync else { return }

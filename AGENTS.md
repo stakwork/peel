@@ -258,7 +258,7 @@ the media server allowlist, token claims, the token never described, and a
 fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); the
 calls watched across chats (the newest valid per chat, the cap of eight,
-ageing out, chats left or not ready, a closed account); time zones (the offset's format and
+ageing out, chats left or not ready, a closed account); the network and calls audit's regressions (`Audit*`: plaintext refusal, host allowlists, redirects, no push token, no offset to a tribe not known to be private); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
 times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; contacts
@@ -347,8 +347,12 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   profile last opened by an older build; run any connecting command (or the
   app) on it once first.
 - TLS is on by default; `ServerAddress` only goes plaintext for an explicit
-  `mqtt://` scheme or a loopback host, and the scheme is persisted. The
-  `--insecure` flag (CLI only) disables certificate verification.
+  `mqtt://` scheme or a loopback host, and the scheme is persisted. A
+  server named by an invite or the public config goes through
+  `ServerAddress.named`, which refuses plaintext off this machine; only the
+  CLI's `--server` may ask for it. The `--insecure` flag (CLI only) disables
+  certificate verification. A tribe link naming this machine is refused on
+  an account whose server is elsewhere.
 - Never log the seed, the mnemonic, or invite links.
 - Never use `URLSession.shared` (its disk cache records what was fetched and
   its redirects go anywhere): fetch with `Web.get` (size-limited; a public

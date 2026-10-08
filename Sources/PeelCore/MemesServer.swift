@@ -56,12 +56,13 @@ struct MemesServer: Sendable {
     /// redirect to another host or away from https.
     private static let session = Web.session(requestTimeout: 60, resourceTimeout: 600, redirect: redirect)
 
-    /// A redirect is followed only to https (or this machine), and without
-    /// the bearer token when it leaves the host it was sent to.
-    private static func redirect(_ request: URLRequest, from original: URLRequest?) -> URLRequest? {
+    /// A redirect is followed only to https (or this machine, from a memes
+    /// server on this machine), and without the bearer token when it leaves
+    /// the host it was sent to.
+    static func redirect(_ request: URLRequest, from original: URLRequest?) -> URLRequest? {
         guard let url = request.url, let host = url.host else { return nil }
-        let secure = url.scheme == "https" || (url.scheme == "http" && ServerAddress.isLoopback(host: host))
-        guard secure else { return nil }
+        let local = { (url: URL?) in url?.scheme == "http" && url?.host.map(ServerAddress.isLoopback) == true }
+        guard url.scheme == "https" || (local(url) && local(original?.url)) else { return nil }
         var request = request
         if host != original?.url?.host || url.port != original?.url?.port {
             request.setValue(nil, forHTTPHeaderField: "Authorization")

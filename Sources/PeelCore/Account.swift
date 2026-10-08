@@ -35,7 +35,7 @@ public enum Account {
         server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil,
         allowUntrustedCertificate: Bool = false
     ) async throws -> Created {
-        guard let address = server ?? invite.server.flatMap(ServerAddress.init) else {
+        guard let address = try server ?? invite.server.map(ServerAddress.named) else {
             throw PeelError("the invite does not say which server to use")
         }
         var tribeHost = tribeHost
@@ -91,10 +91,7 @@ public enum Account {
             address = server
         } else {
             let config = try await ServerConfig.fetch(network: network)
-            guard let parsed = ServerAddress(config.defaultLSP) else {
-                throw PeelError("the server address in the config is unreadable")
-            }
-            address = parsed
+            address = try ServerAddress.named(config.defaultLSP)
             tribeHost = tribeHost ?? config.usableTribeHost
         }
         return try await open(

@@ -126,7 +126,7 @@ phase files' names and stay as they are.
 | 3 | Tribes, threads and attachments | built and merged: tribes with parity, replies and threads, attachments, the chat UI, notifications, mark as unread; leftovers listed in the file | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | built and merged: boosts, in-chat payments, the Payments screen, invoices, requests in chat, paid attachments; payment templates and Lightning-backed tests open | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
 | — | Architecture-review cleanup | **next**, before any new feature: the refactor plan's open rows (rows 1–3 merged as #30–#32, row 5 in review as #33) | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
-| 6 | Calls (LiveKit) | after the cleanup, ahead of parity | [phases/06-calls.md](phases/06-calls.md) |
+| 6 | Calls (LiveKit) | after the cleanup, ahead of parity; PR 1 (call link and message, engine and CLI) built | [phases/06-calls.md](phases/06-calls.md) |
 | 5 | Parity: contacts, in-app web window, self-hosted certificates | after calls; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |

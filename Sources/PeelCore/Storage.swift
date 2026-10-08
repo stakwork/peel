@@ -87,6 +87,9 @@ public enum Setting: String, Sendable {
     case paymentConfirmationMsat
     /// What a one-tap boost tips, in msat (the official apps' "Default tip amount").
     case boostAmountMsat
+    /// The call server calls are started on and links are checked against,
+    /// as `host[:port]`; `chat.sphinx.chat` when unset.
+    case callServer
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

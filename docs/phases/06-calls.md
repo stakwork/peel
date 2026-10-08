@@ -1,9 +1,19 @@
 # Phase 6 — Calls
 
-Status: **planned, next after the 2026-10-08 cleanup** (#30 to #32 merged;
-the rest of `docs/reviews/2026-10-08-architecture.md` in flight), ahead of
-phase 5. Plan written 2026-10-08; nothing built yet. Tom approves
-this plan before any code.
+Status: **PR 1 built** (the call link and message in the engine, branch
+`feat/calls-messages`); PRs 2 to 8 open. Plan and boards C1 to C6 approved
+by Tom on 2026-10-08. PR 1 uses five defaults for the open questions,
+pending Tom's answers (see "Defaults, pending Tom" below).
+
+- Built: `CallLink` (`Sources/PeelCore/Call.swift`) reads the bare and the
+  `call::` forms and validates them against the account's call server;
+  `MessageType.call`; the `callServer` setting; `Engine.startCall(in:audioOnly:)`
+  and `Engine.callLink(in:)`; CLI `call-start` and `--call-server`; tests in
+  `Tests/PeelCoreTests/CallTests.swift`.
+- Open: everything from PR 2 on (token, presence, LiveKit, the card, the
+  window, notifications).
+- Decided in PR 1: calls stay out of `shownInChats`, `unreadTypes` and the
+  preview until PR 4 has the card (see "Engine and app split", Storage).
 
 Why now: calls are core messaging, not parity. Tom's team starts calls from
 chats every day, and Peel cannot be his daily client without them (Tom,
@@ -140,8 +150,9 @@ GitHub (default branch). Mac paths are under
   (`type_to_replay`, `:850-864`), and it does not charge the price per message
   for it (`type_that_need_ppm`, `:866-878`; the check is at `:180-186`). The
   official app still pays a tribe's price plus escrow on a call message, as
-  on text (`SphinxOnionManager+ChatExtension.swift:255-261`), and so does
-  Peel's `deliver` for any type (`Engine.swift:1198`).
+  on text (`SphinxOnionManager+ChatExtension.swift:255-261`). Peel pays
+  only the 3-sat floor on a call (`Tribe.messageAmountMsat(type:)`, the
+  default for open question 3).
 
 ### The official call window (what not to copy)
 
@@ -238,8 +249,8 @@ built for them yet:
 - The header's call button (already in the design, `design/README.md`
   "Conversation") opens Peel's menu with "Audio call" and "Video call"
   (shortcuts ⌥⌘A and ⌥⌘V, which nothing in Peel uses yet). There is no
-  confirmation. The call is free in a DM, and a tribe charges the same price
-  per message as text (see the open question on price).
+  confirmation. The call is free in a DM, and costs 3 sats in a tribe
+  whatever its price (the default for the open question on price).
 - Starting a call sends the message and opens the call window at once, with
   the mic on. A video call also turns your camera on; an audio call does not.
 - **When a call is live in this chat**, the call button becomes "Join · 3"
@@ -328,17 +339,22 @@ built for them yet:
     would write the token response to `~/Library/Caches/dev.peel.mac/Cache.db`
     and keep the call server's cookies. PR 2 tests that `URLCache.shared`
     holds nothing after a ticket fetch.
-  - The call server is an account setting (`callServer`, default
-    `https://chat.sphinx.chat`), like the memes host, with a CLI
-    `--call-server` flag for local tests.
+  - The call server is an account setting (`callServer`, as `host[:port]`
+    like the memes and tribes hosts, default `chat.sphinx.chat`), with a CLI
+    `--call-server` flag for local tests. https always, except plain http
+    for a loopback host (`TribeLink.baseURL`). An account on a local test
+    server has no call server until one is named, as with the memes
+    server, so local tests never make production links.
 - **The app owns media.** The LiveKit SDK and WebRTC link into `PeelApp`
   only, never `PeelCore`, so the CLI and a future agent host do not carry
   WebRTC. `CallSession` takes a `CallTicket` and nothing else from the
   engine.
 - **Storage.** Type 32 rows are already stored like any message (raw body,
   `content`). Nothing needs a new column:
-  - Add `MessageType.call = 32` to `shownInChats`, `unreadTypes` and the
-    preview ("Video call" or "Audio call").
+  - `MessageType.call = 32` exists since PR 1. It joins `shownInChats`,
+    `unreadTypes` and the preview ("Video call" or "Audio call") in PR 4,
+    with the card: until then the app would draw a type 32 row as a
+    membership note ("Alice joined").
   - No migration reads `shownInChats` or `unreadTypes` (v11 reads
     `payments`, v13 `moneySends`), so this needs no migration. Calls must
     not join `payments`, `content` or `resendable`. The first two feed
@@ -351,7 +367,9 @@ built for them yet:
   their failing URL, because a `URLError`'s description includes the full
   query (`callKey`, `hiveToken`).
 - **CLI** (development profiles only):
-  - `call-start <chat> [--audio]` prints the link.
+  - `call-start <chat> [--audio]` prints the link (PR 1). `listen` marks
+    each incoming call message as a valid call (audio or video, and the
+    room) or "not a call link on this account's call server".
   - `call-who <message id | link>` prints presence for a few seconds.
   - `call-ticket <message id>` prints the server URL, room, identity and
     expiry from the token's claims. It prints the token itself only with
@@ -360,7 +378,8 @@ built for them yet:
 ## Token and auth flow
 
 1. **Start**: `startCall` validates the configured call server, makes
-   `sphinx.call.<32 hex chars from SecRandomCopyBytes>` and builds
+   `sphinx.call.<32 hex chars>` (16 bytes from `SystemRandomNumberGenerator`,
+   the system's secure generator, as for the words) and builds
    `https://<server>/rooms/<room>` (with `?startAudioOnly=true` for audio).
    It sends it as type 32 through `deliver`, in the `call::` JSON form or
    the bare form (open question 1). The `sphinx.call.` prefix stays because
@@ -460,10 +479,11 @@ built for them yet:
   names the mechanism (for example
   `SCContentSharingPickerConfiguration.excludedWindowIDs`) and tests it; if
   none works, display shares warn that Peel's windows are included.
-- **Money**: a call message in a paid tribe pays the price plus escrow, as
-  text does. The tribes server does not ask for it, and probably never
-  refunds the escrow part, because the stake timer is only set for priced
-  types (`forward.rs:187-211`). Open question 3.
+- **Money**: a call message in a paid tribe pays only the 3-sat floor
+  (default, open question 3). The official app pays the price plus escrow,
+  which the tribes server does not ask for and probably never refunds the
+  escrow part of, because the stake timer is only set for priced types
+  (`forward.rs:187-211`).
 
 ## LiveKit on macOS
 
@@ -537,7 +557,7 @@ built for them yet:
     and `/ws`, outside the repo, like the local memes stub (`AGENTS.md`,
     "Local memes server").
   - Use two development profiles and two Peel instances on
-    `--call-server http://127.0.0.1:<port>` (plaintext only for loopback,
+    `--call-server 127.0.0.1:<port>` (plaintext only for loopback,
     `ServerAddress.isLoopback`).
   - On production, only token and presence with the throwaway account on a
     fresh random room. No media and no real account, until Tom says
@@ -556,7 +576,8 @@ simplify, security-review) and updates this file.
      Hive `-host-` rooms, `callKey`, `hiveToken` and `startAudioOnly`, validates, and
      makes random room names.
    - `MessageType.call`, the `callServer` setting, and `Engine.startCall`.
-   - CLI `call-start`, and `messages` showing calls.
+   - CLI `call-start`, and `listen` showing calls (`messages` shows them
+     from PR 4, when they join `shownInChats`).
    - Tests: every form above, Jitsi links, foreign hosts, injection in room
      names, Android and Mac room stamps.
    - Verify: alice and bob on the local stack, in a DM and a tribe (forwarded,
@@ -622,6 +643,77 @@ the build, so it lands before any UI depends on it.
   path handled, and notifications gated on validation. Below the bar and
   left as PR 6 work: whether the system picker can exclude Peel's windows.
 - `/simplify` skipped: the diff is docs only.
+
+## PR 1 journal (2026-10-08)
+
+- **Built** as planned, in the engine and the CLI only: no LiveKit, no
+  token fetch, no UI, no migration (the setting is a new key in the
+  `setting` table).
+- **Validation** (`CallLink.init?(link:server:)`): the configured server's
+  scheme, exact host (from URL components, never a substring) and port
+  (443 written or not); no user, password or fragment; the path exactly
+  `/rooms/<room>` read percent-encoded, so `%2F` and friends never pass;
+  the room as in Security; only `startAudioOnly`, `callKey` and
+  `hiveToken` kept, each at most once; `callKey` and `hiveToken` limited
+  to base64, base64url and JWT characters, at most 2 KB; content at most
+  4 KB. `url` and `message` are rebuilt from the parsed parts, with query
+  values encoded to unreserved characters (`+` as `%2B`).
+- **Reading**: `Engine.callLink(in:)` reads a type 32, or a text message
+  whose whole content is a call link (the Mac app's rule). A deleted one
+  is no call.
+- **Price**: `Tribe.messageAmountMsat(type:)` gives a call the 3-sat floor,
+  and `deliver` asks it for every type. `resend`'s price check and
+  `sendToTribe` (joins and leaves) still use the full price; neither ever
+  sends a call.
+- **Starting** needs a connection (`notConnected` otherwise) and a contact
+  or tribe (`notAChat`), because a call message is never sent again: a
+  failed one stays a failed row, unseen until PR 4 decides what the card
+  shows for it. `startCall` returns the tag so the app can follow its send
+  status.
+- **Verified on the local stack** (broker 1895, tribes 8825, mixer 8025,
+  call server `127.0.0.1:7880`, which nothing listens on: PR 1 makes no
+  requests), profiles `cl-alice`, `cl-bob`, `cl-carol`:
+  - DM: alice starts a video and an audio call; both deliver and bob's
+    `listen` shows each as a valid call with its room and mode.
+  - Tribe priced at 10 sats plus 5 escrow: bob's call is stored with 3,000
+    msat and delivered (the tribes server forwards it to alice), his text
+    with 15,000 msat. Alice, the owner, starts an audio call; bob sees it.
+  - Not replayed: carol joins afterwards and gets bob's text replayed but
+    neither call.
+- **Not checked**: how the official Mac, iOS and Android apps render a Peel
+  call (needs a dev build on the local server, or production).
+- **Reviews**: `/code-review` (high): `startCall` now needs a connection
+  and a contact or tribe, and returns the tag; `callLink(in:)` returns nil
+  rather than throwing with no call server; price wording fixed above.
+  `/simplify`: the base URL is kept once in `CallLink`, the token check is
+  folded into the query loop, the character set is built once.
+  `/security-review` (link validation): no findings at confidence 8 or
+  above. Not applied, with reasons:
+  - `--call-server` is applied after `Account.load` rather than threaded
+    through `Account` like `--memes-host`: no UI sets it before PR 4, and
+    threading it touches every `Account` entry point.
+  - No shared "setting, else default, none on loopback" helper for the
+    memes and call servers, and no shared hex helper: small, and it would
+    touch code outside this PR.
+  - The call server is read from SQLite per `callLink(in:)`: one small read,
+    and only the CLI calls it today; PR 2's `CallServer` value can cache it.
+  - A `MessageType.priced` set mirroring the tribes server's
+    `type_that_need_ppm`: only calls differ today.
+  - `callKey` keeps a literal `+` (as `URLComponents` and the Mac app read
+    it) and is sent as `%2B`; PR 2 checks this against a Hive link.
+
+## Defaults, pending Tom
+
+Tom has not answered the open questions below yet. PR 1 uses these
+defaults; each is easy to change:
+
+1. **Form** (question 1): Peel sends `call::{"link":…,"recurring":false,"cron":""}`
+   and reads both forms.
+2. **Room names** (question 2): random 128 bits, `sphinx.call.<32 hex>`.
+3. **Price** (question 3): only the 3-sat floor in a paid tribe.
+4. **Pubkey in metadata** (question 5): left out (it matters from PR 2).
+5. **Hive** (question 8): join only. Hive links are read and validated,
+   never made.
 
 ## Open questions for Tom
 

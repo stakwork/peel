@@ -257,6 +257,9 @@ public enum MessageType {
     /// payment requests and the membership notes. Boosts show under the
     /// message they boost.
     static let shownInChats = [text, attachment, directPayment, invoice, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
+    /// A call: a LiveKit room link in `content`, bare or in the `call::`
+    /// form (`CallLink`). Not shown in chats until the app has a card for it.
+    public static let call = 32
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }

@@ -74,6 +74,9 @@ struct PeelCommand {
           request <pubkey> <sats> [memo]  ask a contact for sats in their chat (an invoice message)
           pay-request <id>            pay someone's request in a chat (row id from messages; --yes as above)
 
+          call-start <pubkey>         start a video call in a contact's chat or a tribe and print its link
+                                      (--audio for an audio call)
+
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
                               never the app's own profile)
@@ -87,6 +90,8 @@ struct PeelCommand {
                               the config otherwise; later runs reuse it)
           --memes-host <host:port>  the account's memes server for attachments (default
                               memes.sphinx.chat; later runs reuse it)
+          --call-server <host:port>  the account's call server (default chat.sphinx.chat, none on a
+                              local test server; later runs reuse it)
         """
 
     static func main() async {
@@ -125,12 +130,15 @@ struct PeelCommand {
         let note = arguments.option("--text")
         let confirmed = arguments.flag("--yes")
         let priceOption = arguments.option("--price")
+        let callServer = arguments.option("--call-server")
+        let audioOnly = arguments.flag("--audio")
         guard let command = arguments.next() else {
             print(usage)
             return
         }
         func withPhoto(_ engine: Engine) async throws -> Engine {
             if let photo { try await engine.setPhotoURL(photo) }
+            if let callServer { try await engine.setCallServer(callServer) }
             return engine
         }
         func load() async throws -> Engine {
@@ -555,6 +563,13 @@ struct PeelCommand {
             }
             try await session.finish(after: wait)
 
+        case "call-start":
+            guard let pubkey = arguments.next() else { throw PeelError("call-start needs a pubkey") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            let call = try await session.engine.startCall(in: pubkey, audioOnly: audioOnly)
+            print("call: \(call.link.url.absoluteString)")
+            try await session.finish(after: wait)
+
         case "listen":
             let session = try await Session(load())
             await session.engine.start(allowUntrustedCertificate: insecure)
@@ -575,7 +590,15 @@ struct Session {
         self.engine = engine
         printer = Task {
             for await event in engine.events {
-                print(Session.describe(event))
+                var text = Session.describe(event)
+                if case .message(let message, _) = event {
+                    if let link = await engine.callLink(in: message) {
+                        text += " [\(link.audioOnly ? "audio" : "video") call, room \(link.room)]"
+                    } else if message.type == MessageType.call {
+                        text += " [not a call link on this account's call server, or it has none]"
+                    }
+                }
+                print(text)
             }
         }
     }
@@ -661,6 +684,7 @@ extension Session {
         case MessageType.boost: " boosted \(Sats.format(msat: message.amountMsat ?? 0)) on \(message.replyUUID?.prefix(12) ?? "-")"
         case MessageType.invoice: " requested \(Sats.format(msat: message.amountMsat ?? 0))"
         case MessageType.invoicePayment: " paid a request, \(Sats.format(msat: message.amountMsat ?? 0))"
+        case MessageType.call: " call"
         default: " type \(message.type)"
         }
         var file = ""

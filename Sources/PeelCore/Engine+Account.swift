@@ -6,7 +6,7 @@ extension Engine {
 
     public static func generateMnemonic() throws -> String {
         let entropy = (0..<16).map { _ in UInt8.random(in: .min ... .max) }
-        return try Sphinxrs.mnemonicFromEntropy(entropy: entropy.map { String(format: "%02x", $0) }.joined())
+        return try Sphinxrs.mnemonicFromEntropy(entropy: entropy.hex)
     }
 
     /// Checks twelve words and returns them in canonical form.
@@ -161,6 +161,14 @@ extension Engine {
 
     public func setNotificationShowsText(_ shows: Bool) throws {
         try storage.set(shows ? "1" : "0", for: .notificationText)
+    }
+
+    /// A server's `host[:port]`: the setting if recorded, else `fallback`,
+    /// except on a local test server, which has none unless named.
+    func configuredHost(_ setting: Setting, default fallback: String) throws -> String? {
+        if let host = try storage.value(for: setting) { return host }
+        guard let server, !ServerAddress.isLoopback(host: server.host) else { return nil }
+        return fallback
     }
 
     public func setServer(_ server: ServerAddress) throws {

@@ -6,9 +6,8 @@ extension Engine {
     /// The account's call server: the one recorded, else the official apps'
     /// own, except on a local test server, which has none unless named.
     public func callServer() throws -> String {
-        if let host = try storage.value(for: .callServer) { return host }
-        guard let server, !ServerAddress.isLoopback(host: server.host) else { throw Failure.noCallServer }
-        return Self.defaultCallServer
+        guard let host = try configuredHost(.callServer, default: Self.defaultCallServer) else { throw Failure.noCallServer }
+        return host
     }
 
     /// Starts a call in a contact's chat or a tribe: a new room with a random

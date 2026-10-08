@@ -333,7 +333,7 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
         }
         do {
             return try await Web.get(url, limit: 1_000_000, what: "the tribe")
-        } catch MemesServer.Failure.refused(_, let status) {
+        } catch Web.Failure.refused(_, let status) {
             throw NotServed(status: status)
         }
     }

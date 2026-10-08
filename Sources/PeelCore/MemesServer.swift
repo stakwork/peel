@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 
 /// The memes server: sign-in by signed challenge, upload, download.
 struct MemesServer: Sendable {
@@ -7,15 +6,12 @@ struct MemesServer: Sendable {
         case unreadableHost(String)
         case refused(String, Int)
         case unreadableReply(String)
-        /// Over the limit in bytes; the size when the server named it.
-        case tooLarge(Int, size: Int64? = nil)
 
         var description: String {
             switch self {
             case .unreadableHost(let host): "unreadable memes host \(host)"
             case .refused(let what, let status): "the memes server refused \(what) (HTTP \(status))"
             case .unreadableReply(let what): "the memes server's reply to \(what) was unreadable"
-            case .tooLarge(let limit, _): "the file is larger than \(limit / 1_000_000) MB"
             }
         }
 
@@ -34,10 +30,9 @@ struct MemesServer: Sendable {
 
         /// The JWT's `exp`; without one the token is used for this call only.
         init(_ value: String) {
+            struct Claims: Decodable { let exp: Double? }
             self.value = value
-            let parts = value.split(separator: ".")
-            let exp = parts.count > 1 ? MediaToken.base64URLDecode(String(parts[1]))
-                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["exp"] as? Double : nil
+            let exp = JWT.payload(Claims.self, of: value)?.exp
             expires = exp.map(Date.init(timeIntervalSince1970:)) ?? .distantPast
         }
     }
@@ -56,122 +51,20 @@ struct MemesServer: Sendable {
     /// redirect to another host or away from https.
     private static let session = Web.session(requestTimeout: 60, resourceTimeout: 600, redirect: redirect)
 
+    /// Bytes moved so far and in all, as `Web.Transfer` reports them.
+    typealias Progress = Web.Progress
+
     /// A redirect is followed only to https (or this machine, from a memes
     /// server on this machine), and without the bearer token when it leaves
     /// the host it was sent to.
     static func redirect(_ request: URLRequest, from original: URLRequest?) -> URLRequest? {
         guard let url = request.url, let host = url.host else { return nil }
-        let local = { (url: URL?) in url?.scheme == "http" && url?.host.map(ServerAddress.isLoopback) == true }
-        guard url.scheme == "https" || (local(url) && local(original?.url)) else { return nil }
+        guard url.scheme == "https" || (Web.isThisMac(url) && Web.isThisMac(original?.url)) else { return nil }
         var request = request
         if host != original?.url?.host || url.port != original?.url?.port {
             request.setValue(nil, forHTTPHeaderField: "Authorization")
         }
         return request
-    }
-
-    /// Bytes moved so far and in all, reported at most every 5% or 250 ms
-    /// (and always at the end).
-    typealias Progress = @Sendable (_ bytes: Int64, _ total: Int64) -> Void
-
-    /// One upload or download: the reply collected chunk by chunk and cut
-    /// off past its limit, progress reported as it goes. Redirects are left
-    /// to the session's own policy.
-    final class Transfer: NSObject, URLSessionDataDelegate, Sendable {
-        private struct State {
-            var data = Data()
-            var response: HTTPURLResponse?
-            var failure: (any Error)?
-            var continuation: CheckedContinuation<(Data, HTTPURLResponse), any Error>?
-            var reported: (fraction: Double, at: ContinuousClock.Instant)?
-        }
-
-        private let limit: Int
-        private let what: String
-        private let progress: Progress?
-        private let state = Mutex(State())
-
-        init(limit: Int, what: String, progress: Progress?) {
-            self.limit = limit
-            self.what = what
-            self.progress = progress
-        }
-
-        func run(_ task: URLSessionTask) async throws -> (Data, HTTPURLResponse) {
-            try await withCheckedThrowingContinuation { continuation in
-                state.withLock { $0.continuation = continuation }
-                task.delegate = self
-                task.resume()
-            }
-        }
-
-        private func report(_ bytes: Int64, of total: Int64) {
-            guard let progress, total > 0 else { return }
-            let fraction = Double(bytes) / Double(total)
-            let now = ContinuousClock.now
-            let due = state.withLock { state in
-                if let last = state.reported, bytes < total, fraction - last.fraction < 0.05,
-                   now - last.at < .milliseconds(250) { return false }
-                state.reported = (fraction, now)
-                return true
-            }
-            if due { progress(bytes, total) }
-        }
-
-        func urlSession(
-            _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
-            totalBytesSent: Int64, totalBytesExpectedToSend: Int64
-        ) {
-            report(totalBytesSent, of: totalBytesExpectedToSend)
-        }
-
-        func urlSession(
-            _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
-            completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
-        ) {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let failure: Failure? = status != 200 ? .refused(what, status)
-                : response.expectedContentLength > Int64(limit)
-                    ? .tooLarge(limit, size: response.expectedContentLength) : nil
-            state.withLock { state in
-                state.response = response as? HTTPURLResponse
-                state.failure = failure
-                if failure == nil { state.data.reserveCapacity(max(0, Int(response.expectedContentLength))) }
-                state.reported = nil
-            }
-            completionHandler(failure == nil ? .allow : .cancel)
-        }
-
-        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            let received = state.withLock { state -> Int? in
-                guard state.failure == nil else { return nil }
-                guard state.data.count + data.count <= limit else {
-                    state.failure = Failure.tooLarge(limit)
-                    return nil
-                }
-                state.data.append(data)
-                return state.data.count
-            }
-            guard let received else { return dataTask.cancel() }
-            // An upload's progress is what it sent, not its short reply.
-            guard !(dataTask is URLSessionUploadTask) else { return }
-            report(Int64(received), of: dataTask.countOfBytesExpectedToReceive)
-        }
-
-        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-            let finished = state.withLock { state in
-                defer { state.continuation = nil; state.data = Data() }
-                let result: Result<(Data, HTTPURLResponse), any Error> = if let failure = state.failure ?? error {
-                    .failure(failure)
-                } else if let response = state.response {
-                    .success((state.data, response))
-                } else {
-                    .failure(Failure.unreadableReply(what))
-                }
-                return (state.continuation, result)
-            }
-            finished.0?.resume(with: finished.1)
-        }
     }
 
     /// `GET /ask`: an id and a challenge to sign.
@@ -229,8 +122,8 @@ struct MemesServer: Sendable {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
-        let transfer = Transfer(limit: 1_000_000, what: "the upload", progress: progress)
-        let (data, _) = try await transfer.run(Self.session.uploadTask(with: request, from: body))
+        let transfer = Web.Transfer(limit: 1_000_000, what: "the upload", progress: progress)
+        let (data, _) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let muid = json["muid"] as? String, !muid.isEmpty,
               // It becomes part of a URL path and of the media token.
@@ -254,8 +147,8 @@ struct MemesServer: Sendable {
         }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
-        let transfer = Transfer(limit: limit, what: "the download", progress: progress)
-        let (data, response) = try await transfer.run(Self.session.dataTask(with: request))
+        let transfer = Web.Transfer(limit: limit, what: "the download", progress: progress)
+        let (data, response) = try await Self.run(transfer, Self.session.dataTask(with: request))
         let disposition = response.value(forHTTPHeaderField: "Content-Disposition")
         return (data, disposition.flatMap(Self.fileName(fromDisposition:)))
     }
@@ -278,6 +171,17 @@ struct MemesServer: Sendable {
     static func challengeBytes(_ challenge: String) -> Data? {
         let cut = String(challenge.prefix(challenge.count - challenge.count % 4))
         return Data(base64Encoded: cut.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/"))
+    }
+
+    /// A transfer, its failures in the memes server's words.
+    private static func run(_ transfer: Web.Transfer, _ task: URLSessionTask) async throws -> (Data, HTTPURLResponse) {
+        do {
+            return try await transfer.run(task)
+        } catch Web.Failure.refused(let what, let status) {
+            throw Failure.refused(what, status)
+        } catch Web.Failure.unreadableReply(let what) {
+            throw Failure.unreadableReply(what)
+        }
     }
 
     private func send(_ request: URLRequest, what: String) async throws -> (Data, HTTPURLResponse) {

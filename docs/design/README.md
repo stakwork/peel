@@ -474,3 +474,248 @@ Tom's decisions of 2026-10-07:
 
 **Built 2026-10-07 (branch `phase4/payments`).** Details, what was verified
 and what was not in `../phases/04-money.md`.
+
+## Time zones
+
+Researched and designed 2026-10-08; not built. Boards T1–T5 on the "Peel
+layout directions" canvas (row "Time zones"). To be built after the current
+cleanup (plan at the end of this section).
+
+The official apps let each person share their time zone, and show the other
+side's local time in a DM header and on tribe messages. Peel keeps their
+wire format exactly and changes where the time shows: once, where it helps,
+never as a second timestamp on every row.
+
+### What the official apps do (checked 2026-10-08)
+
+Mac from the local `sphinx-mac-v2` checkout (14 commits behind
+`origin/master`, none touching time zones; paths below are under
+`com.stakwork.sphinx.desktop/`). iOS and Android from `origin/master` of
+`stakwork/sphinx-ios-v2` (54e2e98) and `stakwork/sphinx-android-v2`.
+
+**On the wire.** The time zone rides inside each message's JSON, in a field
+`metadata` whose value is itself a JSON *string*:
+
+```json
+{"content":"hi","metadata":"{\"tz\":\"GMT+1\"}"}
+```
+
+- The core declares `metadata: Option<String>`
+  (`sphinx/sphinx/src/msg/mod.rs:211`), so an object there makes `send`
+  fail to parse. Nothing in the core (`sphinx/src/bindings` included) reads
+  it; it is carried as is, through tribes too. There is no time zone on
+  contacts, in contact info, in invites or in the core's state.
+- The value is a **GMT offset at the moment of sending**, not an IANA name:
+  `GMT+1`, `GMT-5`, `GMT+5:30`, `GMT+0` (`Extensions/TimeZone.swift:12`,
+  `gmtOffsetAbbreviation()`, from `secondsFromGMT(for: Date())`, so summer
+  time is included). iOS is the same (`sphinx/Extensions/TimeZone.swift`).
+  Android uses `rawOffset` (`wrapper_common/DateTime.kt`, `getGmtOffset`),
+  which ignores summer time: an Android phone in London sends `GMT+0` in
+  July.
+- Built in `Chat.getMetaDataJsonStringValue`
+  (`CoreData/Chat/Chat+CoreDataClass.swift:1273-1290`; iOS 1282-1298) and
+  added by `formatMsg` to whatever it formats
+  (`Crypter/SphinxOnionManager/SphinxOnionManager+ChatExtension.swift:123`).
+- **When it is sent.** Mac and iOS send it when the chat's switch is on and
+  the zone changed since the last send (`timezoneEnabled &&
+  timezoneUpdated`), *or* when `forceIncludeTimezone` is set
+  (`Chat+CoreDataClass.swift:1278`). That is true when none of your loaded
+  messages in the chat carries a time zone
+  (`NewChatTableDataSource+ResultsControllerExtension.swift:1095-1098`,
+  passed at `NewChatViewModel+SendMessageExtension.swift:72`). Your own DM
+  messages never get one (`SphinxOnionManager+ChatExtension.swift:603-605`
+  sets it only in public tribes, 1521-1527 only on the chat for others'), so
+  **in a DM Mac and iOS send it on every message, and the force skips the
+  share switch**: turning sharing off in a DM does not stop it. In a tribe
+  the same force applies whenever your loaded messages lack one. Android
+  sends only when enabled and changed (`SphinxRepository.kt`, the
+  `metadata` in the send path, about line 5944): once per change.
+- A change of the computer's zone marks every automatic chat as changed, so
+  the next message carries the new offset (`Chat.processTimezoneChanges`,
+  `Chat+CoreDataClass.swift:1175-1198`).
+- **Receiving.** `metadata.tz` is parsed into `GenericIncomingMessage.tz`
+  (`SphinxOnionManager+StructsAndHelpersExtension.swift:266-275`). In a DM
+  it is stored on the chat (`chat.remoteTimezoneIdentifier`, the latest
+  wins); in a tribe on each message (`message.remoteTimezoneIdentifier`)
+  (`SphinxOnionManager+ChatExtension.swift:1521-1527`). Per member, by
+  alias: the latest value among the loaded messages of the last three
+  months (`Chat+CoreDataClass.swift:477-545`), and for anyone without one
+  the newest stored value of any age
+  (`TransactionMessageQueriesExtension.swift:941-975`). Android splits it the
+  same way (`SphinxRepository.kt`, about lines 3240 and 3310).
+- Readers accept an offset or an IANA name:
+  `TimeZone(abbreviation:) ?? TimeZone(identifier:)` on Mac and iOS,
+  `TimeZone.getTimeZone` on Android (`DateTime.getLocalTimeFor`). Checked
+  with Foundation on this Mac: `GMT+1`, `GMT+5:30` and `Europe/London` all
+  resolve. Nothing is ever sent to say "stopped sharing": a receiver keeps
+  the last value for good.
+
+**Setting it.** Per chat, not per account: a contact's or tribe's details
+have a "share time zone" switch and a zone picker whose first entry is "Use
+Computer Settings" (`Scenes/Contacts/Custom View/TimezoneSharingView.swift:38`,
+then `TimeZone.knownTimeZoneIdentifiers`). Default on and automatic
+(`timezoneEnabled` defaults to `YES` in the Core Data model, and the
+one-time migration `Chat.resetTimezones`,
+`Chat+CoreDataClass.swift:1200-1209`, turned it on for every chat). The choice is
+synced between your devices through the encrypted preferences file on the
+memes server (`DataSyncManager.saveTimezoneFor`, key `timezone`, identifier
+the chat's pubkey, value `{"timezone_enabled":"true","timezone_identifier":""}`,
+`Managers/Data Sync Manager/DataSyncModels.swift:55-59`; uploaded to
+`/preferences`, `API/API+AttachmentsExtension.swift:308`; read back at
+258). Profile shows the
+computer's zone, read-only (`Scenes/Profile/View Controllers/ProfileViewController.swift:438-445`).
+
+**Showing it.**
+
+- DM header: their time now and the zone's abbreviation, "02:05 PM GMT+1",
+  set when the chat opens (`Scenes/Dashboard/Chat/Custom Views/Chat View/ChatHeaderView.swift:264-279`).
+- Every message in a tribe: "02:05 PM  /  03:05 PM GMT+2" in the row's
+  header (`MessageTableCellState.swift:210-225`,
+  `StatusHeaderView.swift:119-126`), and on a thread's original message
+  (`MessageTableCellState.swift:893-908`).
+- The tribe member list shows each member's raw value, "GMT+1"
+  (`GroupContactListItem.swift:73-75`).
+
+**What Peel does today.** Nothing: `Engine.sendText` and the other senders
+build bodies without `metadata` (`Sources/PeelCore/Engine.swift:698`), and
+`BodyFields` does not read it (`Sources/PeelCore/Message.swift:294`). The
+raw body of every incoming message is kept (the `body` column), so the time
+zones already received can be recovered from history.
+
+### Decision (recommended: option A, boards T1, T2, T4)
+
+- **One place for a person's time: their hover card.** Hover a name or
+  avatar anywhere (a DM, a tribe, a thread) and a card opens beside it:
+  photo, name, short key, then "**14:05** local time · 6 h behind", with the
+  offset they sent under it. It is the only place the time shows in tribes
+  and threads.
+- **DM header, one line.** Under the contact's name, in secondary text:
+  "02:14 local time · 6 h ahead". Only when their offset differs from
+  yours; the same zone shows nothing. It moves on with the minute.
+- **No second timestamp on rows.** Times stay in your zone. Hovering a
+  message's time shows a tooltip with both: "20:02 your time · 02:02 for
+  Evan".
+- **A late-hours hint in a DM.** Between 22:00 and 07:00 their time, a quiet
+  line above the composer: "It's 02:14 for Evan." Secondary text and a moon,
+  no colour, never a warning; sending is never held back.
+- **Wording.** "6 h ahead", "3 h 30 min behind", "same time as you". Times
+  follow the system's 24- or 12-hour setting, tabular figures. The zone
+  itself shows only in the hover card, as the sender wrote it ("GMT+7").
+- **Settings,** a "Time zone" group in Account: "Share my time zone" (a
+  switch, on by default, as in the official apps) and "Time zone":
+  "Automatic · Europe/London (GMT+1)", or one chosen from a searchable Peel
+  menu. Under the switch: "Sent with your messages as an offset, like GMT+1,
+  to the people and tribes you write to. Turning it off stops sending;
+  anyone who already has it keeps the last one you sent."
+- **When they don't share,** or nothing has come for 90 days: nothing at
+  all, no "unknown" anywhere. The hover card leaves the line out.
+- **One switch for the account** in v1, not one per conversation (open
+  question 2).
+
+Options B and C were mocked and are not recommended:
+
+- **B, a chip on each run in a tribe** (board T3): "◷ 20:05" beside the
+  sender's name and time when their offset differs. Closest to the official
+  apps, but it is the second timestamp again, on most rows of a global
+  tribe.
+- **C, the hover card only** (board T1 without its header line and hint):
+  the quietest, but in a DM, where it matters most, you have to go looking.
+
+Board T5 shows the edge cases: a contact who shares nothing and an agent.
+
+### Conventions on the wire
+
+- **Send** what the official apps send, `"metadata": "{\"tz\":\"GMT+1\"}"`:
+  the offset of the chosen zone at the moment of sending, from
+  `secondsFromGMT(for: now)` (summer time included, like Mac and iOS). Added
+  in one place, `Engine.deliver`, to text messages and attachments
+  (payment notes included) while sharing is on; not to deletes, boosts or
+  membership messages. On every such message, not only after a change, so a
+  receiver always holds a current offset and a summer-time change never
+  leaves them an hour out. About 25 bytes, which `wouldBeSplit` must count
+  for payment notes. A retry re-sends the stored body, with the offset of
+  the first try.
+- **Never an IANA name.** All three apps would read one, but a city says
+  more than an offset, and the offset is what they send.
+- **Read** `metadata.tz` on any incoming message, with Peel's own small
+  parser: `GMT`, `UTC`, `GMT±H` and `GMT±H:MM` (hours 0–14) as fixed
+  offsets, and IANA names (a `/` in them) through
+  `TimeZone(identifier:)`. Not `TimeZone(abbreviation:)` as Mac does: it
+  also takes `EST` or `BST` and turns them into a city with summer time
+  (`EST` comes out as America/New_York, at −4 in October), which nobody
+  sends but would show wrong. Anything else, or a `metadata` that is not a
+  string holding a JSON object, is ignored and never costs the message its
+  other fields.
+- **Keep** the latest value per sender with when it came: per contact in a
+  DM, per member key in a tribe (the sender key Peel stores with each
+  message; the official apps key by alias, which a member can change).
+  Older than 90 days counts as unknown.
+
+### Privacy
+
+- An offset narrows where you are to a band of longitude, and together with
+  when you write it says when you sleep. It goes to everyone you write to,
+  and in a tribe to every member, strangers included in a public tribe. The
+  tribe server reads tribe messages to forward them (it works out mentions
+  from them, `sphinx/tribes/src/incoming.rs`), so its operator sees the
+  offset too.
+- Turning sharing off cannot recall what was sent: the wire has no "off".
+  The setting says so.
+- The official Mac and iOS apps send the offset in DMs even with the chat's
+  switch off (the `forceIncludeTimezone` path above). Peel honours its
+  switch on every message. Worth reporting upstream.
+- An agent's host often runs in UTC on a server: an agent account sends no
+  offset unless its owner gives it a zone.
+
+### Agents
+
+- The time zone is engine state, not view state: each `Engine` holds the
+  share setting and chosen zone of its account (no `UserDefaults` global,
+  so many accounts can live in one process) and exposes
+  `localTime(of:)`: their offset, when it was seen, and the difference from
+  yours. The hover card and an agent's tools call the same operation.
+- An agent working for its owner can then say "It is 02:11 for Evan now.
+  15:00 tomorrow in Evan's time is 09:00 for you. Shall I ask for that?"
+  (board T5, Tweaks: Agent), later as a choice card, behind the same
+  permission gate as sending.
+- An agent's hover card shows a local time only if the agent sends one; by
+  default it does not.
+
+### Plan (after the cleanup)
+
+1. Engine: parse `metadata.tz` into a new `senderTZ` column on `message`,
+   with a migration that backfills it from stored bodies
+   (`json_extract(json_extract(body, '$.metadata'), '$.tz')`, like the
+   `threadUUID` backfill in `Storage.swift`, but only where
+   `json_type(body, '$.metadata') = 'text'` and that text is itself valid
+   JSON: `metadata` is whatever the sender wrote, and one malformed value
+   must not fail the migration; the stored string then goes through the
+   same parser as live messages), and a query for the latest
+   value per chat and sender within 90 days. Tests for the parser and the
+   backfill.
+2. Engine: the account's share setting and zone in the settings table;
+   `deliver` adds `metadata` to text and attachments while sharing is on;
+   `wouldBeSplit` counts it. Verify on the local test server, then with the
+   throwaway account against the official Mac app: Peel's offset shows in
+   its DM header and tribe rows, and the Mac's shows in Peel.
+3. App: the hover card (wanted for names anyway), the DM header line, the
+   time tooltip, the late-hours hint.
+4. App: the "Time zone" group in Account with the searchable zone menu.
+5. CLI: `whoami` prints the zone being sent; `contacts` prints each
+   contact's local time.
+
+### Open questions for Tom
+
+1. **Default on or off?** On matches the official apps (and what people
+   like), but a new Peel user then sends an offset to every public tribe
+   they post in. Alternative: on for DMs, off for tribes.
+2. **Per conversation?** The official apps keep a switch per chat and sync
+   it through the encrypted preferences file on the memes server (tip
+   amount and PIN timeout live there too). Should Peel read and write that
+   file, or keep one switch for the account?
+3. **Every message, or only after a change?** Recommended every message:
+   fresh offsets, simpler. Android sends only after a change.
+4. **Reciprocity:** with yours hidden, do you still see theirs? Recommended
+   yes, as in Slack and the official apps.
+5. **The late-hours hint:** keep it, or more than you want?
+6. **Report the Mac and iOS DM switch bug upstream?**

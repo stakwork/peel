@@ -250,6 +250,81 @@ struct InvoiceTests {
         #expect(state == .underpaid(msat: 1000))
     }
 
+    // MARK: Invoices the server makes (`request_invoice`)
+
+    private let issued = Date(timeIntervalSince1970: 1_496_314_658)
+
+    @Test func theServersInvoiceMustBeWhatWasAskedFor() throws {
+        let check = { (amount: UInt64, memo: String, server: String, now: Date) in
+            try Engine.checkServerInvoice(coffee, amountMsat: amount, memo: memo, server: server, now: now)
+        }
+        #expect(try check(250_000_000, "1 cup coffee", coffeePayee, issued).paymentHash == coffeeHash)
+        // Another node, amount or memo (a late answer to an earlier request), or expired.
+        #expect(throws: (any Error).self) { try check(250_000_000, "1 cup coffee", String(repeating: "02", count: 33), issued) }
+        #expect(throws: (any Error).self) { try check(250_000_001, "1 cup coffee", coffeePayee, issued) }
+        #expect(throws: (any Error).self) { try check(250_000_000, "tea", coffeePayee, issued) }
+        #expect(throws: (any Error).self) { try check(250_000_000, "1 cup coffee", coffeePayee, .now) }
+    }
+
+    @Test func onlyAnIncomingHistoryRowPaysAnOpenInvoiceOnce() {
+        let page = PaymentRecord.decode("""
+            [{"amt_msat":250000000,"rhash":"\(coffeeHash)","ts":9,"msg_idx":0},
+             {"amt_msat":250000000,"rhash":"\(coffeeHash)","ts":8,"msg_idx":0},
+             {"amt_msat":5,"rhash":"\(hash(2))","ts":7},
+             {"amt_msat":5,"rhash":"\(hash(3))","ts":6,"msg_idx":0,"error":"failed"},
+             {"amt_msat":5,"rhash":"\(hash(4))","ts":5,"msg_idx":0}]
+            """)
+        let paid = Engine.invoicePayments(in: page, open: [coffeeHash, hash(2), hash(3)])
+        #expect(paid.map(\.rhash) == [coffeeHash])
+        #expect(paid.first?.ts == 9)
+    }
+
+    @Test func theServersHistoryMarksAnInvoiceMadeThereAsPaid() async throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit(contacts: [(dm, true)], messages: [(request(fromMe: true), false, nil)])
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, expiresAt: 100, status: .open, chat: dm
+        )]
+        _ = try storage.apply(commit)
+        #expect(try storage.openInvoices(among: [coffeeHash, hash(2)]) == [coffeeHash])
+        #expect(try storage.openInvoices(among: []) == [])
+        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: nil))
+
+        // As `Engine.commit` turns a history page into settles.
+        let page = PaymentRecord.decode(#"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#)
+        let paid = Engine.invoicePayments(in: page, open: try storage.openInvoices(among: page.map(\.rhash)))
+        _ = try storage.apply(Storage.Commit(
+            payments: page, settling: paid.map { ($0.rhash, $0.amountMsat) }, settled: paid.map { ($0.rhash, $0.ts) }
+        ))
+        let record = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: true))
+        #expect(record.status == .paid && record.paidAt == 42 && record.paidMsat == 250_000_000)
+        #expect(try storage.openInvoices(among: [coffeeHash]).isEmpty)
+        #expect(try !storage.hasInvoicesAwaitingHistory(checkedAt: nil))
+        let state = try await first(storage.timeline(in: dm))?.requests.values.first?.state
+        #expect(state == .paid(at: Date(millisecondsSince1970: 42)))
+    }
+
+    /// Open, but expired before the history was last brought up to date:
+    /// any payment of it is already stored, so it is not fetched for again.
+    @Test func anInvoiceExpiredBeforeTheLastCheckIsNotWaitedFor() throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit()
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
+            payee: coffeePayee, createdAt: 1, expiresAt: 1000, status: .open
+        )]
+        _ = try storage.apply(commit)
+        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: nil))
+        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: 1000))
+        #expect(try !storage.hasInvoicesAwaitingHistory(checkedAt: 700_000))
+    }
+
+    @Test func aHistoryRowWithIndexZeroNamesNoMessage() {
+        let rows = PaymentRecord.decode(#"[{"amt_msat":5,"rhash":"\#(hash(1))","ts":1,"msg_idx":0}]"#)
+        #expect(rows.first?.incoming == true && rows.first?.msgIndex == nil)
+    }
+
     // MARK: Requests in a chat
 
     @Test func theirRequestFollowsOurPaymentOfIt() async throws {

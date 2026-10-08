@@ -820,10 +820,12 @@ row "Payments" (P1–P5).
   marker) and `error`. They are joined to messages by message index, then
   payment hash. `payments_total` counts the whole server, not the account.
 - **Receive** in the official apps is `request_invoice` (the server's CLN
-  makes it); its payment arrives only as a new balance. Peel uses
-  `make_invoice` instead (see below). `make_invoice` with 0 msat writes an
+  makes it); its payment arrives only as a new balance. Peel used
+  `make_invoice` at first; since 2026-10-08 it uses `request_invoice` too
+  (see "Receive and requests made by the server"). `make_invoice` with 0 msat writes an
   invoice for 0, not one the payer fills in, and paying 0 sends nothing, so
-  Receive requires an amount. Expiry is the core's fixed hour.
+  Receive requires an amount. Expiry was the core's fixed hour
+  (`make_invoice`); the server's invoices last CLN's default week.
 - **Paying:** `parse_invoice` takes the bare BOLT11 (the binding's argument
   is misnamed `invoiceJson`) and returns `value` (msat), `payee`,
   `payment_hash`, `description`, `expiry` (unix seconds) and `hop_hints`.
@@ -957,15 +959,13 @@ fund them.
 
 ### Open questions for Tom
 
-- **Receive uses `make_invoice`**, not the official apps' `request_invoice`:
-  the invoice pays this account directly, so a contact can pay it with the
-  type 3 and it works on a local stack, but it settles only while Peel is
-  running (an asynchronous payment waits for it, as tested, but not
-  forever). `request_invoice` would be paid even with Peel closed, needs
-  CLN behind the server, and arrives only as a balance change. Switch?
 - The official apps' requests use `request_invoice`, so `pay_contact_invoice`
-  cannot pay them; Peel pays those as plain invoices and the card says they
-  pay the server's node. Fine?
+  cannot pay them; Peel pays those as plain invoices and the card says, in
+  amber, that they pay the server's node. Since 2026-10-08 Peel's own
+  requests are made the same way, so every request now carries that note.
+  Keep it, or word it as the normal case (the node of the requester's
+  server)? Also: the official apps cannot pay any `request_invoice`
+  request from the chat card (see below).
 - Keysends from before this branch include old 1-sat pings with nothing to
   tie them to; they show as "Keysend".
 
@@ -1075,3 +1075,141 @@ would also join other messages that carry a hash, such as requests, and
 call them fees); a sweep instead of `uniquePairs`' all-pairs check (the
 lists are rows tied to nothing, a handful a page); reading tribe prices in
 the candidate join instead of a second key lookup (one small query).
+
+## Receive and requests made by the server (2026-10-08, branch `phase4/request-invoice`)
+
+**Decided (Tom, 2026-10-08):** Receive uses the core's `request_invoice`,
+as the official apps do, instead of `make_invoice`. The server's node is
+paid, so it works while Peel is closed; the cost is that the payment
+arrives only as a balance change, not as a payment to us. Requests in a
+chat are made the same way, as the official apps' are.
+
+### What the code does (checked 2026-10-08, against origin)
+
+- **Official apps.** Mac (`SphinOnionManager+InvoicesExtension.createInvoice`)
+  and iOS on origin (the local iOS checkout is older and still calls
+  `makeInvoice`) call `requestInvoice(amtMsat, description)`, keep a
+  callback and a 30 s timer, and take the answer from `rr.invoice`
+  (`handleInvoiceGenerated`). Requests in a chat go through the same call
+  and then `sendInvoiceMessage` (type 2). Their Receive screen
+  (`DisplayInvoiceVC`) shows Paid only on `.sentInvoiceSettled`, which
+  `processInvoicePaid` posts for a settle (`rr.settleTopic`) of a message
+  carrying a payment hash: a payment to an invoice made on the device. For
+  a server-made invoice nothing posts it: the official screen never turns
+  to Paid; only the balance moves.
+- **Core** (`sphinx/src/bindings/invoice.rs`, same at the commit
+  `sphinx-rs` pins): `request_invoice` is a publish to
+  `{root}/{pk}/0/req/{device}/invoice` with `{amt_msat, description}` and
+  no state. The answer comes on `res/{device}/invoice`
+  (`bindings/handler.rs`: `InvoiceRes` → `rr.invoice`); it names no
+  request, and on failure the mixer sends nothing back (`mqtt.rs` only
+  logs the error), so a client can only time out.
+- **Mixer.** `handler.rs` `INVOICE`: CLN `invoice` with label
+  `user:{scid}:{ts}` (CLN's default expiry, a week). Settlement:
+  - paid over Lightning: `ln.rs` `process_invoice` (`waitanyinvoice`) →
+    `incr_balance(scid)`, `add_incoming_pmt(scid, amount_received_msat,
+    rhash, remote: true, msg_idx: 0)`, `notify_balance_change`;
+  - paid from the same server (`pay` topic, payee = its own node):
+    `handler.rs` `pay_local_invoice` → `shift_balance`, `mark_paid_rhash`,
+    `add_outgoing_pmt` for the payer, `add_incoming_pmt(recipient, amt,
+    rhash, false, 0)`, balance notices to both.
+  The balance notice carries only the new balance. No tag, status or
+  `settled_status` reaches the account that made the invoice.
+- **So the signal is the history row**: `fetch_payments` gives an incoming
+  row (`msg_idx` set, here 0) with `rhash` = the invoice's payment hash
+  and the amount that arrived. It is server-side, so it is there however
+  long Peel was closed, and it is matched by hash, never by a balance
+  delta.
+- **Paying one.** `pay_contact_invoice` needs the invoice's payee to be a
+  contact (`state.get_contact(payee)`, "no invoice contact pubkey found"),
+  so it can never pay a server-made invoice. An onion payment
+  (`pay_invoice`) to the server's own node is one hop whose last layer is a
+  receive, which the mixer refuses (`unwrap_onion`: "expected a forwarded
+  onion"); the `pay` topic is what pays it (`pay_local_invoice`). The Mac
+  app gets there by falling back to `pay` 60 s after a failed onion.
+- **The official apps cannot pay a server-made request from the chat
+  card**: their `finalizePayInvoiceMessage` calls only
+  `payContactInvoice`, which throws, and the error is swallowed. That holds
+  for their own requests as much as Peel's. They can pay one by pasting it
+  into Pay invoice (`payInvoice`, falling back to `pay`), and their card
+  never shows it paid (no type 3 comes with a plain payment).
+
+### Built
+
+- **Engine:** `createInvoice` (now async) and `requestPayment` ask the
+  server (`serverInvoice`): one request at a time (the answer names none),
+  30 s for the answer (`Failure.noInvoiceFromServer`), and the answer is
+  checked (`checkServerInvoice`): payee is our server's node (from our
+  contact info), exactly the amount and memo asked, not expired. A late
+  answer to an earlier, different request is dropped and the wait goes
+  on; an identical one is ours all the same. The record is stored OPEN as
+  before; no migration (v13 tables unchanged).
+- **Paid:** `commit` matches every history page against open invoices made
+  here (`Storage.openInvoices(among:)`, `Engine.invoicePayments`: incoming,
+  not failed, one row per hash) and feeds them through the existing
+  `settling` / `settled` writes, so the amount rule (COMPLETE only if what
+  arrived covers it, else UNDERPAID) and `.invoicePaid` are the same as
+  before. `checkOpenInvoices` fetches the history (`refreshPaymentHistory`,
+  back to what is stored) on coming online and whenever the balance goes
+  up, only while an open invoice made here had not expired when the
+  history was last brought up to date this session
+  (`Storage.hasInvoicesAwaitingHistory(checkedAt:)`, 10 min margin). One
+  check at a time; a trigger during one runs it once more after. A page
+  fetch now waits for the one on its way instead of failing, so the app's
+  paging and this check never refuse each other. History rows with
+  `msg_idx` 0 (the server's invoices) name no message
+  (`PaymentRecord.decode`), so they join their invoice by hash.
+- **App:** expiries more than today away show the date ("15 Oct, 14:22"),
+  the countdown only in its last hour; Receive says Peel may be closed.
+- **Paying:** an invoice whose payee is our own server's node is paid with
+  `pay` directly (before, `pay_invoice` built a one-hop onion the mixer
+  refuses, and the `pay` fallback only ran when building the route threw).
+  This covers our server's other users' requests, Peel's and the official
+  apps' alike. Others are unchanged.
+- **Removed:** `make_invoice` (nothing else used it). The settle path for
+  invoices made on the device stays: it is generic (`settle_topic`), and
+  open `make_invoice` invoices from before may still be paid within their
+  hour.
+
+### Not verified
+
+Nothing here ran against a server: the local mixer runs `NO_LIGHTNING`, so
+`request_invoice` gets no answer there (the mixer logs "CLN was skipped").
+Unit-tested (`swift test`: all pass but main's known
+`threadsListHasDirectMessagesWithLatestAndParticipants`, fixed in #35, and
+the IPv6 known issue): the answer check, the history match, the storage
+writes it drives and when the history is fetched. Unverified until Tom's run on the
+throwaway profile: that production answers on `res/{device}/invoice` within
+30 s; that the payee is the node in our contact info; that the history row
+arrives with `msg_idx` 0 (for both paths); that `pay` settles a same-server
+invoice and a server-made invoice from another server pays through
+`pay_invoice` or its fallback; and how the official apps show Peel's
+requests.
+
+### Reviews
+
+`/code-review high`, applied: a late, different answer is dropped and the
+wait goes on; history checks coalesce into one background task (cancelled on
+disconnect), run only when the balance goes up or on coming online, and only
+while an open invoice was unexpired at the last full fetch; a page fetch
+waits for the one on its way instead of failing the app's paging; `msg_idx`
+0 names no message; expiries a week out show their date. Not applied: our
+own server-made invoice pasted from another device (or after a restore) is
+not caught as ours before paying, since its payee is the server's node; the
+mixer refuses it ("cannot pay your own invoice"), so nothing moves.
+
+`/simplify`, applied: one rule when busy (an invoice request now waits, as a
+history page does); one parser of `pubkey_lsp_scid` in the engine
+(`contactInfoParts`, also used by `addContact`; `AppModel.myPubkey` left
+alone, the file is being edited elsewhere); the countdown reads the expiry
+directly. Not applied: caching the balance to skip a settings read per
+balance notice (small, and a second copy could drift); one in-flight task
+shared by concurrent history refreshes (they now queue instead); a general
+primitive for uncorrelated server answers (the real fix is a request id in
+the core's answers); folding the own-server `pay` branch into a fallback on
+a server-reported onion refusal.
+
+`/security-review`: nothing at 8/10 or above. Checked: a contact cannot
+fill `rr.invoice` or forge an incoming history row for our hash; checks and
+confirmation run before the own-server `pay`; queries are bound; no secrets
+in the new errors.

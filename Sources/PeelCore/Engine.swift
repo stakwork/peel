@@ -127,6 +127,7 @@ public actor Engine {
         /// An invoice that names no amount: the core would send nothing.
         case invoiceWithoutAmount
         case serverTimedOut
+        case noInvoiceFromServer
 
         public var description: String {
             switch self {
@@ -136,6 +137,7 @@ public actor Engine {
             case .ownInvoice: "that is this account's own invoice"
             case .invoiceWithoutAmount: "that invoice names no amount; Peel only pays invoices that say how much"
             case .serverTimedOut: "the server did not answer in time"
+            case .noInvoiceFromServer: "the server made no invoice (its Lightning node may be down); try again later"
             case .invalidAmount: "the amount must be more than nothing"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
@@ -255,6 +257,15 @@ public actor Engine {
     /// answer lands here (see `fetchPaymentHistory`).
     private var awaitingPayments = false
     private var paymentPage: [PaymentRecord]?
+    /// An invoice asked of the server (`request_invoice`) and not yet
+    /// answered; the answer lands here (see `serverInvoice`).
+    private var awaitingInvoice = false
+    private var answeredInvoice: String?
+    /// See `checkOpenInvoices`; `historyCheckedAt` is when the history was
+    /// last fetched back to what is stored (milliseconds), this session.
+    private var invoiceCheck: Task<Void, Never>?
+    private var invoicesNeedCheck = false
+    private var historyCheckedAt: Int64?
     /// Invoices being paid in this session, so a second click can never
     /// pay one twice while the first is being sent.
     private var payingInvoices: Set<String> = []
@@ -540,6 +551,8 @@ public actor Engine {
         reconnectTask = nil
         tribeRefresh?.cancel()
         tribeRefresh = nil
+        invoiceCheck?.cancel()
+        invoiceCheck = nil
         await teardown()
         setConnection(.offline(retryIn: nil))
     }
@@ -669,8 +682,7 @@ public actor Engine {
 
     /// Starts a key exchange with a contact given as `pubkey_lsp_scid`.
     public func addContact(_ contactInfo: String, alias theirAlias: String? = nil, inviteCode: String? = nil) async throws {
-        let parts = contactInfo.split(separator: "_", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3, parts[0].count == 66 else { throw Failure.invalidContactInfo }
+        guard let parts = Self.contactInfoParts(contactInfo) else { throw Failure.invalidContactInfo }
         try await run { time, state in
             try Sphinxrs.addContact(
                 seed: seed, uniqueTime: time, state: state,
@@ -969,19 +981,25 @@ public actor Engine {
     /// page, and older ones until they reach what is stored, so a busy spell
     /// leaves no gap that paging back would skip. At most 20 pages a time.
     public func refreshPaymentHistory() async throws {
+        let started = Date().millisecondsSince1970
         let newestStored = try storage.newestPaymentTimestamp()
         var before: Int64?
         for _ in 0..<20 {
             let page = try await fetchPaymentPage(before: before)
             guard page.count >= Int(Self.paymentPageSize), let newestStored, let oldest = page.map(\.ts).min(),
-                  oldest > newestStored else { return }
+                  oldest > newestStored else {
+                historyCheckedAt = started
+                return
+            }
             before = oldest
         }
     }
 
+    /// One page at a time: a fetch waits for the one on its way (the
+    /// server's answer names no request).
     private func fetchPaymentPage(before: Int64?) async throws -> [PaymentRecord] {
+        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { awaitingPayments ? nil : () }
         guard transport != nil else { throw Failure.notConnected }
-        guard !awaitingPayments else { throw PeelError("payment history is already being fetched") }
         awaitingPayments = true
         paymentPage = nil
         defer {
@@ -1000,47 +1018,115 @@ public actor Engine {
 
     public static let paymentPageSize: UInt32 = 50
 
-    /// Makes an invoice to receive `amountMsat`, as the core builds it on
-    /// this device (`make_invoice`): it pays this account directly, and the
-    /// payment settles when it reaches this device, so Peel must be online
-    /// to take it (the official apps ask the server for one instead; see
-    /// docs/phases/04-money.md). An amount is required: with 0 the core
-    /// writes an invoice for 0 sats, not one the payer fills in.
-    public func createInvoice(amountMsat: UInt64, memo: String = "") throws -> InvoiceRecord {
-        try makeInvoice(amountMsat: amountMsat, memo: memo, chat: nil)
+    /// Makes an invoice to receive `amountMsat`, as the official apps do:
+    /// the server's Lightning node makes it (`request_invoice`) and credits
+    /// this account when it is paid, so it is paid even while Peel is
+    /// closed. The payment shows only as a balance change and a row in the
+    /// server's history, which marks the invoice paid (see
+    /// `checkOpenInvoices`). An amount is required.
+    public func createInvoice(amountMsat: UInt64, memo: String = "") async throws -> InvoiceRecord {
+        try await serverInvoice(amountMsat: amountMsat, memo: memo, chat: nil)
     }
 
-    private func makeInvoice(amountMsat: UInt64, memo: String, chat: String?) throws -> InvoiceRecord {
+    private func serverInvoice(amountMsat: UInt64, memo: String, chat: String?) async throws -> InvoiceRecord {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
-        guard isRegistered else { throw Failure.notConnected }
+        guard isRegistered, transport != nil, let server = try ownKeys()?.server else { throw Failure.notConnected }
         let memo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard memo.utf8.count <= 300 else { throw PeelError("the memo is too long for an invoice") }
-        let time = clock.next()
-        let result = try Sphinxrs.makeInvoice(
-            seed: seed, uniqueTime: time, state: StateCodec.encode(state), amtMsat: amountMsat, description: memo
-        )
-        guard let bolt11 = result.invoice else { throw PeelError("the core made no invoice") }
-        let invoice = try Invoice(bolt11)
-        guard invoice.amountMsat == amountMsat else { throw PeelError("the core made an invoice for another amount") }
+        // The server's answer names no request, so one at a time: wait for
+        // the one on its way, as a history page does.
+        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { awaitingInvoice ? nil : () }
+        awaitingInvoice = true
+        answeredInvoice = nil
+        defer {
+            awaitingInvoice = false
+            answeredInvoice = nil
+        }
+        try await run { time, state in
+            try Sphinxrs.requestInvoice(seed: seed, uniqueTime: time, state: state, amtMsat: amountMsat, description: memo)
+        }
+        // The server sends nothing back when it cannot make one (no Lightning
+        // node). A late answer to an earlier request that differs is dropped.
+        let invoice = try await poll(timeout: .seconds(30), failure: .noInvoiceFromServer) { () -> Invoice? in
+            guard let bolt11 = answeredInvoice else { return nil }
+            answeredInvoice = nil
+            return try? Self.checkServerInvoice(bolt11, amountMsat: amountMsat, memo: memo, server: server)
+        }
         let record = InvoiceRecord(
             paymentHash: invoice.paymentHash, incoming: true, bolt11: invoice.bolt11,
             amountMsat: Int64(clamping: amountMsat), memo: invoice.memo, payee: invoice.payee,
             createdAt: Date().millisecondsSince1970, expiresAt: invoice.expiresAt?.millisecondsSince1970,
             status: .open, chat: chat
         )
-        // The state holds the preimage: without it the payment can never settle.
-        _ = try commit(result, time: time, expectedSender: nil, invoices: [record])
+        _ = try storage.apply(Storage.Commit(invoices: [record]))
         return record
     }
 
-    /// Asks a contact for sats in their chat (type 2), with an invoice made
-    /// here so their payment comes straight to this account. Returns the
+    /// The server's answer to `request_invoice`, checked against what was
+    /// asked: its node is the payee, for exactly the amount and memo, and
+    /// not expired. Refuses a late answer to an earlier request that differs.
+    static func checkServerInvoice(
+        _ bolt11: String, amountMsat: UInt64, memo: String, server: String, now: Date = .now
+    ) throws -> Invoice {
+        let invoice = try Invoice(bolt11)
+        guard invoice.payee == server, invoice.amountMsat == amountMsat, invoice.memo == memo,
+              !invoice.isExpired(now: now) else {
+            throw PeelError("the server's invoice does not match what was asked for")
+        }
+        return invoice
+    }
+
+    /// This account's pubkey and its server's node, from the contact info
+    /// the core reports (`pubkey_lsp_scid`); nil before registering.
+    private nonisolated func ownKeys() throws -> (pubkey: String, server: String)? {
+        try storage.value(for: .contactInfo).flatMap(Self.contactInfoParts).map { ($0[0], $0[1]) }
+    }
+
+    /// `pubkey_lsp_scid` split in three, or nil when it is not that.
+    static func contactInfoParts(_ contactInfo: String) -> [String]? {
+        let parts = contactInfo.split(separator: "_", omittingEmptySubsequences: false).map(String.init)
+        return parts.count == 3 && parts[0].count == 66 ? parts : nil
+    }
+
+    /// Looks in the server's history for payments to invoices made here,
+    /// which arrive only as a balance change and a history row (`commit`
+    /// matches the row by payment hash): on coming online, as Peel may have
+    /// been closed when one was paid, and whenever the balance goes up. Only
+    /// while an invoice made here was open and unexpired when the history
+    /// was last brought up to date. One check at a time; a call during one
+    /// runs it again after. Stopped by `disconnect`.
+    private func checkInvoicesInBackground() {
+        guard !closed else { return }
+        invoicesNeedCheck = true
+        guard invoiceCheck == nil else { return }
+        invoiceCheck = Task { [weak self] in await self?.checkOpenInvoices() }
+    }
+
+    private func checkOpenInvoices() async {
+        while invoicesNeedCheck, !Task.isCancelled {
+            invoicesNeedCheck = false
+            do {
+                guard try storage.hasInvoicesAwaitingHistory(checkedAt: historyCheckedAt) else { break }
+                try await refreshPaymentHistory()
+            } catch {
+                if !Task.isCancelled {
+                    emit.yield(.coreError("checking invoices for payments: \(PeelError.readable(error))"))
+                }
+                break
+            }
+        }
+        // A cancelled check has already been replaced or stopped.
+        if !Task.isCancelled { invoiceCheck = nil }
+    }
+
+    /// Asks a contact for sats in their chat (type 2), with an invoice the
+    /// server makes for this account, as the official apps do. Returns the
     /// invoice; the message's delivery is reported as for `sendText`.
     @discardableResult
     public func requestPayment(from pubkey: String, amountMsat: UInt64, memo: String = "") async throws -> InvoiceRecord {
         guard tribes[pubkey] == nil else { throw PeelError("payment requests go to a person, not a tribe") }
         guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
-        let record = try makeInvoice(amountMsat: amountMsat, memo: memo, chat: pubkey)
+        let record = try await serverInvoice(amountMsat: amountMsat, memo: memo, chat: pubkey)
         let body = try Self.json(["content": record.memo, "invoice": record.bolt11])
         try await deliver(body: body, to: pubkey, type: MessageType.invoice, replacing: nil)
         return record
@@ -1077,9 +1163,7 @@ public actor Engine {
     public nonisolated func invoiceProblem(_ invoice: Invoice) throws -> Failure? {
         guard invoice.amountMsat > 0 else { return .invoiceWithoutAmount }
         guard !invoice.isExpired() else { return .invoiceExpired }
-        if invoice.payee == (try storage.value(for: .contactInfo))?.split(separator: "_").first.map(String.init) {
-            return .ownInvoice
-        }
+        if invoice.payee == (try ownKeys())?.pubkey { return .ownInvoice }
         switch try storage.paidState(paymentHash: invoice.paymentHash) {
         case .own?: return .ownInvoice
         case .pending?: return .invoicePending
@@ -1108,6 +1192,12 @@ public actor Engine {
                 seed: seed, uniqueTime: time, state: StateCodec.encode(state), bolt11: invoice.bolt11,
                 myAlias: alias, myImg: photoURL, isTribe: false
             )
+        } else if invoice.payee == (try ownKeys())?.server {
+            // Made by our own server's node (`request_invoice`, as Receive and
+            // requests in a chat are): the server moves the sats between its
+            // accounts (`pay_local_invoice`). An onion ending at its own node
+            // it refuses ("expected a forwarded onion").
+            result = try Sphinxrs.pay(seed: seed, uniqueTime: time, state: StateCodec.encode(state), bolt11: invoice.bolt11)
         } else {
             do {
                 result = try Sphinxrs.payInvoice(
@@ -2120,6 +2210,15 @@ public actor Engine {
         var discoveredTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
+        /// The balance went up: maybe an invoice made here was paid.
+        var checkInvoices = false
+    }
+
+    /// History rows that pay an invoice made here and still open: incoming,
+    /// not failed, with its payment hash. One per invoice.
+    static func invoicePayments(in page: [PaymentRecord], open: Set<String>) -> [PaymentRecord] {
+        var seen: Set<String> = []
+        return page.filter { $0.incoming && !$0.failed && open.contains($0.rhash) && seen.insert($0.rhash).inserted }
     }
 
     /// The synchronous half: one transaction with everything the core reported,
@@ -2158,6 +2257,8 @@ public actor Engine {
 
         if let balance = result.newBalance {
             commit.settings[.balanceMsat] = String(balance)
+            // Sats came in: maybe for an invoice made here.
+            followUps.checkInvoices = balance > (try storage.balanceMsat() ?? 0)
         }
         if let info = result.myContactInfo {
             commit.settings[.contactInfo] = info
@@ -2186,6 +2287,13 @@ public actor Engine {
         let settled = result.settledStatus.flatMap { try? JSONDecoder().decode(SettledStatus.self, from: Data($0.utf8)) }
         if let settled, settled.status == Message.Delivery.delivered.rawValue, let hash = settled.paymentHash {
             commit.settled = [(hash, Date().millisecondsSince1970)]
+        }
+        // A payment to an invoice the server made for us shows only in its
+        // history: an incoming row with the invoice's payment hash.
+        if let page {
+            let paid = Self.invoicePayments(in: page, open: try storage.openInvoices(among: page.map(\.rhash)))
+            commit.settling += paid.map { ($0.rhash, $0.amountMsat) }
+            commit.settled += paid.map { ($0.rhash, $0.ts) }
         }
         var landedPings: [String] = []
         var knownTribes = tribes
@@ -2287,6 +2395,7 @@ public actor Engine {
         state = newState
         if records != nil { unrecordedPayments = [] }
         if awaitingPayments, let page { paymentPage = page }
+        if awaitingInvoice, let bolt11 = result.invoice { answeredInvoice = bolt11 }
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
         }
@@ -2423,6 +2532,7 @@ public actor Engine {
             }
         }
         if followUps.discoveredTribes { refreshTribesInBackground() }
+        if followUps.checkInvoices { checkInvoicesInBackground() }
         for purchase in followUps.purchases {
             do {
                 try await answerPurchase(purchase)
@@ -2544,6 +2654,7 @@ public actor Engine {
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
+        checkInvoicesInBackground()
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)

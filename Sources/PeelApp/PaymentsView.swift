@@ -78,6 +78,14 @@ extension Formatting {
         paymentTime(date, in: PaymentSection(date))
     }
 
+    /// When an invoice runs out: "14:22" today, else "15 Oct, 14:22" (the
+    /// server's invoices last a week).
+    static func expiry(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(.dateTime.hour().minute())
+            : date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+    }
+
     /// A row's time within its section: "14:22" today and yesterday, "Mon
     /// 08:00" this week, "30 Sep" before.
     static func paymentTime(_ date: Date, in section: PaymentSection) -> String {
@@ -722,9 +730,9 @@ private struct PaneLink: View {
 
 // MARK: - Receive
 
-/// Receive: an amount (required: the core cannot make an invoice the payer
-/// fills in) and a memo make an invoice, shown as a QR code with Copy and a
-/// countdown to its expiry; it turns to Paid as soon as the payment settles.
+/// Receive: an amount (required) and a memo make an invoice, which the
+/// server's node writes; shown as a QR code with Copy and a countdown to its
+/// expiry. It turns to Paid once the server's history shows the payment.
 private struct ReceivePane: View {
     @Environment(AppModel.self) private var model
     let close: () -> Void
@@ -877,7 +885,7 @@ private struct WaitingStatus: View {
             if left <= 0 {
                 AttentionNote(
                     title: "This invoice has expired",
-                    detail: "It ran out at \(invoice.expires?.formatted(.dateTime.hour().minute()) ?? "") unpaid."
+                    detail: "It ran out at \(invoice.expires.map(Formatting.expiry) ?? "") unpaid."
                 ) {
                     PaneLink(title: "Make a new one", action: renew)
                 }
@@ -888,8 +896,10 @@ private struct WaitingStatus: View {
                             .overlay(Circle().stroke(Theme.accent.opacity(0.25), lineWidth: 4))
                         Text("Waiting for payment").font(Theme.font(13.5))
                         Spacer()
-                        if left.isFinite {
-                            Text("Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))")
+                        if let expires = invoice.expires {
+                            Text(left < 3600
+                                ? "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))"
+                                : "Expires \(Formatting.expiry(expires))")
                                 .font(Theme.font(12.5))
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.secondaryText)
@@ -906,7 +916,7 @@ private struct WaitingStatus: View {
                                 }
                             }
                     }
-                    Text("You can close this. While Peel is online the payment lands and shows in your history.")
+                    Text("You can close this, and Peel too: the server takes the payment, and it shows in your history.")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1047,7 +1057,7 @@ private struct PayInvoicePane: View {
         rows.append(.init(key: "To", value: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact"))
         if !invoice.memo.isEmpty { rows.append(.init(key: "Memo", value: invoice.memo)) }
         if let expires = invoice.expiresAt {
-            let at = expires.formatted(.dateTime.hour().minute())
+            let at = Formatting.expiry(expires)
             rows.append(invoice.isExpired()
                 ? .init(key: "Expires", value: "Expired at \(at)", tint: Theme.attention)
                 : .init(key: "Expires", value: "\(expires.formatted(.relative(presentation: .named))), at \(at)"))
@@ -1243,12 +1253,12 @@ struct PaymentRequestRow: View {
             .foregroundStyle(Theme.secondaryText)
         case .open, .failed:
             if invoice.isExpired() {
-                Text("Expired at \(invoice.expiresAt?.formatted(.dateTime.hour().minute()) ?? "")")
+                Text("Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")")
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
             } else if message.fromMe {
-                Text("Waiting to be paid · expires \(invoice.expiresAt?.formatted(.dateTime.hour().minute()) ?? "never")")
+                Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)

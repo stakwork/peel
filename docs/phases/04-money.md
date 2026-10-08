@@ -127,7 +127,12 @@ tribes server (`forward.rs` `MsgType::Boost`, price and escrow checks;
   `msgs[0]` (`sent_status`: `COMPLETE`, `PENDING`, `FAILED` with a message
   such as "insufficient balance"). The mixer checks the balance before
   moving anything (`handle_local`), and a `FAILED` means nothing moved. An
-  async pay stays `PENDING` until the recipient comes online.
+  async pay stays `PENDING` in the mixer's records (`getTags`) until the
+  recipient comes online; nothing is published on `send` until then. The
+  mixer publishes exactly one status per tag, and a live `PENDING` is that
+  one: it reached the recipient (who has the message) but the payment did
+  not settle in its window. Peel shows it as unsettled (see "Boost stuck
+  waiting" below).
 - **Balance.** The mixer pushes `newBalance` (msat) to both sides after
   every local payment (`notify_balance_change`), and once on connect
   (`initialSetup` asks for it). With `TESTING_ONLY_ADD_TO_SENDER=1` the
@@ -590,3 +595,151 @@ hover bolt, the menu item, the Account row and the new button copy.
       core; the rule is checked on the local stack and
       `needsConfirmation` is unit-tested.
     - The bolt's tooltip has no "(B)"; the shortcut lives in the menu.
+
+## Boost stuck waiting, and Boost once (2026-10-07, branch `fix/boost-status`)
+
+### The bug
+
+Tom boosted a DM message with 21 sats on production. The official app on
+the other side showed the boost; Peel kept "Boost waiting for the server…"
+under it for good.
+
+### Root cause (checked in the code, reproduced locally)
+
+For a DM payment the core returns two sends: `msgs[0]` the async pay
+(tag T, the payment hash, the uuid; Peel stores T on the row) and `msgs[1]`
+the 1-sat ping (another tag). The mixer records T as pending when it takes
+the async pay (`ASYNC_PAY`, answered on the `async_pay` topic, not `send`).
+When the recipient answers the ping, `ping.rs` `pay_now` redeems the async
+pay, stores the message for the recipient, waits for the recipient's settle
+(`handle_local`, at most `TIMEOUT_MS`, 4.2 s by default) and publishes
+exactly one status on `send/T`: `COMPLETE` with the preimage, or `PENDING`
+if the settle did not come in time. After a `PENDING` nothing more is ever
+published for T: the async pay is gone, a late settle is refused ("no htlc
+outcome") and `getTags` answers `PENDING` for ever. Peel treated only
+`COMPLETE` and `FAILED` as answers, and the 30-minute rule only fails a
+payment the mixer has *no* record of, so the row stayed pending for ever,
+while the recipient already had the message. The official apps never show
+a pending state on a boost, so they hide this.
+
+Reproduced on the local stack by restarting the mixer with `TIMEOUT_MS=1`
+(the settle always misses the window): Bob's side showed the boost, Alice's
+got `send PENDING <T>` and the row stayed `PENDING` across reconnects
+(`getTags` said `PENDING`). With the default window every other path
+confirmed: one-tap and amount boosts with Bob online (`COMPLETE` live) and
+offline (`COMPLETE` from `getTags` on Alice's next connect), so tag
+matching, the one-tap path and the order of writing the row are fine.
+
+What the sats did: in that reproduction Bob's balance did not move. In this
+mixer a local payment that misses the window is never paid (only
+`move_funds`, after the settle, moves sats), although the recipient's app
+shows the boost. A Lightning payment answered `PENDING` after its 5-minute
+budget has left the sender's balance and is in flight. Whether Tom's 21
+sats moved shows in the two balances; if the sender's did not drop, the
+mixer missed the settle (a mixer issue: it should keep the async pay or
+pay a late settle).
+
+### Fix
+
+The first version marked a live `PENDING` delivered. `/code-review` pointed
+out that this shows the bolt for sats that, in the reproduction, never
+moved, and that a Lightning payment still in flight could then never show
+its failure. So a live `PENDING` now has its own state:
+
+- `Message.Delivery.unsettled` (`UNSETTLED`): the server passed the payment
+  or boost on and the recipient has the message, but it never settled.
+  Not retryable (it may have paid), not asked about again by `getTags`
+  (the mixer's record says `PENDING` for good), and still moved on by a
+  later `COMPLETE` or `FAILED` (`Storage.setStatus`: pending to anything,
+  unsettled to delivered or failed, failed to delivered, delivered never).
+- `Engine.liveStatus` and `Engine.recordedStatuses` decide which rows a
+  status moves, with tests: live `COMPLETE`/`FAILED` as before, live
+  `PENDING` unsettled; from the records only `COMPLETE`/`FAILED` (a recorded
+  `PENDING` may be an async pay held for an offline recipient), plus the
+  30-minute rule. Unknown statuses change nothing (they used to be written
+  into the row). Only a payment or boost can become unsettled
+  (`setStatus`), so a text's PENDING, if one ever came, would not take its
+  Retry away. The CLI still prints what the server said.
+- The app: "Boost of 21 sats not settled" under the message, or "Payment
+  not settled" on a payment row, in secondary text with no action; "not
+  settled" beside it in who-boosted. The boost still counts in the chip,
+  as the official apps count it. The help text says the balance shows
+  whether the sats moved.
+- A row already stuck before this fix stays pending: its live `PENDING`
+  has passed and `getTags` cannot tell it from a held async pay.
+
+### Boost once (Tom, 2026-10-07)
+
+- The message menu had both "Boost 21 sats" and "Boost…". Only the one-tap
+  item stays (B); the amount is the Account's "Boost amount". The custom
+  panel (`BoostPanel`) had no other way in and is deleted, with
+  `AppModel.boost(_:tipMsat:)`, `boostCost` and `AmountLine`. The engine's
+  `boost(messageID:amountMsat:confirmedMsat:)` stays for the CLI
+  (`boost <id> <sats>`).
+- No Boost on a message you have already boosted: the hover bar's bolt and
+  the menu item go once you have a boost on it, pending, unsettled,
+  delivered or failed (`ChatRow.canBoost`). A failed one offers Retry and
+  Discard under the message instead (`/code-review`: offering both Boost
+  and Retry invited paying twice); discarding it brings Boost back. A boost
+  stuck pending from before this fix hides Boost on its message for good.
+- The engine holds the rule too (`/simplify`): `quickBoost` ignores a tap
+  (returns nil) when we have any boost on the message
+  (`BoostSummary.hasOwnBoost` in the app, `Storage.lastOwnBoost` in the
+  engine). That replaces the one-second double-click gap
+  (`quickBoostGap`). The CLI says "already boosted"; `boost <id> <sats>`
+  with an amount is unchanged.
+- The official apps do offer Boost again (`isBoostActionAllowed` on Mac and
+  iOS checks only incoming, not an invoice, payment or call link, with a
+  uuid; `boostedByMe` only tints the icon) and sum repeated boosts in the
+  chip. Hiding it in Peel changes nothing for colleagues: their apps and
+  Peel's summary still show any number of boosts.
+
+### Verified (local stack, 2026-10-07)
+
+Broker 2789, mixer 8089 (`NO_LIGHTNING`, `TESTING_ONLY_ADD_TO_SENDER`),
+tribes 8889; profiles `bs-alice`, `bs-bob`, `bs-carol`, deleted afterwards.
+
+| Check | Result |
+|---|---|
+| Mixer `TIMEOUT_MS=1`, one-tap DM boost, Bob online, before the fix | `send PENDING`, row `PENDING` after reconnect too; Bob shows the boost, his balance unchanged |
+| Same after the fix | Row `UNSETTLED` at once, still after a reconnect; Bob shows the boost, his balance unchanged (13 sats) |
+| Same, DM payment and tribe boost, first version (live `PENDING` as delivered) | Both marked at once |
+| Default window: one-tap DM boost, Bob online | `COMPLETE` live |
+| Default window: boost with an amount (`boost <id> 1`), Bob online | `COMPLETE` live |
+| Default window: one-tap DM boost, Bob offline, Alice disconnects | `PENDING` (held, no live status); Bob comes online and is paid; Alice's next connect `COMPLETE` by `getTags` |
+| DM payment Bob online / offline | `COMPLETE` live / on Alice's next connect |
+| Tribe boost (Alice on Bob's post), one-tap | `COMPLETE` live; Bob +1 sat |
+
+Not checked by hand: the app's hover bar, menu and "not settled" lines
+(this session cannot click in the app); production.
+
+### Open
+
+- A recipient's Peel counts a boost or payment as received (`msat` from
+  the HTLC, `.moneyReceived`) before it settles, so in the missed-window
+  case it shows sats that never arrived, as the official apps do.
+- The mixer: a payment that misses the settle window is neither paid
+  later nor failed (`pay_now` redeems the async pay first; "FIXME restore
+  if send failed").
+
+### Reviews
+
+- **`/code-review high`.** Applied: a live PENDING is `UNSETTLED`, not
+  delivered (no bolt for sats that may not have moved; a later FAILED can
+  still land and offer Retry); Boost is hidden while a failed boost offers
+  Retry; `.sendStatus` carries what the server said again; the records'
+  final statuses are an explicit list; the `quickBoost` doc. Not applied:
+  "fix it in the mixer" (outside this repo; recorded under Open).
+- **`/simplify`.** Applied: the boost-once rule in the engine
+  (`quickBoost`) as well as the view; `UNSETTLED` only for payments;
+  `boostTotalMsat` private (its only caller is the engine now); simpler
+  status appends. Not applied: sharing the test fixture helpers of
+  `PaymentTests` (private to that struct), one caption view for "waiting"
+  and "not settled" (two short views), a single status label on
+  `BoostSummary.Boost`.
+
+- **`/security-review`.** Nothing found. Checked: the new SQL clause uses
+  only constants and bound parameters; an unsettled payment cannot be
+  retried, discarded or synthesised failed (only a real FAILED moves it);
+  only our mixer's status for our own tags reaches `setStatus`; the records
+  never mark money moved on a PENDING; one-tap is stricter than before.

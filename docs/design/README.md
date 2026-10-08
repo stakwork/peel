@@ -85,18 +85,21 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   one tap, no panel and no confirmation of any kind (Tom, 2026-10-07); its
   tooltip and the menu's "Boost 100 sats" (B) name the boost amount only,
   never a tribe's price (the official apps' menu just says "Boost"; their
-  chip, like Peel's, then totals what was sent, price included).
-  "Boost…" in the message menu opens the panel for another amount, under
-  the confirmation threshold. On others' messages only (see
-  `../phases/04-money.md`).
+  chip, like Peel's, then totals what was sent, price included). That
+  menu item is the only Boost in the menu (Tom, 2026-10-07: no "Boost…"
+  panel; Account's "Boost amount" sets the amount). On others' messages
+  only, and not on one you have already boosted: the bolt and the menu
+  item go once you have a boost on it (the official apps keep offering
+  Boost); a failed one shows Retry and Discard under the message instead
+  (see `../phases/04-money.md`).
 - **Payments** in a DM are a compact row: an orange bolt in a soft circle
   where the photo goes, "You sent **1,000 sats**" or "Bob sent you **1,000
   sats**", the time and delivery bolt, the note under it. A payment or
   boost waiting past 30 s reads "… waiting for the server…" (no Discard: it
-  may have paid); a failed one "Not sent · Retry · Discard".
-- **Money panels.** Boost (preset tips, another amount, the tribe's price
-  and escrow and the total, balance) and Send sats (amount, note,
-  balance) are Peel panels. Money buttons use plain verbs (Tom,
+  may have paid); one the server passed on but never settled "Payment not
+  settled" / "Boost of 21 sats not settled", with no action; a failed one
+  "Not sent · Retry · Discard".
+- **Money panels.** Send sats (amount, note, balance) is a Peel panel. Money buttons use plain verbs (Tom,
   2026-10-07): idle "Boost", "Send", "Pay"; over the threshold (default
   100 sats) the first click turns the button orange with the amount
   ("Boost 150 sats", "Send 2,000 sats") and a quiet "Click again to

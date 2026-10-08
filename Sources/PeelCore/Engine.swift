@@ -813,16 +813,16 @@ public actor Engine {
     /// The official apps' one-tap boost (Tom, 2026-10-07: the same UX): the
     /// account's boost amount (`boostAmountMsat`) plus, in a tribe, its price
     /// and escrow, sent at once with no confirmation of any kind; the
-    /// threshold, "Always confirm" included, is for the custom amount,
-    /// payments and invoices. The boost amount itself was approved when it
-    /// was saved (`setBoostAmount`). Only the balance is checked. A second
-    /// tap within `quickBoostGap` of our last boost on the same message is
-    /// taken for a double click and ignored (returns nil).
+    /// threshold, "Always confirm" included, is for a boost with an amount
+    /// (`boost`, the CLI's), payments and invoices. The boost amount itself
+    /// was approved when it was saved (`setBoostAmount`). Only the balance is
+    /// checked. A message is boosted once this way (Tom, 2026-10-07): with
+    /// any boost of ours on it, failed ones included (those offer Retry), a
+    /// tap is ignored and returns nil, which also covers a double click.
     @discardableResult
     public func quickBoost(messageID: Int64) async throws -> String? {
         if let message = try storage.message(id: messageID), let uuid = message.uuid,
-           let last = try storage.lastOwnBoost(on: uuid, in: message.chat),
-           Date.now.timeIntervalSince(last) < Self.quickBoostGap {
+           try storage.lastOwnBoost(on: uuid, in: message.chat) != nil {
             return nil
         }
         return try await boost(messageID: messageID, amountMsat: try boostAmountMsat(), confirmation: .unasked)
@@ -835,9 +835,6 @@ public actor Engine {
         try storage.value(for: .boostAmountMsat).flatMap { UInt64($0) }.flatMap { $0 > 0 ? $0 : nil }
             ?? Self.defaultBoostAmountMsat
     }
-
-    /// Taps on one message closer together than this are one boost.
-    public static let quickBoostGap: TimeInterval = 1
 
     /// Every later one-tap boost sends this amount unasked, so one over the
     /// confirmation threshold must be confirmed (`confirmedMsat`) like a payment.
@@ -857,8 +854,8 @@ public actor Engine {
 
     /// What a boost with this tip pays: in a tribe its price per message and
     /// escrow (`Tribe.paymentPriceMsat`) plus the tip, else the tip; nil if
-    /// it cannot be counted. The app shows this total before sending.
-    public static func boostTotalMsat(tipMsat: UInt64, in tribe: Tribe?) -> UInt64? {
+    /// it cannot be counted.
+    private static func boostTotalMsat(tipMsat: UInt64, in tribe: Tribe?) -> UInt64? {
         let (total, overflow) = (tribe?.paymentPriceMsat ?? 0).addingReportingOverflow(tipMsat)
         return overflow ? nil : total
     }
@@ -1847,20 +1844,11 @@ public actor Engine {
             members = try? JSONDecoder().decode(TribeMembers.List.self, from: Data(json.utf8))
         }
         let sent = result.sentStatus.flatMap { try? JSONDecoder().decode(SentStatus.self, from: Data($0.utf8)) }
-        if let sent, let tag = sent.tag {
-            commit.statuses.append((tag, sent.status))
-        }
-        // The server's answer for sends whose status never reached us (see
-        // `checkPendingSends`); only a final one changes a row.
-        let final = [Message.Delivery.delivered.rawValue, Message.Delivery.failed.rawValue]
         let records = result.tags.flatMap { try? JSONDecoder().decode([SentStatus].self, from: Data($0.utf8)) }
-        var answers = (records ?? []).filter { final.contains($0.status) }
-        if let records {
-            answers += unrecordedPayments.subtracting(records.compactMap(\.tag)).map {
-                SentStatus(tag: $0, status: Message.Delivery.failed.rawValue)
-            }
-        }
-        commit.statuses += answers.compactMap { answer in answer.tag.map { ($0, answer.status) } }
+        let live = sent.flatMap(Self.liveStatus)
+        let answers = records.map { Self.recordedStatuses($0, unrecorded: unrecordedPayments) } ?? []
+        if let live { commit.statuses.append(live) }
+        commit.statuses += answers
 
         var purged: [String] = []
         var received: [Message] = []
@@ -1922,8 +1910,12 @@ public actor Engine {
         for message in received {
             emit.yield(.moneyReceived(message))
         }
-        for sent in [sent].compactMap({ $0 }) + answers {
+        // What the server said, then what its records settled.
+        if let sent {
             emit.yield(.sendStatus(tag: sent.tag, status: sent.status))
+        }
+        for (tag, status) in answers {
+            emit.yield(.sendStatus(tag: tag, status: status))
         }
         if let error = result.error {
             // The core reports a failed "online" reply only in this text, with
@@ -2302,7 +2294,43 @@ public actor Engine {
     }
 }
 
-private struct SentStatus: Decodable {
+extension Engine {
+    /// The row the one status the mixer publishes for a send moves
+    /// (`Storage.setStatus` only moves rows forward): COMPLETE and FAILED as
+    /// they are. A PENDING is its last word on a payment it handed to the
+    /// recipient but that did not settle in its window (a local payment whose
+    /// recipient answered after `TIMEOUT_MS`; a Lightning one still in flight
+    /// after its budget): the recipient has the message and no other status
+    /// will come for that tag, so the row is unsettled, never failed, which
+    /// would offer to pay again. Anything else changes nothing.
+    static func liveStatus(_ sent: SentStatus) -> (tag: String, status: String)? {
+        guard let tag = sent.tag, let delivery = Message.Delivery(rawValue: sent.status) else { return nil }
+        switch delivery {
+        case .delivered, .failed: return (tag, delivery.rawValue)
+        case .pending: return (tag, Message.Delivery.unsettled.rawValue)
+        case .unsettled: return nil
+        }
+    }
+
+    /// The rows the mixer's records (the `getTags` reply) move: only a final
+    /// status, since it also records an async payment as PENDING while it
+    /// holds it for an offline recipient. A payment in `unrecorded` (past
+    /// `unrecordedPaymentTimeout`, see `checkPendingSends`) it has no record
+    /// of never reached it, and failed.
+    static func recordedStatuses(_ records: [SentStatus], unrecorded: Set<String>) -> [(tag: String, status: String)] {
+        var updates: [(tag: String, status: String)] = records.compactMap { record in
+            guard let tag = record.tag, let delivery = Message.Delivery(rawValue: record.status),
+                  delivery == .delivered || delivery == .failed else { return nil }
+            return (tag, delivery.rawValue)
+        }
+        for tag in unrecorded.subtracting(records.compactMap(\.tag)).sorted() {
+            updates.append((tag, Message.Delivery.failed.rawValue))
+        }
+        return updates
+    }
+}
+
+struct SentStatus: Decodable {
     let tag: String?
     let status: String
 }

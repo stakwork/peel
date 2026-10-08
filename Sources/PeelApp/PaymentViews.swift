@@ -14,22 +14,6 @@ enum PaymentOutcome: Equatable {
 }
 
 extension AppModel {
-    /// What a boost with this tip costs here, as the engine will count it:
-    /// the tribe's price and escrow (0 in a direct message) and the total.
-    func boostCost(tipMsat: UInt64, in chat: String) -> (priceMsat: UInt64, totalMsat: UInt64)? {
-        let tribe = isTribe(chat) ? tribe(chat) : nil
-        return Engine.boostTotalMsat(tipMsat: tipMsat, in: tribe).map { (tribe?.paymentPriceMsat ?? 0, $0) }
-    }
-
-    /// Boosts someone else's message by `tipMsat` (the engine adds a tribe's
-    /// price). `confirmedMsat`: the total the person confirmed, if asked.
-    func boost(_ message: Message, tipMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let id = message.id else { return .refused("This message cannot be boosted.") }
-        return await pay("boost \(id)") {
-            try await $0.boost(messageID: id, amountMsat: tipMsat, confirmedMsat: confirmedMsat)
-        }
-    }
-
     /// The one-tap Boost, as in the official apps (Tom, 2026-10-07): the
     /// boost amount, plus a tribe's price, at once, with no panel and no
     /// confirmation. The row shows it pending, then the bolt or Retry,
@@ -201,25 +185,6 @@ private struct BalanceLine: View {
     }
 }
 
-/// A label and an amount on one line, the amount right-aligned.
-private struct AmountLine: View {
-    let label: String
-    let msat: UInt64?
-    var bold = false
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(bold ? Theme.text : Theme.secondaryText)
-            Spacer()
-            Text(msat.map { Formatting.sats(msat: $0) } ?? "–")
-                .monospacedDigit()
-                .foregroundStyle(Theme.text)
-        }
-        .font(Theme.font(13, bold ? .semibold : .regular))
-    }
-}
-
 /// A field for a whole number of sats.
 struct SatsField: View {
     let placeholder: String
@@ -239,70 +204,6 @@ struct SatsField: View {
         }
         .font(Theme.font(13))
         .fieldBoxed()
-    }
-}
-
-/// Boosting a message: a tip (presets or your own), the tribe's price on
-/// top when in a tribe, the total, your balance, and Boost.
-struct BoostPanel: View {
-    @Environment(AppModel.self) private var model
-    let message: Message
-    let done: () -> Void
-
-    static let presets: [UInt64] = [10, 50, 100, 500]
-
-    @State private var tip: UInt64 = 100
-    @State private var custom = ""
-    @State private var attempt = PaymentAttempt()
-
-    private var tipMsat: UInt64? {
-        custom.isEmpty ? tip * 1000 : Sats.msat(custom)
-    }
-
-    var body: some View {
-        let cost = tipMsat.flatMap { model.boostCost(tipMsat: $0, in: message.chat) }
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Boost \(model.sender(of: message).name)")
-                .font(Theme.font(15, .bold))
-                .lineLimit(1)
-            HStack(spacing: 6) {
-                ForEach(Self.presets, id: \.self) { sats in
-                    let chosen = custom.isEmpty && tip == sats
-                    Button {
-                        tip = sats
-                        custom = ""
-                    } label: {
-                        Text(sats.formatted())
-                            .font(Theme.font(13, chosen ? .semibold : .regular))
-                            .monospacedDigit()
-                            .foregroundStyle(chosen ? Theme.selectionText : Theme.text)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background(chosen ? Theme.selection : Theme.input, in: RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(chosen ? .clear : Theme.divider))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            SatsField(placeholder: "Other amount", text: $custom)
-            VStack(spacing: 4) {
-                if let price = cost?.priceMsat, price > 0 {
-                    AmountLine(label: "Tip", msat: tipMsat)
-                    AmountLine(label: "Tribe price and escrow", msat: price)
-                }
-                AmountLine(label: "Total", msat: cost?.totalMsat, bold: true)
-            }
-            BalanceLine()
-            FormFooter(problem: attempt.problem, working: attempt.working) {
-                PayButton(verb: "Boost", totalMsat: cost?.totalMsat, attempt: attempt, send: { confirmed in
-                    guard let tipMsat else { return .refused("Enter an amount.") }
-                    return await model.boost(message, tipMsat: tipMsat, confirmedMsat: confirmed)
-                }, sent: done)
-            }
-        }
-        .padding(16)
-        .frame(width: 300)
     }
 }
 
@@ -364,6 +265,9 @@ struct BoostLine: View {
             }
             if let since = boosts.pendingSince {
                 WaitingForServer(since: since, what: "Boost")
+            }
+            ForEach(Array(boosts.unsettled.enumerated()), id: \.offset) { _, boost in
+                NotSettled(what: "Boost of \(Formatting.sats(msat: boost.amountMsat))")
             }
             ForEach(boosts.failed, id: \.id) { boost in
                 UndeliveredActions(message: boost)
@@ -475,8 +379,8 @@ private struct BoostersPanel: View {
                                 .font(Theme.font(13))
                                 .lineLimit(1)
                             Spacer(minLength: 8)
-                            if boost.pendingSince != nil {
-                                Text("sending")
+                            if boost.pendingSince != nil || boost.unsettled {
+                                Text(boost.unsettled ? "not settled" : "sending")
                                     .font(Theme.font(12))
                                     .foregroundStyle(Theme.secondaryText)
                             }
@@ -512,6 +416,20 @@ struct WaitingForServer: View {
                     .help("It may already have paid, so it cannot be sent again until the server says it failed.")
             }
         }
+    }
+}
+
+/// Our payment or boost the server passed on but never settled
+/// (`Message.Delivery.unsettled`): they have the message, the sats may not
+/// have moved. No Retry: it may still have paid.
+struct NotSettled: View {
+    let what: String
+
+    var body: some View {
+        Text("\(what) not settled")
+            .font(Theme.font(11, .medium))
+            .foregroundStyle(Theme.secondaryText)
+            .help("The server passed it on but never confirmed the sats moved; your balance shows whether they did.")
     }
 }
 
@@ -554,6 +472,7 @@ struct PaymentRow: View {
                 if message.fromMe, !message.deleted {
                     switch message.delivery {
                     case .pending: WaitingForServer(since: message.date, what: "Payment")
+                    case .unsettled: NotSettled(what: "Payment")
                     case .failed: UndeliveredActions(message: message)
                     case .delivered, nil: EmptyView()
                     }
@@ -650,7 +569,7 @@ struct BoostAmountRow: View {
                     }, sent: { self.custom = nil })
                 }
             }
-            Text(attempt.problem ?? "Boost sends this at once, plus a tribe's price; Boost… in a message's menu picks another amount.")
+            Text(attempt.problem ?? "Boost sends this at once, plus a tribe's price.")
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
         }

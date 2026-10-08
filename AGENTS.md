@@ -94,13 +94,21 @@ is a short plan. Update the status and the journal when you finish something.
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
     size-limited `get`, and the public-https host check
-- `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
-  `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
+- `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
+  shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
+  `ConversationMenu`), `SidebarForms` (join a tribe, add a contact),
+  `Avatar` (people's and tribes' icons,
+  `PhotoCache`, `AppIcon`), `Styles` (the `…Boxed` helpers), `Clipboard`,
+  `Formatting`, `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
-  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
+  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones (entries, the
+  view modifiers, `KeyMonitor`, `RightClickCatcher`, `WindowReader`), with
+  `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
+  `MenuRow`), `Controls` (`MenuButton`, `HoverIconButton`, `PeelDropdown`,
+  `UnreadBadge`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),

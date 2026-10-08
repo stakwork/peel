@@ -317,8 +317,8 @@ struct SegmentedChoice<Value: Hashable>: View {
 
 // MARK: - In the conversation
 
-/// Under a message: its boosts as a chip ("⚡ 1,210 sats" and the boosters'
-/// photos; tinted when you boosted it), who boosted on a click, and your boosts that are still on
+/// Under a message: its boosts as a quiet chip ("⚡ 1,210 sats" and the
+/// boosters' photos; tinted when you boosted it), who boosted on a click, and your boosts that are still on
 /// their way or failed.
 struct BoostLine: View {
     let boosts: BoostSummary
@@ -349,6 +349,11 @@ struct BoostLine: View {
 /// As the Mac app draws it (`NewMessageBoostView`): a bolt, the total
 /// ("1,210 sats"), then the first three boosters' photos overlapping, one
 /// per person in the order they boosted, and "+N" for the other people.
+/// Quiet, as Slack's reactions are (Tom, 2026-10-08: it shouted louder than
+/// the message): small, on a soft fill inside a hairline, with Sphinx's
+/// orange bolt (faded while your boost waits for the server). One of
+/// yours, once the server has it, tints it faintly and puts its total in
+/// `boostMineText`.
 private struct BoostChip: View {
     @Environment(AppModel.self) private var model
     let boosts: BoostSummary
@@ -359,9 +364,10 @@ private struct BoostChip: View {
     @State private var hovering = false
 
     static let shownBoosters = 3
-    /// 24 or more, so a booster without a photo shows their initial.
-    private static let avatarSize: CGFloat = 24
-    private static let overlap: CGFloat = 8
+    /// Under the 18 pt where initials start: a booster without a photo is
+    /// their colour, and the panel names them.
+    private static let avatarSize: CGFloat = 16
+    private static let overlap: CGFloat = 5
 
     /// One per person, first boost first: by alias, as the Mac app keeps
     /// them (a boost is all a person is known by here); one without an
@@ -374,42 +380,48 @@ private struct BoostChip: View {
     }
 
     var body: some View {
-        let pending = boosts.pendingSince != nil
         let people = boosters
-        let ring = boosts.boostedByMe ? Theme.selection : hovering ? Theme.hover : Theme.quote
+        let pending = boosts.pendingSince != nil
+        let mine = boosts.boostedByMe && !pending
+        let fill = mine ? Theme.boostMineFill : Theme.quote
+        // The hairline keeps the chip's edge on a tinted, hovered or
+        // selected row; it firms up under the pointer.
+        let edge = hovering ? Theme.secondaryText.opacity(0.4) : mine ? Theme.accent.opacity(0.25) : Theme.divider
         Button {
             showing = true
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Image(systemName: "bolt.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(pending ? Theme.secondaryText : Theme.attention)
-                (Text(Sats.number(msat: boosts.totalMsat)).font(Theme.font(12, .semibold))
-                    .foregroundColor(Theme.text)
-                    + Text(" sats").font(Theme.font(12)).foregroundColor(Theme.secondaryText))
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
+                (Text(Sats.number(msat: boosts.totalMsat)).font(Theme.font(11, .semibold))
+                    .foregroundColor(mine ? Theme.boostMineText : Theme.text)
+                    + Text(" sats").font(Theme.font(11)).foregroundColor(Theme.secondaryText))
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
                         Avatar(name: avatar.name, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
-                            .padding(1.5)
-                            .background(ring, in: Circle())
+                            .padding(1)
+                            .background(fill, in: Circle())
                             .zIndex(Double(Self.shownBoosters - index))
                     }
                 }
                 if people.count > Self.shownBoosters {
                     Text("+\(people.count - Self.shownBoosters)")
-                        .font(Theme.font(12, .medium))
+                        .font(Theme.font(11, .medium))
                         .foregroundStyle(Theme.secondaryText)
                 }
             }
             .monospacedDigit()
-            .padding(.leading, 9)
-            .padding(.trailing, people.count > Self.shownBoosters ? 9 : 3)
-            .padding(.vertical, 2)
-            .background(ring, in: Capsule())
-            .overlay(Capsule().strokeBorder(boosts.boostedByMe ? Theme.accent.opacity(0.6) : Theme.divider))
-            .contentShape(Capsule())
+            .padding(.leading, 7)
+            .padding(.trailing, people.count > Self.shownBoosters ? 7 : 2)
+            .padding(.vertical, 1)
+            // Circular ends: the default (continuous) capsule's stroke
+            // draws square stubs past its ends at this height.
+            .background(fill, in: Capsule(style: .circular))
+            .overlay(Capsule(style: .circular).strokeBorder(edge))
+            .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

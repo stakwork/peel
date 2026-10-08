@@ -69,7 +69,10 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   five minutes, a new day, or anything that is not a message) starts with
   a 32 pt photo, the sender's name (13 semibold, in their colour) and the time
   (12, secondary) once; the rest of the run sits under it, each message's
-  time in the left gutter on hover. Your messages are left-aligned too, on a
+  time in the left gutter on hover, level with its first line. Runs are
+  12 pt apart; the messages inside one are 5 pt apart, more than the 3 pt
+  between a message's own lines (Tom, 2026-10-08: in #hive two messages
+  in a run read as one wrapped message). Your messages are left-aligned too, on a
   faint accent tint, with the green delivered bolt beside the time. Body
   text 14 pt with 3 pt line spacing (about 1.45), at most 560 pt wide
   (about 68 characters). Mentions are a soft chip (medium weight); links are
@@ -92,12 +95,21 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   the bottom-right (a round arrow when far up with nothing new). Clicking
   it, End or Command-Down goes to the newest and clears it.
 - **Boosts** show as a chip under the message, as the official Mac app
-  draws them (`NewMessageBoostView`): an orange bolt, the total ("1,210
-  sats"), then the first three boosters' photos overlapping (24 pt, one
-  per person in the order they boosted, initials when there is no photo)
-  and "+N" for the other people (Tom, 2026-10-07). Tinted in the selection
-  colour when one of them is yours; clicking it opens who boosted (avatars, names,
-  amounts). There is no "+" chip: the bolt in the hover bar (Reply, Boost,
+  draws them (`NewMessageBoostView`): Sphinx's orange bolt (`attention`,
+  every chip, yours too; faded to half while your boost waits for the
+  server; Tom, 2026-10-08: orange, never grey), the total ("1,210
+  sats"), then the first three boosters' photos overlapping (one
+  per person in the order they boosted) and "+N" for the other people
+  (Tom, 2026-10-07). Quiet, like Slack's reactions (Tom, 2026-10-08: the
+  chip shouted louder than the message): 11 pt text, 16 pt photos (their
+  colour when there is no photo; too small for initials), about 20 pt
+  tall, on the soft `quote` fill inside a divider hairline (so it keeps
+  its edge on your tinted rows), firmer under the pointer. One of yours
+  among them, once the server has it, tints the chip faintly
+  (`boostMineFill`, the accent at 12%, with a faint accent hairline) and
+  puts the total in the accent tuned for 4.5:1 (`boostMineText`); no
+  bright border and no orange fill. Clicking
+  it opens who boosted (avatars, names, amounts). There is no "+" chip: the bolt in the hover bar (Reply, Boost,
   More) boosts at once with your boost amount, as the official apps do:
   one tap, no panel and no confirmation of any kind (Tom, 2026-10-07); its
   tooltip and the menu's "Boost 100 sats" (B) name the boost amount only,
@@ -221,16 +233,20 @@ is dark only for now (Tom, 2026-10-07); the light values are kept in
 | Links, mention chip | `#8FB0FF`, `#2A3A5E` behind `#B4C8FF` | `#3F68E0`, `#DDE6FF` behind `#1E3D99` | — |
 | Mention of you or @all | `#F2C744` at 22% behind `#FFE08A` | `#FBE7A6` behind `#5C4300` | — |
 | Names and initials | per person, see below | per person | — |
-| Boost bolt | `#FFBC58` | `#FFBC58` | SphinxOrange |
+| Money bolt (payment rows, Send sats, boost chips) | `#FFBC58` | `#A86400` | SphinxOrange, deeper in light |
+| Boost chip | `quote` fill; yours `#1E2B41` behind `#8FB0FF` | `quote` fill; yours `#ECF1FF` behind `#1E3D99` | — |
 | Online dot | `#49C998` | `#49C998` | PrimaryGreen |
 
-Two deliberate departures from the Sphinx values, both for contrast (text
-needs 4.5:1):
+Three deliberate departures from the Sphinx values, all for contrast (text
+needs 4.5:1, icons 3:1):
 
 - Secondary text in dark mode is `#97A3B4`; Sphinx's `#6B7A8D` is too faint on
   navy.
 - Filled buttons in light mode are `#3F68E0`; white text on `#618AFF` is too
   faint.
+- Orange in light mode is a deeper amber, `#A86400` (Tom, 2026-10-08):
+  `#FFBC58` is about 1.5:1 on the light chip fills and payment rows; the
+  amber is over 3:1 on every light fill it sits on and 4.5:1 on white.
 
 Colour is state, never decoration (Tom's `tom-ui` rules): blue marks unread,
 selected and actionable; red only for destructive or blocking moments.

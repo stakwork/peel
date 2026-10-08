@@ -187,9 +187,12 @@ public actor Engine {
         public let contactKey: String?
         /// The child key this account uses for the contact; it names them in topics.
         public let childIndex: UInt64
+        /// Their server's node.
+        public let lsp: String?
 
         enum CodingKeys: String, CodingKey {
             case pubkey
+            case lsp
             case contactKey = "contact_key"
             case childIndex = "my_idx"
         }
@@ -2202,10 +2205,14 @@ public actor Engine {
     /// Whether the core holds a contact key for `pubkey`: people always have
     /// one, tribes never. Nil when the core has no such contact.
     private static func isPerson(_ pubkey: String, in state: [String: Data]) -> Bool? {
+        contact(pubkey, in: state).map { $0.contactKey != nil }
+    }
+
+    /// The core's record of `pubkey`; `state` needs only its `c/` entry.
+    static func contact(_ pubkey: String, in state: [String: Data]) -> Contact? {
         guard state["c/\(pubkey)"] != nil,
-              let json = try? Sphinxrs.getContact(state: StateCodec.encode(state), pubkey: pubkey),
-              let contact = try? JSONDecoder().decode(Contact.self, from: Data(json.utf8)) else { return nil }
-        return contact.contactKey != nil
+              let json = try? Sphinxrs.getContact(state: StateCodec.encode(state), pubkey: pubkey) else { return nil }
+        return try? JSONDecoder().decode(Contact.self, from: Data(json.utf8))
     }
 
     private func tribeServer() throws -> String {

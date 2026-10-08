@@ -37,8 +37,8 @@ public struct PaymentRequest: Sendable, Equatable {
     /// Nil when the message's invoice cannot be read: it can never be paid.
     public var invoice: Invoice?
     public var state: State
-    /// Whether paying goes to the person who asked (their own invoice, paid
-    /// with `pay_contact_invoice`) rather than to some other node.
+    /// Whether paying goes to the person who asked rather than to some other
+    /// node: their own invoice, or one their server or ours made for them.
     public var paysRequester: Bool
 }
 
@@ -184,13 +184,17 @@ extension Storage {
     /// the invoice we made settled, or another device saw the payer's
     /// payment (type 3) bring at least its amount; theirs follows our
     /// payment of it, or a successful payment of it in the history.
-    static func requests(in messages: [Message], _ db: Database) throws -> [Int64: PaymentRequest] {
+    /// `requesterNodes` are the chat's (`requesterNodes(_:)`).
+    static func requests(
+        in messages: [Message], requesterNodes: Set<String>, _ db: Database
+    ) throws -> [Int64: PaymentRequest] {
         var requests: [Int64: PaymentRequest] = [:]
         for message in messages where message.type == MessageType.invoice {
             guard let id = message.id else { continue }
             let invoice = BodyFields.decode(message.body)?.invoice.flatMap { try? Invoice($0) }
             var request = PaymentRequest(
-                invoice: invoice, state: .open, paysRequester: !message.fromMe && invoice?.payee == message.chat
+                invoice: invoice, state: .open,
+                paysRequester: !message.fromMe && invoice.map { requesterNodes.contains($0.payee) } ?? false
             )
             if let invoice {
                 request.state = message.fromMe
@@ -200,6 +204,26 @@ extension Storage {
             requests[id] = request
         }
         return requests
+    }
+
+    /// The nodes whose invoices pay the person in `chat`: their own, and the
+    /// server nodes that make invoices for an account (`request_invoice`, as
+    /// Peel and the official apps request): theirs, from the core's record
+    /// of them, and ours. A server node makes them for every account it
+    /// holds, so this cannot tell the requester's from another's there. Only
+    /// a person (a contact key) has them; in a tribe anyone may ask.
+    func requesterNodes(_ chat: String) throws -> Set<String> {
+        let key = "c/\(chat)"
+        let record = try pool.read { db in
+            try Data.fetchOne(db, sql: "SELECT value FROM coreState WHERE key = ?", arguments: [key])
+        }
+        guard let record, let contact = Engine.contact(chat, in: [key: record]), contact.contactKey != nil else {
+            return [chat]
+        }
+        var nodes: Set<String> = [chat]
+        if let theirs = contact.lsp { nodes.insert(theirs) }
+        if let ours = try value(for: .contactInfo).flatMap(Engine.contactInfoParts)?[1] { nodes.insert(ours) }
+        return nodes
     }
 
     private static func requestOfOursState(_ invoice: Invoice, chat: String, _ db: Database) throws -> PaymentRequest.State {

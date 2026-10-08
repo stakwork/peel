@@ -32,9 +32,9 @@ let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c7
 /// A contact record as the core stores it (`rmp_utils::serialize_contact`):
 /// version, child index, LSP key, scid and, once the key exchange is done,
 /// the contact key. A person has one; a tribe never does.
-func coreContact(_ pubkey: String, contactKey: String?) -> [String: Data] {
+func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G) -> [String: Data] {
     func be64(_ n: UInt64) -> Data { withUnsafeBytes(of: n.bigEndian) { Data($0) } }
-    return ["c/\(pubkey)": Data([0]) + be64(1) + hex(key3G) + be64(0) + (contactKey.map(hex) ?? Data())]
+    return ["c/\(pubkey)": Data([0]) + be64(1) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
 }
 
 /// Sender details as the core and a tribes server put them on a message.

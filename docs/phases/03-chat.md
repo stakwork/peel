@@ -1,6 +1,29 @@
 # Phase 3 — Tribes, threads and attachments
 
-Status: tribes built and reviewed on branch `phase3/tribes`, rebased onto
+## Status (2026-10-08)
+
+**Built and merged:** tribes and parity with the Mac app (#4, #7, #11, #20),
+replies and threads (#8), attachments (#9), the chat UI and Peel's menu
+(#13), notifications and the Dock badge (#18), mark as unread and jump to a
+message (#23, in `02-messaging.md` item 7).
+
+**Open:**
+- Tribe parity leftovers (tags, app and second brain URLs, image upload, per-tribe alias, details page, directory, link QR): "Tribes", "Open".
+- A production run of tribe create, edit, pin and delete on the throwaway: "Tribes", "Open".
+- Clicking through what no session could exercise: "Chat UI", "Open".
+- Notifying payments and boosts (`.moneyReceived`), a Reply action: "Notifications", "Open".
+
+**Decided:** no auto-join of the invite's tribe; delete sends only
+`delete_tribe`; one Reply, threads grow from replies, no Copy link; files
+only from the account's own memes host, at most 100 MB, never opened for
+you. Paid attachments came later, in phase 4.
+
+## Journal
+
+The build log, oldest first, kept as written. Branches named below have all
+merged.
+
+Status on 2026-10-07: tribes built and reviewed on branch `phase3/tribes`, rebased onto
 the status branch (2026-10-07); tribes parity with the Mac app built on
 `phase3/tribes-parity` (on top of it); replies and threads in the engine,
 storage and CLI on `phase3/replies-threads` (on top of parity);
@@ -847,7 +870,7 @@ the answers are under "Chat UI", "Decided".
 ## Attachments
 
 Status (branch `phase3/attachments`): engine, storage and CLI; no UI yet (the
-UI waits for the design review).
+UI waits for the design review). (The UI came with "Chat UI" below, #13.)
 
 Done means: send an image or any file to a contact or a tribe, encrypted and
 uploaded exactly as the official apps do it, so their users see it; receive

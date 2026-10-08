@@ -27,9 +27,14 @@ extension Engine {
     /// tribe is recorded before the join goes out, so the history it replays
     /// is filed under the tribe. Joining a tribe already joined does nothing.
     /// `agreedJoinMsat` is the price the person was shown; the join fails
-    /// rather than pay anything else.
+    /// rather than pay anything else. The price goes through the usual
+    /// balance and threshold checks (`checkPayment`): over the threshold it
+    /// throws `needsConfirmation`, and the second call, with that amount as
+    /// `confirmedMsat`, joins.
     @discardableResult
-    public func joinTribe(link text: String, agreedJoinMsat: UInt64? = nil) async throws -> Tribe {
+    public func joinTribe(
+        link text: String, agreedJoinMsat: UInt64? = nil, confirmedMsat: UInt64? = nil
+    ) async throws -> Tribe {
         guard let link = TribeLink(text) else { throw Failure.invalidTribeLink }
         // A member the owner declined or removed may ask again.
         if var joined = tribes[link.pubkey], !joined.left, joined.status == .active || joined.status == .pending {
@@ -45,6 +50,9 @@ extension Engine {
         if let agreedJoinMsat, info.joinAmountMsat != agreedJoinMsat {
             throw Failure.joinPriceChanged
         }
+        try checkPayment(info.joinAmountMsat, .threshold(confirmedMsat))
+        // Offline, the core would take the join into its state and nothing would go.
+        guard transport != nil else { throw Failure.notConnected }
         guard let routeHint = info.routeHint else { throw Failure.noRouteToTribe }
         let previous = tribes[link.pubkey]
         var tribe = previous ?? Tribe(pubkey: link.pubkey)

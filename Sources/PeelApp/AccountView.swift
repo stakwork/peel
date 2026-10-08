@@ -422,7 +422,7 @@ private struct PINTimeoutRow: View {
                     }
                 }
                 .fixedSize()
-                Text(problem ?? "When Peel comes to the front after this long, it asks again.")
+                Text(problem ?? "After this long without use, Peel asks again.")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
             }

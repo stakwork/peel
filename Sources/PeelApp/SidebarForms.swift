@@ -8,8 +8,9 @@ struct JoinTribeForm: View {
 
     @State private var link = ""
     @State private var info: TribeInfo?
-    @State private var working = false
+    @State private var lookingUp = false
     @State private var problem: String?
+    @State private var attempt = PaymentAttempt()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,7 +21,12 @@ struct JoinTribeForm: View {
                 .textFieldStyle(.roundedBorder)
                 // Return joins once the preview is up, as the Join button would.
                 .onSubmit { Task { await submit() } }
-                .onChange(of: link) { info = nil; problem = nil }
+                .onChange(of: link) {
+                    info = nil
+                    problem = nil
+                    attempt.armed = nil
+                    attempt.problem = nil
+                }
             if let info {
                 HStack(alignment: .top, spacing: 10) {
                     TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
@@ -43,17 +49,18 @@ struct JoinTribeForm: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
             }
-            FormFooter(problem: problem) {
-                if info == nil {
-                    Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(working) }
-                        .buttonStyle(GhostButtonStyle(prominent: true))
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(working || link.trimmed.isEmpty)
+            FormFooter(problem: problem ?? attempt.problem) {
+                if let info {
+                    // Over the threshold the price is confirmed in place, as any payment.
+                    PayButton(
+                        verb: "Join", totalMsat: info.joinAmountMsat, attempt: attempt, send: join, sent: done,
+                        namesAmount: false
+                    )
                 } else {
-                    Button { Task { await join() } } label: { Text("Join").buttonProgress(working) }
+                    Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(lookingUp) }
                         .buttonStyle(GhostButtonStyle(prominent: true))
                         .keyboardShortcut(.defaultAction)
-                        .disabled(working)
+                        .disabled(lookingUp || link.trimmed.isEmpty)
                 }
             }
         }
@@ -62,13 +69,17 @@ struct JoinTribeForm: View {
     }
 
     private func submit() async {
-        if info == nil { await lookUp() } else { await join() }
+        if info == nil {
+            await lookUp()
+        } else if await attempt.run(join) {
+            done()
+        }
     }
 
     private func lookUp() async {
-        guard !link.trimmed.isEmpty, !working else { return }
-        working = true
-        defer { working = false }
+        guard !link.trimmed.isEmpty, !lookingUp else { return }
+        lookingUp = true
+        defer { lookingUp = false }
         let looked = link
         do {
             let found = try await model.previewTribe(looked)
@@ -81,15 +92,8 @@ struct JoinTribeForm: View {
         }
     }
 
-    private func join() async {
-        guard let info, !working else { return }
-        working = true
-        defer { working = false }
-        do {
-            try await model.joinTribe(link, agreedJoinMsat: info.joinAmountMsat)
-            done()
-        } catch {
-            problem = PeelError.readable(error)
-        }
+    private func join(_ confirmedMsat: UInt64?) async -> PaymentOutcome {
+        guard let info else { return .busy }
+        return await model.joinTribe(link, agreedJoinMsat: info.joinAmountMsat, confirmedMsat: confirmedMsat)
     }
 }

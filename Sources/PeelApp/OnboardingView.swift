@@ -451,7 +451,8 @@ struct WordEntryGrid: View {
     }
 
     /// Puts each word of `text` in its own box, starting at `index`. Returns
-    /// whether the text held more than one word.
+    /// whether the text held more than one word. Twelve words pasted from
+    /// the clipboard leave it once read.
     @discardableResult
     private func fill(from index: Int, with text: String) -> Bool {
         let parts = Engine.words(in: text)
@@ -462,6 +463,7 @@ struct WordEntryGrid: View {
         for (offset, part) in parts.prefix(12 - index).enumerated() {
             words[index + offset] = part
         }
+        Clipboard.clearPasted(words: parts)
         return true
     }
 }

@@ -264,7 +264,8 @@ stored tribe record and its background recheck, local
 times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; contacts
 (`ContactCode` parsing and its refusals, QR codes read from a picture,
 invite statuses by tag, an invite marked used by the key exchange that
-names it, new contacts, the invite and add refusals); refusals as typed
+names it, new contacts, the invite and add refusals, the price to join
+held to the balance and the threshold); refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the

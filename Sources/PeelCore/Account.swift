@@ -28,8 +28,10 @@ public enum Account {
     /// again only if the server never registered the account, since a
     /// registered one has used the invite. Adding the inviter as the first
     /// contact comes last; if that fails the account still exists. The tribes
-    /// host comes from the public config when the invite names the server;
-    /// if the config cannot be read, the engine tries again on coming online.
+    /// host comes from the public config when the invite names the server,
+    /// unless that server is a loopback one (a local test stack, which the
+    /// production config does not describe); if the config cannot be read,
+    /// the engine tries again on coming online.
     public static func signup(
         _ profile: Profile, invite: Engine.Invite, alias: String, pin: String, network: String = "bitcoin",
         server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil,
@@ -39,7 +41,7 @@ public enum Account {
             throw PeelError("the invite does not say which server to use")
         }
         var tribeHost = tribeHost
-        if tribeHost == nil, server == nil {
+        if tribeHost == nil, server == nil, !ServerAddress.isLoopback(host: address.host) {
             tribeHost = try? await ServerConfig.fetch(network: network).usableTribeHost
         }
         let created = try await create(

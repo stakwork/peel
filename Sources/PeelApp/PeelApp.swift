@@ -37,6 +37,7 @@ struct PeelApp: App {
                     #endif
                     await model.start()
                 }
+                .task { await model.lockWhenIdle() }
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
@@ -123,6 +124,17 @@ enum MainWindow {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     private var quitting = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // A key press, click or scroll in Peel's windows is use, which puts
+        // the PIN timeout off.
+        NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+        ) { [weak self] event in
+            MainActor.assumeIsolated { self?.model?.noteActivity() }
+            return event
+        }
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model, model.call != nil || model.callLeaving != nil else { return .terminateNow }

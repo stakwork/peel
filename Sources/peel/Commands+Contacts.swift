@@ -9,9 +9,12 @@ extension Invocation {
         case "add":
             guard let input = arguments.next() else { throw PeelError("add needs contact info, a link or a picture") }
             let code = try Self.code(in: input)
+            let alias = arguments.next()
             let session = try await Session(load()).connect(insecure: insecure)
-            let (pubkey, added) = try await session.engine.addContact(code: code, alias: arguments.next())
-            print(added ? "adding \(pubkey)" : "already a contact: \(pubkey)")
+            try await confirming(confirmed) {
+                let (pubkey, added) = try await session.engine.addContact(code: code, alias: alias, confirmedMsat: $0)
+                print(added ? "adding \(pubkey)" : "already a contact: \(pubkey)")
+            }
             try await session.finish(after: wait)
 
         case "scan":
@@ -33,7 +36,8 @@ extension Invocation {
             }
             if let made {
                 print("invite \(made.code.prefix(12)) for \(Sats.format(msat: made.amountMsat)) (the server may keep a fee)")
-                print(made.link)
+                // Shown once the server holds the sats, as the official apps do.
+                print(made.status == .sending ? "not confirmed by the server yet; `invites` lists it until it is" : made.link)
             }
             try await session.finish(after: wait)
 

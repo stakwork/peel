@@ -10,16 +10,24 @@ extension Engine {
     /// as anyone would be and the invite's sats stay where they are. A tribe
     /// link, this account's own contact info or anything else is refused.
     /// Someone already a contact is not added again (another key exchange
-    /// would cost sats for nothing). Returns their pubkey, which names the
-    /// conversation, and whether a key exchange was started.
+    /// would cost sats for nothing). The key exchange pays `keyExchangeMsat`,
+    /// through the usual balance and threshold checks (`checkPayment`): over
+    /// the threshold it throws `needsConfirmation`, and the second call, with
+    /// that amount as `confirmedMsat`, adds them. Returns their pubkey, which
+    /// names the conversation, and whether a key exchange was started.
     @discardableResult
-    public func addContact(code text: String, alias: String? = nil) async throws -> (pubkey: String, added: Bool) {
+    public func addContact(
+        code text: String, alias: String? = nil, confirmedMsat: UInt64? = nil
+    ) async throws -> (pubkey: String, added: Bool) {
         let code = try ContactCode.read(text)
         guard let info = code.contactInfo, let pubkey = code.pubkey else { throw Failure.tribeLinkNotContact }
         if let own = try storage.value(for: .contactInfo).flatMap(ContactCode.contactInfo), own.hasPrefix(pubkey) {
             throw Failure.ownContactInfo
         }
         if Self.isPerson(pubkey, in: state) == true { return (pubkey, false) }
+        // Nobody confirms a payment that cannot go.
+        guard transport != nil else { throw Failure.notConnected }
+        try checkPayment(Self.keyExchangeMsat, .threshold(confirmedMsat))
         let name = alias?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? code.inviterName
         try await addContact(info, alias: name)
         return (pubkey, true)
@@ -39,11 +47,11 @@ extension Engine {
     /// the connection are checked first, so nobody confirms an invite that
     /// cannot be made; then the first call throws `needsConfirmation`, and
     /// the second, with that amount as `confirmedMsat`, pays after the usual
-    /// balance and threshold checks (`checkPayment`). Written before its payment is published; returned
-    /// once the server confirms it, as the official apps show the code only
-    /// then. Not confirmed within `wait`, it stays listed as sending and the
-    /// server is asked again on the next connect. The nickname and message
-    /// are kept here only.
+    /// balance and threshold checks (`checkPayment`). Written before its
+    /// payment is published; returned once the server confirms it, as the
+    /// official apps show the code only then, or still sending when it does
+    /// not within `wait` (`confirmedInvite`). The nickname and message are
+    /// kept here only.
     public func makeInvite(
         amountMsat: UInt64, nickname: String? = nil, message: String? = nil, confirmedMsat: UInt64? = nil,
         wait: Duration = .seconds(30)
@@ -83,15 +91,30 @@ extension Engine {
             // The connection went before anything was published: nothing moved.
             _ = try? storage.setInviteStatus(code: code, to: .failed, from: [.sending])
             throw Failure.notConnected
+        } catch {
+            // Any other failure may have published the payment: waited for
+            // like any other, and returned still sending if the server is quiet.
+            emit.yield(.coreError(
+                "The connection failed while making an invite; its payment may have gone. "
+                    + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
+            ))
         }
-        // Any other failure may have published the payment: the invite stays
-        // sending until the server says (asked again on the next connect).
-        let settled = try await poll(timeout: wait, failure: .inviteNotConfirmed) { () -> InviteRecord? in
-            guard let now = try? storage.invite(code: code), now.status != .sending else { return nil }
-            return now
-        }
-        if settled.status == .failed { throw Failure.inviteFailed }
-        return settled
+        return try await confirmedInvite(code: code, wait: wait)
+    }
+
+    /// The invite once the server confirms it, or as it stands after `wait`:
+    /// still sending, its payment perhaps gone, so it is returned rather than
+    /// thrown and nobody is offered to pay for it again. Whoever made it shows
+    /// it waiting; the server is asked again on the next connect.
+    func confirmedInvite(code: String, wait: Duration) async throws -> InviteRecord {
+        do {
+            _ = try await poll(timeout: wait, failure: .inviteNotConfirmed) { () -> Void? in
+                (try? storage.invite(code: code))?.status == .sending ? nil : ()
+            }
+        } catch Failure.inviteNotConfirmed {}
+        guard let invite = try storage.invite(code: code) else { throw Failure.noSuchInvite }
+        if invite.status == .failed { throw Failure.inviteFailed }
+        return invite
     }
 
     /// Asks the server for an invite's sats back (`cancel_invite`). The

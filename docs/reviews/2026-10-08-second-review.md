@@ -650,6 +650,9 @@ merged. Batches marked **behaviour** need Tom's eye.
 | 17 | **Later: iPhone seams, a `PeelUI` target** | Section 9: `ChatRow`, `PaymentAttempt`, `Formatting`, `MoneyArrivals`, the image caches and `AppModel` into a `PeelUI` library target; platform protocols for pickers, presence, calls, web, playback and pasteboard; a `PeelUITests` target with first tests for `ChatRow.rows` and `PaymentAttempt`. Paused with the iPhone work | `Package.swift`, every `AppModel*` file, `MessageViews` (`ChatRow`), `PaymentViews`, `Notifier`, `PeelApp.swift`, new `Sources/PeelUI/`, new tests | refactor (move plus protocols) | L | 15; when the iPhone work resumes |
 | P | **Polish: form system** | Section 10; done by the polish work, not a cleanup agent | the form and popover views | design | — | the polish design; after wave 1 |
 
+**Status.**
+- **Batch 1:** in review, #80 (2026-10-08). It also touches `Transport.swift`, `Engine+History` (`request`) and `AddContactForm`, which Q1 needed. Left for batch 9: `deliver`'s `transport == nil` snapshot, the three "may have gone" sentences, and `inviteNotConfirmed`'s unused text.
+
 ### Waves
 
 1. **Wave 1, parallel:** 1, 2, 3, 4 and 5.

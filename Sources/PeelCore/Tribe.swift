@@ -431,7 +431,8 @@ struct MentionScan: Codable, Equatable, Sendable {
 
 extension String {
     /// A compressed public key in hex, as Sphinx names accounts and tribes.
-    public var isPubkey: Bool { count == 66 && allSatisfy(\.isHexDigit) }
+    /// ASCII only: `isHexDigit` also takes fullwidth digits and letters.
+    public var isPubkey: Bool { count == 66 && allSatisfy { $0.isASCII && $0.isHexDigit } }
 }
 
 /// Aliases in tribes: letters, digits and underscores, spaces as underscores,

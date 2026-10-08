@@ -22,6 +22,9 @@ func hex(_ text: String) -> Data {
     return data
 }
 
+/// A number as the core's state stores it: eight bytes, big-endian.
+func be64(_ n: UInt64) -> Data { withUnsafeBytes(of: n.bigEndian) { Data($0) } }
+
 /// Real curve points (G, 2G, 3G), for the keys the core parses.
 let keyG = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 let key2G = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
@@ -33,8 +36,7 @@ let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c7
 /// version, child index, LSP key, scid and, once the key exchange is done,
 /// the contact key. A person has one; a tribe never does.
 func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G) -> [String: Data] {
-    func be64(_ n: UInt64) -> Data { withUnsafeBytes(of: n.bigEndian) { Data($0) } }
-    return ["c/\(pubkey)": Data([0]) + be64(1) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
+    ["c/\(pubkey)": Data([0]) + be64(1) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
 }
 
 /// Sender details as the core and a tribes server put them on a message.
@@ -70,5 +72,21 @@ func request(fromMe: Bool, id: Int = 1, chat: String? = nil) -> Message {
         uuid: uuid(id), type: MessageType.invoice, chat: chat ?? (fromMe ? dm : coffeePayee), fromMe: fromMe,
         body: #"{"content":"coffee","invoice":"\#(coffee)"}"#, content: "coffee", paymentHash: coffeeHash,
         amountMsat: 250_000_000
+    )
+}
+
+/// What the core needs in its state to make payments and invites with no
+/// server: the account's short channel id, the server's key (`key3G`), a
+/// block height and the device id its topics carry.
+let registeredState: [String: Data] = [
+    "my_scid": be64(1), "server_pubkey": hex(key3G), "blockheight": be64(800_000), "device": Data("dev".utf8),
+]
+
+/// A transport that never connected: to the engine, a connection that has
+/// just gone, so every publish throws `notConnected`. Nothing dials it.
+func goneTransport() -> Transport {
+    Transport(
+        server: ServerAddress("mqtt://127.0.0.1:1")!, clientID: "test", username: "test", password: "test",
+        allowUntrustedCertificate: false
     )
 }

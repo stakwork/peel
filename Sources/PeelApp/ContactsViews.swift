@@ -8,13 +8,18 @@ import AppKit
 // MARK: - Model
 
 extension AppModel {
-    /// Adds whoever a scanned or pasted code names (`Engine.addContact(code:)`).
+    /// Adds whoever a scanned or pasted code names (`Engine.addContact(code:)`),
+    /// through the engine's payment checks: the key exchange pays 5 sats.
     /// Someone already a contact is not added again: their chat opens.
-    /// Returns whether a key exchange was started.
-    func addContact(code: String, alias: String) async throws -> Bool {
-        let (pubkey, added) = try await signedIn().addContact(code: code, alias: alias.trimmed)
-        if !added { destination = .chat(pubkey) }
-        return added
+    /// Returns whether a key exchange was started, once the engine went ahead.
+    func addContact(code: String, alias: String, confirmedMsat: UInt64?) async -> (PaymentOutcome, Bool?) {
+        var added: Bool?
+        let outcome = await pay("add contact") {
+            let (pubkey, started) = try await $0.addContact(code: code, alias: alias.trimmed, confirmedMsat: confirmedMsat)
+            if !started { destination = .chat(pubkey) }
+            added = started
+        }
+        return (outcome, added)
     }
 
     /// Makes an invite with sats, through the engine's payment checks; the
@@ -160,7 +165,7 @@ struct AddContactForm: View {
     @State private var scannedText: String?
     @State private var name = ""
     @State private var reading = false
-    @State private var working = false
+    @State private var attempt = PaymentAttempt()
     @State private var dropTargeted = false
     @State private var problem: String?
     /// The key exchange went out to this name.
@@ -199,6 +204,8 @@ struct AddContactForm: View {
             .textFieldStyle(.roundedBorder)
             .onChange(of: text, initial: true) {
                 problem = nil
+                attempt.armed = nil
+                attempt.problem = nil
                 do {
                     code = try ContactCode.read(text)
                     codeProblem = nil
@@ -213,11 +220,16 @@ struct AddContactForm: View {
         }
         TextField(code.flatMap(\.inviterName) ?? "Name (optional)", text: $name)
             .textFieldStyle(.roundedBorder)
-        FormFooter(problem: problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
-            Button { Task { await add() } } label: { Text("Add").buttonProgress(working) }
-                .buttonStyle(GhostButtonStyle(prominent: true))
-                .keyboardShortcut(.defaultAction)
-                .disabled(working || reading || text.trimmed.isEmpty)
+        FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
+            // Over the threshold the 5 sats are confirmed in place, as any payment.
+            PayButton(
+                verb: "Add", totalMsat: reading || text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
+            ) { confirmed in
+                let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
+                if added == false { done() }
+                if added == true { sentTo = name.trimmed.nilIfEmpty ?? code?.inviterName ?? "them" }
+                return outcome
+            }
         }
     }
 
@@ -243,7 +255,7 @@ struct AddContactForm: View {
                 .buttonStyle(.plain)
                 .font(Theme.font(12, .medium))
                 .foregroundStyle(Theme.link)
-                .disabled(reading || working)
+                .disabled(reading || attempt.working)
             }
             Spacer(minLength: 0)
             if reading { ProgressView().controlSize(.small) }
@@ -275,19 +287,6 @@ struct AddContactForm: View {
             text = chosen
         } catch {
             problem = PeelError.readable(error)
-        }
-    }
-
-    private func add() async {
-        guard !working else { return }
-        working = true
-        defer { working = false }
-        do {
-            let added = try await model.addContact(code: text, alias: name)
-            guard added else { return done() }
-            sentTo = name.trimmed.nilIfEmpty ?? code?.inviterName ?? "them"
-        } catch {
-            problem = Formatting.sentence(error)
         }
     }
 }

@@ -6,7 +6,7 @@ extension Invocation {
     mutating func tribes(_ command: String) async throws -> Bool {
         switch command {
         case "tribes":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for tribe in try storage.tribes() {
                 let flags = [
                     tribe.isOwner ? "owner" : nil, tribe.left ? "left" : nil, tribe.isPrivate ? "private" : nil,
@@ -96,7 +96,7 @@ extension Invocation {
             try await session.finish(after: 0)
 
         case "mentions":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await rows in storage.mentions() {
                 for row in rows {
                     print("\(row.chat.prefix(12))  #\(row.serverIndex.map(String.init) ?? "-")  \(Session.line(row))")

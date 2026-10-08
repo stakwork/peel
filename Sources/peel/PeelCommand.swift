@@ -195,6 +195,11 @@ struct Invocation {
     func load() async throws -> Engine {
         try await withPhoto(Account.load(profile, server: server, tribeHost: tribeHost, memesHost: memesHost))
     }
+
+    /// The profile's storage, read-only, for commands that only print what is stored.
+    func readOnlyStorage() throws -> Storage {
+        try Storage(directory: profile.directory, readOnly: true)
+    }
 }
 
 func yesNo(_ text: String) throws -> Bool {

@@ -57,7 +57,7 @@ extension Invocation {
 
         case "messages":
             guard let chat = arguments.next() else { throw PeelError("messages needs a pubkey") }
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await timeline in storage.timeline(in: chat) {
                 for row in timeline.messages {
                     Session.printRow(row, parents: timeline.parents)
@@ -84,7 +84,7 @@ extension Invocation {
             guard let chat = arguments.next(), let uuid = arguments.next() else {
                 throw PeelError("thread needs a pubkey and the uuid of the thread's original message")
             }
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await thread in storage.thread(uuid, in: chat) {
                 print("original: \(thread.original.map(Session.line) ?? "not stored")")
                 for row in thread.messages {
@@ -94,7 +94,7 @@ extension Invocation {
             }
 
         case "threads":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await threads in storage.threads() {
                 for thread in threads {
                     print("\(thread.chat.prefix(12))  \(thread.uuid)  \(thread.count) messages, \(thread.unread) unread")
@@ -122,7 +122,7 @@ extension Invocation {
             try await session.finish(after: wait)
 
         case "unread":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await states in storage.readStates() {
                 for state in states.values.sorted(by: { $0.chat < $1.chat }) {
                     print("\(state.chat)  unread \(state.unread)  mentions \(state.mentions)  mute \(state.mute)"

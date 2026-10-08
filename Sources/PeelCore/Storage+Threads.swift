@@ -162,6 +162,17 @@ extension Storage {
         }
     }
 
+    /// How many text messages and attachments are in a thread.
+    public func threadCount(_ uuid: String, in chat: String) throws -> Int {
+        try pool.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND threadUUID = ? AND type IN (\(MessageType.contentSQL))",
+                arguments: [chat, uuid]
+            ) ?? 0
+        }
+    }
+
     /// A message of one chat by uuid, such as the parent of a reply, however
     /// old. Only the same chat: a reply cannot quote another conversation.
     public func message(uuid: String, in chat: String) throws -> Message? {

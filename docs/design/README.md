@@ -44,7 +44,9 @@ Top to bottom:
    an unread count.
 4. **Mentions.** Messages that mention you, across tribes.
 5. **Payments.** Payment history: received, sent, boosts, invoices. The
-   receive screen from the v1 scope lives here.
+   receive screen from the v1 scope lives here. Sats received while it is
+   not open show as "+350" (the sum, in the green of received amounts) in
+   the row's badge slot until it opens; the new rows then light once.
 6. **Tribes.** One row per tribe, led by the tribe's image or its initial on
    its own colour, both on a rounded square (people are round). Unread
    tribes are bold. Ends with "Join a tribe". The section collapses.
@@ -251,6 +253,25 @@ the panel together, the thread panel takes the chat's place.
 Restrained. The thread panel slides in from the right in about 200 ms with an
 ease-out curve and leaves faster. Sidebar selection, hovers and keyboard
 actions do not animate.
+
+### Sats received
+
+Built 2026-10-08 (`MoneyArrivals.swift`); Tom's feedback on the first
+build: nothing in the header may move or wrap.
+
+- **Header balance:** rolls up digit by digit (`numericText`, about 0.7 s,
+  tabular figures) only when a received payment explains the rise; the
+  line keeps the larger number's width from the start, so nothing
+  jiggles. The connection bolt glows green for a moment. A first balance,
+  a restore, a fall, or sats no payment explains just change.
+- **Payments row:** "+350" in the badge slot, green text on a soft green
+  capsule, popping in with a 0.3 s scale and fade (no overshoot), rolling
+  to "+420" as more comes, cleared when Payments opens; the matching rows
+  light green and fade over 1.5 s, as a jump to a message does.
+- Payments within 0.7 s of each other (up to 3 s) are one arrival: one
+  roll, one notification ("+350 sats · 3 payments").
+- **Reduce Motion:** no roll and no pop; the number and the badge just
+  appear.
 
 ### Copy feedback
 

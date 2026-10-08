@@ -16,6 +16,8 @@ import UserNotifications
 /// those that mention this account, or none); a request to join a tribe this
 /// account owns. Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
 /// at once from one chat (a catch-up after sleep) become one summary.
+/// Sats received notify too, one notification per arrival however many
+/// payments it holds (`moneyReceived`).
 @MainActor @Observable
 final class Notifier {
     enum Permission { case unavailable, notAsked, denied, allowed }
@@ -52,6 +54,8 @@ final class Notifier {
     /// Messages arriving this close together are shown together.
     private static let gathering: Duration = .milliseconds(400)
     private static let hiddenText = "New message"
+    /// The thread of money notifications; a click opens Payments.
+    static let paymentsThread = "payments"
 
     init() {
         guard Bundle.main.bundleURL.pathExtension == "app" else {
@@ -192,9 +196,7 @@ final class Notifier {
                 }
             }
             guard let last = shown.last else { continue }
-            let conversation = model.conversations.first { $0.chat == chat }
-            let name = conversation?.name ?? last.senderAlias ?? "Someone"
-            let place = conversation?.isTribe == true ? "#\(name)" : nil
+            let (name, place) = names(chat, sender: last.senderAlias)
             if shown.count > Self.summaryAbove {
                 post(center, id: "summary-\(chat)", chat: chat, message: shown.first?.id, locked: locked,
                      title: place ?? name, subtitle: nil, body: "\(shown.count) new messages")
@@ -206,6 +208,59 @@ final class Notifier {
                 }
             }
             chatsShown.insert(chat)
+        }
+    }
+
+    // MARK: Money
+
+    /// Sats received, gathered into one arrival: one notification for all of
+    /// it. A payment or boost in a chat follows that chat's level (only
+    /// "all" lets it through: it mentions nobody) and stays quiet for the chat
+    /// open in front of you; a paid invoice (a request in a chat too) always
+    /// shows. Nothing while Payments is open in front of you.
+    func moneyReceived(_ receipts: [Receipt]) {
+        guard let center, permission == .allowed, let model, storage != nil else { return }
+        let locked = model.phase != .ready || model.isLockDue
+        if model.isFrontmost, !locked, model.destination == .payments { return }
+        let shown = receipts.filter { receipt in
+            guard let chat = receipt.chat, receipt.kind != .invoice else { return true }
+            if model.isFrontmost, !locked, model.selectedChat == chat { return false }
+            return (model.readStates[chat]?.mute ?? .all) == .all
+        }
+        guard let first = shown.first else { return }
+        var seen: Set<String> = []
+        let sources = shown.map(source).filter { seen.insert($0).inserted }
+        let body = shown.count == 1 ? describe(first, from: sources[0])
+            : "From \(ListFormatter.localizedString(byJoining: sources))"
+        post(center, id: "money-\(first.paymentHash ?? UUID().uuidString)", chat: Self.paymentsThread, message: nil, locked: locked,
+             title: Receipt.label(shown), subtitle: nil, body: body, hidden: "Sats received")
+        chatsShown.insert(Self.paymentsThread)
+    }
+
+    /// A chat's name (a contact's, or the sender's when nothing is stored)
+    /// and, for a tribe, "#name" as the place.
+    private func names(_ chat: String, sender: String?) -> (name: String, place: String?) {
+        let conversation = model?.conversations.first { $0.chat == chat }
+        let name = conversation?.name ?? sender ?? "Someone"
+        return (name, conversation?.isTribe == true ? "#\(name)" : nil)
+    }
+
+    /// Who it came from: the contact, the tribe member and tribe, or an
+    /// invoice (a request's chat names who paid it).
+    private func source(_ receipt: Receipt) -> String {
+        guard let chat = receipt.chat else { return "an invoice" }
+        let (name, place) = names(chat, sender: receipt.senderAlias)
+        guard let place else { return name }
+        return "\(receipt.senderAlias ?? "Someone") in \(place)"
+    }
+
+    private func describe(_ receipt: Receipt, from source: String) -> String {
+        let note = showsText ? receipt.note.map { ": \($0.prefix(200))" } ?? "" : ""
+        switch receipt.kind {
+        case .payment: return "From \(source)\(note)"
+        case .boost: return "Boost from \(source)"
+        case .purchase: return "\(source) bought your attachment"
+        case .invoice: return receipt.chat == nil ? "Invoice paid\(note)" : "\(source) paid your request\(note)"
         }
     }
 
@@ -221,12 +276,12 @@ final class Notifier {
     /// While Peel is locked a notification names nobody and says nothing.
     private func post(
         _ center: UNUserNotificationCenter, id: String, chat: String, message: Int64?, locked: Bool,
-        title: String, subtitle: String?, body: String
+        title: String, subtitle: String?, body: String, hidden: String = hiddenText
     ) {
         let content = UNMutableNotificationContent()
         content.title = locked ? "Peel" : title
         if let subtitle, !locked { content.subtitle = subtitle }
-        content.body = locked ? Self.hiddenText : body
+        content.body = locked ? hidden : body
         content.sound = .default
         content.threadIdentifier = chat
         content.categoryIdentifier = Self.category

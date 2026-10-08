@@ -194,7 +194,7 @@ struct Sidebar: View {
                         } accessory: {
                             if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
                         }
-                        SidebarLink("Payments", systemImage: "bolt", to: .payments)
+                        PaymentsLink(money: model.money)
                     }
                     SidebarSection("Tribes", expanded: $showTribes) {
                         ForEach(model.tribeConversations) { conversation in
@@ -248,12 +248,7 @@ struct SidebarHeader: View {
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(Theme.secondaryText)
                         }
-                        if let balance = model.balanceMsat {
-                            Text(Sats.format(msat: balance))
-                                .font(Theme.font(12))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
-                        }
+                        BalanceLabel(money: model.money)
                     }
                     Spacer(minLength: 0)
                 }
@@ -417,14 +412,6 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
     }
 }
 
-extension SidebarLink where Icon == AnyView, Accessory == EmptyView {
-    init(_ title: String, systemImage: String, to destination: AppModel.Destination) {
-        self.init(title, to: destination) {
-            AnyView(Image(systemName: systemImage).font(.system(size: 13)))
-        }
-    }
-}
-
 /// A direct message or a tribe in the sidebar: bold with a count when unread,
 /// dimmed with a crossed-out bell when muted. A tribe set to mentions only
 /// counts only the messages that mention you, with an @ beside it. The
@@ -505,20 +492,36 @@ enum ConversationMenu {
     }
 }
 
+/// A sidebar row's badge: an unread count, or what else the row counts
+/// (Payments' "+350").
 struct UnreadBadge: View {
-    let count: Int
+    let text: String
+    var foreground = Theme.buttonText
+    var fill = Theme.accent
+
+    init(count: Int) {
+        text = Self.text(count)
+    }
+
+    init(text: String, foreground: Color, fill: Color) {
+        self.text = text
+        self.foreground = foreground
+        self.fill = fill
+    }
 
     /// A count as badges show it, capped at "99+".
     static func text(_ count: Int) -> String { count > 99 ? "99+" : "\(count)" }
 
     var body: some View {
-        Text(Self.text(count))
+        Text(text)
             .font(Theme.font(11, .bold))
             .monospacedDigit()
-            .foregroundStyle(Theme.buttonText)
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundStyle(foreground)
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(Theme.accent, in: Capsule())
+            .background(fill, in: Capsule())
     }
 }
 
@@ -537,6 +540,7 @@ struct ConnectionBolt: View {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
+                .receivedGlow(model.money)
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }

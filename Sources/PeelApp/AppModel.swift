@@ -97,7 +97,9 @@ final class AppModel {
     var myContactInfo: String?
     /// The server this account talks to, as `host:port`.
     var myServer: String?
-    var balanceMsat: UInt64?
+    var balanceMsat: UInt64? {
+        didSet { if let balanceMsat { money.balance(balanceMsat) } }
+    }
     /// Payments and boosts over this ask for a second click (`Engine`'s threshold).
     var paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
     /// Payments and boosts on their way to the engine, so a double click
@@ -140,6 +142,8 @@ final class AppModel {
     var restoreProgress = RestoreProgress()
     /// Local notifications and the Dock badge.
     let notifier = Notifier()
+    /// Sats arriving: the header's count-up and pill, Payments' unseen count.
+    let money = MoneyArrivals()
 
     /// The app's own account keeps its words in the Keychain. Launching with
     /// `-profile <name>` opens a development profile instead, whose words sit in
@@ -172,6 +176,12 @@ final class AppModel {
             notice = PeelError.readable(error)
         }
         notifier.model = self
+        money.arrived = { [weak self] receipts in
+            guard let self else { return }
+            notifier.moneyReceived(receipts)
+            // Locked, nothing says how much, as the notification does not.
+            if phase == .ready, !isLockDue { CopyFeedback.announce("Received \(Receipt.label(receipts))") }
+        }
     }
 
     var usesFileSecrets: Bool { profile?.kind == .development }
@@ -418,13 +428,15 @@ final class AppModel {
     }
 
     /// A click on a notification: Peel to the front with that chat open,
-    /// at the message it was for.
+    /// at the message it was for, or Payments for sats received.
     func openFromNotification(_ chat: String, messageID: Int64?) {
         #if os(macOS)
         NSApplication.shared.activate()
         #endif
         guard phase == .ready || phase == .locked else { return }
-        if let message = messageID.flatMap({ try? engine?.storage.message(id: $0) }), message.chat == chat {
+        if chat == Notifier.paymentsThread {
+            destination = .payments
+        } else if let message = messageID.flatMap({ try? engine?.storage.message(id: $0) }), message.chat == chat {
             focus(on: message)
         } else {
             destination = .chat(chat)
@@ -711,6 +723,7 @@ final class AppModel {
         myPhotoURL = nil
         myContactInfo = nil
         myServer = nil
+        money.reset()
         balanceMsat = nil
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
@@ -792,10 +805,11 @@ final class AppModel {
                 if let id = row.id { attachmentHandles[id] = nil }
             case .message(let message, let arrival):
                 notifier.received(message, arrival)
-            case .sendStatus, .moneyReceived, .invoicePaid:
-                // `.moneyReceived` is for the notifier to take up (payments
-                // to you, boosts on your messages); not shown yet. Receive
-                // follows its invoice's row rather than `.invoicePaid`.
+            case .moneyReceived(let message):
+                money.received(Receipt(message))
+            case .invoicePaid(let invoice):
+                money.received(Receipt(invoice))
+            case .sendStatus:
                 break
             }
         }

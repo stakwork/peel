@@ -12,6 +12,8 @@ struct ImageViewer: View {
 
     @State private var image: CGImage?
     @State private var keys = KeyMonitor()
+    /// The main window's presenter, whose window alone gives the viewer its keys.
+    @Environment(\.menuPresenter) private var presenter
 
     private var current: Message { state.current }
     private var isVideo: Bool { current.attachmentKind == .video }
@@ -86,6 +88,8 @@ struct ImageViewer: View {
         .foregroundStyle(.white)
         .task(id: current.id) {
             image = nil
+            // A video stepped away from pauses, as closing the viewer does.
+            playback.closeFullScreen()
             let message = current
             await model.download(message)
             let handle = model.attachment(message.id ?? 0)
@@ -96,12 +100,17 @@ struct ImageViewer: View {
                 guard !Task.isCancelled, model.attachmentKind(of: message) == .video, let id = message.id else { return }
                 playback.showFullScreen(id, file: file)
             } else {
-                image = await ImageCache.shared.image(file, maxPixels: 4096)
+                let decoded = await ImageCache.shared.image(file, maxPixels: 4096)
+                // A slow decode that lands after a step belongs to the image left.
+                guard !Task.isCancelled else { return }
+                image = decoded
             }
         }
         .onAppear {
-            let model = model
+            let model = model, presenter = presenter
             keys.start { event in
+                // Escape and the arrows in the call window are not the viewer's.
+                guard let window = presenter?.hostWindow, event.window === window else { return false }
                 switch event.keyCode {
                 case 53: model.viewer = nil
                 case 123: model.stepViewer(-1)

@@ -18,7 +18,8 @@ struct JoinTribeForm: View {
             TextField("sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
                 .lineLimit(2...4)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { Task { await lookUp() } }
+                // Return joins once the preview is up, as the Join button would.
+                .onSubmit { Task { await submit() } }
                 .onChange(of: link) { info = nil; problem = nil }
             if let info {
                 HStack(alignment: .top, spacing: 10) {
@@ -60,6 +61,10 @@ struct JoinTribeForm: View {
         .frame(width: 340)
     }
 
+    private func submit() async {
+        if info == nil { await lookUp() } else { await join() }
+    }
+
     private func lookUp() async {
         guard !link.trimmed.isEmpty, !working else { return }
         working = true
@@ -77,7 +82,7 @@ struct JoinTribeForm: View {
     }
 
     private func join() async {
-        guard let info else { return }
+        guard let info, !working else { return }
         working = true
         defer { working = false }
         do {

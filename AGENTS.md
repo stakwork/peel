@@ -104,6 +104,15 @@ is a short plan. Update the status and the journal when you finish something.
   test room (phase 6, PR 3). PeelApp is the only target that links LiveKit
   and WebRTC)
 - `Sources/peel/` — command-line harness for PeelCore
+  - `PeelCommand.swift` — usage, option parsing and dispatch; `Invocation`
+    (one run's options and remaining arguments, `load()`,
+    `readOnlyStorage()`), `Arguments`, `yesNo`
+  - `Commands+Account.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
+    `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
+    each an `Invocation` method that returns false for a command not its own;
+    `TribeOptions` with the tribes, `confirming` and `satsArgument` with money
+  - `Output.swift` — `Session` (an engine with its events printed) and the
+    row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below)

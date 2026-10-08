@@ -12,7 +12,8 @@ import SwiftUI
 /// The main window hosts menus with `.peelMenuHost()`; views open one with
 /// `.peelMenu { ... }` (right-click or Control-click), `MenuButton` (an icon
 /// such as More) or `PeelDropdown` (a value to choose), and a panel with
-/// `.peelPopover(isPresented:)`. Both show in their own windows.
+/// `.peelPopover(isPresented:)`, and a hover card with `.peelHoverCard`. All
+/// show in their own windows.
 
 // MARK: - Entries
 
@@ -147,6 +148,14 @@ final class MenuPresenter {
     @ObservationIgnored weak var hostWindow: NSWindow?
     @ObservationIgnored private let menuWindow = FloatingWindow()
     @ObservationIgnored private let panelWindow = FloatingWindow()
+    /// Never takes the keyboard; hidden with Peel when another app comes
+    /// to the front.
+    @ObservationIgnored private let cardWindow = {
+        let window = FloatingWindow()
+        window.takesKey = false
+        window.hidesOnDeactivate = true
+        return window
+    }()
     @ObservationIgnored private var panelID: UUID?
     @ObservationIgnored private var panelClosed: (@MainActor () -> Void)?
     @ObservationIgnored private var keys = KeyMonitor()
@@ -169,6 +178,7 @@ final class MenuPresenter {
               minWidth: CGFloat = 0, highlightChecked: Bool = false) {
         guard entries.contains(where: { $0.item != nil }) else { return }
         let checked = highlightChecked ? entries.firstIndex { $0.item?.checked == true } : nil
+        hideCard()
         open = Open(entries: entries, highlighted: checked, minWidth: minWidth)
         isOpen = true
         self.source = source
@@ -196,6 +206,7 @@ final class MenuPresenter {
         #if os(macOS)
         // A trigger inside the open panel (none today) would name it; the host otherwise.
         guard let host = NSApp.keyWindow.flatMap({ $0 === panelWindow ? $0 : nil }) ?? hostWindow else { return closed() }
+        hideCard()
         if panelID != id { closePanel() }
         panelID = id
         panelClosed = closed
@@ -258,6 +269,70 @@ final class MenuPresenter {
 
     func cancelConfirmation() {
         open?.confirming = nil
+    }
+
+    // MARK: Hover cards
+
+    /// What the hover card shows now, and what it is about to.
+    @ObservationIgnored private var cardSource: AnyHashable?
+    @ObservationIgnored private var pendingCard: AnyHashable?
+    @ObservationIgnored private var cardTimer: Task<Void, Never>?
+
+    /// The pointer came onto a card's trigger (`over`) or left it. A card
+    /// shows after a moment's rest, never over an open menu or panel, and
+    /// goes a moment after the pointer leaves both the trigger and the card,
+    /// so it can be reached.
+    func hoverCard(_ source: AnyHashable, over: Bool, at anchor: CGRect, content: @escaping @MainActor () -> AnyView) {
+        cardTimer?.cancel()
+        pendingCard = nil
+        guard over else { return hideCardSoon() }
+        guard cardSource != source else { return }
+        let delay = cardSource == nil ? 500 : 150
+        pendingCard = source
+        cardTimer = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(delay))
+            guard !Task.isCancelled, let self, !self.anythingOpen else { return }
+            self.showCard(content(), at: anchor, source: source)
+        }
+    }
+
+    /// A trigger went away (scrolled off, its panel closed): only its own
+    /// card goes, shown or about to show.
+    func triggerGone(_ source: AnyHashable) {
+        guard cardSource == source || pendingCard == source else { return }
+        cardTimer?.cancel()
+        pendingCard = nil
+        hideCardSoon()
+    }
+
+    private func showCard(_ content: AnyView, at anchor: CGRect, source: AnyHashable) {
+        #if os(macOS)
+        guard let host = hostWindow else { return }
+        cardSource = source
+        let card = content
+            .menuBoxed(cornerRadius: 10)
+            .onHover { [weak self] over in
+                self?.cardTimer?.cancel()
+                if !over { self?.hideCardSoon() }
+            }
+        cardWindow.present(environment(AnyView(card)), anchor: anchor, from: host)
+        #endif
+    }
+
+    private func hideCardSoon() {
+        cardTimer = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            if !Task.isCancelled { self?.hideCard() }
+        }
+    }
+
+    private func hideCard() {
+        cardTimer?.cancel()
+        cardSource = nil
+        pendingCard = nil
+        #if os(macOS)
+        cardWindow.hide()
+        #endif
     }
 
     #if os(macOS)
@@ -375,6 +450,13 @@ extension View {
         modifier(ContextMenuModifier(source: source, entries: entries))
     }
 
+    /// A hover card: `card` in a floating window below this view while the
+    /// pointer rests on it (`MenuPresenter.hoverCard`). `source` names what
+    /// it is about, so moving between two triggers for the same person keeps it.
+    func peelHoverCard<Card: View>(_ source: AnyHashable, @ViewBuilder card: @escaping () -> Card) -> some View {
+        modifier(HoverCardModifier(source: source, card: card))
+    }
+
     /// Peel's popover: `content` in a Peel panel below this view while
     /// `isPresented` is true; a click elsewhere or Escape sets it false.
     func peelPopover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
@@ -425,6 +507,26 @@ private struct ContextMenuModifier: ViewModifier {
         #else
         content
         #endif
+    }
+}
+
+private struct HoverCardModifier<Card: View>: ViewModifier {
+    @Environment(\.menuPresenter) private var presenter
+    let source: AnyHashable
+    let card: () -> Card
+
+    /// Not state: it moves with every scroll, and only a hover reads it.
+    final class Frame { var rect: CGRect = .zero }
+    @State private var frame = Frame()
+
+    func body(content view: Content) -> some View {
+        view
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame.rect = $0 }
+            .onHover { over in
+                let card = card
+                presenter?.hoverCard(source, over: over, at: frame.rect) { AnyView(card()) }
+            }
+            .onDisappear { presenter?.triggerGone(source) }
     }
 }
 
@@ -611,15 +713,22 @@ struct PeelDropdown<Value: Hashable>: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Theme.secondaryText)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(hovering ? Theme.hover : Theme.input, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider))
-            .contentShape(Rectangle())
+            .dropdownBoxed(hovering: hovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+    }
+}
+
+extension View {
+    /// A dropdown's box: `PeelDropdown`, and buttons that open a panel to choose in.
+    func dropdownBoxed(hovering: Bool) -> some View {
+        padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(hovering ? Theme.hover : Theme.input, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider))
+            .contentShape(Rectangle())
     }
 }
 
@@ -710,7 +819,10 @@ final class FloatingWindow: NSPanel {
         appearance = NSAppearance(named: .darkAqua)
     }
 
-    override var canBecomeKey: Bool { true }
+    /// A menu or a panel takes the keyboard; a hover card leaves it where it is.
+    var takesKey = true
+
+    override var canBecomeKey: Bool { takesKey }
 
     /// `anchor` is in the SwiftUI global coordinates of `host`.
     func present(_ content: AnyView, anchor: CGRect, from host: NSWindow) {
@@ -721,7 +833,7 @@ final class FloatingWindow: NSPanel {
         let root = FloatingRoot(content: content, margin: Self.margin) { [weak self] size in self?.place(size) }
         contentView = NSHostingView(rootView: root)
         if parent == nil { host.addChildWindow(self, ordered: .above) }
-        makeKeyAndOrderFront(nil)
+        if takesKey { makeKeyAndOrderFront(nil) } else { orderFront(nil) }
     }
 
     /// Hides it and gives the keyboard back: to `restoringKey` when given,
@@ -733,6 +845,14 @@ final class FloatingWindow: NSPanel {
         orderOut(nil)
         contentView = nil
         back?.makeKey()
+    }
+
+    /// Hides a window that never took the keyboard (a hover card), also
+    /// one AppKit has already hidden with the app, so it does not come back.
+    func hide() {
+        host?.removeChildWindow(self)
+        orderOut(nil)
+        contentView = nil
     }
 
     /// A SwiftUI global rect (top-left origin, in the window's content) on the screen.

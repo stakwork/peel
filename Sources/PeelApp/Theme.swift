@@ -16,6 +16,9 @@ enum Theme {
     /// Off-white rather than white on navy: easier on long reads.
     static let text = Color(light: 0x292C33, dark: 0xE3E7EC)
     static let secondaryText = Color(light: 0x646C73, dark: 0x97A3B4)
+    /// Quieter still, for what sits beside a time (a sender's local time):
+    /// over 4.5:1 on the conversation and the thread panel.
+    static let tertiaryText = Color(light: 0x6B737C, dark: 0x808D9E)
     static let divider = Color(light: 0xDCE0E3, dark: 0x2C353D)
     /// Menus, raised a step above the panels they open over.
     static let menu = Color(light: 0xFFFFFF, dark: 0x202B36)

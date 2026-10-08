@@ -146,6 +146,46 @@ extension Storage {
             return nil
         }
     }
+
+    /// For each of `wanted`, a sender at a moment (milliseconds): the newest
+    /// offset they sent in `chat` at or before it, no older than
+    /// `Engine.timeZoneFreshness`, that `zone(_:)` reads (among their five
+    /// newest there), by index into `wanted`. In a tribe the sender is a
+    /// member by alias; in a direct message the contact (`alias` unused).
+    /// One query however many are asked, for a page of rows.
+    public func senderTimeZones(
+        in chat: String, inTribe: Bool, wanted: [(alias: String?, timestamp: Int64)]
+    ) throws -> [Int: TimeZone] {
+        guard !wanted.isEmpty else { return [:] }
+        let member = inTribe ? "AND (CASE WHEN json_valid(m.sender) THEN json_extract(m.sender, '$.alias') END) = w.alias" : ""
+        var arguments: [(any DatabaseValueConvertible)?] = []
+        for (index, point) in wanted.enumerated() { arguments += [index, point.alias, point.timestamp] }
+        arguments += [chat, Int64(Engine.timeZoneFreshness * 1000)]
+        return try pool.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    WITH w(i, alias, at) AS (VALUES \(Array(repeating: "(?, ?, ?)", count: wanted.count).joined(separator: ", ")))
+                    SELECT w.i, (
+                        SELECT json_group_array(tz) FROM (
+                            SELECT m.senderTZ AS tz FROM message m
+                            WHERE m.chat = ? AND m.senderTZ IS NOT NULL AND m.fromMe = 0
+                              AND m.timestamp <= w.at AND m.timestamp >= w.at - ? \(member)
+                            ORDER BY m.timestamp DESC LIMIT 5
+                        )
+                    ) AS tz FROM w
+                    """,
+                arguments: StatementArguments(arguments)
+            )
+            var zones: [Int: TimeZone] = [:]
+            for row in rows {
+                guard let list: String = row["tz"],
+                      let sent = try? JSONDecoder().decode([String].self, from: Data(list.utf8)) else { continue }
+                if let zone = sent.lazy.compactMap(TimeZoneOffset.zone).first { zones[row["i"]] = zone }
+            }
+            return zones
+        }
+    }
 }
 
 extension Engine {

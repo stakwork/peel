@@ -116,6 +116,9 @@ final class AppModel {
     @ObservationIgnored var moneyInFlight: Set<String> = []
     /// What the one-tap Boost tips (the engine's boost amount).
     var boostAmountMsat = Engine.defaultBoostAmountMsat
+    /// Run headers' looked-up sender zones (nil: none), by chat, then
+    /// alias and moment; see `withSenderZones`.
+    @ObservationIgnored var senderZoneCache: [String: [String: TimeZone?]] = [:]
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     var notice: String?
@@ -292,20 +295,20 @@ final class AppModel {
 
     private func rebuildChatRows() {
         guard let chat = selectedChat else { return chatRows = [] }
-        chatRows = ChatRow.rows(
+        chatRows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
             newAfter: newMessagesAfter(in: chat)
-        )
+        ), in: chat)
     }
 
     private func rebuildThreadRows() {
         guard let open = openThread, let thread else { return threadRows = [] }
-        threadRows = ChatRow.rows(
+        threadRows = withSenderZones(ChatRow.rows(
             thread.messages, parents: thread.parents, boosts: thread.boosts, purchases: thread.purchases,
             inTribe: isTribe(open.chat), people: people(in: open.chat), threadRoot: open.uuid, original: thread.original,
             newAfter: newMessagesAfter(in: open.chat)
-        )
+        ), in: open.chat)
     }
 
     private func newMessagesAfter(in chat: String) -> Int64? {
@@ -790,6 +793,7 @@ final class AppModel {
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        senderZoneCache = [:]
         unlockedAt = nil
         notifier.reset()
     }

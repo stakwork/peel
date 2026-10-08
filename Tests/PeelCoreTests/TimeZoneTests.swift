@@ -272,6 +272,32 @@ struct TimeZoneSharingTests {
         await #expect(throws: PeelError.self) { try await engine.localTime(of: privateTribe, at: now) }
     }
 
+    /// A run header's fallback: per sender, the newest offset at or before
+    /// a moment and within 90 days of it, for a whole page in one query.
+    @Test func senderZonesAtAMoment() throws {
+        let (_, storage) = try engine()
+        let now = date("2026-10-08T12:00:00Z").millisecondsSince1970
+        let day: Int64 = 24 * 3600 * 1000
+        func message(_ n: Int, chat: String, alias: String? = nil, tz: String, at: Int64) -> Message {
+            .fixture(uuid: uuid(n), chat: chat, sender: alias.map { sender(chat, alias: $0) }, body: body(tz: tz), timestamp: at)
+        }
+        _ = try storage.apply(Storage.Commit(messages: [
+            message(1, chat: privateTribe, alias: "ann", tz: "GMT+5:30", at: now - 5 * day),
+            message(2, chat: privateTribe, alias: "ann", tz: "GMT+1", at: now + day),
+            message(3, chat: privateTribe, alias: "bob", tz: "GMT-8", at: now - 95 * day),
+            message(4, chat: person, tz: "GMT-5", at: now - day),
+            // Unreadable, so the one before it counts.
+            message(5, chat: person, tz: "EST", at: now - day / 2),
+        ].map { ($0, false, nil) }))
+        let tribe = try storage.senderTimeZones(
+            in: privateTribe, inTribe: true, wanted: [("ann", now), ("bob", now), ("cat", now), ("ann", now + 2 * day)]
+        )
+        #expect(tribe.mapValues { $0.secondsFromGMT() } == [0: 19_800, 3: 3600])
+        let direct = try storage.senderTimeZones(in: person, inTribe: false, wanted: [(nil, now), (nil, now - 2 * day)])
+        #expect(direct.mapValues { $0.secondsFromGMT() } == [0: -18_000])
+        #expect(try storage.senderTimeZones(in: person, inTribe: false, wanted: []).isEmpty)
+    }
+
     /// The column follows the stored body, so a delete clears it.
     @Test func storedWithTheMessageAndClearedByADelete() throws {
         let storage = try profile.storage()

@@ -68,6 +68,24 @@ enum Theme {
     /// "Expired" text and white text on an armed button.
     static let attention = Color(light: 0xA86400, dark: 0xFFBC58)
 
+    // The form system (direction A, `FormKit.swift`): translucent fills and
+    // rings over the surfaces above.
+    /// A field under the pointer, a boxed number field, a disabled primary button.
+    static let fieldFill = Color(light: 0x141E2D, lightOpacity: 0.05, dark: 0xFFFFFF, darkOpacity: 0.055)
+    /// The hairline around the popover, its sections and a disabled primary button.
+    static let formEdge = Color(light: 0x141E2D, lightOpacity: 0.08, dark: 0xFFFFFF, darkOpacity: 0.07)
+    /// The soft ring outside a focused field.
+    static let focusRing = Color(light: 0x3F68E0, lightOpacity: 0.22, dark: 0x618AFF, darkOpacity: 0.28)
+    /// The soft ring outside a field with a problem.
+    static let problemRing = Color(light: 0xA86400, lightOpacity: 0.16, dark: 0xFFBC58, darkOpacity: 0.2)
+    static let switchOff = Color(light: 0x141E2D, lightOpacity: 0.16, dark: 0xFFFFFF, darkOpacity: 0.16)
+    static let switchKnob = Color(light: 0xFFFFFF, dark: 0xF4F6F8)
+    /// Under the popover: radius 10 and y 4 stay within the 14 pt its
+    /// floating window leaves for a shadow (`FloatingWindow.margin`).
+    static let popoverShadow = Color(light: 0x141E2D, lightOpacity: 0.18, dark: 0x000000, darkOpacity: 0.5)
+    /// Lifts a section off the popover in light; nothing in dark.
+    static let sectionShadow = Color(light: 0x141E2D, lightOpacity: 0.04, dark: 0x000000, darkOpacity: 0)
+
     /// The system font (SF Pro), Tom's choice for readability on 2026-10-07.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         Font.system(size: size, weight: weight)
@@ -99,18 +117,18 @@ extension PersonHue {
 }
 
 extension Color {
-    init(light: UInt32, dark: UInt32, darkOpacity: CGFloat = 1) {
+    init(light: UInt32, lightOpacity: CGFloat = 1, dark: UInt32, darkOpacity: CGFloat = 1) {
         #if os(macOS)
         self.init(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let (r, g, b) = Self.channels(isDark ? dark : light)
-            return NSColor(srgbRed: r, green: g, blue: b, alpha: isDark ? darkOpacity : 1)
+            return NSColor(srgbRed: r, green: g, blue: b, alpha: isDark ? darkOpacity : lightOpacity)
         })
         #else
         self.init(uiColor: UIColor { traits in
             let isDark = traits.userInterfaceStyle == .dark
             let (r, g, b) = Self.channels(isDark ? dark : light)
-            return UIColor(red: r, green: g, blue: b, alpha: isDark ? darkOpacity : 1)
+            return UIColor(red: r, green: g, blue: b, alpha: isDark ? darkOpacity : lightOpacity)
         })
         #endif
     }

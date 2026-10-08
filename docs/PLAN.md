@@ -131,7 +131,7 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 6 | Calls (LiveKit) | **now**: PRs 1–3 merged (#44, #54, #55); PR 4 (the call card) in progress; PRs 5–8 open | [phases/06-calls.md](phases/06-calls.md) |
 | — | File splits | done: the move-only splits of refactor rows 10–13 (MainView, PeelMenu and Media; Storage; Engine; PeelCommand); row 12's one `JSON.decode` helper (decode the body once) is still open | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
 | 5 | Parity: contacts and the in-app web window | after the splits; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
-| — | Remaining cleanup | rows 8, 9 and 14–18: notification policy in PeelCore, styles and confirm controls, off-main reads, the restore cursor and its tests, the engine sending many files, the docs refresh, polling to continuations | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
+| — | Remaining cleanup | replaced by the second review's cleanup plan: wave 1 bug fixes (batches 1–5), then core tidy, notification policy, money sends, network helpers, app reads, engine structure and the shared app pieces; it folds in the first review's open rows 6, 8, 12 and 14–18. Row 9 (styles and confirm controls) moves to the polish pass's form system; the iPhone model-sharing seams are a later batch (17) | [reviews/2026-10-08-second-review.md](reviews/2026-10-08-second-review.md), "Cleanup plan" |
 | — | Polish pass | a general pass over the app | — |
 | 10 | v1 extras: search and ⌘K, Markdown, voice messages, Giphy; plus payment templates, preferences sync, self-hosted certificates | planned; findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
@@ -151,6 +151,10 @@ From [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md),
 - After contacts and the web window: rows 8, 9, 14, 15, 16, 17 and 18.
 - Not placed in the evening order: row 6, one sender resolution. The
   "Someone" fallback is still written in several views.
+- Since then (`cd194a0`): rows 7 and 10–13 merged, apart from row 12's
+  `JSON.decode` helper. The open rows are now batches in
+  [reviews/2026-10-08-second-review.md](reviews/2026-10-08-second-review.md),
+  "Cleanup plan", which this list no longer tracks.
 
 ## Scope (decided 2026-10-05, changed 2026-10-08 twice)
 

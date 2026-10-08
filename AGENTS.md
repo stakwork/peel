@@ -15,6 +15,8 @@ in progress and what comes next. Update it when you finish something.
     decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB: core state, settings, messages, contacts,
     tribes, live queries (`conversations()`, `messages(in:)`); holds the profile lock
+  - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
+    shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
   - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
     media tokens, the memes server (sign-in, upload, download), what a file
@@ -113,8 +115,10 @@ status by tag, read markers (server truth, pending, mark unread), contact alias/
 (mnemonics, invites, a fresh account); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; mention matching, the aliases that name
-this account in a tribe, and the mention re-scan. Nothing talks to a broker: anything
-protocol-level is still verified against the local test server.
+this account in a tribe, and the mention re-scan; and the whole migration
+chain from a v1 database, with the literals frozen into shipped migrations.
+Nothing talks to a broker: anything protocol-level is still verified against
+the local test server.
 
 ### Local memes server
 

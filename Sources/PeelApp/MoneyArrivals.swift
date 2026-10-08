@@ -218,7 +218,7 @@ struct PaymentsLink: View {
             Image(systemName: "bolt").font(.system(size: 13))
         } accessory: {
             if msat > 0 {
-                UnreadBadge(text: SignedAmount.text(msat: msat, incoming: true),
+                UnreadBadge(text: Sats.signed(msat: msat, incoming: true),
                             foreground: Theme.confirmed, fill: Theme.confirmed.opacity(0.16))
                     .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
                     .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))

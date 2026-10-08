@@ -17,6 +17,14 @@ public enum Sats {
         whole(msat).formatted()
     }
 
+    /// "+500" received, "−2,000" sent, with a true minus (U+2212) as the
+    /// banking apps write it (Tom, 2026-10-08); "0" unsigned, since nothing
+    /// a person can see moved.
+    public static func signed(msat: some BinaryInteger, incoming: Bool) -> String {
+        let sign = whole(msat) == 0 ? "" : incoming ? "+" : "\u{2212}"
+        return sign + number(msat: msat)
+    }
+
     /// "1 of 2 sats": part of an amount, as for an underpaid invoice. Where
     /// dropping the rest of a sat would hide a shortfall ("2 of 2 sats" for
     /// 2,100 of 2,400 msat), both in msat instead.

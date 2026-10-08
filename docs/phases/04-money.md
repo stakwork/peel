@@ -890,10 +890,10 @@ row "Payments" (P1–P5).
   purchase states.
 - **App:** the Payments screen (`PaymentsView.swift`): one list grouped
   Today / Yesterday / Earlier this week / Earlier, "Amounts in sats" in the
-  header, received "+500" in green, sent a plain "2,000" (Tom's banking-app
-  rule), pending grey with "Pending", failed struck through with "Failed";
-  older pages load at the end of the list; the newest page again when the
-  balance moves or the connection returns. Receive and Pay an invoice in the
+  header, received "+500" in green, sent "−2,000" in the text colour (Tom's
+  banking-app rule; a plain "2,000" until 2026-10-08), pending grey with
+  "Pending", failed struck through with "Failed"; older pages load at the
+  end of the list; the newest page again when the balance moves or the connection returns. Receive and Pay an invoice in the
   header; a payment's detail, Receive and Pay in a 360 pt pane on the right
   (Escape closes). Receive: amount (required, with why), memo, QR, Copy
   invoice, Copy QR image, a countdown bar, then Paid with what arrived and

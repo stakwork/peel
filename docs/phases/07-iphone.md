@@ -1,7 +1,9 @@
 # Phase 7 — iPhone
 
-Status: planned. Comes after the v1 extras (`10-v1-extras.md`); the order
-was decided on the evening of 2026-10-08, see `../PLAN.md`.
+Status: paused (2026-10-08). Comes after the personal agent (phase 9) and
+the rest of the v1 extras (`10-v1-extras.md`), before the audit; the order
+was decided on the night of 2026-10-08, see `../PLAN.md`. Push
+notifications are ignored for now.
 
 - Same PeelCore and most views; an iOS target in the package plus an Xcode
   project for signing. Needs Xcode installed.

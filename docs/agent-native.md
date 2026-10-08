@@ -1,14 +1,22 @@
 # Peel and the sovereign agent
 
-Last updated 2026-10-07. How Peel relates to the two Hive pages "Sphinx Personal
+Last updated 2026-10-08. How Peel relates to the two Hive pages "Sphinx Personal
 Agent vs. the Market" and "Sovereign Sphinx Agent: build plan and decisions",
-what that means for Peel's architecture now, and what to decide before phase 2.
+and the rules that keep Peel's engine ready for an agent.
+
+The agent's design (one agent contact, the agent host, Strut, the graph,
+workers over ACP, the permission gate) is now in
+[agent-architecture.md](agent-architecture.md), agreed with Tom on
+2026-10-08. Where the two overlap, that file wins; this one keeps the
+engine rules, the corrections to the Hive pages and the spikes.
 
 ## Where Peel sits
 
 The two pages describe a product: you hold one identity, you chat to a chief of
 staff, and it runs always-on agents that each have their own key, wallet,
-budget and memory. The build plan assumes those features land in the official
+budget and memory. Peel narrows that to one agent contact, the chief of
+staff, with workers behind it that are not contacts
+([agent-architecture.md](agent-architecture.md)). The build plan assumes those features land in the official
 Sphinx apps. Peel replaces that assumption: Peel is the interface, and its
 engine is the Sphinx client that the agents run on.
 
@@ -31,14 +39,17 @@ So Peel has two jobs:
             ▼  (onion-routed, via mixer)  ▼
  ┌─────────────────────────────────────────────────┐
  │ Agent host (desktop now, home server or cloud)  │
- │  engine × N accounts, one per agent (child seed)│
- │  agent loop · tools · memory log + graph        │
+ │  engine: the agent's own account                │
+ │  agent loop · Strut jobs · ACP workers · tools  │
+ │  LadybugDB graph (host is the only writer)      │
  │  budget and permission gate, outside the model  │
  └─────────────────────────────────────────────────┘
 ```
 
-- **An agent is a Sphinx account.** It has a child seed, its own balance at the
-  mixer, and it is a contact in your list. You talk to it by DM.
+- **The agent is a Sphinx account.** It has its own seed (from an invite
+  now, a child seed later), its own balance at the mixer, and it is one
+  contact in your list. You talk to it by DM, in threads. Workers such as
+  Claude Code run behind it and are not contacts.
 - **No private API between the app and the host.** Instructions, approvals,
   reports and receipts travel as Sphinx messages. The host can move between
   desktop, home server and cloud without the app changing. During the
@@ -47,16 +58,16 @@ So Peel has two jobs:
   the server queues messages. Only the agent accounts need an always-on host.
 - **One engine, two hosts.** The app and the agent host run the same engine:
   the core contract, the transport, storage and the message conventions.
-  This is the main architectural constraint on Peel today. The host is a later
-  phase.
+  This is the main architectural constraint on Peel today. The host is
+  phase 9.
 
 ## What this changes in Peel now
 
 These are rules for v1 work, not new features.
 
 1. **The engine is headless and multi-account.** No UI types, no global
-   state, no single-account assumption in `PeelCore`. The host runs many
-   engines in one process.
+   state, no single-account assumption in `PeelCore`. The host runs one
+   agent account now and may run more later in one process.
 2. **Every user action is an engine operation.** The UI only calls typed
    operations (send, pay, add contact, join tribe). The same operations become
    the agent's tools, behind one permission and budget gate. If a capability
@@ -66,9 +77,10 @@ These are rules for v1 work, not new features.
    both the app and the host can use it.
 4. **Agent message types need a convention.** Choice cards, approval requests
    and receipts become new message JSON that falls back to readable text in
-   the official apps. Design it before the first agent sends one.
-5. **Contacts have a kind:** person, your agent, someone else's agent. The
-   sidebar groups your agents.
+   the official apps. Decided: versioned JSON under a `peel` key of the
+   message `metadata` object (phase 9, "Message shapes").
+5. **Contacts have a kind:** person, your agent, someone else's agent. Your
+   agent is one contact in Direct messages, with the AGENT label.
 6. **Fix child-seed derivation before any child exists.** Changing it later
    breaks restore for every agent.
 
@@ -102,14 +114,17 @@ Checked against the code on 2026-10-07.
   funded agent.
 - **Master agent or chief of staff.** The build plan makes the master agent
   "you" with the master seed; the market page makes the chief of staff a
-  contact with its own key. If the master seed never reaches a runtime, the
-  chief of staff is a child like the others, and creating a child happens on
-  your device (it derives the seed and hands it to the host) unless you give
-  the host a separate agents root. Pick one.
+  contact with its own key. Peel takes the second: the master seed never
+  reaches a runtime, and the agent is its own account. How that account is
+  made (an invite now; a child derived on your device, or a separate agents
+  root, later) is decision 8 in
+  [agent-architecture.md](agent-architecture.md).
 - **The interface is Peel, not the official apps.** Phases 1 and 2 of the build
   plan land in Peel and the agent host.
 - **An invite may not be needed for a child account.** `routes::register` in
-  the mixer takes the invite code as optional. Check on production.
+  the mixer takes the invite code as optional. Read in the source on
+  2026-10-07: a child of a registered root registers free with no invite
+  (`research/acp-harnesses.md`, section 9). Check on production.
 
 ## Spikes before deciding
 

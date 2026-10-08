@@ -2,12 +2,13 @@
 
 ## Status (2026-10-08)
 
-**Added to v1 by Tom on 2026-10-08 (evening).** Nothing is built. These
-come after calls, the file splits, contacts and the web window, the
-remaining cleanup and a polish pass (`../PLAN.md`, "Phases"). They are
-listed in the order Tom gave for the phase: search and ⌘K, Markdown, voice,
-Giphy. The same step also carries payment templates (`04-money.md`),
-preferences sync and self-hosted certificates (`05-parity.md`).
+**Added to v1 by Tom on 2026-10-08 (evening); reordered the same night.**
+Nothing is built. Markdown (item 2) is pulled forward: it comes after the
+cleanup and the polish pass, before the personal agent (phase 9), because
+agent replies are Markdown. The rest (search and ⌘K, voice, Giphy, and the
+payment templates of `04-money.md`, preferences sync and self-hosted
+certificates of `05-parity.md`) comes after the personal agent
+(`../PLAN.md`, "Phases").
 
 Each item below records what the official Mac app does, read from
 `sphinx-mac-v2` at `706e6f07` (2026-10-02). Paths are under
@@ -46,6 +47,9 @@ results; whether text inside code and quotes counts; what ⌘K offers besides
 search (actions such as "Start call" or "Pay invoice").
 
 ## 2. Markdown
+
+**Pulled forward (2026-10-08 night):** built before the personal agent,
+ahead of the rest of this phase.
 
 **Goal:** render bold, italic, strikethrough, quotes, headings, ordered and
 unordered lists, and `[text](url)` links. Inline code and fences are already

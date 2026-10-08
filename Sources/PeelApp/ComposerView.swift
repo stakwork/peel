@@ -129,8 +129,9 @@ struct Composer: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
             }
-            .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.divider))
+            // Circular: one line is about 35 pt, under twice the radius.
+            .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .circular))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .circular).strokeBorder(Theme.divider))
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 28))

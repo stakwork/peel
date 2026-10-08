@@ -118,9 +118,10 @@ struct ChatRow: Identifiable {
             // A collapsed thread's row stands for its newest message, which this is.
             let collapsed = message.standsForThread ? message.threadUUID.flatMap { threads[$0] } : nil
             // No row that would draw nothing (blank space under the last
-            // row, Tom 2026-10-08): "New messages" goes to the next.
+            // row, Tom 2026-10-08), or only "Original message not
+            // available": "New messages" goes to the next.
             if message.isBlank, collapsed == nil, message.uuid.flatMap({ boosts[$0] }) == nil,
-               quote(message, parents: parents, threadRoot: threadRoot) == nil { continue }
+               (quote(message, parents: parents, threadRoot: threadRoot) ?? .missing) == .missing { continue }
             // What counts as unread (`Storage.readStates`): text, attachments, payments.
             let startsNew = newAfter.map { message.countsAsUnread(after: $0) } ?? false
             if startsNew { newAfter = nil }
@@ -207,12 +208,13 @@ struct ChatRow: Identifiable {
                        photoURL: sender.photoURL, hue: sender.hue, date: message.date)
     }
 
-    /// Only text and attachments are quoted; a reply to the thread's own
-    /// original is not, inside that thread.
+    /// Only text and attachments are quoted, and not one with no words (it
+    /// has no row to go to); a reply to the thread's own original is not,
+    /// inside that thread.
     private static func quote(_ message: Message, parents: [String: Message], threadRoot: String?) -> Quote? {
         guard let reply = message.replyUUID, reply != threadRoot else { return nil }
         guard let parent = parents[reply] else { return .missing }
-        return parent.isContent ? .message(parent) : nil
+        return parent.isContent && !parent.isBlank ? .message(parent) : nil
     }
 
     /// Whether `next` joins this row's run of images.
@@ -335,17 +337,18 @@ struct MessageList: View {
             // initial anchor can land short of the end; go to the newest.
             // With "New messages", open at it instead.
             .onAppear {
-                if focusTarget != nil {
-                    // A message asked for wins over "New messages". After the
-                    // list's initial bottom anchor, which would undo it.
+                if focusTarget != nil || divider != nil {
+                    // A message asked for wins over "New messages". Both go
+                    // after the list's initial bottom anchor, which would
+                    // undo a scroll asked for now.
+                    if focusTarget == nil {
+                        following = false
+                        dividerUnread = true
+                    }
                     Task {
                         try? await Task.sleep(for: .milliseconds(100))
-                        takeFocus(proxy)
+                        if focusTarget != nil { takeFocus(proxy) } else { await openAtDivider(proxy) }
                     }
-                } else if let divider {
-                    proxy.scrollTo(divider.id, anchor: .top)
-                    following = false
-                    dividerUnread = true
                 } else if composer.thread == nil {
                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 }
@@ -411,6 +414,19 @@ struct MessageList: View {
 
     /// The row "New messages" sits above.
     private var divider: ChatRow? { rows.first(where: \.startsNew) }
+
+    /// To "New messages" at the top, twice: the rows around it have only
+    /// estimated heights until the first scroll draws them. Not once you
+    /// have taken the list.
+    private func openAtDivider(_ proxy: ScrollViewProxy) async {
+        for pass in 0..<2 {
+            guard let divider, !userScrolling, pass == 0 || !following else { return }
+            // The initial anchor may have set it, reaching the bottom.
+            following = false
+            proxy.scrollTo(divider.id, anchor: .top)
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
 
     /// What counts as seen when the list leaves the bottom: up to "New
     /// messages" while what is below it is still unread, else everything
@@ -500,7 +516,7 @@ struct MessageList: View {
     private func go(to parent: Message, proxy: ScrollViewProxy) -> Bool {
         let uuid = parent.uuid
         if let row = rows.first(where: { row in
-            (row.kind == .message || row.kind == .payment)
+            [.message, .payment, .paymentRequest].contains(row.kind)
                 && (row.message.uuid == uuid || row.images.contains { $0.uuid == uuid } || row.summary?.original.uuid == uuid)
         }) {
             following = false
@@ -513,7 +529,8 @@ struct MessageList: View {
             }
             return true
         } else if composer.thread == nil, parent.threadUUID != nil {
-            withAnimation(.easeOut(duration: 0.2)) { model.openThread(of: parent) }
+            // The thread's list scrolls to it and lights it.
+            withAnimation(.easeOut(duration: 0.2)) { model.focus(on: parent, inThread: true) }
         }
         return false
     }
@@ -560,7 +577,7 @@ private struct JumpToNewestButton: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .frame(width: 36, height: 36)
-                    .menuBoxed(cornerRadius: 18)
+                    .menuBoxed(cornerRadius: 18, style: .circular)
                     .contentShape(Circle())
             }
         }

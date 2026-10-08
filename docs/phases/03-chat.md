@@ -2208,3 +2208,43 @@ the test's row-id mirror uses it; the backstop is three lines. Security:
 row building only, no input parsing, storage, network or logging change.
 
 `swift test`: 419 tests, all pass but the known IPv6 issue.
+
+## Chat column fixes, cleanup batch 4 (branch `fix/batch4-chat-column`, 2026-10-08)
+
+From the second review (`docs/reviews/2026-10-08-second-review.md`, row 4).
+Each finding was checked on main first, on copies of `og-div2` (offline,
+#Universe AI with 47 unread past marker 150) in a scratch build with a
+temporary launch hook, not committed, that opened the chat or a thread,
+sized the window and sent a file from the thread composer.
+
+- **1.8, "New messages" far up.** Reproduced on main: the chat opened at
+  its end with "47 new messages" and no divider in sight. The divider
+  branch now waits 100 ms, as the focus branch does, so the initial bottom
+  anchor cannot undo it, then scrolls again once the rows around it have
+  real heights, unless you have scrolled or it reached the bottom. After:
+  opens with "New messages" at the top.
+- **1.7, thread notices.** Reproduced: with the thread in the chat's
+  place, a refused file ("no memes server") showed nowhere. `ChatFooter`
+  (notice, then the composer or `TribeStatusBar`) now ends both the chat
+  and the thread; the thread shows the chat's notice only when it has
+  taken the chat's place, so it never shows twice.
+- **1.13, the end marker.** Not reproduced since #84: a chat without a
+  divider ends flush on its last row. Left as it is.
+- **1.1, quotes.** A blank parent is not quoted (its row is never drawn),
+  and a blank reply whose quote would only say "Original message not
+  available" gets no row.
+- **Jumps (1.12).** A quote whose parent is folded in a collapsed thread
+  opens the thread at it, lit (`focus(on:inThread:)`), rather than at the
+  thread's bottom. Jumping to a payment request scrolls to it and lights it.
+- **Shapes (1.12).** The day pill, the round jump button
+  (`menuBoxed(style:)`) and the composer box use circular corners: their
+  radius is half their height or more, where the continuous stroke draws
+  square stubs.
+- **5.3.** `SidePanelSplit` is the one split for the thread and the web
+  pane (the panel takes the column's place when both do not fit).
+
+Not changed: opening a thread beside a chat that opened at "New messages"
+reflows the narrower column around its bottom anchor, so the divider can
+move out of view (as on main, where the chat was at its end anyway). No
+tests: the changed rules live in `PeelApp`, which has no test target.
+

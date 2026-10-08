@@ -17,30 +17,60 @@ struct ConversationView: View {
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
+        SidePanelSplit(isOpen: thread != nil, width: $threadWidth, range: Self.threadRange,
+                       standard: ThreadPanel.width, minimumMain: Self.minimumWidth) {
+            // Its draft lives in the model, so it survives being covered.
+            ChatColumn(conversation: conversation)
+        } panel: { beside in
+            if let thread {
+                ThreadPanel(conversation: conversation, ref: thread, beside: beside)
+            }
+        }
+    }
+}
+
+/// A column with a panel beside it on the right (a thread, the web pane),
+/// resizable on its divider. On a window too narrow for both, the panel
+/// takes the column's place rather than covering it.
+struct SidePanelSplit<Main: View, Panel: View>: View {
+    let isOpen: Bool
+    /// Dragged on the divider.
+    @Binding var width: Double
+    /// How narrow and how wide the panel may be dragged.
+    let range: ClosedRange<Double>
+    /// Where a double-click on the divider puts it.
+    let standard: Double
+    /// The narrowest the column gets beside the panel.
+    let minimumMain: CGFloat
+    @ViewBuilder let main: () -> Main
+    /// Told whether it is beside the column, or in its place.
+    @ViewBuilder let panel: (_ beside: Bool) -> Panel
+
+    var body: some View {
+        // Always inside the reader, so opening the panel keeps the column
+        // (its scroll position and drafts) rather than making it again.
         GeometryReader { geometry in
-            // Beside the conversation, the thread gets what is left up to the
-            // width it was dragged to, so a drag or a narrow window shrinks it
-            // before the thread has to take the conversation's place.
-            let room = Double(geometry.size.width - Self.minimumWidth - 1)
-            let both = room >= Self.threadRange.lowerBound
+            // Beside the column, the panel gets what is left up to the width
+            // it was dragged to, so a drag or a narrow window shrinks it
+            // before it has to take the column's place.
+            let room = Double(geometry.size.width - minimumMain - 1)
+            let both = room >= range.lowerBound
             HStack(spacing: 0) {
-                // Its draft lives in the model, so it survives being covered.
-                if thread == nil || both {
-                    ChatColumn(conversation: conversation)
+                if !isOpen || both {
+                    main()
                 }
-                if let thread {
+                if isOpen {
                     if both {
-                        let range = Self.threadRange.lowerBound...min(Self.threadRange.upperBound, room)
-                        PaneDivider(width: $threadWidth, range: range, standard: ThreadPanel.width, growsTo: .leading)
+                        PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
+                                    standard: standard, growsTo: .leading)
                     }
-                    ThreadPanel(conversation: conversation, ref: thread)
-                        .frame(width: both ? min(threadWidth, room) : nil)
+                    panel(both)
+                        .frame(width: both ? min(width, room) : nil)
                         .transition(.move(edge: .trailing))
                 }
             }
         }
     }
-
 }
 
 extension Conversation {
@@ -74,22 +104,11 @@ private struct ChatColumn: View {
             // Made again once the messages have loaded, so it starts at
             // the bottom of them rather than of an empty list.
             .id(model.timeline.messages.isEmpty ? nil : conversation.chat)
-            if let notice = model.conversationNotices[conversation.chat] {
-                NoticeBar(text: notice) { model.dismissNotice(in: conversation.chat) }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 6)
-            }
-            if let tribe, !tribe.canPost {
-                TribeStatusBar(conversation: conversation, tribe: tribe)
-            } else {
-                Composer(
-                    composer: composer,
-                    placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
-                    loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil,
-                    paysTo: conversation.isTribe ? nil : conversation.name
-                )
-                .id(conversation.chat)
-            }
+            ChatFooter(
+                conversation: conversation, tribe: tribe, composer: composer,
+                placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
+                paysTo: conversation.isTribe ? nil : conversation.name
+            )
         }
         .fileDrop(into: composer, for: conversation)
         .onAppear { model.composerFocus[composer, default: 0] += 1 }
@@ -98,6 +117,38 @@ private struct ChatColumn: View {
     /// The pinned message, also when a thread has folded it away.
     private func pinned(_ uuid: String) -> Message? {
         model.timeline.messages.first { $0.uuid == uuid } ?? model.timeline.threads[uuid]?.original
+    }
+}
+
+/// Under a chat or its thread: the chat's notice (a send refused, from
+/// either composer), then the composer, or why the tribe takes no posts.
+struct ChatFooter: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
+    let tribe: Tribe?
+    let composer: ComposerID
+    let placeholder: String
+    var paysTo: String?
+    /// The notice shows once: under the thread only when the thread has
+    /// taken the chat's place.
+    var showsNotice = true
+
+    var body: some View {
+        if showsNotice, let notice = model.conversationNotices[conversation.chat] {
+            NoticeBar(text: notice) { model.dismissNotice(in: conversation.chat) }
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
+        }
+        if let tribe, !tribe.canPost {
+            TribeStatusBar(conversation: conversation, tribe: tribe)
+        } else {
+            Composer(
+                composer: composer, placeholder: placeholder,
+                loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil,
+                paysTo: paysTo
+            )
+            .id(composer)
+        }
     }
 }
 
@@ -429,7 +480,9 @@ struct DayDivider: View {
                 .foregroundStyle(Theme.secondaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 2)
-                .overlay(Capsule().strokeBorder(Theme.divider))
+                // Circular ends: the continuous capsule's stroke draws square
+                // stubs past its ends at this height.
+                .overlay(Capsule(style: .circular).strokeBorder(Theme.divider))
                 .fixedSize()
             Theme.divider.frame(height: 1)
         }

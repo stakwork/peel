@@ -19,9 +19,13 @@ extension View {
     }
 
     /// The raised box of menus, suggestion lists and the hover bar.
-    func menuBoxed(cornerRadius: CGFloat = 8, shadow: Bool = true) -> some View {
-        background(Theme.menu, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(Theme.divider))
+    /// `.circular` for a box whose radius is half its height or more: the
+    /// continuous stroke draws square stubs there.
+    func menuBoxed(
+        cornerRadius: CGFloat = 8, style: RoundedCornerStyle = .continuous, shadow: Bool = true
+    ) -> some View {
+        background(Theme.menu, in: RoundedRectangle(cornerRadius: cornerRadius, style: style))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: style).strokeBorder(Theme.divider))
             .shadow(color: .black.opacity(shadow ? 0.25 : 0), radius: 10, y: 4)
     }
 }

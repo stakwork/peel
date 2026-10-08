@@ -177,6 +177,7 @@ Out of the open rows of the first review:
   - offline, the list never shows more than 50 rows;
   - once a short page sets `hasMore = false`, stored rows beyond the limit are never shown.
 - *Fix:* when the last row appears and `items.count == limit`, raise `limit` from storage first. Fetch from the server only when `items.count < limit`.
+- *Batch 5, in review (#79):* this, 3.1's invoice check in a task, the expiry refresh (1.12) and the double refresh (3.3). The limit rises from storage at most a page ahead; while connected the server page is still fetched each time, since pings folded into payments make `items.count` an unreliable test.
 
 **1.10 `MediaPlayback` and other state outlive an account switch (med; S; behaviour).**
 - `resetAccountState` (`AppModel.swift:790-831`) never stops `MediaPlayback.shared` (`MediaViews.swift:14`).

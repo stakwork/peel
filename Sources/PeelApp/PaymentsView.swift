@@ -32,15 +32,17 @@ extension AppModel {
         engine?.storage.invoiceUpdates(paymentHash: paymentHash, incoming: incoming)
     }
 
-    /// What stops paying this invoice, by the engine's own rules.
-    func invoiceProblem(_ invoice: Invoice) -> Engine.Failure? {
-        (try? engine?.invoiceProblem(invoice)) ?? nil
-    }
-
-    /// When an invoice was paid from here or another device, if it was.
-    func paidAt(_ paymentHash: String) -> Date? {
-        if case .paid(let at)? = try? engine?.storage.paidState(paymentHash: paymentHash) { return at }
-        return nil
+    /// What stops paying this invoice, by the engine's own rules, and when
+    /// it was paid (here or from another device) when that is what stops
+    /// it. These are storage reads, so they run off the main actor.
+    func invoiceProblem(_ invoice: Invoice) async -> (problem: Engine.Failure?, paidAt: Date?) {
+        guard let engine else { return (nil, nil) }
+        return await Task.detached {
+            let problem = (try? engine.invoiceProblem(invoice)) ?? nil
+            guard problem == .invoiceAlreadyPaid,
+                  case .paid(let at)? = try? engine.storage.paidState(paymentHash: invoice.paymentHash) else { return (problem, nil) }
+            return (problem, at)
+        }.value
     }
 
     func payInvoice(_ invoice: Invoice, confirmedMsat: UInt64?) async -> PaymentOutcome {
@@ -233,8 +235,14 @@ struct PaymentsView: View {
                 problem = PeelError.readable(error)
             }
         }
-        .task(id: model.connection == .connected) { await refresh() }
-        .onChange(of: model.balanceMsat) { Task { await refresh() } }
+        // Connecting brings the balance a moment later, so changes within
+        // half a second make one refresh. Once begun, a fetch is never
+        // cancelled: the server's answer names no request, so a dropped one
+        // could be taken as the next fetch's answer.
+        .task(id: RefreshTrigger(connected: model.connection == .connected, balanceMsat: model.balanceMsat)) {
+            guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
+            Task { await refresh() }
+        }
         // Seen only once the window is in front: until then the row keeps
         // its "+350" and the notification stays.
         .onChange(of: model.money.unseen.isEmpty == false && appearsActive, initial: true) { _, seeing in
@@ -250,6 +258,11 @@ struct PaymentsView: View {
             return true
         }
         .onExitCommand { pane = nil }
+    }
+
+    private struct RefreshTrigger: Equatable {
+        let connected: Bool
+        let balanceMsat: UInt64?
     }
 
     /// The newest page again: the balance moved or the connection came back.
@@ -281,14 +294,21 @@ struct PaymentsView: View {
         }
     }
 
+    /// The end of the list is in view: a page more of what is stored, offline
+    /// too, and while connected the server's next older page, which fills
+    /// the raised limit as it is stored.
     private func loadOlder() async {
+        // At most a page past what shows, so the end of what is stored
+        // stops raising it. Not `items.count >= limit`: pings folded into
+        // their payments leave a full page a row or two short.
+        let page = Int(Engine.paymentPageSize)
+        if limit - items.count < page { limit += page }
         guard hasMore, !loadingOlder, model.connection == .connected else { return }
         loadingOlder = true
         defer { loadingOlder = false }
         do {
             let count = try await model.fetchOlderPayments()
-            hasMore = count >= Int(Engine.paymentPageSize)
-            limit += Int(Engine.paymentPageSize)
+            hasMore = count >= page
         } catch {
             problem = PeelError.readable(error)
         }
@@ -999,6 +1019,19 @@ extension QRCode {
 
 // MARK: - Pay an invoice
 
+/// Its content, told whether the invoice has expired, and drawn again the
+/// moment it does, so Pay goes then rather than at the next redraw.
+private struct UntilExpiry<Content: View>: View {
+    let invoice: Invoice
+    @ViewBuilder let content: (_ expired: Bool) -> Content
+
+    var body: some View {
+        TimelineView(.explicit(invoice.expiresAt.map { [$0] } ?? [])) { context in
+            content(invoice.isExpired(now: context.date))
+        }
+    }
+}
+
 /// Pay an invoice: paste (or drop on the window) a BOLT11, see what it asks
 /// and who it pays, and pay with the shared confirmation; what stops it
 /// (expired, already paid, this account's own, too little balance) shows as
@@ -1014,6 +1047,23 @@ private struct PayInvoicePane: View {
     @State private var attempt = PaymentAttempt()
     /// Our payment of the invoice shown, once there is one.
     @State private var payment: InvoiceRecord?
+    /// What stops paying an invoice, worked out in `details`' task.
+    @State private var verdict: Verdict?
+
+    private struct Verdict {
+        let check: Check
+        let problem: Engine.Failure?
+        let paidAt: Date?
+    }
+
+    /// What `invoiceProblem` depends on: a change asks it again.
+    private struct Check: Equatable {
+        let invoice: Invoice
+        let expired: Bool
+        let balanceMsat: UInt64?
+        let paymentStatus: InvoiceRecord.Status?
+        let inHistory: Bool
+    }
 
     private var invoice: Invoice? {
         text.trimmed.isEmpty ? nil : try? Invoice(text)
@@ -1036,7 +1086,7 @@ private struct PayInvoicePane: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             if let invoice {
-                details(invoice)
+                UntilExpiry(invoice: invoice) { expired in details(invoice, expired: expired) }
             }
         }
         .task(id: invoice?.paymentHash) {
@@ -1052,59 +1102,80 @@ private struct PayInvoicePane: View {
         }
     }
 
-    @ViewBuilder private func details(_ invoice: Invoice) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(Sats.number(msat: invoice.amountMsat))
-                    .font(Theme.font(30, .bold))
-                Text("sats").font(Theme.font(15)).foregroundStyle(Theme.secondaryText)
-            }
-            .monospacedDigit()
-            KeyValues(rows: facts(invoice))
-        }
-        .padding(.top, 16)
-        .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
-        if let payment, payment.status != .failed {
-            outcome(payment)
-        } else if let blocked = blocker(invoice) {
-            blocked
-            HStack(spacing: 8) {
-                Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
-                Spacer()
-                Button("Pay") {}
-                    .buttonStyle(GhostButtonStyle(prominent: true))
-                    .disabled(true)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                if let failed = payment?.error {
-                    Text("The last try failed (\(failed)); nothing was sent, so paying again pays once.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+    /// The invoice's facts, then the outcome, what stops paying it, or Pay.
+    /// Pay is off until the engine's rules are checked for what is shown
+    /// now; while a recheck runs, the last note for this invoice stays.
+    private func details(_ invoice: Invoice, expired: Bool) -> some View {
+        // Our payment of it in the history, from here or another device.
+        let sent = history.first { $0.paymentHash == invoice.paymentHash && !$0.incoming }
+        let check = Check(invoice: invoice, expired: expired, balanceMsat: model.balanceMsat, paymentStatus: payment?.status,
+                          inHistory: sent != nil)
+        let checked = verdict?.check.invoice == invoice ? verdict : nil
+        return VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(Sats.number(msat: invoice.amountMsat))
+                        .font(Theme.font(30, .bold))
+                    Text("sats").font(Theme.font(15)).foregroundStyle(Theme.secondaryText)
                 }
-                FormFooter(problem: attempt.problem) {
+                .monospacedDigit()
+                KeyValues(rows: facts(invoice, expired: expired))
+            }
+            .padding(.top, 16)
+            .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
+            if let payment, payment.status != .failed {
+                outcome(payment, sent: sent)
+            } else if let checked, checked.check == check, checked.problem == nil {
+                payForm(invoice)
+            } else {
+                if let checked, let problem = checked.problem {
+                    blocker(problem, invoice: invoice, paidAt: checked.paidAt, sent: sent)
+                }
+                HStack(spacing: 8) {
                     Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
-                    PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
-                        await model.payInvoice(invoice, confirmedMsat: confirmed)
-                    }, sent: {}, namesAmount: false)
+                    Spacer()
+                    Button("Pay") {}
+                        .buttonStyle(GhostButtonStyle(prominent: true))
+                        .disabled(true)
                 }
-                Text(model.paymentConfirmationMsat == 0 ? "Every payment takes a second click."
-                     : "Payments over \(Sats.format(msat: model.paymentConfirmationMsat)) take a second click.")
-                    .font(Theme.font(12))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
             }
+        }
+        .task(id: check) {
+            let (problem, paidAt) = await model.invoiceProblem(invoice)
+            guard !Task.isCancelled else { return }
+            verdict = Verdict(check: check, problem: problem, paidAt: paidAt)
         }
     }
 
-    private func facts(_ invoice: Invoice) -> [KeyValues.Row] {
+    private func payForm(_ invoice: Invoice) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let failed = payment?.error {
+                Text("The last try failed (\(failed)); nothing was sent, so paying again pays once.")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            FormFooter(problem: attempt.problem) {
+                Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
+                PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
+                    await model.payInvoice(invoice, confirmedMsat: confirmed)
+                }, sent: {}, namesAmount: false)
+            }
+            Text(model.paymentConfirmationMsat == 0 ? "Every payment takes a second click."
+                 : "Payments over \(Sats.format(msat: model.paymentConfirmationMsat)) take a second click.")
+                .font(Theme.font(12))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+        }
+    }
+
+    private func facts(_ invoice: Invoice, expired: Bool) -> [KeyValues.Row] {
         var rows: [KeyValues.Row] = []
         let key = Formatting.shortKey(invoice.payee)
         rows.append(.init(key: "To", value: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact"))
         if !invoice.memo.isEmpty { rows.append(.init(key: "Memo", value: invoice.memo)) }
         if let expires = invoice.expiresAt {
             let at = Formatting.expiry(expires)
-            rows.append(invoice.isExpired()
+            rows.append(expired
                 ? .init(key: "Expires", value: "Expired at \(at)", tint: Theme.attention)
                 : .init(key: "Expires", value: "\(expires.formatted(.relative(presentation: .named))), at \(at)"))
         }
@@ -1114,11 +1185,9 @@ private struct PayInvoicePane: View {
         return rows
     }
 
-    /// Why this invoice cannot be paid from here, if it cannot.
-    /// The engine's own rules, in words: one amber note, and a link when
-    /// there is somewhere to go.
-    private func blocker(_ invoice: Invoice) -> AnyView? {
-        guard let problem = model.invoiceProblem(invoice) else { return nil }
+    /// Why this invoice cannot be paid from here: the engine's own rules,
+    /// in words. One amber note, and a link when there is somewhere to go.
+    private func blocker(_ problem: Engine.Failure, invoice: Invoice, paidAt: Date?, sent: PaymentItem?) -> some View {
         let reserve = Engine.feeReserveMsat(for: invoice.amountMsat)
         let (title, detail): (String, String)
         var link: (String, () -> Void)?
@@ -1131,11 +1200,10 @@ private struct PayInvoicePane: View {
         case .ownInvoice:
             (title, detail) = ("This is your own invoice", "Send it to whoever is paying you.")
         case .invoiceAlreadyPaid:
-            let at = model.paidAt(invoice.paymentHash)
             (title, detail) = ("You already paid this invoice",
-                               at.map { "On \($0.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))." } ?? "")
-            if let item = history.first(where: { $0.paymentHash == invoice.paymentHash && !$0.incoming }) {
-                link = ("Show that payment", { show(item.id) })
+                               paidAt.map { "On \($0.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))." } ?? "")
+            if let sent {
+                link = ("Show that payment", { show(sent.id) })
             }
         case .invoicePending:
             (title, detail) = ("A payment of this invoice is on its way",
@@ -1148,13 +1216,12 @@ private struct PayInvoicePane: View {
         default:
             (title, detail) = ("This invoice cannot be paid now", problem.description)
         }
-        return AnyView(AttentionNote(title: title, detail: detail) {
+        return AttentionNote(title: title, detail: detail) {
             if let link { PaneLink(title: link.0, action: link.1) }
-        })
+        }
     }
 
-    @ViewBuilder private func outcome(_ payment: InvoiceRecord) -> some View {
-        let item = history.first { $0.paymentHash == payment.paymentHash && !$0.incoming }
+    @ViewBuilder private func outcome(_ payment: InvoiceRecord, sent item: PaymentItem?) -> some View {
         switch payment.status {
         case .paid:
             VStack(alignment: .leading, spacing: 8) {
@@ -1298,29 +1365,31 @@ struct PaymentRequestRow: View {
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
         case .open, .failed:
-            if invoice.isExpired() {
-                Text("Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")")
-                    .font(Theme.font(12))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-            } else if message.fromMe {
-                Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
-                    .font(Theme.font(12))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    if case .failed(let reason) = request?.state {
-                        Text("Not paid\(reason.map { ": \($0)" } ?? ""). Nothing was sent.")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+            UntilExpiry(invoice: invoice) { expired in
+                if expired {
+                    Text("Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")")
+                        .font(Theme.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                } else if message.fromMe {
+                    Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
+                        .font(Theme.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if case .failed(let reason) = request?.state {
+                            Text("Not paid\(reason.map { ": \($0)" } ?? ""). Nothing was sent.")
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
+                            await model.payRequest(message, invoice: invoice, confirmedMsat: confirmed)
+                        }, sent: {}, isDefault: false, namesAmount: false)
+                        if let problem = attempt.problem { ProblemText(problem) }
                     }
-                    PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
-                        await model.payRequest(message, invoice: invoice, confirmedMsat: confirmed)
-                    }, sent: {}, isDefault: false, namesAmount: false)
-                    if let problem = attempt.problem { ProblemText(problem) }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
             }
         }
     }

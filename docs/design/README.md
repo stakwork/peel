@@ -575,6 +575,18 @@ bar under the header rather than a header button. When you cannot post
 Typing `@` offers aliases above the composer; the Mentions item lists
 messages that mention you. Details in `../phases/03-chat.md`.
 
+**The header's right side (H1, Tom, 2026-10-08).** Two buttons: Call
+(with its live "Join · N") and More (•••). A tribe's More holds, in
+order: Second brain and Tribe app (each only when the tribe has one,
+opening in the web pane, marked ↗); Members, Details (⌘I, also from
+anywhere in the chat), Copy tribe link and Notifications; then Edit
+tribe… (owners) and Leave tribe (or Remove from Peel for a tribe you can
+no longer post in), confirmed by a second click in the menu. A DM's More
+is Details and Notifications. Notifications is a submenu opened in the
+menu's place (‹ back, Left or Escape) with the sidebar's levels, the
+current one beside it ("All"). Members, Details and Edit open below
+More. The members panel keeps its own Copy link and Leave.
+
 The rejected native-sidebar variant and the first Slack-skin build are kept in
 the session scratchpad only; the mock canvas has all four mocked directions.
 
@@ -739,15 +751,15 @@ with what may open in `Sources/PeelCore/WebPage.swift`.
   the toolbar's rule.
 - **Which links:** every http and https link SwiftUI opens below the main
   window (message links, which message markup makes only for https, and
-  the tribe header's buttons). ⌘-click sends one to the default browser
+  the tribe header's Second brain and Tribe app). ⌘-click sends one to the default browser
   instead, from a message or inside the pane. Any other scheme keeps the
   system's handling. An address with a user name or password
   (`https://google.com@evil.example`) never opens in the pane. Links in
   floating panels (menus, popovers) still go to the browser: those windows
   do not take the main window's environment.
 - **A tribe's apps:** its `app_url` and `second_brain_url` from the
-  registry become header buttons, a grid for the app and a brain for the
-  second brain, before the call button; each only when present.
+  registry lead the header's More menu (H1), a brain for the second brain
+  and a grid for the app; each only when present.
 - **A failed load** shows "Couldn't open host", the system's reason and
   Try Again, centred on the pane's background.
 - **Downloads** land in Downloads like a saved attachment (clean name,

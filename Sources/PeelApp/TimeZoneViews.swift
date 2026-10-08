@@ -242,10 +242,13 @@ struct DirectHeader: View {
             } trailing: {
                 HStack(spacing: 4) {
                     CallHeaderButton(chat: conversation.chat)
-                    HeaderButton(systemImage: "info.circle", help: "Details") { showingInfo = true }
-                        .peelPopover(isPresented: $showingInfo) {
-                            ChatInfoPanel(conversation: conversation, tribe: nil)
-                        }
+                    HeaderMoreButton(chat: conversation.chat, details: { showingInfo = true }) {
+                        [HeaderMoreButton.details { showingInfo = true },
+                         ConversationMenu.notifications(for: conversation, model: model)]
+                    }
+                    .peelPopover(isPresented: $showingInfo) {
+                        ChatInfoPanel(conversation: conversation, tribe: nil)
+                    }
                 }
             }
         }

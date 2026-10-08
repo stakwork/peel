@@ -184,15 +184,19 @@ struct NoticeBar: View {
 }
 
 
-/// A tribe's name, what it is about and what a message costs, with the
-/// members panel behind the people button.
+/// A tribe's name, what it is about and what a message costs, then Call
+/// and More (H1): the second brain and the app (in the web pane), Members,
+/// Details (⌘I), the link, Notifications, Edit tribe for the owner and
+/// Leave, confirmed in the menu. Members, Details and Edit open below More.
 struct TribeHeader: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     let conversation: Conversation
     let tribe: Tribe?
 
-    @State private var showingMembers = false
-    @State private var showingSettings = false
-    @State private var showingInfo = false
+    @State private var panel: Panel?
+
+    private enum Panel { case members, details, edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -207,49 +211,100 @@ struct TribeHeader: View {
             ConversationIcon(conversation: conversation, size: 32)
         } trailing: {
             HStack(spacing: 4) {
-                TribeWebButtons(tribe: tribe)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }
-                if let tribe, tribe.canManage {
-                    HeaderButton(systemImage: "slider.horizontal.3", help: "Edit tribe") { showingSettings = true }
-                        .peelPopover(isPresented: $showingSettings) {
-                            TribeSettingsForm(editing: tribe) { showingSettings = false }
-                        }
-                }
-                HeaderButton(systemImage: "info.circle", help: "Details") { showingInfo = true }
-                    .peelPopover(isPresented: $showingInfo) {
+                HeaderMoreButton(chat: conversation.chat, details: { panel = .details }, entries: entries)
+                    .peelPopover(isPresented: shows(.members)) {
+                        TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
+                    }
+                    .peelPopover(isPresented: shows(.details)) {
                         ChatInfoPanel(conversation: conversation, tribe: tribe)
                     }
-                HeaderButton(systemImage: "person.2", help: "Members") { showingMembers = true }
-                    .peelPopover(isPresented: $showingMembers) {
-                        TribeMembersPanel(conversation: conversation, tribe: tribe) { showingMembers = false }
+                    .peelPopover(isPresented: shows(.edit)) {
+                        if let tribe { TribeSettingsForm(editing: tribe) { panel = nil } }
                     }
             }
+        }
+        // A panel asked for in one tribe never opens over the next.
+        .onChange(of: conversation.chat) { panel = nil }
+    }
+
+    private func entries() -> [MenuEntry] {
+        var edit: [MenuEntry] = []
+        if let tribe, tribe.canManage {
+            edit.append(.button("Edit tribe…", systemImage: "slider.horizontal.3") { panel = .edit })
+        }
+        return .sections(
+            TribeWebEntries.entries(for: tribe, open: openURL),
+            [.button("Members", systemImage: "person.2") { panel = .members }, HeaderMoreButton.details { panel = .details }]
+                + (tribe.map(ConversationMenu.link) ?? [])
+                + [ConversationMenu.notifications(for: conversation, model: model)],
+            edit + (tribe.map { ConversationMenu.leave(conversation, $0, model: model) } ?? [])
+        )
+    }
+
+    private func shows(_ which: Panel) -> Binding<Bool> {
+        Binding { panel == which } set: { shown in
+            if shown { panel = which } else if panel == which { panel = nil }
         }
     }
 }
 
-/// An icon button in the conversation header.
+/// An icon button in the conversation header; `lit` while what it opened is open.
 struct HeaderButton: View {
     let systemImage: String
     let help: String
     /// Its action is running: the spinner takes the icon's place.
     var working = false
+    var lit = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
-                .foregroundStyle(Theme.secondaryText)
+                .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
                 .buttonProgress(working)
                 .frame(width: 28, height: 28)
+                .background(lit ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+/// A chat header's More (•••): its menu below it, and ⌘I for Details from
+/// anywhere in the chat.
+struct HeaderMoreButton: View {
+    @Environment(\.menuPresenter) private var presenter
+    let chat: String
+    let details: () -> Void
+    let entries: @MainActor () -> [MenuEntry]
+
+    @State private var frame: CGRect = .zero
+
+    private var source: AnyHashable { "more-\(chat)" }
+
+    /// Details, the same in a tribe's menu and a contact's.
+    static func details(_ action: @escaping @MainActor () -> Void) -> MenuEntry {
+        .button("Details", systemImage: "info.circle", shortcut: .command("i"), action: action)
+    }
+
+    var body: some View {
+        HeaderButton(systemImage: "ellipsis", help: "More", lit: presenter?.isOpen == true && presenter?.source == source) {
+            presenter?.show(entries(), at: frame, source: source)
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .background {
+            Button("", action: details)
+                .keyboardShortcut("i", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
     }
 }
 

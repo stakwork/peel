@@ -137,7 +137,7 @@ struct ImageViewer: View {
         return HStack(spacing: 10) {
             Avatar(name: sender.avatarName, url: sender.photoURL, size: 32, hue: sender.hue)
             VStack(alignment: .leading, spacing: 1) {
-                Text(sender.name).font(Theme.font(14, .bold)).foregroundStyle(sender.hue.name)
+                Text(sender.label).font(Theme.font(14, .bold)).foregroundStyle(sender.hue.name)
                 Text("\(isTribe ? "#" : "")\(conversation?.name ?? "") · \(Formatting.dayHeading(current.date)) \(current.date.formatted(.dateTime.hour().minute()))")
                     .font(Theme.font(12))
                     .monospacedDigit()

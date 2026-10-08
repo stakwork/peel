@@ -229,7 +229,7 @@ private struct CallTileView: View {
                 SwiftUIVideoView(video, layoutMode: tile.isScreen ? .fit : .fill)
                     .allowsHitTesting(false)
             } else {
-                Avatar(name: shown.name, url: shown.photoURL, size: avatarSize, hue: shown.hue)
+                Avatar(name: shown.avatarName, url: shown.photoURL, size: avatarSize, hue: shown.hue)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             HStack(spacing: 6) {

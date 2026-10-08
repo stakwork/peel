@@ -110,19 +110,12 @@ extension AppModel {
         return true
     }
 
-    /// Who sent a message, as lists, quotes and the viewer name them: you,
-    /// the member in a tribe, else the contact. `avatarName` picks the
-    /// initials when there is no photo; `hue` is their colour.
-    func sender(of message: Message) -> (name: String, avatarName: String, photoURL: String?, hue: PersonHue) {
-        if message.fromMe { return ("You", myAlias ?? "?", myPhotoURL, myHue) }
+    /// Who sent a message, by the rows' own rule (`People.sender(of:inTribe:)`);
+    /// lists, quotes and the viewer name them by `label`.
+    func sender(of message: Message) -> Sender {
         let conversation = conversations.first { $0.chat == message.chat }
-        if conversation?.isTribe ?? false {
-            let details = message.senderDetails
-            return (details.alias ?? "Someone", details.alias ?? "?", details.photoURL,
-                    hue(pubkey: message.chat, alias: details.alias, inTribe: true))
-        }
-        let name = conversation?.name ?? "Someone"
-        return (name, name, conversation?.photoURL, hue(pubkey: message.chat, alias: nil, inTribe: false))
+        return people(in: message.chat, conversation: conversation)
+            .sender(of: message, inTribe: conversation?.isTribe ?? false)
     }
 
     /// Whether Delete is offered: the engine's rule (`Message.isDeletable`),

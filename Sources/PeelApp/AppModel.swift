@@ -369,12 +369,20 @@ final class AppModel {
         newMessages?.chat == chat ? newMessages?.after : nil
     }
 
+    /// You, as the sidebar, Account, member lists and rows name you.
+    var me: Sender { Sender(alias: myAlias, photoURL: myPhotoURL, hue: myHue, isMe: true) }
+
     /// You and the contact, as a chat's rows name them.
     func people(in chat: String) -> ChatRow.People {
-        let contact = conversations.first { $0.chat == chat }
-        return ChatRow.People(
-            me: (myAlias ?? "You", myPhotoURL, myHue),
-            contact: (contact?.name ?? "Someone", contact?.photoURL, hue(pubkey: chat, alias: nil, inTribe: false))
+        people(in: chat, conversation: conversations.first { $0.chat == chat })
+    }
+
+    /// The same, with the chat's conversation already found.
+    func people(in chat: String, conversation: Conversation?) -> ChatRow.People {
+        ChatRow.People(
+            me: me,
+            contact: Sender(alias: conversation?.name, photoURL: conversation?.photoURL,
+                            hue: hue(pubkey: chat, alias: nil, inTribe: false))
         )
     }
 
@@ -783,18 +791,10 @@ final class AppModel {
     /// messages. Every other colour comes from `hue(pubkey:alias:inTribe:)`.
     private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
 
-    /// Someone who wrote or boosted in `chat`: you, a tribe member by
-    /// alias, or the contact (whose key is the chat's).
-    func hue(fromMe: Bool, alias: String?, chat: String, inTribe: Bool) -> PersonHue {
-        fromMe ? myHue : hue(pubkey: chat, alias: alias, inTribe: inTribe)
-    }
-
-    /// Someone in a boost or a thread: the initials, photo and colour their
-    /// avatar shows.
-    func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool)
-        -> (name: String, photoURL: String?, hue: PersonHue) {
-        (fromMe ? myAlias ?? "?" : alias ?? "?", fromMe ? myPhotoURL : photoURL,
-         hue(fromMe: fromMe, alias: alias, chat: chat, inTribe: inTribe))
+    /// Someone in a boost, a thread or a call: you, or who they said they
+    /// are (a tribe member by alias, or the contact, whose key is the chat's).
+    func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool) -> Sender {
+        fromMe ? me : Sender(alias: alias, photoURL: photoURL, hue: hue(pubkey: chat, alias: alias, inTribe: inTribe))
     }
 
     func hue(of member: TribeMember) -> PersonHue {

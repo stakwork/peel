@@ -87,9 +87,9 @@ private struct IdentitySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 20) {
-                Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 88, hue: model.myHue)
+                Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 88, hue: model.myHue)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.myAlias ?? "You")
+                    Text(model.me.name)
                         .font(Theme.font(24, .bold))
                         .lineLimit(1)
                     if let key = model.myPubkey {

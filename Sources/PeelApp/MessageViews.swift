@@ -1,9 +1,30 @@
 import SwiftUI
 import PeelCore
 
-/// What a reply quotes: the parent, or a note that it is not here.
+/// Who sent something, as `ChatRow.People.sender(of:inTribe:)` names them:
+/// you, the contact, or a tribe member by the alias they sent.
+struct Sender: Equatable {
+    /// What someone who sent no name is called, everywhere.
+    static let unnamed = "Someone"
+
+    /// The name they go by; nil when they sent none.
+    var alias: String?
+    var photoURL: String?
+    /// Their colour, on their initials and name.
+    var hue: PersonHue
+    var isMe = false
+
+    /// Their name as a run header shows it: yours is your alias.
+    var name: String { alias ?? (isMe ? "You" : Self.unnamed) }
+    /// As quotes and lists name them: you are "You".
+    var label: String { isMe ? "You" : name }
+    /// What their avatar's initials come from: "?" with no name.
+    var avatarName: String { alias ?? "?" }
+}
+
+/// What a reply quotes: the parent and its sender, or a note that it is not here.
 enum Quote: Equatable {
-    case message(Message)
+    case message(Message, Sender)
     /// The parent is older than this Mac's history, or the link is broken.
     case missing
 }
@@ -12,7 +33,7 @@ enum Quote: Equatable {
 /// a message (or a run of one sender's images, or a collapsed thread), a
 /// request to join, or a note; in a thread also its original and the
 /// "N replies" line. Names and photos are decoded here, once per message.
-struct ChatRow: Identifiable {
+struct ChatRow: Identifiable, Equatable {
     enum Kind: Equatable {
         case message, request, note
         /// Sats sent in a direct message (type 5).
@@ -52,13 +73,9 @@ struct ChatRow: Identifiable {
     /// A call message (or text that is only a call link) that passed the
     /// checks against the account's call server: drawn as the call card.
     var call: CallLink?
-    var alias: String?
-    /// In a tribe, the member's alias as sent (`alias` falls back to
-    /// "Unknown"); nil in a direct message.
-    var member: String?
-    var photoURL: String?
-    /// The sender's colour, on their initials and name.
-    var hue: PersonHue
+    var sender: Sender
+    /// In a tribe, someone else's alias as sent; nil in a direct message.
+    var member: String? { inTribe && !sender.isMe ? sender.alias : nil }
     /// The sender's zone when they wrote it, if they shared one: the
     /// message's own offset, else the run's (`AppModel.withSenderZones`).
     /// Never for yours.
@@ -87,8 +104,18 @@ struct ChatRow: Identifiable {
     /// Who the rows name: you, and in a direct message the contact (a
     /// tribe's members name themselves on their messages).
     struct People {
-        var me: (name: String, photoURL: String?, hue: PersonHue)
-        var contact: (name: String, photoURL: String?, hue: PersonHue)
+        var me: Sender
+        var contact: Sender
+
+        /// The one way a message's sender is named: you, in a tribe the
+        /// member (decoded from the message), else the contact.
+        func sender(of message: Message, inTribe: Bool) -> Sender {
+            if message.fromMe { return me }
+            guard inTribe else { return contact }
+            let details = message.senderDetails
+            return Sender(alias: details.alias, photoURL: details.photoURL,
+                          hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
+        }
     }
 
     /// The rows of a chat (`threads` collapsed), or of a thread: with
@@ -121,7 +148,8 @@ struct ChatRow: Identifiable {
             // row, Tom 2026-10-08), or only "Original message not
             // available": "New messages" goes to the next.
             if message.isBlank, collapsed == nil, message.uuid.flatMap({ boosts[$0] }) == nil,
-               (quote(message, parents: parents, threadRoot: threadRoot) ?? .missing) == .missing { continue }
+               (quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people) ?? .missing)
+                == .missing { continue }
             // What counts as unread (`Storage.readStates`): text, attachments, payments.
             let startsNew = newAfter.map { message.countsAsUnread(after: $0) } ?? false
             if startsNew { newAfter = nil }
@@ -139,13 +167,13 @@ struct ChatRow: Identifiable {
                 : message.type == MessageType.invoice ? .paymentRequest
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
-            if kind == .message, !startsNew, let last = rows.last, last.takes(message, alias: row.alias) {
+            if kind == .message, !startsNew, let last = rows.last, last.takes(message, sender: row.sender) {
                 rows[rows.count - 1].images = (last.images.isEmpty ? [last.message] : last.images) + [message]
                 rows[rows.count - 1].message = message
                 continue
             }
             if kind == .message {
-                row.quote = quote(message, parents: parents, threadRoot: threadRoot)
+                row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
             row.startsNew = startsNew
@@ -181,7 +209,7 @@ struct ChatRow: Identifiable {
             let startsDay = !Calendar.current.isDate(row.date, inSameDayAs: previous.date)
             let startsRun = startsDay || row.startsNew || row.kind != .message || previous.kind != .message
                 || row.summary != nil || previous.summary != nil || previous.message.fromMe != row.message.fromMe
-                || row.date.timeIntervalSince(previous.date) > 5 * 60 || row.alias != previous.alias
+                || row.date.timeIntervalSince(previous.date) > 5 * 60 || row.sender.name != previous.sender.name
             rows[index - 1].endsRun = startsRun
             rows[index].startsDay = startsDay
             rows[index].startsRun = startsRun
@@ -189,38 +217,28 @@ struct ChatRow: Identifiable {
         return rows
     }
 
-    /// A row for one message, its sender's name and photo worked out once:
-    /// you, the contact, or in a tribe the member (decoded from the message).
+    /// A row for one message, its sender worked out once.
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
-        let sender: (alias: String?, photoURL: String?, hue: PersonHue)
-        var member: String?
-        if message.fromMe {
-            sender = (people.me.name, people.me.photoURL, people.me.hue)
-        } else if inTribe {
-            let details = message.senderDetails
-            member = details.alias
-            sender = (details.alias ?? "Unknown", details.photoURL,
-                      PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
-        } else {
-            sender = (people.contact.name, people.contact.photoURL, people.contact.hue)
-        }
-        return ChatRow(id: id, kind: kind, message: message, inTribe: inTribe, alias: sender.alias, member: member,
-                       photoURL: sender.photoURL, hue: sender.hue, date: message.date)
+        ChatRow(id: id, kind: kind, message: message, inTribe: inTribe,
+                sender: people.sender(of: message, inTribe: inTribe), date: message.date)
     }
 
     /// Only text and attachments are quoted, and not one with no words (it
     /// has no row to go to); a reply to the thread's own original is not,
-    /// inside that thread.
-    private static func quote(_ message: Message, parents: [String: Message], threadRoot: String?) -> Quote? {
+    /// inside that thread. The parent's sender is named here, not while drawing.
+    private static func quote(
+        _ message: Message, parents: [String: Message], threadRoot: String?, inTribe: Bool, people: People
+    ) -> Quote? {
         guard let reply = message.replyUUID, reply != threadRoot else { return nil }
         guard let parent = parents[reply] else { return .missing }
-        return parent.isContent && !parent.isBlank ? .message(parent) : nil
+        guard parent.isContent, !parent.isBlank else { return nil }
+        return .message(parent, people.sender(of: parent, inTribe: inTribe))
     }
 
     /// Whether `next` joins this row's run of images.
-    private func takes(_ next: Message, alias: String?) -> Bool {
+    private func takes(_ next: Message, sender: Sender) -> Bool {
         guard kind == .message, summary == nil, message.attachmentKind == .image, next.attachmentKind == .image,
-              (message.content ?? "").isEmpty, message.fromMe == next.fromMe, alias == self.alias,
+              (message.content ?? "").isEmpty, message.fromMe == next.fromMe, sender.name == self.sender.name,
               message.replyUUID == next.replyUUID, message.threadUUID == next.threadUUID,
               Self.settled(message), Self.settled(next),
               // A paid image is bought on its own, never in a grid.
@@ -235,6 +253,13 @@ struct ChatRow: Identifiable {
         return message.uploadState != .pending && message.uploadState != .failed
             && (message.delivery == .delivered || message.delivery == nil)
     }
+}
+
+extension EnvironmentValues {
+    /// From a quote to the message it quotes, in the list it sits in. Set
+    /// by `MessageList` on every redraw, so it looks in the rows of now
+    /// while the rows themselves (`MessageRow`, `Equatable`) stay as drawn.
+    @Entry var goToMessage: @MainActor @Sendable (Message) -> Void = { _ in }
 }
 
 /// A conversation's rows, newest at the bottom. `composer` is where a reply
@@ -298,9 +323,8 @@ struct MessageList: View {
                             }
                             switch row.kind {
                             case .message:
-                                MessageRow(row: row, composer: composer, flashed: flashed == row.id) {
-                                    go(to: $0, proxy: proxy)
-                                }
+                                MessageRow(row: row, composer: composer, flashed: flashed == row.id)
+                                    .equatable()
                             case .request:
                                 JoinRequestNote(message: row.message, approved: row.approved, canAnswer: canAnswer)
                                     .padding(.horizontal, 20)
@@ -308,11 +332,9 @@ struct MessageList: View {
                                 MembershipNote(message: row.message)
                                     .padding(.horizontal, 20)
                             case .payment:
-                                PaymentRow(row: row)
-                                    .background(flashed == row.id ? Theme.selection.opacity(0.45) : .clear)
+                                PaymentRow(row: row, flashed: flashed == row.id)
                             case .paymentRequest:
-                                PaymentRequestRow(row: row)
-                                    .background(flashed == row.id ? Theme.selection.opacity(0.45) : .clear)
+                                PaymentRequestRow(row: row, flashed: flashed == row.id)
                             case .missingOriginal:
                                 OriginalNotAvailable()
                                     .padding(.horizontal, 20)
@@ -325,6 +347,7 @@ struct MessageList: View {
                         .id(row.id)
                     }
                 }
+                .environment(\.goToMessage) { go(to: $0, proxy: proxy) }
                 .padding(.vertical, 12)
                 .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottomID) }
             }
@@ -629,16 +652,20 @@ struct RepliesDivider: View {
 /// rest of the run sits under it, with its time in the left gutter on
 /// hover. Yours are left-aligned too, on a faint accent tint. Hovering shows
 /// Reply and More at the row's top-right, as in Slack; right-click opens the
-/// same menu as More.
-struct MessageRow: View {
+/// same menu as More. `Equatable`, so a row whose `ChatRow` did not change
+/// is not drawn again when the list is.
+struct MessageRow: View, Equatable {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
     let row: ChatRow
     let composer: ComposerID
     var flashed = false
-    let goTo: (Message) -> Void
 
     @State private var hovering = false
+
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.row == b.row && a.composer == b.composer && a.flashed == b.flashed
+    }
 
     static let avatarSize: CGFloat = 32
     static let gutterSpacing: CGFloat = 10
@@ -663,13 +690,13 @@ struct MessageRow: View {
         let retryable = message.isRetryable(now: now)
         let uploading = message.fromMe && message.uploadState == .pending
         let menuOpen = presenter?.isOpen == true
-        let isSubject = presenter?.source == AnyHashable(row.id)
         let openThread = row.summary.map { model.openThread == ThreadRef(chat: $0.chat, uuid: $0.uuid) } ?? false
         return HStack(alignment: .top, spacing: Self.gutterSpacing) {
             // The gutter: the photo on a run's first row, the time on hover after it.
             Group {
                 if row.startsRun {
-                    Avatar(name: row.alias ?? "?", url: row.photoURL, size: Self.avatarSize, hue: row.hue)
+                    Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: Self.avatarSize,
+                           hue: row.sender.hue)
                         .personCard(PersonRef(row))
                 } else {
                     Text(message.date, format: .dateTime.hour().minute())
@@ -678,7 +705,7 @@ struct MessageRow: View {
                         .foregroundStyle(Theme.secondaryText)
                         .opacity(hovering ? 1 : 0)
                         .padding(.top, 3)
-                        .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.alias ?? "them") ?? "")
+                        .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.sender.name) ?? "")
                         .accessibilityHidden(true)
                 }
             }
@@ -688,7 +715,7 @@ struct MessageRow: View {
                     RunHeader(row: row)
                 }
                 MessageContent(
-                    row: row, goTo: goTo,
+                    row: row,
                     menu: { MessageMenu.entries(for: row, composer: composer, model: model, offersBoost: row.canBoost) },
                     tileMenu: { image in
                         var single = row
@@ -697,7 +724,7 @@ struct MessageRow: View {
                         return MessageMenu.entries(for: single, composer: composer, model: model)
                     }
                 )
-                .opacity(message.delivery == .pending && !retryable && !uploading ? 0.6 : 1)
+                .opacity(message.isSending(now: now) ? 0.6 : 1)
                 if let boosts = row.boosts {
                     BoostLine(boosts: boosts, chat: message.chat, inTribe: row.inTribe, showsChip: !message.deleted)
                 }
@@ -716,15 +743,7 @@ struct MessageRow: View {
         // line spacing, so two read as two (design README, Flat rows).
         .padding(.top, row.startsRun ? 8 : 3)
         .padding(.bottom, row.endsRun ? 4 : 2)
-        .background {
-            if isSubject || flashed || openThread {
-                Theme.selection.opacity(0.45)
-            } else if hovering {
-                Theme.hover.opacity(0.55)
-            } else if message.fromMe {
-                Theme.accent.opacity(0.06)
-            }
-        }
+        .rowChrome(row, lit: flashed || openThread, hovering: hovering)
         // At the row's top-right, overlapping its top edge as Slack's does;
         // never over the text, which stops well short of the right edge.
         .overlay(alignment: .topTrailing) {
@@ -740,18 +759,58 @@ struct MessageRow: View {
     }
 }
 
-/// A run's header: the sender's name, the time and, for yours, the green
-/// bolt once the server has it. Someone whose offset was not yours gets
-/// their local time after yours ("20:05 · 14:05 local"), dropped rather
-/// than wrapped when the header would not fit on one line.
+extension Message {
+    /// Ours on its way: faint until the server has it, unless it may be
+    /// sent again or is still uploading (those show why instead).
+    func isSending(now: Date = .now) -> Bool {
+        delivery == .pending && !isRetryable(now: now) && !(fromMe && uploadState == .pending)
+    }
+}
+
+/// What every chat row (messages, payments, payment requests) draws behind
+/// itself: lit while `lit` or while its menu is open, else the hover, else
+/// yours on a faint accent tint.
+private struct RowChrome: ViewModifier {
+    @Environment(\.menuPresenter) private var presenter
+    let id: String
+    let fromMe: Bool
+    let lit: Bool
+    let hovering: Bool
+
+    func body(content: Content) -> some View {
+        content.background {
+            if lit || presenter?.source == AnyHashable(id) {
+                Theme.selection.opacity(0.45)
+            } else if hovering {
+                Theme.hover.opacity(0.55)
+            } else if fromMe {
+                Theme.accent.opacity(0.06)
+            }
+        }
+    }
+}
+
+extension View {
+    /// The row's chrome (`RowChrome`): `lit` while flashed, or for its open thread.
+    func rowChrome(_ row: ChatRow, lit: Bool, hovering: Bool) -> some View {
+        modifier(RowChrome(id: row.id, fromMe: row.message.fromMe, lit: lit, hovering: hovering))
+    }
+}
+
+/// A run's header: the sender's name (or a payment's `headline` in its
+/// place), the time and, for yours, the green bolt once the server has it.
+/// Someone whose offset was not yours gets their local time after yours
+/// ("20:05 · 14:05 local"), dropped rather than wrapped when the header
+/// would not fit on one line.
 struct RunHeader: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
+    var headline: Text?
 
     var body: some View {
         // The time the header shows (an image run's newest), in their zone.
         let date = row.message.date
-        let name = row.alias ?? "Unknown"
+        let name = row.sender.name
         let person = PersonRef(row)
         let tooltip = model.timeTooltip(date, zone: row.senderZone, name: name)
             ?? date.formatted(date: .complete, time: .shortened)
@@ -770,11 +829,15 @@ struct RunHeader: View {
     ) -> some View {
         let message = row.message
         return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(name)
-                .font(Theme.font(13, .semibold))
-                .foregroundStyle(row.hue.name)
-                .lineLimit(1)
-                .personCard(person)
+            if let headline {
+                headline
+            } else {
+                Text(name)
+                    .font(Theme.font(13, .semibold))
+                    .foregroundStyle(row.sender.hue.name)
+                    .lineLimit(1)
+                    .personCard(person)
+            }
             Text(message.date, format: .dateTime.hour().minute())
                 .font(Theme.font(12))
                 .monospacedDigit()
@@ -916,7 +979,6 @@ enum MessageMenu {
 /// A message's body on the row: the quote, the attachment, then the text.
 struct MessageContent: View {
     let row: ChatRow
-    let goTo: (Message) -> Void
 
     /// The row's menu, on everything but a run's image tiles, which each
     /// have their own (`tileMenu`), so an image is saved or deleted by itself.
@@ -934,7 +996,7 @@ struct MessageContent: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 if let quote = row.quote {
-                    QuoteView(quote: quote, goTo: goTo)
+                    QuoteView(quote: quote)
                         .rowMenu(row.id, menu)
                 }
                 if message.attachmentKind != nil {
@@ -1014,9 +1076,8 @@ struct MessageText: View {
 /// The message a reply answers: who and what, one line, with a small image
 /// or file mark for an attachment. Click to go to it.
 struct QuoteView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.goToMessage) private var goTo
     let quote: Quote
-    let goTo: (Message) -> Void
 
     var body: some View {
         switch quote {
@@ -1026,15 +1087,14 @@ struct QuoteView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.quote, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        case .message(let parent):
+        case .message(let parent, let sender):
             Button { goTo(parent) } label: {
                 HStack(spacing: 8) {
                     if parent.attachmentKind != nil {
                         AttachmentMark(message: parent, size: 32)
                     }
                     VStack(alignment: .leading, spacing: 1) {
-                        let sender = model.sender(of: parent)
-                        Text(sender.name)
+                        Text(sender.label)
                             .font(Theme.font(12, .semibold))
                             .foregroundStyle(sender.hue.name)
                         Text(parent.preview)

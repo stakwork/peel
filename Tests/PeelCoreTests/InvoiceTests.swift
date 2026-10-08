@@ -99,6 +99,52 @@ struct InvoiceTests {
         #expect(lunch.incoming && lunch.note == "lunch" && lunch.amountMsat == 5000)
     }
 
+    @Test func tribeFeesAndOldPingsAreTiedToWhatTheyPaidFor() async throws {
+        let storage = try profile.storage()
+        let tribe = "02tribe"
+        var commit = Storage.Commit(contacts: [(dm, true)])
+        commit.tribes = [Tribe(pubkey: tribe, name: "hive")]
+        commit.messages = [
+            // Posted here: the fee's hash is kept.
+            (.fixture(uuid: uuid(1), chat: tribe, fromMe: true, content: "gm", msat: 3000, timestamp: 1000,
+                      paymentHash: hash(1), status: "COMPLETE"), false, nil),
+            // Posted here, the server has no row for it: never listed.
+            (.fixture(uuid: uuid(2), chat: tribe, fromMe: true, msat: 3000, timestamp: 1500,
+                      paymentHash: hash(2), status: "COMPLETE"), false, nil),
+            // From another device: the tribe's copies carry no payment.
+            (.fixture(uuid: uuid(3), type: MessageType.boost, chat: tribe, fromMe: true, content: nil,
+                      timestamp: 20000, amountMsat: 21000), false, nil),
+            (.fixture(uuid: uuid(4), chat: tribe, fromMe: true, timestamp: 40000), false, nil),
+            // Two posts beside one row: which one paid is unknown.
+            (.fixture(uuid: uuid(5), chat: tribe, fromMe: true, timestamp: 60000), false, nil),
+            (.fixture(uuid: uuid(6), chat: tribe, fromMe: true, timestamp: 60001), false, nil),
+            // A boost to a contact still offline, its ping sent before pings were recorded.
+            (.fixture(uuid: uuid(7), type: MessageType.boost, chat: dm, fromMe: true, content: nil, timestamp: 80000,
+                      tag: "t7", paymentHash: hash(7), status: "PENDING", amountMsat: 21000), false, nil),
+        ]
+        commit.payments = PaymentRecord.decode("""
+            [{"amt_msat":3000,"rhash":"\(hash(1))","ts":1000},
+             {"amt_msat":21000,"rhash":"\(hash(3))","ts":20003},
+             {"amt_msat":3000,"rhash":"\(hash(4))","ts":40002},
+             {"amt_msat":3000,"rhash":"\(hash(5))","ts":60000},
+             {"amt_msat":1000,"rhash":"\(hash(8))","ts":80001}]
+            """)
+        _ = try storage.apply(commit)
+
+        let items = try #require(try await first(storage.paymentHistory(limit: 50)))
+        #expect(items.map(\.paymentHash) == [hash(7), hash(5), hash(4), hash(3), hash(1)])
+        let boost = items[0]
+        #expect(boost.kind == .boost && boost.status == .pending && boost.pingMsat == 1000)
+        #expect(items[1].kind == .keysend && items[1].chat == nil)
+        let oldPost = items[2]
+        #expect(oldPost.kind == .messageFee && oldPost.message?.uuid == uuid(4))
+        let otherDevice = items[3]
+        #expect(otherDevice.kind == .boost && otherDevice.isTribe && otherDevice.amountMsat == 21000)
+        let fee = items[4]
+        #expect(fee.kind == .messageFee && fee.isTribe && fee.chatName == "hive" && fee.note == nil)
+        #expect(fee.message?.content == "gm" && fee.status == .complete)
+    }
+
     // MARK: Paying: never twice
 
     private func outgoing(_ status: InvoiceRecord.Status, tag: String = "t1") -> InvoiceRecord {

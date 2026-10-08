@@ -902,7 +902,7 @@ public actor Engine {
     /// What a boost with this tip pays: in a tribe its price per message and
     /// escrow (`Tribe.paymentPriceMsat`) plus the tip, else the tip; nil if
     /// it cannot be counted.
-    private static func boostTotalMsat(tipMsat: UInt64, in tribe: Tribe?) -> UInt64? {
+    static func boostTotalMsat(tipMsat: UInt64, in tribe: Tribe?) -> UInt64? {
         let (total, overflow) = (tribe?.paymentPriceMsat ?? 0).addingReportingOverflow(tipMsat)
         return overflow ? nil : total
     }

@@ -2,8 +2,9 @@
 
 Peel is a native Sphinx chat client written from scratch in Swift on the shared
 Rust core. Read `docs/PLAN.md` first (architecture and phase index), then the
-phase you are working on under `docs/phases/`: each says what is done, what is
-in progress and what comes next. Update it when you finish something.
+phase you are working on under `docs/phases/`: each opens with a short status
+(built, open, decided) above its journal. Update both when you finish
+something.
 
 ## Project layout
 

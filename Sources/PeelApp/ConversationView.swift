@@ -63,7 +63,9 @@ private struct ChatColumn: View {
             // the bottom of them rather than of an empty list.
             .id(model.timeline.messages.isEmpty ? nil : conversation.chat)
             if let notice = model.conversationNotices[conversation.chat] {
-                ConversationNotice(text: notice) { model.dismissNotice(in: conversation.chat) }
+                NoticeBar(text: notice) { model.dismissNotice(in: conversation.chat) }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 6)
             }
             if let tribe, !tribe.canPost {
                 TribeStatusBar(conversation: conversation, tribe: tribe)
@@ -87,9 +89,10 @@ private struct ChatColumn: View {
     }
 }
 
-/// An error that belongs to this conversation, such as a send the server
-/// refused. Quiet, not red: nothing was destroyed.
-struct ConversationNotice: View {
+/// An error to show until dismissed: one that belongs to a conversation,
+/// such as a send the server refused, or the engine's own across the main
+/// window. Quiet, not red: nothing was destroyed.
+struct NoticeBar: View {
     let text: String
     let dismiss: () -> Void
 
@@ -114,8 +117,6 @@ struct ConversationNotice: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .panelBoxed()
-        .padding(.horizontal, 20)
-        .padding(.top, 6)
     }
 }
 
@@ -292,7 +293,7 @@ struct TribeMembersPanel: View {
         do {
             members = try await model.tribeMembers(conversation.chat)
         } catch {
-            problem = "Could not load members: \(error)"
+            problem = "Could not load members: \(PeelError.readable(error))"
         }
     }
 
@@ -304,7 +305,7 @@ struct TribeMembersPanel: View {
                 in: conversation.chat, .member(pubkey: pubkey, alias: member.alias), approve: approve
             )
         } catch {
-            problem = "Could not \(approve ? "approve" : "decline"): \(error)"
+            problem = "Could not \(approve ? "approve" : "decline"): \(PeelError.readable(error))"
             return false
         }
         await load()
@@ -317,7 +318,7 @@ struct TribeMembersPanel: View {
             try await model.kick(pubkey, from: conversation.chat)
             await load()
         } catch {
-            problem = "Could not remove: \(error)"
+            problem = "Could not remove: \(PeelError.readable(error))"
         }
     }
 
@@ -326,7 +327,7 @@ struct TribeMembersPanel: View {
             try await model.leaveTribe(conversation.chat)
             done()
         } catch {
-            problem = "Could not leave: \(error)"
+            problem = "Could not leave: \(PeelError.readable(error))"
         }
     }
 }

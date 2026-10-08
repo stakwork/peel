@@ -418,7 +418,7 @@ public actor Engine {
         mentionScan = nil
         switch result {
         case .success: checkMentionsIfNeeded()
-        case .failure(let error): emit.yield(.coreError("checking mentions: \(error)"))
+        case .failure(let error): emit.yield(.coreError("checking mentions: \(PeelError.readable(error))"))
         }
     }
 
@@ -613,7 +613,7 @@ public actor Engine {
                 try await establish(inviteCode: nil)
                 break
             } catch {
-                emit.yield(.connectionError("\(error)"))
+                emit.yield(.connectionError(PeelError.readable(error)))
                 attempt += 1
             }
         }
@@ -1121,7 +1121,7 @@ public actor Engine {
         } catch {
             guard unsent else {
                 let message = "The connection failed while paying; the payment may have gone. "
-                    + "It stays unconfirmed until the server says (\(error))"
+                    + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
                 if let chat { emit.yield(.conversationError(chat: chat, message: message)) } else { emit.yield(.coreError(message)) }
                 return record
             }
@@ -1249,7 +1249,7 @@ public actor Engine {
             try storage.readBySending(in: pubkey)
         } catch {
             // Sent all the same; the next `getReads` brings the marker.
-            emit.yield(.coreError("marking read after sending: \(error)"))
+            emit.yield(.coreError("marking read after sending: \(PeelError.readable(error))"))
         }
         return sent?.tag
     }
@@ -2055,7 +2055,7 @@ public actor Engine {
                 try storage.save(changed)
                 for tribe in changed { tribes[tribe.pubkey] = tribe }
             } catch {
-                emit.yield(.coreError("saving tribes: \(error)"))
+                emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
             }
         }
     }
@@ -2285,7 +2285,7 @@ public actor Engine {
                 }
             } catch {
                 awaitingCounts = false
-                emit.yield(.historyFailed("unreadable message counts: \(error)"))
+                emit.yield(.historyFailed("unreadable message counts: \(PeelError.readable(error))"))
             }
         }
 
@@ -2402,7 +2402,7 @@ public actor Engine {
             do {
                 try await answerPurchase(purchase)
             } catch {
-                emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(error)"))
+                emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(PeelError.readable(error))"))
             }
         }
         if followUps.justRegistered {
@@ -2505,9 +2505,9 @@ public actor Engine {
             }
         } catch {
             if let expectedSender {
-                emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(error)"))
+                emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(PeelError.readable(error))"))
             } else {
-                emit.yield(.coreError("\(kind): \(error)"))
+                emit.yield(.coreError("\(kind): \(PeelError.readable(error))"))
             }
         }
     }
@@ -2531,7 +2531,7 @@ public actor Engine {
             do {
                 try await checkPendingSends()
             } catch {
-                emit.yield(.coreError("checking pending sends: \(error)"))
+                emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
             }
             if let run = history {
                 try await request(run)
@@ -2544,7 +2544,7 @@ public actor Engine {
                 try await syncMessages()
             }
         } catch {
-            emit.yield(.coreError("coming online: \(error)"))
+            emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }
     }
 

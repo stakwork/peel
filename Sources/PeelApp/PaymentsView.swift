@@ -454,14 +454,22 @@ struct SignedAmount: View {
     }
 }
 
+private extension AppModel {
+    /// The counterpart's colour, or the text colour when nobody is known.
+    func nameColour(of payment: PaymentItem) -> Color {
+        payment.counterpart == nil ? Theme.text : hue(of: payment).name
+    }
+}
+
 /// Who a payment was with: their photo, or for nobody known a dashed ring with a bolt.
 private struct PaymentAvatar: View {
+    @Environment(AppModel.self) private var model
     let item: PaymentItem
     let size: CGFloat
 
     var body: some View {
         if let name = item.counterpart {
-            Avatar(name: name, url: item.counterpartPhotoURL, size: size)
+            Avatar(name: name, url: item.counterpartPhotoURL, size: size, hue: model.hue(of: item))
         } else {
             Image(systemName: "bolt")
                 .font(.system(size: size * 0.45))
@@ -473,6 +481,7 @@ private struct PaymentAvatar: View {
 }
 
 private struct PaymentListRow: View {
+    @Environment(AppModel.self) private var model
     let item: PaymentItem
     let section: PaymentSection
     let selected: Bool
@@ -489,7 +498,7 @@ private struct PaymentListRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .font(Theme.font(14, .semibold))
-                        .foregroundStyle(Theme.text)
+                        .foregroundStyle(model.nameColour(of: item))
                     Text(item.subtitle)
                         .font(Theme.font(12.5))
                         .foregroundStyle(Theme.secondaryText)
@@ -592,6 +601,7 @@ private struct PaymentDetailPane: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
                     .font(Theme.font(14, .semibold))
+                    .foregroundStyle(model.nameColour(of: item))
                 Text(context)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
@@ -654,7 +664,9 @@ private struct QuotedMessage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("\(model.sender(of: message).name) · \(Formatting.when(message.date))")
+            let sender = model.sender(of: message)
+            (Text(sender.name).fontWeight(.semibold).foregroundColor(sender.hue.name)
+                + Text(" · \(Formatting.when(message.date))"))
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondaryText)
@@ -1201,7 +1213,7 @@ struct PaymentRequestRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: MessageRow.gutterSpacing) {
-            Avatar(name: row.alias ?? "?", url: row.photoURL, size: MessageRow.avatarSize)
+            Avatar(name: row.alias ?? "?", url: row.photoURL, size: MessageRow.avatarSize, hue: row.hue)
             VStack(alignment: .leading, spacing: 4) {
                 RunHeader(row: row)
                 card

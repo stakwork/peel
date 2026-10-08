@@ -238,7 +238,7 @@ struct SidebarHeader: View {
                 presenter?.show(entries, at: frame, source: "you")
             } label: {
                 HStack(spacing: 9) {
-                    Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 30)
+                    Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 30, hue: model.myHue)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 5) {
                             Text(model.myAlias ?? "You")
@@ -278,7 +278,8 @@ struct SidebarHeader: View {
             actions.append(.copy("Copy contact info", text: info))
         }
         return .sections(
-            [.view(AnyView(MenuIdentity(name: model.myAlias ?? "You", detail: detail, photoURL: model.myPhotoURL)))],
+            [.view(AnyView(MenuIdentity(name: model.myAlias ?? "You", detail: detail, photoURL: model.myPhotoURL,
+                                        hue: model.myHue)))],
             actions
         )
     }
@@ -289,10 +290,11 @@ private struct MenuIdentity: View {
     let name: String
     let detail: String
     let photoURL: String?
+    let hue: PersonHue
 
     var body: some View {
         HStack(spacing: 10) {
-            Avatar(name: name, url: photoURL, size: 34)
+            Avatar(name: name, url: photoURL, size: 34, hue: hue)
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
                     .font(Theme.font(14, .bold))
@@ -590,14 +592,16 @@ struct ConnectionCard: View {
 
 /// A contact's photo, or a tribe's icon.
 struct ConversationIcon: View {
+    @Environment(AppModel.self) private var model
     let conversation: Conversation
     let size: CGFloat
 
     var body: some View {
         if conversation.isTribe {
-            TribeIcon(name: conversation.name, url: conversation.photoURL, size: size)
+            TribeIcon(name: conversation.name, url: conversation.photoURL, pubkey: conversation.chat, size: size)
         } else {
-            Avatar(name: conversation.name, url: conversation.photoURL, size: size)
+            Avatar(name: conversation.name, url: conversation.photoURL, size: size,
+                   hue: model.hue(pubkey: conversation.chat, alias: nil, inTribe: false))
         }
     }
 }
@@ -607,10 +611,13 @@ struct ConversationIcon: View {
 struct TribeIcon: View {
     let name: String
     let url: String?
+    /// The tribe's key, which picks its colour from people's palette.
+    let pubkey: String
     let size: CGFloat
 
     var body: some View {
-        Avatar(name: name, url: url, size: size, shape: .roundedSquare)
+        Avatar(name: name, url: url, size: size, hue: PersonHue(pubkey: pubkey, alias: nil, inTribe: false),
+               shape: .roundedSquare)
     }
 }
 
@@ -635,7 +642,7 @@ struct JoinTribeForm: View {
                 .onChange(of: link) { info = nil; problem = nil }
             if let info {
                 HStack(alignment: .top, spacing: 10) {
-                    TribeIcon(name: info.name, url: info.img, size: 36)
+                    TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(info.name)
                             .font(Theme.font(14, .medium))
@@ -919,29 +926,26 @@ struct EmptyPlace: View {
 
 // MARK: - Shared
 
-/// A contact's photo, or their initial on a colour picked from their name.
-/// Only https photos are ever loaded.
+/// A person's photo, or their initials on their colour (`PersonHue`, from
+/// `AppModel.hue`); a tribe's the same on a rounded square, coloured by its
+/// key. Only https photos are ever loaded.
 struct Avatar: View {
     enum Shape { case circle, roundedSquare }
 
     let name: String
     let url: String?
     let size: CGFloat
+    let hue: PersonHue
     var shape: Shape = .circle
-
-    private static let tones: [Color] = [
-        Color(light: 0x7E9A8C, dark: 0x7E9A8C), Color(light: 0x9B8BB0, dark: 0x9B8BB0),
-        Color(light: 0xB08B7E, dark: 0xB08B7E), Color(light: 0x8E969C, dark: 0x8E969C),
-        Color(light: 0x5B8A72, dark: 0x5B8A72), Color(light: 0x3E6189, dark: 0x3E6189),
-    ]
 
     private var photo: URL? {
         url?.httpsOnly.flatMap(URL.init)
     }
 
-    /// Stable across launches, unlike `hashValue`.
-    private var tone: Color {
-        Self.tones[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % Self.tones.count]
+    /// "Tom Smith" and "Tom_Smith" are TS, "Bot" is B; a tribe its initial.
+    private var initials: String {
+        let words = name.split { $0 == " " || $0 == "_" }.prefix(shape == .roundedSquare ? 1 : 2)
+        return words.compactMap(\.first).map { String($0).uppercased() }.joined()
     }
 
     /// The fetched photo, kept with its URL so a view reused for another
@@ -959,12 +963,13 @@ struct Avatar: View {
             if let image {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
-                tone.overlay {
-                    // A tribe keeps its letter down to the sidebar's 18pt, since
-                    // the letter is how you find it; a small person shows colour.
-                    if size >= 24 || (shape == .roundedSquare && size >= 16) {
-                        Text(name.prefix(1).uppercased())
-                            .font(Theme.font(size * (size < 24 ? 0.55 : 0.42), .bold))
+                hue.avatarFill.overlay {
+                    // Initials down to the sidebar's 18pt (a tribe's 16pt):
+                    // the letter is how you find it there.
+                    if size >= (shape == .roundedSquare ? 16 : 18) {
+                        let initials = initials
+                        Text(initials)
+                            .font(Theme.font(size * (initials.count > 1 ? 0.38 : size < 24 ? 0.55 : 0.42), .bold))
                             .foregroundStyle(.white)
                     }
                 }

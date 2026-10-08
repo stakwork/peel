@@ -681,6 +681,8 @@ struct Session {
             "core error: \(message)"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
+        case .echoedAliases(let echoed):
+            "own tribe aliases: \(echoed.mapValues { $0.sorted() })"
         case .transfer(let id, let direction, let bytes, let total):
             "\(direction) \(id): \(bytes) of \(total) bytes"
         case .moneyReceived(let message):

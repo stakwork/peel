@@ -29,6 +29,9 @@ public actor Engine {
         /// The name or photo this account sends changed (by the user, or
         /// filled in by a restore).
         case profile(alias: String, photoURL: String?)
+        /// The aliases tribes echoed back on this account's messages changed
+        /// (`echoedOwnAliases`).
+        case echoedAliases([String: Set<String>])
         /// An attachment going up to or coming down from the memes server:
         /// bytes so far of the total, at most every 5% or 250 ms, and at the end.
         case transfer(messageID: Int64, direction: Direction, bytes: Int64, total: Int64)
@@ -394,6 +397,10 @@ public actor Engine {
     /// The name and photo this account sends with its messages.
     public var myAlias: String { alias }
     public var myPhotoURL: String? { photoURL.httpsOnly }
+    /// The aliases each tribe echoed back on this account's own messages,
+    /// by tribe; with the name, what a mention of it looks like there
+    /// (`ownMentionAliases`). Changes arrive as `.echoedAliases`.
+    public var echoedOwnAliases: [String: Set<String>] { echoedAliases }
 
     /// The name others see. Names are not core state and the server keeps no
     /// profile: it travels with each message sent from now on (and with a
@@ -2489,6 +2496,7 @@ public actor Engine {
         tribes = knownTribes
         if echoedAliases != self.echoedAliases {
             self.echoedAliases = echoedAliases
+            emit.yield(.echoedAliases(echoedAliases))
             checkMentionsIfNeeded()
         }
         self.droppedIndex = droppedIndex

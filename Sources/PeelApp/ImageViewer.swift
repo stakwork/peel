@@ -105,9 +105,9 @@ struct ImageViewer: View {
         let isTribe = conversation?.isTribe ?? false
         let sender = model.sender(of: current)
         return HStack(spacing: 10) {
-            Avatar(name: sender.avatarName, url: sender.photoURL, size: 32)
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: 32, hue: sender.hue)
             VStack(alignment: .leading, spacing: 1) {
-                Text(sender.name).font(Theme.font(14, .bold))
+                Text(sender.name).font(Theme.font(14, .bold)).foregroundStyle(sender.hue.name)
                 Text("\(isTribe ? "#" : "")\(conversation?.name ?? "") · \(Formatting.dayHeading(current.date)) \(current.date.formatted(.dateTime.hour().minute()))")
                     .font(Theme.font(12))
                     .monospacedDigit()

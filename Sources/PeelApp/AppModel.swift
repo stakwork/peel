@@ -87,6 +87,13 @@ final class AppModel {
     /// change of what they show rather than on every redraw.
     private(set) var chatRows: [ChatRow] = []
     private(set) var threadRows: [ChatRow] = []
+    /// The engine's aliases each tribe echoed back on your messages
+    /// (`Engine.echoedOwnAliases`), and from them and your name what a
+    /// mention of you looks like in each tribe and elsewhere
+    /// (`mentionAliases(in:)`), worked out when either changes.
+    @ObservationIgnored private var echoedAliases: [String: Set<String>] = [:]
+    private var tribeMentionAliases: [String: Set<String>] = [:]
+    private var plainMentionAliases: Set<String> = []
     /// Downloads, uploads and local copies of attachments, by message id;
     /// each observed on its own so a progress tick redraws only its tile.
     @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
@@ -94,7 +101,9 @@ final class AppModel {
     var myAlias: String?
     /// The photo sent with this account's messages, https or nil.
     var myPhotoURL: String?
-    var myContactInfo: String?
+    var myContactInfo: String? {
+        didSet { myHue = PersonHue(pubkey: myPubkey ?? "", alias: nil, inTribe: false) }
+    }
     /// The server this account talks to, as `host:port`.
     var myServer: String?
     var balanceMsat: UInt64? {
@@ -307,7 +316,8 @@ final class AppModel {
     func people(in chat: String) -> ChatRow.People {
         let contact = conversations.first { $0.chat == chat }
         return ChatRow.People(
-            me: (myAlias ?? "You", myPhotoURL), contact: (contact?.name ?? "Someone", contact?.photoURL)
+            me: (myAlias ?? "You", myPhotoURL, myHue),
+            contact: (contact?.name ?? "Someone", contact?.photoURL, hue(pubkey: chat, alias: nil, inTribe: false))
         )
     }
 
@@ -677,6 +687,56 @@ final class AppModel {
         myContactInfo?.split(separator: "_").first.map(String.init)
     }
 
+    /// What a mention of you (a gold chip) looks like in `chat`
+    /// (`ownMentionAliases`).
+    func mentionAliases(in chat: String) -> Set<String> {
+        tribeMentionAliases[chat] ?? plainMentionAliases
+    }
+
+    private func refreshMentionAliases() {
+        guard let name = myAlias?.nilIfEmpty else {
+            (tribeMentionAliases, plainMentionAliases) = ([:], [])
+            return
+        }
+        tribeMentionAliases = echoedAliases.mapValues { ownMentionAliases(name: name, echoed: $0) }
+        plainMentionAliases = ownMentionAliases(name: name, echoed: [])
+    }
+
+    // MARK: Person colours (direction D)
+
+    /// Yours, by your key everywhere, as the official apps key their own
+    /// messages. Every other colour comes from `hue(pubkey:alias:inTribe:)`.
+    private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
+
+    /// Someone who wrote or boosted in `chat`: you, a tribe member by
+    /// alias, or the contact (whose key is the chat's).
+    func hue(fromMe: Bool, alias: String?, chat: String, inTribe: Bool) -> PersonHue {
+        fromMe ? myHue : hue(pubkey: chat, alias: alias, inTribe: inTribe)
+    }
+
+    /// Someone in a boost or a thread: the initials, photo and colour their
+    /// avatar shows.
+    func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool)
+        -> (name: String, photoURL: String?, hue: PersonHue) {
+        (fromMe ? myAlias ?? "?" : alias ?? "?", fromMe ? myPhotoURL : photoURL,
+         hue(fromMe: fromMe, alias: alias, chat: chat, inTribe: inTribe))
+    }
+
+    func hue(of member: TribeMember) -> PersonHue {
+        hue(pubkey: member.pubkey, alias: member.alias, inTribe: true)
+    }
+
+    /// Who a payment was with (`counterpart`, when anyone is known).
+    func hue(of payment: PaymentItem) -> PersonHue {
+        hue(pubkey: payment.chat, alias: payment.counterpart, inTribe: payment.isTribe)
+    }
+
+    /// Someone known by their key: a contact, or a tribe member (by alias).
+    func hue(pubkey: String?, alias: String?, inTribe: Bool) -> PersonHue {
+        if let pubkey, pubkey == myPubkey { return myHue }
+        return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe)
+    }
+
     func signedIn() throws -> Engine {
         guard let engine else { throw PeelError("not signed in") }
         return engine
@@ -722,6 +782,8 @@ final class AppModel {
         myAlias = nil
         myPhotoURL = nil
         myContactInfo = nil
+        echoedAliases = [:]
+        refreshMentionAliases()
         myServer = nil
         money.reset()
         balanceMsat = nil
@@ -740,6 +802,8 @@ final class AppModel {
         myAlias = await engine.myAlias
         myPhotoURL = await engine.myPhotoURL
         myContactInfo = try? storage.value(for: .contactInfo)
+        echoedAliases = await engine.echoedOwnAliases
+        refreshMentionAliases()
         myServer = try? storage.value(for: .server)
         pinTimeoutHours = ((try? await engine.pinTimeoutHours()) ?? nil)
             ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
@@ -779,6 +843,8 @@ final class AppModel {
                 connectionError = message
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
+                // Your key keys your colour.
+                rebuildRows()
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
@@ -794,7 +860,11 @@ final class AppModel {
             case .profile(let alias, let photoURL):
                 myAlias = alias
                 myPhotoURL = photoURL
+                refreshMentionAliases()
                 rebuildRows()
+            case .echoedAliases(let echoed):
+                echoedAliases = echoed
+                refreshMentionAliases()
             case .historyFailed(let reason):
                 restoreProgress.outcome = .failed(reason)
                 notifier.historyEnded()

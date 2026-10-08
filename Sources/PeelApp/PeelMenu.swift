@@ -21,11 +21,13 @@ import SwiftUI
 struct MenuShortcut: Equatable {
     let key: Character
     var command = false
+    var option = false
 
-    var label: String { (command ? "⌘" : "") + String(key).uppercased() }
+    var label: String { (option ? "⌥" : "") + (command ? "⌘" : "") + String(key).uppercased() }
 
     static func key(_ key: Character) -> MenuShortcut { MenuShortcut(key: key) }
     static func command(_ key: Character) -> MenuShortcut { MenuShortcut(key: key, command: true) }
+    static func optionCommand(_ key: Character) -> MenuShortcut { MenuShortcut(key: key, command: true, option: true) }
 }
 
 struct MenuItem {
@@ -402,10 +404,10 @@ final class MenuPresenter {
         guard open.confirming == nil, let typed = event.charactersIgnoringModifiers?.lowercased().first else {
             return open.confirming != nil
         }
-        let command = event.modifierFlags.contains(.command)
+        let command = event.modifierFlags.contains(.command), option = event.modifierFlags.contains(.option)
         if let index = open.entries.firstIndex(where: {
             guard let shortcut = $0.item?.shortcut else { return false }
-            return Character(shortcut.key.lowercased()) == typed && shortcut.command == command
+            return Character(shortcut.key.lowercased()) == typed && shortcut.command == command && shortcut.option == option
         }) {
             choose(index)
             return true

@@ -51,6 +51,18 @@ struct PeelApp: App {
         #endif
 
         #if os(macOS)
+        // The call you are on (a placeholder until the call window, PR 5).
+        Window("Call", id: CallWindow.id) {
+            CallWindow()
+                .environment(model)
+                .tint(Theme.accent)
+                .preferredColorScheme(.dark)
+        }
+        .commandsRemoved()
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+        .windowResizability(.contentSize)
+
         // Development only; never listed, restored or opened without
         // `-callTestToken` and a development profile.
         Window("Test Room", id: CallTest.windowID) {

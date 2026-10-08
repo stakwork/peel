@@ -2,9 +2,9 @@
 
 Last updated 2026-10-08. The target layout and visual language for the Mac app.
 Most of it is built: the sidebar, flat message rows, tribes, replies and
-threads, attachments, Peel's menu and the Payments screen. Not built yet: the
-call button in the conversation header (phase 6) and the gaps each section's
-notes list. The phase files say what is left. The source mock lives on the canvas "Peel layout directions"
+threads, attachments, Peel's menu, the Payments screen, and the call card
+and header call button (boards C1 and C2). Not built yet: the call window
+(phase 6) and the gaps each section's notes list. The phase files say what is left. The source mock lives on the canvas "Peel layout directions"
 (direction D); the screenshots below are taken from it.
 
 ![Dark theme](layout-dark.png)

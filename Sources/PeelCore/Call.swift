@@ -33,17 +33,41 @@ public struct CallLink: Sendable, Equatable {
     /// The link in a call message's content, bare or in the `call::` form;
     /// nil for anything that does not pass the checks.
     public init?(message content: String, server: String) {
-        guard content.utf8.count <= Self.maxContent else { return nil }
+        guard let link = Self.linkText(in: content) else { return nil }
+        self.init(link: link, server: server)
+    }
+
+    /// The call a message links to, as the Mac app reads calls: a call
+    /// message, or text that is only a call link. Nil when deleted, and for
+    /// anything that does not pass the checks against `server`.
+    public init?(in message: Message, server: String) {
+        guard !message.deleted, [MessageType.call, MessageType.text].contains(message.type),
+              let content = message.content,
+              // Most text is no call: skip the parse (a room is never percent-encoded).
+              message.type == MessageType.call || content.contains(Self.roomPrefix) else { return nil }
+        self.init(message: content, server: server)
+    }
+
+    /// What a call message's content links to, unchecked: the `call::`
+    /// form's link, or the content itself. A call message that is not a
+    /// valid call shows this as plain text.
+    public static func linkText(in content: String) -> String? {
+        guard content.utf8.count <= maxContent else { return nil }
         let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.hasPrefix(Self.prefix) else {
-            self.init(link: text, server: server)
-            return
-        }
+        guard text.hasPrefix(prefix) else { return text }
         struct Form: Decodable { let link: String }
-        guard let form = try? JSONDecoder().decode(Form.self, from: Data(text.dropFirst(Self.prefix.count).utf8)) else {
-            return nil
-        }
-        self.init(link: form.link, server: server)
+        return (try? JSONDecoder().decode(Form.self, from: Data(text.dropFirst(prefix.count).utf8)))?.link
+    }
+
+    /// "Audio call" or "Video call", for a preview, when a call message's link (`linkText`)
+    /// reads as a room link on any host; nil otherwise. Only a label: whether it
+    /// is a call Peel joins is `init(message:server:)`'s to say.
+    public static func mode(ofLink link: String) -> String? {
+        guard let parts = URLComponents(string: link),
+              parts.percentEncodedPath.hasPrefix(roomsPath),
+              isRoom(String(parts.percentEncodedPath.dropFirst(roomsPath.count))) else { return nil }
+        let audio = parts.queryItems?.contains { $0.name == "startAudioOnly" && $0.value == "true" } == true
+        return audio ? "Audio call" : "Video call"
     }
 
     /// A link on `server` (`host[:port]`), checked as above.

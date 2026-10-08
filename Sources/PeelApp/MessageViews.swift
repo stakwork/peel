@@ -49,6 +49,9 @@ struct ChatRow: Identifiable {
     var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
     var purchase: PurchaseState?
+    /// A call message (or text that is only a call link) that passed the
+    /// checks against the account's call server: drawn as the call card.
+    var call: CallLink?
     var alias: String?
     /// In a tribe, the member's alias as sent (`alias` falls back to
     /// "Unknown"); nil in a direct message.
@@ -94,7 +97,7 @@ struct ChatRow: Identifiable {
     static func rows(
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
         boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
-        purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People,
+        purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People, callServer: String? = nil,
         threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
@@ -125,7 +128,7 @@ struct ChatRow: Identifiable {
                 rows.append(row)
                 continue
             }
-            let kind: Kind = message.isContent ? .message
+            let kind: Kind = message.isSaid ? .message
                 : message.type == MessageType.directPayment ? .payment
                 : message.type == MessageType.invoice ? .paymentRequest
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
@@ -145,6 +148,7 @@ struct ChatRow: Identifiable {
         }
         // Every message row, a collapsed thread's and a thread's original included.
         for index in rows.indices where rows[index].kind == .message {
+            rows[index].call = callServer.flatMap { CallLink(in: rows[index].message, server: $0) }
             rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
             rows[index].purchase = rows[index].message.id.flatMap { purchases[$0] }
         }
@@ -783,7 +787,9 @@ enum MessageMenu {
     ) -> [MenuEntry] {
         let message = row.message
         var copy: [MenuEntry] = []
-        if let text = message.content?.trimmed.nilIfEmpty {
+        if let call = row.call {
+            copy = CallCard.menuEntries(call)
+        } else if let text = message.shownText.nilIfEmpty {
             copy.append(.copyText(text))
         }
         // A run of images: what acts on one image is on that tile's own menu.
@@ -830,7 +836,7 @@ enum MessageMenu {
             }
         }
         var unread: [MenuEntry] = []
-        if !message.fromMe, message.isContent, !message.deleted, message.serverIndex != nil {
+        if !message.fromMe, message.isSaid, !message.deleted, message.serverIndex != nil {
             // A run of images: from its first.
             let first = row.images.first ?? message
             unread.append(.button("Mark unread from here", systemImage: "envelope.badge") {
@@ -859,7 +865,7 @@ struct MessageContent: View {
 
     var body: some View {
         let message = row.message
-        let text = message.content?.trimmed ?? ""
+        let text = message.shownText
         if message.deleted {
             Label("This message has been deleted", systemImage: "trash")
                 .font(Theme.font(13))
@@ -878,7 +884,10 @@ struct MessageContent: View {
                         AttachmentView(row: row).rowMenu(row.id, menu)
                     }
                 }
-                if !text.isEmpty {
+                if let call = row.call {
+                    CallCard(row: row, link: call)
+                        .rowMenu(row.id, menu)
+                } else if !text.isEmpty {
                     MessageText(text: text, chat: message.chat)
                         .rowMenu(row.id, menu)
                 }

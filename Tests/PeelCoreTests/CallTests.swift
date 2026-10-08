@@ -183,3 +183,43 @@ struct StartCallTests {
         #expect(await engine.callLink(in: deleted) == nil)
     }
 }
+
+struct CallMessageTests {
+    @Test func linkTextIsWhatAnInvalidCallShows() {
+        #expect(CallLink.linkText(in: #"call::{"link":"https://meet.jit.si/x","recurring":false}"#) == "https://meet.jit.si/x")
+        #expect(CallLink.linkText(in: " https://jitsi.sphinx.chat/sphinx.call.1 \n") == "https://jitsi.sphinx.chat/sphinx.call.1")
+        #expect(CallLink.linkText(in: "call::not json") == nil)
+        #expect(CallLink.linkText(in: String(repeating: "a", count: CallLink.maxContent + 1)) == nil)
+    }
+
+    @Test func aCallPreviewsAsItsMode() {
+        let video = Message.fixture(type: MessageType.call, content: #"call::{"link":"\#(base)\#(room)"}"#)
+        let audio = Message.fixture(type: MessageType.call, content: "\(base)\(room)?startAudioOnly=true")
+        let jitsi = Message.fixture(type: MessageType.call, content: "https://jitsi.sphinx.chat/meet")
+        #expect(video.preview == "Video call")
+        #expect(audio.preview == "Audio call")
+        #expect(jitsi.preview == "https://jitsi.sphinx.chat/meet")
+        let form = Message.fixture(type: MessageType.call, content: #"call::{"link":"https://meet.jit.si/x"}"#)
+        #expect(form.preview == "https://meet.jit.si/x")
+        let failed = Message.fixture(type: MessageType.call, fromMe: true, content: "\(base)\(room)", status: "FAILED")
+        #expect(failed.isDiscardable && !failed.isRetryable())
+        // Text that is a call link keeps its words.
+        #expect(Message.fixture(type: MessageType.text, content: "\(base)\(room)").preview == "\(base)\(room)")
+    }
+
+    @Test func callsShowCountAsUnreadAndStayOutOfContent() {
+        #expect(MessageType.shownInChats.contains(MessageType.call))
+        #expect(MessageType.unreadTypes.contains(MessageType.call))
+        #expect(!MessageType.content.contains(MessageType.call))
+        #expect(!MessageType.resendable.contains(MessageType.call))
+        #expect(Message.fixture(serverIndex: 5, type: MessageType.call, content: "\(base)\(room)").countsAsUnread(after: 4))
+        #expect(!Message.fixture(serverIndex: 5, type: MessageType.call, fromMe: true).countsAsUnread(after: 4))
+    }
+
+    @Test func aMessageIsACallOnlyAgainstTheCallServer() {
+        let call = Message.fixture(type: MessageType.call, content: "\(base)\(room)")
+        #expect(CallLink(in: call, server: server)?.room == room)
+        #expect(CallLink(in: call, server: "calls.example.com") == nil)
+        #expect(CallLink(in: .fixture(type: MessageType.text, content: "hello"), server: server) == nil)
+    }
+}

@@ -14,7 +14,7 @@ struct ThreadPanel: View {
         let composer = ComposerID.thread(ref)
         let tribe = conversation.isTribe ? model.selectedTribe : nil
         VStack(spacing: 0) {
-            DetailHeader(title: "Thread", subtitle: conversation.isTribe ? "#\(conversation.name)" : conversation.name) {
+            DetailHeader(title: "Thread", subtitle: conversation.title) {
                 EmptyView()
             } trailing: {
                 HeaderButton(systemImage: "xmark", help: "Close thread (Escape)") {

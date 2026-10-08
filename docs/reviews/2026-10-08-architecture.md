@@ -142,6 +142,7 @@ The same person shows as "Unknown" in a row and "Someone" in its quote.
 - Status literals are inline: `'PENDING'`/`'FAILED'`/`'COMPLETE'` at `:191,624,1331`. #26 adds `'UNSETTLED'` in more places.
 
 *Fix:* add `static let tribeChats = "SELECT pubkey FROM tribe"` and bind `Message.Delivery` raw values as arguments.
+*Done 2026-10-08 (#60), in part:* `tribeChats` replaces the four copies of that exact subquery. The status literals stay inline: `status = ?` would stop `pendingSends` using the partial index `message_pending`, and `setStatus` compares `?1` with them throughout.
 
 **1.8 Image caches, 2 (low).** `PhotoCache` (`MainView.swift:901`, remote URLs) and `ImageCache` (`ChatModel.swift:401`, local files) both wrap `ImageDecoding.thumbnail` with in-flight dedupe. *Fix:* one `ImageLoader` with a URL key and two fetchers, in its own file.
 
@@ -212,7 +213,7 @@ See the table above. The proposed splits are all move-only and none change behav
 - `Engine.Event.moneyReceived` is ignored by the app (`AppModel.swift:647`); only the CLI prints it. Keep it if the Payments screen (04 plan) will use it, and say so in the doc comment. *Done 2026-10-08:* the app uses it and `.invoicePaid` (`04-money.md`, "Sats received").
 - `Detail` `.payments` is a placeholder (`MainView.swift:765`), while `Storage.payments()` exists.
 
-*Fix:* delete the first two and rewrite their tests against `timeline`.
+*Fix:* delete the first two and rewrite their tests against `timeline`. *Done 2026-10-08 (#60).*
 
 **Stale docs (low-med).**
 - `docs/PLAN.md:107`, phase 3 row: "attachments on `phase3/attachments`, UI to come". The UI shipped.

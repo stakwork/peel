@@ -57,6 +57,8 @@ is a short plan. Update the status and the journal when you finish something.
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
   `buttonProgress`, the spinner inside a running button);
+  `TimeZoneViews` (the run header's "14:05 local", the DM header's local
+  time, the hover card, a chat's details panel with the time zone switch);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival)
@@ -149,7 +151,7 @@ fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
-times, the v14 column on stored history); and the whole migration chain from a v1
+times, a sender's zone at a moment for a page of runs, the v14 column on stored history); and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.

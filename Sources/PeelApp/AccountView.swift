@@ -43,6 +43,7 @@ struct AccountView: View {
                             }
                         }
                     }
+                    TimeZoneSection()
                     SettingsGroup("Security") {
                         if model.profile?.requiresPIN == true {
                             ChangePINRow()
@@ -586,6 +587,211 @@ private struct WordsRow: View {
         visible = false
         confirmingCopy = false
         copiedAt = nil
+    }
+}
+
+// MARK: - Time zone
+
+/// The zone your offset comes from (this Mac's, or one chosen from a
+/// searchable list, `ZonePicker`), and how many chats it goes to.
+private struct TimeZoneSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var chosen: String?
+    @State private var picking = false
+    @State private var hovering = false
+    @State private var problem: String?
+    @State private var shared: Int?
+
+    /// What is sent: the chosen zone, else this Mac's.
+    private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
+
+    var body: some View {
+        SettingsGroup("Time zone") {
+            SettingsRow("Time zone") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button { picking = true } label: {
+                        HStack(spacing: 8) {
+                            Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
+                                .lineLimit(1)
+                            Text(TimeZoneOffset.format(zone))
+                                .foregroundStyle(Theme.secondaryText)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        .font(Theme.font(13))
+                        .monospacedDigit()
+                        .dropdownBoxed(hovering: hovering)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering = $0 }
+                    .fixedSize()
+                    .peelPopover(isPresented: $picking) {
+                        ZonePicker(chosen: chosen) { identifier in
+                            picking = false
+                            Task { await choose(identifier) }
+                        }
+                    }
+                    note(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.")
+                }
+            }
+            GroupDivider()
+            SettingsRow("Shared in") {
+                VStack(alignment: .leading, spacing: 2) {
+                    switch shared {
+                    case nil: EmptyView()
+                    case 0: Text("No chats")
+                    case let count?:
+                        Text("\(count == 1 ? "1 chat" : "\(count) chats") \(Text("· as \(TimeZoneOffset.format(zone))").foregroundStyle(Theme.secondaryText))")
+                            .monospacedDigit()
+                    }
+                    note("Every direct message and private tribe, unless you turn it off in that chat's details. Never in public tribes. Each message carries the offset of the moment it is sent, so it follows summer time. You see other people's local time either way.")
+                }
+            }
+        }
+        .task { chosen = try? await model.engine?.chosenTimeZone() }
+        .task(id: model.conversations.count) { await countShared() }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.font(12))
+            .foregroundStyle(Theme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func choose(_ identifier: String?) async {
+        do {
+            try await model.setTimeZone(identifier)
+            chosen = identifier
+            problem = nil
+        } catch {
+            problem = "Could not change it: \(PeelError.readable(error))"
+        }
+    }
+
+    /// Every chat whose messages carry the offset now.
+    private func countShared() async {
+        guard let engine = model.engine else { return }
+        var count = 0
+        for conversation in model.conversations {
+            if (try? await engine.offsetShared(in: conversation.chat)) != nil { count += 1 }
+        }
+        shared = count
+    }
+}
+
+/// Automatic, then every zone this Mac knows, filtered as you type a city
+/// or an offset.
+private struct ZonePicker: View {
+    let chosen: String?
+    let choose: (String?) -> Void
+
+    struct Zone: Identifiable {
+        let id: String
+        let label: String
+        let offset: String
+        /// What a search matches, lowercased once.
+        let searched: String
+    }
+
+    @State private var query = ""
+    @FocusState private var focused: Bool
+    /// Offsets as of opening, so they follow summer time.
+    @State private var zones: [Zone] = []
+
+    /// "America/New York".
+    static func label(_ identifier: String) -> String {
+        identifier.replacingOccurrences(of: "_", with: " ")
+    }
+
+    static var automatic: String { "Automatic · \(TimeZone.current.identifier)" }
+
+    var body: some View {
+        let query = query.trimmed.lowercased()
+        let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.secondaryText)
+                TextField("Search cities or GMT+…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(Theme.font(13))
+                    .focused($focused)
+                    .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
+            }
+            .fieldBoxed()
+            .padding(.bottom, 4)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if query.isEmpty {
+                        ZoneRow(title: "Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
+                                checked: chosen == nil) { choose(nil) }
+                        Theme.divider.frame(height: 1).padding(.vertical, 4)
+                        SectionLabel("All time zones")
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                    }
+                    ForEach(matches) { zone in
+                        ZoneRow(title: zone.label, detail: zone.offset, checked: zone.id == chosen) { choose(zone.id) }
+                    }
+                    if matches.isEmpty {
+                        Text("No time zone matches.")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .padding(8)
+                    }
+                }
+            }
+            .frame(height: 300)
+        }
+        .padding(8)
+        .frame(width: 320)
+        .onAppear {
+            focused = true
+            zones = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
+                TimeZone(identifier: id).map { zone in
+                    let label = Self.label(id), offset = TimeZoneOffset.format(zone)
+                    return Zone(id: id, label: label, offset: offset, searched: "\(label) \(offset)".lowercased())
+                }
+            }
+        }
+    }
+}
+
+private struct ZoneRow: View {
+    let title: String
+    let detail: String
+    let checked: Bool
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12))
+                    .opacity(checked ? 1 : 0)
+                    .frame(width: 16)
+                Text(title)
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                Text(detail)
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+            }
+            .font(Theme.font(13))
+            .monospacedDigit()
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(hovering ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }
 

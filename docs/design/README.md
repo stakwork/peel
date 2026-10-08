@@ -583,9 +583,10 @@ and what was not in `../phases/04-money.md`.
 Researched and designed 2026-10-08, second pass after Tom's review the same
 day. Boards T1–T6 and T3a–T3c on the "Peel layout directions" canvas (row
 "Time zones"). **Engine built** (plan steps 1–3, `Sources/PeelCore/TimeZones.swift`,
-migration v14); the UI (steps 4–5) is next, sync (step 6) later. What was
-built and where it differs from the plan: "Built (steps 1–3)" at the end of
-this section.
+migration v14) and **the UI** (steps 4–5, `Sources/PeelApp/TimeZoneViews.swift`
+and Account's "Time zone" group); sync (step 6) later. What was built and
+where it differs from the plan: "Built (steps 1–3)" and "Built (steps 4–5)"
+at the end of this section.
 
 The official apps let each person share their time zone, and show the other
 side's local time in a DM header and on tribe messages. Peel keeps their
@@ -724,15 +725,16 @@ questions, the same day:
 4. **Sent on every message** in a chat where the switch is on.
 5. **You still see their time** when yours is hidden.
 6. **T3a:** the sender's local time on each run, always visible.
-7. **The glyph form,** a clock and "14:05", not "14:05 local"; the glyph's
-   accessibility label and the tooltip keep the words ("14:05 local time for
-   Lena Okafor").
+7. **Word form, not glyph** (Tom, 2026-10-08, reversing the first answer of
+   a clock glyph and "14:05"): the run label reads "14:05 local"; its
+   accessibility label and tooltip keep the full words ("14:05 local time
+   for Lena Okafor"). No glyph in the DM header either.
 8. Reporting the official apps' DM switch bug upstream is still open.
 
 What that gives:
 
 - **DM header and profile top, one line** (T1). Under the contact's name,
-  in secondary text: a clock and "02:14 local time · 6 h ahead". The same
+  in secondary text: "02:14 local time · 6 h ahead", no clock. The same
   line sits under the name at the top of the contact's profile. Only when
   their offset differs from yours. It moves on with the minute. The words
   stay here, unlike the run label: the line carries the offset as well and
@@ -740,8 +742,8 @@ What that gives:
 - **Hover card** (T2): photo, name, short key, then a clock and "**14:05**
   local time · 6 h behind", with the offset they sent under it.
 - **The sender's local time on each run** (T3a). In the run header, after
-  your time: "Lena Okafor  20:05  ◷ 14:05" (the clock is a drawn icon, not
-  the character). Rules:
+  your time: "Lena Okafor  20:05 · 14:05 local" (word form, decision 7).
+  Rules:
   - the run header only, never on a continuation message;
   - only when the sender's offset differs from yours; your own runs never;
     anyone who sends no offset never;
@@ -749,7 +751,7 @@ What that gives:
     conversation background, 4.7:1 on the thread panel), 12 pt, tabular
     figures, so the times do not jitter run to run;
   - the accessibility label is "14:05 local time for Lena Okafor", and
-    hovering the glyph shows a tooltip with the words and the offset
+    hovering the label shows a tooltip with the words and the offset
     ("00:37 local time for Priya Nair · GMT+5:30");
   - the time *they had when they wrote it*: the offset on the run's first
     message, else their latest one if it is within 90 days of that message,
@@ -1061,10 +1063,68 @@ writes no rows for chats nobody touched; turning a chat off writes
   refresh only reads stored tribes' own hosts; a missing `private` field
   stores public.
 
-For the UI PR: the run header's rule (the run's first message's offset, else
-the sender's latest within 90 days of it) needs a per-alias lookup at a given
-time; `localTime` answers for now only. `Engine.offsetShared(in:)` and
-`TimeZoneOffset.format` give the switch note its "GMT+1".
+### Built (steps 4–5, 2026-10-08)
+
+- **Run label** (T3a, word form): `RunHeader` shows "· 14:05 local" in
+  `Theme.tertiaryText` (`#808D9E` dark, `#6B737C` light), 12 pt, tabular
+  figures, from `ChatRow.senderZone`. `AppModel.withSenderZones` sets it once
+  per rows rebuild: the run's first message's own offset, else one storage
+  sender's newest earlier on the page, else one storage query for the
+  page, one answer per sender at their first such run
+  (`Storage.senderTimeZones`: the newest offset at or before it and within
+  90 days, by alias in a tribe; the newest readable of its five newest),
+  kept for the open chat (`senderZoneCache`) so a rebuild asks only for
+  senders not asked yet. It runs on the main actor with the rows rebuild. The rest of a run take their own
+  offset or the run's, for the time tooltip. Compared at the message's
+  moment, so a summer-time change is right, with **this Mac's zone**, the one
+  every time on screen is in: a zone chosen in Account is what you send, not
+  what you see (the same for the DM header's "6 h ahead"). Dropped by a
+  `ViewThatFits` when the header would not fit on one line.
+- **Time tooltip:** a run header's time, and a continuation's gutter time,
+  read "20:02 your time · 02:02 for Evan" when the offsets differ; otherwise
+  the full date as before.
+- **DM header and details** (T1): `DirectHeader`, a minute `TimelineView`
+  over `localTimeLine`, refetched when a new message arrives. "The top of
+  the profile" is the DM's details panel: the header's new info button
+  (`ChatInfoPanel`, a `peelPopover`), photo, name, short key and the same
+  line. Tribes get the same button.
+- **Hover card** (T2): `PersonCard` on a run's name and avatar, in a third
+  `FloatingWindow` of `MenuPresenter` that never takes the keyboard
+  (`takesKey` false, `hide()`); it shows after 0.5 s at rest, moves
+  between triggers in 0.15 s, goes 0.2 s after the pointer leaves the
+  trigger and the card, and never over an open menu or panel (opening one
+  hides it). Photo, name, a contact's short key, then "**14:05** local time
+  · 6 h behind" (or "same as yours") and "GMT-5 · sent 2 min ago". Not on
+  your own messages, nor a tribe member without an alias. No Message or
+  Copy key buttons yet.
+- **Per-chat switch** (T6), in the details panel: a switch "Share my time
+  zone with Evan" (or "#Name"), on unless turned off, with the default-on
+  note ("Sends your offset, GMT+1, with each message you send here[, to every
+  member and the tribe's server]. Turning it off stops sending; Evan keeps
+  the last one you sent."); "Uses Asia/Bangkok, set on another device." when
+  the chat's row has its own zone. A public tribe: "Your time zone is never
+  sent in public tribes." and no switch.
+- **Account › Time zone** (T4): the zone (Automatic · this Mac's, or a chosen
+  name) opening a searchable `ZonePicker` panel (a `peelPopover`, since the
+  menu's keys would swallow typing); "Shared in" counts the chats
+  `offsetShared` says go out ("2 chats · as GMT+1" or "No chats").
+- **Verified** on the local stack with three development profiles (London,
+  TZ=America/Chicago, TZ=Asia/Kolkata): run labels in a private tribe and a
+  DM, the fallback for a message sent with sharing off, the thread panel,
+  the hover card, the DM header, the details panel of a DM, a private and a
+  public tribe, and Account with the picker open. Not driven by hand (no
+  pointer events from the session): hover timing and the switch's click.
+- **Review findings not applied** (kept to the UI and one storage query, as
+  briefed): an engine operation for a chat's whole time zone status and for
+  the "Shared in" count (the details panel makes four reads and Account
+  loops `offsetShared` per chat); the page's sender zone query off the main
+  actor; one notion of "yours" in PeelCore (`LocalTime.difference` is still
+  against the account's zone, the app's against this Mac's); reusing the
+  menu's private `MenuRow` and `TribeViews`' `ToggleLabel`; a layered
+  dismiss path in `MenuPresenter` shared by menu, panel and card.
+- **Not done here:** the CLI half of step 5 (`whoami` printing the zone,
+  `contacts` with local times); agents (no agent flag exists yet, so "never
+  on agents" has nothing to key on).
 
 ### Open questions for Tom
 

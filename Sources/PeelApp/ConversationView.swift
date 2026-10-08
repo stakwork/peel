@@ -59,9 +59,9 @@ private struct ChatColumn: View {
                     PinnedMessageBar(message: pinned, tribe: tribe)
                 }
             } else {
-                DetailHeader(title: conversation.name) {
-                    ConversationIcon(conversation: conversation, size: 32)
-                }
+                // Its own per contact, so one's local time never shows under another.
+                DirectHeader(conversation: conversation)
+                    .id(conversation.chat)
             }
             MessageList(rows: model.chatRows, composer: composer, canAnswer: tribe?.canManage == true)
             // A fresh scroll view per chat: reusing one across chats left the
@@ -136,6 +136,7 @@ struct TribeHeader: View {
 
     @State private var showingMembers = false
     @State private var showingSettings = false
+    @State private var showingInfo = false
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -156,6 +157,10 @@ struct TribeHeader: View {
                             TribeSettingsForm(editing: tribe) { showingSettings = false }
                         }
                 }
+                HeaderButton(systemImage: "info.circle", help: "Details") { showingInfo = true }
+                    .peelPopover(isPresented: $showingInfo) {
+                        ChatInfoPanel(conversation: conversation, tribe: tribe)
+                    }
                 HeaderButton(systemImage: "person.2", help: "Members") { showingMembers = true }
                     .peelPopover(isPresented: $showingMembers) {
                         TribeMembersPanel(conversation: conversation, tribe: tribe) { showingMembers = false }

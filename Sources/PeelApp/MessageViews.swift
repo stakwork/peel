@@ -50,9 +50,16 @@ struct ChatRow: Identifiable {
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
     var purchase: PurchaseState?
     var alias: String?
+    /// In a tribe, the member's alias as sent (`alias` falls back to
+    /// "Unknown"); nil in a direct message.
+    var member: String?
     var photoURL: String?
     /// The sender's colour, on their initials and name.
     var hue: PersonHue
+    /// The sender's zone when they wrote it, if they shared one: the
+    /// message's own offset, else the run's (`AppModel.withSenderZones`).
+    /// Never for yours.
+    var senderZone: TimeZone?
     /// The messages the row stands for, oldest first: a run's images, a
     /// collapsed thread's newest, else its own.
     var shown: [Message] {
@@ -171,16 +178,18 @@ struct ChatRow: Identifiable {
     /// you, the contact, or in a tribe the member (decoded from the message).
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
         let sender: (alias: String?, photoURL: String?, hue: PersonHue)
+        var member: String?
         if message.fromMe {
             sender = (people.me.name, people.me.photoURL, people.me.hue)
         } else if inTribe {
             let details = message.senderDetails
+            member = details.alias
             sender = (details.alias ?? "Unknown", details.photoURL,
                       PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
         } else {
             sender = (people.contact.name, people.contact.photoURL, people.contact.hue)
         }
-        return ChatRow(id: id, kind: kind, message: message, inTribe: inTribe, alias: sender.alias,
+        return ChatRow(id: id, kind: kind, message: message, inTribe: inTribe, alias: sender.alias, member: member,
                        photoURL: sender.photoURL, hue: sender.hue, date: message.date)
     }
 
@@ -599,6 +608,7 @@ struct MessageRow: View {
             Group {
                 if row.startsRun {
                     Avatar(name: row.alias ?? "?", url: row.photoURL, size: Self.avatarSize, hue: row.hue)
+                        .personCard(PersonRef(row))
                 } else {
                     Text(message.date, format: .dateTime.hour().minute())
                         .font(Theme.font(11))
@@ -606,6 +616,7 @@ struct MessageRow: View {
                         .foregroundStyle(Theme.secondaryText)
                         .opacity(hovering ? 1 : 0)
                         .padding(.top, 3)
+                        .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.alias ?? "them") ?? "")
                         .accessibilityHidden(true)
                 }
             }
@@ -666,22 +677,46 @@ struct MessageRow: View {
 }
 
 /// A run's header: the sender's name, the time and, for yours, the green
-/// bolt once the server has it.
+/// bolt once the server has it. Someone whose offset was not yours gets
+/// their local time after yours ("20:05 · 14:05 local"), dropped rather
+/// than wrapped when the header would not fit on one line.
 struct RunHeader: View {
+    @Environment(AppModel.self) private var model
     let row: ChatRow
 
     var body: some View {
+        // The time the header shows (an image run's newest), in their zone.
+        let date = row.message.date
+        let name = row.alias ?? "Unknown"
+        let person = PersonRef(row)
+        let tooltip = model.timeTooltip(date, zone: row.senderZone, name: name)
+            ?? date.formatted(date: .complete, time: .shortened)
+        if let zone = row.senderZone, model.difference(zone, at: date) != 0 {
+            ViewThatFits(in: .horizontal) {
+                line(name, person, tooltip) { RunLocalTime(date: date, zone: zone, name: name) }
+                line(name, person, tooltip) { EmptyView() }
+            }
+        } else {
+            line(name, person, tooltip) { EmptyView() }
+        }
+    }
+
+    private func line(
+        _ name: String, _ person: PersonRef?, _ tooltip: String, @ViewBuilder local: () -> some View
+    ) -> some View {
         let message = row.message
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(row.alias ?? "Unknown")
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(name)
                 .font(Theme.font(13, .semibold))
                 .foregroundStyle(row.hue.name)
                 .lineLimit(1)
+                .personCard(person)
             Text(message.date, format: .dateTime.hour().minute())
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondaryText)
-                .help(message.date.formatted(date: .complete, time: .shortened))
+                .help(tooltip)
+            local()
             if message.fromMe, message.delivery == .delivered {
                 DeliveredBolt()
             }

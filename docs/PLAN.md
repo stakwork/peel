@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-07 (evening). This is the architecture and the phase index. Each phase
+Last updated 2026-10-08. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -73,10 +73,26 @@ Reference implementations, in order of authority:
 
 ### Storage
 
-One SQLite file per account (`peel.sqlite`, WAL). Tables: `coreState` (opaque
-key/value owned by the core), `setting`, `message` (upsert on uuid; raw sender
-and body JSON kept alongside extracted columns), `contact` (names and photos,
-which are not core state). Live queries use GRDB `ValueObservation`.
+One SQLite file per account (`peel.sqlite`, WAL), built by 13 migrations
+(`v1`–`v13`, in `Storage.swift`). Nine tables:
+
+- `coreState`: opaque key/value owned by the core.
+- `setting`: the account's own values (server, name, photo, balance,
+  clock, tribes and memes hosts, payment thresholds and more).
+- `message`: upsert on uuid; raw sender and body JSON kept alongside
+  extracted columns (replies and threads, attachments, mentions, amounts,
+  deleted).
+- `contact`: names and photos, which are not core state; `ready` once the
+  core holds the contact's key.
+- `chatState`: read markers, mute levels and a marker not yet sent.
+- `tribe`: what the registry says about a tribe, this account's membership
+  status and the pinned message.
+- `payment`: the server's payment history (`fetch_payments`).
+- `invoice`: invoices made or paid here.
+- `paymentPing`: the 1-sat pings that belong to an asynchronous payment.
+
+The money tables' records are in `Invoice.swift` and their joined history in
+`PaymentHistory.swift`. Live queries use GRDB `ValueObservation`.
 
 ### Identity and secrets
 
@@ -100,26 +116,46 @@ only needed for TestFlight and the iPhone target.
 
 ## Phases
 
+Rows are in build order (decided 2026-10-08, below). The numbers are the
+phase files' names and stay as they are.
+
 | # | Phase | Status | File |
 |---|-------|--------|------|
 | 1 | Core and account | done | [phases/01-core.md](phases/01-core.md) |
 | 2 | Safe accounts: Keychain, PIN, onboarding, restore | core goal reached; leftovers listed in the file | [phases/02-messaging.md](phases/02-messaging.md) |
-| 3 | Tribes, threads and attachments | tribes built; replies and threads and attachments in the engine, storage and CLI (attachments on `phase3/attachments`), UI to come | [phases/03-chat.md](phases/03-chat.md) |
-| 4 | Money | boosts and in-chat payments built (engine, storage, CLI and UI); invoices and history next | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
-| 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |
-| 6 | Calls | planned | [phases/06-calls.md](phases/06-calls.md) |
+| 3 | Tribes, threads and attachments | built and merged: tribes with parity, replies and threads, attachments, the chat UI, notifications, mark as unread; leftovers listed in the file | [phases/03-chat.md](phases/03-chat.md) |
+| 4 | Money | built and merged: boosts, in-chat payments, the Payments screen, invoices, requests in chat, paid attachments; payment templates and Lightning-backed tests open | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
+| — | Architecture-review cleanup | **next**, before any new feature: the refactor plan's open rows (rows 1–3 merged as #30–#32, row 5 in review as #33) | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
+| 6 | Calls (LiveKit) | after the cleanup, ahead of parity | [phases/06-calls.md](phases/06-calls.md) |
+| 5 | Parity: contacts, in-app web window, self-hosted certificates | after calls; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |
 | 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
 
-## Scope (decided 2026-10-05)
+## Scope (decided 2026-10-05, changed 2026-10-08)
 
 In v1: onboarding (invite signup, mnemonic restore, name, PIN, photo); contacts
 as the Mac app does them; payments (send in chat, pay invoice, request, boosts)
 plus a new Receive screen; chat with tribes, attachments, threads and replies,
-LiveKit calls; web apps; People and LSATs; paid messages and templates; six
-languages. Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive
-workspaces, Tor and relay-era code, Jitsi.
+LiveKit calls; an in-app web window for links and tribe apps; paid messages
+and templates. Not now: People, LSATs and languages.
+Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive workspaces,
+Tor and relay-era code, Jitsi.
+
+## Decided 2026-10-08 (Tom)
+
+- **Order:** the architecture-review cleanup, then calls, then parity, then
+  the iPhone. The phase table above is in that order.
+- **Cleanup first.** Finish the refactor plan's open rows in
+  [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md)
+  before new features.
+- **Calls before parity.** LiveKit calls are core messaging and needed for
+  daily use, so phase 6 comes straight after the cleanup. Its plan is in
+  [phases/06-calls.md](phases/06-calls.md).
+- **Parity, narrowed** ([phases/05-parity.md](phases/05-parity.md)): keep
+  the contacts UI (QR, invites, inbound requests) and self-hosted
+  certificates; web apps become an in-app web window; People, LSATs and
+  languages move to "Not now".
 
 ## Working in parallel
 

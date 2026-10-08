@@ -1,6 +1,29 @@
 # Phase 4 — Money
 
-Status: started 2026-10-07. Boosts and in-chat payments are built in the
+## Status (2026-10-08)
+
+**Built and merged:** boosts and in-chat payments (#16), one-tap boost (#24),
+unsettled payments and boost once (#26), the Payments screen, invoices,
+requests in chat and paid attachments (#27). Storage is at v13.
+
+**Open:**
+- Payment templates, not started: the scope list at the start of the journal.
+- Lightning behind the server (server-made invoices, real fees), never run locally: "Not tested locally, and why".
+- Receive by `make_invoice` or `request_invoice`, and two smaller questions: "Open questions for Tom".
+- Restore loses a DM contact this account only answered: "Boosts and payments in chat", "Open".
+- Sats counted before they settle, and the mixer's missed settle window: "Boost stuck waiting, and Boost once", "Open".
+
+**Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
+(100 sats by default, 0 asks every time); nothing that may have paid is sent
+again; one-tap boost with the account's amount, once per message; underpaid
+purchases are never refunded automatically.
+
+## Journal
+
+The build log, oldest first, kept as written. Branches named below have all
+merged.
+
+Status on 2026-10-07: started that day. Boosts and in-chat payments are built in the
 engine, storage, CLI and app (branch `phase4/boosts-payments-ui`, one
 commit with the engine work). Invoices, the Receive screen, the Payments
 screen, paid messages and templates are still to come.
@@ -172,7 +195,7 @@ messages (7, 8, 9) and templates.
 - `MessageType.directPayment = 5`, `boost = 29`. Direct payments will show
   in a chat's timeline with the payment row's UI; boosts with a
   `replyUuid` never do.
-- Storage migration `v11` (main is at v8; `phase3/attachments` adds v9
+- Storage migration `v11` (main was at v8 then, and is at v13 now; `phase3/attachments` adds v9
   and `phase3/chat-ui` v10, message delete): `message.amountMsat`, the
   amount a payment or boost row stands for, filled from the copies already
   stored.

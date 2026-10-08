@@ -1,6 +1,29 @@
 # Phase 2 — Safe accounts: Keychain, onboarding, restore
 
-Status: core goal reached 2026-10-07 evening. Tom restored the throwaway's twelve words in the signed app with a PIN; the Keychain item exists, no mnemonic file does, and the engine-driven restore brought back the contact and history. What remains is listed under "Still open in this phase".
+## Status (2026-10-08)
+
+**Built and merged:** signing with the Personal Team (re-sign weekly), the
+words sealed under a six-digit PIN in the data-protection Keychain,
+onboarding, the engine-driven restore, Tom's real account in the `default`
+profile; then long messages, read markers, mutes and mark unread, send
+failures, the composer, contacts the other side started surviving a
+restore, and `run-app.sh` quitting Peel first ("Still open in this phase",
+items 0 and 6–11, all done).
+
+**Open:**
+- Signing up with a fresh invite in the app (proven only from the CLI): "Tasks, in order", item 3.
+- Running the real account beside the official app with no loss, Tom's check: "Done criteria".
+- Bringing a running Peel forward when its profile is locked: "Still open in this phase", item 11.
+
+**Decided:** the PIN is required; an app profile never writes the words to
+a file; the Keychain item is this-device-only, so a new Mac needs the
+twelve words; never `setPushToken`; no session touches `default`.
+
+## Journal
+
+The build log, kept as written.
+
+Status on 2026-10-07: core goal reached that evening. Tom restored the throwaway's twelve words in the signed app with a PIN; the Keychain item exists, no mnemonic file does, and the engine-driven restore brought back the contact and history. What remains is listed under "Still open in this phase".
 
 Goal: Peel can hold a real account safely. The twelve words live in the
 Keychain, a new account can be created from an invite, and an existing account

@@ -1,6 +1,24 @@
 # Phase 1 — Core and account
 
-Status: done; the Mac app is in its first daily-use trial.
+## Status (2026-10-08)
+
+**Built:** the engine and the core contract, invite signup, storage,
+transport with verified TLS, the Mac app shell and the CLI. Tom uses Peel
+daily on his real account (since 2026-10-07, phase 2); unit tests exist
+(`Tests/PeelCoreTests`).
+
+**Open:** history messages cannot be tied to the key that decrypted them,
+so history never renames contacts; the fix is a `key_idx` in the core's
+batch result ("Learned", last item).
+
+**Decided:** one transaction per core call; certificates verified, one
+stable device ID per install, state in SQLite (not the Mac app's ways).
+
+## Journal
+
+The build log, kept as written.
+
+Status on 2026-10-07: done; the Mac app is in its first daily-use trial.
 
 ## Done
 

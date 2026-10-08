@@ -1,28 +1,85 @@
-# Phase 5 — Parity: contacts, profile, People, web apps, languages
+# Phase 5 — Parity: contacts, in-app web window, self-hosted servers
 
-Status: in progress. Account screen built; the rest planned.
+## Status (2026-10-08)
 
-- Contacts UI: add by contact info or QR, share own QR and contact string,
-  create invites with sats (`makeInvite`, `cancelInvite`), inbound requests.
-- Profile: done 2026-10-07 as the **Account screen** (branch
-  `phase5/account-screen`); photo upload from this Mac waits for attachments.
-  See "Account screen" below.
-- People and LSATs: person profiles, external auth challenge
-  (`SphinxOnionManager+PeopleExtension.swift`), LSAT list.
-- Web apps: in-chat web apps in a WKWebView with an authorise prompt
-  (`Scenes/Dashboard/WebApps` in the Mac app).
-- Self-hosted servers with their own certificates: the official Mac app accepts
-  any TLS certificate (`allowUntrustCACertificate`), most likely so self-hosted
-  swarms with self-signed certificates work. Peel verifies by default and must
-  not go back to "any certificate". Instead, trust on first use: when a server
-  presents a certificate the system does not trust, show its fingerprint and
-  let the person accept it once; store the fingerprint per server
-  (`Setting`), and refuse to connect if it ever changes. The CLI's `--insecure`
-  flag stays a development tool. Ask Tomás whether that is indeed the reason
-  before building it.
-- Localisation: the six languages of the official app via String Catalogs.
-- Settings sync between devices (the Mac app's `Data Sync Manager`), if still
-  wanted once the iPhone exists.
+**Built:** the Account screen (#10): name, photo by link (upload from this
+Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
+
+**Open**, in this order (Tom, 2026-10-08: after the cleanup and calls):
+- Contacts UI: "Contacts" below.
+- The in-app web window: "Web window" below.
+- Self-hosted servers with their own certificates: "Self-hosted servers" below.
+- Settings sync between devices, if still wanted once the iPhone exists.
+
+**Decided (2026-10-08):** People, LSATs and languages are not in v1 ("Not
+now" below); web apps become a web window inside Peel.
+
+## Contacts
+
+Add by contact info or QR, share your own QR and contact string, create
+invites with sats (`makeInvite`, `cancelInvite`), inbound requests. Adding by
+contact info and showing your QR exist (the sidebar's "Add contact", the
+Account screen); scanning a QR, invites and inbound requests do not.
+
+## Web window
+
+Goal: a link or a tribe's app opens in a window inside Peel, not in the
+browser, like the artifact pane in the Claude desktop app. That covers a URL
+tapped in a message (today `LinkText` makes it a link and the system opens
+the default browser) and a tribe's two web addresses, which the tribes
+server's record carries as `app_url` and `second_brain_url` (the Mac app's
+`tribeInfo.appUrl` / `secondBrainUrl`; it also keeps `feed_url`). Peel's
+`TribeInfo` does not decode either yet; `TribeSettings.fields(over:)` sends
+them back untouched on an edit.
+
+What the official Mac app does (`Scenes/Dashboard/WebApps`): a WKWebView over
+the chat, with back, forward, reload and "open in a new window". A tribe's
+header has one button per address, the app and the second brain; a deep
+link into a tribe uses the app URL, or the second brain URL when there is no
+app URL. Pages talk to it
+through a `sphinx` message handler (`WebAppHelper`): `AUTHORIZE` with a sats
+budget, `KEYSEND`, `PAYMENT`, `SIGN`, `GETBUDGET`, the LSAT calls and more.
+
+Open questions:
+- A pane beside the chat, a sheet, or its own window? Does it stay open when
+  you change chats?
+- Which links open inside Peel: every https link, or only tribe apps, with
+  everything else still going to the browser?
+- Does Peel offer the `sphinx` bridge at all? Without it a page is just a
+  page; with it, `AUTHORIZE` and `KEYSEND` need a budget that goes through
+  `Engine.checkPayment`. The LSAT calls are part of LSATs, which are "Not now".
+- What the window may reach: cookies and storage per tribe or shared, file
+  downloads, pop-ups, and whether a page can ever navigate to a
+  `sphinx.chat://` link.
+
+## Self-hosted servers
+
+For people who run their own Sphinx server with a self-signed certificate.
+macOS does not trust such a certificate, so Peel refuses to connect. The
+official Mac app solves this by accepting any certificate
+(`allowUntrustCACertificate`), which also accepts an attacker's. Peel will
+not do that. Instead, the first time a server shows a certificate the system
+does not trust, Peel shows its fingerprint and asks once whether to trust
+it. Peel remembers that fingerprint for that server (a `Setting`) and
+refuses to connect if it ever changes. The CLI's `--insecure` flag stays a
+development tool. Ask Tomás whether self-hosting is indeed why the Mac app
+accepts any certificate before building it.
+
+## Not now (2026-10-08)
+
+- **People:** a public profile on the Sphinx people server, and signing in
+  to outside sites by answering a challenge with the account key
+  (`SphinxOnionManager+PeopleExtension.swift`, `API+PeopleExtension.swift`
+  in the Mac app).
+- **LSATs:** paid access tokens that web apps buy and reuse (the Mac app's
+  LSAT list and the bridge's LSAT calls).
+- **Languages:** the official Mac app's translations (Spanish, Filipino,
+  Japanese and three kinds of Chinese) through String Catalogs; Peel stays
+  in English for now.
+
+## Journal
+
+The build log, kept as written.
 
 ## Account screen
 

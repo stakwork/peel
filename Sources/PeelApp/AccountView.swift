@@ -52,6 +52,8 @@ struct AccountView: View {
                             GroupDivider()
                         }
                         WordsRow()
+                        GroupDivider()
+                        WebsiteDataRow()
                     }
                     SettingsGroup("Notifications") {
                         NotificationsRow()
@@ -866,6 +868,26 @@ private struct NotificationTextRow: View {
                 Text(problem ?? "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither.")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+}
+
+/// Sign-ins and site data from pages opened in Peel's web pane: this
+/// profile's own store, cleared in place.
+private struct WebsiteDataRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var cleared = false
+
+    var body: some View {
+        SettingsRow("Website data") {
+            Text(cleared ? "Cleared." : "Sign-ins, cookies and storage of pages opened in Peel, kept for this account only.")
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+        } trailing: {
+            InlineConfirm(trigger: "Clear…", prompt: "Sign out of every site?", confirm: "Clear") {
+                await model.web.clearWebsiteData()
+                cleared = true
             }
         }
     }

@@ -26,7 +26,9 @@ struct MainView: View {
                     FileSecretsBanner()
                 }
             }
+            .webPaneBeside(model.web)
         }
+        .opensLinksInWebPane(model.web)
         .ignoresSafeArea(edges: .top)
         .foregroundStyle(Theme.text)
         .overlay {

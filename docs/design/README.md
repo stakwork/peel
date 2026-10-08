@@ -608,6 +608,54 @@ Tom's decisions of 2026-10-07:
 **Built 2026-10-07 (branch `phase4/payments`).** Details, what was verified
 and what was not in `../phases/04-money.md`.
 
+## Web pane
+
+A link opens beside the chat, like the artifact pane in the Claude desktop
+app (decided 2026-10-08; the decisions and what is left out are in
+`../phases/05-parity.md`, "Web window"). Code: `Sources/PeelApp/WebPane.swift`,
+with what may open in `Sources/PeelCore/WebPage.swift`.
+
+- **Where:** right of the detail column, 560 pt at first, dragged on its
+  divider between 360 pt and what leaves the column 400 pt (remembered on
+  this Mac; double-click for the standard width). On a window too narrow for
+  both, the pane takes the column's place rather than covering it. It stays
+  open across chats, threads and Payments until closed: the toolbar's close
+  button, or ⌘W while the page has the keyboard (⌘W elsewhere still closes
+  the window). Locking Peel closes it, media and all.
+- **One page.** The next link replaces it; no tabs. `target=_blank` and
+  `window.open` load in the same pane.
+- **Toolbar** (60 pt, the chat header's height and rule): back, forward,
+  reload (a cross while loading); then the host in 14 pt semibold, as the
+  address names it (an international name in its `xn--` form), with the
+  page's own title under it in 12 pt secondary. The host comes first so a
+  page cannot pass itself off as another; the title is the page's to choose.
+  A small lock before the host for https with nothing insecure on the page,
+  otherwise "Not secure" in amber (attention, not red: nothing is broken).
+  The host changes when the next page arrives, not when it is asked for,
+  so the address always names what is on screen. The full address is the
+  tooltip. On the right: Open in Browser, Copy Link
+  (the usual tick), and close. While loading, a 2 pt accent line grows along
+  the toolbar's rule.
+- **Which links:** every http and https link SwiftUI opens below the main
+  window (message links, which message markup makes only for https, and
+  the tribe header's buttons). ⌘-click sends one to the default browser
+  instead, from a message or inside the pane. Any other scheme keeps the
+  system's handling. An address with a user name or password
+  (`https://google.com@evil.example`) never opens in the pane. Links in
+  floating panels (menus, popovers) still go to the browser: those windows
+  do not take the main window's environment.
+- **A tribe's apps:** its `app_url` and `second_brain_url` from the
+  registry become header buttons, a grid for the app and a brain for the
+  second brain, before the call button; each only when present.
+- **A failed load** shows "Couldn't open host", the system's reason and
+  Try Again, centred on the pane's background.
+- **Downloads** land in Downloads like a saved attachment (clean name,
+  quarantined) and a bar at the pane's foot says "Saved name to Downloads"
+  with Show in Finder; a failure says so in amber, never red.
+- **Website data:** one store per profile, so a Google or YouTube sign-in
+  sticks for this account only. Account › Security › Website data clears it
+  with the usual inline confirm.
+
 ## Time zones
 
 Researched and designed 2026-10-08, second pass after Tom's review the same

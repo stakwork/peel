@@ -25,6 +25,10 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     public var status: Status
     /// The uuid of the message the owner pinned, from the registry.
     public var pin: String?
+    /// The tribe's web app and second brain, from the registry: http or
+    /// https only (`WebPage.address`), opened in the web pane.
+    public var appURL: String?
+    public var secondBrainURL: String?
 
     /// Where this account stands in a tribe. The first three are the official
     /// apps' chat statuses; the tribe tells a member each change with a
@@ -264,9 +268,16 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     public let unlisted: Bool?
     /// The uuid of the message the owner pinned.
     public let pin: String?
+    /// The tribe's web app and second brain, as the owner typed them. Only
+    /// read: an edit sends back the record as the server had it
+    /// (`TribeSettings.fields(over:)`).
+    public let appURL: String?
+    public let secondBrainURL: String?
 
     enum CodingKeys: String, CodingKey {
         case pubkey, name, img, deleted, unlisted, pin
+        case appURL = "app_url"
+        case secondBrainURL = "second_brain_url"
         case routeHint = "route_hint"
         case escrowMillis = "escrow_millis"
         case summary = "description"
@@ -338,6 +349,8 @@ extension Tribe {
         escrowMsat = max(info.escrowAmount ?? 0, 0)
         isPrivate = info.isPrivate ?? false
         pin = info.pin?.nilIfEmpty
+        appURL = WebPage.address(info.appURL)?.absoluteString
+        secondBrainURL = WebPage.address(info.secondBrainURL)?.absoluteString
     }
 }
 

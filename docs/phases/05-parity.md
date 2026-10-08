@@ -4,11 +4,12 @@
 
 **Built:** the Account screen (#10): name, photo by link (upload from this
 Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
+The web pane (branch `feat/web-pane`, in review): links and a tribe's apps
+open beside the chat. See "Web window" below.
 
 **Open**, in this order (Tom, 2026-10-08 evening: after calls and the file
 splits, see `../PLAN.md`):
 - Contacts UI: "Contacts" below.
-- The in-app web window: "Web window" below.
 
 **Moved to the v1 extras step** (`10-v1-extras.md`, after the polish pass),
 with search and ⌘K, Markdown, voice messages and Giphy:
@@ -49,17 +50,99 @@ app URL. Pages talk to it
 through a `sphinx` message handler (`WebAppHelper`): `AUTHORIZE` with a sats
 budget, `KEYSEND`, `PAYMENT`, `SIGN`, `GETBUDGET`, the LSAT calls and more.
 
-Open questions:
-- A pane beside the chat, a sheet, or its own window? Does it stay open when
-  you change chats?
-- Which links open inside Peel: every https link, or only tribe apps, with
-  everything else still going to the browser?
-- Does Peel offer the `sphinx` bridge at all? Without it a page is just a
-  page; with it, `AUTHORIZE` and `KEYSEND` need a budget that goes through
-  `Engine.checkPayment`. The LSAT calls are part of LSATs, which are not in v1.
-- What the window may reach: cookies and storage per tribe or shared, file
-  downloads, pop-ups, and whether a page can ever navigate to a
-  `sphinx.chat://` link.
+### Decisions (2026-10-08, defaults for Tom to change in review)
+
+The open questions, answered; the look is in `../design/README.md`, "Web pane".
+
+- **Where:** a pane beside the chat, resizable on a divider. It stays open
+  across chats until closed (✕, or ⌘W while the page has the keyboard).
+  One page, which the next link replaces; no tabs in v1.
+- **Which links:** every http and https link (message markup still makes
+  links only of https, unchanged since #42), plus the tribe's `app_url`
+  and `second_brain_url`. ⌘-click, or the pane's Open in Browser, sends a
+  page to the default browser. Other schemes (mailto, `sphinx.chat://`)
+  keep today's handling. `WebPage.address` decides: http or https, a
+  host, and no user name or password.
+- **Tribe apps:** `TribeInfo` decodes `app_url` and `second_brain_url`; the
+  stored `Tribe` keeps them (v15, http or https only) from the join and the
+  background registry refresh; an edit still sends back the record as the
+  server had it, so `fields(over:)` round-trips them untouched. A header
+  button for each one present.
+- **No `sphinx` bridge in v1:** no message handlers, no injected scripts. No
+  LSATs or in-page payments.
+- **Storage:** one persistent `WKWebsiteDataStore(forIdentifier:)` per
+  profile, its UUID in the profile folder (`web-store`), so sign-ins stick
+  and profiles never share; never the default store (without a profile
+  folder, a non-persistent one). Account › Security › Website data clears
+  it; forgetting the account removes it.
+- **Pages:** pop-ups load in the same pane. Downloads are written to a
+  private temporary folder, then go into Downloads through
+  `UserFiles.save` (clean name, quarantined). A page may not navigate the
+  pane to file:, data: or blob: (top level), `sphinx.chat://` or any other app's
+  scheme. Camera and microphone are denied. Media plays; sound starts only
+  after a click, as in Safari. File inputs open the system's open panel.
+  JavaScript alerts and confirms are not shown (no native dialogs).
+  Locking Peel closes the pane.
+
+### Built (2026-10-08, branch `feat/web-pane`)
+
+- `PeelCore/WebPage.swift`: `address(_:)` for URLs and typed text, and
+  `storeIdentifier(in:)`. `Tribe.appURL` / `secondBrainURL`, migration v15.
+- `PeelApp/WebPane.swift`: the `WebPane` model (one `WKWebView`, made on
+  open, dropped on close), its delegates, the toolbar, the split beside the
+  detail column, the routing `OpenURLAction` and the tribe header buttons.
+  `MainView`, `ConversationView`, `AppModel` and `AccountView` gain a line
+  or a row each.
+- Tests (`WebPageTests`): what routes to the pane and what does not, the
+  store identifier per profile, `TribeInfo` decoding and the stored tribe,
+  `fields(over:)` keeping the two addresses.
+- Verified in the app on a development profile (offline, cached chats): the
+  pane beside a tribe chat in light and dark on a normal site and from a
+  tribe's app address; YouTube's watch page plays (checked muted). Not
+  verified by hand: clicks (message link, ⌘-click, header buttons, ⌘W),
+  a download, Clear website data, Google sign-in persisting across launches.
+  A page in a window that is wholly hidden behind others does not paint
+  until shown (WebKit's occlusion throttling); expected.
+- Known: Google may refuse to sign in inside an embedded web view; Open in
+  Browser is the way out. Peel does not change its user agent to hide that
+  it is one.
+- Review findings left as they are (code review, 2026-10-08):
+  - A sign-in that opens a pop-up and waits for it through
+    `window.opener` (some "Sign in with Google" buttons) cannot finish,
+    since the pop-up replaces its opener in the one pane. Tom's call:
+    one pane, no tabs. Open in Browser works for those.
+  - The pane belongs to the app model, so a second main window (⌘N)
+    would show the same web view in only one of them; Peel has one main
+    window in practice. Closing the window closes the pane.
+  - The split repeats the thread panel's room-and-divider arithmetic in
+    `ConversationView`; sharing it waits until the files other branches
+    are editing settle.
+  - Forgetting the account clears the store's data, then asks WebKit to
+    remove it; while a web content process still holds it the removal is
+    refused and an empty folder stays under `~/Library/WebKit`. Only the
+    app's Forget does this; a profile removed another way (a failed
+    signup) leaves an empty store nobody ever signed into.
+- `/security-review` (2026-10-08): `WKWebView.url` names a load's target
+  before it commits, while the old page stays on screen and usable, so a
+  page could start a load that hangs and wear another site's host and
+  lock. The toolbar's address now changes only when the new page commits
+  (or with no load under way, for a page's own history). Checked and
+  fine: `user@host`, data:/blob:/file:/custom schemes, pop-ups, IDN
+  (shown as `xn--`), downloads' names (`UserFiles.cleanName`), no bridge,
+  each profile's own store and never the default one.
+- `/simplify` (2026-10-08) applied: the page's state is one `Page` value
+  written only on change (closing now resets all of it); one KVO helper;
+  one store lookup; one download clean-up through `IncomingFiles.discard`;
+  the failure bar is `NoticeBar`, Show in Finder is `showInFinder`; the
+  link router is made once; the header buttons go through it; WebKit's own
+  `WebKitErrorFrameLoadInterruptedByPolicyChange` instead of 102; the lock
+  closes the pane by replacing the main view, so `AppModel` no longer does.
+  Left: the split always sits in a `GeometryReader` (pulling the detail
+  column out of it when the pane opens would make the chat again and lose
+  its scroll); the divider writes its width on every drag tick, as the
+  sidebar's and thread's do; Payments' 760 pt minimum is a constant until
+  a detail column can publish its own; a finished download is copied into
+  Downloads on the main thread (a clone on the same volume).
 
 ## Self-hosted servers
 

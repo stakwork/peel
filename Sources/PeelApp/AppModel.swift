@@ -187,6 +187,8 @@ final class AppModel {
     let notifier = Notifier()
     /// Sats arriving: the header's count-up and pill, Payments' unseen count.
     let money = MoneyArrivals()
+    /// The web pane beside the chat, with this profile's website data.
+    @ObservationIgnored private(set) lazy var web = WebPane(profile: profile)
 
     /// The app's own account keeps its words in the Keychain. Launching with
     /// `-profile <name>` opens a development profile instead, whose words sit in
@@ -293,6 +295,7 @@ final class AppModel {
         await engine?.close()
         engine = nil
         resetAccountState()
+        await web.forgetWebsiteData()
         do {
             try profile.delete()
             phase = .onboarding

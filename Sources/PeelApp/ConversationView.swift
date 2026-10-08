@@ -156,6 +156,7 @@ struct TribeHeader: View {
             ConversationIcon(conversation: conversation, size: 32)
         } trailing: {
             HStack(spacing: 4) {
+                TribeWebButtons(tribe: tribe)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }

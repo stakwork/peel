@@ -243,6 +243,13 @@ extension Storage {
                 t.column("updatedAt", .integer).notNull()
             }
         }
+        migrator.registerMigration("v15") { db in
+            // A tribe's web app and second brain (`app_url`, `second_brain_url`).
+            try db.alter(table: "tribe") { t in
+                t.add(column: "appURL", .text)
+                t.add(column: "secondBrainURL", .text)
+            }
+        }
         return migrator
     }
 }

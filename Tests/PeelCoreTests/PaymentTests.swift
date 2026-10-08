@@ -174,7 +174,7 @@ struct PaymentTests {
 
     @Test func migrationFillsAmountsStoredBefore() throws {
         do { _ = try profile.storage() }
-        let queue = try DatabaseQueue(path: profile.url.appendingPathComponent("peel.sqlite").path)
+        let queue = try profile.queue()
         try queue.write { db in
             try db.execute(sql: """
                 DROP INDEX message_payment;

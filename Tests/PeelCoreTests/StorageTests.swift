@@ -19,12 +19,17 @@ final class TempProfile {
     func storage(readOnly: Bool = false) throws -> Storage {
         try Storage(directory: url, readOnly: readOnly)
     }
+
+    /// The database file, opened directly, bypassing Storage.
+    func queue() throws -> DatabaseQueue {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return try DatabaseQueue(path: url.appendingPathComponent("peel.sqlite").path)
+    }
 }
 
 /// Reads rows straight from the database file, bypassing Storage.
 func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
-    let queue = try DatabaseQueue(path: profile.url.appendingPathComponent("peel.sqlite").path)
-    return try queue.read { try Row.fetchAll($0, sql: sql) }
+    try profile.queue().read { try Row.fetchAll($0, sql: sql) }
 }
 
 func first<S: AsyncSequence>(_ sequence: S) async throws -> S.Element? {
@@ -56,7 +61,7 @@ struct StorageTests {
         _ = try storage.apply(Storage.Commit(state: ["a": Data([1])]))
         // Make one message insert fail; the state and setting written earlier in
         // the same commit must roll back with it.
-        let queue = try DatabaseQueue(path: profile.url.appendingPathComponent("peel.sqlite").path)
+        let queue = try profile.queue()
         try queue.write { db in
             try db.execute(sql: """
                 CREATE TRIGGER fail BEFORE INSERT ON message WHEN NEW.content = 'boom'

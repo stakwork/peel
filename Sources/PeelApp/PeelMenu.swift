@@ -297,7 +297,7 @@ private struct RightClickCatcher: NSViewRepresentable {
 }
 
 /// Tells which window a view is in, once it is in one.
-private struct WindowReader: NSViewRepresentable {
+struct WindowReader: NSViewRepresentable {
     let found: (NSWindow?) -> Void
 
     func makeNSView(context: Context) -> ReaderView {

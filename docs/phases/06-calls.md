@@ -2,7 +2,8 @@
 
 Status: **PRs 1 to 4 merged** (the call link and message, #44; the ticket
 and presence, #54; LiveKit in the bundle, #55; the card and header, #59);
-PR 5 (the window) in review; PRs 6 to 8 open. Finishing calls is first in the order Tom set on the
+PR 5 (the window, #64) and PR 7 (notifications, #74) merged; PR 6
+(screen share, focus, keep on top) in review; PR 8 open. Finishing calls is first in the order Tom set on the
 evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
@@ -1147,6 +1148,103 @@ the build, so it lands before any UI depends on it.
     the button that asked (as other in-place confirms do).
   - `PaneLink` and `Notifier`'s settings opener are not shared: both sit
     outside this PR.
+
+## PR 6 journal (2026-10-08)
+
+- **Decided by Tom (2026-10-08):** screen share as planned, click to focus
+  as the official app does it, plus a strip of everyone else beside the
+  focused tile; "Keep on top"; the full-screen button.
+- **Built** in PeelApp only:
+  - **Screen share** (`Sources/PeelApp/CallScreenShare.swift`). Share (⌘⇧S)
+    opens macOS's `SCContentSharingPicker`, so Peel holds no standing Screen
+    Recording permission and sees only what was picked.
+    - LiveKit 2.10.2 has no picker path on macOS. Its `MacOSScreenCapturer`
+      takes a `MacOSScreenCaptureSource` listed from `SCShareableContent`,
+      which needs the permission; the official app lists sources this way in
+      `ScreenShareSourcePickerView`. So Peel runs its own `SCStream` on the
+      picker's filter and feeds each complete frame into
+      `LocalVideoTrack.createBufferTrack` (`BufferCapturer`). Frames are
+      420v, the long side at most 1920, 15 fps. The last frame is sent again
+      each second while the screen is still, so a late joiner sees it.
+    - The picker is active only while Peel asks. Peel's bundle is excluded
+      from it, so its own windows or app can never be picked. Changing the
+      content from the menu bar is off. Nothing is shared unless the picker
+      returned something and the call is still connected.
+    - **Peel's windows are left out of display shares** (all of them, the
+      call window included, as the official `getWindowsToExclude` leaves out
+      its call window). A picker filter cannot be edited without the
+      permission, so `excludedWindowIDs` on the picker does not help a
+      display share. Instead, during a display share, every Peel window gets
+      `sharingType = .none`, applied again after each event so a window
+      opened mid-share is covered, and given back when the share ends.
+      ScreenCaptureKit honours it: checked on macOS 26.6 with a standalone
+      display capture (a `.none` window was left out, a `.readOnly` one was
+      captured), and in the app, where Bob's own Peel window shared with the
+      cloak on reached Alice blank. While a display is shared, Peel is also
+      blank in screenshots and other apps' shares.
+    - The bar: Share, filled "Stop sharing" while you share; under it
+      "You're sharing your screen, without Peel's windows" (or "a window",
+      "an app") · Stop. The share stops on Stop, on the menu bar's Stop or a
+      closed window (macOS ends the stream), on leaving, and when the call is
+      lost.
+  - **Focus**, as the official app (`RoomView.swift` ~L800, `focusParticipant`):
+    a click on a tile focuses it, a click on the focused tile or Escape goes
+    back to the grid, and the grid comes back when the focused person leaves.
+    Tom's addition: while focused, everyone else sits in a 200 pt strip on
+    the right (board C3's screen-share layout), with the speaking edge; a
+    click on a strip tile moves the focus there. A screen someone starts
+    sharing takes the focus (the newest, when several start); your own never
+    does. A screen that comes back after a pause or a reconnect (same track)
+    does not take it again. When a focused screen ends, the newest screen
+    still shared takes it, else the grid. Screens are tiles of their own
+    ("Maya's screen", never cropped).
+  - **Keep on top**: a pin at the right of the title bar, accent while on,
+    with a tooltip; the window floats (`.floating`, as the official
+    `pinned`). It lives on the `CallSession`, so it lasts for that call.
+  - **Full screen**: the call window gets `.fullScreenPrimary` (it had it
+    already as a SwiftUI `Window`; now explicit).
+- **Verified** on a local stack (broker 2061, tribes 8961, mixer 8161,
+  `livekit-server --dev` on 8030, PR 4's call stub on 8963), profiles
+  `p6-alice` and `p6-bob` in a tribe, `lk load-test` video and audio
+  publishers with simulated speakers, driven at launch through a scratch hook
+  that was never committed (this session cannot click):
+  - Bob shared his own Peel window (a filter from
+    `SCShareableContent.currentProcess`, standing in for the picker) through
+    the real `ScreenShare` path: published, Alice's window switched to the
+    focus layout on "Jonas_Weber's screen" with the strip; Bob saw "Your
+    screen", "Stop sharing" and the note; after Stop, Alice was back on the
+    grid.
+  - Two shares at once: Bob's focus moved to Alice's newer screen; Alice
+    kept Bob's (her own does not take it).
+  - Focus on a person with the strip, the speaking edge on the main tile
+    and on strip tiles.
+  - Keep on top: the window's level 3 (floating), drawn above a newer
+    ordinary window of another app. `fullScreenPrimary` set.
+  - A display filter built without the picker failed to start (no
+    permission), and the window showed "Could not start sharing" with Peel's
+    windows given back.
+- **Not verified** (needs clicks): the picker itself and what it returns;
+  a display share's frame with chats open; clicks on tiles (camera tiles'
+  video views are made not to take clicks, untested); Escape; the pin;
+  ⌘⇧S; the full-screen button; the menu bar's Stop. Tom:
+  `.build/PeelShareTest.app`.
+- **Reviews**: `/code-review` (high): a stop notice from macOS that lands
+  while the capture starts no longer leaves a zombie share; Stop shows as
+  soon as capture starts; Stop never opens the picker; video views do not
+  take tile clicks; a screen coming back does not steal the focus; the cloak
+  gives back only the windows it hid. `/simplify`: `sharing` derived from the
+  share; the cloak only for display shares; the shared pill for Share and
+  Leave; `HoverIconButton` for the pin; a lazy strip; one note per content
+  kind. `/security-review`: no findings at confidence 8 or above. Not
+  applied, with reasons:
+  - The picker cannot be dismissed when you leave mid-pick (no API); a later
+    choice is dropped because the call is gone.
+  - The cloak runs after each event rather than at window creation: Peel
+    has three window sources and the sweep over a few windows is cheap.
+  - `keepOnTop` stays on `CallSession` (Tom asked for it per call) rather
+    than in view state or a scene `.windowLevel`.
+  - `refresh` reads each participant's tracks twice (screen, then person):
+    a few lock reads at most ten times a second.
 
 ## PR 7 journal (2026-10-08)
 

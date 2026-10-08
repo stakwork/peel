@@ -14,7 +14,7 @@ struct ThreadPanel: View {
 
     var body: some View {
         let composer = ComposerID.thread(ref)
-        let tribe = conversation.isTribe ? model.selectedTribe : nil
+        let tribe = conversation.isTribe ? model.tribes[conversation.chat] : nil
         VStack(spacing: 0) {
             DetailHeader(title: "Thread", subtitle: conversation.title) {
                 EmptyView()

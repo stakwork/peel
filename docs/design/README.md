@@ -1313,7 +1313,8 @@ writes no rows for chats nobody touched; turning a chat off writes
   (`Storage.senderTimeZones`: the newest offset at or before it and within
   90 days, by alias in a tribe; the newest readable of its five newest),
   kept for the open chat (`senderZoneCache`) so a rebuild asks only for
-  senders not asked yet. It runs on the main actor with the rows rebuild. The rest of a run take their own
+  senders not asked yet. The query runs off the main thread; the rows are
+  rebuilt when it answers. The rest of a run take their own
   offset or the run's, for the time tooltip. Compared at the message's
   moment, so a summer-time change is right, with **this Mac's zone**, the one
   every time on screen is in: a zone chosen in Account is what you send, not

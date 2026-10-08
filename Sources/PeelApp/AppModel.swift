@@ -159,6 +159,8 @@ final class AppModel {
     /// Run headers' looked-up sender zones (nil: none), by chat, then
     /// alias and moment; see `withSenderZones`.
     @ObservationIgnored var senderZoneCache: [String: [String: TimeZone?]] = [:]
+    /// The senders whose zones are being read, by chat.
+    @ObservationIgnored var senderZonesAsked: [String: Set<String>] = [:]
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     var notice: String?
@@ -206,7 +208,7 @@ final class AppModel {
     private(set) var engine: Engine?
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
-    private var tribeTask: Task<Void, Never>?
+    private var pinTask: Task<Void, Never>?
     /// The open account's observations and event loop, cancelled when it closes.
     /// Their loops skip what a stream still hands over after that.
     private var accountTasks: [Task<Void, Never>] = []
@@ -244,24 +246,30 @@ final class AppModel {
 
     var selectedChat: String? { destination?.chat }
 
-    /// Tribes matching the sidebar search.
-    var tribeConversations: [Conversation] { filteredConversations.filter(\.isTribe) }
-
-    /// Direct messages matching the sidebar search.
-    var directConversations: [Conversation] { filteredConversations.filter { !$0.isTribe } }
-
-    private var filteredConversations: [Conversation] {
+    /// The tribes and the direct messages matching the sidebar search, in
+    /// one pass.
+    var sidebarSections: (tribes: [Conversation], direct: [Conversation]) {
         let query = searchQuery.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return conversations }
-        return conversations.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        var sections: (tribes: [Conversation], direct: [Conversation]) = ([], [])
+        for conversation in conversations where query.isEmpty || conversation.name.localizedCaseInsensitiveContains(query) {
+            if conversation.isTribe { sections.tribes.append(conversation) } else { sections.direct.append(conversation) }
+        }
+        return sections
     }
 
     var selectedConversation: Conversation? {
         conversations.first { $0.chat == selectedChat }
     }
 
-    /// The open tribe's details: price, description, whether this account owns it.
-    private(set) var selectedTribe: Tribe?
+    /// Every tribe's details by pubkey, joined or left: price, description,
+    /// the pin, whether this account owns it.
+    private(set) var tribes: [String: Tribe] = [:]
+    /// The open tribe's pinned message, read from storage however old.
+    private(set) var pinnedMessage: Message?
+    /// Invites made here by code, and those still waiting to be used,
+    /// newest first.
+    private(set) var invites: [String: InviteRecord] = [:]
+    private(set) var pendingInvites: [InviteRecord] = []
 
     func start() async {
         guard phase == .loading, let profile else { return }
@@ -333,7 +341,7 @@ final class AppModel {
 
     /// Works the rows out again when who they name changed (your profile,
     /// the contact), not only when the messages did.
-    private func rebuildRows() {
+    func rebuildRows() {
         rebuildChatRows()
         rebuildThreadRows()
     }
@@ -824,6 +832,9 @@ final class AppModel {
         MediaPlayback.shared.closeFullScreen()
         MediaPlayback.shared.stop()
         conversations = []
+        tribes = [:]
+        invites = [:]
+        pendingInvites = []
         focus = nil
         destination = nil
         searchQuery = ""
@@ -879,27 +890,28 @@ final class AppModel {
         notice = nil
         self.engine = engine
         let storage = engine.storage
-        myAlias = await engine.myAlias
-        myPhotoURL = await engine.myPhotoURL
-        myContactInfo = try? storage.value(for: .contactInfo)
-        echoedAliases = await engine.echoedOwnAliases
+        let settings = await engine.settings()
+        myAlias = settings.alias
+        myPhotoURL = settings.photoURL
+        myContactInfo = settings.contactInfo
+        echoedAliases = settings.echoedAliases
         refreshMentionAliases()
-        myServer = try? storage.value(for: .server)
-        callServer = try? await engine.callServer()
-        pinTimeoutHours = ((try? await engine.pinTimeoutHours()) ?? nil)
-            ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
-        balanceMsat = try? storage.balanceMsat()
-        paymentConfirmationMsat = (try? await engine.paymentConfirmationMsat()) ?? Engine.defaultPaymentConfirmationMsat
-        boostAmountMsat = (try? await engine.boostAmountMsat()) ?? Engine.defaultBoostAmountMsat
-        connection = await engine.connection
-        let showsText = (try? await engine.notificationShowsText()) ?? false
+        myServer = settings.server
+        callServer = settings.callServer
+        pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
+        balanceMsat = settings.balanceMsat
+        paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
+        boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+        connection = settings.connection
         // Forgotten while loading.
         guard self.engine === engine else { return }
-        notifier.attach(storage, showsText: showsText)
+        notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
         accountTasks = [
             Task { await self.observeConversations(storage) },
+            Task { await self.observeTribes(storage) },
+            Task { await self.observeInvites(storage) },
             Task { await self.observeReadStates(storage) },
             Task { await self.observeThreads(storage) },
             Task { await self.observeRecentCalls(storage) },
@@ -999,14 +1011,35 @@ final class AppModel {
         }
     }
 
-    /// Follows the open chat's messages and, for a tribe, its details, which a
-    /// join or a registry refresh can change.
+    private func observeTribes(_ storage: Storage) async {
+        do {
+            for try await records in storage.tribesByPubkey() where !Task.isCancelled {
+                tribes = records
+            }
+        } catch {
+            if !Task.isCancelled { notice = PeelError.readable(error) }
+        }
+    }
+
+    private func observeInvites(_ storage: Storage) async {
+        do {
+            for try await list in storage.invites() where !Task.isCancelled {
+                invites = Dictionary(list.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
+                pendingInvites = list.filter(\.isPending)
+            }
+        } catch {
+            if !Task.isCancelled { notice = PeelError.readable(error) }
+        }
+    }
+
+    /// Follows the open chat's messages and, for a tribe, its pinned message,
+    /// which a pin, an edit or a delete can change.
     private func observeMessages() {
         messagesTask?.cancel()
-        tribeTask?.cancel()
+        pinTask?.cancel()
         timeline = .empty
         chatRows = []
-        selectedTribe = nil
+        pinnedMessage = nil
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         messagesTask = Task {
             do {
@@ -1020,10 +1053,10 @@ final class AppModel {
                 if !Task.isCancelled { notice = PeelError.readable(error) }
             }
         }
-        tribeTask = Task {
+        pinTask = Task {
             do {
-                for try await tribe in storage.tribe(chat) where !Task.isCancelled {
-                    selectedTribe = tribe
+                for try await pinned in storage.pinnedMessage(in: chat) where !Task.isCancelled {
+                    pinnedMessage = pinned
                 }
             } catch {
                 if !Task.isCancelled { notice = PeelError.readable(error) }

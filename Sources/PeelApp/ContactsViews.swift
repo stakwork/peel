@@ -69,24 +69,11 @@ struct NewContactBadge: View {
 
 private struct PendingInviteRows: View {
     @Environment(AppModel.self) private var model
-    @State private var invites: [InviteRecord] = []
 
     var body: some View {
-        // A stack, not the bare ForEach, so the task runs with no invites yet.
         VStack(spacing: 1) {
-            ForEach(invites) { invite in
+            ForEach(model.pendingInvites) { invite in
                 InviteRow(invite: invite)
-            }
-        }
-        .task(id: model.engine.map(ObjectIdentifier.init)) {
-            invites = []
-            guard let storage = model.engine?.storage else { return }
-            do {
-                for try await list in storage.pendingInvites() where !Task.isCancelled {
-                    invites = list
-                }
-            } catch {
-                if !Task.isCancelled { model.notice = PeelError.readable(error) }
             }
         }
     }
@@ -473,8 +460,9 @@ private struct InviteDetail: View {
     let code: String
     let done: () -> Void
 
-    @State private var invite: InviteRecord?
     @State private var problem: String?
+
+    private var invite: InviteRecord? { model.invites[code] }
 
     var body: some View {
         FormPopover(title: invite?.nickname ?? "Invite", close: done) {
@@ -485,16 +473,6 @@ private struct InviteDetail: View {
             }
         } footer: {
             if let invite { footer(invite) }
-        }
-        .task(id: model.engine.map(ObjectIdentifier.init)) {
-            guard let storage = model.engine?.storage else { return }
-            do {
-                for try await current in storage.inviteUpdates(code: code) where !Task.isCancelled {
-                    invite = current
-                }
-            } catch {
-                problem = PeelError.readable(error)
-            }
         }
     }
 

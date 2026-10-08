@@ -884,7 +884,7 @@ enum MessageMenu {
                                  shortcut: .key("b")) { Task { await model.quickBoost(message) } })
         }
         var pin: [MenuEntry] = []
-        if let tribe = model.selectedTribe, tribe.pubkey == message.chat, tribe.canManage, message.isPinnable {
+        if let tribe = model.tribes[message.chat], tribe.canManage, message.isPinnable {
             if tribe.pin == message.uuid {
                 pin.append(.button("Unpin from top of tribe", systemImage: "pin.slash") {
                     Task { await model.pin(nil, in: tribe.pubkey) }

@@ -85,12 +85,12 @@ private struct ChatColumn: View {
     let conversation: Conversation
 
     var body: some View {
-        let tribe = conversation.isTribe ? model.selectedTribe : nil
+        let tribe = conversation.isTribe ? model.tribes[conversation.chat] : nil
         let composer = ComposerID.chat(conversation.chat)
         VStack(spacing: 0) {
             if conversation.isTribe {
                 TribeHeader(conversation: conversation, tribe: tribe)
-                if let tribe, let pin = tribe.pin, let pinned = pinned(pin) {
+                if let tribe, let pinned = model.pinnedMessage, pinned.chat == conversation.chat {
                     PinnedMessageBar(message: pinned, tribe: tribe)
                 }
             } else {
@@ -112,11 +112,6 @@ private struct ChatColumn: View {
         }
         .fileDrop(into: composer, for: conversation)
         .onAppear { model.composerFocus[composer, default: 0] += 1 }
-    }
-
-    /// The pinned message, also when a thread has folded it away.
-    private func pinned(_ uuid: String) -> Message? {
-        model.timeline.messages.first { $0.uuid == uuid } ?? model.timeline.threads[uuid]?.original
     }
 }
 

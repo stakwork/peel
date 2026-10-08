@@ -38,7 +38,7 @@ extension Invocation {
             try await session.finish(after: wait)
 
         case "whoami":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             print("contact info: \(try storage.value(for: .contactInfo) ?? "not registered yet")")
             print("balance: \(try storage.balanceMsat().map { "\(Sats.format(msat: $0)) (\($0) msat)" } ?? "unknown")")
             print("server: \(try storage.value(for: .server) ?? "none")")
@@ -57,7 +57,7 @@ extension Invocation {
             print("photo: \(try await engine.uploadPhoto(URL(fileURLWithPath: path)))")
 
         case "contacts":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for contact in try Engine.contacts(in: storage) {
                 print("\(contact.pubkey)  \(contact.contactKey == nil ? "pending" : "ready")")
             }

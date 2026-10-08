@@ -37,7 +37,7 @@ extension Invocation {
             print("boost amount: \(Sats.format(msat: try await engine.boostAmountMsat()))")
 
         case "payments":
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             for try await rows in storage.payments(in: arguments.next()) {
                 for row in rows {
                     let delivery = row.delivery.map { " [\($0)]" } ?? ""
@@ -80,7 +80,7 @@ extension Invocation {
             print("memo: \(invoice.memo)")
             print("expires: \(invoice.expiresAt.map { "\($0)\(invoice.isExpired() ? " (expired)" : "")" } ?? "never")")
             print("payment hash: \(invoice.paymentHash)")
-            let storage = try Storage(directory: profile.directory, readOnly: true)
+            let storage = try readOnlyStorage()
             print("paid: \(try storage.paidState(paymentHash: invoice.paymentHash).map { "\($0)" } ?? "no")")
 
         case "pay-invoice":

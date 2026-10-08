@@ -3,8 +3,9 @@ import GRDB
 
 // Time zones, as the official apps share them (`docs/design/README.md`, "Time
 // zones"): a message's JSON may carry `"metadata": "{\"tz\":\"GMT+1\"}"`, the
-// sender's offset when they sent it. Peel sends its own only in a chat whose
-// switch is on, and never in a public tribe; it reads anyone's.
+// sender's offset when they sent it. Peel sends its own in direct messages and
+// private tribes unless that chat's switch is off, and never in a public
+// tribe; it reads anyone's.
 
 /// The offsets on the wire: what Peel sends, and its own reading of what
 /// arrives. Never `TimeZone(abbreviation:)`, which turns `EST` or `BST` into a
@@ -75,7 +76,8 @@ public struct ChatTimeZone: Codable, Sendable, Equatable, FetchableRecord, Persi
     public static let databaseTableName = "chatTimeZone"
     /// The contact's or tribe's pubkey (the item's `identifier`).
     public var chat: String
-    /// Share in this chat (`timezone_enabled`). Off unless turned on.
+    /// Share in this chat (`timezone_enabled`). A chat with no row shares,
+    /// as in the official apps; turning it off writes `false`.
     public var enabled: Bool
     /// A zone for this chat only, set on another device
     /// (`timezone_identifier`); nil means the account's zone.
@@ -168,18 +170,15 @@ extension Engine {
     /// The zone this account's offset comes from in `chat`: the one set for
     /// that chat on another device, else the account's, else this Mac's.
     public func timeZone(for chat: String? = nil) throws -> TimeZone {
-        try timeZone(chatIdentifier: chat.flatMap { try storage.chatTimeZone($0)?.identifier })
-    }
-
-    private func timeZone(chatIdentifier: String?) throws -> TimeZone {
-        [chatIdentifier, try chosenTimeZone()].lazy.compactMap { $0.flatMap(TimeZoneOffset.zone) }.first
+        let chatIdentifier = try chat.flatMap { try storage.chatTimeZone($0)?.identifier }
+        return [chatIdentifier, try chosenTimeZone()].lazy.compactMap { $0.flatMap(TimeZoneOffset.zone) }.first
             ?? .autoupdatingCurrent
     }
 
-    /// Whether the switch is on in `chat`. A public tribe never gets the
-    /// offset whatever this says (`outgoingBody`).
+    /// Whether the switch is on in `chat`: on unless turned off. A public
+    /// tribe never gets the offset whatever this says (`outgoingBody`).
     public func timeZoneSharing(in chat: String) throws -> Bool {
-        try storage.chatTimeZone(chat)?.enabled == true
+        try storage.chatTimeZone(chat)?.enabled ?? true
     }
 
     /// The offset this account's messages in `chat` carry, as far as this
@@ -192,7 +191,8 @@ extension Engine {
 
     /// Turns sharing this account's offset on or off in a direct message or
     /// a private tribe. Turning it off stops sending; what was sent stays
-    /// with them.
+    /// with them. Either way the chat's row records the choice and when, as
+    /// the preferences file's item would (`enabled` false, `updatedAt` now).
     public func setTimeZoneSharing(_ enabled: Bool, in chat: String) throws {
         guard chat.isPubkey else { throw Failure.notAChat }
         if enabled {
@@ -223,9 +223,7 @@ extension Engine {
     /// The offset a message of `type` to `chat` would carry by the chat's
     /// switch alone; `outgoingBody` also asks whether the chat is private.
     func sharedOffset(in chat: String, type: Int, at now: Date = .now) throws -> String? {
-        guard TimeZoneOffset.carriedBy.contains(type), let row = try storage.chatTimeZone(chat), row.enabled else {
-            return nil
-        }
-        return TimeZoneOffset.format(try timeZone(chatIdentifier: row.identifier), at: now)
+        guard TimeZoneOffset.carriedBy.contains(type), try timeZoneSharing(in: chat) else { return nil }
+        return TimeZoneOffset.format(try timeZone(for: chat), at: now)
     }
 }

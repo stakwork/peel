@@ -1303,9 +1303,13 @@ public actor Engine {
 
     /// Whether a tribe's registry says it is private at this moment: a
     /// member learns that a tribe went public only there (and an owner may
-    /// have changed it on another device), so a send asks. No answer is no.
+    /// have changed it on another device), so a send asks. No answer is no,
+    /// and offline it is not asked: nothing is published, and a retry asks.
+    /// With sharing on by default this is a round trip on every send to a
+    /// private tribe; a cached answer would let a tribe made public keep
+    /// getting the offset until it expired.
     private func isPrivateNow(_ tribe: Tribe) async -> Bool {
-        guard tribe.isPrivate, let host = tribe.host,
+        guard transport != nil, tribe.isPrivate, let host = tribe.host,
               let info = try? await TribeInfo.fetch(pubkey: tribe.pubkey, host: host), info.deleted != true else {
             return false
         }

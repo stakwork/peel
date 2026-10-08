@@ -624,8 +624,12 @@ header and at the top of the profile; T2 and T4 yes; the sender's local
 time on each run, but not T3's chip. Then his answers to the open
 questions, the same day:
 
-1. **Sharing is off by default.** Opting in is the only way to share:
-   sharing says where you are.
+1. **Sharing is on by default** in direct messages and private tribes,
+   as in the official apps (reversed by Tom on 2026-10-08: "match
+   Sphinx"; it was first decided off, since sharing says where you are).
+   A chat with no `chatTimeZone` row shares; turning a chat's switch off
+   writes its row with `enabled` false. Public tribes are unchanged:
+   never, and no switch.
 2. **Public tribes: never shared**, whatever the switch says, and they get
    no switch. A tribe is public unless it is private (`Tribe.isPrivate`,
    stored per tribe, `Storage.swift:120`, set from the tribes server's
@@ -636,7 +640,7 @@ questions, the same day:
    receiving the offset with the next message.
 3. **One switch per chat, as the official apps have it:** each DM and each
    private tribe has its own "Share my time zone" switch in that chat's info,
-   off by default (T6). The zone itself (automatic or chosen) is set once,
+   on by default (T6). The zone itself (automatic or chosen) is set once,
    in Account (T4). Stored per chat on this Mac now; synced with the official
    apps through the `/preferences` file later (plan step 6).
 4. **Sent on every message** in a chat where the switch is on.
@@ -662,7 +666,7 @@ What that gives:
   the character). Rules:
   - the run header only, never on a continuation message;
   - only when the sender's offset differs from yours; your own runs never;
-    anyone who sends no offset never (agents, by default);
+    anyone who sends no offset never;
   - always visible, in a tertiary colour, `#808D9E` (5:1 on the
     conversation background, 4.7:1 on the thread panel), 12 pt, tabular
     figures, so the times do not jitter run to run;
@@ -681,18 +685,18 @@ What that gives:
   a tooltip with both: "20:02 your time · 02:02 for Evan".
 - **The per-chat switch** (T6), in the chat's info panel, under the
   contact's or tribe's name: "Share my time zone with Evan" (in a tribe:
-  "with #Name"), off; under it "Sends your offset, GMT+1, with each message
+  "with #Name"), on unless turned off; under it "Sends your offset, GMT+1, with each message
   you send here. Turning it off stops sending; Evan keeps the last one you
   sent." A public tribe's panel has no switch, only the line "Your time zone
   is never sent in public tribes."
 - **Account › Time zone** (T4): "Time zone: Automatic · Europe/London
   (GMT+1)", or one chosen from a searchable Peel menu, and "Shared in",
-  which counts the chats you share with ("2 chats · as GMT+1" or "No
-  chats"), with "Never in public tribes" in its note.
-- **No "new chats start with sharing on" setting.** Considered and left
-  out: off is the decision, a default-on switch would quietly undo it for
-  every new contact, and the official apps' file has no such key, so it
-  would never sync. Turning it on per chat is one click in the chat's info.
+  which counts the chats you share with ("12 chats · as GMT+1" or "No
+  chats"): every direct message and private tribe except those turned
+  off, with "Never in public tribes" in its note.
+- **No account-wide "new chats share" setting.** Every new chat shares,
+  as in the official apps, whose file has no such key, so it would never
+  sync. Turning it off per chat is one click in the chat's info.
 - **When they don't share,** or nothing has come for 90 days: nothing at
   all, no "unknown" anywhere. The hover card leaves the line out.
 
@@ -724,7 +728,7 @@ item (`DataSyncModels.swift:55-59`, `TimezoneSetting` at 435-459):
 | Peel column | File field | Meaning |
 |---|---|---|
 | `chat` (primary key) | item `identifier` | the contact's or tribe's pubkey |
-| `enabled` | `timezone_enabled` ("true"/"false") | share in this chat |
+| `enabled` | `timezone_enabled` ("true"/"false") | share in this chat; no row means on |
 | `identifier` (null) | `timezone_identifier` ("" when null) | a zone for this chat only; null means "the account's zone" |
 | `updatedAt` (seconds) | item `date` | for last-writer-wins |
 
@@ -734,6 +738,17 @@ chat uses the zone from Account. A zone set for one chat on the phone
 panel says "Uses Asia/Bangkok, set on another device". The zone sent is
 `identifier ?? account zone ?? this Mac's zone`. A public tribe's row is
 kept if one arrives but never makes Peel send.
+
+**No row means on**, as in the official apps: their chat's
+`timezoneEnabled` defaults to `YES` in the Core Data model, a preferences
+file with no `timezone` item for a chat leaves it there
+(`DataSyncManager.restoreDataFrom`, `DataSyncManager.swift:332-338`, which
+also keeps the chat's value when the item's value is unreadable), and
+`TimezoneSharingView` writes an item only when the switch or zone changes
+(`TimezoneSharingView.swift:115-136`). So Peel needs no migration and
+writes no rows for chats nobody touched; turning a chat off writes
+`enabled` false with `updatedAt` now, which maps onto the file's item
+(`timezone_enabled` "false", `date` the same seconds).
 
 ### Conventions on the wire
 
@@ -766,8 +781,10 @@ kept if one arrives but never makes Peel send.
 ### Privacy
 
 - An offset narrows where you are to a band of longitude, and together with
-  when you write it says when you sleep. Hence off by default, per chat,
-  and never in public tribes. In a private tribe it goes to every member the
+  when you write it says when you sleep. Peel shares it by default anyway,
+  to match the official apps (decision 1): everyone you DM and every member
+  of a private tribe you post in gets it until you turn that chat off. It
+  is per chat, and never in public tribes. In a private tribe it goes to every member the
   owner has let in, and the tribe server reads tribe messages to forward
   them (it works out mentions from them, `sphinx/tribes/src/incoming.rs`),
   so its operator sees the offset too; the switch's note names the
@@ -775,12 +792,14 @@ kept if one arrives but never makes Peel send.
 - Turning sharing off cannot recall what was sent: the wire has no "off".
   The switch's note says so.
 - The official Mac and iOS apps send the offset in DMs even with the chat's
-  switch off (the `forceIncludeTimezone` path above), and they default to
-  on and share in public tribes. Peel honours its switch on every message.
+  switch off (the `forceIncludeTimezone` path above), and they share in
+  public tribes. Peel defaults to on as they do, but honours its switch on
+  every message and never sends in a public tribe.
 - Once synced (plan step 6), a switch turned on in the official app on the
   phone turns on in Peel too, but Peel still never sends in a public tribe.
-- An agent's host often runs in UTC on a server: an agent account sends no
-  offset unless its owner gives it a zone.
+- An agent's host often runs in UTC on a server. With sharing on by
+  default an agent account sends its host's offset like any other account
+  unless its owner gives it a zone or turns its chats off (open question 3).
 
 ### Agents
 
@@ -793,8 +812,9 @@ kept if one arrives but never makes Peel send.
   15:00 tomorrow in Evan's time is 09:00 for you. Shall I ask for that?"
   (board T5, Tweaks: Agent), later as a choice card, behind the same
   permission gate as sending.
-- An agent's hover card shows a local time only if the agent sends one; by
-  default it does not.
+- An agent's hover card shows a local time only if the agent sends one;
+  with sharing on by default, one with no zone of its own sends its host's
+  offset.
 
 ### Plan (after the cleanup)
 
@@ -811,10 +831,10 @@ kept if one arrives but never makes Peel send.
 2. Engine: a `chatTimeZone` table in the file's shape (above), with a
    migration; the account's zone (automatic or an IANA name) in the
    settings table; `Engine.setTimeZoneSharing(_:in:)` and
-   `Engine.setTimeZone(_:)`. `deliver` adds `metadata` when the chat's row
-   is enabled and the chat is a contact or a private tribe; `wouldBeSplit`
-   counts it. Tests: off by default, public tribes never, private tribes
-   and DMs only when enabled.
+   `Engine.setTimeZone(_:)`. `deliver` adds `metadata` unless the chat's
+   row says off, when the chat is a contact or a private tribe; `wouldBeSplit`
+   counts it. Tests: public tribes never, private tribes and DMs unless
+   turned off (first planned as off by default; see decision 1).
 3. Verify on the local test server, then with the throwaway account against
    the official Mac app: Peel's offset shows in its DM header and on its
    tribe rows, the Mac's shows in Peel, and nothing reaches a public tribe.
@@ -838,8 +858,8 @@ kept if one arrives but never makes Peel send.
 
 - **Wire.** `Engine.deliver` hands the core `outgoingBody(_:to:type:)`:
   `metadata` set to `{"tz":"GMT+1"}` for text, attachments and payments
-  (`TimeZoneOffset.carriedBy`) when the chat's row is enabled and the chat is
-  a person the core holds, or a tribe stored as private **and** whose
+  (`TimeZoneOffset.carriedBy`) unless the chat's row says off (no row is
+  on) and when the chat is a person the core holds, or a tribe stored as private **and** whose
   registry says private when asked just before the send. A member learns that
   a tribe went public only from the registry (the background refresh runs on
   connect), so the send asks it; no answer means no offset. Taken out of the
@@ -893,7 +913,29 @@ kept if one arrives but never makes Peel send.
   a private tribe with sharing on (one request; the background refresh runs
   only on connect), rather than trusting a cached record for some minutes:
   decision 2 says a tribe made public stops getting the offset with the next
-  message. `ChatTimeZone.identifier` and `updatedAt` stay although only sync
+  message, and a member learns that only from the registry, so any cache
+  breaks that rule for as long as it lasts. **The cost, now that sharing is
+  on by default:** every text, attachment and payment to a private tribe
+  waits for one HTTPS round trip to its tribes host before it goes (tens to
+  a few hundred milliseconds normally; a registry that hangs holds the send
+  until the request times out, 30 s idle or 60 s in all, and then it goes
+  without the offset).
+  DMs and public tribes are not affected; turning the chat's switch off
+  skips the request, and so does being offline (nothing is published, and
+  the retry asks again). Not fixed here: while one send waits for the
+  registry another can overtake it, so two messages sent in quick
+  succession to a private tribe can go out in the wrong order; this was
+  true before for chats switched on, and is now the default. Fixing it
+  means queueing sends in order, a change of its own.
+- **Existing installs** have no rows for chats nobody touched, so every
+  such DM and private tribe starts sharing with its next message, as the
+  reversed decision intends. The engine shipped in #47 the same day, with
+  no switch in the UI yet. The default-on change's `/security-review` found
+  nothing at confidence 8 or above: every send still goes through
+  `outgoingBody`, a tribe needs its stored flag, a connection and a fresh
+  registry answer, and a key that is not a tribe needs a core contact, so
+  no row meaning on cannot reach a public tribe or a stranger.
+  `ChatTimeZone.identifier` and `updatedAt` stay although only sync
   (step 6) will write them: the table keeps the file's shape. A retry's
   stored row keeps its first body (above).
 - **`/security-review`:** no finding at confidence 8 or above. Checked: every
@@ -916,3 +958,7 @@ time; `localTime` answers for now only. `Engine.offsetShared(in:)` and
    stop the offset in DMs.)
 2. **Private tribes:** the switch is offered there (decision 3). Should a
    private tribe's note name how many members will see it?
+3. **Agents, now that sharing is on by default:** should an agent account
+   (often on a UTC server) start with sharing off, or with no offset until
+   its owner gives it a zone? Peel has no agent accounts yet; today one
+   would share its host's offset.

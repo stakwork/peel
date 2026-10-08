@@ -36,7 +36,7 @@ struct PeelCommand {
           local-time <pubkey> [alias] a contact's local time, or a tribe member's by alias, from the
                                       offset they last sent (within 90 days)
           share-timezone <pubkey> [yes|no]  whether this account's offset goes with what it sends in a
-                                      direct message or private tribe (off unless turned on; never in
+                                      direct message or private tribe (on unless turned off; never in
                                       a public tribe); sets it when given
           send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread,
                                       --price <sats> to sell it: buyers pay to get its key)
@@ -385,7 +385,8 @@ struct PeelCommand {
             if let offset = try await engine.offsetShared(in: pubkey) {
                 print("sharing \(offset) (\(try await engine.timeZone(for: pubkey).identifier))")
             } else {
-                print(try await engine.timeZoneSharing(in: pubkey) ? "on, but never sent here" : "not sharing")
+                print(try await engine.timeZoneSharing(in: pubkey)
+                    ? "never sent here: not a direct message or private tribe" : "not sharing (turned off)")
             }
 
         case "tribes":

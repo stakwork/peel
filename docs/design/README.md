@@ -537,8 +537,10 @@ Tom's decisions of 2026-10-07:
   person's photo (a dashed ring with a bolt when nobody is known: an
   invoice, a keysend), their name, one line (the note, "Boost in #Tribe",
   a memo), the amount and the time in a right-aligned column. Amounts follow
-  the banking apps: received "+500" in green, sent a plain "2,000" in the
-  text colour, no arrows, no minus; the header says "Amounts in sats".
+  the banking apps: received "+500" in green, sent "−2,000" in the text
+  colour with a true minus (U+2212; Tom, 2026-10-08, replacing
+  "no minus"), the same in the detail's large amount; no arrows; the header
+  says "Amounts in sats".
   Pending: grey, "Pending · 13:15". Failed: struck through, "Failed · 16:02".
   Never red. Older pages load as the list reaches its end.
 - **Header:** "Payments" with Receive and Pay an invoice, small bordered

@@ -420,9 +420,9 @@ private struct PaneFrame<Content: View>: View {
 
 // MARK: - Rows
 
-/// The amount as banking apps show it: "+500" received (green), a plain
-/// "2,000" sent; the sign carries direction, not colour alone. Pending reads grey,
-/// failed struck through.
+/// The amount as banking apps show it: "+500" received (green), "−2,000"
+/// sent in the text colour; the sign carries direction, not colour alone.
+/// Pending reads grey, failed struck through.
 struct SignedAmount: View {
     let msat: Int64
     let incoming: Bool
@@ -430,18 +430,13 @@ struct SignedAmount: View {
     var size: CGFloat = 14
 
     var body: some View {
-        Text(Self.text(msat: msat, incoming: incoming))
+        Text(Sats.signed(msat: msat, incoming: incoming))
         .strikethrough(status == .failed)
         .font(Theme.font(size, .semibold))
         .monospacedDigit()
         .foregroundStyle(status != .complete ? Theme.secondaryText : incoming ? Theme.confirmed : Theme.text)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
-    }
-
-    /// "+500" received, "2,000" sent: the banking apps' way (Tom, 2026-10-07).
-    static func text(msat: Int64, incoming: Bool) -> String {
-        "\(incoming ? "+" : "")\(Sats.number(msat: msat))"
     }
 
     private var label: String {
@@ -549,7 +544,7 @@ private struct PaymentDetailPane: View {
                     .font(Theme.font(12.5))
                     .foregroundStyle(Theme.secondaryText)
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(SignedAmount.text(msat: item.amountMsat, incoming: item.incoming))
+                    Text(Sats.signed(msat: item.amountMsat, incoming: item.incoming))
                         .font(Theme.font(32, .bold))
                         .strikethrough(item.status == .failed)
                         .foregroundStyle(item.status != .complete ? Theme.secondaryText
@@ -896,7 +891,7 @@ private struct ReceivePane: View {
                 .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
             Text(full ? "Paid" : "Partly paid").font(Theme.font(20, .bold))
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(invoice.paidMsat.map { "+\(Sats.number(msat: $0))" } ?? "Amount not known")
+                Text(invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? "Amount not known")
                     .font(Theme.font(32, .bold))
                     .foregroundStyle(full ? Theme.confirmed : Theme.text)
                 Text("sats").font(Theme.font(15)).foregroundStyle(Theme.secondaryText)

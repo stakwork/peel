@@ -24,6 +24,15 @@ struct SatsTests {
         #expect(Sats.number(msat: Int64(-1)) == "0")
     }
 
+    /// Sent amounts carry a true minus, received a plus; nothing for zero.
+    @Test func signedAmountsUseATrueMinus() {
+        #expect(Sats.signed(msat: 500_000, incoming: true) == "+500")
+        #expect(Sats.signed(msat: 21_000, incoming: false) == "\u{2212}21")
+        #expect(Sats.signed(msat: 2_000_000, incoming: false) == "\u{2212}\(2_000.formatted())")
+        #expect(Sats.signed(msat: 999, incoming: false) == "0")
+        #expect(Sats.signed(msat: 0, incoming: true) == "0")
+    }
+
     @Test func aShortfallIsNeverHidden() {
         #expect(Sats.format(msat: 1_600, of: 2_000) == "1 of 2 sats")
         #expect(Sats.format(msat: 2_100, of: 2_400) == "\(2_100.formatted()) of \(2_400.formatted()) msat")

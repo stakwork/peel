@@ -26,6 +26,8 @@ func hex(_ text: String) -> Data {
 let keyG = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 let key2G = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
 let key3G = "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+/// A well-formed key no fixture puts in the core's state.
+let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
 
 /// A contact record as the core stores it (`rmp_utils::serialize_contact`):
 /// version, child index, LSP key, scid and, once the key exchange is done,

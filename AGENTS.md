@@ -29,6 +29,9 @@ is a short plan. Update the status and the journal when you finish something.
     own temp folder and checked
   - `MessageMarkup.swift` — how message text reads: paragraphs, list items,
     fenced code, and inline code, https links and mentions
+  - `TimeZones.swift` — time zones: the offset in a message's `metadata`
+    (sent only where the chat's switch is on, never to a public tribe; read
+    with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
@@ -130,7 +133,9 @@ independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions); call links (both forms, hosts, room names,
-query keys) and the call server setting; and the whole migration chain from a v1
+query keys) and the call server setting; time zones (the offset's format and
+parser, malformed metadata, the per-chat switch and public tribes, local
+times, the v14 column on stored history); and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.

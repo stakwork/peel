@@ -63,6 +63,9 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// for one seen without sats (a tribe boost on someone else's message),
     /// the amount the sender declared.
     public var amountMsat: Int64?
+    /// The `tz` the sender put in this message's `metadata`, as sent; the
+    /// database works it out from `body` (v14), and `senderTimeZone` reads it.
+    public var senderTZ: String?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 

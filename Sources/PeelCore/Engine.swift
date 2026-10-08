@@ -1288,9 +1288,36 @@ public actor Engine {
         return tribe
     }
 
-    private static func json(_ fields: [String: String]) throws -> String {
+    static func json(_ fields: [String: String]) throws -> String {
         String(decoding: try JSONEncoder().encode(fields), as: UTF8.self)
     }
+
+    /// `body` as it goes to `pubkey`: with this account's offset only where
+    /// the chat's switch is on (`sharedOffset`) and the chat is private now;
+    /// taken out anywhere else (`TimeZones.swift`).
+    func outgoingBody(_ body: String, to pubkey: String, type: Int, tribe: Tribe?) async throws -> String {
+        guard let offset = try sharedOffset(in: pubkey, type: type) else { return try TimeZoneOffset.setting(nil, in: body) }
+        let isPrivate = if let tribe { await isPrivateNow(tribe) } else { isContact(pubkey) }
+        return try TimeZoneOffset.setting(isPrivate ? offset : nil, in: body)
+    }
+
+    /// Whether a tribe's registry says it is private at this moment: a
+    /// member learns that a tribe went public only there (and an owner may
+    /// have changed it on another device), so a send asks. No answer is no.
+    private func isPrivateNow(_ tribe: Tribe) async -> Bool {
+        guard tribe.isPrivate, let host = tribe.host,
+              let info = try? await TribeInfo.fetch(pubkey: tribe.pubkey, host: host), info.deleted != true else {
+            return false
+        }
+        if let changed = merged(info) { try? record(changed) }
+        return info.isPrivate == true
+    }
+
+    /// Whether the core holds `pubkey` as a person (not a tribe).
+    func isContact(_ pubkey: String) -> Bool { Self.isPerson(pubkey, in: state) == true }
+
+    /// A tribe this account knows, as last stored.
+    func knownTribe(_ pubkey: String) -> Tribe? { tribes[pubkey] }
 
     /// One message through the core: text, an attachment, a delete, a
     /// payment or a boost. A text message to a tribe carries sats (the
@@ -1307,10 +1334,14 @@ public actor Engine {
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
         replacing id: Int64?
     ) async throws -> String? {
+        var body = try await outgoingBody(body, to: pubkey, type: type, tribe: try openTribe(pubkey))
+        // The registry may have just changed the tribe, its price too.
         let tribe = try openTribe(pubkey)
         let myAlias = tribe == nil ? alias : tribeAlias(alias)
         if amountMsat != nil, Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) {
-            throw Failure.noteTooLong
+            // A payment's note fits without the offset rather than not at all.
+            body = try TimeZoneOffset.setting(nil, in: body)
+            if Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) { throw Failure.noteTooLong }
         }
         let sats = amountMsat ?? tribe?.messageAmountMsat(type: type) ?? 0
         let time = clock.next()
@@ -2184,6 +2215,13 @@ public actor Engine {
         }
     }
 
+    /// A joined tribe as its registry record now says, if that changes it.
+    private func merged(_ info: TribeInfo) -> Tribe? {
+        guard var current = tribes[info.pubkey], !current.left else { return nil }
+        current.update(from: info)
+        return current == tribes[info.pubkey] ? nil : current
+    }
+
     /// Takes the registry's current name, photo and prices for each joined
     /// tribe, a few at a time, and saves what changed in one write. Failures
     /// leave what is stored.
@@ -2205,11 +2243,7 @@ public actor Engine {
                 }
                 return infos
             }
-            let changed = infos.compactMap { info -> Tribe? in
-                guard var current = tribes[info.pubkey], !current.left else { return nil }
-                current.update(from: info)
-                return current == tribes[info.pubkey] ? nil : current
-            }
+            let changed = infos.compactMap(merged)
             guard !Task.isCancelled else { break }
             do {
                 try storage.save(changed)

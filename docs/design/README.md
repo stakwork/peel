@@ -509,9 +509,11 @@ and what was not in `../phases/04-money.md`.
 ## Time zones
 
 Researched and designed 2026-10-08, second pass after Tom's review the same
-day; not built. Boards T1–T6 and T3a–T3c on the "Peel layout directions"
-canvas (row "Time zones"). To be built after the current cleanup (plan at
-the end of this section).
+day. Boards T1–T6 and T3a–T3c on the "Peel layout directions" canvas (row
+"Time zones"). **Engine built** (plan steps 1–3, `Sources/PeelCore/TimeZones.swift`,
+migration v14); the UI (steps 4–5) is next, sync (step 6) later. What was
+built and where it differs from the plan: "Built (steps 1–3)" at the end of
+this section.
 
 The official apps let each person share their time zone, and show the other
 side's local time in a DM header and on tribe messages. Peel keeps their
@@ -831,6 +833,82 @@ kept if one arrives but never makes Peel send.
    already has RNCryptor for attachments); and a memes-server token, which
    Peel already gets for media. The whole file has to be merged and
    uploaded back, since it carries the other settings too.
+
+### Built (steps 1–3, 2026-10-08)
+
+- **Wire.** `Engine.deliver` hands the core `outgoingBody(_:to:type:)`:
+  `metadata` set to `{"tz":"GMT+1"}` for text, attachments and payments
+  (`TimeZoneOffset.carriedBy`) when the chat's row is enabled and the chat is
+  a person the core holds, or a tribe stored as private **and** whose
+  registry says private when asked just before the send. A member learns that
+  a tribe went public only from the registry (the background refresh runs on
+  connect), so the send asks it; no answer means no offset. Taken out of the
+  body otherwise. Payment requests (type 2) do not carry it; the plan named
+  only text, attachments and payment notes.
+- **A payment note that fits only without the offset** goes without it,
+  rather than the payment being refused as too long.
+- **A retry follows the switch as it is now**, not the first try's offset as
+  the conventions above said: the body is rewritten on the way out, so a
+  message first sent while sharing was on, retried after it was turned off or
+  after the tribe went public, goes without it. The stored row keeps the body
+  it was first written with (an attachment's never has the offset); only the
+  wire copy changes.
+- **Reading.** `message.senderTZ` is a generated column (v14): the `tz` of a
+  `metadata` string holding a JSON object, at most 64 characters, **as
+  sent**, worked out from `body` by guards that run in order, so a
+  malformed value gives NULL and stored history has it with no backfill. A
+  delete empties the body and so clears it. `TimeZoneOffset.zone(_:)` parses
+  it when read (`Message.senderTimeZone`). Zone names must contain `/` and
+  only `A–Z a–z 0–9 / _ - +`, with no `..`, before `TimeZone(identifier:)`
+  sees them (the system's `knownTimeZoneIdentifiers` is incomplete: it lacks
+  `Asia/Kolkata`).
+- **Per member, by alias**, not by key: a tribes server strips members' keys
+  from what it forwards (`contact_pubkey`, `tribes/src/forward.rs`), so the
+  sender key the conventions above mention does not exist on tribe messages.
+  Aliases are unique within a tribe, as for mentions and deletes.
+- **Storage (v14).** The generated `senderTZ` with a partial index on
+  `(chat, timestamp) WHERE senderTZ IS NOT NULL AND fromMe = 0`;
+  `chatTimeZone` (chat, enabled, identifier, updatedAt) as in the table
+  above. The account's zone is `Setting.timeZone` ("" = automatic).
+- **Engine API.** `setTimeZoneSharing(_:in:)` (refuses turning it on in a
+  public tribe or for a key that is neither a contact nor a tribe),
+  `timeZoneSharing(in:)` (the switch), `offsetShared(in:)` (what goes out
+  there now, nil when off or in a public tribe), `setTimeZone(_:)`,
+  `chosenTimeZone()`, `timeZone(for:)` (the chat's zone, else the account's,
+  else this Mac's) and `localTime(of:member:at:)`: their zone, the value
+  sent, when, and the difference from yours, from the newest readable offset
+  within 90 days.
+- **CLI.** `local-time <pubkey> [alias]`, `share-timezone <pubkey> [yes|no]`;
+  `messages` shows `[tz …]` on rows that carry one.
+- **Verified on the local stack** (two development profiles): nothing sent
+  with the switch off; `GMT+5:30` (TZ=Asia/Kolkata) and `GMT+1` in a direct
+  message and a payment note once on, parsed on the other side; turning it on
+  in a public tribe refused, and a private tribe made public stopped getting
+  it with the next message, the owner's and a member's alike (the member's
+  stored record still said private); a private tribe carried both ways
+  (`GMT+1`, `GMT-4`) through the tribes server; each side saw the other's
+  local time with its own switch off. Not done: against the official Mac app
+  with the throwaway account (step 3's second half).
+- **Review findings not applied.** The registry is asked on every send to
+  a private tribe with sharing on (one request; the background refresh runs
+  only on connect), rather than trusting a cached record for some minutes:
+  decision 2 says a tribe made public stops getting the offset with the next
+  message. `ChatTimeZone.identifier` and `updatedAt` stay although only sync
+  (step 6) will write them: the table keeps the file's shape. A retry's
+  stored row keeps its first body (above).
+- **`/security-review`:** no finding at confidence 8 or above. Checked: every
+  send goes through `outgoingBody`, which sets or removes `metadata` (so a
+  retry, an attachment or a payment never keeps an offset the rules no longer
+  allow); a tribe needs its stored flag and a fresh registry answer, and a
+  failed fetch is no; new SQL is bound or constant; the v14 column's guards
+  run in order. Hardened from a near-miss: a zone name may not start with `/`.
+  Left as decided: an offset worked out just before the registry answers goes
+  once if the switch is turned off in that moment.
+
+For the UI PR: the run header's rule (the run's first message's offset, else
+the sender's latest within 90 days of it) needs a per-alias lookup at a given
+time; `localTime` answers for now only. `Engine.offsetShared(in:)` and
+`TimeZoneOffset.format` give the switch note its "GMT+1".
 
 ### Open questions for Tom
 

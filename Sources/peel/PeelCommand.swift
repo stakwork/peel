@@ -33,6 +33,11 @@ struct PeelCommand {
           mark-unread <pubkey> [index]  mark a chat unread from a message (server index), else from its
                                       newest incoming message
           mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
+          local-time <pubkey> [alias] a contact's local time, or a tribe member's by alias, from the
+                                      offset they last sent (within 90 days)
+          share-timezone <pubkey> [yes|no]  whether this account's offset goes with what it sends in a
+                                      direct message or private tribe (off unless turned on; never in
+                                      a public tribe); sets it when given
           send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread,
                                       --price <sats> to sell it: buyers pay to get its key)
           buy <id>                    buy someone's paid attachment (row id from messages; --yes over the
@@ -358,6 +363,31 @@ struct PeelCommand {
             try await session.engine.setMute(pubkey, level: level)
             try await session.finish(after: wait)
 
+        case "local-time":
+            guard let pubkey = arguments.next() else { throw PeelError("local-time needs a pubkey") }
+            let engine = try await load()
+            guard let local = try await engine.localTime(of: pubkey, member: arguments.rest().joined(separator: " ").nilIfEmpty) else {
+                print("no time zone from them in the last 90 days")
+                return
+            }
+            let time = Date.now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: local.zone))
+            let hours = Double(local.difference) / 3600
+            let difference = hours == 0 ? "same as yours"
+                : "\(abs(hours).formatted()) h \(hours > 0 ? "ahead" : "behind")"
+            print("\(time) local time · \(difference) · sent \(local.sent) on \(local.seen.formatted())")
+
+        case "share-timezone":
+            guard let pubkey = arguments.next() else { throw PeelError("share-timezone needs a pubkey") }
+            let engine = try await load()
+            if let choice = arguments.next() {
+                try await engine.setTimeZoneSharing(yesNo(choice), in: pubkey)
+            }
+            if let offset = try await engine.offsetShared(in: pubkey) {
+                print("sharing \(offset) (\(try await engine.timeZone(for: pubkey).identifier))")
+            } else {
+                print(try await engine.timeZoneSharing(in: pubkey) ? "on, but never sent here" : "not sharing")
+            }
+
         case "tribes":
             let storage = try Storage(directory: profile.directory, readOnly: true)
             for tribe in try storage.tribes() {
@@ -668,7 +698,8 @@ extension Session {
         let delivery = row.delivery.map { " [\($0)]" } ?? ""
         let mention = row.mentionsMe ? " [mentions me]" : ""
         let deleted = row.deleted ? " [deleted]" : ""
-        print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(line(row))\(delivery)\(mention)\(deleted)")
+        let tz = row.senderTZ.map { " [tz \($0)\(row.senderTimeZone == nil ? ", unreadable" : "")]" } ?? ""
+        print("\(row.id ?? 0)  #\(index)  \(row.uuid ?? "-")  \(line(row))\(delivery)\(mention)\(deleted)\(tz)")
         if let reply = row.replyUUID {
             print("      in reply to \(parents[reply].map(line) ?? "\(reply) (not stored)")")
         }

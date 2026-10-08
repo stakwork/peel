@@ -90,6 +90,9 @@ public enum Setting: String, Sendable {
     /// The call server calls are started on and links are checked against,
     /// as `host[:port]`; `chat.sphinx.chat` when unset.
     case callServer
+    /// The zone this account's offset comes from, an IANA name; unset or ""
+    /// means this Mac's.
+    case timeZone
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

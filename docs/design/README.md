@@ -1,8 +1,10 @@
 # Peel design
 
-Last updated 2026-10-07. The target layout and visual language for the Mac app.
-Nothing here is built yet beyond the current shell; phase files say when each
-part lands. The source mock lives on the canvas "Peel layout directions"
+Last updated 2026-10-08. The target layout and visual language for the Mac app.
+Most of it is built: the sidebar, flat message rows, tribes, replies and
+threads, attachments, Peel's menu and the Payments screen. Not built yet: the
+call button in the conversation header (phase 6) and the gaps each section's
+notes list. The phase files say what is left. The source mock lives on the canvas "Peel layout directions"
 (direction D); the screenshots below are taken from it.
 
 ![Dark theme](layout-dark.png)
@@ -18,8 +20,8 @@ layout, a conversation with an inspector panel, an agent inbox home) were
 mocked and rejected on 2026-10-07.
 
 Colours and type are Sphinx's, because Peel is meant to replace the official
-apps. The Peel logo stays in the sidebar header for now so Tom can tell the
-two apps apart.
+apps. The sidebar header is you (photo, name, balance) and Peel's menu since
+option S2; the Peel logo shows only on the lock and welcome screens.
 
 ## Layout
 
@@ -306,7 +308,7 @@ The layout can be built before the features behind it, with empty states:
 - Dark Sphinx colours (`Sources/PeelApp/Theme.swift`); Roboto was bundled
   until the system font replaced it.
 - Hidden title bar; the sidebar header carries the app icon, "Peel" and the
-  balance.
+  balance (replaced by you and your menu with S2, see "Sidebar" above).
 - Sidebar: search (filters the lists, held in `AppModel.searchQuery`), Threads,
   Mentions, Payments with empty states, Tribes with "No tribes yet", Direct
   messages, "Add contact" (a popover next to the row, through

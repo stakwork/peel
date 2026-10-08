@@ -42,6 +42,13 @@ struct MenuItem {
     /// Shown at the bottom of the window when `action` says it did its job
     /// ("Copied"), since the menu has gone by then.
     var done: String?
+    /// Shown on the right, after the title: the current choice behind a
+    /// submenu ("All"), or an icon for where the item opens.
+    var detail: String?
+    var detailSystemImage: String?
+    /// Entries that take the menu's place when this item is chosen, with a
+    /// way back (a submenu, opened in place).
+    var submenu: [MenuEntry]?
     /// Returns whether it did its job; only `done` cares.
     var action: @MainActor () -> Bool
 }
@@ -72,6 +79,13 @@ enum MenuEntry {
             action()
             return true
         })
+    }
+
+    /// Opens `entries` in the menu's place; `detail` names the current choice.
+    static func submenu(
+        _ title: String, systemImage: String? = nil, detail: String? = nil, _ entries: [MenuEntry]
+    ) -> MenuEntry {
+        .item(MenuItem(title: title, systemImage: systemImage, detail: detail, submenu: entries) { false })
     }
 
     /// A copy item: `copy` returns whether it copied, and "Copied" shows at

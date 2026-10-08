@@ -291,11 +291,11 @@ struct ConversationLink: View {
 /// A sidebar row's menu: Mark as read (or unread), the notification level, and for a
 /// tribe its link and leaving it (confirmed in place). Direct messages have
 /// no Leave, and no Delete chat: the engine cannot delete a conversation.
+/// The chat header's More menu (`HeaderMoreButton`) shares its pieces.
 @MainActor
 enum ConversationMenu {
     static func entries(for conversation: Conversation, model: AppModel) -> [MenuEntry] {
         let chat = conversation.chat
-        let level = model.readStates[chat]?.mute ?? .all
         let unread = model.readStates[chat]?.unread ?? 0
         var read: [MenuEntry] = []
         if unread > 0 {
@@ -303,31 +303,55 @@ enum ConversationMenu {
         } else if (try? model.engine?.storage.newestIncomingIndex(in: chat)) != nil {
             read.append(.button("Mark as unread", systemImage: "envelope.badge") { Task { await model.markUnread(chat) } })
         }
-        var levels: [MenuEntry] = [.header("Notify me about")]
-        // The tribes server only marks mentions in tribes.
-        let choices: [(MuteLevel, String)] = conversation.isTribe
-            ? [(.all, "All messages"), (.mentionsOnly, "Mentions only"), (.muted, "Nothing (mute)")]
-            : [(.all, "All messages"), (.muted, "Nothing (mute)")]
-        for (choice, title) in choices {
-            levels.append(.button(title, checked: choice == level) { Task { await model.setMute(chat, choice) } })
+        guard conversation.isTribe, let tribe = model.tribe(chat) else {
+            return .sections(read, levels(for: conversation, model: model))
         }
-        guard conversation.isTribe, let tribe = model.tribe(chat) else { return .sections(read, levels) }
-        let link: [MenuEntry] = tribe.link.map { link in
-            [.copy("Copy tribe link", text: link, systemImage: "link")]
-        } ?? []
-        var leave: [MenuEntry] = []
+        return .sections(read, levels(for: conversation, model: model), link(tribe), leave(conversation, tribe, model: model))
+    }
+
+    /// The levels a chat offers, under "Notify me about", the current one checked.
+    static func levels(for conversation: Conversation, model: AppModel) -> [MenuEntry] {
+        let chat = conversation.chat
+        let level = model.readStates[chat]?.mute ?? .all
+        return [.header("Notify me about")] + choices(conversation).map { choice in
+            .button(choice.title, checked: choice.level == level) { Task { await model.setMute(chat, choice.level) } }
+        }
+    }
+
+    /// "Notifications", with the current level beside it and the levels behind it.
+    static func notifications(for conversation: Conversation, model: AppModel) -> MenuEntry {
+        let level = model.readStates[conversation.chat]?.mute ?? .all
+        return .submenu("Notifications", systemImage: "bell",
+                        detail: choices(conversation).first { $0.level == level }?.short,
+                        levels(for: conversation, model: model))
+    }
+
+    /// The tribes server only marks mentions in tribes.
+    private static func choices(_ conversation: Conversation) -> [(level: MuteLevel, title: String, short: String)] {
+        conversation.isTribe
+            ? [(.all, "All messages", "All"), (.mentionsOnly, "Mentions only", "Mentions"), (.muted, "Nothing (mute)", "Muted")]
+            : [(.all, "All messages", "All"), (.muted, "Nothing (mute)", "Muted")]
+    }
+
+    static func link(_ tribe: Tribe) -> [MenuEntry] {
+        tribe.link.map { [.copy("Copy tribe link", text: $0, systemImage: "link")] } ?? []
+    }
+
+    /// Leave, or Remove from Peel for a tribe this account can no longer
+    /// post in; each confirmed by a second click.
+    static func leave(_ conversation: Conversation, _ tribe: Tribe, model: AppModel) -> [MenuEntry] {
+        let chat = conversation.chat
         if tribe.status != .active {
-            leave.append(.destructive("Remove from Peel", systemImage: "trash", confirm: "Remove #\(conversation.name)") {
+            return [.destructive("Remove from Peel", systemImage: "trash", confirm: "Remove #\(conversation.name)") {
                 Task { await model.leave(chat) }
-            })
-        } else if !tribe.isOwner {
-            // The owner cannot leave, only delete the tribe (under Edit tribe).
-            leave.append(.destructive("Leave tribe", systemImage: "rectangle.portrait.and.arrow.right",
-                                      confirm: "Leave #\(conversation.name)") {
-                Task { await model.leave(chat) }
-            })
+            }]
         }
-        return .sections(read, levels, link, leave)
+        // The owner cannot leave, only delete the tribe (under Edit tribe).
+        guard !tribe.isOwner else { return [] }
+        return [.destructive("Leave tribe", systemImage: "rectangle.portrait.and.arrow.right",
+                             confirm: "Leave #\(conversation.name)") {
+            Task { await model.leave(chat) }
+        }]
     }
 }
 

@@ -115,12 +115,13 @@ is a short plan. Update the status and the journal when you finish something.
     (`WebPage.address`) and each profile's website data store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
-  `ConversationMenu`), `SidebarForms` (join a tribe), `ContactsViews` (add
+  `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons,
   `PhotoCache`, `AppIcon`), `Styles` (the `…Boxed` helpers), `Clipboard`,
-  `Formatting`, `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
+  `Formatting`, `ConversationView` (with the tribe header and
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
@@ -150,7 +151,7 @@ is a short plan. Update the status and the journal when you finish something.
   time, the hover card, a chat's details panel with the time zone switch);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
   own data store, its toolbar, the routing of http and https links, a
-  tribe's app and second brain buttons);
+  tribe's second brain and app as More menu items);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit

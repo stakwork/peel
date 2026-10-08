@@ -375,19 +375,22 @@ extension View {
     }
 }
 
-/// A tribe's web app and second brain, as header buttons, each shown only
-/// when the tribe has one (stored only when `WebPage.address` took it).
-struct TribeWebButtons: View {
-    /// The window's link router, as for a message link.
-    @Environment(\.openURL) private var openURL
-    let tribe: Tribe?
-
-    var body: some View {
-        if let url = tribe?.appURL.flatMap(URL.init(string:)) {
-            HeaderButton(systemImage: "square.grid.2x2", help: "Open the tribe's app") { openURL(url) }
-        }
-        if let url = tribe?.secondBrainURL.flatMap(URL.init(string:)) {
-            HeaderButton(systemImage: "brain", help: "Open the tribe's second brain") { openURL(url) }
+/// A tribe's second brain and web app, as the first items of its header's
+/// More menu, each only when the tribe has one (stored only when
+/// `WebPage.address` took it). `open` is the window's link router, as for a
+/// message link, so they open in the pane.
+@MainActor
+enum TribeWebEntries {
+    static func entries(for tribe: Tribe?, open: OpenURLAction) -> [MenuEntry] {
+        let pages: [(String, String, String?)] = [
+            ("Second brain", "brain", tribe?.secondBrainURL), ("Tribe app", "square.grid.2x2", tribe?.appURL),
+        ]
+        return pages.compactMap { title, image, address in
+            guard let url = address.flatMap(URL.init(string:)) else { return nil }
+            return .item(MenuItem(title: title, systemImage: image, detailSystemImage: "arrow.up.right") {
+                open(url)
+                return true
+            })
         }
     }
 }

@@ -21,6 +21,8 @@ final class MenuPresenter {
         var confirming: Int?
         /// The menu's width at least, for a dropdown as wide as its button.
         var minWidth: CGFloat = 0
+        /// Inside a submenu: the menu it came from, its item and that item's title.
+        var back: (entries: [MenuEntry], index: Int, title: String)?
     }
 
     private(set) var open: Open?
@@ -146,6 +148,13 @@ final class MenuPresenter {
     /// first, so the action lands on the window underneath.
     func choose(_ index: Int) {
         guard let open, let item = open.entries[index].item else { return }
+        if let submenu = item.submenu {
+            self.open?.back = (open.entries, index, item.title)
+            self.open?.entries = submenu
+            self.open?.confirming = nil
+            self.open?.highlighted = submenu.firstIndex { $0.item?.checked == true }
+            return
+        }
         if item.confirm != nil, open.confirming != index {
             self.open?.confirming = index
             self.open?.highlighted = index
@@ -168,6 +177,15 @@ final class MenuPresenter {
 
     func cancelConfirmation() {
         open?.confirming = nil
+    }
+
+    /// From a submenu back to the menu it opened from, its item highlighted.
+    func goBack() {
+        guard let back = open?.back else { return }
+        open?.entries = back.entries
+        open?.back = nil
+        open?.confirming = nil
+        open?.highlighted = back.index
     }
 
     // MARK: Hover cards
@@ -288,7 +306,13 @@ final class MenuPresenter {
         }
         switch event.keyCode {
         case 53: // Escape
-            if open.confirming != nil { cancelConfirmation() } else { dismiss() }
+            if open.confirming != nil { cancelConfirmation() } else if open.back != nil { goBack() } else { dismiss() }
+            return true
+        case 123: // Left: out of a submenu
+            goBack()
+            return true
+        case 124: // Right: into one
+            if let index = open.highlighted, open.entries[index].item?.submenu != nil { choose(index) }
             return true
         case 36, 76: // Return, Enter
             if let index = open.confirming ?? open.highlighted { choose(index) }
@@ -334,6 +358,10 @@ private struct MenuPanel: View {
     var body: some View {
         if let open = presenter.open {
             VStack(alignment: .leading, spacing: 0) {
+                if let back = open.back {
+                    MenuBackRow(title: back.title) { presenter.goBack() }
+                    Theme.divider.frame(height: 1).padding(.vertical, 4).padding(.horizontal, 6)
+                }
                 ForEach(Array(open.entries.enumerated()), id: \.offset) { index, entry in
                     switch entry {
                     case .divider:
@@ -394,6 +422,14 @@ private struct MenuRow: View {
                 Text(shortcut.label)
                     .font(Theme.font(12))
                     .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
+            } else if item.detail != nil || item.detailSystemImage != nil || item.submenu != nil {
+                HStack(spacing: 4) {
+                    if let detail = item.detail { Text(detail).font(Theme.font(12)) }
+                    if let image = item.detailSystemImage ?? (item.submenu != nil ? "chevron.right" : nil) {
+                        Image(systemName: image).font(.system(size: 9, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
             }
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
@@ -404,6 +440,35 @@ private struct MenuRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(item.checked ? .isSelected : [])
+    }
+}
+
+/// The top of a submenu: its parent item's title, back to the menu.
+private struct MenuBackRow: View {
+    let title: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 16)
+            Text(title)
+                .font(Theme.font(13, .medium))
+            Spacer(minLength: 16)
+        }
+        .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture(perform: action)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Back to the menu")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

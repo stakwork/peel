@@ -14,7 +14,7 @@ extension Storage {
                 SELECT sender FROM message
                 WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
                   AND type NOT IN (\(MessageType.directPayment), \(MessageType.boost))
-                  AND chat NOT IN (SELECT pubkey FROM tribe)
+                  AND chat NOT IN (\(Self.tribeChats))
                 ORDER BY serverIndex DESC LIMIT 50
                 """)
         }
@@ -28,7 +28,7 @@ extension Storage {
         try pool.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT DISTINCT chat, json_extract(sender, '$.alias') AS alias FROM message
-                WHERE fromMe = 1 AND chat IN (SELECT pubkey FROM tribe) AND json_valid(sender)
+                WHERE fromMe = 1 AND chat IN (\(Self.tribeChats)) AND json_valid(sender)
                   AND IFNULL(json_extract(sender, '$.alias'), '') != ''
                 """
             ).reduce(into: [:]) { aliases, row in aliases[row["chat"] as String, default: []].insert(row["alias"]) }
@@ -54,7 +54,7 @@ extension Storage {
                     db, sql: """
                         SELECT id, chat, content, mentionsMe FROM message
                         WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
-                          AND type IN (\(MessageType.contentSQL)) AND chat IN (SELECT pubkey FROM tribe) \(only)
+                          AND type IN (\(MessageType.contentSQL)) AND chat IN (\(Self.tribeChats)) \(only)
                         ORDER BY id LIMIT ?
                         """,
                     arguments: arguments
@@ -79,6 +79,9 @@ extension Storage {
     func highestServerIndex() throws -> Int64? {
         try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }
     }
+
+    /// Every stored tribe, joined or left: the subquery for "is this chat a tribe".
+    static let tribeChats = "SELECT pubkey FROM tribe"
 
     /// Every conversation: ready contacts and joined tribes. A tribe is a core
     /// contact with no contact key, so it is never a ready contact.

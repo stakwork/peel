@@ -393,7 +393,7 @@ extension Storage {
     /// Anything of ours posted to a tribe: every tribe message pays the
     /// tribe (`Engine.deliver`), so the server has a row for it. Free
     /// messages never match a row, so they never show.
-    private static let tribeMessagesSQL = "fromMe = 1 AND chat IN (SELECT pubkey FROM tribe)"
+    private static let tribeMessagesSQL = "fromMe = 1 AND chat IN (\(tribeChats))"
 
     /// How far apart a payment's server row and its message may be when
     /// they are paired by time rather than by hash.

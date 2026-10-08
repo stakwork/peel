@@ -160,6 +160,13 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// a note, a payment or a request.
     public var isSaid: Bool { isContent || type == MessageType.call }
 
+    /// In a tribe's timeline, whether this message stands for its collapsed
+    /// thread: text or an attachment in one, as the timeline counts thread
+    /// messages. Anything else in a thread (a call, a payment) is never
+    /// hidden by the collapse, so it keeps its own row; taking it for the
+    /// thread too would give the thread two rows.
+    public var standsForThread: Bool { threadUUID != nil && isContent }
+
     /// The words a row shows, trimmed: the content, or for a call message
     /// the link it carries (all a call Peel cannot join shows, as plain text).
     public var shownText: String { Self.shownText(type: type, content: content) }

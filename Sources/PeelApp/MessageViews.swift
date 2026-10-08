@@ -116,7 +116,7 @@ struct ChatRow: Identifiable {
         var newAfter = newAfter
         for message in messages {
             // A collapsed thread's row stands for its newest message, which this is.
-            let collapsed = message.threadUUID.flatMap { threads[$0] }
+            let collapsed = message.standsForThread ? message.threadUUID.flatMap { threads[$0] } : nil
             // No row that would draw nothing (blank space under the last
             // row, Tom 2026-10-08): "New messages" goes to the next.
             if message.isBlank, collapsed == nil, message.uuid.flatMap({ boosts[$0] }) == nil,
@@ -151,6 +151,11 @@ struct ChatRow: Identifiable {
             if kind == .paymentRequest { row.paymentRequest = message.id.flatMap { requests[$0] } }
             rows.append(row)
         }
+        // Ids are unique by construction; should one ever repeat, the newest
+        // row keeps it. A repeated id leaves the lazy list room for a row it
+        // never draws: blank space under the newest message.
+        var seen = Set<String>()
+        rows = rows.reversed().filter { seen.insert($0.id).inserted }.reversed()
         // Every message row, a collapsed thread's and a thread's original included.
         for index in rows.indices where rows[index].kind == .message {
             rows[index].call = callServer.flatMap { CallLink(in: rows[index].message, server: $0) }

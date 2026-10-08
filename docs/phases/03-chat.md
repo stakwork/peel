@@ -2144,3 +2144,67 @@ threads, boosts and parents that meet only there). Follow-ups, not done:
   thread's "N replies" count and the sidebar preview at once.
 - A quote of a blank parent goes nowhere.
 - An image, a blank and an image within a minute now share one grid.
+
+## The gap under the newest row: a thread row twice (branch `fix/overscroll-gap`, 2026-10-08)
+
+From Tom's real account after #72: #Universe: AI showed 72 to 84 pt of
+empty space under the newest message, through scrolling, the jump button
+and chat switches. The debug build's probe of where the last row ends put
+it in the pixels (`drawnGap=84`). Only that chat, and its ROWS line said
+`dupes=1`: one row id twice in the list.
+
+Done means: one row per id by construction, and the list ends on its
+newest row in every chat; #41's and #68's rules unchanged.
+
+Cause: a call (type 32, in either form: `call::{…}` or the Mac app's bare
+link) posted inside a tribe thread of two or more. `tribeTimelineSQL` hides
+only a collapsed thread's text and attachments (`MessageType.content`), so
+the call stays in the timeline next to the thread's newest message.
+`ChatRow.rows` then took both for the thread and named both `t<thread>`.
+A `LazyVStack` keeps room for both and draws one: a blank the size of a row
+under the newest message. Universe: AI has two calls and a thread among
+its newest messages; no other chat of Tom's has a call in a thread.
+
+Reproduced on a copy of `gap-alice` shaped like Tom's newest 15 (bare-link
+calls, a collapsed thread, boosts as replies) with the older call put in
+the thread: `dupes=1`, the id kind `t`, and 62 pt of blank under the newest
+message in the window capture, on every open after a switch, with the call
+presence stub answering. Same with the `call::` form.
+
+Changed:
+
+- `Message.standsForThread` (PeelCore): a message stands for its collapsed
+  thread only when it is text or an attachment in one, as the timeline
+  counts thread messages. `ChatRow.rows` collapses only those; a call in a
+  thread keeps its own row (`m<id>`), where the timeline already put it.
+- `ChatRow.rows` drops a repeated id as a backstop, keeping the newest row,
+  so a cause not found yet costs a row, not a gap.
+- `RowIdTests` (written by a parallel investigation, adapted to the new
+  rule, with the Mac app's call form added): unique ids over 40 generated
+  chats with threads, boosts, calls in every form, deletes and blank
+  messages, in a tribe and a direct message; and the call-in-a-thread
+  shape. Both fail without the change.
+- No runtime assertion: the app bundle is a debug build, and Tom runs it
+  every day, so an `assert` on a repeated id would crash his Peel where
+  the backstop leaves a row out. The tests carry the assertion.
+
+Before and after, the lazy list kept (four opens after chat switches, call
+presence answering), last row's end below the list's end: the duplicate
+shape 62 pt blank before, flush after, in both call forms. Tom's shape and
+the five mixed seeds: flush after (before, seeds 3, 4 and 7 reported 21, 73
+and 25 pt in SwiftUI's geometry while the window capture was flush).
+"New messages" far up still opens at the divider; a quote-style jump stays
+up, and the jump button lands flush.
+
+On the way (this branch's earlier commits, both replaced): steering the
+scroll offset back to the end opened the chat blank on Tom's account, and
+laying every row out in a plain `VStack` hid the gap at about 4.5 times
+the open time (470 ms against 100 ms for 200 rows). Neither is needed now:
+the list stays lazy. Tried and dropped as well: no `.sizeChanges` anchor,
+and a plain tail after the lazy stack.
+
+Reviews (inline). Simplify: the rule lives in PeelCore next to `isSaid`, and
+the test's row-id mirror uses it; the backstop is three lines. Security:
+row building only, no input parsing, storage, network or logging change.
+
+`swift test`: 419 tests, all pass but the known IPv6 issue.

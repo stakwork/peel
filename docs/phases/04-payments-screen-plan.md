@@ -1,6 +1,6 @@
 # Phase 4 plan — the Payments screen and invoices
 
-Status: built on branch `phase4/payments` (2026-10-07), with paid
+Status: built on branch `phase4/payments` (2026-10-07) and merged as #27, with paid
 attachments added at Tom's request; what was built, verified, left
 untested (anything needing Lightning behind the server) and the open
 questions are in `04-money.md`, "Payments screen, invoices, requests and

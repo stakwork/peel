@@ -108,6 +108,9 @@ extension Engine {
         case noCallServer
         case notAnAttachment
         case attachmentWithoutKey
+        /// Larger than a download asked for (`downloadAttachment(upTo:)`):
+        /// its size, when known (encrypted, if the server named it).
+        case largeAttachment(size: Int64?)
         case untrustedMediaHost(String)
         case uploadInProgress
         case invalidAmount
@@ -208,6 +211,7 @@ extension Engine {
             case .noCallServer: "this account has no call server"
             case .notAnAttachment: "that message is not an attachment"
             case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
+            case .largeAttachment: "this attachment is large; it downloads when asked"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
             case .uploadInProgress: "this attachment is still uploading"
             case .notAnInvoice: "that is not a Lightning invoice"

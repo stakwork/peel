@@ -84,7 +84,9 @@ the timeline.
 
 **Built today:** Peel already reads any `audio` media type as
 `AttachmentKind.audio` and checks the bytes (`AttachmentKind.verified`).
-Its preview says "Audio", but the timeline shows a file card. LiveKit
+Its preview says "Audio"; since `feat/video-attachments` (2026-10-08) the
+timeline plays it in a compact card (see `03-chat.md`, "Video and audio
+playback"), and playback pauses when you change chats. LiveKit
 (phase 6) already adds the microphone usage string and entitlement.
 
 **Open:** send WAV for compatibility, which is about 5 MB a minute,

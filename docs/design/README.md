@@ -507,6 +507,17 @@ canvas), with these decisions over the boards:
   as…" (choose where) is in the message's menu. Nothing is ever opened for
   you, and every file Peel writes for you is quarantined, so macOS checks it
   before it opens. Paid attachments: see "Payments" below.
+- **Videos** are sized like an image: the poster frame (a second in) with a
+  play button and the length; a plain tile with a camera until the frame
+  is ready. Up to 25 MB they download as they show; a larger one is a tile
+  with "Video · 38.3 MB" and Load. A click plays it in place with AVKit's
+  controls (play, pause, scrub, volume); one plays at a time, and it pauses
+  when its row scrolls away or the chat changes. The corner button (on
+  hover) or a double-click opens it in the image viewer, which carries on
+  where the row was, with Download (then Show in Finder) and Save as…;
+  Space plays and pauses, Escape closes and pauses. Nothing plays by itself.
+- **Audio** is a 300 pt card: a round play button, a scrubber and
+  "0:12 / 1:05". The same 25 MB rule; a larger one loads on its first play.
 - **Uploads:** a progress bar on the row ("Uploading · 2.1 of 3.4 MB"); a
   failed one reads "Not uploaded · Retry · Discard", like an undelivered
   message.

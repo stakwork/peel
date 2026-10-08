@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -44,6 +45,22 @@ public enum AttachmentKind: String, Sendable, Equatable {
         return matches ? declared : .file
     }
 
+    /// The extension of a declared type: UTType's, else "mov" for the Mac
+    /// app's `video/mov`, which is no MIME type UTType knows.
+    public static func fileExtension(mediaType: String?) -> String? {
+        guard let mediaType else { return nil }
+        if let ext = UTType(mimeType: mediaType)?.preferredFilenameExtension { return ext }
+        return mediaType.lowercased() == "video/mov" ? "mov" : nil
+    }
+
+    /// A name for an image, video or recording the server gave none:
+    /// "video.mov", as the Mac app names its videos, "audio.m4a".
+    static func fallbackName(mediaType: String?) -> String? {
+        let kind = AttachmentKind(mediaType: mediaType)
+        guard [.image, .video, .audio].contains(kind), let ext = fileExtension(mediaType: mediaType) else { return nil }
+        return "\(kind.rawValue).\(ext)"
+    }
+
     private static func isImage(_ data: Data) -> Bool { imageFrames(data) != nil }
 
     /// How many frames the data holds if ImageIO can decode it, else nil.
@@ -56,22 +73,45 @@ public enum AttachmentKind: String, Sendable, Equatable {
 
     /// ISO base media (`ftyp`, as in .mov and .mp4), QuickTime atoms, Matroska/WebM.
     private static func isVideo(_ data: Data) -> Bool {
-        let head = [UInt8](data.prefix(12))
-        guard head.count >= 8 else { return false }
-        let atom = String(decoding: head[4..<8], as: UTF8.self)
-        return ["ftyp", "moov", "mdat", "wide", "free", "skip"].contains(atom) || head.starts(with: [0x1A, 0x45, 0xDF, 0xA3])
+        guard let container = container(data) else { return false }
+        return container.isoMedia || container.mimeType.hasPrefix("video/")
     }
 
-    /// WAV, MP3 (ID3 or a frame sync), MPEG-4 audio, Ogg, FLAC, AIFF.
+    /// WAV, MP3 (ID3 or a frame sync), AAC (ADTS), MPEG-4 audio, Ogg, FLAC, AIFF.
     private static func isAudio(_ data: Data) -> Bool {
+        guard let container = container(data) else { return false }
+        return container.isoMedia || container.mimeType.hasPrefix("audio/")
+    }
+
+    /// The video or audio container `data` starts with, by its signature:
+    /// its MIME type, and whether it is ISO base media (`ftyp`), which holds
+    /// either.
+    static func container(_ data: Data) -> (mimeType: String, isoMedia: Bool)? {
         let head = [UInt8](data.prefix(12))
-        guard head.count >= 4 else { return false }
-        let ascii = String(decoding: head, as: UTF8.self)
-        if ascii.hasPrefix("RIFF") && head.count >= 12 { return String(decoding: head[8..<12], as: UTF8.self) == "WAVE" }
-        if ascii.hasPrefix("FORM") && head.count >= 12 { return String(decoding: head[8..<12], as: UTF8.self).hasPrefix("AIF") }
-        if ascii.hasPrefix("ID3") || ascii.hasPrefix("OggS") || ascii.hasPrefix("fLaC") { return true }
-        if head[0] == 0xFF && head[1] & 0xE0 == 0xE0 { return true }
-        return head.count >= 8 && String(decoding: head[4..<8], as: UTF8.self) == "ftyp"
+        guard head.count >= 4 else { return nil }
+        func text(_ range: Range<Int>) -> String {
+            head.count >= range.upperBound ? String(decoding: head[range], as: UTF8.self) : ""
+        }
+        switch text(4..<8) {
+        case "ftyp":
+            let brand = text(8..<12)
+            if brand == "qt  " { return ("video/quicktime", true) }
+            return (["M4A ", "M4B ", "M4P "].contains(brand) ? "audio/mp4" : "video/mp4", true)
+        case "moov", "mdat", "wide", "free", "skip": return ("video/quicktime", false)
+        default: break
+        }
+        if head.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) { return ("video/webm", false) }
+        switch text(0..<4) {
+        case "RIFF": return text(8..<12) == "WAVE" ? ("audio/wav", false) : nil
+        case "FORM": return text(8..<12).hasPrefix("AIF") ? ("audio/aiff", false) : nil
+        case "fLaC": return ("audio/flac", false)
+        case "OggS": return ("audio/ogg", false)
+        default: break
+        }
+        if text(0..<3) == "ID3" { return ("audio/mpeg", false) }
+        // A frame sync: layer bits 00 are AAC in ADTS, the others MPEG audio.
+        if head[0] == 0xFF && head[1] & 0xE0 == 0xE0 { return (head[1] & 0x06 == 0 ? "audio/aac" : "audio/mpeg", false) }
+        return nil
     }
 }
 
@@ -182,5 +222,59 @@ struct AttachmentFields: Decodable {
 
     static func decode(_ body: String?) -> AttachmentFields? {
         body.flatMap { try? JSONDecoder().decode(AttachmentFields.self, from: Data($0.utf8)) }
+    }
+}
+
+/// What a downloaded video or audio file holds, read from the decrypted file
+/// where it sits in the cache. Cached files have no extension, so the
+/// container's MIME type is named from its first bytes; nothing is copied.
+public struct MediaInfo: Sendable {
+    /// Seconds; nil when the file does not say.
+    public let duration: TimeInterval?
+    /// A video's picture, turned as it plays, in pixels; nil for audio.
+    public let size: CGSize?
+    /// A video's poster frame, when asked for and one could be made.
+    public let poster: CGImage?
+
+    /// The file as AVFoundation should read it.
+    public static func asset(_ file: URL) -> AVURLAsset {
+        let head = (try? FileHandle(forReadingFrom: file)).flatMap { handle in
+            defer { try? handle.close() }
+            return try? handle.read(upToCount: 12)
+        } ?? Data()
+        let options = AttachmentKind.container(head).map { [AVURLAssetOverrideMIMETypeKey: $0.mimeType] } ?? [:]
+        return AVURLAsset(url: file, options: options)
+    }
+
+    /// Its duration, a video's picture size and, with `posterPixels`, its
+    /// poster frame a second in (or a third of the way into a shorter one),
+    /// its long side at most that; nil when AVFoundation cannot play it.
+    /// One asset, read once.
+    public static func load(_ file: URL, posterPixels: Int? = nil) async -> MediaInfo? {
+        let asset = asset(file)
+        guard let (time, playable, tracks) = try? await asset.load(.duration, .isPlayable, .tracks), playable
+        else { return nil }
+        let duration = time.isNumeric ? time.seconds : nil
+        var size: CGSize?
+        if let track = tracks.first(where: { $0.mediaType == .video }),
+           let (natural, transform) = try? await track.load(.naturalSize, .preferredTransform) {
+            let turned = natural.applying(transform)
+            size = CGSize(width: abs(turned.width), height: abs(turned.height))
+        }
+        var poster: CGImage?
+        if let posterPixels, size != nil {
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: posterPixels, height: posterPixels)
+            let at = CMTime(seconds: min(1, (duration ?? 0) / 3), preferredTimescale: 600)
+            poster = try? await generator.image(at: at).image
+        }
+        return MediaInfo(duration: duration, size: size, poster: poster)
+    }
+
+    /// "0:07", "12:30", "1:02:03".
+    public static func format(duration seconds: TimeInterval) -> String {
+        let time = Duration.seconds(max(0, seconds.rounded(.down)))
+        return time.formatted(.time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond))
     }
 }

@@ -3,7 +3,9 @@ import PeelCore
 
 /// One sender's images at full size over the window: who sent them and
 /// when, Reply, Copy and Save as…, arrows (or the arrow keys) between them,
-/// the caption, and a strip of the run. Escape or a click outside closes.
+/// the caption, and a strip of the run. A video plays here with AVKit's
+/// controls (Space plays and pauses), carrying on from its row, with
+/// Download and Save as…. Escape or a click outside closes.
 struct ImageViewer: View {
     @Environment(AppModel.self) private var model
     let state: ImageViewerState
@@ -12,6 +14,8 @@ struct ImageViewer: View {
     @State private var keys = KeyMonitor()
 
     private var current: Message { state.current }
+    private var isVideo: Bool { current.attachmentKind == .video }
+    private var playback: MediaPlayback { .shared }
 
     var body: some View {
         let handle = model.attachment(current.id ?? 0)
@@ -24,7 +28,10 @@ struct ImageViewer: View {
                 HStack(spacing: 18) {
                     arrow("chevron.left", help: "Previous (Left arrow)", enabled: state.index > 0) { model.stepViewer(-1) }
                     Group {
-                        if let image {
+                        if isVideo, playback.current == current.id, let player = playback.player {
+                            PlayerSurface(player: player, style: .floating)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        } else if let image {
                             Image(decorative: image, scale: 1)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -79,8 +86,16 @@ struct ImageViewer: View {
         .foregroundStyle(.white)
         .task(id: current.id) {
             image = nil
-            await model.download(current)
-            if let file = model.attachment(current.id ?? 0).file {
+            let message = current
+            await model.download(message)
+            let handle = model.attachment(message.id ?? 0)
+            guard let file = handle.file else { return }
+            if message.attachmentKind == .video {
+                // The row's player, where it was; nothing starts by itself.
+                // Not if the viewer closed or moved on while it downloaded.
+                guard !Task.isCancelled, model.attachmentKind(of: message) == .video, let id = message.id else { return }
+                playback.showFullScreen(id, file: file)
+            } else {
                 image = await ImageCache.shared.image(file, maxPixels: 4096)
             }
         }
@@ -91,12 +106,18 @@ struct ImageViewer: View {
                 case 53: model.viewer = nil
                 case 123: model.stepViewer(-1)
                 case 124: model.stepViewer(1)
+                case 49:
+                    // Space: play or pause the video shown.
+                    return MediaPlayback.shared.toggleFullScreen()
                 default: return false
                 }
                 return true
             }
         }
-        .onDisappear { keys.stop() }
+        .onDisappear {
+            keys.stop()
+            playback.closeFullScreen()
+        }
         .accessibilityAddTraits(.isModal)
     }
 
@@ -122,11 +143,27 @@ struct ImageViewer: View {
                 } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
                     .buttonStyle(GhostButtonStyle())
             }
-            CopyButton("Copy") { model.copyImage(current) }
-                // A fresh button per image, so one copied does not mark the next.
-                .id(current.id)
-                .buttonStyle(GhostButtonStyle())
-                .disabled(image == nil)
+            if isVideo {
+                let handle = model.attachment(current.id ?? 0)
+                if let saved = handle.savedTo {
+                    Button { model.showInFinder(saved) } label: { Label("Show in Finder", systemImage: "folder") }
+                        .buttonStyle(GhostButtonStyle())
+                        .help("Saved to Downloads as \(saved.lastPathComponent)")
+                } else {
+                    let message = current
+                    Button { Task { await model.saveToDownloads(message) } } label: {
+                        Label("Download", systemImage: "arrow.down.to.line")
+                    }
+                    .buttonStyle(GhostButtonStyle())
+                    .help("Save to Downloads")
+                }
+            } else {
+                CopyButton("Copy") { model.copyImage(current) }
+                    // A fresh button per image, so one copied does not mark the next.
+                    .id(current.id)
+                    .buttonStyle(GhostButtonStyle())
+                    .disabled(image == nil)
+            }
             Button { Task { await model.save(current) } } label: { Label("Save as…", systemImage: "square.and.arrow.down") }
                 .buttonStyle(GhostButtonStyle())
             HoverIconButton(systemImage: "xmark", help: "Close (Escape)", action: close)

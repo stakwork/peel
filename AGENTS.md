@@ -65,7 +65,9 @@ is a short plan. Update the status and the journal when you finish something.
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
     per engine
   - `Media.swift` — what an attachment is: `AttachmentKind` (by its bytes),
-    `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`
+    `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
+    `MediaInfo` (a cached video's or recording's duration, picture size and
+    poster frame, read in place with the container type from its bytes)
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download, the
@@ -96,7 +98,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
-  `ImageViewer`, `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
+  `ImageViewer` (images, and videos full size), `MediaViews` (the video
+  tile, the audio card, `PlayerSurface` over AVKit's player view and
+  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),

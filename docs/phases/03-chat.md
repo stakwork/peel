@@ -1927,3 +1927,108 @@ notifications) still shows raw backticks; a plain-text flattener in
 
 `swift test`: 207 tests, all pass but `ThreadTests.threadsListHasDirectMessagesWithLatestAndParticipants`
 (fixed by #35) and the known ServerAddress IPv6 issue.
+
+## Video and audio playback (branch `feat/video-attachments`, 2026-10-08)
+
+Tom, in real use: Gonza's video in a tribe ("Demo of auto-park with
+livekit server") showed as a file card, a "FILE" tile titled "File" with a
+download arrow; the official Mac app plays it.
+
+### Why it was a file card
+
+- The kind was right. The Mac app sends a video as `video.mov` with media
+  type `video/mov` (`AttachmentObject.getFileAndMime`), and both apps
+  read any type containing `video` as a video (`getMediaType`;
+  `AttachmentKind(mediaType:)`). The row's `attachmentKind` was `.video`.
+- The view had no video case: `AttachmentView` drew `ImageTile` for images
+  and `FileCard` for everything else, video and audio included.
+- `FileCard` names a file by its download's name, else by
+  `UTType(mimeType:)`. `video/mov` is not a MIME type UTType knows (the
+  real one is `video/quicktime`), so it has no description and no
+  extension: hence "File" and "FILE". Nothing was downloaded, so the
+  server's `video.mov` never arrived to name it.
+
+### The Mac app (checked, `sphinx-mac-v2`)
+
+- `MediaMessageView` draws the poster frame (`MediaLoader.
+  getThumbnailImageFromVideoData`: `AVAssetImageGenerator` two seconds in,
+  the track's transform applied) with a play overlay, and shows no file
+  name. A click opens `MediaFullScreenView`, an `AVPlayerView` that
+  autoplays; Save writes `sphinx.<date>.mov`.
+- It downloads videos whole as they show, with no size rule; audio plays
+  only for `audio/wav`.
+
+### Decided
+
+- Videos and audio download as they show up to 25 MB
+  (`Engine.autoDownloadLimit`, chosen by kind in `AppModel.autoDownload`); images have no size rule (they are
+  small), so the brief's fallback applies. A larger one is held: the engine
+  refuses it before reading the body (`downloadAttachment(messageID:upTo:)`,
+  `Failure.largeAttachment(size:)`, the size from `Content-Length` or the
+  row's known size) and the tile offers Load.
+- The poster frame is a second in (a third of the way into a shorter
+  video), not two: short clips have one.
+- Nothing plays by itself, not even in the viewer (the Mac app autoplays
+  there). One player at a time (`MediaPlayback`), for video and audio
+  alike; it pauses when its row leaves the screen (another chat, scrolled
+  away, locked) unless the viewer shows it, and the viewer pauses it when
+  it closes.
+- Decrypted media stays in the cache and is read in place: cached files
+  have no extension, so `MediaInfo.asset` names the container's MIME type
+  from its first bytes (`AVURLAssetOverrideMIMETypeKey`) rather than
+  copying the file somewhere with one.
+- A file the server gave no name takes the Mac app's own when its bytes
+  are what it says: the engine names it "video.mov" (`AttachmentKind.
+  fallbackName`), "audio.m4a" from the declared type.
+- No Copy for a video in the viewer: it would put the decrypted cache file
+  on the clipboard, outside the quarantine every saved file gets.
+  Download (into Downloads, quarantined, then Show in Finder) and Save as…
+  are there instead; the message menu keeps Save as….
+- A small mark (quotes, the viewer's strip) shows a camera or a waveform
+  for video and audio by what the bytes turned out to be
+  (`AppModel.attachmentKind(of:)`, which `AttachmentView` also switches
+  on), and a file badge falls back to the declared type's extension
+  (`AttachmentKind.fileExtension`: "MOV" for `video/mov`).
+
+### Built
+
+- `PeelCore`: `MediaInfo` in `Media.swift` (`asset`; `load`, one asset
+  read once for the duration, the turned picture size and the poster;
+  `format(duration:)`); `AttachmentKind.container`, one signature reader for
+  the byte check and AVFoundation's MIME type; `fileExtension` and
+  `fallbackName`; `MemesServer.Failure.tooLarge` carries the size the server
+  named; `downloadAttachment(upTo:)` (the cache first, whatever the size).
+- `PeelApp`: `MediaViews.swift` (`VideoTile`, `AudioCard` with its
+  `AudioScrubber` the only part redrawn as it plays, `PlayerSurface`,
+  `MediaPlayback`, `MediaInfoCache` (one read per file, shared by rows),
+  `MediaStatus` and the `MediaLoading` modifier both views use);
+  `AttachmentHandle.State.held`; `autoDownload`, `play` and
+  `attachmentKind(of:)` on the model; `AttachmentFormat.fitted`,
+  `attachmentTile()` and `attachmentCard()` shared with images and file
+  cards; `SavedNote`; the viewer plays a video with AVKit's floating
+  controls.
+
+### Verified
+
+- Unit tests (`MediaInfoTests`): a generated two-second H.264 movie and a
+  WAV, written without an extension as the cache names them: kind, MIME
+  type, duration, picture size and a poster within the size asked; a shell
+  script is not playable; containers named from their first bytes; clock
+  formatting; kinds and fallback names; the size gate refusing a 30 MB
+  video by its known size and serving it from the cache once there.
+- Local stack (the running broker, a throwaway memes stub on
+  127.0.0.1:8857, profiles `va-alice` "Gonza" and `va-bob`): Gonza's CLI
+  sent a 4 s clip (`video/mov`, `video.mov`, as the Mac app), a 38 MB
+  video, a WAV and an M4A with a caption. The bundled app on `va-bob`,
+  launched in the background, drew the poster with play and 0:04, the
+  large one as "Video · 38.3 MB" with Load, and both audio cards at
+  "0:00 / 0:07". Nothing was clicked or played (no accessibility access;
+  Tom may be on a call), so playing inline, the viewer, Load and Download
+  are checked by code only.
+
+### Open
+
+- Click through: play inline, scrub, mute, another video pausing the
+  first, scroll away, change chat, double-click and the corner button into
+  the viewer, Space and Escape there, Load on the large one, Download and
+  Show in Finder.

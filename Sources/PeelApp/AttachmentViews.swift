@@ -2,10 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PeelCore
 
-/// An attachment in a message: an image (or a grid of a run of them) or a
-/// file card. Images download as soon as they show; files when asked.
-/// Nothing is ever opened for the person.
+/// An attachment in a message: an image (or a grid of a run of them), a
+/// video, a recording or a file card. Images download as soon as they
+/// show, videos and recordings up to `Engine.autoDownloadLimit`; files
+/// when asked. Nothing is ever opened for the person.
 struct AttachmentView: View {
+    @Environment(AppModel.self) private var model
     let row: ChatRow
     /// Each tile's own menu, in a run of images.
     var tileMenu: (@MainActor (Message) -> [MenuEntry])?
@@ -18,10 +20,12 @@ struct AttachmentView: View {
             ImageGrid(images: row.images, tileMenu: tileMenu)
         } else {
             VStack(alignment: .leading, spacing: 4) {
-                if row.message.attachmentKind == .image {
-                    ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
-                } else {
-                    FileCard(message: row.message)
+                // What the bytes turned out to be once downloaded: a fake video is a file.
+                switch model.attachmentKind(of: row.message) {
+                case .image: ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
+                case .video: VideoTile(message: row.message)
+                case .audio: AudioCard(message: row.message)
+                case .pdf, .text, .file, nil: FileCard(message: row.message)
                 }
                 if case .forSale(let purchases) = row.purchase, let price = row.message.attachmentPriceMsat {
                     ForSaleNote(priceMsat: price, purchases: purchases)
@@ -58,11 +62,20 @@ enum AttachmentFormat {
         mediaType.flatMap { UTType(mimeType: $0)?.localizedDescription }
     }
 
+    /// A picture `width` by `height` pixels drawn at its own shape on a
+    /// Retina screen: its long side at most `maxSide`, and small ones not tiny.
+    static func fitted(width: CGFloat, height: CGFloat, maxSide: CGFloat) -> CGSize {
+        guard width > 0, height > 0 else { return CGSize(width: 240, height: 180) }
+        let longest = max(width, height) / 2
+        let scale = min(maxSide, max(longest, 160)) / longest
+        return CGSize(width: width / 2 * scale, height: height / 2 * scale)
+    }
+
     /// The short label on a file's icon: "PDF", "LOG"; from the declared
     /// type until a download gives the name.
     static func badge(_ name: String?, mediaType: String? = nil) -> String {
         var ext = ((name ?? "") as NSString).pathExtension
-        if ext.isEmpty, let mediaType { ext = UTType(mimeType: mediaType)?.preferredFilenameExtension ?? "" }
+        if ext.isEmpty { ext = AttachmentKind.fileExtension(mediaType: mediaType) ?? "" }
         return ext.isEmpty ? "FILE" : String(ext.uppercased().prefix(4))
     }
 }
@@ -114,7 +127,7 @@ struct ImageTile: View {
 
     @State private var loaded: CGImage?
 
-    private static let maxSide: CGFloat = 320
+    static let maxSide: CGFloat = 320
 
     /// Pixels for the size drawn on a Retina screen: a grid tile's side, or
     /// the largest an image on its own is drawn.
@@ -175,8 +188,7 @@ struct ImageTile: View {
                         .padding(8)
                 }
             }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
+        .attachmentTile()
         .help(failure(handle) ?? "")
         .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Image")
     }
@@ -187,11 +199,9 @@ struct ImageTile: View {
 
     private var displaySize: CGSize {
         if let size { return CGSize(width: size, height: size) }
-        guard let image, image.width > 0, image.height > 0 else { return CGSize(width: 240, height: 180) }
-        // Its long side at most `maxSide`, and small ones not tiny.
-        let longest = CGFloat(max(image.width, image.height)) / 2
-        let scale = min(Self.maxSide, max(longest, 160)) / longest
-        return CGSize(width: CGFloat(image.width) / 2 * scale, height: CGFloat(image.height) / 2 * scale)
+        return AttachmentFormat.fitted(
+            width: CGFloat(image?.width ?? 0), height: CGFloat(image?.height ?? 0), maxSide: Self.maxSide
+        )
     }
 }
 
@@ -248,16 +258,7 @@ struct FileCard: View {
                 } else if case .downloading = handle.state {
                     TransferBar(label: "Downloading", progress: handle.progress)
                 } else if let saved = handle.savedTo {
-                    HStack(spacing: 8) {
-                        Text("Saved to Downloads")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                            .help(saved.lastPathComponent)
-                        Button("Show in Finder") { model.showInFinder(saved) }
-                            .buttonStyle(.plain)
-                            .font(Theme.font(12, .medium))
-                            .foregroundStyle(Theme.link)
-                    }
+                    SavedNote(file: saved)
                 } else if case .failed(let reason) = handle.state {
                     Text(reason)
                         .font(Theme.font(11))
@@ -269,15 +270,8 @@ struct FileCard: View {
             Spacer(minLength: 8)
             action(handle)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        // As wide as a column allows, up to 300 pt; the name truncates in the middle.
-        .frame(maxWidth: 300, alignment: .leading)
-        .background(
-            Theme.quote,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .foregroundStyle(Theme.text)
+        // The name truncates in the middle.
+        .attachmentCard()
     }
 
     @ViewBuilder private func action(_ handle: AttachmentHandle) -> some View {
@@ -289,7 +283,7 @@ struct FileCard: View {
             switch handle.state {
             case .downloading:
                 EmptyView()
-            case .idle, .failed, .ready:
+            case .idle, .held, .failed, .ready:
                 if handle.savedTo == nil {
                     HoverIconButton(systemImage: "arrow.down.to.line", help: "Download to Downloads") {
                         Task { await model.saveToDownloads(message) }
@@ -300,7 +294,44 @@ struct FileCard: View {
     }
 }
 
-/// A small square for an attachment: the image itself, or the file's type.
+/// "Saved to Downloads · Show in Finder", once a file was saved there.
+struct SavedNote: View {
+    @Environment(AppModel.self) private var model
+    let file: URL
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Saved to Downloads")
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+                .help(file.lastPathComponent)
+            Button("Show in Finder") { model.showInFinder(file) }
+                .buttonStyle(.plain)
+                .font(Theme.font(12, .medium))
+                .foregroundStyle(Theme.link)
+        }
+    }
+}
+
+extension View {
+    /// An image or video tile's corners and edge.
+    func attachmentTile() -> some View {
+        clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
+    }
+
+    /// A file or audio card: as wide as a column allows, up to 300 pt.
+    func attachmentCard() -> some View {
+        padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 300, alignment: .leading)
+            .background(Theme.quote, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .foregroundStyle(Theme.text)
+    }
+}
+
+/// A small square for an attachment: the image itself, a video's or a
+/// recording's symbol, or the file's type.
 struct AttachmentMark: View {
     @Environment(AppModel.self) private var model
     let message: Message
@@ -313,6 +344,12 @@ struct AttachmentMark: View {
         Group {
             if message.attachmentKind == .image, let image {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
+            } else if let symbol = model.attachmentKind(of: message)?.symbol {
+                Theme.selection.overlay {
+                    Image(systemName: symbol)
+                        .font(.system(size: size * 0.36, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                }
             } else {
                 Theme.selection.overlay {
                     Text(message.attachmentKind == .image ? "IMG" : AttachmentFormat.badge(message.fileName, mediaType: message.mediaType))

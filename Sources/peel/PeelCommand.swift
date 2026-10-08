@@ -685,8 +685,8 @@ struct Session {
             "\(direction) \(id): \(bytes) of \(total) bytes"
         case .moneyReceived(let message):
             "received \(Sats.format(msat: message.amountMsat ?? 0)) in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
-        case .invoicePaid(let hash):
-            "invoice paid \(hash)"
+        case .invoicePaid(let invoice):
+            "invoice paid \(invoice.paymentHash) (\(invoice.status.rawValue), \(Sats.format(msat: invoice.paidMsat ?? 0)))"
         }
     }
 }

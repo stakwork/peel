@@ -50,7 +50,9 @@ is a short plan. Update the status and the journal when you finish something.
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
   `buttonProgress`, the spinner inside a running button);
-  `Notifier` for local notifications and the Dock badge)
+  `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
+  sats received: the header's count-up, the Payments row's "+350", one
+  notification per arrival)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in

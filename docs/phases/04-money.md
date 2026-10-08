@@ -4,7 +4,8 @@
 
 **Built and merged:** boosts and in-chat payments (#16), one-tap boost (#24),
 unsettled payments and boost once (#26), the Payments screen, invoices,
-requests in chat and paid attachments (#27). Storage is at v13.
+requests in chat and paid attachments (#27), sats received shown and
+notified (branch `feat/money-received`). Storage is at v13.
 
 **Open:**
 - Payment templates, not started: the scope list at the start of the journal.
@@ -1244,3 +1245,124 @@ plan row 5 of `docs/reviews/2026-10-08-architecture.md`.
   paid footer uses `format(msat:of:)`. `/simplify`: one truncation helper;
   skipped renaming `Sats.parse` (also parses hours) and merging it with
   `Sats.msat`. `/security-review`: no findings.
+
+## Sats received (2026-10-08, branch `feat/money-received`)
+
+Tom: when sats arrive (an invoice paid while Peel was closed or open, a
+payment or boost to him) nothing shows it; the balance and the Payments
+row change silently. Done means: the header balance counts up, the
+Payments row shows what is unseen and lights the new rows once, one
+system notification per arrival, several payments at once summed into one,
+for every case below.
+
+### Which events fire (checked on the local stack, and in the code)
+
+| Case | Events, in order | Verified |
+|---|---|---|
+| Direct payment, Peel open | `.message` (type 5), `.moneyReceived`, then `.balance` about 16 ms later (the mixer's `notify_balance_change`) | local, CLI `listen` and the app |
+| Boost on our message, Peel open | `.message` (type 29), `.moneyReceived`, `.balance` | local |
+| Payments while Peel was closed | On connect: `.balance` (unchanged: the async pays are not settled yet), then each held async pay arrives live, each `.message`, `.moneyReceived`, `.balance` up, all within about 80 ms | local, three payments |
+| A message payment missed entirely (history page) | `.message(_, .history)`, `.moneyReceived` (past the read marker only) | code: same `received` rule |
+| `request_invoice` paid while open | `.balance` up → `checkInvoices` fetches the history → the row with the invoice's hash → `.invoicePaid`; no `.moneyReceived` (no message) | code only: the local mixer runs `NO_LIGHTNING` |
+| `request_invoice` paid while closed | On connect `.balance` (raised), then the history check (on coming online, and the rise) → `.invoicePaid` | code only, as above |
+| A request paid with `pay_contact_invoice` (an old `make_invoice` one) | `.moneyReceived` for the type 3 and `.invoicePaid` on settle, same payment hash | code; the engine sends only `.moneyReceived` for it |
+| Restore | Nothing: `.moneyReceived` is no longer sent for a restore (`Engine.commit`, one line); a restore has no open invoices | code |
+
+### Built
+
+- **Engine:** `.moneyReceived` not sent in a restore. `.invoicePaid` now
+  carries the stored `InvoiceRecord` (was the hash), is sent only for an
+  invoice this commit moved from OPEN (a repeated settle is not news), and
+  also for an underpaid one, with what arrived in `paidMsat`; not for a
+  hash this commit already told as `.moneyReceived` (a type 3), so each
+  payment is one event.
+- **`MoneyArrivals` (app):** one `Receipt` per payment event; payments within 0.7 s
+  (at most 3 s from the first) are one arrival. The header's balance
+  (`shownMsat`) holds a rise back 1.5 s so the payment and its balance,
+  whichever comes first, roll as one; a balance up to 5 s after an
+  arrival rolls at once. A paid invoice told more than 1.5 s after its
+  balance glows, badges and notifies without a roll. Anything else (first
+  balance, restore, falls, keysends with no message) just changes.
+  VoiceOver hears "Received +350 sats · 3 payments", not while locked.
+- **Header:** `BalanceLabel`, a `numericText` roll in tabular digits with
+  the final width reserved from the start; the connection bolt glows green
+  for a moment (`receivedGlow`). No pill (Tom's feedback on the first
+  build: the pill wrapped the balance and moved it).
+- **Payments row:** "+350" in the badge slot (`ReceivedBadge`, the green of
+  received amounts, `Theme.confirmed`; no new colour token), popping in with
+  scale and fade, summing what follows, cleared once Payments is on screen
+  with the window in front, which also takes away the money notifications
+  and lights the matching rows (by payment hash or message row; checked
+  that history rows' `rhash` equals the message's `paymentHash`).
+- **Notifications** (`Notifier.moneyReceived`): one per arrival, title
+  "+21 sats" or "+350 sats · 3 payments", body "From MrAlice: lunch",
+  "Boost from Bob in #Tribe", "Invoice paid: memo", "Bob paid your
+  request" or "From Bob, Carol, and an invoice"; the note only when
+  notifications may show text; "Sats received" while locked. A payment or
+  boost in a chat notifies only at the chat's "all" level and not for the
+  chat open in front of you; a paid invoice (a request in a chat too)
+  always notifies when notifications are allowed; nothing while Payments
+  is open in front of you. Not held back by the first history of a
+  session, since the engine's read-marker rule already keeps what was seen
+  quiet. A click opens Payments.
+- Reduce Motion: no roll, no pop.
+
+### Verified (local stack, 2026-10-08)
+
+Broker and mixer (`NO_LIGHTNING`, `TESTING_ONLY_ADD_TO_SENDER`) on their
+own ports, profiles `mr-alice` and `mr-bob`, funded by paying whole
+balances back and forth; the test bundle on `mr-bob`, captured window by
+window.
+
+- Live 100-sat payment: balance rolled 875 → 975, no layout shift.
+- Three payments while closed, then launch: 2,025 rolled to 2,375 in one
+  roll, the bolt glowed, the Payments row popped in "+350"; a fourth live
+  payment of 70 rolled it to "+420".
+- Not exercised: clicking Payments (no input automation in this session),
+  so the row flash was checked only through the hash join in the
+  database; the notifications themselves (no view of Notification
+  Center); Reduce Motion; invoices (no Lightning locally).
+
+### Reviews
+
+`/code-review high`, applied: `.invoicePaid` once per invoice (only an
+invoice this commit moved from OPEN) and carrying its record, so the app
+reads nothing back and `Storage.invoice` stays internal; underpaid invoices
+count what arrived; the hold compares with the last real balance, not what
+is shown, so a send during a held rise is never rolled as received, and the
+30 s rise memory and its replay are gone; no VoiceOver amount while locked;
+a request paid in a chat names the payer; no notification while Payments is
+in front, and the unseen sum clears only once the window is in front; the
+glow follows a change of arrival rather than a clock check; one naming
+helper in `Notifier`.
+
+`/simplify` (four angles), applied: the engine drops `.invoicePaid` for a
+hash its `.moneyReceived` already told, so the app's dedupe set and receipt
+key are gone; `AppModel.balanceMsat` feeds `MoneyArrivals` from a `didSet`;
+an arrival counter instead of a struct; the Payments row is its own view
+(an arrival no longer redraws the whole sidebar) and uses `UnreadBadge`
+(now taking text and colours) with `SignedAmount.text` for "+350"; one
+pass to light rows, run from the history updates rather than an
+`onChange` over the whole list; an ordered de-dup with a set.
+
+Not applied, with why:
+- One extra read in `commit` for the hashes it settles
+  (`openInvoices(among:)`, none when nothing settles) plus one per paid
+  invoice: rare, and a batch would widen the Engine hunk others are editing.
+- `Receipt` (kind, amount) and a single `.received` event in PeelCore, and
+  the balance carried on it instead of the hold timers: the right home for
+  an agent, but the mixer's balance arrives as its own message after the
+  payment (16 ms locally), so the engine cannot pair them either without the
+  same wait; left for the engine refactor.
+- A `destination` key in the notification instead of the `payments` thread
+  sentinel: a chat key is a 66-character node key and cannot be
+  "payments"; worth doing with the next non-chat notification.
+- The restore rule inside `Storage.apply`: the engine guard sits beside the
+  same guard for purchases; moving both is a separate change.
+- One `shouldNotify` for messages and money: their rules differ (mentions
+  pass for messages, not for money).
+- Shared flash timing with the message list (`MessageViews.swift`, edited
+  elsewhere) and `CopyFeedback.enter` for the badge (Tom asked for no
+  cross-fade under Reduce Motion; the badge spring is slower on purpose).
+- `invoice.paidMsat ?? amountMsat` without the status check: an underpaid
+  invoice with an unknown amount must count 0, not what it asked.

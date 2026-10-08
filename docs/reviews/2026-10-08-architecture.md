@@ -209,7 +209,7 @@ See the table above. The proposed splits are all move-only and none change behav
 **Dead or test-only API (low).**
 - `Storage.messages(in:)` (`Storage.swift:773`) is used only by tests, since `timeline(in:)` replaced it; #23 still edits it.
 - `Storage.replyCounts(in:)` (`:858`) is tests only.
-- `Engine.Event.moneyReceived` is ignored by the app (`AppModel.swift:647`); only the CLI prints it. Keep it if the Payments screen (04 plan) will use it, and say so in the doc comment.
+- `Engine.Event.moneyReceived` is ignored by the app (`AppModel.swift:647`); only the CLI prints it. Keep it if the Payments screen (04 plan) will use it, and say so in the doc comment. *Done 2026-10-08:* the app uses it and `.invoicePaid` (`04-money.md`, "Sats received").
 - `Detail` `.payments` is a placeholder (`MainView.swift:765`), while `Storage.payments()` exists.
 
 *Fix:* delete the first two and rewrite their tests against `timeline`.

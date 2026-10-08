@@ -11,7 +11,7 @@ message (#23, in `02-messaging.md` item 7).
 - Tribe parity leftovers (tags, app and second brain URLs, image upload, per-tribe alias, details page, directory, link QR): "Tribes", "Open".
 - A production run of tribe create, edit, pin and delete on the throwaway: "Tribes", "Open".
 - Clicking through what no session could exercise: "Chat UI", "Open".
-- Notifying payments and boosts (`.moneyReceived`), a Reply action: "Notifications", "Open".
+- A Reply action on notifications: "Notifications", "Open". (Payments and boosts notify since 2026-10-08: `04-money.md`, "Sats received".)
 
 **Decided:** no auto-join of the invite's tribe; delete sends only
 `delete_tribe`; one Reply, threads grow from replies, no Copy link; files
@@ -1730,7 +1730,8 @@ profile's notifications).
   bundle ID: either may receive the other's clicks and remove its
   notifications. Harmless for one user; a profile tag in userInfo would fix it.
 - Scroll to the message on click; a Reply action.
-- **Payments and boosts (hook ready, not shown yet).** Tom, 2026-10-07:
+- **Payments and boosts: built 2026-10-08** (`04-money.md`, "Sats
+  received"). The note as written before then follows. Tom, 2026-10-07:
   payments to you and boosts on your messages should notify. The engine
   emits `Engine.Event.moneyReceived(Message)` after the row's `.message`:
   someone else's direct payment, or a boost on one of this account's

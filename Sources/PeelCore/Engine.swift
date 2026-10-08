@@ -36,10 +36,13 @@ public actor Engine {
         /// to it or a boost on one of its own messages, new to this Mac, past
         /// the chat's read marker, with real sats (`msat`; `amountMsat` is the
         /// amount). Follows its `.message`. The chat's mute level is for the
-        /// listener to apply. Never sent for history already read.
+        /// listener to apply. Never sent for history already read, nor in a
+        /// restore.
         case moneyReceived(Message)
-        /// An invoice made here was paid and the server has settled it.
-        case invoicePaid(paymentHash: String)
+        /// An invoice made here was paid and the server has settled it, as
+        /// stored: `paid`, or `underpaid` with what arrived in `paidMsat`.
+        /// Once per invoice: a settle repeated later is not sent again.
+        case invoicePaid(InvoiceRecord)
 
         public enum Direction: Sendable {
             case upload, download
@@ -2465,6 +2468,7 @@ public actor Engine {
 
         var purged: [String] = []
         var received: [Message] = []
+        let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let stored = try storage.apply(commit, purged: &purged, received: &received)
         // A deleted attachment's decrypted copy goes with it.
         let deletedFiles = purged.compactMap { body -> URL? in
@@ -2526,7 +2530,7 @@ public actor Engine {
         if arrival != .restore {
             followUps.purchases = stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
         }
-        for message in received {
+        for message in received where arrival != .restore {
             emit.yield(.moneyReceived(message))
         }
         // What the server said, then what its records settled.
@@ -2536,9 +2540,14 @@ public actor Engine {
         for (tag, status) in answers {
             emit.yield(.sendStatus(tag: tag, status: status))
         }
-        // Every payment that arrives settles; only one to an invoice made here is news.
-        for (hash, _) in commit.settled where try storage.invoice(paymentHash: hash, incoming: true)?.status == .paid {
-            emit.yield(.invoicePaid(paymentHash: hash))
+        // Every payment that arrives settles; only one to an invoice made
+        // here, open until this commit, is news, and only once: a request
+        // paid with a type 3 was told by its `.moneyReceived`.
+        for (hash, _) in commit.settled where settling.contains(hash) && !received.contains(where: { $0.paymentHash == hash }) {
+            if let invoice = try storage.invoice(paymentHash: hash, incoming: true),
+               invoice.status == .paid || invoice.status == .underpaid {
+                emit.yield(.invoicePaid(invoice))
+            }
         }
         if let error = result.error {
             // The core reports a failed "online" reply only in this text, with

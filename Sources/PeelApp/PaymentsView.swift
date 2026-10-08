@@ -176,6 +176,7 @@ extension PaymentItem {
 /// scrolls; an invoice dropped on the window opens Pay.
 struct PaymentsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.appearsActive) private var appearsActive
 
     enum Pane: Equatable {
         case detail(String)
@@ -191,6 +192,9 @@ struct PaymentsView: View {
     @State private var pane: Pane?
     /// What the Pay pane holds, kept while it is closed and reopened.
     @State private var invoiceText = ""
+    /// Received since Payments was last open, lit once when its row is in the list.
+    @State private var toLight: [Receipt] = []
+    @State private var lit: Set<String> = []
 
     var body: some View {
         HStack(spacing: 0) {
@@ -221,13 +225,24 @@ struct PaymentsView: View {
         .task(id: limit) {
             do {
                 guard let updates = model.paymentHistoryUpdates(limit: limit) else { return }
-                for try await rows in updates { items = rows }
+                for try await rows in updates {
+                    items = rows
+                    lightArrived()
+                }
             } catch {
                 problem = PeelError.readable(error)
             }
         }
         .task(id: model.connection == .connected) { await refresh() }
         .onChange(of: model.balanceMsat) { Task { await refresh() } }
+        // Seen only once the window is in front: until then the row keeps
+        // its "+350" and the notification stays.
+        .onChange(of: model.money.unseen.isEmpty == false && appearsActive, initial: true) { _, seeing in
+            guard seeing else { return }
+            toLight += model.money.takeUnseen()
+            model.notifier.removeDelivered(in: [Notifier.paymentsThread])
+            lightArrived()
+        }
         .dropDestination(for: String.self) { texts, _ in
             guard let text = texts.first, (try? Invoice(text)) != nil else { return false }
             invoiceText = text.trimmed
@@ -245,6 +260,24 @@ struct PaymentsView: View {
             problem = nil
         } catch {
             // Another fetch is running, or the server is slow: the next change asks again.
+        }
+    }
+
+    /// Lights the rows of payments received since Payments was last open,
+    /// once each, fading as the list settles (as a jump to a message does).
+    private func lightArrived() {
+        guard !toLight.isEmpty else { return }
+        var rows: Set<String> = []
+        toLight.removeAll { receipt in
+            guard let item = items.first(where: receipt.matches) else { return false }
+            rows.insert(item.id)
+            return true
+        }
+        guard !rows.isEmpty else { return }
+        lit.formUnion(rows)
+        Task {
+            try? await Task.sleep(for: .seconds(0.4))
+            withAnimation(.easeOut(duration: 1.5)) { lit.subtract(rows) }
         }
     }
 
@@ -281,7 +314,8 @@ struct PaymentsView: View {
                                 .padding(.top, 18)
                                 .padding(.bottom, 6)
                             ForEach(rows) { item in
-                                PaymentListRow(item: item, section: section, selected: pane == .detail(item.id)) {
+                                PaymentListRow(item: item, section: section, selected: pane == .detail(item.id),
+                                               lit: lit.contains(item.id)) {
                                     pane = pane == .detail(item.id) ? nil : .detail(item.id)
                                 }
                                 .onAppear { if item.id == items.last?.id { Task { await loadOlder() } } }
@@ -442,6 +476,8 @@ private struct PaymentListRow: View {
     let item: PaymentItem
     let section: PaymentSection
     let selected: Bool
+    /// Just received, shown for the first time.
+    var lit = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -471,7 +507,7 @@ private struct PaymentListRow: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
-                selected ? Theme.accent.opacity(0.14) : hovering ? Theme.hover : .clear,
+                selected ? Theme.accent.opacity(0.14) : lit ? Theme.confirmed.opacity(0.14) : hovering ? Theme.hover : .clear,
                 in: RoundedRectangle(cornerRadius: 8)
             )
             .contentShape(Rectangle())

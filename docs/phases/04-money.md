@@ -998,3 +998,57 @@ to settle or fail); purchases and refunds take unsettled too
 amount only where it does not already stand beside them. Not applied from
 the review: `invoiceProblem` and the attachment price are worked out in
 the view body (cheap reads, but on the main thread).
+
+### Tribe fees in the history (2026-10-08)
+
+Tom's Payments screen listed many outgoing 3-, 1- and 21-sat rows as
+"Keysend, sent, not tied to a chat". What was found:
+
+- **Tribe message fees.** Every message posted to a tribe pays the tribe
+  (`send` with `is_tribe`, at least 3 sats; the Mac app the same), and the
+  mixer records it under the payment hash in the send's topic, which
+  `send` returns in `msgs[0]` and Peel keeps on its row. The history only
+  joined payment, boost, purchase and invoice messages, so a text or
+  attachment's fee fell through to "Keysend". Now any message of ours in
+  a tribe joins by hash and shows as a **message fee** ("Message fee in
+  #hive"; "Joined #hive" for a join), its detail quoting the message. Only
+  money messages are listed without a server row, so free messages never
+  show.
+- **No hash to join by.** The tribe forwards our own message back to us
+  without sats, so a post or boost from another device (or from Peel
+  before #16 kept the hash) has none. A tribe boost like that showed twice:
+  once as the message (listed as ours with no row) and once as the
+  server's 21-sat row. Outgoing rows with nothing by hash are now paired
+  with our hashless tribe message within 3 s, only when each is the other's
+  one candidate and any amount we know agrees; otherwise the row stays a
+  keysend.
+- **Old pings.** A 1-sat row beside a payment to a contact sent before #27
+  recorded pings (`paymentPing`) is counted as that payment's ping when it
+  is the one such row within 3 s of the one such payment.
+- A pending payment, boost or purchase to a contact now says "Waiting for
+  <name> to come online" (sats to a contact wait for their app), not
+  "not confirmed by the server yet".
+
+Still keysends: fees and pings that are ambiguous by time, and rows whose
+message was never stored here.
+
+`/code-review high`, applied: a hashless post pairs only with a row of the
+tribe's price per message (a boost: what it declared, plus at most the
+price), so an unrelated payment is never called a fee; a failed payment
+takes no ping; time pairing is for outgoing rows only; a private tribe's
+join request reads "Asked to join"; the "goes to a contact" rule lives once
+in `PaymentItem.isToContact`. Not applied: pairing is judged per page, so
+a pair at a page edge can change as more pages load (rare, and only
+between "keysend" and the right label); a payment request posted in a
+tribe keeps its invoice's hash, so its fee stays a keysend (Peel requests
+in DMs); storing the inferred pairs instead of working them out on each
+read (a wrong guess would then be permanent).
+
+`/simplify` (four angles), applied: the boost-cost rule reused from
+`Engine.boostTotalMsat`; the ping fold sets the one ping price; the detail
+pane's quoted message is one block for a boost and a fee; `isToContact` is
+a switch. Not applied: dropping the type filter from the hash join (it
+would also join other messages that carry a hash, such as requests, and
+call them fees); a sweep instead of `uniquePairs`' all-pairs check (the
+lists are rows tied to nothing, a handful a page); reading tribe prices in
+the candidate join instead of a second key lookup (one small query).

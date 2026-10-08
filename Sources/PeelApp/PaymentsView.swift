@@ -117,7 +117,7 @@ extension PaymentItem {
         switch kind {
         case .invoice: return incoming ? "Invoice paid" : "Lightning invoice"
         case .keysend: return "Keysend"
-        case .payment, .boost, .purchase: return chatName ?? "Someone"
+        case .payment, .boost, .purchase, .messageFee: return chatName ?? "Someone"
         }
     }
 
@@ -136,6 +136,13 @@ extension PaymentItem {
         case .purchase:
             if isRefund { return incoming ? "Refund for an attachment you tried to buy" : "Refund of a purchase" }
             return incoming ? "Bought your paid attachment" : "Unlocked a paid attachment"
+        case .messageFee:
+            let tribe = "#\(chatName ?? "")"
+            switch message?.type {
+            case MessageType.groupJoin: return "Joined \(tribe)"
+            case MessageType.memberRequest: return "Asked to join \(tribe)"
+            default: return "Message fee in \(tribe)"
+            }
         }
     }
 
@@ -147,6 +154,7 @@ extension PaymentItem {
         case .invoice: "Invoice payment"
         case .keysend: "Keysend"
         case .purchase: isRefund ? "Refund" : "Purchase"
+        case .messageFee: "Message fee"
         }
         return "\(what) \(incoming ? "received" : status == .pending ? "on its way" : "sent")"
     }
@@ -500,12 +508,12 @@ private struct PaymentDetailPane: View {
                 .monospacedDigit()
             }
             who
-            if let boosted = item.boosted {
+            if let quoted {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(item.incoming ? "Boosted your message" : "You boosted")
+                    Text(quoted.label)
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
-                    QuotedMessage(message: boosted)
+                    QuotedMessage(message: quoted.message)
                 }
             } else if let note = item.note {
                 VStack(alignment: .leading, spacing: 6) {
@@ -557,13 +565,24 @@ private struct PaymentDetailPane: View {
         return "Not tied to a contact"
     }
 
+    /// The message a boost was for, or the one a fee was for.
+    private var quoted: (label: String, message: Message)? {
+        if let boosted = item.boosted { return (item.incoming ? "Boosted your message" : "You boosted", boosted) }
+        if item.kind == .messageFee, let message = item.message { return ("Your message", message) }
+        return nil
+    }
+
+    private var pendingStatus: String {
+        item.isToContact ? "Waiting for \(item.chatName ?? "them") to come online" : "Pending: not confirmed by the server yet"
+    }
+
     private var facts: [KeyValues.Row] {
         var rows: [KeyValues.Row] = []
         switch item.status {
         case .complete:
             rows.append(.init(key: "Status", value: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed))
         case .pending:
-            rows.append(.init(key: "Status", value: "Pending: not confirmed by the server yet", symbol: "clock"))
+            rows.append(.init(key: "Status", value: pendingStatus, symbol: "clock"))
         case .failed:
             rows.append(.init(key: "Status", value: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark"))
         }

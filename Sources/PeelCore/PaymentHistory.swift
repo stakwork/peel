@@ -56,6 +56,9 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
         case keysend
         /// Buying or selling a paid attachment (type 7), or its refund (type 9).
         case purchase
+        /// What a tribe charged for a message we posted there (its price per
+        /// message and escrow, at least 3 sats), or for joining it.
+        case messageFee
     }
 
     public enum Status: Sendable, Equatable { case pending, complete, failed }
@@ -79,7 +82,7 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
     public var counterpartPhotoURL: String?
     /// A payment's note or an invoice's memo.
     public var note: String?
-    /// The payment, boost or invoice payment message, when stored.
+    /// The payment, boost, invoice payment or (for a fee) posted message, when stored.
     public var message: Message?
     /// For a boost: the message boosted, when stored.
     public var boosted: Message?
@@ -92,6 +95,16 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
     public var pingMsat: Int64?
 
     public var date: Date { Date(millisecondsSince1970: timestamp) }
+
+    /// Sats of ours to a contact, which go the asynchronous way: they wait
+    /// for the contact's app to come online, with a ping to wake it.
+    public var isToContact: Bool {
+        guard !incoming, !isTribe, chat != nil else { return false }
+        switch kind {
+        case .payment, .boost, .purchase: return true
+        case .invoice, .keysend, .messageFee: return false
+        }
+    }
 }
 
 /// What stops paying an invoice again: our payment of it on its way or
@@ -353,6 +366,18 @@ extension Storage {
             AND ((fromMe = 1 AND type != \(MessageType.invoicePayment)) OR (fromMe = 0 AND msat > 0))
         """
 
+    /// Anything of ours posted to a tribe: every tribe message pays the
+    /// tribe (`Engine.deliver`), so the server has a row for it. Free
+    /// messages never match a row, so they never show.
+    private static let tribeMessagesSQL = "fromMe = 1 AND chat IN (SELECT pubkey FROM tribe)"
+
+    /// How far apart a payment's server row and its message may be when
+    /// they are paired by time rather than by hash.
+    static let pairingWindowMsat: Int64 = 3_000
+
+    /// The core's price of a ping (`PING_PRICE` in `ping/asyncpay.rs`).
+    static let pingPriceMsat: Int64 = 1000
+
     static func paymentItems(limit: Int, _ db: Database) throws -> [PaymentItem] {
         // A payment's ping is part of its cost, not a line of its own.
         let server = try PaymentRecord.fetchAll(
@@ -372,7 +397,7 @@ extension Storage {
         let joined = try Message.fetchAll(
             db,
             sql: """
-                SELECT * FROM message WHERE \(moneyMessagesSQL) AND (
+                SELECT * FROM message WHERE ((\(moneyMessagesSQL)) OR (\(tribeMessagesSQL))) AND (
                     paymentHash IN (SELECT value FROM json_each(?))
                     OR (fromMe = 0 AND serverIndex IN (SELECT value FROM json_each(?))))
                 """,
@@ -405,7 +430,6 @@ extension Storage {
             arguments: [floor, limit]
         )
 
-        let context = try HistoryContext(messages: joined + unlisted, invoices: joinedInvoices + unlistedInvoices, db)
         // Looked up by index (theirs), payment hash and direction.
         let byIndex = Dictionary(
             joined.compactMap { m in m.fromMe ? nil : m.serverIndex.map { ($0, m) } }, uniquingKeysWith: { a, _ in a }
@@ -415,6 +439,17 @@ extension Storage {
         )
         let invoices = Dictionary(
             joinedInvoices.map { (MoneyKey($0.paymentHash, !$0.incoming), $0) }, uniquingKeysWith: { a, _ in a }
+        )
+        let paired = try pairedByTime(
+            server.filter { row in
+                let key = MoneyKey(row.rhash, !row.incoming)
+                return !row.incoming && byHash[key] == nil && invoices[key] == nil
+            },
+            db
+        )
+        let pairedIDs = Set(paired.values.compactMap(\.id))
+        let context = try HistoryContext(
+            messages: joined + unlisted + paired.values, invoices: joinedInvoices + unlistedInvoices, db
         )
         // A payment's 1-sat ping is counted with it, for this page only.
         var pings: [String: Int64] = [:]
@@ -433,7 +468,9 @@ extension Storage {
         var items: [PaymentItem] = []
         for row in server {
             let key = MoneyKey(row.rhash, !row.incoming)
-            let message = (row.incoming ? row.msgIndex.flatMap { byIndex[$0] } : nil) ?? byHash[key]
+            let message = row.incoming
+                ? row.msgIndex.flatMap { byIndex[$0] } ?? byHash[key]
+                : byHash[key] ?? paired[PaymentKey(row)]
             let invoice = invoices[key]
             var item = context.item(
                 id: "server/\(row.rhash)/\(row.incoming)/\(row.ts)", message: message, invoice: invoice,
@@ -466,7 +503,8 @@ extension Storage {
                 timestamp: invoice.paidAt ?? invoice.createdAt, paymentHash: invoice.paymentHash
             ))
         }
-        for message in unlisted where !(message.paymentHash.map(shown.contains) ?? false) {
+        for message in unlisted where !(message.paymentHash.map(shown.contains) ?? false)
+            && !(message.id.map(pairedIDs.contains) ?? false) {
             items.append(context.item(
                 id: "message/\(message.id ?? 0)", message: message, invoice: nil, incoming: !message.fromMe,
                 amountMsat: message.amountMsat ?? message.msat ?? 0, timestamp: message.timestamp ?? 0,
@@ -476,7 +514,88 @@ extension Storage {
         for index in items.indices where !items[index].incoming {
             items[index].pingMsat = items[index].paymentHash.flatMap { pings[$0] }
         }
+        foldUnrecordedPings(&items)
         return items.sorted { ($0.timestamp, $0.id) > ($1.timestamp, $1.id) }
+    }
+
+    /// One outgoing row of the server's history.
+    private struct PaymentKey: Hashable {
+        let rhash: String
+        let ts: Int64
+        init(_ row: PaymentRecord) { (rhash, ts) = (row.rhash, row.ts) }
+    }
+
+    /// Outgoing rows with no message by hash, paired with what we posted to
+    /// a tribe at the same moment that has no payment hash: sent from another
+    /// device (the tribe's copy carries no payment) or by Peel before it kept
+    /// the hash. Only a pair that is the one candidate on both sides counts,
+    /// and the amount must be what it cost: the msat stored, else the
+    /// tribe's price for a message, or for a payment what it declared plus
+    /// at most that price.
+    private static func pairedByTime(_ rows: [PaymentRecord], _ db: Database) throws -> [PaymentKey: Message] {
+        guard !rows.isEmpty else { return [:] }
+        let candidates = try Message.fetchAll(
+            db,
+            sql: """
+                SELECT DISTINCT m.* FROM json_each(?) j JOIN tribe t JOIN message m
+                    ON m.chat = t.pubkey AND m.timestamp BETWEEN j.value - ? AND j.value + ?
+                WHERE m.fromMe = 1 AND m.paymentHash IS NULL
+                """,
+            arguments: [json(rows.map(\.ts)), pairingWindowMsat, pairingWindowMsat]
+        )
+        guard !candidates.isEmpty else { return [:] }
+        let tribes = Dictionary(
+            try Tribe.fetchAll(db, keys: Set(candidates.map(\.chat))).map { ($0.pubkey, $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        var paired: [PaymentKey: Message] = [:]
+        for (row, message) in uniquePairs(rows, candidates, matching: { row, message in
+            guard let at = message.timestamp, abs(at - row.ts) <= pairingWindowMsat,
+                  let tribe = tribes[message.chat] else { return false }
+            if let msat = message.msat { return msat == row.amountMsat }
+            guard MessageType.moneySends.contains(message.type) else {
+                return row.amountMsat == Int64(clamping: tribe.messageAmountMsat)
+            }
+            let declared = UInt64(clamping: message.amountMsat ?? 0)
+            guard let most = Engine.boostTotalMsat(tipMsat: declared, in: tribe) else { return false }
+            return (declared...most).contains(UInt64(clamping: row.amountMsat))
+        }) {
+            paired[PaymentKey(row)] = message
+        }
+        return paired
+    }
+
+    /// The 1-sat ping an asynchronous payment (to a contact, never a tribe)
+    /// sent before Peel recorded pings: an outgoing 1-sat row tied to nothing,
+    /// sent with exactly one such payment of ours and it with exactly one
+    /// such row, is counted in that payment.
+    private static func foldUnrecordedPings(_ items: inout [PaymentItem]) {
+        let loose = items.filter {
+            $0.kind == .keysend && !$0.incoming && $0.status == .complete && $0.amountMsat == pingPriceMsat
+        }
+        let payments = items.filter { $0.isToContact && $0.status != .failed && $0.pingMsat == nil }
+        let pairs = uniquePairs(loose, payments) { ping, payment in
+            guard let sent = payment.message?.timestamp else { return false }
+            return abs(sent - ping.timestamp) <= pairingWindowMsat
+        }
+        guard !pairs.isEmpty else { return }
+        let folded = Set(pairs.map(\.0.id))
+        let pinged = Set(pairs.map(\.1.id))
+        items.removeAll { folded.contains($0.id) }
+        for index in items.indices where pinged.contains(items[index].id) {
+            items[index].pingMsat = pingPriceMsat
+        }
+    }
+
+    /// The pairs where each side matches only the other.
+    static func uniquePairs<A, B>(_ a: [A], _ b: [B], matching: (A, B) -> Bool) -> [(A, B)] {
+        let matches = a.map { x in b.indices.filter { matching(x, b[$0]) } }
+        var counts = [Int](repeating: 0, count: b.count)
+        for list in matches { for j in list { counts[j] += 1 } }
+        return a.indices.compactMap { i in
+            guard matches[i].count == 1, let j = matches[i].first, counts[j] == 1 else { return nil }
+            return (a[i], b[j])
+        }
     }
 
     /// A payment hash and whether it went out from here.
@@ -549,10 +668,15 @@ extension Storage {
                 case MessageType.boost: item.kind = .boost
                 case MessageType.directPayment: item.kind = .payment
                 case MessageType.purchase, MessageType.purchaseDeny: item.kind = .purchase
-                default: item.kind = .invoice
+                case MessageType.invoice, MessageType.invoicePayment: item.kind = .invoice
+                // Anything else ours in a tribe: what posting it cost.
+                default: item.kind = .messageFee
                 }
                 item.chat = message.chat
-                if message.type != MessageType.invoicePayment { item.note = message.content?.nilIfEmpty }
+                // A fee's message is shown whole, not as a note.
+                if message.type != MessageType.invoicePayment, item.kind != .messageFee {
+                    item.note = message.content?.nilIfEmpty
+                }
                 if invoice == nil, message.fromMe {
                     switch message.delivery {
                     case .pending, .unsettled: item.status = .pending

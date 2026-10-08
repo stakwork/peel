@@ -66,6 +66,8 @@ final class WebPane: NSObject {
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     /// Downloads in flight: where WebKit writes each, and the name the server gave.
     @ObservationIgnored private var downloads: [ObjectIdentifier: (file: URL, name: String)] = [:]
+    /// When the page's web content process last ended under it.
+    @ObservationIgnored private var lastTermination: ContinuousClock.Instant?
 
     init(profile: Profile?) {
         self.profile = profile
@@ -253,7 +255,16 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         problem = Problem(url: error.userInfo[NSURLErrorFailingURLErrorKey] as? URL, message: error.localizedDescription)
     }
 
+    /// Loads the page again, once: a page that brings its process down
+    /// again within a minute is left on its problem rather than reloaded
+    /// for as long as the pane is open.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = ContinuousClock.now
+        defer { lastTermination = now }
+        if let last = lastTermination, now - last < .seconds(60) {
+            problem = Problem(url: webView.url ?? page.url, message: "The page stopped working.")
+            return
+        }
         webView.reload()
     }
 

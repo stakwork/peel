@@ -76,8 +76,9 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   faint accent tint, with the green delivered bolt beside the time. Body
   text 14 pt with 3 pt line spacing (about 1.45), at most 560 pt wide
   (about 68 characters). Mentions are a soft chip (medium weight); links are
-  in the link colour, without the scheme and shortened in the middle when
-  long; lines starting with "-" or "•" are a list with a hanging indent;
+  in the link colour, without the scheme, the host always whole and in its
+  `xn--` form when international, and only the rest shortened in the middle
+  when long; lines starting with "-" or "•" are a list with a hanging indent;
   `code` is monospaced on a soft fill, without its backticks, and ```
   fences are a code block.
   Quotes, attachments, thread summaries, Retry and the deleted placeholder

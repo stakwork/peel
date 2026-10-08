@@ -527,14 +527,11 @@ struct UndeliveredActions: View {
 /// links clickable, mentions and inline code set apart. Anything else stays
 /// plain text.
 enum LinkText {
-    /// Links longer than this show their start and end around an ellipsis.
-    private static let longLink = 56
-
     /// Mentions as a soft chip, gold when it names you (by one of `myAliases`,
     /// `AppModel.mentionAliases`) or @all; inline code in a monospaced face
     /// on a soft fill, without its backticks; https links in the link
-    /// colour, shown without the scheme and shortened in the middle when
-    /// long (the full address is what opens).
+    /// colour, as `MessageMarkup.linkLabel` words them (the host always
+    /// whole; the full address is what opens).
     static func attributed(_ text: String, myAliases: Set<String>) -> AttributedString {
         let spans = MessageMarkup.spans(in: text)
         guard !spans.isEmpty else { return AttributedString(text) }
@@ -554,7 +551,7 @@ enum LinkText {
                 shown.font = Theme.code(13)
                 shown.backgroundColor = Theme.codeFill
             case .link(let url):
-                shown = AttributedString(display(span.text))
+                shown = AttributedString(MessageMarkup.linkLabel(span.text, url: url))
                 shown.link = url
                 shown.foregroundColor = Theme.link
             }
@@ -562,15 +559,6 @@ enum LinkText {
         }
         result += AttributedString(String(text[plainFrom...]))
         return result
-    }
-
-    /// "github.com/stakwork/sphinx-broker/…/0.9.3-reconnect-backoff.md".
-    static func display(_ link: String) -> String {
-        var shown = link
-        if let scheme = shown.range(of: "://") { shown = String(shown[scheme.upperBound...]) }
-        guard shown.count > longLink else { return shown }
-        let head = shown.prefix(longLink * 3 / 5), tail = shown.suffix(longLink * 2 / 5 - 1)
-        return "\(head)…\(tail)"
     }
 }
 

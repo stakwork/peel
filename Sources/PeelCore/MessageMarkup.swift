@@ -35,6 +35,15 @@ public enum MessageMarkup {
         // "\r\n" is one Character, so it would never split on "\n".
         let lines = (text.contains("\r\n") ? text.replacingOccurrences(of: "\r\n", with: "\n") : text)
             .split(separator: "\n", omittingEmptySubsequences: false)
+        // The first line from each index on that could close a fence, found
+        // once, so a message of many unclosed fences is not searched again
+        // from every one of them.
+        var closers = [Int?](repeating: nil, count: lines.count + 1)
+        if text.contains(fence) {
+            for index in lines.indices.reversed() {
+                closers[index] = lines[index].trimmingCharacters(in: .whitespaces).hasSuffix(fence) ? index : closers[index + 1]
+            }
+        }
         var blocks: [Block] = []
         var paragraph: [Substring] = []
         func flush() {
@@ -48,7 +57,7 @@ public enum MessageMarkup {
         while index < lines.count {
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix(fence), let (code, end) = fencedCode(lines, from: index) {
+            if trimmed.hasPrefix(fence), let (code, end) = fencedCode(lines, from: index, closer: closers[index + 1]) {
                 flush()
                 blocks.append(.code(code))
                 index = end + 1
@@ -98,9 +107,9 @@ public enum MessageMarkup {
     }
 
     /// The code of a block opened on `lines[start]` and the index of the
-    /// line that closes it: the same line for ```code```, else the next
-    /// line ending in ```. Nil when nothing closes it or it holds nothing.
-    private static func fencedCode(_ lines: [Substring], from start: Int) -> (String, Int)? {
+    /// line that closes it: the same line for ```code```, else `closer`, the
+    /// next line ending in ```. Nil when nothing closes it or it holds nothing.
+    private static func fencedCode(_ lines: [Substring], from start: Int, closer: Int?) -> (String, Int)? {
         let opening = lines[start].trimmingCharacters(in: .whitespaces).dropFirst(fence.count)
         var code: [Substring] = []
         let end: Int
@@ -108,9 +117,7 @@ public enum MessageMarkup {
             code = [opening.dropLast(fence.count)]
             end = start
         } else {
-            guard let close = lines.indices.dropFirst(start + 1).first(where: {
-                lines[$0].trimmingCharacters(in: .whitespaces).hasSuffix(fence)
-            }) else { return nil }
+            guard let close = closer else { return nil }
             end = close
             // A language name after the fence is dropped, as the official
             // apps do; other text there is the first line of code.
@@ -146,32 +153,69 @@ public enum MessageMarkup {
         // The detector is the costly part; only https links are kept.
         let mayLink = text.range(of: "https", options: .caseInsensitive) != nil
         let links: [Span] = (mayLink ? detector?.matches(in: text, range: whole) ?? [] : []).compactMap { match in
-            guard let url = match.url, url.scheme?.lowercased() == "https",
+            // No `user@host`: the name before the @ is not where it goes.
+            guard let url = match.url, url.scheme?.lowercased() == "https", url.user == nil, url.password == nil,
                   let range = Range(match.range, in: text) else { return nil }
             return Span(kind: .link(url), range: range, text: String(text[range]))
         }
+        // Links, codes and mentions each come in order and never overlap
+        // their own kind, so every check below walks forward once: a long
+        // message of many spans costs no more than its length.
         var codes: [Span] = []
         var from = text.startIndex
+        var nextLink = links.startIndex
         while text[from...].contains("`"),
               let match = code?.firstMatch(in: text, options: .withTransparentBounds, range: NSRange(from..., in: text)),
               let range = Range(match.range, in: text), let inner = Range(match.range(at: 2), in: text) {
             // Opening inside a link: the backtick is the link's, and the
             // search goes on after it, so a later pair is still found.
-            if let link = links.first(where: { $0.range.lowerBound < range.lowerBound && range.lowerBound < $0.range.upperBound }) {
-                from = link.range.upperBound
+            while nextLink < links.endIndex, links[nextLink].range.upperBound <= range.lowerBound { nextLink += 1 }
+            if nextLink < links.endIndex, links[nextLink].range.lowerBound < range.lowerBound {
+                from = links[nextLink].range.upperBound
                 continue
             }
             codes.append(Span(kind: .code, range: range, text: String(text[inner])))
             from = range.upperBound
         }
-        var spans = codes + links.filter { link in !codes.contains { $0.range.overlaps(link.range) } }
+        var spans = (codes + links.filter(outside(codes))).sorted(by: inOrder)
         if text.contains("@") {
-            for match in mention?.matches(in: text, range: whole) ?? [] {
-                guard let range = Range(match.range, in: text),
-                      !spans.contains(where: { $0.range.overlaps(range) }) else { continue }
-                spans.append(Span(kind: .mention, range: range, text: String(text[range])))
+            let mentions = (mention?.matches(in: text, range: whole) ?? []).compactMap { match in
+                Range(match.range, in: text).map { Span(kind: .mention, range: $0, text: String(text[$0])) }
             }
+            spans = (spans + mentions.filter(outside(spans))).sorted(by: inOrder)
         }
-        return spans.sorted { $0.range.lowerBound < $1.range.lowerBound }
+        return spans
+    }
+
+    private static func inOrder(_ a: Span, _ b: Span) -> Bool { a.range.lowerBound < b.range.lowerBound }
+
+    /// How a link reads in a message, "github.com/stakwork/sphinx-broker/…/0.9.3-reconnect-backoff.md":
+    /// no scheme; the host always whole, and as the address names it (an
+    /// international name in its `xn--` form, as the web pane's toolbar shows
+    /// it, so a look-alike in another script cannot pass for the real one);
+    /// only what follows the host shortened in the middle when the whole is
+    /// longer than `limit`, so a long link cannot hide where it goes.
+    public static func linkLabel(_ text: String, url: URL, limit: Int = 56) -> String {
+        var rest = Substring(text)
+        if let scheme = rest.range(of: "://") { rest = rest[scheme.upperBound...] }
+        let hostEnd = rest.firstIndex { "/?#".contains($0) } ?? rest.endIndex
+        let host = url.host.map { name in
+            let bracketed = name.contains(":") ? "[\(name)]" : name
+            return url.port.map { "\(bracketed):\($0)" } ?? bracketed
+        } ?? String(rest[..<hostEnd])
+        rest = rest[hostEnd...]
+        let budget = max(limit - host.count, 16)
+        guard rest.count > budget else { return host + rest }
+        return host + rest.prefix(budget * 3 / 5) + "…" + rest.suffix(budget * 2 / 5 - 1)
+    }
+
+    /// Whether a span misses every one of `taken` (in order, none
+    /// overlapping), for spans asked about in order.
+    private static func outside(_ taken: [Span]) -> (Span) -> Bool {
+        var next = taken.startIndex
+        return { span in
+            while next < taken.endIndex, taken[next].range.upperBound <= span.range.lowerBound { next += 1 }
+            return next == taken.endIndex || !taken[next].range.overlaps(span.range)
+        }
     }
 }

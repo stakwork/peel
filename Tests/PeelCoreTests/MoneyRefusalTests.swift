@@ -12,7 +12,7 @@ private let longNote = String(repeating: "x", count: 600)
 /// confirmation threshold, what may be boosted or paid, and the note's room.
 /// A payment that passes them all goes to `deliver`, which refuses a body
 /// that would be split before calling the core; the tests that need to see
-/// a payment pass use a note (or a photo URL) too long for that, so nothing
+/// a payment pass use a note (or a name) too long for that, so nothing
 /// is ever sent. The refused cases carry the long note too, so a note
 /// check moved ahead of the money checks would fail them.
 struct MoneyRefusalTests {
@@ -194,15 +194,15 @@ struct MoneyRefusalTests {
     }
 
     /// A one-tap boost never asks, even with "Always confirm": its amount
-    /// was confirmed when saved. A photo URL too long for any payment stops
-    /// it in `deliver`, past the money checks.
+    /// was confirmed when saved. A name too long for any payment stops it in
+    /// `deliver`, past the money checks.
     @Test func aQuickBoostIsNotHeldToTheThreshold() async throws {
         let (engine, storage) = try engine(
             messages: [text(1, chat: person)],
-            settings: [.paymentConfirmationMsat: "0", .photoURL: "https://" + String(repeating: "p", count: 600)]
+            settings: [.paymentConfirmationMsat: "0", .alias: String(repeating: "a", count: 600)]
         )
         let id = try id(1, storage)
-        await #expect(throws: Engine.Failure.noteTooLong) { try await engine.quickBoost(messageID: id) }
+        await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id) }
     }
 
     // MARK: The boost amount

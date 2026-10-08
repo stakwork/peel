@@ -537,10 +537,7 @@ struct PaymentRow: View {
                         .foregroundStyle(Theme.secondaryText)
                         .help(message.date.formatted(date: .complete, time: .shortened))
                     if message.fromMe, message.delivery == .delivered {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.confirmed)
-                            .help("Delivered")
+                        DeliveredBolt()
                     }
                 }
                 if !message.deleted, let note = message.content?.trimmed.nilIfEmpty {

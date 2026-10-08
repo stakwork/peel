@@ -213,6 +213,14 @@ struct ThreadTests {
         #expect(Message.fixture(content: " hi ").preview == "hi")
     }
 
+    @Test func messagePreviewIsPlainText() {
+        #expect(Message.fixture(content: "run `make`\n```\nswift build\nswift test\n```").preview
+                == "run make swift build swift test")
+        var captioned = Message.fixture(type: MessageType.attachment, content: "`a.txt`")
+        captioned.mediaType = "image/jpg"
+        #expect(captioned.preview == "a.txt")
+    }
+
     @Test func deletesComeOnlyFromTheSenderOrTheTribesOwner() throws {
         func member(_ alias: String, _ n: Int, type: Int = MessageType.text, role: Int? = nil, reply: Int? = nil)
             -> (Message, Bool, String?) {

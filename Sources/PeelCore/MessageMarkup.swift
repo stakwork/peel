@@ -66,6 +66,37 @@ public enum MessageMarkup {
         return blocks
     }
 
+    /// The text on one line without its markup, for previews: inline code as
+    /// its text, a code block's lines joined, every line break a space.
+    public static func plainText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        // Previews are drawn often, and most text has no markup to parse.
+        if !text.contains("`"), !text.contains(where: \.isNewline), !itemMarkers.contains(where: trimmed.hasPrefix) {
+            return trimmed
+        }
+        return blocks(text).map { block in
+            switch block {
+            case .paragraph(let text), .item(let text): withoutCodeMarks(text)
+            case .code(let code): code
+            }
+        }
+        .flatMap { $0.split(whereSeparator: \.isNewline) }
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+    }
+
+    private static func withoutCodeMarks(_ text: String) -> String {
+        guard text.contains("`") else { return text }
+        var plain = ""
+        var from = text.startIndex
+        for span in spans(in: text) where span.kind == .code {
+            plain += text[from..<span.range.lowerBound] + span.text
+            from = span.range.upperBound
+        }
+        return plain + text[from...]
+    }
+
     /// The code of a block opened on `lines[start]` and the index of the
     /// line that closes it: the same line for ```code```, else the next
     /// line ending in ```. Nil when nothing closes it or it holds nothing.

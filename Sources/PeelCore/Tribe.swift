@@ -389,6 +389,13 @@ func ownTribeAliases(sent: String, echoed: Set<String>) -> Set<String> {
     echoed.contains(sent + "_2") ? echoed : echoed.union([sent])
 }
 
+/// Whether the owner's approval of `alias` is this account's: one of its
+/// aliases, or the one it sends made unique, which an approval can carry
+/// before anything has echoed it.
+func approvalNamesUs(_ alias: String, sent: String, echoed: Set<String>) -> Bool {
+    alias == sent + "_2" || ownTribeAliases(sent: sent, echoed: echoed).contains(alias)
+}
+
 /// What stored tribe messages were last checked for mentions with
 /// (`Setting.mentionScan`): the account's tribe alias (`sent`) and the
 /// aliases each tribe echoed back.

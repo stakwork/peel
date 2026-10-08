@@ -181,11 +181,11 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         [threadUUID, replyUUID].compactMap { $0 }.first(where: MessageUUID.isValid) ?? uuid ?? ""
     }
 
-    /// One line for a quote, a list or a pin: the text, or for an
-    /// attachment with no caption what it is ("Image", "File: notes.pdf").
+    /// One line for a quote, a list or a pin: the text without its markup,
+    /// or for an attachment with no caption what it is ("Image", "File: notes.pdf").
     public var preview: String {
         if deleted { return "Message deleted" }
-        if let text = content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+        if let text = content.map(MessageMarkup.plainText), !text.isEmpty { return text }
         switch attachmentKind {
         case .image: return "Image"
         case .video: return "Video"

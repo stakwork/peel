@@ -352,6 +352,26 @@ struct InvoiceTests {
         #expect(!request.paysRequester)
     }
 
+    /// `request_invoice` makes the requester's invoice on their server's
+    /// node (the core's record of them) or, on the same server, ours.
+    @Test(arguments: [
+        (coreContact(keyG, contactKey: key3G, lsp: coffeePayee), nil, true),
+        (coreContact(keyG, contactKey: key3G), "\(key2G)_\(coffeePayee)_123", true),
+        (coreContact(keyG, contactKey: key3G), "\(key2G)_\(key3G)_123", false),
+        (coreContact(key2G, contactKey: key3G, lsp: coffeePayee), nil, false),
+        // A tribe (no contact key): anyone there may ask, so no server node counts.
+        (coreContact(keyG, contactKey: nil, lsp: coffeePayee), "\(key2G)_\(coffeePayee)_123", false),
+    ] as [([String: Data], String?, Bool)])
+    func aRequestOnAServerNodePaysTheRequester(state: [String: Data], contactInfo: String?, pays: Bool) async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(
+            state: state, settings: contactInfo.map { [.contactInfo: $0] } ?? [:], contacts: [(keyG, true)],
+            messages: [(request(fromMe: false, chat: keyG), false, nil)]
+        ))
+        let request = try #require(try await first(storage.timeline(in: keyG))?.requests.values.first)
+        #expect(request.paysRequester == pays)
+    }
+
     @Test func ourRequestIsPaidByTheirPaymentOfEnoughOnly() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(request(fromMe: true), false, nil)]))

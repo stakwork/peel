@@ -114,4 +114,26 @@ struct MessageMarkupTests {
     @Test func blankLinesBesideABlockAreDropped() {
         #expect(MessageMarkup.blocks("a\n\n```\nx\n```\n\nb") == [.paragraph("a"), .code("x"), .paragraph("b")])
     }
+
+    @Test(arguments: [
+        ("plain text", "plain text"),
+        ("  spaced  ", "spaced"),
+        ("- one item", "one item"),
+        ("use `swift build` here", "use swift build here"),
+        ("``a b`` and `c`", "a b and c"),
+        ("```\nlet a = 1\n    let b = 2\n```", "let a = 1 let b = 2"),
+        ("```swift\nx\n```", "x"),
+        ("```ls -la```", "ls -la"),
+        ("before\n\n```\ncode\n```\nafter", "before code after"),
+        ("- one `two`\n- three", "one two three"),
+        ("line one\r\nline two", "line one line two"),
+        ("an unmatched ` stays", "an unmatched ` stays"),
+        ("```\nnot closed", "``` not closed"),
+        ("https://a.example/`x`/b", "https://a.example/`x`/b"),
+        ("@ann see `x`", "@ann see x"),
+        ("  \n\n  ", ""),
+    ])
+    func plainText(_ text: String, _ expected: String) {
+        #expect(MessageMarkup.plainText(text) == expected)
+    }
 }

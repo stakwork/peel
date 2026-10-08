@@ -105,7 +105,7 @@ struct PeelCommand {
         do {
             try await run()
         } catch {
-            FileHandle.standardError.write(Data("error: \(error)\n".utf8))
+            FileHandle.standardError.write(Data("error: \(PeelError.readable(error))\n".utf8))
             exit(1)
         }
     }
@@ -645,7 +645,7 @@ struct Session {
         do {
             return try await connect(insecure: insecure)
         } catch {
-            print("not connected: \(error)")
+            print("not connected: \(PeelError.readable(error))")
             return self
         }
     }

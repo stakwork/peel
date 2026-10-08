@@ -209,6 +209,24 @@ struct StorageTests {
         #expect(try contact("02aa")?["alias"] == "Annie")
     }
 
+    /// A payment or boost may go without the photo; a restore looks past it.
+    @Test func ourPhotoIsNotTakenFromAPayment() throws {
+        let storage = try profile.storage()
+        let me = sender("02bb", alias: "Me", photo: "https://img/me.png")
+        let noPhoto = sender("02bb", alias: "Me", photo: "")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: me), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, type: MessageType.boost, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
+            (.fixture(uuid: "u3", serverIndex: 3, type: MessageType.directPayment, chat: "02aa", fromMe: true, sender: noPhoto),
+             false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == nil)
+    }
+
     @Test func contactReadinessUpdatesWithoutTouchingAlias() throws {
         let storage = try profile.storage()
         try storage.upsertContact(pubkey: "02aa", alias: "Ann")

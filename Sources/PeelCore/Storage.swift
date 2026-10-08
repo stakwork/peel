@@ -270,13 +270,15 @@ extension Storage {
     /// The photo on this account's newest direct message that says one, as
     /// the server returns it to every device: where a restore finds the
     /// account's own photo, as the official apps do. Records without sender
-    /// details (payments, key exchanges) are passed over; an empty photo on
-    /// the newest one that has the field means none. Nil unless https.
+    /// details (payments, key exchanges) are passed over, and so are payments
+    /// and boosts, which go without the photo when it would split them; an
+    /// empty photo on the newest one that has the field means none. Nil unless https.
     func newestOwnPhotoURL() throws -> String? {
         let senders = try pool.read { db in
             try String.fetchAll(db, sql: """
                 SELECT sender FROM message
                 WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
+                  AND type NOT IN (\(MessageType.directPayment), \(MessageType.boost))
                   AND chat NOT IN (SELECT pubkey FROM tribe)
                 ORDER BY serverIndex DESC LIMIT 50
                 """)
@@ -713,8 +715,10 @@ extension Storage {
     /// `limit` (at least the newest 200) reaches further back for a message
     /// older than those; see `timelineLimit(reaching:)`.
     public func timeline(in chat: String, limit: Int = pageSize) -> some AsyncSequence<Timeline, any Error> {
+        // Read once: inside the observation every setting written would emit again.
+        let requesterNodes = (try? requesterNodes(chat)) ?? [chat]
         // Not a constant region: read markers are read only once there are threads.
-        ValueObservation
+        return ValueObservation
             .tracking { db in
                 let isTribe = try Bool.fetchOne(
                     db, sql: "SELECT EXISTS (SELECT 1 FROM tribe WHERE pubkey = ?)", arguments: [chat]
@@ -735,7 +739,7 @@ extension Storage {
                 return Timeline(
                     messages: messages, parents: try Self.parents(of: messages, in: chat, db), threads: threads,
                     boosts: try Self.boosts(on: messages + threads.values.map(\.original), in: chat, db),
-                    requests: try Self.requests(in: messages, db),
+                    requests: try Self.requests(in: messages, requesterNodes: requesterNodes, db),
                     purchases: try Self.purchases(in: messages + threads.values.map(\.original), db)
                 )
             }

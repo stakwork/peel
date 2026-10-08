@@ -93,7 +93,7 @@ public enum UserFiles {
 
     /// Marks a file as downloaded by Peel. A file that cannot be marked is
     /// removed rather than left unmarked.
-    static func quarantine(_ file: URL) throws {
+    private static func quarantine(_ file: URL) throws {
         #if os(macOS)
         var url = file
         var values = URLResourceValues()

@@ -44,7 +44,7 @@ public enum AttachmentKind: String, Sendable, Equatable {
         return matches ? declared : .file
     }
 
-    static func isImage(_ data: Data) -> Bool { imageFrames(data) != nil }
+    private static func isImage(_ data: Data) -> Bool { imageFrames(data) != nil }
 
     /// How many frames the data holds if ImageIO can decode it, else nil.
     static func imageFrames(_ data: Data) -> Int? {
@@ -55,7 +55,7 @@ public enum AttachmentKind: String, Sendable, Equatable {
     }
 
     /// ISO base media (`ftyp`, as in .mov and .mp4), QuickTime atoms, Matroska/WebM.
-    static func isVideo(_ data: Data) -> Bool {
+    private static func isVideo(_ data: Data) -> Bool {
         let head = [UInt8](data.prefix(12))
         guard head.count >= 8 else { return false }
         let atom = String(decoding: head[4..<8], as: UTF8.self)
@@ -63,7 +63,7 @@ public enum AttachmentKind: String, Sendable, Equatable {
     }
 
     /// WAV, MP3 (ID3 or a frame sync), MPEG-4 audio, Ogg, FLAC, AIFF.
-    static func isAudio(_ data: Data) -> Bool {
+    private static func isAudio(_ data: Data) -> Bool {
         let head = [UInt8](data.prefix(12))
         guard head.count >= 4 else { return false }
         let ascii = String(decoding: head, as: UTF8.self)
@@ -136,7 +136,7 @@ struct MediaToken: Equatable {
     }
 
     /// `amt=<sats>` among the `&`-separated meta, base64 encoded (either alphabet).
-    static func price(meta: String) -> UInt64? {
+    private static func price(meta: String) -> UInt64? {
         let decoded = base64URLDecode(meta).flatMap { String(data: $0, encoding: .utf8) }
             ?? Data(base64Encoded: meta).flatMap { String(data: $0, encoding: .utf8) }
         guard let decoded else { return nil }
@@ -175,7 +175,7 @@ struct AttachmentFields: Decodable {
     let mediaType: String?
     /// The key as the sender keeps it for their own devices; a paid
     /// attachment's own row has only this one.
-    var mediaKeyForSelf: String?
+    let mediaKeyForSelf: String?
 
     /// The key the sender keeps: in the message, or for a paid one only for themself.
     var ownKey: String? { mediaKey?.nilIfEmpty ?? mediaKeyForSelf?.nilIfEmpty }

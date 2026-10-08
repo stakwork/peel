@@ -47,7 +47,7 @@ struct MediaStore: Sendable {
     }
 
     /// Removes the least recently used files until the cache fits.
-    func trim(to limit: Int) {
+    private func trim(to limit: Int) {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
         guard let files = try? FileManager.default.contentsOfDirectory(at: cache, includingPropertiesForKeys: keys)
         else { return }

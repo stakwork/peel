@@ -57,7 +57,7 @@ struct MemesServer: Sendable {
 
     /// A redirect is followed only to https (or this machine), and without
     /// the bearer token when it leaves the host it was sent to.
-    static func redirect(_ request: URLRequest, from original: URLRequest?) -> URLRequest? {
+    private static func redirect(_ request: URLRequest, from original: URLRequest?) -> URLRequest? {
         guard let url = request.url, let host = url.host else { return nil }
         let secure = url.scheme == "https" || (url.scheme == "http" && ServerAddress.isLoopback(host: host))
         guard secure else { return nil }

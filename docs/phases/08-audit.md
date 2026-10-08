@@ -30,7 +30,7 @@ read, against a written bar, with the features frozen.
 ## The checklist, in order
 
 1. **Cold read.** `AGENTS.md`, `docs/PLAN.md`, one phase file, then
-   `Engine.swift` top to bottom. Time it. Anything that needed explaining gets
+   `Engine.swift` and its `Engine+*.swift` extensions top to bottom. Time it. Anything that needed explaining gets
    a comment or a rewrite.
 2. **Duplication and drift.** The same logic in two places (queries, message
    parsing, formatting, date handling); names and error handling that differ

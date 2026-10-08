@@ -9,9 +9,34 @@ is a short plan. Update the status and the journal when you finish something.
 ## Project layout
 
 - `Sources/PeelCore/` — the client engine, no UI
-  - `Engine.swift` — the actor that drives one account: runs core calls, commits
-    the state they return in one transaction, performs the subscribes and
-    publishes they ask for, owns the connection and reconnect loop
+  - `Engine.swift` — the actor that drives one account: its stored state and
+    init, the connection and reconnect loop, and the core contract (`run`,
+    `commit`, `complete`, `receive`): runs core calls, commits the state they
+    return in one transaction, performs the subscribes and publishes they ask
+    for. The rest of the engine is extensions by area. Stored state, helpers
+    and nested types the extensions share are internal rather than private,
+    so the module, not the file, is the boundary (`seed` among them: never
+    read it, or call `run`/`commit`, from outside the engine files). What
+    only `Engine.swift` writes keeps `private(set)`, `state` above all: it
+    changes only in `init` and `commit`.
+    - `EngineTypes.swift` — `Event`, `Failure` (refusals and their words),
+      `ConnectionState`, `Contact`, `Invite`, `JoinRequest` and the other
+      public nested types
+    - `Engine+Account.swift` — mnemonics, invites, the contact and
+      registration helpers, the account's name and photo, mention re-scans,
+      settings and server hosts
+    - `Engine+Messages.swift` — contacts, text, deletes, resends, discards,
+      `deliver` (every message through the core), the `openTribe`,
+      `isContact` and `knownTribe` lookups, read markers and mutes
+    - `Engine+Payments.swift` — payments, boosts, confirmation thresholds,
+      invoices (made, requested, paid), payment history
+    - `Engine+Attachments.swift` — sending, downloading and buying
+      attachments; the memes server sign-in
+    - `Engine+Calls.swift` — the call server, call links, tickets, presence
+    - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
+      the tribes registry and its background refresh
+    - `Engine+History.swift` — restore and catch-up: history runs, paging,
+      the stall watchdog, recovering the account's own photo
   - `Account.swift` — load, signup, create and restore: the one place that
     decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB for one profile: init, the profile lock,

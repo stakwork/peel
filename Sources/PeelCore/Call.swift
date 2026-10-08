@@ -136,7 +136,7 @@ public struct CallLink: Sendable, Equatable {
     }
 
     /// Unreserved characters only, so `+`, `/` and `=` are always escaped.
-    private static func encoded(_ value: String) -> String {
+    static func encoded(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 

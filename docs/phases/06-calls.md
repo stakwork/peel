@@ -1,16 +1,22 @@
 # Phase 6 — Calls
 
-Status: **PR 1 built** (the call link and message in the engine, branch
-`feat/calls-messages`); PRs 2 to 8 open. Plan and boards C1 to C6 approved
-by Tom on 2026-10-08. PR 1 uses five defaults for the open questions,
-pending Tom's answers (see "Defaults, pending Tom" below).
+Status: **PRs 1 and 2 built** (the call link and message, #44; the ticket
+and presence, branch `feat/calls-token`); PRs 3 to 8 open. Plan and boards
+C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
+decided (Tom, 2026-10-08; see "Decided" below).
 
 - Built: `CallLink` (`Sources/PeelCore/Call.swift`) reads the bare and the
   `call::` forms and validates them against the account's call server;
   `MessageType.call`; the `callServer` setting; `Engine.startCall(in:audioOnly:)`
   and `Engine.callLink(in:)`; CLI `call-start` and `--call-server`; tests in
   `Tests/PeelCoreTests/CallTests.swift`.
-- Open: everything from PR 2 on (token, presence, LiveKit, the card, the
+- Built (PR 2): `CallServer` (`Sources/PeelCore/CallServer.swift`):
+  `Engine.callTicket(for:in:)` returns a `CallTicket`, and
+  `Engine.callPresence(of:)` returns an `AsyncStream<CallPresence>`
+  (`.unknown`, `.live([CallParticipant])`, `.ended`); CLI `call-ticket` and
+  `call-who`; tests in `Tests/PeelCoreTests/CallServerTests.swift`.
+- Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
+  see the PR 2 journal), and everything from PR 3 on (LiveKit, the card, the
   window, notifications).
 - Decided in PR 1: calls stay out of `shownInChats`, `unreadTypes` and the
   preview until PR 4 has the card (see "Engine and app split", Storage).
@@ -151,8 +157,8 @@ GitHub (default branch). Mac paths are under
   for it (`type_that_need_ppm`, `:866-878`; the check is at `:180-186`). The
   official app still pays a tribe's price plus escrow on a call message, as
   on text (`SphinxOnionManager+ChatExtension.swift:255-261`). Peel pays
-  only the 3-sat floor on a call (`Tribe.messageAmountMsat(type:)`, the
-  default for open question 3).
+  only the 3-sat floor on a call (`Tribe.messageAmountMsat(type:)`,
+  decided, question 3).
 
 ### The official call window (what not to copy)
 
@@ -250,7 +256,7 @@ built for them yet:
   "Conversation") opens Peel's menu with "Audio call" and "Video call"
   (shortcuts ⌥⌘A and ⌥⌘V, which nothing in Peel uses yet). There is no
   confirmation. The call is free in a DM, and costs 3 sats in a tribe
-  whatever its price (the default for the open question on price).
+  whatever its price (decided, question 3).
 - Starting a call sends the message and opens the call window at once, with
   the mic on. A video call also turns your camera on; an audio call does not.
 - **When a call is live in this chat**, the call button becomes "Join · 3"
@@ -319,8 +325,8 @@ built for them yet:
 ┌──────────────┴─────────── PeelCore ──────────┴────────────────────┐
 │ Call.swift: CallLink (parse both forms, validate, make room names) │
 │ Engine.startCall(in:audioOnly:) → sends type 32 via deliver        │
-│ Engine.callTicket(for:) → GET /api/connection-details              │
-│ Engine.callPresence(room:) → AsyncStream<[CallParticipant]>        │
+│ Engine.callTicket(for:in:) → GET /api/connection-details           │
+│ Engine.callPresence(of:) → AsyncStream<CallPresence>               │
 │ CallServer: one URLSessionWebSocketTask per engine, ref-counted    │
 └───────────────────────────────────────────────────────────────────┘
 ```
@@ -371,9 +377,9 @@ built for them yet:
     each incoming call message as a valid call (audio or video, and the
     room) or "not a call link on this account's call server".
   - `call-who <message id | link>` prints presence for a few seconds.
-  - `call-ticket <message id>` prints the server URL, room, identity and
-    expiry from the token's claims. It prints the token itself only with
-    `--show-token`.
+  - `call-ticket <message id | link>` prints the server URL, room, identity,
+    expiry and admin grant from the token's claims, and whether a token
+    came. It never prints the token itself.
 
 ## Token and auth flow
 
@@ -468,8 +474,7 @@ built for them yet:
   the same fix, outside this phase.)
 - **The token is a bearer credential** until it expires. It stays in
   memory, out of logs (LiveKit's OSLog level is set to `warning` so the
-  SDK never logs connect URLs), and out of the CLI unless `--show-token` is
-  passed.
+  SDK never logs connect URLs), and out of the CLI.
 - **Screen sharing can show other chats.** Peel leaves its own windows out
   of a display share, except the call window (the opposite of the official
   `includeCurrentApplication: true`). The system picker lets you choose a
@@ -480,7 +485,7 @@ built for them yet:
   `SCContentSharingPickerConfiguration.excludedWindowIDs`) and tests it; if
   none works, display shares warn that Peel's windows are included.
 - **Money**: a call message in a paid tribe pays only the 3-sat floor
-  (default, open question 3). The official app pays the price plus escrow,
+  (decided, question 3). The official app pays the price plus escrow,
   which the tribes server does not ask for and probably never refunds the
   escrow part of, because the stake timer is only set for priced types
   (`forward.rs:187-211`).
@@ -591,10 +596,11 @@ simplify, security-review) and updates this file.
    - One ephemeral, cache-less, cookie-less session that refuses
      redirects; a test that `URLCache.shared` stays empty; errors shown
      without their URL.
-   - Verify against the local stub. Then on production with the throwaway
-     account on a random room: one token and one presence subscribe. Record
-     the token's grants (`roomAdmin`? `isHost` honoured?), TTL, identity
-     scheme and the `serverUrl` host in this file.
+   - Verify against the local stub. Production (Tom, 2026-10-08): no
+     production request from the build session; Tom checks the token and
+     presence himself through the app once PR 4 ships, and records the
+     token's grants (`roomAdmin`), TTL, identity scheme and the `serverUrl`
+     host in this file.
 3. **Build: LiveKit in the bundle.**
    - The dependency on `PeelApp` only. `bundle-app.sh` embeds and signs the
      frameworks. Add the Info.plist usage strings, the entitlements, and the
@@ -702,20 +708,120 @@ the build, so it lands before any UI depends on it.
   - `callKey` keeps a literal `+` (as `URLComponents` and the Mac app read
     it) and is sent as `%2B`; PR 2 checks this against a Hive link.
 
-## Defaults, pending Tom
+## PR 2 journal (2026-10-08)
 
-Tom has not answered the open questions below yet. PR 1 uses these
-defaults; each is easy to change:
+- **Built** in the engine and the CLI only (no LiveKit, no UI, no
+  migration). `CallServer` is an actor, one per engine, made again when the
+  `callServer` setting changes (`setCallServer` closes the old one).
+- **The ticket** (`callTicket(for:in:)`): `GET /api/connection-details` on
+  the configured server only (a link on any other server is refused), with
+  `roomName`, `participantName` (the tribe alias in a tribe, else the
+  alias), `metadata` `{"profilePictureUrl":…}` when there is a photo (no
+  pubkey), and `callKey` / `hiveToken` as the link carries them. Never
+  `isHost`. Query items are built from parts, each value encoded to
+  unreserved characters. A static ephemeral session with no URL cache and
+  no cookies, which follows no redirect (a 3xx is a refusal), and a 64 KB
+  limit. Errors are `CallServer.Failure` and never carry the URL.
+- **The answer is checked** before anything connects:
+  - `serverUrl` is `wss://` (or `ws://` only when the call server is
+    loopback) on the call server's own host and port, or on one recorded
+    for it in `CallServer.mediaHosts`; no user, password, query or fragment.
+  - The JWT is decoded unverified: exactly three parts, at most 8 KB;
+    `video.room` must be the room asked for, `exp` in the future, and `sub`
+    1 to 256 bytes with no control characters. `video.roomAdmin` is read
+    and reported.
+  - `CallTicket` prints, dumps and reflects without its token.
+- **`mediaHosts` is empty** until Tom's production check names the
+  LiveKit host. Until then a production ticket whose `serverUrl` is not on
+  `chat.sphinx.chat:443` itself fails with `mediaHostNotAllowed(host)`,
+  whose text is "the call server named a media server Peel does not know
+  (`<host>:<port>`)". The host is shown only when it is plain letters,
+  digits, dots, dashes and colons. In the app (PR 4) Join shows that text
+  quietly beside the button (no red) and nothing connects; in the CLI,
+  `call-ticket` prints it as the error. The fix is one line: add the host
+  to `CallServer.mediaHosts["chat.sphinx.chat"]`.
+- **Presence** (`callPresence(of:)`): one `URLSessionWebSocketTask` on
+  `wss://<server>/ws` (`ws` on loopback), with its own session (no resource
+  limit; a ping every 30 seconds keeps a quiet feed open and drops a dead
+  one). The first listener for a room sends `subscribe`, the last one to
+  stop sends `unsubscribe`, and the socket closes when no room is left. A
+  drop sets every room to `.unknown` and reconnects after 1, 2, 4 … 30
+  seconds, subscribing all rooms again.
+  - Messages are read as the Mac app reads them (`current_participants`,
+    `participant_joined` nested or flat, `participant_left`,
+    `room_finished`), each for a valid room this socket asked for.
+  - A join or leave before the first list is ignored; a list is
+    de-duplicated by identity; a join after `room_finished` opens the room
+    again; at most 500 participants.
+  - Names lose control characters and are cut at 100 characters;
+    identities with control characters are dropped (a leave matches them
+    exactly); `avatarUrl` is kept only when `Web.isPublic` passes.
+- **`+` and `%2B`, settled from the official apps' code.** The Mac app
+  reads `callKey` with `URLComponents.queryItems` (`String.swift:806-811`)
+  and sends it through `urlEncode()` (`API+LiveKitExtension.swift:30-32`),
+  whose allowed set leaves out `+`
+  (`Libraries/SocketIO/Util/SocketExtensions.swift:40-42`, `:127-129`); iOS
+  does the same with `hiveToken` (`API+LiveKitExtension.swift:28-30`,
+  `Extensions/String.swift:1309-1311`). So a `+` goes out as `%2B` and the
+  server reads `+`, which is what Peel sends. A bare `+` would be read as a
+  space by form decoding. In practice it never arises: Hive's
+  `generate-link` makes `callKey` from 12 random bytes in hex
+  (`hive/src/app/api/workspaces/[slug]/calls/generate-link/route.ts`), and
+  `hiveToken` is a JWT (base64url).
+- **Verified against a local stub** (HTTP and WebSocket, outside the repo,
+  on a free loopback port; profile `ct-alice` on the local stack):
+  - The stub received `participantName=Al%20ice%2B1`, the metadata JSON
+    fully encoded and `callKey=ab%2Bc%2Fd%3D`, and decoded each exactly;
+    no cookie came back although the stub set one on every reply.
+  - By message id in a local tribe, the tribe alias was sent.
+  - Refused with a clean error: a foreign media host, a token for another
+    room, an expired token, and a 302 (not followed). With the server down
+    the error is "the call server did not answer", without the key.
+  - Presence: `.unknown`, the list, a join, a leave, then ended; an
+    escape character stripped from a name; avatars on `192.168.1.1` and
+    `127.0.0.1` dropped; another room's message ignored; `unsubscribe` and
+    a 1000 close at the end. Killing and restarting the stub went to
+    `.unknown`, then reconnected and subscribed again. A quiet feed stayed
+    open 100 seconds with pings every 30.
+  - The CLI's URL cache was not written.
+  - Nothing contacted production.
+- **Reviews**: `/code-review` (high): the socket got its own session and
+  pings (a 30-second resource limit would have cut it); identities with
+  control characters refused, in the feed and in `sub`; a list
+  de-duplicated; the CLI's sleep before close removed; no call requests
+  after `close`; a new room no longer skips the backoff. `/simplify`: the
+  ticket takes the `CallLink`; `withoutControlCharacters` reused; static
+  sessions; the ping task kept and cancelled; fewer lookups.
+  `/security-review` (token, allowlist, logging): no findings at
+  confidence 8 or above. Not applied, with reasons:
+  - Moving `MemesServer.Transfer` and a neutral HTTP error into `Web`, and
+    one JWT payload helper shared with `MemesServer.Token`: both touch the
+    memes code outside this PR.
+  - A `myAlias(in:)` helper shared with `deliver`: Engine is being edited
+    by other sessions; small.
+  - Caching the call server setting in memory: one small read per ticket
+    or presence call.
+  - A one-shot "who is on it now" engine op: PR 4's card uses the stream.
+  - IPv6 loopback call servers compare brackets inconsistently and are
+    refused; none is used.
+
+## Decided (Tom, 2026-10-08)
+
+Tom approved the five defaults PR 1 used:
 
 1. **Form** (question 1): Peel sends `call::{"link":…,"recurring":false,"cron":""}`
    and reads both forms.
 2. **Room names** (question 2): random 128 bits, `sphinx.call.<32 hex>`.
 3. **Price** (question 3): only the 3-sat floor in a paid tribe.
-4. **Pubkey in metadata** (question 5): left out (it matters from PR 2).
+4. **Pubkey in metadata** (question 5): left out; PR 2 sends only the
+   photo URL.
 5. **Hive** (question 8): join only. Hive links are read and validated,
    never made.
 
 ## Open questions for Tom
+
+Questions 1, 2, 3, 5 and 8 are decided (above). Questions 4, 6 and 7 stay
+open; for 6, Tom checks PR 2's token and presence on production himself.
 
 1. **Which form does Peel send?** The `call::` JSON form is the only one
    all three official apps read as a call (Android ignores a bare link as

@@ -292,6 +292,8 @@ public actor Engine {
     /// the memes server's bearer token (memory only).
     private let media: MediaStore
     private var memesToken: (host: String, token: MemesServer.Token)?
+    /// The call server's ticket endpoint and presence feed; see `callConnection`.
+    private var calls: CallServer?
     /// Largest attachment sent or downloaded, and the most the cache keeps.
     static let attachmentLimit = 100_000_000
     static let mediaCacheLimit = 500_000_000
@@ -531,6 +533,11 @@ public actor Engine {
         let host = host.lowercased()
         guard TribeLink.baseURL(host) != nil else { throw PeelError("unreadable call server \(host)") }
         try storage.set(host, for: .callServer)
+        // Its socket would otherwise stay open to the old server.
+        if let old = calls, old.host != host {
+            calls = nil
+            Task { await old.close() }
+        }
     }
 
     public func contacts() throws -> [Contact] {
@@ -592,6 +599,7 @@ public actor Engine {
     public func close() async {
         closed = true
         await disconnect()
+        await calls?.close()
         historyWatchdog?.cancel()
         emit.finish()
     }
@@ -1768,6 +1776,36 @@ public actor Engine {
         guard !message.deleted, [MessageType.call, MessageType.text].contains(message.type),
               let content = message.content, let server = try? callServer() else { return nil }
         return CallLink(message: content, server: server)
+    }
+
+    /// A ticket to join a call: the LiveKit server and a token, asked of
+    /// this account's call server under the name `chat` knows this account
+    /// by (the tribe alias in a tribe), with its photo and a Hive link's
+    /// key. Memory only; never store or log it.
+    public func callTicket(for link: CallLink, in chat: String?) async throws -> CallTicket {
+        let name = chat.flatMap { tribes[$0] } != nil || alias.isEmpty ? tribeAlias(alias) : alias
+        return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: myPhotoURL)
+    }
+
+    /// Who is on a call, from the call server's presence feed, until the
+    /// stream is dropped. Ask only for calls on screen and recent.
+    public func callPresence(of link: CallLink) async throws -> AsyncStream<CallPresence> {
+        try await callConnection(for: link).presence(room: link.room)
+    }
+
+    /// The engine's one connection to its call server, made again when the
+    /// setting changes. A link from another server is refused: a ticket is
+    /// only ever asked of the configured server.
+    private func callConnection(for link: CallLink) async throws -> CallServer {
+        guard !closed else { throw PeelError("this account is closed") }
+        let host = try callServer()
+        guard link.server == host else { throw PeelError("that call is not on this account's call server") }
+        if let calls, calls.host == host { return calls }
+        let old = calls
+        let server = try CallServer(host: host)
+        calls = server
+        await old?.close()
+        return server
     }
 
     /// Runs a memes server call with a bearer token, signing in again once

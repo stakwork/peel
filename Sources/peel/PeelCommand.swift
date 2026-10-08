@@ -81,6 +81,9 @@ struct PeelCommand {
 
           call-start <pubkey>         start a video call in a contact's chat or a tribe and print its link
                                       (--audio for an audio call)
+          call-ticket <id|link>       ask the call server for a ticket to join a call: prints the media server,
+                                      room, identity, expiry and whether a token came (never the token)
+          call-who <id|link>          who is on a call, from the call server's presence feed, for --wait seconds
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -601,6 +604,29 @@ struct PeelCommand {
             print("call: \(call.link.url.absoluteString)")
             try await session.finish(after: wait)
 
+        case "call-ticket", "call-who":
+            guard let target = arguments.next() else { throw PeelError("\(command) needs a message id or a call link") }
+            let engine = try await load()
+            let (link, chat) = try await callLink(target, engine: engine)
+            if command == "call-ticket" {
+                // The token is a bearer credential: never printed, only whether there is one.
+                let ticket = try await engine.callTicket(for: link, in: chat)
+                print("server: \(ticket.serverURL.absoluteString)")
+                print("room: \(ticket.room)")
+                print("identity: \(ticket.identity)")
+                print("expires: \(ticket.expires.formatted(.iso8601)) (in \(Int(ticket.expires.timeIntervalSinceNow)) s)")
+                print("room admin: \(ticket.roomAdmin ? "yes" : "no")")
+                print("token: obtained (\(ticket.token.utf8.count) bytes, not shown)")
+            } else {
+                let presence = try await engine.callPresence(of: link)
+                let printer = Task {
+                    for await state in presence { print(describe(state)) }
+                }
+                try await Task.sleep(for: .seconds(wait))
+                printer.cancel()
+            }
+            await engine.close()
+
         case "listen":
             let session = try await Session(load())
             await session.engine.start(allowUntrustedCertificate: insecure)
@@ -608,6 +634,33 @@ struct PeelCommand {
 
         default:
             throw PeelError("unknown command \(command)\n\(usage)")
+        }
+    }
+
+    /// The call a stored message links to (with its chat), or a link given
+    /// as is, checked against the account's call server.
+    static func callLink(_ target: String, engine: Engine) async throws -> (CallLink, String?) {
+        if let id = Int64(target) {
+            guard let message = try engine.storage.message(id: id), let link = await engine.callLink(in: message) else {
+                throw PeelError("message \(id) is not a call on this account's call server")
+            }
+            return (link, message.chat)
+        }
+        guard let link = try await CallLink(message: target, server: engine.callServer()) else {
+            throw PeelError("not a call link on this account's call server")
+        }
+        return (link, nil)
+    }
+
+    static func describe(_ presence: CallPresence) -> String {
+        switch presence {
+        case .unknown: "presence: not known"
+        case .ended: "presence: call ended"
+        case .live(let people) where people.isEmpty: "presence: no one on the call"
+        case .live(let people):
+            "presence: \(people.count) on the call: "
+                + people.map { "\($0.nickname.isEmpty ? "?" : $0.nickname) (\($0.identity)\($0.avatarURL.map { ", \($0.absoluteString)" } ?? ""))" }
+                .joined(separator: ", ")
         }
     }
 }

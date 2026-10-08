@@ -1743,3 +1743,111 @@ checked in the app: avatars against production photo URLs.
 The host is judged by the name as written: a public name that resolves to
 a private address (DNS rebinding) is not caught; https still needs a
 certificate valid for that name.
+
+## Inline code and following the newest (branch `fix/inline-code-and-scroll`, 2026-10-08)
+
+From Tom's first sends on his real account: a backticked span showed as
+plain text with its backticks, and his own message in a tribe did not
+scroll into view.
+
+Done means: `code` shows in a monospaced face on a soft fill without its
+backticks, ``` fences as a code block; sending always ends at the newest;
+someone else's message is followed only when you are at the bottom, and
+scrolled up you stay put while the jump button says "N new messages";
+clicking it goes down and clears it. "New messages" and the read marker
+work as before.
+
+### Markup
+
+`MessageMarkup` (PeelCore, so the iPhone app gets the same reading; tested
+in `MessageMarkupTests`) splits text into paragraphs, "- "/"• "/"* " items
+and fenced code, and finds inline spans: code, https links, mentions.
+`LinkText` and `MessageText` style them (`Theme.code`, `Theme.codeFill`, a
+translucent fill so it shows on hovered and tinted rows too). Rules:
+
+- `code`, ``code``, and ```code``` inside a line; one line, no backticks
+  inside. An unmatched or empty backtick stays text.
+- A backtick inside a link is part of the link; a link or mention inside
+  code is code.
+- A fence opens on a line starting with ``` and closes on the next line
+  ending with ```; a language name after the opening fence is dropped, other
+  text there is code; ```x``` on one line is a block. A fence nothing
+  closes, or an empty one, stays text.
+
+Compared with the official Mac app (`Scenes/Dashboard/Workspaces/MarkdownRenderer.swift`,
+used for every text message), which also renders: bold (`**`/`__`),
+italic (`*`/`_`), bold italic, strikethrough (`~~`), headings (`#`),
+quotes (`> `), ordered lists, task lists (`- [ ]`), horizontal rules,
+`[text](url)` links, emails, `sphinx.chat://` links and http links. Peel
+still shows those as typed. Where both render, differences: the official
+app pads inline code with spaces; an unclosed fence there runs to the end
+of the message; text after an opening fence is always dropped as a
+language name, so ```x``` on one line loses `x` and turns the lines after
+it into code.
+
+### Scrolling
+
+Root cause, found in the code and reproduced in a standalone SwiftUI list
+with the same anchors (200 rows, a new row that grows 400 ms after it
+appears, as a sent row does when it is laid out again on delivery): every
+"to the newest" scroll went to the last row's id with `anchor: .bottom`,
+which stops 12 pt above the content's end (the list's bottom padding).
+`defaultScrollAnchor(.bottom, for: .sizeChanges)` only holds a scroll view
+that is at its very bottom, so from there a row that grew after the
+scroll (the new message measured, its pending row replaced on delivery)
+pushed the message below the fold: 54 pt short in every starting position,
+including from the bottom. The same list never followed arrivals on its
+own either. Scrolling to a zero-height marker at the content's end
+(`MessageList.bottomID`, an overlay under the padding) ends at 0 pt and
+stays there as rows grow, animated or not, and leaves a reader scrolled up
+untouched as rows arrive below (offset unchanged in the same harness).
+
+Changed in `MessageList`: every jump to the newest (opening, your sends,
+following, the jump button) goes to the marker. Others' messages follow
+only while `following`: the list is at its bottom (within 24 pt) or on its
+way there, and you have not scrolled away by hand, jumped to a quote or
+opened at "New messages" (before, anything within a screen followed). The
+count starts when the list leaves the bottom: from above "New messages"
+while what is below it is still unread (opened at it, or "Mark unread"
+moved it, and you have not reached the bottom or scrolled away by hand
+since), else from everything loaded. The jump button shows when
+far up as before, and also nearer the bottom once something has arrived:
+a blue "N new messages" pill with the arrow (the round arrow when
+nothing is new).
+
+Not verified by hand in the app: the send, the pill and the follow rules
+on a live chat.
+
+### Reviews
+
+`/code-review high`, fixed: a message arriving during the follow animation
+was not followed (now an intent, `following`, not the measured position);
+"opened at New messages" was guessed from a one-screen jump (now set where
+the list opens at it, cleared on reaching the bottom or scrolling away by
+hand); a fresh list was taken to be at the bottom before it reported; a
+language name after a space ("``` python") became code; code after a
+backtick inside a link was lost; CRLF text never split into lines; the
+99+ cap was written twice (`UnreadBadge.text`). Not applied: join notes
+and other rows that never count as unread are neither followed nor counted
+when you are just above the bottom (they are not new messages).
+
+`/simplify`, applied: one `following` flag for the follow rule, the
+divider looked up once, `reachedBottom()` clears the divider hold,
+`LinkText` returns plain text untouched when there are no spans, the link
+detector runs only when the text has "https", CRLF is copied only when
+present. Not applied: a shared shadow helper with `menuBoxed` and
+`Formatting.newMessages` shared with `Notifier` (outside this diff), a
+seen high-water mark in place of the divider flag (a larger rework of
+#23's count), renaming `LinkText`.
+
+`/security-review`: no finding at confidence 8 or above. Only https links
+are clickable, nothing parses markdown from senders, code that looks like
+a link is never one. Near-misses carried from main: middle-shortened links,
+bidi characters in link text.
+
+Follow-up: `Message.preview` (quotes, thread rows, the reply bar,
+notifications) still shows raw backticks; a plain-text flattener in
+`MessageMarkup` would fix all of them in one place.
+
+`swift test`: 207 tests, all pass but `ThreadTests.threadsListHasDirectMessagesWithLatestAndParticipants`
+(fixed by #35) and the known ServerAddress IPv6 issue.

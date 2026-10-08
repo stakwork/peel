@@ -35,6 +35,9 @@ enum Theme {
     /// An @mention: a soft chip.
     static let mentionFill = Color(light: 0xDDE6FF, dark: 0x2A3A5E)
     static let mentionText = Color(light: 0x1E3D99, dark: 0xB4C8FF)
+    /// Behind inline code and code blocks: a translucent step darker in
+    /// light, lighter in dark, so it still shows on a hovered or tinted row.
+    static let codeFill = Color.primary.opacity(0.07)
     /// PrimaryGreen: connected, and a message the server confirmed.
     static let confirmed = Color(light: 0x49C998, dark: 0x49C998)
     /// SphinxOrange: not connected. Also the boost bolt, from phase 4.
@@ -43,6 +46,11 @@ enum Theme {
     /// The system font (SF Pro), Tom's choice for readability on 2026-10-07.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         Font.system(size: size, weight: weight)
+    }
+
+    /// Code in messages: the system's monospaced face (SF Mono).
+    static func code(_ size: CGFloat) -> Font {
+        Font.system(size: size, design: .monospaced)
     }
 }
 

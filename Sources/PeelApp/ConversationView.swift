@@ -501,41 +501,42 @@ struct UndeliveredActions: View {
     }
 }
 
-/// Makes web links in message text clickable and sets mentions in bold.
-/// Only https links: anything else stays plain text.
+/// Styles the inline spans of message text (`MessageMarkup.spans`): https
+/// links clickable, mentions and inline code set apart. Anything else stays
+/// plain text.
 enum LinkText {
-    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-    /// The Mac app's mention pattern: `@` at the start of a word, up to the next space.
-    private static let mention = try? NSRegularExpression(pattern: #"\B@[^\s]+"#)
     /// Links longer than this show their start and end around an ellipsis.
     private static let longLink = 56
 
-    /// Mentions as a soft chip; https links in the link colour, shown
+    /// Mentions as a soft chip; inline code in a monospaced face on a soft
+    /// fill, without its backticks; https links in the link colour, shown
     /// without the scheme and shortened in the middle when long (the full
-    /// address is what opens). Anything else stays plain text.
+    /// address is what opens).
     static func attributed(_ text: String) -> AttributedString {
-        var result = AttributedString(text)
-        let range = NSRange(text.startIndex..., in: text)
-        for match in text.contains("@") ? mention?.matches(in: text, range: range) ?? [] : [] {
-            guard let textRange = Range(match.range, in: text),
-                  let start = AttributedString.Index(textRange.lowerBound, within: result),
-                  let end = AttributedString.Index(textRange.upperBound, within: result) else { continue }
-            result[start..<end].font = Theme.font(14, .medium)
-            result[start..<end].foregroundColor = Theme.mentionText
-            result[start..<end].backgroundColor = Theme.mentionFill
+        let spans = MessageMarkup.spans(in: text)
+        guard !spans.isEmpty else { return AttributedString(text) }
+        var result = AttributedString()
+        var plainFrom = text.startIndex
+        for span in spans {
+            result += AttributedString(String(text[plainFrom..<span.range.lowerBound]))
+            plainFrom = span.range.upperBound
+            var shown = AttributedString(span.text)
+            switch span.kind {
+            case .mention:
+                shown.font = Theme.font(14, .medium)
+                shown.foregroundColor = Theme.mentionText
+                shown.backgroundColor = Theme.mentionFill
+            case .code:
+                shown.font = Theme.code(13)
+                shown.backgroundColor = Theme.codeFill
+            case .link(let url):
+                shown = AttributedString(display(span.text))
+                shown.link = url
+                shown.foregroundColor = Theme.link
+            }
+            result += shown
         }
-        guard let detector else { return result }
-        // Back to front, so shortening one link leaves the earlier ranges valid.
-        for match in detector.matches(in: text, range: range).reversed() {
-            guard let url = match.url, url.scheme?.lowercased() == "https",
-                  let textRange = Range(match.range, in: text),
-                  let start = AttributedString.Index(textRange.lowerBound, within: result),
-                  let end = AttributedString.Index(textRange.upperBound, within: result) else { continue }
-            var shown = AttributedString(display(String(text[textRange])))
-            shown.link = url
-            shown.foregroundColor = Theme.link
-            result.replaceSubrange(start..<end, with: shown)
-        }
+        result += AttributedString(String(text[plainFrom...]))
         return result
     }
 

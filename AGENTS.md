@@ -14,8 +14,20 @@ is a short plan. Update the status and the journal when you finish something.
     publishes they ask for, owns the connection and reconnect loop
   - `Account.swift` — load, signup, create and restore: the one place that
     decides where the mnemonic, the server and the tribes host come from
-  - `Storage.swift` — SQLite via GRDB: core state, settings, messages, contacts,
-    tribes, live queries (`conversations()`, `messages(in:)`); holds the profile lock
+  - `Storage.swift` — SQLite via GRDB for one profile: init, the profile lock,
+    core state and settings
+  - `Models.swift` — the public value types Storage returns: `Setting`,
+    `Conversation`, `MuteLevel`, `ChatReadState`, `Timeline`, `BoostSummary`,
+    `ThreadSummary`, `ChatThread`
+  - `Storage+Reads.swift` — reads and live queries: conversations, read
+    states, tribes and their senders, mentions, payments, the shared SQL
+    (`chatsSQL`, `messagesSQL(also:)`, `countsAsUnreadSQL`)
+  - `Storage+Threads.swift` — replies and threads: `timeline(in:)` (tribe
+    threads collapsed), `thread(_:in:)`, `threads()`, parents, boosts and
+    thread summaries
+  - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
+    changes in one transaction), message upsert and deletes, read markers,
+    mutes, send status, invoices, uploads, contacts and tribes
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry

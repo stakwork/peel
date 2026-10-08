@@ -41,6 +41,37 @@ struct WebTests {
         }
     }
 
+    /// `Web.get` and the memes server's local redirects share one test:
+    /// a public https host, or plain http to this machine and nowhere else.
+    @Test func getIsAllowedOnPublicHTTPSOrThisMac() throws {
+        for allowed in ["https://example.com/a", "http://127.0.0.1:5555/a", "http://localhost/a", "http://[::1]/a"] {
+            #expect(Web.isAllowed(try #require(URL(string: allowed))), "\(allowed)")
+        }
+        for refused in [
+            "http://example.com/a", "https://localhost/a", "https://192.168.1.1/a", "http://192.168.1.1/a",
+            "http://127.0.0.1.nip.io/a", "ws://127.0.0.1/a", "ftp://127.0.0.1/a",
+        ] {
+            #expect(!Web.isAllowed(try #require(URL(string: refused))), "\(refused)")
+        }
+    }
+
+    @Test func jwtPayloadNeedsThreePartsWithinEightKB() {
+        struct Claims: Decodable { let exp: Double }
+        let payload = MediaToken.base64URLEncode(Data(#"{"exp":42}"#.utf8))
+        #expect(JWT.payload(Claims.self, of: "e30.\(payload).sig")?.exp == 42)
+        #expect(JWT.payload(Claims.self, of: "e30.\(payload)") == nil)
+        #expect(JWT.payload(Claims.self, of: "e30.\(payload).sig.more") == nil)
+        #expect(JWT.payload(Claims.self, of: "e30.\(payload)." + String(repeating: "s", count: 8192)) == nil)
+    }
+
+    /// Web and call-server failures never name the memes server; sizes
+    /// under 1 MB read as such.
+    @Test func failuresNameNoServerTheyDidNotComeFrom() {
+        #expect(Web.Failure.refused("the config", 503).description == "the server refused the config (HTTP 503)")
+        #expect(TooLarge(limit: 64_000).description == "the file is larger than 64 KB")
+        #expect(TooLarge(limit: 100_000_000).description == "the file is larger than 100 MB")
+    }
+
     @Test func refusedPhotoIsNotFetched() async throws {
         #expect(try await Web.photo(at: try #require(URL(string: "https://127.0.0.1/a.png"))) == nil)
     }

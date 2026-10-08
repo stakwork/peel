@@ -80,7 +80,7 @@ public enum IncomingFiles {
         _ data: Data, type: UTType, index: Int = 0, date: Date = Date(), in root: URL = defaultRoot
     ) throws -> URL {
         let limit = Engine.attachmentLimit
-        guard data.count <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+        guard data.count <= limit else { throw TooLarge(limit: limit) }
         var bytes = data, type = type
         if type == .tiff {
             bytes = try png(fromTIFF: data)
@@ -120,7 +120,7 @@ public enum IncomingFiles {
                 throw PeelError("\(name) is not a file")
             }
             guard (values.fileSize ?? 0) <= Engine.attachmentLimit else {
-                throw MemesServer.Failure.tooLarge(Engine.attachmentLimit)
+                throw TooLarge(limit: Engine.attachmentLimit)
             }
             return file
         } catch {

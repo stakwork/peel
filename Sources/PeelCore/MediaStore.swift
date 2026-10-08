@@ -16,7 +16,7 @@ struct MediaStore: Sendable {
     /// and a message that reuses someone else's muid with another key never
     /// gets their file without decrypting it itself.
     func cached(muid: String, key: String) -> URL {
-        let digest = SHA256.hash(data: Data("\(muid)\n\(key)".utf8)).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data("\(muid)\n\(key)".utf8)).hex
         return cache.appendingPathComponent(digest)
     }
 

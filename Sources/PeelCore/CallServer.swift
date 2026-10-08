@@ -123,11 +123,11 @@ actor CallServer {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data: Data
         do {
-            data = try await MemesServer.Transfer(limit: 64_000, what: "the call ticket", progress: nil)
+            data = try await Web.Transfer(limit: 64_000, what: "the call ticket", progress: nil)
                 .run(Self.session.dataTask(with: request)).0
-        } catch MemesServer.Failure.refused(_, let status) {
+        } catch Web.Failure.refused(_, let status) {
             throw Failure.refused(status)
-        } catch is MemesServer.Failure {
+        } catch is Web.Failure, is TooLarge {
             throw Failure.unreadableReply
         } catch {
             // A URLError's description holds the whole URL.
@@ -212,9 +212,7 @@ actor CallServer {
     }
 
     static func claims(of token: String) throws -> Claims {
-        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
-        guard token.utf8.count <= 8192, parts.count == 3, let payload = MediaToken.base64URLDecode(String(parts[1])),
-              let claims = try? JSONDecoder().decode(Claims.self, from: payload) else { throw Failure.malformedToken }
+        guard let claims = JWT.payload(Claims.self, of: token) else { throw Failure.malformedToken }
         return claims
     }
 

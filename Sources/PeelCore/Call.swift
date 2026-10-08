@@ -133,7 +133,7 @@ public struct CallLink: Sendable, Equatable {
     /// Peel never makes Hive links.
     public static func new(server: String, audioOnly: Bool) throws -> CallLink {
         guard let base = TribeLink.baseURL(server) else { throw Engine.Failure.unreadableCallServer(server) }
-        let name = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: .min ... .max)) }.joined()
+        let name = (0..<16).map { _ in UInt8.random(in: .min ... .max) }.hex
         return CallLink(
             server: server, base: base, room: roomPrefix + name, audioOnly: audioOnly, callKey: nil, hiveToken: nil
         )

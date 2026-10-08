@@ -25,6 +25,17 @@ public enum ImageDecoding {
     }
 }
 
+/// Bytes over a size limit: a file picked to send or attach, or a download
+/// cut off. `size` is the whole size, when the server named it.
+struct TooLarge: Error, CustomStringConvertible {
+    let limit: Int
+    var size: Int64?
+
+    var description: String {
+        "the file is larger than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file))"
+    }
+}
+
 /// A profile photo as the Mac app uploads one: JPEG at quality 0.5.
 enum ProfilePhoto {
     static let maxPixels = 1024
@@ -32,7 +43,7 @@ enum ProfilePhoto {
     /// The picture at `file`, at most `maxPixels` on its long side, upright.
     static func jpeg(from file: URL, limit: Int) throws -> Data {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+        guard size <= limit else { throw TooLarge(limit: limit) }
         guard let image = ImageDecoding.thumbnail(file, maxPixels: maxPixels) else {
             throw PeelError("\(file.lastPathComponent) is not a picture")
         }
@@ -68,6 +79,14 @@ public enum UserFiles {
             return target
         }
         throw PeelError("there are too many files called \(clean) already")
+    }
+
+    /// `save` into the person's Downloads folder, off the caller's actor.
+    public static func saveToDownloads(_ file: URL, named name: String) async throws -> URL {
+        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            throw PeelError("there is no Downloads folder")
+        }
+        return try await Task.detached { try save(file, named: name, in: downloads) }.value
     }
 
     /// Copies `file` to `target`, replacing what is there (the person chose

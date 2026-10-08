@@ -27,7 +27,7 @@ enum MediaCrypto {
     static func newKey() -> String {
         let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".utf8)
         var generator = SystemRandomNumberGenerator()
-        return (0..<32).map { _ in String(format: "%02x", alphabet.randomElement(using: &generator)!) }.joined()
+        return (0..<32).map { _ in alphabet.randomElement(using: &generator)! }.hex
     }
 
     static func encrypt(_ plain: Data, key: String) throws -> Data {

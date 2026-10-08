@@ -80,16 +80,17 @@ is a short plan. Update the status and the journal when you finish something.
     poster frame, read in place with the container type from its bytes)
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
-  - `MemesServer.swift` — the memes server: sign-in, upload, download, the
-    transfer with its size limit and progress
+  - `MemesServer.swift` — the memes server: sign-in, upload, download,
+    `Web.Transfer`'s failures in its own words
   - `MediaStore.swift` — the profile's `media/` cache and outbox
   - `Contacts.swift` — `ContactCode` (what a scanned or pasted code is:
     contact info, a `share_contact` link, an invite, a tribe link; strict)
     and `InviteRecord` (invites made here; the core keeps none)
   - `QRImage.swift` — QR codes in a picture (Vision), size- and
     pixel-limited
-  - `Files.swift` — `ImageDecoding`, `ProfilePhoto` and `UserFiles` (files
-    saved for the person, quarantined)
+  - `Files.swift` — `ImageDecoding`, `ProfilePhoto`, `TooLarge` (bytes over
+    a limit, local or downloaded) and `UserFiles` (files saved for the
+    person, quarantined; `saveToDownloads` off the caller's actor)
   - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
     pasteboard items attach, image bytes and promised files written to Peel's
     own temp folder and checked
@@ -102,7 +103,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
-    sender, a core reply) is read into a type
+    sender, a core reply) is read into a type; `JWT.payload` (a token's
+    claims, unchecked) and `.hex` for bytes
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
     the words in the data-protection Keychain sealed under a six-digit PIN
     (moved there from the login Keychain on first unlock), `.development`
@@ -110,7 +112,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
-    size-limited `get`, and the public-https host check
+    size-limited `Transfer` (also the memes and call servers') and its
+    neutral `Failure`, `get`, the public-https host check (`isPublic`) and
+    "public https, or http to this machine" (`isAllowed`, `isThisMac`)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`) and each profile's website data store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the

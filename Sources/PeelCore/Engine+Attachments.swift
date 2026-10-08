@@ -32,9 +32,9 @@ extension Engine {
         let (outgoing, plain, sealed, key) = try await Task.detached {
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values.isRegularFile == true else { throw Failure.notAFile(file.path) }
-            guard (values.fileSize ?? 0) <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+            guard (values.fileSize ?? 0) <= limit else { throw TooLarge(limit: limit) }
             let plain = try Data(contentsOf: file)
-            guard plain.count <= limit else { throw MemesServer.Failure.tooLarge(limit) }
+            guard plain.count <= limit else { throw TooLarge(limit: limit) }
             let key = MediaCrypto.newKey()
             return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
                     try MediaCrypto.encrypt(plain, key: key), key)
@@ -191,8 +191,8 @@ extension Engine {
                 (sealed, name) = try await withMemes(memes) { auth in
                     try await memes.download(mediaToken: mediaToken, token: auth, limit: limit, progress: progress)
                 }
-            } catch MemesServer.Failure.tooLarge(_, let size) where upTo != nil {
-                throw Failure.largeAttachment(size: size)
+            } catch let error as TooLarge where upTo != nil {
+                throw Failure.largeAttachment(size: error.size)
             }
             stored = try await Task.detached { [media] in
                 let plain = try MediaCrypto.decrypt(sealed, key: key)
@@ -280,9 +280,8 @@ extension Engine {
     /// The account's memes server: the one recorded, else the official
     /// apps' own, except on a local test server, which has none unless named.
     func memesServer() throws -> MemesServer {
-        if let host = try storage.value(for: .memesHost) { return try MemesServer(host: host) }
-        guard let server, !ServerAddress.isLoopback(host: server.host) else { throw Failure.noMemesServer }
-        return try MemesServer(host: Self.defaultMemesHost)
+        guard let host = try configuredHost(.memesHost, default: Self.defaultMemesHost) else { throw Failure.noMemesServer }
+        return try MemesServer(host: host)
     }
 
     /// Runs a memes server call with a bearer token, signing in again once

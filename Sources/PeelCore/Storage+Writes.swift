@@ -1,6 +1,12 @@
 import Foundation
 import GRDB
 
+private struct CoreStateRow: Codable, PersistableRecord {
+    static let databaseTableName = "coreState"
+    var key: String
+    var value: Data
+}
+
 extension Storage {
     /// Everything one core call changed. Written in a single transaction so the
     /// account can never be half-updated.

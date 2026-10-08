@@ -46,12 +46,6 @@ public final class Storage: Sendable {
 
 // MARK: - Rows
 
-struct CoreStateRow: Codable, PersistableRecord {
-    static let databaseTableName = "coreState"
-    var key: String
-    var value: Data
-}
-
 struct SettingRow: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "setting"
     var key: String

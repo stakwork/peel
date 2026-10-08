@@ -94,6 +94,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
     size-limited `get`, and the public-https host check
+  - `WebPage.swift` — what the app's web pane may open
+    (`WebPage.address`) and each profile's website data store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
   `ConversationMenu`), `SidebarForms` (join a tribe, add a contact),
@@ -118,6 +120,9 @@ is a short plan. Update the status and the journal when you finish something.
   `buttonProgress`, the spinner inside a running button);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
   time, the hover card, a chat's details panel with the time zone switch);
+  `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
+  own data store, its toolbar, the routing of http and https links, a
+  tribe's app and second brain buttons);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit
@@ -231,7 +236,7 @@ fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
-times, a sender's zone at a moment for a page of runs, the v14 column on stored history); refusals as typed
+times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test

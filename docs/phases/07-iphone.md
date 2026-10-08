@@ -1,7 +1,7 @@
 # Phase 7 — iPhone
 
-Status: planned. Comes after parity (order decided 2026-10-08: the
-architecture-review cleanup, calls, parity, then the iPhone; see `../PLAN.md`).
+Status: planned. Comes after the v1 extras (`10-v1-extras.md`); the order
+was decided on the evening of 2026-10-08, see `../PLAN.md`.
 
 - Same PeelCore and most views; an iOS target in the package plus an Xcode
   project for signing. Needs Xcode installed.

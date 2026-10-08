@@ -1,8 +1,9 @@
 # Phase 6 — Calls
 
-Status: **PRs 1 to 3 built** (the call link and message, #44; the ticket
-and presence, #54; LiveKit in the bundle, branch `feat/calls-livekit`); PRs
-4 to 8 open. Plan and boards
+Status: **PRs 1 to 3 merged** (the call link and message, #44; the ticket
+and presence, #54; LiveKit in the bundle, #55); PR 4 (the call card) in
+progress; PRs 5 to 8 open. Finishing calls is first in the order Tom set on
+the evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
 
@@ -22,8 +23,8 @@ decided (Tom, 2026-10-08; see "Decided" below).
   camera usage strings and entitlements, and a development-only test room
   (`Sources/PeelApp/CallTestRoom.swift`).
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
-  see the PR 2 journal), and everything from PR 3 on (LiveKit, the card, the
-  window, notifications); one mic-allowed run of the test room (PR 3
+  see the PR 2 journal), and PRs 4 to 8 (the card, the window, screen
+  share, notifications, the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
 - Decided in PR 1: calls stay out of `shownInChats`, `unreadTypes` and the
   preview until PR 4 has the card (see "Engine and app split", Storage).
@@ -583,7 +584,9 @@ simplify, security-review) and updates this file.
 
 0. **First, the cleanup** (Tom's order): #30 and #31 and the review's
    other fixes. PR 1 does not depend on them technically: it touches no
-   list a migration reads.
+   list a migration reads. (#30 and #31 merged. Since the evening of
+   2026-10-08, calls come first and the rest of the cleanup later:
+   `../PLAN.md`.)
 1. **Engine: the call link and message.**
    - `Call.swift`: `CallLink` parses the bare form, the `call::` JSON form,
      Hive `-host-` rooms, `callKey`, `hiveToken` and `startAudioOnly`, validates, and

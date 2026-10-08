@@ -9,6 +9,8 @@ notified (branch `feat/money-received`). Storage is at v13.
 
 **Open:**
 - Payment templates, not started: the scope list at the start of the journal.
+  Moved to the v1 extras step on 2026-10-08 (evening; `../PLAN.md`,
+  `10-v1-extras.md`).
 - Lightning behind the server (server-made invoices, real fees), never run locally: "Not tested locally, and why".
 - Receive by `make_invoice` or `request_invoice`, and two smaller questions: "Open questions for Tom".
 - Restore loses a DM contact this account only answered: "Boosts and payments in chat", "Open".

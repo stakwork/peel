@@ -116,50 +116,93 @@ only needed for TestFlight and the iPhone target.
 
 ## Phases
 
-Rows are in build order (decided 2026-10-08, below). The numbers are the
-phase files' names and stay as they are.
+Rows are in build order (decided 2026-10-08 evening, below). The numbers are
+the phase files' names and stay as they are; "—" rows have no phase file.
 
 | # | Phase | Status | File |
 |---|-------|--------|------|
 | 1 | Core and account | done | [phases/01-core.md](phases/01-core.md) |
 | 2 | Safe accounts: Keychain, PIN, onboarding, restore | core goal reached; leftovers listed in the file | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | built and merged: tribes with parity, replies and threads, attachments, the chat UI, notifications, mark as unread; leftovers listed in the file | [phases/03-chat.md](phases/03-chat.md) |
-| 4 | Money | built and merged: boosts, in-chat payments, the Payments screen, invoices, requests in chat, paid attachments; payment templates and Lightning-backed tests open | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
-| — | Architecture-review cleanup | **next**, before any new feature: the refactor plan's open rows (rows 1–3 merged as #30–#32, row 5 in review as #33) | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
-| 6 | Calls (LiveKit) | after the cleanup, ahead of parity; PR 1 (call link and message, engine and CLI) built | [phases/06-calls.md](phases/06-calls.md) |
-| 5 | Parity: contacts, in-app web window, self-hosted certificates | after calls; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
+| 4 | Money | built and merged: boosts, in-chat payments, the Payments screen, invoices, requests in chat, paid attachments; payment templates moved to the v1 extras step; Lightning-backed tests open | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
+| 6 | Calls (LiveKit) | **now**: PRs 1–3 merged (#44, #54, #55); PR 4 (the call card) in progress; PRs 5–8 open | [phases/06-calls.md](phases/06-calls.md) |
+| — | File splits | next, while things are quiet: refactor rows 10–13 (MainView, PeelMenu and Media; Storage; Engine; PeelCommand) | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
+| 5 | Parity: contacts and the in-app web window | after the splits; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
+| — | Remaining cleanup | rows 8, 9 and 14–18: notification policy in PeelCore, styles and confirm controls, off-main reads, the restore cursor and its tests, the engine sending many files, the docs refresh, polling to continuations | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
+| — | Polish pass | a general pass over the app | — |
+| 10 | v1 extras: search and ⌘K, Markdown, voice messages, Giphy; plus payment templates, preferences sync, self-hosted certificates | planned; findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
-| 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |
+| 8 | Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
 | 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
 
-Calls come before parity (Tom, 2026-10-08): they are core messaging, the
-team starts calls from chats every day, and Peel cannot be his daily client
-without them.
+### Refactor plan status
 
-## Scope (decided 2026-10-05, changed 2026-10-08)
+From [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md),
+"Refactor plan", as of 2026-10-08 evening:
 
-In v1: onboarding (invite signup, mnemonic restore, name, PIN, photo); contacts
-as the Mac app does them; payments (send in chat, pay invoice, request, boosts)
-plus a new Receive screen; chat with tribes, attachments, threads and replies,
-LiveKit calls; an in-app web window for links and tribe apps; paid messages
-and templates. Not now: People, LSATs and languages.
-Later: AI Agent. Out: feeds and podcasts, Strut dictation, Hive workspaces,
-Tor and relay-era code, Jitsi.
+- Merged: rows 1 (#30), 2 (#31), 3 (#32), 4 (#37) and 5 (#33).
+- In review: row 7, typed engine failures (#57).
+- Started: row 12, splitting Engine. Part of it is under way, but nothing
+  is on `origin` yet.
+- Next, with the file splits: rows 10, 11, 12 (the rest) and 13.
+- After contacts and the web window: rows 8, 9, 14, 15, 16, 17 and 18.
+- Not placed in the evening order: row 6, one sender resolution. The
+  "Someone" fallback is still written in several views.
+
+## Scope (decided 2026-10-05, changed 2026-10-08 twice)
+
+In v1:
+- Onboarding: invite signup, mnemonic restore, name, PIN, photo.
+- Contacts as the Mac app does them.
+- Payments: send in chat, pay an invoice, request, boosts, plus a new
+  Receive screen. Paid messages and templates.
+- Chat: tribes, attachments, threads and replies, LiveKit calls, search in
+  a chat and a ⌘K palette across the app, Markdown, voice messages, Giphy.
+- An in-app web window for links and tribe apps.
+- Preferences sync and self-hosted certificates.
+
+Later: AI Agent. Out of v1: People (the public profile and bounty
+directory at people.sphinx.chat), LSATs, languages, feeds and podcasts,
+Hive workspaces, the knowledge graph view, Jitsi, Strut dictation, Tor and
+relay-era code.
+
+## Decided 2026-10-08 (evening, Tom)
+
+This replaces the order in "Decided 2026-10-08" below.
+
+- **Added to v1:** search (in a chat, and a ⌘K palette over every chat's
+  messages, people and tribes), Giphy, voice messages, and Markdown beyond
+  the inline code and fences of #41. What the official app does for each
+  is in [phases/10-v1-extras.md](phases/10-v1-extras.md).
+- **Confirmed out of v1:** People, LSATs, languages, feeds and podcasts,
+  Hive workspaces, the knowledge graph view and Jitsi.
+- **Order:**
+  1. Finish calls: PRs 4–8 of [phases/06-calls.md](phases/06-calls.md).
+  2. The file splits (refactor rows 10–13), done while things are quiet.
+  3. Contacts (scan a QR, invites with sats, inbound requests) and the
+     in-app web window.
+  4. The remaining cleanup rows: 8, 9, 14, 15, 16, 18, and the docs
+     refresh (17).
+  5. A general polish pass over the app.
+  6. The v1 extras (search and ⌘K, Markdown, voice, Giphy, payment
+     templates, preferences sync, self-hosted certificates), then the
+     iPhone, the audit and local runtimes.
 
 ## Decided 2026-10-08 (Tom)
 
+Its order is superseded by the evening decision above.
+
 - **Order:** the architecture-review cleanup, then calls, then parity, then
-  the iPhone. The phase table above is in that order.
+  the iPhone.
 - **Cleanup first.** Finish the refactor plan's open rows in
   [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md)
   before new features.
 - **Calls before parity.** LiveKit calls are core messaging and needed for
-  daily use, so phase 6 comes straight after the cleanup. Its plan is in
-  [phases/06-calls.md](phases/06-calls.md).
+  daily use. Its plan is in [phases/06-calls.md](phases/06-calls.md).
 - **Parity, narrowed** ([phases/05-parity.md](phases/05-parity.md)): keep
   the contacts UI (QR, invites, inbound requests) and self-hosted
   certificates; web apps become an in-app web window; People, LSATs and
-  languages move to "Not now".
+  languages move out of v1.
 
 ## Working in parallel
 

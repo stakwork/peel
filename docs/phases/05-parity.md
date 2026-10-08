@@ -5,17 +5,23 @@
 **Built:** the Account screen (#10): name, photo by link (upload from this
 Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
 
-**Open**, in this order (Tom, 2026-10-08: after the cleanup and calls):
+**Open**, in this order (Tom, 2026-10-08 evening: after calls and the file
+splits, see `../PLAN.md`):
 - Contacts UI: "Contacts" below.
 - The in-app web window: "Web window" below.
+
+**Moved to the v1 extras step** (`10-v1-extras.md`, after the polish pass),
+with search and ⌘K, Markdown, voice messages and Giphy:
 - Self-hosted servers with their own certificates: "Self-hosted servers" below.
 - Settings sync between devices (the Mac app's `Data Sync Manager`). Tom,
   2026-10-08: Peel will need a preferences layer. What the official apps
   sync is in "Settings sync" below; the per-chat time zone switch is stored
   in the file's shape already (`../design/README.md`, "Time zones").
 
-**Decided (2026-10-08):** People, LSATs and languages are not in v1 ("Not
-now" below); web apps become a web window inside Peel.
+**Decided (2026-10-08):** web apps become a web window inside Peel. Out
+of v1 (confirmed in the evening): People, LSATs, languages, feeds and
+podcasts, Hive workspaces, the knowledge graph view and Jitsi ("Not in v1"
+below).
 
 ## Contacts
 
@@ -50,7 +56,7 @@ Open questions:
   everything else still going to the browser?
 - Does Peel offer the `sphinx` bridge at all? Without it a page is just a
   page; with it, `AUTHORIZE` and `KEYSEND` need a budget that goes through
-  `Engine.checkPayment`. The LSAT calls are part of LSATs, which are "Not now".
+  `Engine.checkPayment`. The LSAT calls are part of LSATs, which are not in v1.
 - What the window may reach: cookies and storage per tribe or shared, file
   downloads, pop-ups, and whether a page can ever navigate to a
   `sphinx.chat://` link.
@@ -121,9 +127,13 @@ untouched, and write it back merged; never upload a file it could not
 decrypt. `ai_agent_config` holds a third-party API key, so Peel should
 leave it alone and never log the file.
 
-## Not now (2026-10-08)
+## Not in v1 (2026-10-08)
 
-- **People:** a public profile on the Sphinx people server, and signing in
+Confirmed by Tom on the evening of 2026-10-08, together with feeds and
+podcasts, Hive workspaces, the knowledge graph view and Jitsi.
+
+- **People:** a public profile and the bounty directory on the Sphinx
+  people server (people.sphinx.chat), and signing in
   to outside sites by answering a challenge with the account key
   (`SphinxOnionManager+PeopleExtension.swift`, `API+PeopleExtension.swift`
   in the Mac app).

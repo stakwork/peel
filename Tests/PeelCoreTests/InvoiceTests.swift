@@ -389,7 +389,67 @@ struct InvoiceTests {
         if case .paid? = try await state() {} else { Issue.record("not paid") }
     }
 
+    /// A timeline's requests are read together, by payment hash: each takes
+    /// its own side's records, and a payer's type 3 pays ours only in its chat.
+    @Test func requestsReadTogetherKeepTheirOwnSide() async throws {
+        let storage = try profile.storage()
+        let unreadable = Message.fixture(uuid: uuid(3), type: MessageType.invoice, chat: dm,
+                                         body: #"{"content":"x","invoice":"lnbc1nope"}"#, content: "x")
+        var commit = Storage.Commit(contacts: [(dm, true), (keyG, true)], messages: [
+            (request(fromMe: true), false, nil), (request(fromMe: false, id: 2, chat: dm), false, nil),
+            (unreadable, false, nil),
+            // Enough for ours, but in another chat.
+            (.fixture(uuid: uuid(4), type: MessageType.invoicePayment, chat: keyG, content: nil,
+                      msat: 250_000_000, timestamp: 2000, paymentHash: coffeeHash), false, nil),
+        ])
+        commit.invoices = [outgoing(.pending)]
+        _ = try storage.apply(commit)
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", "FAILED")], sendErrors: ["t1": "no route"]))
+        func states() async throws -> [String: PaymentRequest.State] {
+            let timeline = try #require(try await first(storage.timeline(in: dm)))
+            return Dictionary(uniqueKeysWithValues: timeline.messages.compactMap { message in
+                message.id.flatMap { timeline.requests[$0] }.map { (message.uuid ?? "", $0.state) }
+            })
+        }
+        #expect(try await states() == [uuid(1): .open, uuid(2): .failed("no route"), uuid(3): .open])
+
+        // Theirs paid from another device; ours by the payer here.
+        _ = try storage.apply(Storage.Commit(
+            messages: [(.fixture(uuid: uuid(5), type: MessageType.invoicePayment, chat: dm, content: nil,
+                                 msat: 250_000_000, timestamp: 3000, paymentHash: coffeeHash), false, nil)],
+            payments: PaymentRecord.decode(#"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":4000}]"#)
+        ))
+        #expect(try await states() == [
+            uuid(1): .paid(at: Date(millisecondsSince1970: 3000)), uuid(2): .paid(at: Date(millisecondsSince1970: 4000)),
+            uuid(3): .open,
+        ])
+    }
+
     // MARK: Paid attachments
+
+    /// A timeline's paid attachments are read together: each counts only
+    /// the purchases naming its own token.
+    @Test func paidAttachmentsReadTogetherKeepTheirOwnToken() async throws {
+        let storage = try profile.storage()
+        let one = token(muid: "muid1", price: 50), two = token(muid: "muid2", price: 50)
+        func attachment(_ n: Int, _ token: String) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.attachment, chat: dm, fromMe: true,
+                     body: #"{"mediaToken":"\#(token)","mediaKeyForSelf":"k"}"#, timestamp: Int64(n) * 1000)
+        }
+        func bought(_ n: Int, _ token: String) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.purchase, chat: dm, body: #"{"mediaToken":"\#(token)"}"#,
+                     msat: 50_000, timestamp: Int64(n) * 1000)
+        }
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [
+            (attachment(1, one), false, nil), (attachment(2, two), false, nil),
+            (bought(3, one), false, nil), (bought(4, one), false, nil), (bought(5, two), false, nil),
+        ]))
+        let timeline = try #require(try await first(storage.timeline(in: dm)))
+        let states = Dictionary(uniqueKeysWithValues: timeline.messages.compactMap { message in
+            message.id.flatMap { timeline.purchases[$0] }.map { (message.uuid ?? "", $0) }
+        })
+        #expect(states == [uuid(1): .forSale(purchases: 2), uuid(2): .forSale(purchases: 1)])
+    }
 
     @Test func aTokensPriceIsReadFromItsMeta() {
         #expect(MediaToken(token(price: 200))?.priceSats == 200)

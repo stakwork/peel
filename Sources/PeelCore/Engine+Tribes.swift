@@ -423,7 +423,7 @@ extension Engine {
     static func contact(_ pubkey: String, in state: [String: Data]) -> Contact? {
         guard state["c/\(pubkey)"] != nil,
               let json = try? Sphinxrs.getContact(state: StateCodec.encode(state), pubkey: pubkey) else { return nil }
-        return try? JSONDecoder().decode(Contact.self, from: Data(json.utf8))
+        return JSON.decode(Contact.self, from: json)
     }
 
     private func tribeServer() throws -> String {

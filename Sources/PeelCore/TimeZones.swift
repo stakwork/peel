@@ -63,7 +63,7 @@ public enum TimeZoneOffset {
     /// again follows the switch as it is now.
     static func setting(_ offset: String?, in body: String) throws -> String {
         guard offset != nil || body.contains("\"metadata\""),
-              var fields = try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)) else { return body }
+              var fields = JSON.decode([String: String].self, from: body) else { return body }
         fields["metadata"] = try offset.map { try Engine.json(["tz": $0]) }
         return try Engine.json(fields)
     }
@@ -180,7 +180,7 @@ extension Storage {
             var zones: [Int: TimeZone] = [:]
             for row in rows {
                 guard let list: String = row["tz"],
-                      let sent = try? JSONDecoder().decode([String].self, from: Data(list.utf8)) else { continue }
+                      let sent = JSON.decode([String].self, from: list) else { continue }
                 if let zone = sent.lazy.compactMap(TimeZoneOffset.zone).first { zones[row["i"]] = zone }
             }
             return zones

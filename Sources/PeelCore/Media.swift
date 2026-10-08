@@ -221,7 +221,7 @@ struct AttachmentFields: Decodable {
     var ownKey: String? { mediaKey?.nilIfEmpty ?? mediaKeyForSelf?.nilIfEmpty }
 
     static func decode(_ body: String?) -> AttachmentFields? {
-        body.flatMap { try? JSONDecoder().decode(AttachmentFields.self, from: Data($0.utf8)) }
+        JSON.decode(AttachmentFields.self, from: body)
     }
 }
 

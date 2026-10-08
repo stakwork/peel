@@ -18,8 +18,7 @@ extension Storage {
                 ORDER BY serverIndex DESC LIMIT 50
                 """)
         }
-        let decoder = JSONDecoder()
-        let photo = senders.lazy.compactMap { try? decoder.decode(SenderInfo.self, from: Data($0.utf8)).photoURL }.first
+        let photo = senders.lazy.compactMap { JSON.decode(SenderInfo.self, from: $0)?.photoURL }.first
         return photo?.httpsOnly
     }
 
@@ -132,17 +131,11 @@ extension Storage {
         return max(Self.pageSize, since + 20)
     }
 
-    /// Incoming text, attachments and direct payments past the read marker
-    /// count as unread, and boosts only on this account's own messages
-    /// (someone else's boost on someone else's message is not news to us;
-    /// Tom, 2026-10-07). One row per conversation; each count is ranges on
-    /// `message_unread` (one per type), plus a lookup of the boosted message
-    /// for each boost in range; the mentions among them a range on
-    /// `message_mentions`. A message deleted after it arrived still counts,
-    /// as before payments (it was news when it came).
     /// What counts as unread, for a message `m` past the marker: someone
-    /// else's text, attachment or payment with words (`Message.hasNoWords`,
-    /// read from `message_unread`), or their boost on our message.
+    /// else's message of `MessageType.unreadTypes` (text, attachments,
+    /// payments, requests and calls) with words (`Message.hasNoWords`, read
+    /// from `message_unread`), or their boost on our message (someone else's
+    /// boost on someone else's message is not news to us; Tom, 2026-10-07).
     static let countsAsUnreadSQL = """
         m.fromMe = 0 AND m.noWords = 0
             AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
@@ -151,6 +144,12 @@ extension Storage {
                 SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
         """
 
+    /// The unread and mention counts past each chat's read marker
+    /// (`countsAsUnreadSQL`). One row per conversation; each count is ranges
+    /// on `message_unread` (one per type), plus a lookup of the boosted
+    /// message for each boost in range; the mentions a range on
+    /// `message_mentions`. A message deleted after it arrived still counts,
+    /// as before payments (it was news when it came).
     private static let readStatesSQL = """
         SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew, (
             SELECT COUNT(*) FROM message m

@@ -453,7 +453,7 @@ func tribeAlias(_ alias: String) -> String {
 
 extension MentionScan {
     init?(stored: String) {
-        guard let scan = try? JSONDecoder().decode(Self.self, from: Data(stored.utf8)) else { return nil }
+        guard let scan = JSON.decode(Self.self, from: stored) else { return nil }
         self = scan
     }
 }

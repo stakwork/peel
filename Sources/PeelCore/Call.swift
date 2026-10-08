@@ -81,7 +81,7 @@ public struct CallLink: Sendable, Equatable {
         let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.hasPrefix(prefix) else { return text }
         struct Form: Decodable { let link: String }
-        return (try? JSONDecoder().decode(Form.self, from: Data(text.dropFirst(prefix.count).utf8)))?.link
+        return JSON.decode(Form.self, from: text.dropFirst(prefix.count))?.link
     }
 
     /// "Audio call" or "Video call", for a preview, when a call message's link (`linkText`)

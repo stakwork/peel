@@ -45,7 +45,7 @@ struct ThreadTests {
         let storage = try storage([text(2, reply: 1, thread: 1)])
         var echo = text(2, index: 7).0
         echo.replyUUID = uuid(9)
-        let row = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).first)
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).stored.first)
         #expect(row.serverIndex == 7)
         #expect(row.replyUUID == uuid(1))
         #expect(row.threadUUID == uuid(1))

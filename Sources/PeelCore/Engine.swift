@@ -387,7 +387,7 @@ public actor Engine {
         commit.settings[.clock] = time
         commit.resend = resend
         commit.reads = Self.reads(result.lastRead).filter { !readsSentSinceGetReads.contains($0.key) }
-        if let json = result.muteLevels, let mutes = try? JSONDecoder().decode([String: Int].self, from: Data(json.utf8)) {
+        if let json = result.muteLevels, let mutes = JSON.decode([String: Int].self, from: json) {
             commit.mutes = mutes
         }
 
@@ -443,7 +443,7 @@ public actor Engine {
                 return (hash, Int64(clamping: msat))
             }
         }
-        let settled = result.settledStatus.flatMap { try? JSONDecoder().decode(SettledStatus.self, from: Data($0.utf8)) }
+        let settled = JSON.decode(SettledStatus.self, from: result.settledStatus)
         if let settled, settled.status == Message.Delivery.delivered.rawValue, let hash = settled.paymentHash {
             commit.settled = [(hash, Date().millisecondsSince1970)]
         }
@@ -465,8 +465,8 @@ public actor Engine {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            guard var (message, trustSender) = Self.message(from: msg, expectedSender: expectedSender, state: newState)
-            else { continue }
+            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState) else { continue }
+            var (message, trustSender) = (decoded.message, decoded.trustSender)
             if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
                let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
                 knownTribes[found.pubkey] = found
@@ -497,13 +497,12 @@ public actor Engine {
                 if message.type == MessageType.boost, message.amountMsat == nil {
                     message.amountMsat = DeclaredAmount.decode(message.body)
                 }
-                let fields = BodyFields.decode(message.body)
-                if let date = fields?.date, date > 0 {
+                if let date = decoded.fields?.date, date > 0 {
                     message.timestamp = date
                 }
                 // Our own message coming back from the tribe takes over the row written at send.
                 if message.fromMe {
-                    replaces = fields?.originalUuid
+                    replaces = decoded.fields?.originalUuid
                     if let echoed = message.senderAlias { echoedAliases[message.chat, default: []].insert(echoed) }
                 } else if MessageType.content.contains(message.type), let content = message.content {
                     let aliases = ownTribeAliases(sent: sentAlias, echoed: echoedAliases[message.chat] ?? [])
@@ -513,7 +512,7 @@ public actor Engine {
             commit.messages.append((message, trustSender, replaces))
         }
         var newTribe: String?
-        if let json = result.newTribe, let info = try? JSONDecoder().decode(TribeInfo.self, from: Data(json.utf8)),
+        if let json = result.newTribe, let info = JSON.decode(TribeInfo.self, from: json),
            Self.isPerson(info.pubkey, in: newState) != true {
             newTribe = info.pubkey
             // Replies on the management topic are only ever about this account's own tribes.
@@ -526,10 +525,10 @@ public actor Engine {
         }
         var members: TribeMembers.List?
         if let json = result.tribeMembers {
-            members = try? JSONDecoder().decode(TribeMembers.List.self, from: Data(json.utf8))
+            members = JSON.decode(TribeMembers.List.self, from: json)
         }
-        let sent = result.sentStatus.flatMap { try? JSONDecoder().decode(SentStatus.self, from: Data($0.utf8)) }
-        let records = result.tags.flatMap { try? JSONDecoder().decode([SentStatus].self, from: Data($0.utf8)) }
+        let sent = JSON.decode(SentStatus.self, from: result.sentStatus)
+        let records = JSON.decode([SentStatus].self, from: result.tags)
         let live = sent.flatMap(Self.liveStatus)
         let answers = records.map { Self.recordedStatuses($0, unrecorded: unrecordedPayments) } ?? []
         if let live { commit.statuses.append(live) }
@@ -541,13 +540,10 @@ public actor Engine {
             }
         }
 
-        var purged: [String] = []
-        var received: [Message] = []
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
-        var addedUs: [Message] = []
-        let stored = try storage.apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
+        let applied = try storage.apply(commit)
         // A deleted attachment's decrypted copy goes with it.
-        let deletedFiles = purged.compactMap { body -> URL? in
+        let deletedFiles = applied.purged.compactMap { body -> URL? in
             guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
                   let key = fields.mediaKey else { return nil }
             return media.cached(muid: token.muid, key: key)
@@ -598,17 +594,17 @@ public actor Engine {
         if let balance = result.newBalance {
             emit.yield(.balance(msat: balance))
         }
-        for message in stored {
+        for message in applied.stored {
             emit.yield(.message(message, arrival))
         }
         // Purchases of our paid attachments, answered once this commit is done.
         if arrival != .restore {
-            followUps.purchases = stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
+            followUps.purchases = applied.stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
         }
-        for message in received where arrival != .restore {
+        for message in applied.received where arrival != .restore {
             emit.yield(.moneyReceived(message))
         }
-        for message in addedUs {
+        for message in applied.addedUs {
             emit.yield(.contactAdded(message))
         }
         // What the server said, then what its records settled.
@@ -619,9 +615,8 @@ public actor Engine {
             emit.yield(.sendStatus(tag: tag, status: status))
         }
         // Every payment that arrives settles; only one to an invoice made
-        // here, open until this commit, is news, and only once: a request
-        // paid with a type 3 was told by its `.moneyReceived`.
-        for (hash, _) in commit.settled where settling.contains(hash) && !received.contains(where: { $0.paymentHash == hash }) {
+        // here, open until this commit, is news, and only once.
+        for (hash, _) in commit.settled where settling.contains(hash) {
             if let invoice = try storage.invoice(paymentHash: hash, incoming: true),
                invoice.status == .paid || invoice.status == .underpaid {
                 emit.yield(.invoicePaid(invoice))
@@ -744,10 +739,12 @@ public actor Engine {
     /// the topic names the contact as well and the two must agree. Contact
     /// records (type 33) are honoured by the core only when signed by this
     /// account. Messages from senders the core does not know are dropped.
-    private static func message(from msg: Msg, expectedSender: String?, state: [String: Data]) -> (Message, Bool)? {
+    private static func message(
+        from msg: Msg, expectedSender: String?, state: [String: Data]
+    ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
         guard let type = msg.type else { return nil }
         let fromMe = msg.fromMe ?? false
-        let claimed = msg.sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }?.pubkey
+        let claimed = JSON.decode(SenderInfo.self, from: msg.sender)?.pubkey
         let chat: String
         var trustSender = false
         if fromMe {
@@ -790,14 +787,14 @@ public actor Engine {
             // Someone else's names the request only by the payment it rode
             // on (the core's hash, from the topic); our own copy carries no
             // payment, so its JSON (which we wrote) names it.
-            if fromMe { message.paymentHash = msg.paymentHash ?? BodyFields.decode(msg.message)?.paymentHash?.lowercased() }
+            if fromMe { message.paymentHash = msg.paymentHash ?? fields?.paymentHash?.lowercased() }
             message.amountMsat = msat
         case MessageType.purchase, MessageType.purchaseDeny:
             message.amountMsat = msat ?? (fromMe ? DeclaredAmount.decode(msg.message) : nil)
         default:
             break
         }
-        return (message, trustSender)
+        return (message, trustSender, fields)
     }
 
     private func receive(_ inbound: Inbound) async {
@@ -870,7 +867,7 @@ public actor Engine {
     /// Read markers by chat, as the core reports them. The core leaves them out
     /// when the server has none at all, which reads as empty.
     private static func reads(_ json: String?) -> [String: Int64] {
-        json.flatMap { try? JSONDecoder().decode([String: Int64].self, from: Data($0.utf8)) } ?? [:]
+        JSON.decode([String: Int64].self, from: json) ?? [:]
     }
 
     /// Sends the markers moved here that the server does not have yet (read

@@ -101,6 +101,8 @@ is a short plan. Update the status and the journal when you finish something.
     with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state
+  - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
+    sender, a core reply) is read into a type
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
     the words in the data-protection Keychain sealed under a six-digit PIN
     (moved there from the login Keychain on first unlock), `.development`

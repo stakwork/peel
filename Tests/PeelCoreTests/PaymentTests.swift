@@ -103,7 +103,7 @@ struct PaymentTests {
         let storage = try storage([unpaid])
         var paid = payment(1, sats: 10)
         paid.msat = 10_000
-        let row = try #require(try storage.apply(Storage.Commit(messages: [(paid, false, nil)])).first)
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(paid, false, nil)])).stored.first)
         #expect(row.amountMsat == 10_000)
     }
 
@@ -111,7 +111,7 @@ struct PaymentTests {
         let storage = try storage([payment(1, sats: 10)])
         var echo = payment(1, sats: 99)
         echo.serverIndex = 5
-        let row = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).first)
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).stored.first)
         #expect(row.serverIndex == 5)
         #expect(row.amountMsat == 10_000)
     }
@@ -146,22 +146,14 @@ struct PaymentTests {
             // Someone else's boost on someone else's message, and an unpaid "payment".
             paid(boost(5, on: 1, sats: 5), index: 5), payment(6, sats: 99),
         ]
-        var purged: [String] = [], received: [Message] = []
-        _ = try storage.apply(Storage.Commit(messages: incoming.map { ($0, false, nil) }), purged: &purged,
-                              received: &received)
-        #expect(received.map(\.uuid) == [uuid(3), uuid(4)])
+        let commit = Storage.Commit(messages: incoming.map { ($0, false, nil) })
+        #expect(try storage.apply(commit).received.map(\.uuid) == [uuid(3), uuid(4)])
         // The same copies again (history, the server's echo) are not news.
-        received = []
-        _ = try storage.apply(Storage.Commit(messages: incoming.map { ($0, false, nil) }), purged: &purged,
-                              received: &received)
-        #expect(received.isEmpty)
+        #expect(try storage.apply(commit).received.isEmpty)
         // Nor is what was already read when it arrived.
-        received = []
-        _ = try storage.apply(
-            Storage.Commit(messages: [(paid(payment(7, sats: 1), index: 7), false, nil)], reads: [dm: 7]),
-            purged: &purged, received: &received
-        )
-        #expect(received.isEmpty)
+        #expect(try storage.apply(
+            Storage.Commit(messages: [(paid(payment(7, sats: 1), index: 7), false, nil)], reads: [dm: 7])
+        ).received.isEmpty)
     }
 
     @Test func aPaymentMovesItsConversationUp() async throws {
@@ -214,7 +206,7 @@ struct PaymentTests {
         let id = try #require(try storage.message(uuid: uuid(1), in: dm)?.id)
         let rows = try storage.apply(Storage.Commit(
             resend: (id, dm, uuid(2), "t2", "hash2", 5_000)
-        ))
+        )).stored
         let row = try #require(rows.first)
         #expect(row.uuid == uuid(2))
         #expect(row.tag == "t2")

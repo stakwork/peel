@@ -294,17 +294,6 @@ extension Storage {
         return try message(uuid: boosted, in: row.chat, db)?.fromMe == true
     }
 
-    /// How many text messages and attachments are in a thread.
-    public func threadCount(_ uuid: String, in chat: String) throws -> Int {
-        try pool.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND threadUUID = ? AND type IN (\(MessageType.contentSQL))",
-                arguments: [chat, uuid]
-            ) ?? 0
-        }
-    }
-
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
     private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
         let photo = photoURL?.httpsOnly

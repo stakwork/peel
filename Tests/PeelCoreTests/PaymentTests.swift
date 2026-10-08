@@ -4,6 +4,8 @@ import Testing
 @testable import PeelCore
 
 private let other = "02bb"
+/// A photo URL too long to go with any payment.
+private let longPhoto = "https://" + String(repeating: "p", count: 600)
 
 struct PaymentTests {
     let profile = TempProfile()
@@ -247,6 +249,31 @@ struct PaymentTests {
         let medium = #"{"content":"\#(String(repeating: "x", count: 300))"}"#
         #expect(!Engine.wouldBeSplit(medium, alias: "alice", photoURL: ""))
         #expect(Engine.wouldBeSplit(medium, alias: "alice", photoURL: "https://" + String(repeating: "p", count: 200)))
+    }
+
+    /// A boost has no note: a photo URL too long for it goes, the boost does not stop.
+    @Test func aPaymentGoesWithoutAPhotoThatWouldSplitIt() throws {
+        let boost = #"{"content":"","replyUuid":"\#(uuid(1))"}"#
+        #expect(try Engine.fittingPayment(boost, alias: "alice", photoURL: "https://a/p.png") == (boost, "https://a/p.png"))
+        #expect(try Engine.fittingPayment(boost, alias: "alice", photoURL: longPhoto) == (boost, ""))
+        // The offset goes before the photo.
+        let note = #"{"content":"\#(String(repeating: "x", count: 300))","metadata":"{\"tz\":\"\#(String(repeating: "x", count: 200))\"}"}"#
+        let (withoutOffset, kept) = try Engine.fittingPayment(note, alias: "alice", photoURL: "https://a/p.png")
+        #expect(!withoutOffset.contains("metadata"))
+        #expect(kept == "https://a/p.png")
+    }
+
+    @Test func whatStillDoesNotFitNamesTheNoteOrTheName() {
+        #expect(throws: Engine.Failure.noteTooLong) {
+            try Engine.fittingPayment(#"{"content":"\#(String(repeating: "x", count: 600))"}"#, alias: "alice", photoURL: longPhoto)
+        }
+        #expect(throws: Engine.Failure.nameTooLong) {
+            try Engine.fittingPayment(#"{"content":""}"#, alias: String(repeating: "a", count: 600), photoURL: longPhoto)
+        }
+        // A short note is not to blame for a name that fits nowhere.
+        #expect(throws: Engine.Failure.nameTooLong) {
+            try Engine.fittingPayment(#"{"content":"hi"}"#, alias: String(repeating: "a", count: 600), photoURL: "")
+        }
     }
 
     /// The threshold rule for the custom boost, payments and saving a boost

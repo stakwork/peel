@@ -177,7 +177,10 @@ tribes server (`forward.rs` `MsgType::Boost`, price and escrow checks;
   570 bytes minus the sender's alias and photo URL (`should_chunk_for_send`)
   into type 34 fragments, and every fragment carries the full `amtMsat`. A
   long payment note would pay once per fragment, and only the last
-  fragment's async pay survives the merge.
+  fragment's async pay survives the merge. So a payment that would be
+  split goes without the time-zone offset, then without the photo URL (the
+  apps keep a contact's photo when a message has none), and only then is
+  refused: for its note, or with no note (a boost) for the name.
 - **History.** `fetchPayments(since, limit, scid, remoteOnly, minMsat,
   reverse)` returns the mixer's ledger as JSON `[{scid, amt_msat, rhash, ts,
   remote, msg_idx, error}]` plus `payments_total`; the Mac app's

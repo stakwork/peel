@@ -126,6 +126,7 @@ public actor Engine {
         case notBoostable
         case paymentToTribe
         case noteTooLong
+        case nameTooLong
         case invoiceExpired
         /// Paid before, from here or another device, or being paid now.
         case invoiceAlreadyPaid
@@ -152,6 +153,7 @@ public actor Engine {
             case .notBoostable: "only someone else's delivered message can be boosted"
             case .paymentToTribe: "a payment to a tribe goes to the tribes server; boost a message instead"
             case .noteTooLong: "the note is too long to go with a payment"
+            case .nameTooLong: "your name is too long to go with a payment"
             case .notRetryable: "only an undelivered message of ours can be sent again or discarded"
             case .noServer: "this account has no server recorded"
             case .notConnected: "not connected to the server"
@@ -1284,6 +1286,19 @@ public actor Engine {
         return body.utf8.count + margin > maxMessage - protocolOverhead - routeHint - sender
     }
 
+    /// A payment's body and photo URL as they fit in one message: without the
+    /// time-zone offset, then without the photo, rather than not at all. The
+    /// photo only decorates the payment, and the official apps (like Peel)
+    /// keep a contact's photo when a message comes without one. What still
+    /// does not fit is the name's fault when it would not fit alone, else the note's.
+    static func fittingPayment(_ body: String, alias: String, photoURL: String) throws -> (String, String) {
+        guard wouldBeSplit(body, alias: alias, photoURL: photoURL) else { return (body, photoURL) }
+        let body = try TimeZoneOffset.setting(nil, in: body)
+        if !wouldBeSplit(body, alias: alias, photoURL: photoURL) { return (body, photoURL) }
+        if !wouldBeSplit(body, alias: alias, photoURL: "") { return (body, "") }
+        throw wouldBeSplit("{}", alias: alias, photoURL: "") ? Failure.nameTooLong : Failure.noteTooLong
+    }
+
     /// Drops an undelivered message of ours from this Mac. It never reached the
     /// server, so there is nothing to delete anywhere else.
     public func discard(messageID: Int64) throws {
@@ -1335,11 +1350,8 @@ public actor Engine {
         var body = try TimeZoneOffset.setting(offset, in: body)
         if tribe != nil, offset != nil { recheckIfStale(pubkey) }
         let myAlias = tribe == nil ? alias : tribeAlias(alias)
-        if amountMsat != nil, Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) {
-            // A payment's note fits without the offset rather than not at all.
-            body = try TimeZoneOffset.setting(nil, in: body)
-            if Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) { throw Failure.noteTooLong }
-        }
+        var photoURL = photoURL
+        if amountMsat != nil { (body, photoURL) = try Self.fittingPayment(body, alias: myAlias, photoURL: photoURL) }
         let sats = amountMsat ?? tribe?.messageAmountMsat(type: type) ?? 0
         let time = clock.next()
         let result = try Sphinxrs.send(

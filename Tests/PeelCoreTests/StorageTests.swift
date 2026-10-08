@@ -270,7 +270,7 @@ struct StorageTests {
         #expect(conversations[2].lastContent == nil)
     }
 
-    @Test func messagesFirstEmission() async throws {
+    @Test func timelineFirstEmission() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [
             (.fixture(uuid: "u2", chat: "02aa", content: "second", timestamp: 2_000), false, nil),
@@ -278,17 +278,17 @@ struct StorageTests {
             (.fixture(uuid: "u3", chat: "02bb", content: "other chat", timestamp: 1_500), false, nil),
             (.fixture(uuid: "u4", type: MessageType.contactKeyRecord, chat: "02aa", content: "record", timestamp: 1_200), false, nil),
         ]))
-        let messages = try #require(try await first(storage.messages(in: "02aa")))
+        let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
         #expect(messages.map(\.content) == ["first", "second"])
     }
 
-    @Test func messagesKeepsTheNewestTwoHundred() async throws {
+    @Test func timelineKeepsTheNewestTwoHundred() async throws {
         let storage = try profile.storage()
         let batch = (0..<250).map { index in
             (Message.fixture(uuid: "u\(index)", chat: "02aa", content: "m\(index)", timestamp: Int64(index)), false, String?.none)
         }
         _ = try storage.apply(Storage.Commit(messages: batch))
-        let messages = try #require(try await first(storage.messages(in: "02aa")))
+        let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
         #expect(messages.count == 200)
         #expect(messages.first?.content == "m50")
         #expect(messages.last?.content == "m249")

@@ -147,25 +147,6 @@ extension Storage {
             .values(in: pool)
     }
 
-    /// How many text messages reply to each message of a chat, by the
-    /// replied-to uuid.
-    public func replyCounts(in chat: String) throws -> [String: Int] {
-        try pool.read { db in
-            var counts: [String: Int] = [:]
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT replyUUID, COUNT(*) AS count FROM message
-                    WHERE chat = ? AND replyUUID IS NOT NULL AND type = \(MessageType.text)
-                    GROUP BY replyUUID
-                    """,
-                arguments: [chat]
-            )
-            for row in rows { counts[row["replyUUID"]] = row["count"] }
-            return counts
-        }
-    }
-
     /// When this account last boosted the message `uuid` in `chat`, if it
     /// has (failed boosts too: a tap that failed is still a tap).
     func lastOwnBoost(on uuid: String, in chat: String) throws -> Date? {

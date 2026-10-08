@@ -64,7 +64,7 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   it out"; they replace the bubbles chosen earlier that day). No bubbles:
   the text sits on the background. Each run (one sender, a new run after
   five minutes, a new day, or anything that is not a message) starts with
-  a 32 pt photo, the sender's name (13 semibold, `Theme.name`) and the time
+  a 32 pt photo, the sender's name (13 semibold, in their colour) and the time
   (12, secondary) once; the rest of the run sits under it, each message's
   time in the left gutter on hover. Your messages are left-aligned too, on a
   faint accent tint, with the green delivered bolt beside the time. Body
@@ -216,6 +216,8 @@ is dark only for now (Tom, 2026-10-07); the light values are kept in
 | Filled buttons | `#618AFF` | `#3F68E0` | PrimaryBlue, adjusted |
 | Your rows (tint) | accent at 6% | accent at 6% | — (bubbles retired) |
 | Links, mention chip | `#8FB0FF`, `#2A3A5E` behind `#B4C8FF` | `#3F68E0`, `#DDE6FF` behind `#1E3D99` | — |
+| Mention of you or @all | `#F2C744` at 22% behind `#FFE08A` | `#FBE7A6` behind `#5C4300` | — |
+| Names and initials | per person, see below | per person | — |
 | Boost bolt | `#FFBC58` | `#FFBC58` | SphinxOrange |
 | Online dot | `#49C998` | `#49C998` | PrimaryGreen |
 
@@ -229,6 +231,51 @@ needs 4.5:1):
 
 Colour is state, never decoration (Tom's `tom-ui` rules): blue marks unread,
 selected and actionable; red only for destructive or blocking moments.
+
+### Colour (direction D)
+
+Approved by Tom on 2026-10-08 (boards K4, K5 and K5b on the canvas). Each
+person has a colour on their initials avatar and their name, so a run, a
+quote or a booster reads at a glance. Eight hues, no blues (links,
+mentions, unread) and no ambers (money, the @you chip):
+
+| Hue | Name, dark | Name, light | Avatar fill, both themes |
+|---|---|---|---|
+| coral | `#FF9079` | `#A83825` | `#BA4A36` |
+| lime | `#A2C854` | `#507000` | `#587900` |
+| green | `#6AD18A` | `#007938` | `#007F3D` |
+| teal | `#55CEC0` | `#00776B` | `#007C70` |
+| cyan | `#57C8E6` | `#00718D` | `#007893` |
+| violet | `#BAA4FF` | `#674EB0` | `#765DC1` |
+| orchid | `#E196F3` | `#874197` | `#9951A9` |
+| pink | `#FF8CBC` | `#A13567` | `#B44778` |
+
+- **Which hue:** FNV-1a (32-bit) over the official apps' colour key, mod 8
+  (`PersonHue` in PeelCore). The key is `<alias>-color` for a tribe
+  member and `<pubkey>-color` for a contact and for you, everywhere, as
+  sphinx-mac-v2 keys it (`ChatHelper.getSenderColorFor`). A synced
+  `chat_color` can later map to its nearest hue in `PersonHue(colourKey:)`;
+  nothing is synced yet. The app asks only `AppModel.myHue` and `hue(…)`.
+- **Where:** run headers and their avatars, quotes and the reply bar,
+  thread cards and participants, boost chips and the boosters panel, the
+  members panel and @ suggestions, the Mentions list, the image viewer,
+  sidebar direct messages and you at the top, the Account photo, and the
+  Payments counterpart (list, detail, quoted message). A tribe without an
+  image takes its initial on the same palette, keyed by the tribe's key,
+  on its rounded square. Photos stay photos;
+  only initials get the fill (white, two letters for two words, from 18 pt).
+  Notifications carry no avatars.
+- **A mention of you, or @all,** is a gold chip (semibold):
+  `mentionYouFill` / `mentionYouText`, `#FBE7A6` behind `#5C4300` in
+  light, and in dark `#F2C744` at 22% behind `#FFE08A` (final, Tom,
+  2026-10-08). No row tint and no left bar. "You" is what the mention
+  scan reads: your name as tribes get it, or the aliases the tribe echoed
+  back on your messages, which the engine keeps (`Engine.echoedOwnAliases`,
+  `ownMentionAliases`). @all is gold too but,
+  as before, is not counted in Mentions.
+- **Unchanged:** other mentions stay the blue chip; boosts, money, the
+  balance, badges, the New messages line, "N replies", the jump pill and
+  your rows' tint keep their colours.
 
 ## Type
 

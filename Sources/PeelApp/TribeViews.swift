@@ -481,16 +481,18 @@ private struct MentionRow: View {
     let tribeName: String?
 
     var body: some View {
-        let alias = message.senderAlias
+        let details = message.senderDetails, alias = details.alias
         Button {
             model.focus(on: message)
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                Avatar(name: alias ?? "?", url: message.senderPhotoURL, size: 28)
+                let hue = model.hue(pubkey: message.chat, alias: alias, inTribe: true)
+                Avatar(name: alias ?? "?", url: details.photoURL, size: 28, hue: hue)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(alias ?? "Someone")
                             .font(Theme.font(13, .medium))
+                            .foregroundStyle(hue.name)
                         Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)
@@ -500,7 +502,7 @@ private struct MentionRow: View {
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
                     }
-                    Text(LinkText.attributed(message.content ?? ""))
+                    Text(LinkText.attributed(message.content ?? "", myAliases: model.mentionAliases(in: message.chat)))
                         .font(Theme.font(14))
                         .foregroundStyle(Theme.text)
                         .lineLimit(4)

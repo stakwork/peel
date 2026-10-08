@@ -92,7 +92,7 @@ private struct IdentitySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 20) {
-                Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 88)
+                Avatar(name: model.myAlias ?? "?", url: model.myPhotoURL, size: 88, hue: model.myHue)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(model.myAlias ?? "You")
                         .font(Theme.font(24, .bold))

@@ -242,7 +242,7 @@ struct TribeMembersPanel: View {
                     if !pending.isEmpty {
                         SectionLabel("Waiting for approval")
                         ForEach(pending) { member in
-                            MemberRow(alias: member.alias, photoURL: member.photoURL, note: nil) {
+                            MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member), note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
                             }
                             .peelMenu {
@@ -263,11 +263,12 @@ struct TribeMembersPanel: View {
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
-                        MemberRow(alias: model.myAlias ?? "You", photoURL: model.myPhotoURL, note: "you")
+                        MemberRow(alias: model.myAlias ?? "You", photoURL: model.myPhotoURL, hue: model.myHue, note: "you")
                     }
                     ForEach(confirmed) { member in
                         let isMe = member.pubkey != nil && member.pubkey == me
-                        MemberRow(alias: member.alias, photoURL: member.photoURL, note: isMe ? "you, owner" : nil) {
+                        MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member),
+                                  note: isMe ? "you, owner" : nil) {
                             if let pubkey = member.pubkey, !isMe, canManage {
                                 InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)") { await kick(pubkey) }
                                     .buttonStyle(.plain)
@@ -342,14 +343,16 @@ struct TribeMembersPanel: View {
 struct MemberRow<Actions: View>: View {
     let alias: String
     let photoURL: String?
+    let hue: PersonHue
     let note: String?
     @ViewBuilder var actions: Actions
 
     var body: some View {
         HStack(spacing: 9) {
-            Avatar(name: alias, url: photoURL, size: 24)
+            Avatar(name: alias, url: photoURL, size: 24, hue: hue)
             Text(alias)
                 .font(Theme.font(13))
+                .foregroundStyle(hue.name)
                 .lineLimit(1)
             if let note {
                 Text(note)
@@ -363,8 +366,8 @@ struct MemberRow<Actions: View>: View {
 }
 
 extension MemberRow where Actions == EmptyView {
-    init(alias: String, photoURL: String?, note: String?) {
-        self.init(alias: alias, photoURL: photoURL, note: note) { EmptyView() }
+    init(alias: String, photoURL: String?, hue: PersonHue, note: String?) {
+        self.init(alias: alias, photoURL: photoURL, hue: hue, note: note) { EmptyView() }
     }
 }
 
@@ -509,11 +512,12 @@ enum LinkText {
     /// Links longer than this show their start and end around an ellipsis.
     private static let longLink = 56
 
-    /// Mentions as a soft chip; inline code in a monospaced face on a soft
-    /// fill, without its backticks; https links in the link colour, shown
-    /// without the scheme and shortened in the middle when long (the full
-    /// address is what opens).
-    static func attributed(_ text: String) -> AttributedString {
+    /// Mentions as a soft chip, gold when it names you (by one of `myAliases`,
+    /// `AppModel.mentionAliases`) or @all; inline code in a monospaced face
+    /// on a soft fill, without its backticks; https links in the link
+    /// colour, shown without the scheme and shortened in the middle when
+    /// long (the full address is what opens).
+    static func attributed(_ text: String, myAliases: Set<String>) -> AttributedString {
         let spans = MessageMarkup.spans(in: text)
         guard !spans.isEmpty else { return AttributedString(text) }
         var result = AttributedString()
@@ -524,9 +528,10 @@ enum LinkText {
             var shown = AttributedString(span.text)
             switch span.kind {
             case .mention:
-                shown.font = Theme.font(14, .medium)
-                shown.foregroundColor = Theme.mentionText
-                shown.backgroundColor = Theme.mentionFill
+                let you = mentions(span.text, aliases: myAliases)
+                shown.font = Theme.font(14, you ? .semibold : .medium)
+                shown.foregroundColor = you ? Theme.mentionYouText : Theme.mentionText
+                shown.backgroundColor = you ? Theme.mentionYouFill : Theme.mentionFill
             case .code:
                 shown.font = Theme.code(13)
                 shown.backgroundColor = Theme.codeFill

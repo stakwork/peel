@@ -405,19 +405,19 @@ extension Engine {
         // Written with the state before publishing; refused (and nothing
         // published) if the invoice is already being paid or paid.
         let followUps = try commit(result, time: time, expectedSender: nil, invoices: [record])
-        let unsent = transport == nil
         do {
             try await complete(result, followUps)
-        } catch {
-            guard unsent else {
-                let message = "The connection failed while paying; the payment may have gone. "
-                    + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
-                if let chat { emit.yield(.conversationError(chat: chat, message: message)) } else { emit.yield(.coreError(message)) }
-                return record
-            }
+        } catch Failure.notConnected {
+            // The connection went before anything was published: nothing
+            // moved, so it is failed now rather than refused as pending for
+            // `unrecordedPaymentTimeout`, and can be paid again.
             try storage.setStatus(.failed, tag: tag, error: "not connected")
             emit.yield(.sendStatus(tag: tag, status: Message.Delivery.failed.rawValue))
-            throw error
+            throw Failure.notConnected
+        } catch {
+            let message = "The connection failed while paying; the payment may have gone. "
+                + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
+            if let chat { emit.yield(.conversationError(chat: chat, message: message)) } else { emit.yield(.coreError(message)) }
         }
         return record
     }

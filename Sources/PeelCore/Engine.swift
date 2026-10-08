@@ -209,7 +209,6 @@ public actor Engine {
         closed = true
         await disconnect()
         await calls?.close()
-        historyWatchdog?.cancel()
         emit.finish()
     }
 
@@ -301,6 +300,7 @@ public actor Engine {
     private func connectionClosed(_ closed: Transport) async {
         guard transport === closed else { return }
         transport = nil
+        stopHistoryWatchdog()
         await closed.close()
         setConnection(.offline(retryIn: nil))
         if keepConnected, reconnectTask == nil {
@@ -311,6 +311,7 @@ public actor Engine {
     private func teardown() async {
         // A reply to this connection's status query can only come on it.
         unrecordedPayments = []
+        stopHistoryWatchdog()
         listener?.cancel()
         listener = nil
         if let transport {
@@ -318,6 +319,19 @@ public actor Engine {
             await transport.close()
         }
     }
+
+    /// A page asked for on a connection that has gone never comes; the run
+    /// stays in `history` and `cameOnline` asks for it again.
+    func stopHistoryWatchdog() {
+        historyWatchdog?.cancel()
+        historyWatchdog = nil
+    }
+
+    #if DEBUG
+    /// Tests only: a transport that never connected stands for one whose
+    /// connection has just gone (its publishes throw `notConnected`).
+    func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+    #endif
 
     private func setConnection(_ state: ConnectionState) {
         guard connection != state else { return }
@@ -659,29 +673,45 @@ public actor Engine {
     }
 
     /// Publishes in order on the current transport, read at call time so a
-    /// reconnect during the register wait is used.
-    private func publish(_ publishes: [Publish]) async throws {
+    /// reconnect during the register wait is used. Counts what left in `published`.
+    private func publish(_ publishes: [Publish], published: inout Int) async throws {
         guard !publishes.isEmpty else { return }
         guard let transport else { throw Failure.notConnected }
         for publish in publishes {
             try await transport.publish(publish.topic, publish.payload)
+            published += 1
         }
     }
 
     /// The asynchronous half: the network work the core asked for, in its order.
+    /// `notConnected` means none of the result's publishes left, which the
+    /// money sends take as nothing moved; the connection going after one has
+    /// is another error.
     func complete(_ result: RunReturn, _ followUps: FollowUps) async throws {
+        var published = 0
+        do {
+            try await publish(result, published: &published)
+            try await followUp(result, followUps)
+        } catch Failure.notConnected where published > 0 {
+            throw PeelError("the connection went after sending")
+        }
+    }
+
+    private func publish(_ result: RunReturn, published: inout Int) async throws {
         let (now, later) = Self.publishPlan(result)
         if !result.subscriptionTopics.isEmpty {
             guard let transport else { throw Failure.notConnected }
             try await transport.subscribe(result.subscriptionTopics)
         }
-        try await publish(now)
+        try await publish(now, published: &published)
         if !later.isEmpty {
             // See `publishPlan`. A cancelled wait still publishes: the state is committed.
             try? await Task.sleep(for: Self.registerSettle)
-            try await publish(later)
+            try await publish(later, published: &published)
         }
+    }
 
+    private func followUp(_ result: RunReturn, _ followUps: FollowUps) async throws {
         for pingTime in followUps.acknowledgedPings {
             try await run { time, state in
                 try Sphinxrs.pingDone(seed: seed, uniqueTime: time, state: state, pingTs: pingTime)

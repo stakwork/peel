@@ -91,11 +91,26 @@ final class Transport: Sendable {
     }
 
     func subscribe(_ topics: [String]) async throws {
-        _ = try await client.subscribe(to: topics.map { MQTTSubscribeInfo(topicFilter: $0, qos: .atMostOnce) })
+        try await whileConnected {
+            _ = try await client.subscribe(to: topics.map { MQTTSubscribeInfo(topicFilter: $0, qos: .atMostOnce) })
+        }
     }
 
     func publish(_ topic: String, _ payload: Data) async throws {
-        try await client.publish(to: topic, payload: ByteBuffer(data: payload), qos: .atMostOnce)
+        try await whileConnected {
+            try await client.publish(to: topic, payload: ByteBuffer(data: payload), qos: .atMostOnce)
+        }
+    }
+
+    /// `notConnected` when the connection had already gone, so nothing was
+    /// written (a send may then be marked failed). A write the closing
+    /// connection cut short may have left, so it keeps its own error.
+    private func whileConnected(_ send: () async throws -> Void) async throws {
+        do {
+            try await send()
+        } catch MQTTError.noConnection {
+            throw Engine.Failure.notConnected
+        }
     }
 
     func close() async {

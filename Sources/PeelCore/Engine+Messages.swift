@@ -4,7 +4,11 @@ import Sphinxrs
 extension Engine {
     // MARK: - Contacts and messages
 
-    /// Starts a key exchange with a contact given as `pubkey_lsp_scid`.
+    /// What a key exchange pays: the official apps attach 5 sats to its first message.
+    public static let keyExchangeMsat: UInt64 = 5_000
+
+    /// Starts a key exchange with a contact given as `pubkey_lsp_scid`,
+    /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks.
     public func addContact(_ contactInfo: String, alias theirAlias: String? = nil, inviteCode: String? = nil) async throws {
         guard let parts = Self.contactInfoParts(contactInfo) else { throw Failure.invalidContactInfo }
         try await run { time, state in
@@ -12,8 +16,7 @@ extension Engine {
                 seed: seed, uniqueTime: time, state: state,
                 toPubkey: parts[0], routeHint: "\(parts[1])_\(parts[2])",
                 myAlias: alias, myImg: photoURL,
-                // The official apps attach 5 sats to the first key-exchange message.
-                amtMsat: 5000,
+                amtMsat: Self.keyExchangeMsat,
                 inviteCode: inviteCode, theirAlias: theirAlias
             )
         }

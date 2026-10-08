@@ -4,6 +4,15 @@ import Testing
 @testable import PeelCore
 
 struct TribeTests {
+    /// Fullwidth hex (`０２…`, `ａ`) is refused here, not later with a vaguer error.
+    @Test func aPubkeyIsASCIIHex() {
+        #expect(keyG.isPubkey)
+        #expect(keyG.uppercased().isPubkey)
+        #expect(!("\u{FF10}\u{FF12}" + keyG.dropFirst(2)).isPubkey)
+        #expect(!(keyG.dropLast() + "\u{FF41}").isPubkey)
+        #expect(!String(keyG.dropLast()).isPubkey)
+    }
+
     @Test func mentionsMatchTheWholeAliasInAnyCase() {
         let me = ["Tom_Smith"]
         #expect(mentions("hi @Tom_Smith welcome", aliases: me))

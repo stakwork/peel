@@ -219,10 +219,37 @@ struct ContactEngineTests {
 
     /// Someone already a contact is not sent another key exchange (and its sats).
     @Test func anExistingContactIsNotAddedAgain() async throws {
-        let (engine, _) = try engine()
+        // Nothing is paid, so a zero balance does not matter.
+        let (engine, _) = try engine(balanceMsat: 0)
         let result = try await engine.addContact(code: "\(key2G)_\(key3G)_9")
         #expect(result.pubkey == key2G)
         #expect(result.added == false)
+    }
+
+    /// Offline, nobody is asked to confirm 5 sats that cannot go.
+    @Test func addingSomeoneOfflineAsksNothing() async throws {
+        let (engine, _) = try engine()
+        try await engine.setPaymentConfirmation(msat: 0)
+        await #expect(throws: Engine.Failure.notConnected) { try await engine.addContact(code: "\(strangerKey)_\(key3G)_9") }
+    }
+
+    /// An invite the server has not confirmed in time is returned still
+    /// sending, not thrown: its payment may have gone, so the form shows it
+    /// waiting rather than offering to pay again.
+    @Test func anUnconfirmedInviteIsReturnedStillSending() async throws {
+        let (engine, storage) = try engine()
+        let sending = InviteRecord(
+            code: String(repeating: "ab", count: 32), link: "x", amountMsat: 1_000, tag: "t1", status: .sending, createdAt: 1
+        )
+        let failed = InviteRecord(
+            code: String(repeating: "cd", count: 32), link: "y", amountMsat: 1_000, tag: "t2", status: .failed, createdAt: 1
+        )
+        _ = try storage.apply(Storage.Commit(invites: [sending, failed]))
+        let waited = try await engine.confirmedInvite(code: sending.code, wait: .milliseconds(300))
+        #expect(waited.status == .sending)
+        await #expect(throws: Engine.Failure.inviteFailed) {
+            try await engine.confirmedInvite(code: failed.code, wait: .milliseconds(300))
+        }
     }
 
     /// The balance and the connection are checked before anyone is asked

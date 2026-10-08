@@ -45,6 +45,7 @@ extension Engine {
     }
 
     func request(_ run: HistoryRun) async throws {
+        let asked = transport
         try await self.run { time, state in
             switch run.phase {
             case .contacts:
@@ -59,6 +60,8 @@ extension Engine {
                 )
             }
         }
+        // Gone while asking: the next connection asks again (`cameOnline`).
+        guard let asked, transport === asked else { return }
         // A page that never comes ends the run, so nothing waits forever.
         historyWatchdog?.cancel()
         let expected = run.next
@@ -91,7 +94,7 @@ extension Engine {
     }
 
     private func finish(_ run: HistoryRun) async throws {
-        historyWatchdog?.cancel()
+        stopHistoryWatchdog()
         history = nil
         if !queuedHistory.isEmpty {
             try await startHistory(queuedHistory.removeFirst())

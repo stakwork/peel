@@ -34,7 +34,7 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
     }
 
     /// This machine: the only place plaintext is allowed without asking.
-    static func isLoopback(host: String) -> Bool {
+    public static func isLoopback(host: String) -> Bool {
         ["127.0.0.1", "localhost", "::1"].contains(host)
     }
 

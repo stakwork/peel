@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import LiveKit
 
 @main
 struct PeelApp: App {
@@ -8,6 +9,8 @@ struct PeelApp: App {
     init() {
         // Everything this process creates (database, journal) is private to the user.
         umask(0o077)
+        // At info and below LiveKit logs the server it connects to.
+        LiveKitSDK.setLogLevel(.warning)
     }
 
     var body: some Scene {
@@ -41,7 +44,21 @@ struct PeelApp: App {
                     .keyboardShortcut(",", modifiers: .command)
                     .disabled(model.phase != .ready)
             }
+            CommandGroup(after: .windowArrangement) {
+                if CallTest.config(for: model) != nil { CallTestMenuItem() }
+            }
         }
+        #endif
+
+        #if os(macOS)
+        // Development only; never listed, restored or opened without
+        // `-callTestToken` and a development profile.
+        Window("Test Room", id: CallTest.windowID) {
+            if let config = CallTest.config(for: model) { CallTestView(url: config.url, token: config.token) }
+        }
+        .commandsRemoved()
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(CallTest.config(for: model) != nil ? .presented : .suppressed)
         #endif
     }
 }

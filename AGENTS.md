@@ -59,7 +59,9 @@ is a short plan. Update the status and the journal when you finish something.
   `buttonProgress`, the spinner inside a running button);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
-  notification per arrival)
+  notification per arrival; `CallTestRoom`, the development-only LiveKit
+  test room (phase 6, PR 3). PeelApp is the only target that links LiveKit
+  and WebRTC)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
@@ -67,11 +69,14 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
-  (default `.build/Peel.app`, or the path given), without installing it
+  (default `.build/Peel.app`, or the path given), without installing it;
+  embeds the frameworks the app loads through `@rpath` (LiveKit's
+  `LiveKitWebRTC.framework`) in `Contents/Frameworks`
 - `scripts/run-app.sh` — `bundle-app.sh`, then installs to
   `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
-  embeds a provisioning profile and the Keychain entitlements (see Signing)
+  embeds a provisioning profile and the stub's entitlements (Keychain,
+  microphone, camera), frameworks first (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon
@@ -118,9 +123,17 @@ group `T3M78XC3UV.dev.peel.mac`), so:
 - So: **run `./scripts/run-app.sh` at least once a week** (it prints the
   expiry). If the installed app has already stopped launching, the same
   command fixes it.
-- Without an Apple Development identity the bundle is signed ad hoc and cannot
-  use the Keychain at all: creating or unlocking an app account fails with a
-  Keychain error. Development profiles (`-profile`) still work.
+- The entitlements are `scripts/provision/Provision.entitlements`: the access
+  group, plus `com.apple.security.device.audio-input` and `.camera` for
+  calls (hardened runtime blocks the devices without them). Adding a key
+  there makes `sign-app.sh` build the stub again once, keeping a profile
+  that is still good. Microphone and camera grants follow the signature, so they
+  survive rebuilds and the weekly re-sign.
+- Frameworks in `Contents/Frameworks` (LiveKit's WebRTC) are signed with the
+  same identity before the app, so library validation loads them.
+- Without an Apple Development identity `sign-app.sh` refuses: an ad-hoc
+  app could not load LiveKit's framework under library validation, nor use
+  the Keychain. (Before calls, an ad-hoc bundle ran without the Keychain.)
 - A free team may register at most 10 App IDs in 7 days; do not change the
   bundle ID casually.
 
@@ -153,6 +166,25 @@ times, the v14 column on stored history); and the whole migration chain from a v
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
+
+### Local LiveKit server
+
+For the development test room (`Sources/PeelApp/CallTestRoom.swift`;
+details in `docs/phases/06-calls.md`, PR 3 journal):
+
+```sh
+brew install livekit livekit-cli
+livekit-server --dev --bind 127.0.0.1        # ws://127.0.0.1:7880, devkey / secret
+lk token create --api-key devkey --api-secret secret --join --room peel-test \
+  --identity <id> --valid-for 2h
+./scripts/bundle-app.sh .build/PeelCallsTest.app
+open -n --stdout <file> .build/PeelCallsTest.app --args -profile <dev> -callTestToken <jwt>
+```
+
+The first join asks for the microphone; until it is answered WebRTC waits
+and nothing is published. Never answer it "Don't Allow" by accident: the
+grant belongs to `dev.peel.mac` and Tom's signature, so it is the daily
+Peel's grant too.
 
 ### Local memes server
 

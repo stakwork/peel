@@ -11,8 +11,17 @@ if ! output=$(swift build --product PeelApp 2>&1); then
 fi
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp .build/debug/PeelApp "$APP/Contents/MacOS/PeelApp"
+# Every framework the app loads through its rpath (LiveKit's WebRTC), for this
+# Mac's architecture only and without headers; sign-app.sh signs them with
+# Peel's identity. LiveKit's resource bundle holds only its privacy manifest
+# and is never read.
+for framework in $(otool -L .build/debug/PeelApp | sed -n 's|^[[:space:]]*@rpath/\([^/]*\.framework\)/.*|\1|p'); do
+  ditto --arch "$(uname -m)" ".build/debug/$framework" "$APP/Contents/Frameworks/$framework"
+  rm -rf "$APP/Contents/Frameworks/$framework/Headers" "$APP/Contents/Frameworks/$framework/Modules" \
+    "$APP/Contents/Frameworks/$framework"/Versions/*/Headers "$APP/Contents/Frameworks/$framework"/Versions/*/Modules
+done
 cp Assets/AppIcon.icns Assets/Assets.car "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,6 +39,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Peel uses the microphone so people on a call can hear you.</string>
+    <key>NSCameraUsageDescription</key><string>Peel uses the camera when you turn on video in a call.</string>
 </dict>
 </plist>
 PLIST

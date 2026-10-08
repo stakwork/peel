@@ -235,7 +235,10 @@ struct MessageList: View {
 
     /// A row just jumped to from a quote, lit for a moment.
     @State private var flashed: String?
-    @State private var userScrolling = false
+    @State private var phase = ScrollPhase.idle
+    private var userScrolling: Bool { phase == .interacting || phase == .decelerating }
+    /// A scroll back to the end is waiting for the layout pass to finish.
+    @State private var repinning = false
     /// Others' messages take the list down: while it is at the bottom or on
     /// its way there, until you scroll away by hand or it opens at "New messages".
     @State private var following = true
@@ -253,8 +256,12 @@ struct MessageList: View {
     /// its bottom anchor no longer holds the list as the rows below grow.
     private static let bottomID = "bottom"
 
-    /// Where the list sits against its bottom, as the scroll position changes.
+    /// Where the list sits against its bottom, as the scroll position or
+    /// the content's height changes.
     private struct BottomDistance: Equatable {
+        var height: CGFloat
+        /// Exactly at the end, as far as layout goes.
+        var atEnd: Bool
         var atBottom: Bool
         var far: Bool
     }
@@ -333,13 +340,20 @@ struct MessageList: View {
                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 }
             }
-            .onScrollPhaseChange { _, phase in
-                userScrolling = phase == .interacting || phase == .decelerating
-            }
+            .onScrollPhaseChange { _, new in phase = new }
             .onScrollGeometryChange(for: BottomDistance.self) { geometry in
                 let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
-                return BottomDistance(atBottom: below <= 24, far: below > geometry.containerSize.height)
+                return BottomDistance(height: geometry.contentSize.height, atEnd: abs(below) <= 0.5,
+                                      atBottom: below <= 24, far: below > geometry.containerSize.height)
             } action: { old, new in
+                // A row that changed height under a list following at its end
+                // (one that does not reserve its final size, such as a video
+                // sizing itself) moved the end, and the bottom anchor holds
+                // only a list exactly at it: back to the end.
+                if new.height != old.height, old.atBottom, !new.atEnd, following, phase == .idle {
+                    return repin(proxy)
+                }
+                guard new.atBottom != old.atBottom || new.far != old.far else { return }
                 // Scrolled back to the bottom by hand after "Mark unread":
                 // reading resumes. Not when a new message scrolls it there.
                 if new.atBottom, !old.atBottom, userScrolling { reachedBottom() }
@@ -418,7 +432,24 @@ struct MessageList: View {
     /// To the end of the list, following what arrives on the way.
     private func scrollToNewest(_ proxy: ScrollViewProxy, duration: Double = 0.2) {
         following = true
-        withAnimation(.easeInOut(duration: duration)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        withAnimation(.easeInOut(duration: duration)) {
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        } completion: {
+            // Rows that grew on the way moved the end it aimed at.
+            repin(proxy)
+        }
+    }
+
+    /// Back to the end once this layout pass is over: a scroll asked for
+    /// inside it can be lost. One for a burst of changes, and none once
+    /// you have taken the list.
+    private func repin(_ proxy: ScrollViewProxy) {
+        guard !repinning else { return }
+        repinning = true
+        Task {
+            repinning = false
+            if following, !userScrolling { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        }
     }
 
     /// Only the chat's own list releases the hold (threads share its marker

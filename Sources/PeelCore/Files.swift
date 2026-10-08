@@ -81,15 +81,29 @@ public enum UserFiles {
     }
 
     /// A name that stays one file name: no folders, no hidden file, no
-    /// control characters.
+    /// control characters (bidirectional overrides among them), and at most
+    /// `maxNameBytes` (the file system takes 255) with its extension kept,
+    /// so shortening never turns "….pdf" into another type.
     static func cleanName(_ name: String) -> String {
         var clean = name.withoutControlCharacters
             .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         // Spaces and dots both, so " .zshrc" cannot become a hidden ".zshrc".
         while let first = clean.first, first == "." || first.isWhitespace { clean.removeFirst() }
         clean = clean.trimmingCharacters(in: .whitespaces)
-        return clean.isEmpty ? "file" : String(clean.prefix(200))
+        guard clean.utf8.count > maxNameBytes else { return clean.isEmpty ? "file" : clean }
+        let ext = (clean as NSString).pathExtension
+        let suffix = (1...16).contains(ext.utf8.count) && clean.hasSuffix("." + ext) ? "." + ext : ""
+        var stem = "", bytes = suffix.utf8.count
+        for character in clean.dropLast(suffix.count) {
+            bytes += character.utf8.count
+            guard bytes <= maxNameBytes else { break }
+            stem.append(character)
+        }
+        // One huge character (a letter under a pile of accents) leaves no stem.
+        return (stem.isEmpty ? "file" : stem) + suffix
     }
+
+    static let maxNameBytes = 200
 
     /// Marks a file as downloaded by Peel. A file that cannot be marked is
     /// removed rather than left unmarked.

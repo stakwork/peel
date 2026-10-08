@@ -18,6 +18,8 @@ public enum ContactCode: Sendable, Equatable {
     /// three parts (two keys and a channel id) and nothing more; a
     /// `sphinx.chat://` link is read only for the actions below.
     public static func read(_ text: String) throws -> ContactCode {
+        // A whole pasted document is refused before it is walked.
+        guard text.utf8.count <= maxLength * 4 else { throw Engine.Failure.notAContactCode }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= maxLength else { throw Engine.Failure.notAContactCode }
         if text.lowercased().hasPrefix("sphinx.chat://") {

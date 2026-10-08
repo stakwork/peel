@@ -238,9 +238,14 @@ public struct TribeLink: Sendable, Equatable {
         self.host = host
     }
 
-    /// `name[:port]` and nothing else, so a link cannot smuggle a path or credentials.
+    /// `name[:port]` and nothing else, so a link cannot smuggle a path or
+    /// credentials. ASCII only (an international name in its `xn--` form):
+    /// `URL` maps other letters and digits onto ASCII ones, so a full-width
+    /// `１２７.０.０.１` would pass here as a name and be fetched as 127.0.0.1.
     static func isPlainHost(_ host: String) -> Bool {
-        !host.isEmpty && host.allSatisfy { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == ":" }
+        !host.isEmpty && host.utf8.allSatisfy { byte in
+            (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte) || ".-:".utf8.contains(byte)
+        }
     }
 
     /// Where to reach a plain `host[:port]`: http for this machine, https for

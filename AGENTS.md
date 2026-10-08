@@ -266,7 +266,10 @@ times, a sender's zone at a moment for a page of runs, the v14 column on stored 
 invite statuses by tag, an invite marked used by the key exchange that
 names it, new contacts, the invite and add refusals); refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
-database, with the literals frozen into shipped migrations. Nothing talks to
+database, with the literals frozen into shipped migrations; and the audit's
+adversarial inputs (`Audit*.swift`: seeded random and huge input to the
+parsers, markup in linear time against a reference, link labels, names,
+hosts, codes and the attachment cipher). Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
 

@@ -265,10 +265,10 @@ extension Engine {
         try storage.value(for: .contactInfo).flatMap(Self.contactInfoParts).map { ($0[0], $0[1]) }
     }
 
-    /// `pubkey_lsp_scid` split in three, or nil when it is not that.
+    /// `pubkey_lsp_scid` split in three, or nil when it is not that
+    /// (`ContactCode.contactInfo`, which also lower-cases it).
     static func contactInfoParts(_ contactInfo: String) -> [String]? {
-        let parts = contactInfo.split(separator: "_", omittingEmptySubsequences: false).map(String.init)
-        return parts.count == 3 && parts[0].count == 66 ? parts : nil
+        ContactCode.contactInfo(contactInfo).map { $0.split(separator: "_").map(String.init) }
     }
 
     /// Looks in the server's history for payments to invoices made here,

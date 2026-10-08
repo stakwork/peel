@@ -153,10 +153,6 @@ extension AppModel {
     }
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
-}
-
 // MARK: - The card (C1)
 
 /// A call in the timeline, under its sender's run header: audio or video,

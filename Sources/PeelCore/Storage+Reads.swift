@@ -86,9 +86,9 @@ extension Storage {
     /// Every conversation: ready contacts and joined tribes. A tribe is a core
     /// contact with no contact key, so it is never a ready contact.
     static let chatsSQL = """
-        SELECT pubkey AS chat, alias, photoURL, 0 AS isTribe FROM contact WHERE ready = 1
+        SELECT pubkey AS chat, alias, photoURL, 0 AS isTribe, isNew FROM contact WHERE ready = 1
         UNION ALL
-        SELECT pubkey, name, photoURL, 1 FROM tribe WHERE left = 0
+        SELECT pubkey, name, photoURL, 1, 0 FROM tribe WHERE left = 0
         """
 
     /// The newest text, attachment, direct payment or call (a payment or a
@@ -141,7 +141,7 @@ extension Storage {
         """
 
     private static let readStatesSQL = """
-        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, (
+        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew, (
             SELECT COUNT(*) FROM message m
             WHERE m.chat = c.chat AND \(countsAsUnreadSQL)
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
@@ -343,6 +343,48 @@ extension Storage {
             }
             .removeDuplicates()
             .values(in: pool)
+    }
+
+    /// Invites still waiting to be used, newest first, re-emitted whenever they change.
+    public func pendingInvites() -> some AsyncSequence<[InviteRecord], any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in try Self.pendingInvites(db) }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    public func listPendingInvites() throws -> [InviteRecord] {
+        try pool.read(Self.pendingInvites)
+    }
+
+    private static func pendingInvites(_ db: Database) throws -> [InviteRecord] {
+        let pending = InviteRecord.pendingStatuses.map(\.rawValue)
+        return try InviteRecord.fetchAll(
+            db, sql: "SELECT * FROM invite WHERE status IN (\(databaseQuestionMarks(count: pending.count))) ORDER BY createdAt DESC",
+            arguments: StatementArguments(pending)
+        )
+    }
+
+    public func invite(code: String) throws -> InviteRecord? {
+        try pool.read { db in try InviteRecord.fetchOne(db, key: code) }
+    }
+
+    /// One invite as it changes; nil if there is none.
+    public func inviteUpdates(code: String) -> some AsyncSequence<InviteRecord?, any Error> {
+        ValueObservation
+            .trackingConstantRegion { db in try InviteRecord.fetchOne(db, key: code) }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// Invites whose funding payment the server has not confirmed.
+    func sendingInvites() throws -> [InviteRecord] {
+        try pool.read { db in
+            try InviteRecord.fetchAll(
+                db, sql: "SELECT * FROM invite WHERE status = ? AND tag IS NOT NULL",
+                arguments: [InviteRecord.Status.sending.rawValue]
+            )
+        }
     }
 
     /// Every conversation, newest first, re-emitted whenever one changes.

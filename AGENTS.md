@@ -25,6 +25,9 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Account.swift` — mnemonics, invites, the contact and
       registration helpers, the account's name and photo, mention re-scans,
       settings and server hosts
+    - `Engine+Contacts.swift` — adding by a scanned or pasted code
+      (`addContact(code:)`), invites with sats (`makeInvite`,
+      `cancelInvite`), new contacts seen
     - `Engine+Messages.swift` — contacts, text, deletes, resends, discards,
       `deliver` (every message through the core), the `openTribe`,
       `isContact` and `knownTribe` lookups, read markers and mutes
@@ -73,6 +76,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `MemesServer.swift` — the memes server: sign-in, upload, download, the
     transfer with its size limit and progress
   - `MediaStore.swift` — the profile's `media/` cache and outbox
+  - `Contacts.swift` — `ContactCode` (what a scanned or pasted code is:
+    contact info, a `share_contact` link, an invite, a tribe link; strict)
+    and `InviteRecord` (invites made here; the core keeps none)
+  - `QRImage.swift` — QR codes in a picture (Vision), size- and
+    pixel-limited
   - `Files.swift` — `ImageDecoding`, `ProfilePhoto` and `UserFiles` (files
     saved for the person, quarantined)
   - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
@@ -98,7 +106,9 @@ is a short plan. Update the status and the journal when you finish something.
     (`WebPage.address`) and each profile's website data store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
-  `ConversationMenu`), `SidebarForms` (join a tribe, add a contact),
+  `ConversationMenu`), `SidebarForms` (join a tribe), `ContactsViews` (add
+  a contact by code or QR picture, invites with sats, the sidebar's pending
+  invites and "New" contacts),
   `Avatar` (people's and tribes' icons,
   `PhotoCache`, `AppIcon`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
@@ -135,7 +145,7 @@ is a short plan. Update the status and the journal when you finish something.
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
     argument helpers the areas share
-  - `Commands+Account.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
+  - `Commands+Account.swift`, `Commands+Contacts.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
   - `Output.swift` — `Session` (an engine with its events printed) and the
@@ -240,7 +250,10 @@ fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
-times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; refusals as typed
+times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; contacts
+(`ContactCode` parsing and its refusals, QR codes read from a picture,
+invite statuses by tag, an invite marked used by the key exchange that
+names it, new contacts, the invite and add refusals); refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test

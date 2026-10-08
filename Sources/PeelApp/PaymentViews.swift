@@ -177,7 +177,7 @@ struct ConfirmHint: View {
 }
 
 /// "Balance 12,345 sats", quiet, under a payment form.
-private struct BalanceLine: View {
+struct BalanceLine: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {

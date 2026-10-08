@@ -133,6 +133,17 @@ struct MigrationTests {
         #expect(schema.contains("index message_senderTZ: CREATE INDEX message_senderTZ ON message (chat, timestamp) WHERE senderTZ IS NOT NULL AND fromMe = 0"))
     }
 
+    /// v16 adds the invites made here, with an index on the funding payment's
+    /// tag, and marks contacts who added this account.
+    @Test func invitesGetTheirTable() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v16")
+        let schema = try schema(queue)
+        #expect(schema.contains(#"table invite: CREATE TABLE "invite" ("code" TEXT PRIMARY KEY NOT NULL, "link" TEXT NOT NULL, "amountMsat" INTEGER NOT NULL, "nickname" TEXT, "message" TEXT, "tag" TEXT, "status" TEXT NOT NULL, "createdAt" INTEGER NOT NULL, "usedBy" TEXT)"#))
+        #expect(schema.contains("index invite_tag: CREATE INDEX invite_tag ON invite (tag) WHERE tag IS NOT NULL"))
+        #expect(schema.contains(#""isNew" BOOLEAN NOT NULL DEFAULT 0)"#))
+    }
+
     /// The live constants that shipped migrations froze as literals. Queries build
     /// their `type IN (...)` lists from `MessageType`, and SQLite uses a partial
     /// index only when the list matches its predicate. If one changes, add a

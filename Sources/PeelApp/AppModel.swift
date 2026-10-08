@@ -590,7 +590,7 @@ final class AppModel {
         noteNewMessages(in: chat)
         guard isFrontmost, phase == .ready, keepsUnread != chat else { return }
         notifier.removeDelivered(in: [chat])
-        guard let engine, (readStates[chat]?.unread ?? 0) > 0 else { return }
+        guard let engine, let state = readStates[chat], state.unread > 0 || state.isNew else { return }
         Task {
             do {
                 try await engine.markRead(chat)
@@ -780,13 +780,6 @@ final class AppModel {
         return engine
     }
 
-    /// Adds a contact from the contact info they shared.
-    func addContact(_ contactInfo: String, alias: String) async throws {
-        guard let engine else { return }
-        let alias = alias.trimmed
-        try await engine.addContact(contactInfo.trimmed, alias: alias.isEmpty ? nil : alias)
-    }
-
     private func open(_ profile: Profile, pin: String) async throws {
         // Loading derives keys and opens the database; keep it off the main thread.
         let engine = try await Task.detached { try await Account.load(profile, pin: pin) }.value
@@ -924,6 +917,8 @@ final class AppModel {
                 money.received(Receipt(message))
             case .invoicePaid(let invoice):
                 money.received(Receipt(invoice))
+            case .contactAdded(let message):
+                notifier.contactAdded(message)
             case .sendStatus:
                 break
             }

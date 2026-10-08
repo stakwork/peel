@@ -73,8 +73,8 @@ Reference implementations, in order of authority:
 
 ### Storage
 
-One SQLite file per account (`peel.sqlite`, WAL), built by 13 migrations
-(`v1`–`v13`, in `Storage.swift`). Nine tables:
+One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
+`Storage+Migrations.swift` (`v1` on, append-only). Eleven tables:
 
 - `coreState`: opaque key/value owned by the core.
 - `setting`: the account's own values (server, name, photo, balance,
@@ -83,13 +83,16 @@ One SQLite file per account (`peel.sqlite`, WAL), built by 13 migrations
   extracted columns (replies and threads, attachments, mentions, amounts,
   deleted).
 - `contact`: names and photos, which are not core state; `ready` once the
-  core holds the contact's key.
+  core holds the contact's key; `isNew` for someone who added this account,
+  until their chat is opened.
 - `chatState`: read markers, mute levels and a marker not yet sent.
 - `tribe`: what the registry says about a tribe, this account's membership
   status and the pinned message.
 - `payment`: the server's payment history (`fetch_payments`).
 - `invoice`: invoices made or paid here.
 - `paymentPing`: the 1-sat pings that belong to an asynchronous payment.
+- `chatTimeZone`: whether this account shares its time zone in each chat.
+- `invite`: invites made here with sats (the core keeps none), by code.
 
 The money tables' records are in `Invoice.swift` and their joined history in
 `PaymentHistory.swift`. Live queries use GRDB `ValueObservation`.

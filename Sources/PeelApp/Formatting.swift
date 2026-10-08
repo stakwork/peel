@@ -1,10 +1,18 @@
 import Foundation
+import PeelCore
 
 extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// An engine refusal as the start of a sentence.
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 enum Formatting {
+    /// An error's words as a sentence: "That is not contact info…".
+    static func sentence(_ error: any Error) -> String {
+        PeelError.readable(error).capitalizedFirst + "."
+    }
+
     static func dayHeading(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }

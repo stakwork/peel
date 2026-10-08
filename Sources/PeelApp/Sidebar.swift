@@ -41,7 +41,7 @@ struct Sidebar: View {
                         ForEach(model.directConversations) { conversation in
                             ConversationLink(conversation: conversation)
                         }
-                        SidebarActionLink(title: "Add contact") { AddContactForm(done: $0) }
+                        ContactsSidebarRows()
                     }
                 }
                 .padding(.bottom, 12)
@@ -265,6 +265,8 @@ struct ConversationLink: View {
             }
             if unread > 0 {
                 UnreadBadge(count: unread)
+            } else if state?.isNew == true {
+                NewContactBadge()
             } else if level == .muted {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 11))

@@ -120,7 +120,7 @@ extension Invocation {
 }
 
 /// An amount in sats from the command line, as msat.
-private func satsArgument(_ text: String) throws -> UInt64 {
+func satsArgument(_ text: String) throws -> UInt64 {
     guard let msat = Sats.msat(text) else { throw PeelError("the amount must be a whole number of sats above zero") }
     return msat
 }

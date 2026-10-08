@@ -298,15 +298,17 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     }
 
     /// `GET /tribes/<pubkey>`, as the server sent it. Plain http only for a
-    /// loopback host, as for the MQTT server.
+    /// loopback host, as for the MQTT server; otherwise a public host, as the
+    /// host comes from a link someone else may have sent.
     static func record(pubkey: String, host: String) async throws -> Data {
         guard let url = TribeLink.baseURL(host)?.appendingPathComponent("tribes/\(pubkey)") else {
             throw PeelError("unreadable tribes host \(host)")
         }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else { throw NotServed(status: status) }
-        return data
+        do {
+            return try await Web.get(url, limit: 1_000_000, what: "the tribe")
+        } catch MemesServer.Failure.refused(_, let status) {
+            throw NotServed(status: status)
+        }
     }
 
     /// The registry answered without the tribe. A deleted or unknown tribe

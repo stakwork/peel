@@ -1647,3 +1647,76 @@ profile's notifications).
   notifier can take it up with the same gathering and mute rules, text
   such as "Bob sent you 1,000 sats" or "Bob boosted your message, 100
   sats". The same rule decides unread (`Storage.readStatesSQL`).
+
+## Web fetches hardened (branch `fix/url-fetch-hardening`, 2026-10-08)
+
+From the calls-plan security review. Done means: no request goes through
+`URLSession.shared`; a URL someone else chose is fetched only from a public
+https host, size- and time-limited, with nothing kept on disk.
+
+### Found on main
+
+- `PhotoCache` fetched every sender, contact and tribe photo URL through
+  `URLSession.shared`. `httpsOnly` kept the first request on https, but any
+  host was allowed (`https://192.168.1.1`, `https://printer.local`, cloud
+  metadata at `169.254.169.254`), redirects went anywhere including plain
+  http and this network, the body had no size limit, and responses and
+  cookies landed in the app's shared cache and cookie store.
+- `TribeInfo.record` (tribes registry) and `ServerConfig.fetch` used the same
+  session. The registry host comes from a tribe link someone else sends.
+
+### Built
+
+- `Web` (`Sources/PeelCore/Web.swift`): one session factory (ephemeral, no
+  URL cache, no cookies, a redirect policy per session), now also used by
+  the memes server; `Web.get` (a GET through `MemesServer.Transfer`: 200 only,
+  size-limited, a public https host or loopback http for the local stack;
+  redirects only to public https hosts); `Web.photo` (public https only,
+  2 MB, 30 s per request and 60 s in all; 429/5xx is retried later, anything else is
+  not); `Web.isPublic` (https, no credentials, only letters, digits, dots,
+  dashes and colons in the host, no IP literal of any kind, no single-label
+  name, no `.local`, `.localhost`, `.internal`, `.lan`, `.home.arpa`).
+- `PhotoCache` fetches through `Web.photo`.
+- Tribes registry and config: through `Web.get` as well (limits of 1 MB and
+  100 KB). Warranted: the registry host is chosen by whoever sent the link
+  (so it is now refused unless public, or loopback http), it was unbounded,
+  and the shared cache kept a record of every tribe looked up. The config URL
+  is fixed and first-party, so the main gain there is a fresh answer on every
+  restore (never a stale cached config) and one rule for the whole module.
+- `MemesServer.Transfer` no longer handles redirects itself; the session's
+  delegate (`MemesServer.redirect` or `Web.publicOnly`) does. Checked with a
+  local 302 server: a task delegate without the redirect method falls back to
+  the session's, which refused it.
+
+### Verified
+
+`swift test`: `WebTests` pass (allowed and refused URLs, the redirect policy,
+a refused photo, a registry on this network). The failures are the known
+ones: `ThreadTests.threadsListHasDirectMessagesWithLatestAndParticipants`
+(fixed by PR #35, still open) and the IPv6 `ServerAddress` known issue. Not
+checked in the app: avatars against production photo URLs.
+
+### Reviews
+
+- `/code-review high`, applied: refuse private registry hosts, 6to4 and
+  site-local IPv6 (later superseded by refusing all IP literals), reuse
+  `httpsOnly`, longer timeouts, AGENTS.md. Not applied: the photo
+  status-to-retry mapping has no test (it needs an HTTP server; tests here
+  are offline).
+- `/simplify`, applied: one session factory and one `Redirects` class for
+  the memes server and `Web`; the redirect rule lives on the session, not
+  `Transfer`; one bounded `Web.get` for photos, registry and config; IP
+  literals refused outright instead of range tables; photo limit 2 MB.
+  Not applied: moving `Transfer` and its errors out of `MemesServer` (photo
+  errors are never shown; the move touches every memes call site) and an
+  own thumbnail cache (deliberately nothing on disk; avatars are fetched
+  again on each launch).
+- `/security-review`: no findings at confidence 8 or higher. Applied its
+  one note: a host with a NUL passed `isPublic` (it did not connect), now
+  refused by the plain-host rule.
+
+### Known limits
+
+The host is judged by the name as written: a public name that resolves to
+a private address (DNS rebinding) is not caught; https still needs a
+certificate valid for that name.

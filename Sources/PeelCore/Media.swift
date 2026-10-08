@@ -314,22 +314,7 @@ struct MemesServer: Sendable {
 
     /// No cookies, no on-disk cache, and the bearer token never follows a
     /// redirect to another host or away from https.
-    private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 600
-        configuration.urlCache = nil
-        return URLSession(configuration: configuration, delegate: Redirects(), delegateQueue: nil)
-    }()
-
-    private final class Redirects: NSObject, URLSessionTaskDelegate, Sendable {
-        func urlSession(
-            _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-            newRequest request: URLRequest
-        ) async -> URLRequest? {
-            MemesServer.redirect(request, from: task.originalRequest)
-        }
-    }
+    private static let session = Web.session(requestTimeout: 60, resourceTimeout: 600, redirect: redirect)
 
     /// A redirect is followed only to https (or this machine), and without
     /// the bearer token when it leaves the host it was sent to.
@@ -349,8 +334,9 @@ struct MemesServer: Sendable {
     typealias Progress = @Sendable (_ bytes: Int64, _ total: Int64) -> Void
 
     /// One upload or download: the reply collected chunk by chunk and cut
-    /// off past its limit, progress reported as it goes.
-    private final class Transfer: NSObject, URLSessionDataDelegate, Sendable {
+    /// off past its limit, progress reported as it goes. Redirects are left
+    /// to the session's own policy.
+    final class Transfer: NSObject, URLSessionDataDelegate, Sendable {
         private struct State {
             var data = Data()
             var response: HTTPURLResponse?
@@ -389,13 +375,6 @@ struct MemesServer: Sendable {
                 return true
             }
             if due { progress(bytes, total) }
-        }
-
-        func urlSession(
-            _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-            newRequest request: URLRequest
-        ) async -> URLRequest? {
-            MemesServer.redirect(request, from: task.originalRequest)
         }
 
         func urlSession(

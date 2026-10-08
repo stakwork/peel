@@ -928,10 +928,8 @@ final class PhotoCache {
             load = running
         } else {
             load = Task.detached(priority: .utility) {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if status == 429 || status >= 500 { throw URLError(.badServerResponse) }
-                guard status == 200, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+                guard let data = try await Web.photo(at: url),
+                      let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
                 // Decoded here, at avatar size (the short side still covers a
                 // 36pt avatar at 2x for photos up to 3:1, as it is filled), so
                 // drawing neither decodes on the main thread nor keeps the full photo.

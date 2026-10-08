@@ -125,36 +125,11 @@ struct PeelCommand {
         guard let name = arguments.option("--profile"), name.lowercased() != "default" else {
             throw PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
         }
-        let profile = try Profile(name: name, kind: .development)
-        let server = try arguments.option("--server").map { text in
-            guard let address = ServerAddress(text) else { throw PeelError("cannot read server address \(text)") }
-            return address
-        }
-        let network = arguments.option("--network") ?? "bitcoin"
-        let alias = arguments.option("--alias") ?? profile.name
-        let photo = arguments.option("--photo")
-        let wait = arguments.option("--wait").flatMap { Int($0) } ?? 5
-        let insecure = arguments.flag("--insecure")
-        let tribeHost = arguments.option("--tribe-host")
-        let tribeOptions = try TribeOptions(&arguments)
-        let replyTo = arguments.option("--reply")
-        let inThread = arguments.option("--thread")
-        let memesHost = arguments.option("--memes-host")
-        let note = arguments.option("--text")
-        let confirmed = arguments.flag("--yes")
-        let priceOption = arguments.option("--price")
-        let callServer = arguments.option("--call-server")
-        let audioOnly = arguments.flag("--audio")
-        guard let command = arguments.next() else {
+        var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
+        guard let command = invocation.arguments.next() else {
             print(usage)
             return
         }
-        var invocation = Invocation(
-            arguments: arguments, profile: profile, server: server, network: network, alias: alias, photo: photo,
-            wait: wait, insecure: insecure, tribeHost: tribeHost, tribeOptions: tribeOptions, replyTo: replyTo,
-            inThread: inThread, memesHost: memesHost, note: note, confirmed: confirmed, priceOption: priceOption,
-            callServer: callServer, audioOnly: audioOnly
-        )
         if try await invocation.account(command) { return }
         if try await invocation.chat(command) { return }
         if try await invocation.tribes(command) { return }
@@ -186,6 +161,33 @@ struct Invocation {
     let priceOption: String?
     let callServer: String?
     let audioOnly: Bool
+
+    /// Takes the options out of `arguments`, in this order; what is left is
+    /// the command and its own arguments.
+    init(profile: Profile, arguments: Arguments) throws {
+        var arguments = arguments
+        self.profile = profile
+        server = try arguments.option("--server").map { text in
+            guard let address = ServerAddress(text) else { throw PeelError("cannot read server address \(text)") }
+            return address
+        }
+        network = arguments.option("--network") ?? "bitcoin"
+        alias = arguments.option("--alias") ?? profile.name
+        photo = arguments.option("--photo")
+        wait = arguments.option("--wait").flatMap { Int($0) } ?? 5
+        insecure = arguments.flag("--insecure")
+        tribeHost = arguments.option("--tribe-host")
+        tribeOptions = try TribeOptions(&arguments)
+        replyTo = arguments.option("--reply")
+        inThread = arguments.option("--thread")
+        memesHost = arguments.option("--memes-host")
+        note = arguments.option("--text")
+        confirmed = arguments.flag("--yes")
+        priceOption = arguments.option("--price")
+        callServer = arguments.option("--call-server")
+        audioOnly = arguments.flag("--audio")
+        self.arguments = arguments
+    }
 
     func withPhoto(_ engine: Engine) async throws -> Engine {
         if let photo { try await engine.setPhotoURL(photo) }

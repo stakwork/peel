@@ -19,6 +19,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
+  - `Call.swift` — `CallLink`: reads and validates call links against the
+    account's call server, and makes new rooms (phase 6)
   - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
     media tokens, the memes server (sign-in, upload, download), what a file
     is by its bytes, and the profile's `media/` cache and outbox
@@ -127,7 +129,8 @@ status by tag, read markers (server truth, pending, mark unread), contact alias/
 independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
-code, fences, links, mentions); and the whole migration chain from a v1
+code, fences, links, mentions); call links (both forms, hosts, room names,
+query keys) and the call server setting; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.

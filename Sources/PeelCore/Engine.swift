@@ -106,6 +106,7 @@ public actor Engine {
         case notInThread
         case notAChat
         case noMemesServer
+        case noCallServer
         case notAnAttachment
         case attachmentWithoutKey
         case untrustedMediaHost(String)
@@ -162,6 +163,7 @@ public actor Engine {
             case .notInThread: "that message is not in that thread"
             case .notAChat: "that is neither a contact nor a tribe this account is in"
             case .noMemesServer: "this account has no memes server for attachments (set one with --memes-host)"
+            case .noCallServer: "this account has no call server (set one with --call-server)"
             case .notAnAttachment: "that message is not an attachment"
             case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
@@ -279,6 +281,7 @@ public actor Engine {
     static let mediaCacheLimit = 500_000_000
     /// Where the official apps keep attachments.
     static let defaultMemesHost = "memes.sphinx.chat"
+    static let defaultCallServer = "chat.sphinx.chat"
 
     /// A history fetch in progress: which kind, the next index to ask for, and
     /// where it ends (unknown until the server says). Runs queue behind one
@@ -501,6 +504,13 @@ public actor Engine {
     public func setMemesHost(_ host: String) throws {
         _ = try MemesServer(host: host)
         try storage.set(host, for: .memesHost)
+    }
+
+    /// The call server calls are started on, as `host[:port]`.
+    public func setCallServer(_ host: String) throws {
+        let host = host.lowercased()
+        guard TribeLink.baseURL(host) != nil else { throw PeelError("unreadable call server \(host)") }
+        try storage.set(host, for: .callServer)
     }
 
     public func contacts() throws -> [Contact] {
@@ -1302,7 +1312,7 @@ public actor Engine {
         if amountMsat != nil, Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) {
             throw Failure.noteTooLong
         }
-        let sats = amountMsat ?? tribe?.messageAmountMsat ?? 0
+        let sats = amountMsat ?? tribe?.messageAmountMsat(type: type) ?? 0
         let time = clock.next()
         let result = try Sphinxrs.send(
             seed: seed, uniqueTime: time, to: pubkey, msgType: UInt8(type), msgJson: body,
@@ -1680,6 +1690,41 @@ public actor Engine {
         if let host = try storage.value(for: .memesHost) { return try MemesServer(host: host) }
         guard let server, !ServerAddress.isLoopback(host: server.host) else { throw Failure.noMemesServer }
         return try MemesServer(host: Self.defaultMemesHost)
+    }
+
+    // MARK: - Calls
+
+    /// The account's call server: the one recorded, else the official apps'
+    /// own, except on a local test server, which has none unless named.
+    public func callServer() throws -> String {
+        if let host = try storage.value(for: .callServer) { return host }
+        guard let server, !ServerAddress.isLoopback(host: server.host) else { throw Failure.noCallServer }
+        return Self.defaultCallServer
+    }
+
+    /// Starts a call in a contact's chat or a tribe: a new room with a random
+    /// name on the call server, posted as a call message in the `call::`
+    /// form. A tribe takes only the 3-sat floor for it. Only while connected,
+    /// since a call message is never sent again (its room would be stale);
+    /// a publish that fails all the same is reported as a send status for
+    /// the tag returned, like any send's. Joining is the caller's.
+    public func startCall(in pubkey: String, audioOnly: Bool) async throws -> (link: CallLink, tag: String?) {
+        let tribe = try openTribe(pubkey)
+        guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
+        let link = try CallLink.new(server: callServer(), audioOnly: audioOnly)
+        guard transport != nil else { throw Failure.notConnected }
+        let tag = try await deliver(body: Self.json(["content": link.message]), to: pubkey, type: MessageType.call, replacing: nil)
+        return (link, tag)
+    }
+
+    /// The call a message links to, checked against this account's call
+    /// server: a call message, or text that is only a call link (the Mac
+    /// app reads both as calls). Nil for anything else, and on an account
+    /// with no call server.
+    public func callLink(in message: Message) -> CallLink? {
+        guard !message.deleted, [MessageType.call, MessageType.text].contains(message.type),
+              let content = message.content, let server = try? callServer() else { return nil }
+        return CallLink(message: content, server: server)
     }
 
     /// Runs a memes server call with a bearer token, signing in again once

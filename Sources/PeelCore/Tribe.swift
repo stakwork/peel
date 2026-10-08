@@ -60,6 +60,13 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
         Self.messageAmount(pricePerMessage: pricePerMessageMsat, escrow: escrowMsat)
     }
 
+    /// What a message of `type` costs to send: a call only the 3-sat floor,
+    /// because the tribes server charges no price for one
+    /// (`type_that_need_ppm` in `tribes/src/forward.rs`).
+    public func messageAmountMsat(type: Int) -> UInt64 {
+        type == MessageType.call ? Self.messageAmount(pricePerMessage: 0, escrow: 0) : messageAmountMsat
+    }
+
     /// What a payment or boost to the tribe pays on top of its own amount:
     /// price plus escrow, with no 3-sat floor (the Mac app's boost).
     public var paymentPriceMsat: UInt64 {

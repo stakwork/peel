@@ -51,6 +51,8 @@ struct ChatRow: Identifiable {
     var purchase: PurchaseState?
     var alias: String?
     var photoURL: String?
+    /// The sender's colour, on their initials and name.
+    var hue: PersonHue
     /// The messages the row stands for, oldest first: a run's images, a
     /// collapsed thread's newest, else its own.
     var shown: [Message] {
@@ -75,8 +77,8 @@ struct ChatRow: Identifiable {
     /// Who the rows name: you, and in a direct message the contact (a
     /// tribe's members name themselves on their messages).
     struct People {
-        var me: (name: String, photoURL: String?)
-        var contact: (name: String, photoURL: String?)
+        var me: (name: String, photoURL: String?, hue: PersonHue)
+        var contact: (name: String, photoURL: String?, hue: PersonHue)
     }
 
     /// The rows of a chat (`threads` collapsed), or of a thread: with
@@ -168,17 +170,18 @@ struct ChatRow: Identifiable {
     /// A row for one message, its sender's name and photo worked out once:
     /// you, the contact, or in a tribe the member (decoded from the message).
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
-        let sender: (alias: String?, photoURL: String?)
+        let sender: (alias: String?, photoURL: String?, hue: PersonHue)
         if message.fromMe {
-            sender = (people.me.name, people.me.photoURL)
+            sender = (people.me.name, people.me.photoURL, people.me.hue)
         } else if inTribe {
             let details = message.senderDetails
-            sender = (details.alias ?? "Unknown", details.photoURL)
+            sender = (details.alias ?? "Unknown", details.photoURL,
+                      PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
         } else {
-            sender = (people.contact.name, people.contact.photoURL)
+            sender = (people.contact.name, people.contact.photoURL, people.contact.hue)
         }
         return ChatRow(id: id, kind: kind, message: message, inTribe: inTribe, alias: sender.alias,
-                       photoURL: sender.photoURL, date: message.date)
+                       photoURL: sender.photoURL, hue: sender.hue, date: message.date)
     }
 
     /// Only text and attachments are quoted; a reply to the thread's own
@@ -595,7 +598,7 @@ struct MessageRow: View {
             // The gutter: the photo on a run's first row, the time on hover after it.
             Group {
                 if row.startsRun {
-                    Avatar(name: row.alias ?? "?", url: row.photoURL, size: Self.avatarSize)
+                    Avatar(name: row.alias ?? "?", url: row.photoURL, size: Self.avatarSize, hue: row.hue)
                 } else {
                     Text(message.date, format: .dateTime.hour().minute())
                         .font(Theme.font(11))
@@ -623,10 +626,10 @@ struct MessageRow: View {
                 )
                 .opacity(message.delivery == .pending && !retryable && !uploading ? 0.6 : 1)
                 if let boosts = row.boosts {
-                    BoostLine(boosts: boosts, showsChip: !message.deleted)
+                    BoostLine(boosts: boosts, chat: message.chat, inTribe: row.inTribe, showsChip: !message.deleted)
                 }
                 if let summary = row.summary {
-                    ThreadSummaryLine(summary: summary)
+                    ThreadSummaryLine(summary: summary, inTribe: row.inTribe)
                 }
                 if retryable {
                     UndeliveredActions(message: message)
@@ -672,7 +675,7 @@ struct RunHeader: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(row.alias ?? "Unknown")
                 .font(Theme.font(13, .semibold))
-                .foregroundStyle(Theme.name)
+                .foregroundStyle(row.hue.name)
                 .lineLimit(1)
             Text(message.date, format: .dateTime.hour().minute())
                 .font(Theme.font(12))
@@ -827,7 +830,7 @@ struct MessageContent: View {
                     }
                 }
                 if !text.isEmpty {
-                    MessageText(text: text)
+                    MessageText(text: text, chat: message.chat)
                         .rowMenu(row.id, menu)
                 }
             }
@@ -845,19 +848,23 @@ private extension View {
 /// code marked, list items with a hanging indent, ``` blocks as code. Its
 /// own view, so hovering the row does not redo the parsing.
 struct MessageText: View {
+    @Environment(AppModel.self) private var model
     let text: String
+    /// Where it was said, for what a mention of you looks like there.
+    let chat: String
 
     var body: some View {
         let blocks = MessageMarkup.blocks(text)
+        let myAliases = model.mentionAliases(in: chat)
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let line):
-                    styled(line)
+                    styled(line, myAliases)
                 case .item(let line):
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•").foregroundStyle(Theme.secondaryText)
-                        styled(line)
+                        styled(line, myAliases)
                     }
                     .padding(.leading, 4)
                 case .code(let code):
@@ -876,8 +883,8 @@ struct MessageText: View {
         }
     }
 
-    private func styled(_ line: String) -> some View {
-        Text(LinkText.attributed(line))
+    private func styled(_ line: String, _ myAliases: Set<String>) -> some View {
+        Text(LinkText.attributed(line, myAliases: myAliases))
             .font(Theme.font(14))
             .lineSpacing(3)
             .foregroundStyle(Theme.text)
@@ -908,9 +915,10 @@ struct QuoteView: View {
                         AttachmentMark(message: parent, size: 32)
                     }
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(model.sender(of: parent).name)
+                        let sender = model.sender(of: parent)
+                        Text(sender.name)
                             .font(Theme.font(12, .semibold))
-                            .foregroundStyle(Theme.link)
+                            .foregroundStyle(sender.hue.name)
                         Text(parent.preview)
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)

@@ -172,7 +172,9 @@ private struct ReplyBar: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
-                (Text("Replying to ") + Text(message.fromMe ? "yourself" : model.sender(of: message).name).font(Theme.font(12, .bold)))
+                let sender = model.sender(of: message)
+                (Text("Replying to ") + Text(message.fromMe ? "yourself" : sender.name).font(Theme.font(12, .bold))
+                    .foregroundColor(sender.hue.name))
                     .font(Theme.font(12))
                 Text(message.preview)
                     .font(Theme.font(12))
@@ -200,6 +202,7 @@ private struct ReplyBar: View {
 /// Who an `@` can mention, just above the composer, in the menu's style;
 /// scrolls past seven, keeping the highlighted one in view.
 struct MentionSuggestions: View {
+    @Environment(AppModel.self) private var model
     let members: [TribeMember]
     let highlighted: Int
     let choose: (TribeMember) -> Void
@@ -220,7 +223,8 @@ struct MentionSuggestions: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
                         HStack(spacing: 8) {
-                            Avatar(name: member.alias, url: member.photoURL, size: 20)
+                            Avatar(name: member.alias, url: member.photoURL, size: 20,
+                                   hue: model.hue(of: member))
                             Text(member.alias)
                                 .font(Theme.font(13))
                                 .foregroundStyle(Theme.text)

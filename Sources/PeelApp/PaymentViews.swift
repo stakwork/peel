@@ -322,13 +322,16 @@ struct SegmentedChoice<Value: Hashable>: View {
 /// their way or failed.
 struct BoostLine: View {
     let boosts: BoostSummary
+    /// The boosted message's chat, which keys the boosters' colours.
+    let chat: String
+    let inTribe: Bool
     /// False under a deleted message: only our failed boosts stay, to clear.
     var showsChip = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showsChip, boosts.count > 0 {
-                BoostChip(boosts: boosts)
+                BoostChip(boosts: boosts, chat: chat, inTribe: inTribe)
             }
             if let since = boosts.pendingSince {
                 WaitingForServer(since: since, what: "Boost")
@@ -349,6 +352,8 @@ struct BoostLine: View {
 private struct BoostChip: View {
     @Environment(AppModel.self) private var model
     let boosts: BoostSummary
+    let chat: String
+    let inTribe: Bool
 
     @State private var showing = false
     @State private var hovering = false
@@ -384,8 +389,9 @@ private struct BoostChip: View {
                     + Text(" sats").font(Theme.font(12)).foregroundColor(Theme.secondaryText))
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
-                        Avatar(name: boost.fromMe ? model.myAlias ?? "?" : boost.alias ?? "?",
-                               url: boost.fromMe ? model.myPhotoURL : boost.photoURL, size: Self.avatarSize)
+                        let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
+                                                  chat: chat, inTribe: inTribe)
+                        Avatar(name: avatar.name, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
                             .padding(1.5)
                             .background(ring, in: Circle())
                             .zIndex(Double(Self.shownBoosters - index))
@@ -409,7 +415,7 @@ private struct BoostChip: View {
         .onHover { hovering = $0 }
         .help(help)
         .peelPopover(isPresented: $showing) {
-            BoostersPanel(boosts: boosts)
+            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe)
         }
     }
 
@@ -424,6 +430,8 @@ private struct BoostChip: View {
 private struct BoostersPanel: View {
     @Environment(AppModel.self) private var model
     let boosts: BoostSummary
+    let chat: String
+    let inTribe: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -439,11 +447,13 @@ private struct BoostersPanel: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
                         let name = boost.fromMe ? "You" : boost.alias ?? "Someone"
+                        let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
+                                                  chat: chat, inTribe: inTribe)
                         HStack(spacing: 8) {
-                            Avatar(name: boost.fromMe ? model.myAlias ?? "?" : name,
-                                   url: boost.fromMe ? model.myPhotoURL : boost.photoURL, size: 22)
+                            Avatar(name: avatar.name, url: avatar.photoURL, size: 22, hue: avatar.hue)
                             Text(name)
                                 .font(Theme.font(13))
+                                .foregroundStyle(avatar.hue.name)
                                 .lineLimit(1)
                             Spacer(minLength: 8)
                             if boost.pendingSince != nil || boost.unsettled {
@@ -534,7 +544,7 @@ struct PaymentRow: View {
                     }
                 }
                 if !message.deleted, let note = message.content?.trimmed.nilIfEmpty {
-                    MessageText(text: note)
+                    MessageText(text: note, chat: message.chat)
                 }
                 if message.fromMe, !message.deleted {
                     switch message.delivery {

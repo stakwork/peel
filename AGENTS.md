@@ -19,6 +19,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
+  - `PersonHue.swift` — a person's colour (direction D): the official apps'
+    colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
     account's call server, and makes new rooms (phase 6)
   - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
@@ -132,7 +134,8 @@ status by tag, read markers (server truth, pending, mark unread), contact alias/
 `ServerAddress` parsing; and the `Engine` helpers that need no server
 (mnemonics, invites, a fresh account); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
-cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); mention matching, the aliases that name
+cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); person colours (`PersonHue`: the key
+format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions); call links (both forms, hosts, room names,
 query keys) and the call server setting; time zones (the offset's format and

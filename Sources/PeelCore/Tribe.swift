@@ -365,6 +365,14 @@ public func mentions(_ text: String, aliases: some Collection<String>) -> Bool {
     return false
 }
 
+/// What a mention of this account looks like in one tribe, for its chip: the
+/// aliases the mention scan reads (`ownTribeAliases` of its name and what the
+/// tribe echoed back), and "all". @all is styled as a mention of you but, as
+/// in the official apps, not counted as one (`mentionsMe` leaves it out).
+public func ownMentionAliases(name: String, echoed: Set<String>) -> Set<String> {
+    ownTribeAliases(sent: tribeAlias(name), echoed: echoed).union(["all"])
+}
+
 private func isAliasCharacter(_ c: Character) -> Bool {
     c.isASCII && (c.isLetter || c.isNumber || c == "_")
 }

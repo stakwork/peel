@@ -47,6 +47,7 @@ struct ThreadPanel: View {
 struct ThreadSummaryLine: View {
     @Environment(AppModel.self) private var model
     let summary: ThreadSummary
+    let inTribe: Bool
 
     @State private var hovering = false
 
@@ -57,8 +58,7 @@ struct ThreadSummaryLine: View {
             }
         } label: {
             HStack(spacing: 8) {
-                ParticipantAvatars(participants: summary.participants, myAlias: model.myAlias,
-                                   myPhotoURL: model.myPhotoURL)
+                ParticipantAvatars(participants: summary.participants, chat: summary.chat, inTribe: inTribe)
                 Text(Formatting.replies(summary.count))
                     .font(Theme.font(13, summary.unread > 0 ? .bold : .medium))
                     .foregroundStyle(Theme.accent)
@@ -99,16 +99,18 @@ struct ThreadSummaryLine: View {
 
 /// Up to three of a thread's people, overlapping.
 struct ParticipantAvatars: View {
+    @Environment(AppModel.self) private var model
     let participants: [ThreadParticipant]
-    let myAlias: String?
-    let myPhotoURL: String?
+    let chat: String
+    let inTribe: Bool
     var size: CGFloat = 20
 
     var body: some View {
         HStack(spacing: -5) {
             ForEach(Array(participants.prefix(3).enumerated()), id: \.offset) { _, person in
-                Avatar(name: person.fromMe ? myAlias ?? "?" : person.alias ?? "?",
-                       url: person.fromMe ? myPhotoURL : person.photoURL, size: size)
+                let avatar = model.avatar(fromMe: person.fromMe, alias: person.alias, photoURL: person.photoURL,
+                                          chat: chat, inTribe: inTribe)
+                Avatar(name: avatar.name, url: avatar.photoURL, size: size, hue: avatar.hue)
                     .overlay(Circle().strokeBorder(Theme.background, lineWidth: 1.5))
             }
         }
@@ -174,7 +176,7 @@ private struct ThreadCard: View {
                     .fill(unread ? Theme.accent : .clear)
                     .frame(width: 7, height: 7)
                     .padding(.top, 15)
-                Avatar(name: author.avatarName, url: author.photoURL, size: 32)
+                Avatar(name: author.avatarName, url: author.photoURL, size: 32, hue: author.hue)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(isTribe ? "#\(conversation?.name ?? "")" : conversation?.name ?? "")
@@ -190,9 +192,9 @@ private struct ThreadCard: View {
                             .foregroundStyle(Theme.secondaryText)
                         }
                     }
-                    (Text(author.name + " ").font(Theme.font(14, .bold))
-                        + Text(original.preview).font(Theme.font(14, unread ? .bold : .regular)))
-                        .foregroundStyle(unread ? Theme.text : Theme.text.opacity(0.85))
+                    (Text(author.name + " ").font(Theme.font(14, .bold)).foregroundColor(author.hue.name)
+                        + Text(original.preview).font(Theme.font(14, unread ? .bold : .regular))
+                        .foregroundColor(unread ? Theme.text : Theme.text.opacity(0.85)))
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         if unread {
@@ -206,9 +208,10 @@ private struct ThreadCard: View {
                         if let latest = summary.latest {
                             let sender = model.sender(of: latest)
                             Text("·").foregroundStyle(Theme.secondaryText)
-                            Avatar(name: sender.avatarName, url: sender.photoURL, size: 16)
+                            Avatar(name: sender.avatarName, url: sender.photoURL, size: 16, hue: sender.hue)
                             (Text(sender.name + ": ")
                                 .font(Theme.font(13, .medium))
+                                .foregroundColor(sender.hue.name)
                                 + Text(latest.preview))
                                 .lineLimit(1)
                         }

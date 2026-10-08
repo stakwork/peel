@@ -28,6 +28,9 @@ in progress and what comes next. Update it when you finish something.
     (moved there from the login Keychain on first unlock), `.development`
     profiles in a plain file with no PIN (CLI only)
   - `ServerConfig.swift` — the public config endpoint a restore reads
+  - `Web.swift` — every request outside the memes server (photos, the tribes
+    registry, the config): ephemeral sessions (also the memes server's), the
+    size-limited `get`, and the public-https host check
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView`,
   `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
@@ -181,6 +184,10 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   `mqtt://` scheme or a loopback host, and the scheme is persisted. The
   `--insecure` flag (CLI only) disables certificate verification.
 - Never log the seed, the mnemonic, or invite links.
+- Never use `URLSession.shared` (its disk cache records what was fetched and
+  its redirects go anywhere): fetch with `Web.get` (size-limited; a public
+  https host, or loopback http for the local test stack), or through the memes
+  server. A photo someone else chose goes through `Web.photo`.
 - Swift 6 language mode with strict concurrency in `PeelCore` and `PeelApp`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.

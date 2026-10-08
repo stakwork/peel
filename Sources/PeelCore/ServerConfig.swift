@@ -17,7 +17,7 @@ public struct ServerConfig: Decodable, Sendable {
 
     public static func fetch(network: String = "bitcoin") async throws -> ServerConfig {
         let url = URL(string: "https://config.config.sphinx.chat/api/config/\(network)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let data = try await Web.get(url, limit: 100_000, what: "the config")
         return try JSONDecoder().decode(ServerConfig.self, from: data)
     }
 }

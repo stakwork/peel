@@ -70,7 +70,9 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   text 14 pt with 3 pt line spacing (about 1.45), at most 560 pt wide
   (about 68 characters). Mentions are a soft chip (medium weight); links are
   in the link colour, without the scheme and shortened in the middle when
-  long; lines starting with "-" or "•" are a list with a hanging indent.
+  long; lines starting with "-" or "•" are a list with a hanging indent;
+  `code` is monospaced on a soft fill, without its backticks, and ```
+  fences are a code block.
   Quotes, attachments, thread summaries, Retry and the deleted placeholder
   sit in the row. Hovering lights the row and shows Reply, Boost (others'
   messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
@@ -80,6 +82,11 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   accent) on the right, above the first incoming message that was unread
   when the chat was opened. The chat opens scrolled to it; it stays until
   you change chats or send.
+- **Following the newest.** Sending always scrolls to the newest. Someone
+  else's message is followed only when you are at the bottom; scrolled up,
+  you stay put and a blue "N new messages" pill with a down arrow sits at
+  the bottom-right (a round arrow when far up with nothing new). Clicking
+  it, End or Command-Down goes to the newest and clears it.
 - **Boosts** show as a chip under the message, as the official Mac app
   draws them (`NewMessageBoostView`): an orange bolt, the total ("1,210
   sats"), then the first three boosters' photos overlapping (24 pt, one

@@ -508,8 +508,11 @@ enum ConversationMenu {
 struct UnreadBadge: View {
     let count: Int
 
+    /// A count as badges show it, capped at "99+".
+    static func text(_ count: Int) -> String { count > 99 ? "99+" : "\(count)" }
+
     var body: some View {
-        Text(count > 99 ? "99+" : "\(count)")
+        Text(Self.text(count))
             .font(Theme.font(11, .bold))
             .monospacedDigit()
             .foregroundStyle(Theme.buttonText)

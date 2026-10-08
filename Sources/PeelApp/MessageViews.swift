@@ -220,11 +220,22 @@ struct MessageList: View {
     /// A row just jumped to from a quote, lit for a moment.
     @State private var flashed: String?
     @State private var userScrolling = false
+    /// Others' messages take the list down: while it is at the bottom or on
+    /// its way there, until you scroll away by hand or it opens at "New messages".
+    @State private var following = true
     /// Scrolled up over a screen from the bottom: the jump button shows.
     @State private var farFromBottom = false
-    /// The newest server index when the jump button appeared; what came
-    /// after it and counts as unread is the button's count.
+    /// "New messages" still marks what is unread below it: from opening at
+    /// it (or its moving) until you reach the bottom or scroll away from it.
+    @State private var dividerUnread = false
+    /// What counted as seen when the list left the bottom; what came after
+    /// it and counts as unread is the jump button's count.
     @State private var seenUpTo: Int64?
+
+    /// The end of the list, under its padding. Scrolling to the last row
+    /// stops at that padding, short of the scroll view's own bottom, where
+    /// its bottom anchor no longer holds the list as the rows below grow.
+    private static let bottomID = "bottom"
 
     /// Where the list sits against its bottom, as the scroll position changes.
     private struct BottomDistance: Equatable {
@@ -280,6 +291,7 @@ struct MessageList: View {
                     }
                 }
                 .padding(.vertical, 12)
+                .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottomID) }
             }
             // A thread reads from its original down; a chat from its newest up.
             // Either starts at the bottom once there is more than fits.
@@ -297,14 +309,14 @@ struct MessageList: View {
                         try? await Task.sleep(for: .milliseconds(100))
                         takeFocus(proxy)
                     }
-                } else if let new = rows.first(where: \.startsNew) {
-                    proxy.scrollTo(new.id, anchor: .top)
-                } else if composer.thread == nil, let last = rows.last?.id {
-                    proxy.scrollTo(last, anchor: .bottom)
+                } else if let divider {
+                    proxy.scrollTo(divider.id, anchor: .top)
+                    following = false
+                    dividerUnread = true
+                } else if composer.thread == nil {
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 }
             }
-            // Scrolled back to the bottom by hand after "Mark unread": reading
-            // resumes. Not when a new message scrolls it there.
             .onScrollPhaseChange { _, phase in
                 userScrolling = phase == .interacting || phase == .decelerating
             }
@@ -312,29 +324,43 @@ struct MessageList: View {
                 let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
                 return BottomDistance(atBottom: below <= 24, far: below > geometry.containerSize.height)
             } action: { old, new in
+                // Scrolled back to the bottom by hand after "Mark unread":
+                // reading resumes. Not when a new message scrolls it there.
                 if new.atBottom, !old.atBottom, userScrolling { reachedBottom() }
                 // Counted from the first time it leaves the bottom until it is
                 // back there, through resizes that cross the one-screen line.
                 if new.atBottom {
+                    following = true
                     seenUpTo = nil
                     if composer.thread == nil, !old.atBottom { model.chatListAtBottom() }
+                } else {
+                    // Scrolled away by hand: no longer following, and
+                    // everything there had been seen.
+                    if userScrolling {
+                        following = false
+                        dividerUnread = false
+                    }
+                    if seenUpTo == nil { seenUpTo = seenWhenScrolledUp }
                 }
-                if new.far, seenUpTo == nil { seenUpTo = seenWhenScrolledUp }
-                if new.far != farFromBottom {
+                if new.far != old.far {
                     withAnimation(.easeOut(duration: 0.2)) { farFromBottom = new.far }
                 }
             }
             .onChange(of: model.focus?.message.id) { _, _ in takeFocus(proxy) }
-            // New rows follow you down unless you have scrolled away (then
-            // the jump button counts them); your own always do.
-            .onChange(of: rows.last?.id) { _, last in
-                if let last, !farFromBottom || rows.last?.shown.last?.fromMe == true {
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) }
-                }
+            // "Mark unread" moved the divider: what is below it is unread again.
+            .onChange(of: divider?.id) { _, id in
+                if id != nil { dividerUnread = true }
+            }
+            // Your own messages always take you to the newest; others' only
+            // while following. Scrolled up, you stay where you are and the
+            // jump button counts them.
+            .onChange(of: rows.last?.id) { _, _ in
+                if following || rows.last?.shown.last?.fromMe == true { scrollToNewest(proxy) }
             }
             .overlay(alignment: .bottomTrailing) {
-                if farFromBottom {
-                    JumpToNewestButton(count: newSinceScrolledUp, composer: composer) { jumpToNewest(proxy) }
+                let count = newSinceScrolledUp
+                if farFromBottom || count > 0 {
+                    JumpToNewestButton(count: count, composer: composer) { jumpToNewest(proxy) }
                         .padding(.trailing, 20)
                         .padding(.bottom, 12)
                         .transition(.opacity)
@@ -343,11 +369,14 @@ struct MessageList: View {
         }
     }
 
+    /// The row "New messages" sits above.
+    private var divider: ChatRow? { rows.first(where: \.startsNew) }
+
     /// What counts as seen when the list leaves the bottom: up to "New
-    /// messages" when it shows (those below it are still unread), else
-    /// everything in the list.
+    /// messages" while what is below it is still unread, else everything
+    /// in the list.
     private var seenWhenScrolledUp: Int64 {
-        if let new = rows.first(where: \.startsNew), let index = new.shown.first?.serverIndex { return index - 1 }
+        if dividerUnread, let index = divider?.shown.first?.serverIndex { return index - 1 }
         return rows.lazy.compactMap { $0.shown.last?.serverIndex }.max() ?? -1
     }
 
@@ -366,14 +395,20 @@ struct MessageList: View {
     /// To the newest message; like scrolling there by hand, it ends a
     /// "Mark unread" hold and reads the chat.
     private func jumpToNewest(_ proxy: ScrollViewProxy) {
-        guard let last = rows.last?.id else { return }
-        withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(last, anchor: .bottom) }
+        scrollToNewest(proxy, duration: 0.3)
         reachedBottom()
+    }
+
+    /// To the end of the list, following what arrives on the way.
+    private func scrollToNewest(_ proxy: ScrollViewProxy, duration: Double = 0.2) {
+        following = true
+        withAnimation(.easeInOut(duration: duration)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
     }
 
     /// Only the chat's own list releases the hold (threads share its marker
     /// but not its scroll position).
     private func reachedBottom() {
+        dividerUnread = false
         if composer.thread == nil { model.reachedBottom(of: composer.chat) }
     }
 
@@ -411,6 +446,7 @@ struct MessageList: View {
             (row.kind == .message || row.kind == .payment)
                 && (row.message.uuid == uuid || row.images.contains { $0.uuid == uuid } || row.summary?.original.uuid == uuid)
         }) {
+            following = false
             withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(row.id, anchor: .center) }
             flashed = row.id
             Task {
@@ -426,8 +462,9 @@ struct MessageList: View {
     }
 }
 
-/// The round "to the newest" button over a list scrolled up, with how many
-/// new messages came in below. End or Command-Down does the same.
+/// "To the newest" over a list scrolled up: a round arrow, or once messages
+/// have come in below, a blue "3 new messages" pill. End or Command-Down
+/// does the same.
 private struct JumpToNewestButton: View {
     @Environment(AppModel.self) private var model
     let count: Int
@@ -440,23 +477,39 @@ private struct JumpToNewestButton: View {
         composer.thread == nil && (model.drafts[composer] ?? "").isEmpty
     }
 
+    private var newMessages: String {
+        count == 1 ? "1 new message" : "\(UnreadBadge.text(count)) new messages"
+    }
+
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
+            if count > 0 {
+                // Blue, because blue is unread.
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(newMessages)
+                        .font(Theme.font(12, .semibold))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(Theme.buttonText)
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(Theme.button, in: Capsule())
+                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                .contentShape(Capsule())
+            } else {
                 Image(systemName: "arrow.down")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .frame(width: 36, height: 36)
                     .menuBoxed(cornerRadius: 18)
-                if count > 0 {
-                    UnreadBadge(count: count).offset(x: 4, y: -6)
-                }
+                    .contentShape(Circle())
             }
-            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(count > 0 ? "\(count) new below · Jump to newest (End)" : "Jump to newest (End)")
-        .accessibilityLabel(count > 0 ? "Jump to newest, \(count) new" : "Jump to newest")
+        .help("Jump to newest (End)")
+        .accessibilityLabel(count > 0 ? "Jump to newest, \(newMessages)" : "Jump to newest")
         .background {
             // Shortcuts, only while the button shows.
             if shortcuts {
@@ -788,14 +841,14 @@ private extension View {
     }
 }
 
-/// Message text: links and mentions marked, and lines starting with "-" or
-/// "•" set as a list with a hanging indent. Its own view, so hovering the
-/// row does not redo the parsing.
+/// Message text as `MessageMarkup` reads it: links, mentions and inline
+/// code marked, list items with a hanging indent, ``` blocks as code. Its
+/// own view, so hovering the row does not redo the parsing.
 struct MessageText: View {
     let text: String
 
     var body: some View {
-        let blocks = MessageBlocks.split(text)
+        let blocks = MessageMarkup.blocks(text)
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
@@ -807,6 +860,17 @@ struct MessageText: View {
                         styled(line)
                     }
                     .padding(.leading, 4)
+                case .code(let code):
+                    Text(code)
+                        .font(Theme.code(13))
+                        .lineSpacing(2)
+                        .foregroundStyle(Theme.text)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
             }
         }
@@ -819,32 +883,6 @@ struct MessageText: View {
             .foregroundStyle(Theme.text)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// A message split into paragraphs and list items.
-enum MessageBlocks: Equatable {
-    case paragraph(String)
-    case item(String)
-
-    static func split(_ text: String) -> [MessageBlocks] {
-        var blocks: [MessageBlocks] = []
-        var paragraph: [String] = []
-        func flush() {
-            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: "\n"))) }
-            paragraph = []
-        }
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let marker = ["- ", "• ", "* "].first(where: { trimmed.hasPrefix($0) }) {
-                flush()
-                blocks.append(.item(String(trimmed.dropFirst(marker.count))))
-            } else {
-                paragraph.append(String(line))
-            }
-        }
-        flush()
-        return blocks
     }
 }
 

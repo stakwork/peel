@@ -11,15 +11,15 @@ import UserNotifications
 /// badge. Remote push is not an option: the server keeps one push token per
 /// account and it belongs to the official app.
 ///
-/// What notifies, as the official Mac app decides it: messages from others
-/// that are past the chat's read marker, by the chat's mute level (all, only
-/// those that mention this account, or none); a request to join a tribe this
-/// account owns; a call someone started (`CallLink.isAnnounced`), as
-/// "Started a call" under who started it, never a ring; someone adding this
-/// account as a contact (`contactAdded`). Nothing from the first history of a session or a restore, nothing for the chat open in front of you, and more than a few
-/// at once from one chat (a catch-up after sleep) become one summary.
-/// Sats received notify too, one notification per arrival however many
-/// payments it holds (`moneyReceived`).
+/// What notifies is PeelCore's `NotificationPolicy`: messages and payment
+/// requests from others past the chat's read marker, a request to join a
+/// tribe this account owns, a call someone started (as "Started a call"
+/// under who started it), all by the chat's mute level; someone adding this
+/// account as a contact (`contactAdded`); sats received, one notification
+/// per arrival however many payments it holds (`moneyReceived`). Nothing
+/// from the first history of a session or a restore, nothing where the
+/// policy says the chat is quiet, and more than a few at once from one chat
+/// (a catch-up after sleep) become one summary.
 @MainActor @Observable
 final class Notifier {
     enum Permission { case unavailable, notAsked, denied, allowed }
@@ -154,14 +154,13 @@ final class Notifier {
     // MARK: Messages
 
     func received(_ message: Message, _ arrival: Engine.Arrival) {
-        guard center != nil, permission == .allowed, !message.fromMe, !message.deleted, !message.hasNoWords else { return }
+        guard center != nil, permission == .allowed else { return }
         switch arrival {
         case .live: break
         case .history: guard !firstSync else { return }
         case .restore: return
         }
-        guard message.isContent || message.type == MessageType.memberRequest
-              || CallLink.isAnnounced(by: message, server: model?.callServer) else { return }
+        guard NotificationPolicy.kind(of: message, callServer: model?.callServer) != nil else { return }
         pending.append(message)
         if flushTask == nil {
             flushTask = Task { [weak self] in
@@ -184,15 +183,10 @@ final class Notifier {
         // Only a join request needs to know who owns the tribe.
         let owned = batch.contains { $0.type == MessageType.memberRequest }
             ? Set(((try? storage.tribes()) ?? []).filter(\.isOwner).map(\.pubkey)) : []
-        let locked = model.phase != .ready || model.isLockDue
+        let (policy, locked) = policy(model)
         for (chat, messages) in Dictionary(grouping: batch, by: \.chat) {
-            if model.isFrontmost, !locked, model.selectedChat == chat { continue }
-            let state = model.readStates[chat]
-            let marker = state?.lastRead ?? -1
-            let shown = messages.filter { message in
-                guard (message.serverIndex ?? .max) > marker else { return false }
-                if message.type == MessageType.memberRequest, !owned.contains(chat) { return false }
-                return (state?.mute ?? .all).notifies(message)
+            let shown = messages.filter {
+                policy.notifies($0, ownsTribe: owned.contains(chat), callServer: model.callServer) != nil
             }
             guard !shown.isEmpty else { continue }
             // A call always shows on its own; more than a few others become one summary.
@@ -223,9 +217,8 @@ final class Notifier {
     func contactAdded(_ message: Message) {
         guard let center, permission == .allowed, let model, storage != nil,
               message.uuid.map({ posted.insert($0).inserted }) ?? true else { return }
-        let locked = model.phase != .ready || model.isLockDue
-        if model.isFrontmost, !locked, model.selectedChat == message.chat { return }
-        guard (model.readStates[message.chat]?.mute ?? .all).notifies(message) else { return }
+        let (policy, locked) = policy(model)
+        guard !policy.isQuiet(message.chat) else { return }
         let (name, _) = names(message.chat, sender: message.senderAlias)
         post(center, id: "contact-\(message.uuid ?? UUID().uuidString)", chat: message.chat, message: nil,
              locked: locked, title: name, subtitle: nil, body: "Added you as a contact", hidden: "New contact")
@@ -241,12 +234,11 @@ final class Notifier {
     /// shows. Nothing while Payments is open in front of you.
     func moneyReceived(_ receipts: [Receipt]) {
         guard let center, permission == .allowed, let model, storage != nil else { return }
-        let locked = model.phase != .ready || model.isLockDue
-        if model.isFrontmost, !locked, model.destination == .payments { return }
+        let (policy, locked) = policy(model)
+        if !locked, model.isFrontmost, model.destination == .payments { return }
         let shown = receipts.filter { receipt in
             guard let chat = receipt.chat, receipt.kind != .invoice else { return true }
-            if model.isFrontmost, !locked, model.selectedChat == chat { return false }
-            return (model.readStates[chat]?.mute ?? .all) == .all
+            return !policy.isQuiet(chat)
         }
         guard let first = shown.first else { return }
         var seen: Set<String> = []
@@ -256,6 +248,14 @@ final class Notifier {
         post(center, id: "money-\(first.paymentHash ?? UUID().uuidString)", chat: Self.paymentsThread, message: nil, locked: locked,
              title: Receipt.label(shown), subtitle: nil, body: body, hidden: "Sats received")
         chatsShown.insert(Self.paymentsThread)
+    }
+
+    /// What decides, from what is on screen now, and whether Peel is locked
+    /// (or due to lock), when a notification names nobody.
+    private func policy(_ model: AppModel) -> (policy: NotificationPolicy, locked: Bool) {
+        let locked = model.phase != .ready || model.isLockDue
+        let inView = model.isFrontmost && !locked ? model.selectedChat : nil
+        return (NotificationPolicy(chatInView: inView, readStates: model.readStates), locked)
     }
 
     /// A chat's name (a contact's, or the sender's when nothing is stored)
@@ -276,13 +276,18 @@ final class Notifier {
     }
 
     private func describe(_ receipt: Receipt, from source: String) -> String {
-        let note = showsText ? receipt.note.map { ": \($0.prefix(200))" } ?? "" : ""
+        let note = self.note(receipt.note)
         switch receipt.kind {
         case .payment: return "From \(source)\(note)"
         case .boost: return "Boost from \(source)"
-        case .purchase: return "\(source) bought your attachment"
         case .invoice: return receipt.chat == nil ? "Invoice paid\(note)" : "\(source) paid your request\(note)"
         }
+    }
+
+    /// ": " and a payment's note or a request's memo, when notifications show text.
+    private func note(_ text: String?) -> String {
+        guard showsText, let text = text?.nilIfEmpty else { return "" }
+        return ": \(text.prefix(200))"
     }
 
     private func body(of message: Message) -> String {
@@ -291,6 +296,10 @@ final class Notifier {
         }
         // The title names who, the subtitle the tribe.
         if message.type == MessageType.call { return "Started a call" }
+        if message.type == MessageType.invoice {
+            guard let msat = message.amountMsat, msat > 0 else { return "Payment request\(note(message.preview))" }
+            return "Requested \(Sats.format(msat: msat))\(note(message.preview))"
+        }
         // Text, or for an attachment what it is ("Image", "File: notes.pdf").
         guard showsText, let preview = message.preview.nilIfEmpty else { return Self.hiddenText }
         return String(preview.prefix(400))

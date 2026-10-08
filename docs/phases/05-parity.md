@@ -2,8 +2,8 @@
 
 ## Status (2026-10-08)
 
-**Built:** the Account screen (#10): name, photo by link or upload, contact
-QR, twelve words, PIN, forget. See "Account screen" below.
+**Built:** the Account screen (#10): name, photo by link (upload from this
+Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
 
 **Open**, in this order (Tom, 2026-10-08: after the cleanup and calls):
 - Contacts UI: "Contacts" below.
@@ -33,8 +33,10 @@ server's record carries as `app_url` and `second_brain_url` (the Mac app's
 them back untouched on an edit.
 
 What the official Mac app does (`Scenes/Dashboard/WebApps`): a WKWebView over
-the chat, with back, forward, reload and "open in a new window"; the tribe's
-app URL first, the second brain URL if there is no app URL. Pages talk to it
+the chat, with back, forward, reload and "open in a new window". A tribe's
+header has one button per address, the app and the second brain; a deep
+link into a tribe uses the app URL, or the second brain URL when there is no
+app URL. Pages talk to it
 through a `sphinx` message handler (`WebAppHelper`): `AUTHORIZE` with a sats
 budget, `KEYSEND`, `PAYMENT`, `SIGN`, `GETBUDGET`, the LSAT calls and more.
 
@@ -71,8 +73,9 @@ accepts any certificate before building it.
   in the Mac app).
 - **LSATs:** paid access tokens that web apps buy and reuse (the Mac app's
   LSAT list and the bridge's LSAT calls).
-- **Languages:** the official app's six languages through String Catalogs;
-  Peel stays in English for now.
+- **Languages:** the official Mac app's translations (Spanish, Filipino,
+  Japanese and three kinds of Chinese) through String Catalogs; Peel stays
+  in English for now.
 
 ## Journal
 

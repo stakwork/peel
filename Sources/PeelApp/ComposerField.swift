@@ -3,8 +3,9 @@ import AppKit
 import SwiftUI
 
 /// The message field: Return sends, Shift-Return or Option-Return starts a new
-/// line, paste brings in plain text only, and the field grows to eight lines
-/// before it scrolls. A text view rather than a `TextField`, because a field
+/// line, paste brings in plain text only (files and images, pasted or
+/// dropped, go to `attach` for the tray), and the field grows to eight lines before it
+/// scrolls. A text view rather than a `TextField`, because a field
 /// cannot tell Return from Shift-Return.
 ///
 /// It also reports the `@word` being typed before the cursor (`mention`), lets
@@ -22,13 +23,18 @@ struct ComposerField: View {
     /// Escape with no suggestions showing, such as to stop replying; returns
     /// whether it was taken.
     var escape: () -> Bool = { false }
+    /// Files or images pasted or dropped into the field.
+    let attach: ([PasteboardFiles.Item]) -> Void
+    /// A drag with files is over the field (true) or has left it.
+    let dropTargeted: (Bool) -> Void
 
     @State private var height: CGFloat = ComposerTextView.lineHeight
 
     var body: some View {
         ComposerTextView(
             text: $text, height: $height, mention: mention, focusRequest: focusRequest, insertion: insertion,
-            submit: submit, suggestionKey: suggestionKey, escape: escape
+            submit: submit, suggestionKey: suggestionKey, escape: escape, attach: attach,
+            dropTargeted: dropTargeted
         )
         .frame(height: height)
         .overlay(alignment: .topLeading) {
@@ -62,6 +68,8 @@ private struct ComposerTextView: NSViewRepresentable {
     let submit: () -> Void
     let suggestionKey: (SuggestionKey) -> Bool
     let escape: () -> Bool
+    let attach: ([PasteboardFiles.Item]) -> Void
+    let dropTargeted: (Bool) -> Void
 
     static let font = NSFont.systemFont(ofSize: 14)
     static let padding: CGFloat = 4
@@ -71,11 +79,22 @@ private struct ComposerTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
-        let textView = scrollView.documentView as! NSTextView
+        // As `NSTextView.scrollableTextView()` sets one up, with Peel's own class.
+        let textView = AttachingTextView(usingTextLayoutManager: false)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        scrollView.documentView = textView
+        textView.attach = { [weak coordinator = context.coordinator] in coordinator?.parent.attach($0) }
+        textView.dropTargeted = { [weak coordinator = context.coordinator] in coordinator?.parent.dropTargeted($0) }
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.importsGraphics = false
@@ -200,6 +219,55 @@ private struct ComposerTextView: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+/// The field's text view: Paste with files or an image on the clipboard
+/// hands them to `attach` instead of pasting their names, and a drag of
+/// files, images or file promises over the field is taken the same way
+/// (with the conversation's drop overlay, through `dropTargeted`) rather
+/// than putting text in it.
+private final class AttachingTextView: NSTextView {
+    var attach: (([PasteboardFiles.Item]) -> Void)?
+    var dropTargeted: ((Bool) -> Void)?
+    /// The drag over the field holds files; decided once as it enters.
+    private var takesDrag = false
+
+    override func paste(_ sender: Any?) {
+        let items = PasteboardFiles.items(on: .general, promises: false)
+        if items.isEmpty { super.paste(sender) } else { attach?(items) }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        takesDrag = PasteboardFiles.hasFiles(sender.draggingPasteboard)
+        guard takesDrag else { return super.draggingEntered(sender) }
+        dropTargeted?(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        takesDrag ? .copy : super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        if takesDrag { dropTargeted?(false) } else { super.draggingExited(sender) }
+        takesDrag = false
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        takesDrag || super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard takesDrag else { return super.performDragOperation(sender) }
+        dropTargeted?(false)
+        let items = PasteboardFiles.items(on: sender.draggingPasteboard, promises: true)
+        if !items.isEmpty { attach?(items) }
+        return !items.isEmpty
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        if takesDrag { takesDrag = false } else { super.concludeDragOperation(sender) }
     }
 }
 #endif

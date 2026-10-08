@@ -449,23 +449,52 @@ private struct FileDrop: ViewModifier {
     let composer: ComposerID
     let conversation: Conversation
 
-    @State private var targeted = false
-
     func body(content: Content) -> some View {
         content
+            #if os(macOS)
+            // Files, image data and file promises (the screenshot thumbnail).
+            .onDrop(of: PasteboardFiles.dropTypes, delegate: Delegate(model: model, composer: composer))
+            #else
             .dropDestination(for: URL.self) { urls, _ in
                 let files = urls.filter(\.isFileURL)
                 model.addFiles(files, to: composer)
                 return !files.isEmpty
-            } isTargeted: { targeted = $0 }
+            } isTargeted: { model.dropTarget = $0 ? composer : nil }
+            #endif
             .overlay {
-                if targeted {
+                if model.dropTarget == composer {
                     DropTarget(name: conversation.isTribe ? "#\(conversation.name)" : conversation.name,
                                inThread: composer.thread != nil)
                 }
             }
     }
 }
+
+#if os(macOS)
+extension FileDrop {
+    /// Takes only drags with something for the tray: rich text that carries
+    /// a picture of itself is not offered as a drop.
+    /// The drag's own pasteboard is read rather than SwiftUI's item
+    /// providers, so file promises are taken as AppKit documents them.
+    struct Delegate: DropDelegate {
+        let model: AppModel
+        let composer: ComposerID
+        private var drag: NSPasteboard { NSPasteboard(name: .drag) }
+
+        func validateDrop(info: DropInfo) -> Bool { PasteboardFiles.hasFiles(drag) }
+        func dropEntered(info: DropInfo) { model.dropTargeted(PasteboardFiles.hasFiles(drag), composer: composer) }
+        func dropExited(info: DropInfo) { model.dropTargeted(false, composer: composer) }
+
+        func performDrop(info: DropInfo) -> Bool {
+            model.dropTargeted(false, composer: composer)
+            let items = PasteboardFiles.items(on: drag, promises: true)
+            guard !items.isEmpty else { return false }
+            model.attach(items, to: composer)
+            return true
+        }
+    }
+}
+#endif
 
 /// Over a conversation while files are dragged onto it.
 private struct DropTarget: View {

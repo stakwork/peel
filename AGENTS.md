@@ -22,6 +22,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
     media tokens, the memes server (sign-in, upload, download), what a file
     is by its bytes, and the profile's `media/` cache and outbox
+  - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
+    pasteboard items attach, image bytes and promised files written to Peel's
+    own temp folder and checked
   - `MessageMarkup.swift` — how message text reads: paragraphs, list items,
     fenced code, and inline code, https links and mentions
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
@@ -38,7 +41,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ConversationView`, `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `ChatModel` (replies, threads, sending, attachments),
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
-  `ImageViewer`, `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
+  `ImageViewer`, `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `Notifier` for local notifications and the Dock badge)
 - `Sources/peel/` — command-line harness for PeelCore
@@ -120,7 +123,7 @@ status by tag, read markers (server truth, pending, mark unread), contact alias/
 `ServerAddress` parsing; and the `Engine` helpers that need no server
 (mnemonics, invites, a fresh account); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
-cache, and the attachment columns; mention matching, the aliases that name
+cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); mention matching, the aliases that name
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions); and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to

@@ -1516,6 +1516,79 @@ links are clickable; new SQL is bound or built from constants. Near-miss
 which relies on the tribes server keeping aliases unique and refusing a
 member's delete of another's message; matching by sender key would not.
 
+### Drop and paste beyond Finder (branch `fix/attachment-drop-paste`, 2026-10-08)
+
+Tom, in real use: attaching only worked by dragging from Finder. The
+screenshot thumbnail (Cmd-Shift-4/5) dropped on the chat or the composer did
+nothing, and Cmd-V with an image or a copied file on the clipboard added
+nothing.
+
+Why:
+- The conversation's drop was `.dropDestination(for: URL.self)`, which takes
+  only URL items. The thumbnail offers a file promise
+  (`com.apple.NSFilePromiseItemMetaData`, `promised-file-url`) and image
+  data, not a file URL, so it was refused.
+- Over the composer, the field's `NSTextView` registers its own drag types
+  (file names, promises, PNG, TIFF, URLs, text) even as plain text, so it
+  took the drag ahead of the conversation's drop. It cannot insert a picture
+  (`importsGraphics` off), so images and promises did nothing there.
+- Paste went to the plain-text `NSTextView`, which reads only text, URLs and
+  file names: image data was ignored, and a file copied in Finder pasted at
+  most its name.
+
+Built:
+- `IncomingFiles` (PeelCore, pure and tested): what a pasteboard item gives
+  (file URL first, then a promise, then image bytes in PNG, JPEG, HEIC, TIFF
+  order); an image with real words beside it pastes as text (rich text
+  copied from a page or document carries a picture of itself), an image with
+  only a link beside it (Copy Image) is the image. Image bytes are written to
+  `$TMPDIR/Peel Attachments/<uuid>/Image 2026-10-08 at 14.05.png` (TIFF
+  converted to PNG; " (2)" and on for more in one paste), over
+  `Engine.attachmentLimit` refused before decoding. A promised file is
+  accepted only as a plain file (no link, no folder) directly in the folder
+  Peel gave it and within the limit; anything else is removed and refused.
+  `discard` removes only Peel's own files.
+- `PasteboardFiles` (app): reads a pasteboard in its order; promises are
+  received at once into a new folder of Peel's (given up after two minutes).
+  The drag's own pasteboard is read (`NSPasteboard(name: .drag)`) rather than
+  SwiftUI's item providers.
+- The conversation and thread panel drop (`FileDrop`) takes files, images and
+  promises through a `DropDelegate` that only offers the drop when there is
+  something for the tray. The composer's text view takes the same drags
+  itself (and shows the same overlay through `AppModel.dropTarget`), so a
+  drop anywhere on the conversation behaves the same; text drags still go
+  into the field.
+- Paste in the composer: files or an image on the clipboard go into the tray
+  in order; anything else pastes as plain text, as before.
+- Cleanup: Peel's files are removed when taken out of the tray, once
+  uploaded (the engine keeps its own copy in the cache; the tile reads that),
+  and when the account closes (a failed upload keeps its file as the row's
+  preview until then). Refused sends keep theirs in the tray.
+- Images still go out as `image.jpg` (`OutgoingFile`, as the official apps);
+  the readable name shows in the tray and names files that are not images.
+
+Tests: `IncomingFilesTests` (type decisions, names, PNG and TIFF writes,
+limit, promise acceptance incl. links, `..` and folders, discard).
+
+Not verified here: real drags and pastes (this session could not drive the
+app's UI). Tom to try the steps in the PR.
+
+Reviews: `/code-review high` fixed: one promise's several files shared a
+folder that discard removed whole; a failed upload deleted its preview; a
+promise that never finished hung the attach; the receiver kept alive; a
+tray removal left a sent row pointing at a deleted file; an attach finishing
+after the account closed; the overlay showing for drags it would refuse;
+drag checks once per entry rather than per move. `/simplify` applied:
+in-place drag handling in the text view instead of forwarding to the
+SwiftUI host, one `release` for owned files, lazy text reads, the timeout
+cancelled when a promise finishes, `attach` starting its own task, the
+post-conversion size check dropped. Not applied: sharing an ImageIO encode
+helper with `ProfilePhoto` and `MediaStore.write` (outside the composer
+code); moving the pasteboard rules to the app (the only test target is
+PeelCore); clearing the whole temp folder at launch instead of per file
+(another Peel process on another profile may be using it).
+`/security-review`: nothing at high confidence.
+
 ## Notifications (branch `phase3/notifications`, 2026-10-07)
 
 Done means: while Peel runs, a macOS notification for each new message

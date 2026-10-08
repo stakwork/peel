@@ -83,7 +83,7 @@ public struct CallLink: Sendable, Equatable {
     /// official apps' timestamps can be guessed from when a call started.
     /// Peel never makes Hive links.
     public static func new(server: String, audioOnly: Bool) throws -> CallLink {
-        guard let base = TribeLink.baseURL(server) else { throw PeelError("unreadable call server \(server)") }
+        guard let base = TribeLink.baseURL(server) else { throw Engine.Failure.unreadableCallServer(server) }
         let name = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: .min ... .max)) }.joined()
         return CallLink(
             server: server, base: base, room: roomPrefix + name, audioOnly: audioOnly, callKey: nil, hiveToken: nil

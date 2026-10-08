@@ -38,7 +38,7 @@ struct InvoiceTests {
     }
 
     @Test func anythingElseIsRefused() {
-        #expect(throws: (any Error).self) { try Invoice("hello") }
+        #expect(throws: Engine.Failure.notAnInvoice) { try Invoice("hello") }
         #expect(throws: (any Error).self) { try Invoice("lnbc1notaninvoice") }
     }
 

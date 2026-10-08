@@ -202,7 +202,7 @@ extension Engine {
     /// nil for automatic.
     public func setTimeZone(_ identifier: String?) throws {
         if let identifier, TimeZoneOffset.zone(identifier) == nil {
-            throw PeelError("unknown time zone \(identifier); use a name like Europe/London")
+            throw Failure.unknownTimeZone(identifier)
         }
         try storage.set(identifier ?? "", for: .timeZone)
     }
@@ -239,7 +239,7 @@ extension Engine {
         guard chat.isPubkey else { throw Failure.notAChat }
         if enabled {
             if let tribe = knownTribe(chat) {
-                guard tribe.isPrivate else { throw PeelError("your time zone is never sent in public tribes") }
+                guard tribe.isPrivate else { throw Failure.publicTribeTimeZone }
             } else {
                 guard isContact(chat) else { throw Failure.notAChat }
             }
@@ -252,7 +252,7 @@ extension Engine {
     /// `timeZoneFreshness` of `now`. Nil when they have not shared one.
     public func localTime(of pubkey: String, member alias: String? = nil, at now: Date = .now) throws -> LocalTime? {
         if alias == nil, knownTribe(pubkey) != nil {
-            throw PeelError("a tribe has a local time per member; name the member")
+            throw Failure.memberNeeded
         }
         let since = now.addingTimeInterval(-Self.timeZoneFreshness).millisecondsSince1970
         guard let found = try storage.newestTimeZone(in: pubkey, member: alias, since: since) else { return nil }

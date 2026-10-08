@@ -181,12 +181,12 @@ public struct TribeSettings: Codable, Sendable, Equatable {
         settings.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         settings.photoURL = photoURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        guard !settings.name.isEmpty else { throw PeelError("a tribe needs a name") }
+        guard !settings.name.isEmpty else { throw Engine.Failure.tribeNeedsName }
         if let photo = settings.photoURL, photo != currentImage, photo.httpsOnly == nil {
-            throw PeelError("the image must be an https link")
+            throw Engine.Failure.tribeImageNotHTTPS
         }
         guard [pricePerMessageMsat, priceToJoinMsat, escrowMsat, escrowMillis].allSatisfy({ $0 <= UInt64(Int64.max) })
-        else { throw PeelError("an amount is too large") }
+        else { throw Engine.Failure.amountTooLarge }
         return settings
     }
 
@@ -300,7 +300,7 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
 
     public static func fetch(pubkey: String, host: String) async throws -> TribeInfo {
         let info = try JSONDecoder().decode(TribeInfo.self, from: try await record(pubkey: pubkey, host: host))
-        guard info.pubkey == pubkey else { throw PeelError("the tribes server answered for a different tribe") }
+        guard info.pubkey == pubkey else { throw Engine.Failure.tribeServerMismatch }
         return info
     }
 
@@ -309,7 +309,7 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     /// host comes from a link someone else may have sent.
     static func record(pubkey: String, host: String) async throws -> Data {
         guard let url = TribeLink.baseURL(host)?.appendingPathComponent("tribes/\(pubkey)") else {
-            throw PeelError("unreadable tribes host \(host)")
+            throw Engine.Failure.unreadableTribeHost(host)
         }
         do {
             return try await Web.get(url, limit: 1_000_000, what: "the tribe")

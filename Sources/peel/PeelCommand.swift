@@ -108,7 +108,12 @@ struct PeelCommand {
         do {
             try await run()
         } catch {
-            FileHandle.standardError.write(Data("error: \(PeelError.readable(error))\n".utf8))
+            let hint = switch error as? Engine.Failure {
+            case .noMemesServer?: " (set one with --memes-host)"
+            case .noCallServer?: " (set one with --call-server)"
+            default: ""
+            }
+            FileHandle.standardError.write(Data("error: \(PeelError.readable(error))\(hint)\n".utf8))
             exit(1)
         }
     }

@@ -134,8 +134,8 @@ struct TribeTests {
     }
 
     @Test func settingsNeedANameAndAnHttpsImage() throws {
-        #expect(throws: PeelError.self) { try TribeSettings(name: "  ").validated() }
-        #expect(throws: PeelError.self) { try TribeSettings(name: "Club", photoURL: "http://x/p.png").validated() }
+        #expect(throws: Engine.Failure.tribeNeedsName) { try TribeSettings(name: "  ").validated() }
+        #expect(throws: Engine.Failure.tribeImageNotHTTPS) { try TribeSettings(name: "Club", photoURL: "http://x/p.png").validated() }
         let trimmed = try TribeSettings(name: " Club ", summary: " ", photoURL: "").validated()
         #expect(trimmed.name == "Club")
         #expect(trimmed.summary == nil)
@@ -159,7 +159,7 @@ struct TribeTests {
     @Test func anImageTheTribeAlreadyHasIsKeptWhateverItsScheme() throws {
         let settings = TribeSettings(name: "Club", photoURL: "http://x/p.png")
         #expect(try settings.validated(currentImage: "http://x/p.png").photoURL == "http://x/p.png")
-        #expect(throws: PeelError.self) { try settings.validated(currentImage: "https://x/other.png") }
+        #expect(throws: Engine.Failure.tribeImageNotHTTPS) { try settings.validated(currentImage: "https://x/other.png") }
     }
 
     @Test func onlyAnActiveMemberWhoHasNotLeftCanPost() {

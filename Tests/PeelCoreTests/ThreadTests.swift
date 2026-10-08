@@ -197,7 +197,7 @@ struct ThreadTests {
         #expect(threads.map(\.uuid) == [uuid(10), uuid(7), uuid(1)])
         #expect(threads[0].chat == dm)
         #expect(threads[0].latest?.content == "m12")
-        let tribeThread = threads[1]
+        let tribeThread = threads[2]
         #expect(tribeThread.latest?.content == "m6")
         #expect(tribeThread.participants.map(\.alias) == ["dan", "cat", "ann"])
     }

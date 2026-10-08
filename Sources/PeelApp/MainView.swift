@@ -598,20 +598,15 @@ struct ConversationIcon: View {
     }
 }
 
-/// A tribe's image on a rounded square, or `#` like a Slack channel.
+/// A tribe's image, or its initial on its own colour, on a rounded square:
+/// the square is what tells a tribe from a person.
 struct TribeIcon: View {
     let name: String
     let url: String?
     let size: CGFloat
 
     var body: some View {
-        if url != nil {
-            Avatar(name: name, url: url, size: size, shape: .roundedSquare)
-        } else {
-            Text("#")
-                .font(Theme.font(size * 0.85, .medium))
-                .frame(width: size, height: size)
-        }
+        Avatar(name: name, url: url, size: size, shape: .roundedSquare)
     }
 }
 
@@ -961,9 +956,11 @@ struct Avatar: View {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 tone.overlay {
-                    if size >= 24 {
+                    // A tribe keeps its letter down to the sidebar's 18pt, since
+                    // the letter is how you find it; a small person shows colour.
+                    if size >= 24 || (shape == .roundedSquare && size >= 16) {
                         Text(name.prefix(1).uppercased())
-                            .font(Theme.font(size * 0.42, .bold))
+                            .font(Theme.font(size * (size < 24 ? 0.55 : 0.42), .bold))
                             .foregroundStyle(.white)
                     }
                 }

@@ -100,9 +100,9 @@ struct StorageTests {
             uuid: "u1", serverIndex: 42, fromMe: true, body: #"{"content":"changed"}"#, content: "changed",
             msat: 3_000, timestamp: 2_000, tag: "tag-2", paymentHash: "hash"
         )
-        let stored = try storage.apply(Storage.Commit(messages: [(first, false, nil)]))
+        let stored = try storage.apply(Storage.Commit(messages: [(first, false, nil)])).stored
         #expect(stored.count == 1)
-        let updated = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).first)
+        let updated = try #require(try storage.apply(Storage.Commit(messages: [(echo, false, nil)])).stored.first)
 
         #expect(updated.id == stored.first?.id)
         #expect(updated.serverIndex == 42)
@@ -121,7 +121,7 @@ struct StorageTests {
     @Test func laterCopyFillsMissingBodyFields() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: nil), false, nil)]))
-        let row = try #require(try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: "late"), false, nil)])).first)
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: "late"), false, nil)])).stored.first)
         #expect(row.content == "late")
     }
 
@@ -131,7 +131,7 @@ struct StorageTests {
         let stored = try storage.apply(Storage.Commit(messages: [
             (.fixture(uuid: "u1", serverIndex: 9, chat: "02bb", content: "hijack"), false, nil),
             (.fixture(uuid: "u2", chat: "02bb", content: "fine"), false, nil),
-        ]))
+        ])).stored
         #expect(stored.map(\.uuid) == ["u2"])
         let original = try rows(profile, "SELECT chat, content, serverIndex FROM message WHERE uuid = 'u1'")
         #expect(original.count == 1)
@@ -143,7 +143,7 @@ struct StorageTests {
     @Test func uuidReusedWithOtherDirectionIsRejected() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: true), false, nil)]))
-        let stored = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: false, content: "x"), false, nil)]))
+        let stored = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", fromMe: false, content: "x"), false, nil)])).stored
         #expect(stored.isEmpty)
     }
 

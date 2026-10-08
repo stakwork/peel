@@ -46,7 +46,7 @@ public struct Invoice: Sendable, Equatable {
     private static func parse(_ bolt11: String) throws -> Parsed {
         if let known = parsed.withLock({ $0[bolt11] }) { return known }
         guard let json = try? Sphinxrs.parseInvoice(invoiceJson: bolt11),
-              let read = try? JSONDecoder().decode(Parsed.self, from: Data(json.utf8)), read.paymentHash.isHash else {
+              let read = JSON.decode(Parsed.self, from: json), read.paymentHash.isHash else {
             throw Engine.Failure.unreadableInvoice
         }
         parsed.withLock { cache in
@@ -163,7 +163,7 @@ public struct PaymentRecord: Codable, Sendable, Equatable, FetchableRecord, Pers
                 case msgIdx = "msg_idx"
             }
         }
-        guard let rows = try? JSONDecoder().decode([FailableDecodable<Row>].self, from: Data(json.utf8)) else { return [] }
+        guard let rows = JSON.decode([FailableDecodable<Row>].self, from: json) else { return [] }
         return rows.compactMap(\.value).compactMap { row in
             guard let rhash = row.rhash?.lowercased(), rhash.isHash, let ts = row.ts.flatMap(Int64.init(exactly:)),
                   let amount = row.amtMsat.flatMap(Int64.init(exactly:)) else { return nil }

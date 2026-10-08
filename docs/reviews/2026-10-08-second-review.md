@@ -654,6 +654,7 @@ merged. Batches marked **behaviour** need Tom's eye.
 **Status.**
 - **Batch 1:** in review, #80 (2026-10-08). It also touches `Transport.swift`, `Engine+History` (`request`) and `AddContactForm`, which Q1 needed. Left for batch 9: `deliver`'s `transport == nil` snapshot, the three "may have gone" sentences, and `inviteNotConfirmed`'s unused text.
 - **Batch 4:** in review (2026-10-08). 1.13's end marker left as it is: since #84 the list ends flush on its last row (checked on a copy of `og-div2`), so no scrolling changed for it.
+- **Batch 7:** in review (2026-10-08). Left as they are: the decodes that throw or read `Data` (their errors are what the caller reports), the `json_extract(sender,'$.alias')` copies and the `senderAlias` column (5.1, optional), and 3.3's contact lookups (batch 13). `threads()` now finds a reply of ours in the thread's own chat only, which every reply of ours is.
 
 ### Waves
 

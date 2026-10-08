@@ -176,17 +176,13 @@ struct InviteStorageTests {
         )
         var commit = Storage.Commit(contacts: [(keyG, true), (key2G, true)], messages: [(theirs, true, nil)])
         commit.marksNewContacts = true
-        var purged: [String] = [], received: [Message] = [], addedUs: [Message] = []
-        _ = try storage.apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
-        #expect(addedUs.map(\.chat) == [keyG])
+        #expect(try storage.apply(commit).addedUs.map(\.chat) == [keyG])
         _ = try storage.apply(Storage.Commit(messages: [(replayed, true, nil)]))
         var rows = try await readStates(storage)
         #expect(rows[keyG]?.isNew == true)
         #expect(rows[key2G]?.isNew == false)
         #expect(try storage.clearNewContact(keyG))
-        addedUs = []
-        _ = try storage.apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
-        #expect(addedUs.isEmpty)
+        #expect(try storage.apply(commit).addedUs.isEmpty)
         rows = try await readStates(storage)
         #expect(rows[keyG]?.isNew == false)
     }

@@ -50,7 +50,7 @@ extension Engine {
             mediaType: outgoing.mediaType, fileName: outgoing.fileName,
             fileSize: Int64(plain.count), upload: Message.Upload.pending.rawValue
         )
-        guard let row = try storage.apply(Storage.Commit(messages: [(draft, false, nil)])).first, let id = row.id else {
+        guard let row = try storage.apply(Storage.Commit(messages: [(draft, false, nil)])).stored.first, let id = row.id else {
             throw PeelError("the attachment was not stored")
         }
         do {

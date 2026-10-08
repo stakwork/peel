@@ -184,22 +184,56 @@ extension Storage {
     /// the invoice we made settled, or another device saw the payer's
     /// payment (type 3) bring at least its amount; theirs follows our
     /// payment of it, or a successful payment of it in the history.
-    /// `requesterNodes` are the chat's (`requesterNodes(_:)`).
+    /// `requesterNodes` are the chat's (`requesterNodes(_:)`). One read each
+    /// of the invoices, the history and the payers' type 3s, by payment
+    /// hash, for all of them.
     static func requests(
         in messages: [Message], requesterNodes: Set<String>, _ db: Database
     ) throws -> [Int64: PaymentRequest] {
+        let asked = messages.compactMap { message -> (Int64, Message, Invoice?)? in
+            guard message.type == MessageType.invoice, let id = message.id else { return nil }
+            return (id, message, Engine.requestInvoice(message.body))
+        }
+        guard !asked.isEmpty else { return [:] }
+        let hashes = Array(Set(asked.compactMap(\.2?.paymentHash)))
+        let invoices = Dictionary(
+            try InvoiceRecord.fetchAll(
+                db, sql: "SELECT * FROM invoice WHERE paymentHash IN (SELECT value FROM json_each(?))",
+                arguments: [json(hashes)]
+            ).map { (MoneyKey($0.paymentHash, !$0.incoming), $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let sent = try sentInHistory(hashes, db)
+        // The payer's message proves the sats came only with the payment it rode on.
+        let payerPayments = Dictionary(
+            grouping: try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message WHERE fromMe = 0 AND type = \(MessageType.invoicePayment)
+                        AND paymentHash IN (SELECT value FROM json_each(?))
+                    ORDER BY timestamp
+                    """,
+                arguments: [json(hashes)]
+            ),
+            by: { $0.paymentHash ?? "" }
+        )
         var requests: [Int64: PaymentRequest] = [:]
-        for message in messages where message.type == MessageType.invoice {
-            guard let id = message.id else { continue }
-            let invoice = BodyFields.decode(message.body)?.invoice.flatMap { try? Invoice($0) }
+        for (id, message, invoice) in asked {
             var request = PaymentRequest(
                 invoice: invoice, state: .open,
                 paysRequester: !message.fromMe && invoice.map { requesterNodes.contains($0.payee) } ?? false
             )
             if let invoice {
-                request.state = message.fromMe
-                    ? try requestOfOursState(invoice, chat: message.chat, db)
-                    : try ourPayment(of: invoice.paymentHash, db) ?? .open
+                let hash = invoice.paymentHash
+                if message.fromMe {
+                    let amount = Int64(clamping: invoice.amountMsat)
+                    request.state = requestOfOursState(
+                        made: invoices[MoneyKey(hash, false)],
+                        payerPayment: payerPayments[hash]?.first { $0.chat == message.chat && ($0.msat ?? -1) >= amount }
+                    )
+                } else {
+                    request.state = ourPayment(invoices[MoneyKey(hash, true)], sent: { sent[hash] }) ?? .open
+                }
             }
             requests[id] = request
         }
@@ -226,52 +260,64 @@ extension Storage {
         return nodes
     }
 
-    private static func requestOfOursState(_ invoice: Invoice, chat: String, _ db: Database) throws -> PaymentRequest.State {
-        if let made = try Self.invoice(invoice.paymentHash, incoming: true, db) {
+    /// A request of ours, from the invoice we made for it and the earliest
+    /// payer's type 3 that brought at least its amount.
+    private static func requestOfOursState(made: InvoiceRecord?, payerPayment: Message?) -> PaymentRequest.State {
+        if let made {
             if made.status == .paid { return .paid(at: made.paid) }
             if made.status == .underpaid { return .underpaid(msat: made.paidMsat) }
         }
-        // The payer's message proves the sats came only with the payment it rode on.
-        let payment = try Message.fetchOne(
-            db,
-            sql: """
-                SELECT * FROM message WHERE chat = ? AND fromMe = 0 AND type = \(MessageType.invoicePayment)
-                    AND paymentHash = ? AND msat >= ? ORDER BY timestamp LIMIT 1
-                """,
-            arguments: [chat, invoice.paymentHash, Int64(clamping: invoice.amountMsat)]
-        )
-        return payment.map { .paid(at: $0.date) } ?? .open
+        return payerPayment.map { .paid(at: $0.date) } ?? .open
     }
 
     /// Our payment of someone else's invoice, as a request's state; nil when
     /// there is none.
     private static func ourPayment(of hash: String, _ db: Database) throws -> PaymentRequest.State? {
-        if let ours = try Self.invoice(hash, incoming: false, db) {
+        try ourPayment(try Self.invoice(hash, incoming: false, db), sent: { try sentInHistory([hash], db)[hash] })
+    }
+
+    /// From our invoice payment record (`ours`) and, read only when needed,
+    /// the newest successful payment of it in the history (`sent`).
+    private static func ourPayment(
+        _ ours: InvoiceRecord?, sent: () throws -> Date?
+    ) rethrows -> PaymentRequest.State? {
+        if let ours {
             switch ours.status {
             // An invoice we pay is never underpaid; that is only ours received.
             case .pending, .open, .underpaid, .unsettled: return .paying
             case .paid: return .paid(at: ours.paid)
             case .failed:
                 // Another device may have paid it since.
-                if let at = try sentInHistory(hash, db) { return .paid(at: at) }
+                if let at = try sent() { return .paid(at: at) }
                 return .failed(ours.error)
             }
         }
-        return try sentInHistory(hash, db).map { .paid(at: $0) }
+        return try sent().map { .paid(at: $0) }
     }
 
-    private static func sentInHistory(_ hash: String, _ db: Database) throws -> Date? {
-        try Int64.fetchOne(
+    /// The newest successful payment of each of `hashes` in the history,
+    /// from any device.
+    private static func sentInHistory(_ hashes: [String], _ db: Database) throws -> [String: Date] {
+        var sent: [String: Date] = [:]
+        for row in try Row.fetchAll(
             db,
-            sql: "SELECT MAX(ts) FROM payment WHERE rhash = ? AND incoming = 0 AND IFNULL(error, '') = ''",
-            arguments: [hash]
-        ).map(Date.init(millisecondsSince1970:))
+            sql: """
+                SELECT rhash, MAX(ts) AS ts FROM payment
+                WHERE rhash IN (SELECT value FROM json_each(?)) AND incoming = 0 AND IFNULL(error, '') = ''
+                GROUP BY rhash
+                """,
+            arguments: [json(hashes)]
+        ) {
+            sent[row["rhash"]] = Date(millisecondsSince1970: row["ts"])
+        }
+        return sent
     }
 
     // MARK: Paid attachments
 
     /// The state of each paid attachment among `messages`, by row id.
-    /// One read of each chat's purchase messages, grouped by token, for all of them.
+    /// One read of the purchase messages naming their tokens, by chat and
+    /// token, for all of them.
     static func purchases(in messages: [Message], _ db: Database) throws -> [Int64: PurchaseState] {
         let paid = messages.compactMap { message -> (Int64, Message, String)? in
             guard let id = message.id, message.attachmentPriceMsat != nil,
@@ -280,10 +326,19 @@ extension Storage {
         }
         guard !paid.isEmpty else { return [:] }
         var related: [String: [String: [Message]]] = [:]
-        for chat in Set(paid.map(\.1.chat)) {
-            related[chat] = Dictionary(grouping: try purchaseMessages(in: chat, db)) {
-                AttachmentFields.decode($0.body)?.mediaToken ?? ""
-            }
+        for message in try Message.fetchAll(
+            db,
+            sql: """
+                SELECT * FROM message WHERE chat IN (SELECT value FROM json_each(?)) AND deleted = 0
+                    AND type IN (\(MessageType.purchase), \(MessageType.purchaseAccept), \(MessageType.purchaseDeny))
+                    AND json_valid(body) AND json_extract(body, '$.mediaToken') IN (SELECT value FROM json_each(?))
+                ORDER BY timestamp, id
+                """,
+            arguments: [json(Array(Set(paid.map(\.1.chat)))), json(Array(Set(paid.map(\.2))))]
+        ) {
+            // Grouped by the token as Peel reads the body, which the SQL only narrows to.
+            guard let token = AttachmentFields.decode(message.body)?.mediaToken else { continue }
+            related[message.chat, default: [:]][token, default: []].append(message)
         }
         var states: [Int64: PurchaseState] = [:]
         for (id, message, token) in paid {
@@ -295,19 +350,6 @@ extension Storage {
     public func purchaseState(of attachment: Message) throws -> PurchaseState? {
         guard attachment.attachmentPriceMsat != nil else { return nil }
         return try pool.read { db in try Self.purchaseState(of: attachment, db) }
-    }
-
-    /// The purchase messages of one chat, oldest first (`message_purchase`).
-    private static func purchaseMessages(in chat: String, _ db: Database) throws -> [Message] {
-        try Message.fetchAll(
-            db,
-            sql: """
-                SELECT * FROM message WHERE chat = ? AND deleted = 0
-                    AND type IN (\(MessageType.purchase), \(MessageType.purchaseAccept), \(MessageType.purchaseDeny))
-                ORDER BY timestamp, id
-                """,
-            arguments: [chat]
-        )
     }
 
     /// The purchase messages of one chat that name this media token.

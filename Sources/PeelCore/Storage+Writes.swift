@@ -52,35 +52,28 @@ extension Storage {
         var marksNewContacts = false
     }
 
-    /// Returns the stored rows; messages the upsert rejected are left out.
-    func apply(_ commit: Commit) throws -> [Message] {
+    /// What one `apply` did.
+    struct Applied {
+        /// The rows stored; messages the upsert rejected are left out.
+        var stored: [Message] = []
+        /// The bodies of attachments a delete emptied, so their decrypted
+        /// copies can be removed from the cache.
         var purged: [String] = []
-        return try apply(commit, purged: &purged)
-    }
-
-    /// As `apply`, also giving the bodies of attachments a delete emptied, so
-    /// their decrypted copies can be removed from the cache.
-    func apply(_ commit: Commit, purged: inout [String]) throws -> [Message] {
+        /// The sats that reached this account: direct payments to it and
+        /// boosts on its own messages, stored for the first time, with real
+        /// sats (never an amount only declared), not deleted and past the
+        /// chat's read marker (so a restore or catch-up of what was already
+        /// seen stays quiet).
         var received: [Message] = []
-        return try apply(commit, purged: &purged, received: &received)
-    }
-
-    func apply(_ commit: Commit, purged: inout [String], received: inout [Message]) throws -> [Message] {
+        /// The key exchanges of people adding this account seen for the
+        /// first time (only with `marksNewContacts`).
         var addedUs: [Message] = []
-        return try apply(commit, purged: &purged, received: &received, addedUs: &addedUs)
     }
 
-    /// As `apply`, also giving the sats that reached this account in this
-    /// commit (`received`): direct payments to it and boosts on its own
-    /// messages, stored for the first time, with real sats (never an amount
-    /// only declared), not deleted and past the chat's read marker (so a
-    /// restore or catch-up of what was already seen stays quiet), and the
-    /// key exchanges of people adding this account seen for the first time
-    /// (`addedUs`, only with `marksNewContacts`).
-    func apply(
-        _ commit: Commit, purged: inout [String], received: inout [Message], addedUs: inout [Message]
-    ) throws -> [Message] {
+    @discardableResult
+    func apply(_ commit: Commit) throws -> Applied {
         try pool.write { db in
+            var applied = Applied()
             for (key, value) in commit.state {
                 try CoreStateRow(key: key, value: value).upsert(db)
             }
@@ -102,7 +95,6 @@ extension Storage {
             for tribe in commit.tribes {
                 try tribe.upsert(db)
             }
-            var stored: [Message] = []
             // Payments and boosts stored for the first time, checked once
             // this commit's read markers are in.
             var fresh: [Message] = []
@@ -114,10 +106,10 @@ extension Storage {
                     db, sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)", arguments: [message.uuid]
                 ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
-                stored.append(row)
+                applied.stored.append(row)
                 if isNew, money { fresh.append(row) }
                 if isNew, addsUs {
-                    addedUs.append(row)
+                    applied.addedUs.append(row)
                     try db.execute(
                         sql: "INSERT INTO contact (pubkey, isNew) VALUES (?, 1) ON CONFLICT(pubkey) DO UPDATE SET isNew = 1",
                         arguments: [row.chat]
@@ -138,7 +130,7 @@ extension Storage {
             // fails to send leaves the message as everyone else still sees it.
             for (message, _, _) in commit.messages
             where message.type == MessageType.delete && !(message.fromMe && message.serverIndex == nil) {
-                if let deleted = try Self.applyDelete(message, purged: &purged, in: db) { stored.append(deleted) }
+                if let deleted = try Self.applyDelete(message, purged: &applied.purged, in: db) { applied.stored.append(deleted) }
             }
             for record in commit.payments {
                 try record.upsert(db)
@@ -162,8 +154,8 @@ extension Storage {
                        db, sql: "SELECT * FROM message WHERE tag = ? AND fromMe = 1 AND type = ?",
                        arguments: [tag, MessageType.delete]
                    ),
-                   let deleted = try Self.applyDelete(delete, purged: &purged, in: db) {
-                    stored.append(deleted)
+                   let deleted = try Self.applyDelete(delete, purged: &applied.purged, in: db) {
+                    applied.stored.append(deleted)
                 }
             }
             for (hash, msat) in commit.settling {
@@ -185,7 +177,7 @@ extension Storage {
             for (chat, index) in commit.reads {
                 try Self.applyServerRead(db, chat: chat, index: index)
             }
-            received += try fresh.filter { try Self.isMoneyForMe($0, db) }
+            applied.received = try fresh.filter { try Self.isMoneyForMe($0, db) }
             for (chat, level) in commit.mutes {
                 try Self.setMute(db, chat: chat, level: level)
             }
@@ -210,9 +202,9 @@ extension Storage {
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]
                 )
-                if let row { stored.append(row) }
+                if let row { applied.stored.append(row) }
             }
-            return stored
+            return applied
         }
     }
 
@@ -447,12 +439,14 @@ extension Storage {
         try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag, error: error) }
     }
 
-    /// Only a payment or boost can be unsettled. A status only moves forward: an unconfirmed send becomes delivered,
+    /// A status only moves forward: an unconfirmed send becomes delivered,
     /// unsettled or failed, an unsettled one delivered or failed, a failed
     /// one delivered (the server had it after all), and a delivered one never
     /// changes. So a late or synthesised failure can never make a payment
-    /// that went through retryable. An invoice we pay follows the same rule
-    /// (unsettled leaves it pending), and keeps the server's reason for a failure.
+    /// that went through retryable. Only a message that moves sats
+    /// (`MessageType.moneySends`) can be unsettled. An invoice we pay follows
+    /// the same rule, unsettled included (held: it is never paid again until
+    /// it settles or fails), and keeps the server's reason for a failure.
     private static func setStatus(_ db: Database, _ status: String, tag: String, error: String? = nil) throws {
         try db.execute(
             sql: """

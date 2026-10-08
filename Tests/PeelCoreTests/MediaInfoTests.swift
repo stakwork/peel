@@ -93,7 +93,7 @@ struct MediaInfoTests {
         )
         message.mediaType = "video/mov"
         message.fileSize = 30_000_000
-        let id = try #require(try storage.apply(Storage.Commit(messages: [(message, false, nil)])).first?.id)
+        let id = try #require(try storage.apply(Storage.Commit(messages: [(message, false, nil)])).stored.first?.id)
 
         await #expect(throws: Engine.Failure.largeAttachment(size: 30_000_000)) {
             try await engine.downloadAttachment(messageID: id, upTo: Engine.autoDownloadLimit)

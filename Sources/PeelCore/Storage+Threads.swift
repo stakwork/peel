@@ -162,11 +162,13 @@ extension Storage {
             .trackingConstantRegion { db in
                 try Self.threadSummaries(
                     db,
-                    // Only threads with a message of ours are grouped at all.
+                    // Only threads with a message of ours are grouped at all:
+                    // a reply (`message_thread`) or the original (by uuid).
                     where: """
-                        t.chat IN (SELECT chat FROM (\(Self.chatsSQL))) AND t.threadUUID IN (
-                            SELECT threadUUID FROM message WHERE fromMe = 1 AND threadUUID IS NOT NULL
-                            UNION SELECT uuid FROM message WHERE fromMe = 1 AND uuid IS NOT NULL
+                        t.chat IN (SELECT chat FROM (\(Self.chatsSQL))) AND (
+                            EXISTS (SELECT 1 FROM message x
+                                    WHERE x.chat = t.chat AND x.threadUUID = t.threadUUID AND x.fromMe = 1)
+                            OR EXISTS (SELECT 1 FROM message x WHERE x.uuid = t.threadUUID AND x.fromMe = 1)
                         )
                         """,
                     also: "ORDER BY g.threadLast DESC, o.id DESC LIMIT 200"
@@ -310,7 +312,7 @@ extension Storage {
             let key = "\(row["chat"] as String)/\(row["threadUUID"] as String)"
             guard result[key, default: []].count < 3 else { continue }
             let fromMe: Bool = row["fromMe"]
-            let info = (row["sender"] as String?).flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }
+            let info = JSON.decode(SenderInfo.self, from: row["sender"] as String?)
             let participant = ThreadParticipant(
                 alias: fromMe ? nil : info?.alias?.nilIfEmpty, photoURL: fromMe ? nil : info?.photoURL?.httpsOnly,
                 fromMe: fromMe

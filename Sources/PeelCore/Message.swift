@@ -131,7 +131,7 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 
     var senderInfo: SenderInfo? {
-        sender.flatMap { try? JSONDecoder().decode(SenderInfo.self, from: Data($0.utf8)) }
+        JSON.decode(SenderInfo.self, from: sender)
     }
 
     /// The name the sender gave. In a tribe this is the member, made unique
@@ -368,7 +368,7 @@ struct BodyFields: Decodable {
     let price: String?
 
     static func decode(_ body: String?) -> BodyFields? {
-        body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }
+        JSON.decode(BodyFields.self, from: body)
     }
 }
 
@@ -379,7 +379,7 @@ enum DeclaredAmount {
     private struct Field: Decodable { let amount: UInt64 }
 
     static func decode(_ body: String?) -> Int64? {
-        body.flatMap { try? JSONDecoder().decode(Field.self, from: Data($0.utf8)) }.map { Int64(clamping: $0.amount) }
+        JSON.decode(Field.self, from: body).map { Int64(clamping: $0.amount) }
     }
 }
 

@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-07 (evening). This is the architecture and the phase index. Each phase
+Last updated 2026-10-08. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -106,10 +106,15 @@ only needed for TestFlight and the iPhone target.
 | 2 | Safe accounts: Keychain, PIN, onboarding, restore | core goal reached; leftovers listed in the file | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | tribes built; replies and threads and attachments in the engine, storage and CLI (attachments on `phase3/attachments`), UI to come | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | boosts and in-chat payments built (engine, storage, CLI and UI); invoices and history next | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
-| 5 | Parity: contacts, profile, People, web apps, languages | planned | [phases/05-parity.md](phases/05-parity.md) |
-| 6 | Calls | planned | [phases/06-calls.md](phases/06-calls.md) |
+| 6 | Calls (LiveKit) | **next**, after the 2026-10-08 cleanup (#30, #31, the review's fixes); plan written, awaiting Tom | [phases/06-calls.md](phases/06-calls.md) |
+| 5 | Parity: contacts, profile, People, web apps, languages | planned, after calls | [phases/05-parity.md](phases/05-parity.md) |
 | 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/08-local-tools.md](phases/08-local-tools.md) |
+
+Calls come before parity (Tom, 2026-10-08): they are core messaging, the
+team starts calls from chats every day, and Peel cannot be his daily client
+without them. The phase numbers stay as they are so links keep working; the
+table is in build order.
 
 ## Scope (decided 2026-10-05)
 

@@ -1,6 +1,6 @@
 # Phase 8 — Audit before sharing
 
-Status: planned. Runs after the feature phases (1 to 7, and 10) and after
+Status: planned. Runs after the feature phases (1 to 7, 9 and 10) and after
 Tom has used the app on his real account for a while. Nothing goes to the team before it
 passes. Added 2026-10-07.
 

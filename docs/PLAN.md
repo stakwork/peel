@@ -16,12 +16,14 @@ protocol, the JSON shape of each message type, and the side services. Everything
 else is designed from first principles. "Parity" with the official app means the
 same capabilities, not the same screens.
 
-Peel is also the base for the sovereign Sphinx agent: always-on agents, each a
-Sphinx account with its own child key, balance and memory, that you talk to by
-DM. The engine must therefore run headless and serve both the app and an agent
-host. The engine stays Swift for now (decided 2026-10-07); a separate always-on
-engine is a later phase. See [agent-native.md](agent-native.md) before changing
-the architecture.
+Peel is also the client for Tom's personal Sphinx agent: one agent contact, a
+Sphinx account of its own on an always-on host, with graph memory in LadybugDB,
+jobs run by Strut, and coding workers such as Claude Code behind it over ACP.
+The engine must therefore run headless and serve both the app and the agent
+host. The engine stays Swift for now (decided 2026-10-07). The design is in
+[agent-architecture.md](agent-architecture.md) and the engine rules in
+[agent-native.md](agent-native.md); read both before changing the
+architecture.
 
 The target layout and visual language are in [design/README.md](design/README.md):
 Slack-style tribes, direct messages and threads, in Sphinx's colours.
@@ -119,7 +121,7 @@ only needed for TestFlight and the iPhone target.
 
 ## Phases
 
-Rows are in build order (decided 2026-10-08 evening, below). The numbers are
+Rows are in build order (decided 2026-10-08 night, below). The numbers are
 the phase files' names and stay as they are; "—" rows have no phase file.
 
 | # | Phase | Status | File |
@@ -128,15 +130,17 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 2 | Safe accounts: Keychain, PIN, onboarding, restore | core goal reached; leftovers listed in the file | [phases/02-messaging.md](phases/02-messaging.md) |
 | 3 | Tribes, threads and attachments | built and merged: tribes with parity, replies and threads, attachments, the chat UI, notifications, mark as unread; leftovers listed in the file | [phases/03-chat.md](phases/03-chat.md) |
 | 4 | Money | built and merged: boosts, in-chat payments, the Payments screen, invoices, requests in chat, paid attachments; payment templates moved to the v1 extras step; Lightning-backed tests open | [phases/04-money.md](phases/04-money.md); Payments screen plan: [phases/04-payments-screen-plan.md](phases/04-payments-screen-plan.md) |
-| 6 | Calls (LiveKit) | **now**: PRs 1–3 merged (#44, #54, #55); PR 4 (the call card) in progress; PRs 5–8 open | [phases/06-calls.md](phases/06-calls.md) |
+| 6 | Calls (LiveKit) | built: PRs 1–7 merged (#44, #54, #55, #59, #64, #70, #74); PR 8 open | [phases/06-calls.md](phases/06-calls.md) |
 | — | File splits | done: the move-only splits of refactor rows 10–13 (MainView, PeelMenu and Media; Storage; Engine; PeelCommand); row 12's one `JSON.decode` helper (decode the body once) is still open | [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md), "Refactor plan" |
-| 5 | Parity: contacts and the in-app web window | after the splits; the Account screen is built | [phases/05-parity.md](phases/05-parity.md) |
-| — | Remaining cleanup | replaced by the second review's cleanup plan: wave 1 bug fixes (batches 1–5), then core tidy, notification policy, money sends, network helpers, app reads, engine structure and the shared app pieces; it folds in the first review's open rows 6, 8, 12 and 14–18. Row 9 (styles and confirm controls) moves to the polish pass's form system; the iPhone model-sharing seams are a later batch (17) | [reviews/2026-10-08-second-review.md](reviews/2026-10-08-second-review.md), "Cleanup plan" |
-| — | Polish pass | a general pass over the app | — |
-| 10 | v1 extras: search and ⌘K, Markdown, voice messages, Giphy; plus payment templates, preferences sync, self-hosted certificates | planned; findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
-| 7 | iPhone | planned | [phases/07-iphone.md](phases/07-iphone.md) |
-| 8 | Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
-| 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
+| 5 | Parity: contacts and the in-app web window | built: the Account screen, the web pane (#73), contacts (#75); self-hosted certificates move to the rest of phase 10 | [phases/05-parity.md](phases/05-parity.md) |
+| — | 1. Cleanup | **next**: the second review's cleanup plan: wave 1 bug fixes (batches 1–5), then core tidy, notification policy, money sends, network helpers, app reads, engine structure and the shared app pieces; it folds in the first review's open rows 6, 8, 12 and 14–18. Row 9 (styles and confirm controls) moves to the polish pass's form system; the iPhone model-sharing seams are a later batch (17) | [reviews/2026-10-08-second-review.md](reviews/2026-10-08-second-review.md), "Cleanup plan" |
+| — | 2. Polish | a pass over the app: the form and popover redesign (which takes in first-review row 9, styles and confirm controls), and the tribe header as Call plus a More menu | — |
+| 10 | 3. Markdown in messages | pulled forward from phase 10, because agent replies are Markdown | [phases/10-v1-extras.md](phases/10-v1-extras.md), item 2 |
+| 9 | 4. The personal agent: one agent contact, the agent host, workers over ACP, then graph memory and Strut jobs | planned; the plan was refreshed 2026-10-08 | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md) |
+| 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, preferences sync, self-hosted certificates | planned; findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
+| 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
+| 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
+| — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Connections" |
 
 ### Refactor plan status
 
@@ -168,14 +172,42 @@ In v1:
 - An in-app web window for links and tribe apps.
 - Preferences sync and self-hosted certificates.
 
-Later: AI Agent. Out of v1: People (the public profile and bounty
+The personal agent (phase 9) is built after Markdown and before the rest
+of the v1 extras (decided 2026-10-08 night). Out of v1: People (the public profile and bounty
 directory at people.sphinx.chat), LSATs, languages, feeds and podcasts,
 Hive workspaces, the knowledge graph view, Jitsi, Strut dictation, Tor and
 relay-era code.
 
+## Decided 2026-10-08 (night, Tom)
+
+This replaces the order in "Decided 2026-10-08 (evening, Tom)" below.
+
+- **Peel's real purpose** is to become the client for a personal Sphinx
+  agent: one agent contact, graph memory in LadybugDB, jobs run by Strut.
+  The agreed design and the open decisions are in
+  [agent-architecture.md](agent-architecture.md). It supersedes PR #15's
+  "an agent is a contact; the harness is a setting": workers such as Claude
+  Code are not contacts.
+- **Order:**
+  1. Cleanup: the second review's cleanup plan
+     ([reviews/2026-10-08-second-review.md](reviews/2026-10-08-second-review.md)).
+  2. Polish, including the form and popover redesign and the tribe header
+     as Call plus a More menu.
+  3. Markdown in messages, pulled forward from phase 10, because agent
+     replies are Markdown.
+  4. The personal agent ([phases/09-agents.md](phases/09-agents.md)): the
+     refreshed plan, then the agent host and the agent as a contact over
+     ACP, then graph memory.
+  5. The rest of phase 10: ⌘K search, voice, Giphy, payment templates,
+     preferences sync, self-hosted certificates.
+  6. iPhone, paused; push notifications ignored for now.
+  7. The audit.
+- **Later:** Connections for the agent (calendar first), after graph memory.
+
 ## Decided 2026-10-08 (evening, Tom)
 
-This replaces the order in "Decided 2026-10-08" below.
+This replaced the order in "Decided 2026-10-08" below, and is itself
+superseded by the night decision above.
 
 - **Added to v1:** search (in a chat, and a ⌘K palette over every chat's
   messages, people and tribes), Giphy, voice messages, and Markdown beyond

@@ -168,8 +168,10 @@ separate section. Two differences:
 - **An "AGENT" label** next to the name on its messages, so others in a tribe
   know they are talking to an agent. Kept on 2026-10-07.
 
-Agent-specific views (budget, schedule, activity, approval cards) are not part
-of this layout yet; see `../agent-native.md`.
+Your own agent is one such contact; the workers behind it (Claude Code and
+others) are not contacts. Its views (threads in the DM, approval cards,
+Account › Agent) are in `agents.md`; the design is in
+`../agent-architecture.md`.
 
 ## Profile and onboarding
 

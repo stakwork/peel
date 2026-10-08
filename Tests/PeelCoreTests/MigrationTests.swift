@@ -95,6 +95,44 @@ struct MigrationTests {
         #expect(d?.amountMsat == 4000)
     }
 
+    /// v14 takes each stored message's `tz` from a `metadata` string holding
+    /// a JSON object, and a malformed one (or a body that is not JSON) leaves
+    /// the row without one rather than failing the migration.
+    @Test func timeZonesAreBackfilledFromStoredBodies() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v13")
+        let bodies = [
+            #"{"content":"a","metadata":"{\"tz\":\"GMT+1\"}"}"#,
+            #"{"content":"b","metadata":"{\"tz\":\"Europe/London\"}"}"#,
+            #"{"content":"c","metadata":{"tz":"GMT+1"}}"#,
+            #"{"content":"d","metadata":"not json"}"#,
+            #"{"content":"e","metadata":"[\"GMT+1\"]"}"#,
+            #"{"content":"f","metadata":"{\"tz\":5}"}"#,
+            #"{"content":"g","metadata":"{\"tz\":\"\#(String(repeating: "x", count: 65))\"}"}"#,
+            #"{"content":"h","metadata":"{\"tz\":\"\"}"}"#,
+            #"not json, metadata"#,
+            #"{"content":"i"}"#,
+            #"{"content":"j","metadata":"\"GMT+1\""}"#,
+        ]
+        try queue.write { db in
+            for (n, body) in bodies.enumerated() {
+                try db.execute(
+                    sql: "INSERT INTO message (uuid, type, chat, fromMe, body) VALUES (?, 0, '02aa', 0, ?)",
+                    arguments: [String(n), body]
+                )
+            }
+        }
+        try Storage.migrator.migrate(queue, upTo: "v14")
+        let found = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT uuid, senderTZ FROM message ORDER BY id")
+                .map { $0["senderTZ"] as String? }
+        }
+        #expect(found == ["GMT+1", "Europe/London"] + Array(repeating: nil, count: bodies.count - 2))
+        let schema = try schema(queue)
+        #expect(schema.contains(#"table chatTimeZone: CREATE TABLE "chatTimeZone" ("chat" TEXT PRIMARY KEY NOT NULL, "enabled" BOOLEAN NOT NULL DEFAULT 0, "identifier" TEXT, "updatedAt" INTEGER NOT NULL)"#))
+        #expect(schema.contains("index message_senderTZ: CREATE INDEX message_senderTZ ON message (chat, timestamp) WHERE senderTZ IS NOT NULL AND fromMe = 0"))
+    }
+
     /// The live constants that shipped migrations froze as literals. Queries build
     /// their `type IN (...)` lists from `MessageType`, and SQLite uses a partial
     /// index only when the list matches its predicate. If one changes, add a

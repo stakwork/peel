@@ -218,6 +218,31 @@ extension Storage {
                 CREATE INDEX message_paymentHash ON message (paymentHash) WHERE paymentHash IS NOT NULL;
                 """)
         }
+        migrator.registerMigration("v14") { db in
+            // Time zones: the `tz` a message's sender put in its `metadata`,
+            // as sent (readers parse it), worked out from the body, so stored
+            // history has it and a delete (which empties the body) clears it.
+            // `metadata` is whatever the sender wrote, so the guards run in
+            // order and a malformed value gives NULL rather than an error.
+            try db.execute(sql: """
+                ALTER TABLE message ADD COLUMN senderTZ TEXT GENERATED ALWAYS AS (CASE
+                    WHEN body IS NULL OR body NOT LIKE '%metadata%' OR NOT json_valid(body) THEN NULL
+                    WHEN json_type(body, '$.metadata') IS NOT 'text' THEN NULL
+                    WHEN NOT json_valid(json_extract(body, '$.metadata')) THEN NULL
+                    WHEN json_type(json_extract(body, '$.metadata'), '$.tz') IS NOT 'text' THEN NULL
+                    WHEN length(json_extract(json_extract(body, '$.metadata'), '$.tz')) BETWEEN 1 AND 64
+                    THEN json_extract(json_extract(body, '$.metadata'), '$.tz') END) VIRTUAL;
+                CREATE INDEX message_senderTZ ON message (chat, timestamp) WHERE senderTZ IS NOT NULL AND fromMe = 0;
+                """)
+            // Whether this account shares its own in each chat, in the shape
+            // of the official apps' preferences item `timezone`.
+            try db.create(table: "chatTimeZone") { t in
+                t.primaryKey("chat", .text)
+                t.column("enabled", .boolean).notNull().defaults(to: false)
+                t.column("identifier", .text)
+                t.column("updatedAt", .integer).notNull()
+            }
+        }
         return migrator
     }
 }

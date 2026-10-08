@@ -12,11 +12,17 @@ struct ConversationView: View {
 
     /// The narrowest the conversation gets beside a thread.
     private static let minimumWidth: CGFloat = 380
+    /// How narrow and how wide the thread may be dragged.
+    private static let threadRange = 300.0...560.0
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
         GeometryReader { geometry in
-            let both = geometry.size.width >= Self.minimumWidth + threadWidth + 1
+            // Beside the conversation, the thread gets what is left up to the
+            // width it was dragged to, so a drag or a narrow window shrinks it
+            // before the thread has to take the conversation's place.
+            let room = Double(geometry.size.width - Self.minimumWidth - 1)
+            let both = room >= Self.threadRange.lowerBound
             HStack(spacing: 0) {
                 // Its draft lives in the model, so it survives being covered.
                 if thread == nil || both {
@@ -24,10 +30,11 @@ struct ConversationView: View {
                 }
                 if let thread {
                     if both {
-                        PaneDivider(width: $threadWidth, range: 300...560, standard: ThreadPanel.width, growsTo: .leading)
+                        let range = Self.threadRange.lowerBound...min(Self.threadRange.upperBound, room)
+                        PaneDivider(width: $threadWidth, range: range, standard: ThreadPanel.width, growsTo: .leading)
                     }
                     ThreadPanel(conversation: conversation, ref: thread)
-                        .frame(width: both ? threadWidth : nil)
+                        .frame(width: both ? min(threadWidth, room) : nil)
                         .transition(.move(edge: .trailing))
                 }
             }

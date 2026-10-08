@@ -45,6 +45,11 @@ struct MainView: View {
 /// a few points either side of the line take the drag, the pointer turns
 /// into the resize cursor over them, and a double-click puts the standard
 /// width back.
+///
+/// The handle is an AppKit view rather than a SwiftUI hover and gesture:
+/// beside the thread panel it sits over the conversation's scroller, which
+/// otherwise takes the cursor and the click, and a cursor push on hover is
+/// undone by whatever the pointer crosses next.
 struct PaneDivider: View {
     @Binding var width: Double
     let range: ClosedRange<Double>
@@ -53,36 +58,101 @@ struct PaneDivider: View {
     /// pane on the left (the sidebar), `.leading` for one on the right.
     let growsTo: HorizontalEdge
 
-    @State private var start: Double?
+    /// The width when the drag began, as shown: a pane squeezed below the
+    /// width it was dragged to moves from where it is.
+    @State private var start = 0.0
 
     var body: some View {
         Theme.divider
             .frame(width: 1)
+            #if os(macOS)
             .overlay {
-                Color.clear
-                    .frame(width: 9)
-                    .contentShape(Rectangle())
-                    #if os(macOS)
-                    .onHover { inside in
-                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                    }
-                    #endif
-                    .gesture(
-                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                            .onChanged { drag in
-                                let from = start ?? width
-                                start = from
-                                let delta = Double(drag.translation.width) * (growsTo == .trailing ? 1 : -1)
-                                width = min(max(from + delta, range.lowerBound), range.upperBound)
-                            }
-                            .onEnded { _ in start = nil }
-                    )
-                    .onTapGesture(count: 2) { width = standard }
-                    .help("Drag to resize; double-click for the standard width")
+                ResizeHandle {
+                    start = fitted(width)
+                } dragged: { translation in
+                    let delta = Double(translation) * (growsTo == .trailing ? 1 : -1)
+                    resize(to: start + delta)
+                } reset: {
+                    resize(to: standard)
+                }
+                .frame(width: 9)
             }
+            #endif
             .zIndex(1)
     }
+
+    private func fitted(_ proposed: Double) -> Double {
+        min(max(proposed, range.lowerBound), range.upperBound)
+    }
+
+    /// Writes only a change: past either end every drag event proposes the same width.
+    private func resize(to proposed: Double) {
+        let new = fitted(proposed)
+        if new != width { width = new }
+    }
 }
+
+#if os(macOS)
+/// The divider's hit area: owns the resize cursor (as the view under the
+/// pointer, so nothing beneath can change it) and the drag, which starts on
+/// the first click even in a window that is not yet key.
+private struct ResizeHandle: NSViewRepresentable {
+    let began: () -> Void
+    /// Points the pointer has moved since the drag began.
+    let dragged: (CGFloat) -> Void
+    let reset: () -> Void
+
+    func makeNSView(context: Context) -> HandleView {
+        let view = HandleView()
+        view.toolTip = "Drag to resize; double-click for the standard width"
+        return view
+    }
+
+    func updateNSView(_ view: HandleView, context: Context) {
+        view.handle = self
+    }
+
+    final class HandleView: NSView {
+        var handle: ResizeHandle?
+        private var startX: CGFloat?
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if trackingAreas.isEmpty {
+                addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeAlways, .inVisibleRect], owner: self))
+            }
+        }
+
+        override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount > 1 {
+                startX = nil
+                handle?.reset()
+            } else {
+                startX = event.locationInWindow.x
+                handle?.began()
+            }
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let startX else { return }
+            // Kept while the pointer runs ahead of the line.
+            NSCursor.resizeLeftRight.set()
+            handle?.dragged(event.locationInWindow.x - startX)
+        }
+
+        /// Let go away from the handle: the cursor belongs to what is there.
+        override func mouseUp(with event: NSEvent) {
+            startX = nil
+            if !bounds.contains(convert(event.locationInWindow, from: nil)) { NSCursor.arrow.set() }
+        }
+    }
+}
+#endif
 
 /// Shown on development profiles, whose words are not in the Keychain.
 struct FileSecretsBanner: View {

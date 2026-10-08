@@ -52,6 +52,9 @@ final class AttachmentHandle {
         case idle
         case downloading
         case ready(DownloadedAttachment)
+        /// Too large to fetch on its own (a video or recording): it waits
+        /// for a click. Its size, when known.
+        case held(Int64?)
         case failed(String)
     }
 
@@ -373,17 +376,20 @@ extension AppModel {
     }
 
     /// Downloads an attachment into the cache, or finds it there, once at a
-    /// time. Ours still uploading has nothing on the server yet.
-    func download(_ message: Message) async {
+    /// time. Ours still uploading has nothing on the server yet. With
+    /// `upTo`, one larger is held (`.held`) until asked for without it.
+    func download(_ message: Message, upTo: Int? = nil) async {
         guard let id = message.id, let engine, message.uploadState != .pending, message.uploadState != .failed
         else { return }
         let handle = attachment(id)
-        if case .ready = handle.state { return }
         // One download per attachment; a second caller waits for it, so it
-        // can read the file once this returns.
-        if let running = handle.download {
-            _ = await running.value
-            return
+        // can read the file once this returns (or, held back by a limit this
+        // call does not have, fetch it whole).
+        while let running = handle.download { _ = await running.value }
+        switch handle.state {
+        case .ready: return
+        case .held where upTo != nil: return
+        case .idle, .downloading, .held, .failed: break
         }
         handle.state = .downloading
         // Owned by the model, not the view that asked: a lazy row is made and
@@ -391,7 +397,9 @@ extension AppModel {
         // the download off (as it once did photos, see `PhotoCache`).
         let download = Task {
             do {
-                handle.state = .ready(try await engine.downloadAttachment(messageID: id))
+                handle.state = .ready(try await engine.downloadAttachment(messageID: id, upTo: upTo))
+            } catch Engine.Failure.largeAttachment(let size) {
+                handle.state = .held(size)
             } catch {
                 handle.state = .failed(PeelError.readable(error))
             }
@@ -443,6 +451,28 @@ extension AppModel {
 
     private func fileName(of message: Message) -> String? {
         message.id.flatMap { attachment($0).downloaded?.fileName } ?? message.fileName
+    }
+
+    /// What an attachment is: what its bytes turned out to be once
+    /// downloaded (a fake video is a file), else what it says.
+    func attachmentKind(of message: Message) -> AttachmentKind? {
+        message.id.flatMap { attachment($0).downloaded?.kind } ?? message.attachmentKind
+    }
+
+    /// Downloads an attachment as it shows: images whole, videos and
+    /// recordings up to `Engine.autoDownloadLimit` (larger ones are held).
+    func autoDownload(_ message: Message) async {
+        let media = message.attachmentKind == .video || message.attachmentKind == .audio
+        await download(message, upTo: media ? Engine.autoDownloadLimit : nil)
+    }
+
+    /// Plays a video or recording, downloading it first if it was held
+    /// (the click asked for it).
+    func play(_ message: Message) async {
+        await download(message)
+        guard let id = message.id, let file = attachment(id).file,
+              attachmentKind(of: message) == message.attachmentKind else { return }
+        MediaPlayback.shared.play(id, file: file)
     }
 
     /// Puts an image on the clipboard; false when it is not downloaded or cannot be read.

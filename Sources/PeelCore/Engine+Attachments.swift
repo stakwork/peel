@@ -157,8 +157,10 @@ extension Engine {
     /// Downloads and decrypts an attachment into the profile's cache, or
     /// finds it there, reporting `.transfer` progress while it downloads.
     /// Only from this account's memes server; the bytes are checked against
-    /// the declared type, and nothing is ever opened.
-    public func downloadAttachment(messageID: Int64) async throws -> DownloadedAttachment {
+    /// the declared type, and nothing is ever opened. With `upTo`, one not
+    /// cached yet that is larger is refused as `largeAttachment` before its
+    /// body is read.
+    public func downloadAttachment(messageID: Int64, upTo: Int? = nil) async throws -> DownloadedAttachment {
         guard let message = try storage.message(id: messageID), message.type == MessageType.attachment,
               let fields = AttachmentFields.decode(message.body), let mediaToken = fields.mediaToken,
               let token = MediaToken(mediaToken) else { throw Failure.notAnAttachment }
@@ -180,11 +182,17 @@ extension Engine {
                 return (cached, AttachmentKind.verified(plain, declared: declared), plain.count)
             }.value
         } else {
+            if let upTo, let size = message.fileSize, size > upTo { throw Failure.largeAttachment(size: size) }
             // Encryption adds a header, padding and a MAC to what was sent.
-            let limit = Self.attachmentLimit + 128
+            let limit = min(upTo ?? .max, Self.attachmentLimit) + 128
             let progress = transferProgress(messageID, .download)
-            let (sealed, name) = try await withMemes(memes) { auth in
-                try await memes.download(mediaToken: mediaToken, token: auth, limit: limit, progress: progress)
+            let (sealed, name): (Data, String?)
+            do {
+                (sealed, name) = try await withMemes(memes) { auth in
+                    try await memes.download(mediaToken: mediaToken, token: auth, limit: limit, progress: progress)
+                }
+            } catch MemesServer.Failure.tooLarge(_, let size) where upTo != nil {
+                throw Failure.largeAttachment(size: size)
             }
             stored = try await Task.detached { [media] in
                 let plain = try MediaCrypto.decrypt(sealed, key: key)
@@ -194,6 +202,8 @@ extension Engine {
             try storage.setFile(id: messageID, name: name, size: Int64(stored.size))
             fileName = fileName ?? name
         }
+        // Unnamed by the server: what the Mac app calls it ("video.mov"), if it is what it says.
+        if fileName == nil, stored.kind == declared { fileName = AttachmentKind.fallbackName(mediaType: fields.mediaType) }
         return DownloadedAttachment(
             file: stored.file, kind: stored.kind, fileName: fileName, size: stored.size, cached: cached != nil
         )

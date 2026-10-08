@@ -7,14 +7,15 @@ struct MemesServer: Sendable {
         case unreadableHost(String)
         case refused(String, Int)
         case unreadableReply(String)
-        case tooLarge(Int)
+        /// Over the limit in bytes; the size when the server named it.
+        case tooLarge(Int, size: Int64? = nil)
 
         var description: String {
             switch self {
             case .unreadableHost(let host): "unreadable memes host \(host)"
             case .refused(let what, let status): "the memes server refused \(what) (HTTP \(status))"
             case .unreadableReply(let what): "the memes server's reply to \(what) was unreadable"
-            case .tooLarge(let limit): "the file is larger than \(limit / 1_000_000) MB"
+            case .tooLarge(let limit, _): "the file is larger than \(limit / 1_000_000) MB"
             }
         }
 
@@ -129,7 +130,8 @@ struct MemesServer: Sendable {
         ) {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let failure: Failure? = status != 200 ? .refused(what, status)
-                : response.expectedContentLength > Int64(limit) ? .tooLarge(limit) : nil
+                : response.expectedContentLength > Int64(limit)
+                    ? .tooLarge(limit, size: response.expectedContentLength) : nil
             state.withLock { state in
                 state.response = response as? HTTPURLResponse
                 state.failure = failure

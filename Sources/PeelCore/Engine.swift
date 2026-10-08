@@ -99,6 +99,9 @@ public actor Engine {
     /// Largest attachment sent or downloaded, and the most the cache keeps.
     static let attachmentLimit = 100_000_000
     static let mediaCacheLimit = 500_000_000
+    /// Videos and recordings up to this size download as they show; larger
+    /// ones wait to be asked for (images have no such rule: they are small).
+    public static let autoDownloadLimit = 25_000_000
     /// Where the official apps keep attachments.
     static let defaultMemesHost = "memes.sphinx.chat"
     static let defaultCallServer = "chat.sphinx.chat"

@@ -743,3 +743,258 @@ Not checked by hand: the app's hover bar, menu and "not settled" lines
   retried, discarded or synthesised failed (only a real FAILED moves it);
   only our mixer's status for our own tags reaches `setStatus`; the records
   never mark money moved on a PENDING; one-tap is stricter than before.
+
+## Money architecture (2026-10-07, branch `phase4/payments`)
+
+One money core, in layers; each layer reuses the ones under it and none has
+a second copy of a shared piece.
+
+| Layer | What | Where |
+|---|---|---|
+| 0. Balance | The mixer's ledger: `new_balance` from any core call, stored as `Setting.balanceMsat`, shown in the sidebar header only | `Engine.commit`, `Storage.balanceMsat` |
+| 1. Keysend messages | Sats riding a chat message: direct payments (5), boosts (29), tribe prices, purchases of paid attachments (7) and their refunds (9) | `Engine.deliver` |
+| 2. Payment history | The server's ledger (`fetch_payments`), paged and stored, joined to messages and invoices by payment hash | `PaymentRecord`, `Storage.paymentHistory` (`PaymentHistory.swift`) |
+| 3. Invoices | Lightning: invoices made here (Receive, requests in a chat) and paid from here (Pay an invoice, a request's Pay) | `Invoice`, `InvoiceRecord`, `Engine.createInvoice` / `requestPayment` / `payInvoice` / `payRequest` |
+
+The shared pieces, each in one place:
+
+- **Amounts are msat end to end.** Sats only at the edges (CLI arguments,
+  `Sats.msat`, the views' formatting). Every amount shown or paid for an
+  invoice comes from the invoice (`parse_invoice`), never from a message's
+  JSON; a received payment's amount is what arrived (`msat`), never what was
+  declared.
+- **One confirmation rule:** `Engine.checkPayment` (balance, then the
+  threshold, 100 sats by default, `confirmedMsat` naming the exact amount
+  confirmed). Boosts, payments, retries, invoices, requests and purchases all
+  go through it; the app's `PayButton` + `PaymentAttempt` arm on the
+  engine's `needsConfirmation` and confirm only that amount. Invoices add a
+  fee reserve to the balance check (`Engine.feeReserveMsat`: 1%, at least 10
+  sats).
+- **One in-flight tracker and status model:** a send's tag, `PENDING` until
+  the server says `COMPLETE` or `FAILED`, statuses only moving forward
+  (`Storage.setStatus`, now for messages and invoices we pay alike), and the
+  `get_tags` check on connect (`checkPendingSends`, now including invoice
+  payments, purchases and refunds; `MessageType.moneySends`). Anything that
+  may have paid is never sent again until the server says it failed. An
+  invoice payment's row is written with the core state before publishing
+  and refused at the database if one is pending or paid
+  (`Storage.insert(_:InvoiceRecord)`), plus an in-memory guard against a
+  double click (`payingInvoices`).
+- **One history:** the Payments screen, `peel history` and the request and
+  purchase states all read the same tables (`payment`, `invoice`,
+  `paymentPing`, `message`).
+
+## Payments screen, invoices, requests and paid attachments (2026-10-07, branch `phase4/payments`)
+
+Plan: `04-payments-screen-plan.md`. Boards: canvas "Peel layout directions",
+row "Payments" (P1–P5).
+
+### What the official apps and the core do (checked 2026-10-07)
+
+- **History** (`TransactionsListViewController`): `fetch_payments(since:
+  oldest ts − 1, limit: 50, reverse: true)`. Rows carry `amt_msat`, `ts` (ms),
+  `rhash`, `remote`, `msg_idx` (incoming only: that is the only direction
+  marker) and `error`. They are joined to messages by message index, then
+  payment hash. `payments_total` counts the whole server, not the account.
+- **Receive** in the official apps is `request_invoice` (the server's CLN
+  makes it); its payment arrives only as a new balance. Peel uses
+  `make_invoice` instead (see below). `make_invoice` with 0 msat writes an
+  invoice for 0, not one the payer fills in, and paying 0 sends nothing, so
+  Receive requires an amount. Expiry is the core's fixed hour.
+- **Paying:** `parse_invoice` takes the bare BOLT11 (the binding's argument
+  is misnamed `invoiceJson`) and returns `value` (msat), `payee`,
+  `payment_hash`, `description`, `expiry` (unix seconds) and `hop_hints`.
+  The official app pays with `pay_invoice(overpay = the amount)`, falling back
+  to `pay` (the server pays; no route needed here) when it has no route and
+  the invoice has no hint. The outcome is a `sent_status` with the tag; no
+  fee is reported. A send the asynchronous way also sends a 1-sat ping
+  keysend: Peel records it (`paymentPing`) and shows it inside its payment.
+- **Requests in chat:** type 2, `{"content": memo, "invoice": bolt11}`, no
+  amount field. Paying a contact's request is `pay_contact_invoice`, which
+  rides a type 3 (`{"paymentHash", "amount"}`) on the payment and a copy to
+  self; it requires the invoice's payee to be a contact. The official apps
+  make requests with `request_invoice`, whose payee is the server's node, so
+  `pay_contact_invoice` cannot pay them: Peel pays such a request as a plain
+  invoice and says on the card whom it pays.
+- **Paid attachments** (Mac and iOS v2 alike): the price is `amt` in the media
+  token's meta; nothing about the token is checked before paying. Before
+  buying, the receiver sees a bundled, generic blurred placeholder (no
+  preview exists in the message) with a lock and "Pay to Unlock", a bar
+  with "N SAT" and "PAY"; iOS asks "Confirm Purchase", the Mac app does not
+  ask. Buying sends type 7 `{"content":"", "mediaToken": token, "replyUuid":
+  uuid}` with the price. The seller's app answers when it processes the
+  purchase (so the seller must come online): if the sats cover the price
+  less 3, type 8 with `mediaKey` and the same token; else type 9 refunding
+  what came (Peel leaves an underpaid purchase unanswered; see Reviews). After type 8 the attachment downloads with the original token
+  and the type 8 key. Labels: "Processing payment...", "Purchase
+  Succeeded", "Purchase Denied" (the sender's own chip says "Purchase
+  Succeeded" for a denial too, a bug in both apps). In a tribe the key stays
+  in the message ("tribe admin will custodial it") and the seller's app does
+  not answer. Paid text (`sphinx/text`) drops `content` and reads "Pay to
+  unlock Message".
+
+### Built
+
+- **Engine:** `fetchPaymentHistory(before:)` (50 a page, newest first,
+  stored), `createInvoice`, `requestPayment(from:amountMsat:memo:)`,
+  `payInvoice(_:confirmedMsat:)`, `payRequest(messageID:confirmedMsat:)`,
+  `buyAttachment(messageID:confirmedMsat:)`, `sendAttachment(priceSats:)` and
+  the seller's automatic answer to a purchase (`answerPurchase`). Paying an
+  invoice refuses: no amount, expired, this account's own (made here, or
+  payee is us), pending, paid (here or, by the history, from another
+  device), over the balance less the fee reserve, over the threshold
+  unless confirmed. A request's amount and hash are read from its invoice
+  on arrival; someone's type 3 counts only with the core's payment hash and
+  at least the invoice's amount. An invoice made here turns paid on the
+  server's settle answer (`settled_status` `COMPLETE`) only if what arrived
+  covers it, else it is underpaid (the core settles any amount). Purchases are
+  answered once, with the key; an underpaid one is left unanswered, never
+  refunded automatically.
+- **Storage (v13):** tables `payment` (the server's history), `invoice` (made
+  or paid here), `paymentPing`; `Timeline.requests` and `Timeline.purchases`
+  / `ChatThread.purchases`; `paymentHistory(limit:)` joins it all and adds
+  ours the server has no row for yet (pending, failed, just made).
+- **CLI:** `history [pages]`, `invoice`, `decode`, `pay-invoice`, `request`,
+  `pay-request`, `buy`, `send-file --price`; `messages` prints request and
+  purchase states.
+- **App:** the Payments screen (`PaymentsView.swift`): one list grouped
+  Today / Yesterday / Earlier this week / Earlier, "Amounts in sats" in the
+  header, received "+500" in green, sent a plain "2,000" (Tom's banking-app
+  rule), pending grey with "Pending", failed struck through with "Failed";
+  older pages load at the end of the list; the newest page again when the
+  balance moves or the connection returns. Receive and Pay an invoice in the
+  header; a payment's detail, Receive and Pay in a 360 pt pane on the right
+  (Escape closes). Receive: amount (required, with why), memo, QR, Copy
+  invoice, Copy QR image, a countdown bar, then Paid with what arrived and
+  New invoice. Pay: paste or drop on the window; amount, who (a contact's
+  name when the payee is one), memo, expiry; amber notes (never red) for no
+  amount, expired, own, already paid (with Show that payment), pending, too
+  little balance (with Receive sats); then Paying, then Paid with the fee
+  once the history has it. In a DM the composer's bolt is "Send or request
+  sats" (Send | Request); a request is a card with who asked, the amount,
+  the memo and Pay (or Paid, Paying, Expired). Paid attachments: someone
+  else's shows a soft veil (never the picture: nothing is fetched or
+  decrypted before buying), a lock, "Paid photo/video/file", the price and
+  Unlock; then "Unlocking: waiting for Bob to send the key", then the
+  normal image or file; a refusal says the sats came back. Ours shows "For
+  sale at 200 sats · bought once". The tray of files waiting in a composer
+  has a price field ("Free" when empty). Every money button follows Tom's
+  labels: one line, idle "Pay" / "Unlock" / "Send"; armed orange with
+  "Click again to confirm" under it; the amount named on the button only
+  where it does not already stand beside it (Tom, 2026-10-08: never
+  "Unlock for 150 sats" next to "150 sats"). Copies use the shared
+  `CopyButton`.
+
+### Verified (local stack, 2026-10-07)
+
+Broker, mixer (`NO_LIGHTNING`) and tribes on their own ports; profiles
+`py-bank`, `py-alice`, `py-bob`, `py-carol`, contacts by key exchange, funded
+with the mixer's own `TESTING_ONLY_ADD_TO_SENDER` (two accounts paying each
+other their whole balance through Peel's normal checks), then the mixer
+restarted without it for real accounting. Nothing in Peel was weakened to
+fund them.
+
+- History with DM payments both ways, a tribe boost, keysends (key-exchange
+  sats), invoices paid and received, the 1-sat pings folded into their
+  payment, a pending payment; paging with `history 2`.
+- Receive → paid live: Bob made a 500-sat invoice, Alice paid it (first
+  refused over the threshold, then confirmed); Bob's engine settled it and
+  emitted `invoicePaid`; balances moved by 500 (+ a 1-sat ping on Alice's
+  side). In the app: P3 waiting with QR and countdown, P3b paid with the
+  row at the top of the list.
+- Paying while the payee is offline: Alice's payment stayed pending; a second
+  try was refused ("still on its way"); Bob came online, the mixer redeemed
+  the async payment, both sides turned complete.
+- Refusals: already paid, own invoice, expired (BOLT 11's test vector), over
+  balance (Carol, 10 sats, for a 50-sat invoice).
+- Request in chat: Alice asked Bob for 300; Bob paid it (`pay_contact_invoice`
+  with the type 3); Alice's request flipped to Paid on settle, Bob's on the
+  server's COMPLETE; a second pay was refused.
+- Paid attachments: Bob sent a 200-sat image (key withheld); Alice's
+  download was refused ("paid; opens once bought"); her first buy asked to
+  confirm, the second paid; Bob's engine answered with the key; the
+  download decrypted byte-identical to the original. In the app: locked,
+  armed ("Click again to confirm"), unlocking, and
+  unlocked live when Bob came online and answered from history; Bob's view
+  shows "For sale … bought once".
+
+### Not tested locally, and why
+
+- **Invoices made by the server and paying over Lightning**: the local mixer
+  runs `NO_LIGHTNING` (no CLN, LND or bitcoind here), so `request_invoice`
+  fails ("CLN was skipped"), the `pay` fallback and real routing fees cannot
+  run, and the fee shown after paying was only ever 0. Needed: a regtest
+  bitcoind + CLN behind the mixer (the swarm setup in
+  `sphinx/wasm/test/swarm`).
+- Receiving a refund (type 9): Peel never sends one (see Reviews); a
+  refund from an official app shows as "turned down", untested here.
+- Paid attachments in tribes (the tribes server's custody of the key).
+- The composer's price field: built, not clicked (no input automation in
+  this session); the CLI's `send-file --price` was used.
+
+### Open questions for Tom
+
+- **Receive uses `make_invoice`**, not the official apps' `request_invoice`:
+  the invoice pays this account directly, so a contact can pay it with the
+  type 3 and it works on a local stack, but it settles only while Peel is
+  running (an asynchronous payment waits for it, as tested, but not
+  forever). `request_invoice` would be paid even with Peel closed, needs
+  CLN behind the server, and arrives only as a balance change. Switch?
+- The official apps' requests use `request_invoice`, so `pay_contact_invoice`
+  cannot pay them; Peel pays those as plain invoices and the card says they
+  pay the server's node. Fine?
+- Keysends from before this branch include old 1-sat pings with nothing to
+  tie them to; they show as "Keysend".
+
+### Reviews (2026-10-07/08)
+
+`/code-review high`, applied:
+
+- A seller gave a cheap paid attachment's key away (3-sat allowance against a
+  1–3 sat price, and a purchase with no sats): the key now goes only when
+  sats came and they cover the price less `min(3 sats, price / 10)`.
+- Refunds for an underpaid purchase are no longer sent automatically: two of
+  the account's devices online at once would each refund it. The seller
+  sees a note instead (Peel differs from the official apps here).
+- A refused paid file went back to the composer without its price and could
+  then be sent free; the price now goes back with it, and an out-of-range
+  price is refused in words.
+- A payment's own hash could be recorded as its ping; filtered.
+- Overflow when summing a huge pasted invoice with the fee reserve.
+- History paging could leave a gap after a busy spell:
+  `refreshPaymentHistory` now fetches back until it meets what is stored.
+- Keys shortened the same way everywhere (6…4).
+
+Not applied: buying a paid attachment in a tribe pays the price alone, not
+price plus the tribe's per-message price (the official apps do the same;
+tribes are untested here, see below).
+
+`/simplify` (four angles), applied: one decoder for message fields (the two
+single-field decoders folded into `BodyFields`), `AttachmentFields.ownKey`,
+`Engine.invoiceProblem` (the one set of rules for paying an invoice, used by
+`pay` and the Pay pane, which no longer copies them), `RunHeader`,
+`DetailHeader` + `HeaderButton`, `Message.preview` and the shared
+`CopyButton`/`Clipboard` in the panes, an invoice parse cache, dictionary
+joins and one boosted-message query in the history, ping sums limited to the
+page, indexes for the history and purchases, purchase state read once per
+chat. Not applied (bigger than this change, noted for later): one send table
+for messages and invoices; a per-type policy for resend and money; a
+`mediaToken` column; one annotations map for timeline and thread (requests
+show their state in a chat, not yet in a thread panel).
+
+`/security-review`, applied: an invoice made here was marked Paid whatever
+arrived (the core settles any amount for a known hash, and the server
+cannot know the amount of an invoice made on the device), so 1 sat could
+show a 50,000-sat request as Paid. It is now `UNDERPAID` ("Partly paid: 1
+sat came; this invoice cannot take the rest") unless what arrived covers it.
+
+### After #23 and #26 (2026-10-08)
+
+Rebased onto main with read markers (v12) and boost status. An invoice we
+pay follows `Delivery.unsettled`: the mixer's live PENDING makes it
+`UNSETTLED` (never paid again, out of the connect-time check, still able
+to settle or fail); purchases and refunds take unsettled too
+(`moneySends`). v13 follows v12. Money buttons are one line and name the
+amount only where it does not already stand beside them. Not applied from
+the review: `invoiceProblem` and the attachment price are worked out in
+the view body (cheap reads, but on the main thread).

@@ -1,10 +1,12 @@
 # Phase 4 plan — the Payments screen and invoices
 
-Status: designed, not started. Parked on 2026-10-07 so another session can pick
-it up later. Boosts and in-chat payments (type 29, type 5) are a separate piece
-of work (PR #16 and its UI); this plan covers what comes after them: the
-Payments screen, receiving with an invoice, paying an invoice, and payment
-requests in chat.
+Status: built on branch `phase4/payments` (2026-10-07), with paid
+attachments added at Tom's request; what was built, verified, left
+untested (anything needing Lightning behind the server) and the open
+questions are in `04-money.md`, "Payments screen, invoices, requests and
+paid attachments". Boosts and in-chat payments (type 29, type 5) were PR #16;
+this plan covers what came after them: the Payments screen, receiving with
+an invoice, paying an invoice, and payment requests in chat.
 
 Read first: `04-money.md` (conventions for amounts, boosts, direct payments,
 status and retries), `docs/design/README.md` (flat rows, system font, PeelMenu

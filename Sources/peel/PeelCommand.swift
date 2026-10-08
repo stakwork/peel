@@ -33,7 +33,10 @@ struct PeelCommand {
           mark-unread <pubkey> [index]  mark a chat unread from a message (server index), else from its
                                       newest incoming message
           mute <pubkey> <0|1|2>       notify for all, mentions only, or nothing
-          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread)
+          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread,
+                                      --price <sats> to sell it: buyers pay to get its key)
+          buy <id>                    buy someone's paid attachment (row id from messages; --yes over the
+                                      confirmation threshold); it then downloads like any other
           download <id> <out path>    download and decrypt an attachment to a new file (never opened)
 
           tribes                      tribes this account is in
@@ -62,6 +65,14 @@ struct PeelCommand {
                                       threshold without --yes)
           boost-amount [sats]         what a one-tap boost tips (default 100 sats); sets it when given (--yes over the threshold)
           payments [pubkey]           payments and boosts, in one chat or all, newest first
+          history [pages]             fetch the server's payment history (50 rows a page, newest first) and
+                                      print it joined to chats, notes and invoices
+          invoice <sats> [memo]       make an invoice to receive sats; stays online --wait seconds to settle it
+          decode <invoice>            what an invoice asks for, and whether this account paid it
+          pay-invoice <invoice>       pay an invoice (--yes over the confirmation threshold); refuses expired,
+                                      already paid or pending, own, and over the balance less a fee reserve
+          request <pubkey> <sats> [memo]  ask a contact for sats in their chat (an invoice message)
+          pay-request <id>            pay someone's request in a chat (row id from messages; --yes as above)
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -113,6 +124,7 @@ struct PeelCommand {
         let memesHost = arguments.option("--memes-host")
         let note = arguments.option("--text")
         let confirmed = arguments.flag("--yes")
+        let priceOption = arguments.option("--price")
         guard let command = arguments.next() else {
             print(usage)
             return
@@ -206,10 +218,21 @@ struct PeelCommand {
             }
             let session = try await Session(load())
             await session.connectIfPossible(insecure: insecure)
+            let price = try priceOption.map { text in
+                guard let sats = UInt64(text), sats > 0 else { throw PeelError("--price needs a whole number of sats") }
+                return sats
+            }
             let id = try await session.engine.sendAttachment(
-                URL(fileURLWithPath: path), text: note ?? "", to: pubkey, replyTo: replyTo, inThread: inThread
+                URL(fileURLWithPath: path), text: note ?? "", to: pubkey, replyTo: replyTo, inThread: inThread,
+                priceSats: price
             )
             print("attachment row \(id)")
+            try await session.finish(after: wait)
+
+        case "buy":
+            guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("buy needs a message id") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await confirming(confirmed) { try await session.engine.buyAttachment(messageID: id, confirmedMsat: $0) }
             try await session.finish(after: wait)
 
         case "download":
@@ -238,6 +261,14 @@ struct PeelCommand {
                     }
                     if let thread = row.threadUUID.flatMap({ timeline.threads[$0] }) {
                         print("      thread of \(thread.count), \(thread.unread) unread, started by \(Session.line(thread.original))")
+                    }
+                    if let request = row.id.flatMap({ timeline.requests[$0] }) {
+                        let expired = request.invoice?.isExpired() == true ? ", expired" : ""
+                        let payee = request.paysRequester || row.fromMe ? "" : ", pays another node"
+                        print("      request \(request.state)\(expired)\(payee)")
+                    }
+                    if let purchase = row.id.flatMap({ timeline.purchases[$0] }) {
+                        print("      paid attachment, \((row.attachmentPriceMsat ?? 0) / 1000) sats: \(purchase)")
                     }
                 }
                 break
@@ -458,6 +489,72 @@ struct PeelCommand {
                 break
             }
 
+        case "history":
+            let pages = arguments.next().flatMap { Int($0) } ?? 1
+            let session = try await Session(load()).connectIfPossible(insecure: insecure)
+            var before: Int64?
+            for _ in 0..<max(pages, 1) {
+                guard await session.engine.isRegistered else { break }
+                let count = try await session.engine.fetchPaymentHistory(before: before)
+                print("fetched \(count) rows")
+                before = try session.engine.storage.oldestPaymentTimestamp()
+                if count < Engine.paymentPageSize { break }
+            }
+            try await session.finish(after: 0)
+            for try await items in session.engine.storage.paymentHistory(limit: Int(Engine.paymentPageSize) * pages) {
+                for item in items { print(Session.line(item)) }
+                break
+            }
+
+        case "invoice":
+            guard let msat = arguments.next().flatMap(Sats.msat) else { throw PeelError("invoice needs a whole number of sats above zero") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            let invoice = try await session.engine.createInvoice(amountMsat: msat, memo: arguments.rest().joined(separator: " "))
+            print("invoice \(invoice.paymentHash)")
+            print(invoice.bolt11)
+            // Stay online so a payment can settle; Ctrl-C stops.
+            try await session.finish(after: wait)
+
+        case "decode":
+            guard let text = arguments.next() else { throw PeelError("decode needs an invoice") }
+            let invoice = try Invoice(text)
+            print("amount: \(invoice.amountMsat / 1000) sats (\(invoice.amountMsat) msat)")
+            print("payee: \(invoice.payee)")
+            print("memo: \(invoice.memo)")
+            print("expires: \(invoice.expiresAt.map { "\($0)\(invoice.isExpired() ? " (expired)" : "")" } ?? "never")")
+            print("payment hash: \(invoice.paymentHash)")
+            let storage = try Storage(directory: profile.directory, readOnly: true)
+            print("paid: \(try storage.paidState(paymentHash: invoice.paymentHash).map { "\($0)" } ?? "no")")
+
+        case "pay-invoice":
+            guard let text = arguments.next() else { throw PeelError("pay-invoice needs an invoice") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await confirming(confirmed) {
+                let paid = try await session.engine.payInvoice(text, confirmedMsat: $0)
+                print("paying \(paid.amountMsat / 1000) sats, tag \(paid.tag ?? "-")")
+            }
+            try await session.finish(after: wait)
+
+        case "request":
+            guard let pubkey = arguments.next(), let msat = arguments.next().flatMap(Sats.msat) else {
+                throw PeelError("request needs a pubkey and an amount in sats")
+            }
+            let session = try await Session(load()).connect(insecure: insecure)
+            let invoice = try await session.engine.requestPayment(
+                from: pubkey, amountMsat: msat, memo: arguments.rest().joined(separator: " ")
+            )
+            print("requested \(msat / 1000) sats, invoice \(invoice.paymentHash)")
+            try await session.finish(after: wait)
+
+        case "pay-request":
+            guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("pay-request needs a message id") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await confirming(confirmed) {
+                let paid = try await session.engine.payRequest(messageID: id, confirmedMsat: $0)
+                print("paying \(paid.amountMsat / 1000) sats, tag \(paid.tag ?? "-")")
+            }
+            try await session.finish(after: wait)
+
         case "listen":
             let session = try await Session(load())
             await session.engine.start(allowUntrustedCertificate: insecure)
@@ -534,6 +631,8 @@ struct Session {
             "\(direction) \(id): \(bytes) of \(total) bytes"
         case .moneyReceived(let message):
             "received \((message.amountMsat ?? 0) / 1000) sats in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
+        case .invoicePaid(let hash):
+            "invoice paid \(hash)"
         }
     }
 }
@@ -560,6 +659,8 @@ extension Session {
         case MessageType.text: ""
         case MessageType.directPayment: " paid \((message.amountMsat ?? 0) / 1000) sats"
         case MessageType.boost: " boosted \((message.amountMsat ?? 0) / 1000) sats on \(message.replyUUID?.prefix(12) ?? "-")"
+        case MessageType.invoice: " requested \((message.amountMsat ?? 0) / 1000) sats"
+        case MessageType.invoicePayment: " paid a request, \((message.amountMsat ?? 0) / 1000) sats"
         default: " type \(message.type)"
         }
         var file = ""
@@ -569,6 +670,23 @@ extension Session {
             file = " [\(attachment): \(details.joined(separator: ", "))]"
         }
         return "\(who)\(kind)\(file): \(message.content ?? "")"
+    }
+
+    /// One line of payment history: when, direction and amount, status,
+    /// kind, who, note, and the payment hash.
+    static func line(_ item: PaymentItem) -> String {
+        let sign = item.incoming ? "+" : "-"
+        let status = switch item.status {
+        case .complete: ""
+        case .pending: " [pending]"
+        case .failed: " [failed\(item.error.map { ": \($0)" } ?? "")]"
+        }
+        let who = item.counterpart ?? (item.kind == .keysend ? "keysend" : "-")
+        let place = item.isTribe ? " in #\(item.chatName ?? "")" : ""
+        let fee = item.feeMsat.map { " fee \($0) msat" } ?? ""
+        let time = item.date.formatted(date: .numeric, time: .standard)
+        return "\(time)  \(sign)\(item.amountMsat / 1000) sats\(status)  \(item.kind) \(who)\(place)"
+            + "  \(item.note ?? "")\(fee)  \(item.paymentHash?.prefix(12) ?? "-")"
     }
 }
 

@@ -227,6 +227,9 @@ enum MediaCrypto {
 struct MediaToken: Equatable {
     let host: String
     let muid: String
+    /// What a paid attachment costs, in sats: `amt` in the token's meta, as
+    /// the official apps read it. Nil for a free one.
+    let priceSats: UInt64?
 
     init?(_ token: String) {
         let parts = token.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
@@ -234,6 +237,18 @@ struct MediaToken: Equatable {
               !parts[1].isEmpty else { return nil }
         self.host = host
         muid = parts[1]
+        priceSats = parts.count > 4 ? Self.price(meta: parts[4]) : nil
+    }
+
+    /// `amt=<sats>` among the `&`-separated meta, base64 encoded (either alphabet).
+    static func price(meta: String) -> UInt64? {
+        let decoded = base64URLDecode(meta).flatMap { String(data: $0, encoding: .utf8) }
+            ?? Data(base64Encoded: meta).flatMap { String(data: $0, encoding: .utf8) }
+        guard let decoded else { return nil }
+        for pair in decoded.split(separator: "&") where pair.hasPrefix("amt=") {
+            if let sats = UInt64(pair.dropFirst(4)), sats > 0 { return sats }
+        }
+        return nil
     }
 
     static func base64URLDecode(_ text: String) -> Data? {
@@ -630,6 +645,12 @@ struct AttachmentFields: Decodable {
     let mediaToken: String?
     let mediaKey: String?
     let mediaType: String?
+    /// The key as the sender keeps it for their own devices; a paid
+    /// attachment's own row has only this one.
+    var mediaKeyForSelf: String?
+
+    /// The key the sender keeps: in the message, or for a paid one only for themself.
+    var ownKey: String? { mediaKey?.nilIfEmpty ?? mediaKeyForSelf?.nilIfEmpty }
 
     static func decode(_ body: String?) -> AttachmentFields? {
         body.flatMap { try? JSONDecoder().decode(AttachmentFields.self, from: Data($0.utf8)) }

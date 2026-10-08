@@ -77,6 +77,17 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         type == MessageType.attachment && !deleted ? AttachmentKind(mediaType: mediaType) : nil
     }
 
+    var hasMediaKey: Bool { AttachmentFields.decode(body)?.mediaKey?.isEmpty == false }
+
+    /// What a paid attachment costs, in msat, from the price its media token
+    /// carries; nil for a free attachment or anything else.
+    public var attachmentPriceMsat: UInt64? {
+        guard type == MessageType.attachment, let token = AttachmentFields.decode(body)?.mediaToken,
+              let sats = MediaToken(token)?.priceSats else { return nil }
+        let (msat, overflow) = sats.multipliedReportingOverflow(by: 1000)
+        return overflow ? nil : msat
+    }
+
     /// How long a send may wait for the server before it can be sent again, as
     /// in the official apps.
     public static let confirmationTimeout: TimeInterval = 30
@@ -89,11 +100,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// server has not confirmed within the timeout, and so may be sent again
     /// or discarded. An attachment still uploading is neither. A payment or
     /// boost only once it failed: an unconfirmed one may have paid, and
-    /// sending it again would pay twice.
+    /// sending it again would pay twice. A payment request moves no money,
+    /// so it goes again like text.
     public func isRetryable(now: Date = .now) -> Bool {
         guard fromMe, !deleted else { return false }
         if MessageType.payments.contains(type) { return delivery == .failed }
-        guard MessageType.content.contains(type), uploadState != .pending else { return false }
+        guard MessageType.resendable.contains(type), uploadState != .pending else { return false }
         switch delivery {
         case .failed: return true
         case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
@@ -230,14 +242,33 @@ public enum MessageType {
     public static let boost = 29
     /// The types that carry money to someone in a chat.
     public static let payments = [directPayment, boost]
+    /// A payment request in a chat: `{"content": memo, "invoice": bolt11}`.
+    /// Its amount and payment hash are read from the invoice, never from
+    /// the JSON.
+    public static let invoice = 2
+    /// The payment of a request, which the core sends with the invoice's
+    /// payment (`pay_contact_invoice`): `paymentHash` names the request.
+    public static let invoicePayment = 3
+    /// Buying a paid attachment: the price, with the attachment's media
+    /// token and its uuid (`replyUuid`).
+    public static let purchase = 7
+    /// The seller's answers: the key (with the same token), or a refund.
+    public static let purchaseAccept = 8
+    public static let purchaseDeny = 9
+    /// Everything of ours that carries sats: never sent twice, tracked until
+    /// the server says how it went.
+    static let moneySends = payments + [purchase, purchaseDeny]
+    /// Types sent again as they were when undelivered: they move no money.
+    static let resendable = content + [invoice]
     /// Types that count as unread whoever they are for; a boost counts only
-    /// on this account's own message.
-    public static let unreadTypes = content + [directPayment]
+    /// on this account's own message. A request asks something of you.
+    public static let unreadTypes = content + [directPayment, invoice]
     /// Types as an SQL `IN` list.
     static func sqlList(_ types: [Int]) -> String { types.map(String.init).joined(separator: ", ") }
-    /// Every type a conversation shows: text, attachments, direct payments
-    /// and the membership notes. Boosts show under the message they boost.
-    static let shownInChats = [text, attachment, directPayment, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
+    /// Every type a conversation shows: text, attachments, direct payments,
+    /// payment requests and the membership notes. Boosts show under the
+    /// message they boost.
+    static let shownInChats = [text, attachment, directPayment, invoice, groupJoin, groupLeave, groupKick, memberRequest, memberApprove, memberReject, tribeDelete]
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
 }
@@ -268,6 +299,13 @@ struct BodyFields: Decodable {
     let date: Int64?
     let replyUuid: String?
     let threadUuid: String?
+    /// On a payment request (type 2): the bolt11.
+    let invoice: String?
+    /// On an invoice payment (type 3): the request it pays, as its sender wrote it.
+    let paymentHash: String?
+    /// On an attachment of ours waiting to upload: the sats it is to be sold
+    /// for, kept in the row until the media token carries it; never sent.
+    let price: String?
 
     static func decode(_ body: String?) -> BodyFields? {
         body.flatMap { try? JSONDecoder().decode(BodyFields.self, from: Data($0.utf8)) }

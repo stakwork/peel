@@ -38,6 +38,8 @@ public actor Engine {
         /// amount). Follows its `.message`. The chat's mute level is for the
         /// listener to apply. Never sent for history already read.
         case moneyReceived(Message)
+        /// An invoice made here was paid and the server has settled it.
+        case invoicePaid(paymentHash: String)
 
         public enum Direction: Sendable {
             case upload, download
@@ -117,9 +119,23 @@ public actor Engine {
         case notBoostable
         case paymentToTribe
         case noteTooLong
+        case invoiceExpired
+        /// Paid before, from here or another device, or being paid now.
+        case invoiceAlreadyPaid
+        case invoicePending
+        case ownInvoice
+        /// An invoice that names no amount: the core would send nothing.
+        case invoiceWithoutAmount
+        case serverTimedOut
 
         public var description: String {
             switch self {
+            case .invoiceExpired: "that invoice has expired"
+            case .invoiceAlreadyPaid: "that invoice has already been paid"
+            case .invoicePending: "a payment of that invoice is still on its way"
+            case .ownInvoice: "that is this account's own invoice"
+            case .invoiceWithoutAmount: "that invoice names no amount; Peel only pays invoices that say how much"
+            case .serverTimedOut: "the server did not answer in time"
             case .invalidAmount: "the amount must be more than nothing"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
@@ -145,7 +161,7 @@ public actor Engine {
             case .notAChat: "that is neither a contact nor a tribe this account is in"
             case .noMemesServer: "this account has no memes server for attachments (set one with --memes-host)"
             case .notAnAttachment: "that message is not an attachment"
-            case .attachmentWithoutKey: "this attachment came without its key (paid attachments are not supported)"
+            case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
             case .uploadInProgress: "this attachment is still uploading"
             }
@@ -232,6 +248,13 @@ public actor Engine {
     private var mentionScan: Task<Void, Never>?
     private var refreshingTribes = false
     private var tribesNeedRefresh = false
+    /// A page of payment history asked for and not yet answered; the
+    /// answer lands here (see `fetchPaymentHistory`).
+    private var awaitingPayments = false
+    private var paymentPage: [PaymentRecord]?
+    /// Invoices being paid in this session, so a second click can never
+    /// pay one twice while the first is being sent.
+    private var payingInvoices: Set<String> = []
 
     /// Attachments: the decrypted cache and the uploads waiting to go, and
     /// the memes server's bearer token (memory only).
@@ -747,7 +770,11 @@ public actor Engine {
             if message.type == MessageType.attachment {
                 return try await uploadAndDeliver(message)
             }
-            return try await deliver(body: body, to: message.chat, replacing: messageID)
+            if message.type == MessageType.invoice,
+               Self.requestInvoice(body)?.isExpired() != false {
+                throw PeelError("this request's invoice has expired; ask again with a new one")
+            }
+            return try await deliver(body: body, to: message.chat, type: message.type, replacing: messageID)
         }
         guard let amount = message.amountMsat.flatMap(UInt64.init(exactly:)), amount > 0 else {
             throw Failure.notRetryable
@@ -889,18 +916,225 @@ public actor Engine {
         )
     }
 
-    /// Refuses an amount over the last balance the server reported, or over
-    /// the confirmation threshold unless the person confirmed exactly this
-    /// amount (a confirmation never covers a total that changed since, such
-    /// as a tribe raising its price between the two clicks). A one-tap
-    /// boost (`.unasked`) is checked against the balance only.
-    private func checkPayment(_ amountMsat: UInt64, _ confirmation: Confirmation) throws {
+    /// Refuses an amount over the last balance the server reported (less
+    /// `reserveMsat` kept back for routing fees), or over the confirmation
+    /// threshold unless the person confirmed exactly this amount (a
+    /// confirmation never covers a total that changed since, such as a tribe
+    /// raising its price between the two clicks). A one-tap boost
+    /// (`.unasked`) is checked against the balance only.
+    private func checkPayment(_ amountMsat: UInt64, _ confirmation: Confirmation, reserveMsat: UInt64 = 0) throws {
         guard let balance = try balanceMsat() else { throw Failure.balanceUnknown }
-        guard amountMsat <= balance else { throw Failure.insufficientBalance }
+        let (needed, overflow) = amountMsat.addingReportingOverflow(reserveMsat)
+        guard !overflow, needed <= balance else { throw Failure.insufficientBalance }
         if case .threshold(let confirmedMsat) = confirmation,
            Self.needsConfirmation(amountMsat, confirmedMsat: confirmedMsat, thresholdMsat: try paymentConfirmationMsat()) {
             throw Failure.needsConfirmation(amountMsat: amountMsat)
         }
+    }
+
+    // MARK: - Invoices and payment history
+
+    /// What paying an invoice keeps back for routing fees when checking the
+    /// balance: 1%, at least 10 sats. The fee itself is known only after.
+    public static func feeReserveMsat(for amountMsat: UInt64) -> UInt64 {
+        max(amountMsat / 100, 10_000)
+    }
+
+    /// Fetches a page of the server's payment history, newest first, older
+    /// than `before` (milliseconds; nil for the newest), and stores it.
+    /// Returns how many rows came: fewer than a page means the end.
+    @discardableResult
+    public func fetchPaymentHistory(before: Int64? = nil) async throws -> Int {
+        try await fetchPaymentPage(before: before).count
+    }
+
+    /// Fetches what is new since the history was last fetched: the newest
+    /// page, and older ones until they reach what is stored, so a busy spell
+    /// leaves no gap that paging back would skip. At most 20 pages a time.
+    public func refreshPaymentHistory() async throws {
+        let newestStored = try storage.newestPaymentTimestamp()
+        var before: Int64?
+        for _ in 0..<20 {
+            let page = try await fetchPaymentPage(before: before)
+            guard page.count >= Int(Self.paymentPageSize), let newestStored, let oldest = page.map(\.ts).min(),
+                  oldest > newestStored else { return }
+            before = oldest
+        }
+    }
+
+    private func fetchPaymentPage(before: Int64?) async throws -> [PaymentRecord] {
+        guard transport != nil else { throw Failure.notConnected }
+        guard !awaitingPayments else { throw PeelError("payment history is already being fetched") }
+        awaitingPayments = true
+        paymentPage = nil
+        defer {
+            awaitingPayments = false
+            paymentPage = nil
+        }
+        let since = before.map { UInt64(max($0 - 1, 0)) } ?? UInt64(Date().millisecondsSince1970)
+        try await run { time, state in
+            try Sphinxrs.fetchPayments(
+                seed: seed, uniqueTime: time, state: state, since: since, limit: Self.paymentPageSize,
+                scid: nil, remoteOnly: false, minMsat: 0, reverse: true
+            )
+        }
+        return try await poll(timeout: .seconds(15), failure: .serverTimedOut) { paymentPage }
+    }
+
+    public static let paymentPageSize: UInt32 = 50
+
+    /// Makes an invoice to receive `amountMsat`, as the core builds it on
+    /// this device (`make_invoice`): it pays this account directly, and the
+    /// payment settles when it reaches this device, so Peel must be online
+    /// to take it (the official apps ask the server for one instead; see
+    /// docs/phases/04-money.md). An amount is required: with 0 the core
+    /// writes an invoice for 0 sats, not one the payer fills in.
+    public func createInvoice(amountMsat: UInt64, memo: String = "") throws -> InvoiceRecord {
+        try makeInvoice(amountMsat: amountMsat, memo: memo, chat: nil)
+    }
+
+    private func makeInvoice(amountMsat: UInt64, memo: String, chat: String?) throws -> InvoiceRecord {
+        guard amountMsat > 0 else { throw Failure.invalidAmount }
+        guard isRegistered else { throw Failure.notConnected }
+        let memo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard memo.utf8.count <= 300 else { throw PeelError("the memo is too long for an invoice") }
+        let time = clock.next()
+        let result = try Sphinxrs.makeInvoice(
+            seed: seed, uniqueTime: time, state: StateCodec.encode(state), amtMsat: amountMsat, description: memo
+        )
+        guard let bolt11 = result.invoice else { throw PeelError("the core made no invoice") }
+        let invoice = try Invoice(bolt11)
+        guard invoice.amountMsat == amountMsat else { throw PeelError("the core made an invoice for another amount") }
+        let record = InvoiceRecord(
+            paymentHash: invoice.paymentHash, incoming: true, bolt11: invoice.bolt11,
+            amountMsat: Int64(clamping: amountMsat), memo: invoice.memo, payee: invoice.payee,
+            createdAt: Date().millisecondsSince1970, expiresAt: invoice.expiresAt?.millisecondsSince1970,
+            status: .open, chat: chat
+        )
+        // The state holds the preimage: without it the payment can never settle.
+        _ = try commit(result, time: time, expectedSender: nil, invoices: [record])
+        return record
+    }
+
+    /// Asks a contact for sats in their chat (type 2), with an invoice made
+    /// here so their payment comes straight to this account. Returns the
+    /// invoice; the message's delivery is reported as for `sendText`.
+    @discardableResult
+    public func requestPayment(from pubkey: String, amountMsat: UInt64, memo: String = "") async throws -> InvoiceRecord {
+        guard tribes[pubkey] == nil else { throw PeelError("payment requests go to a person, not a tribe") }
+        guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
+        let record = try makeInvoice(amountMsat: amountMsat, memo: memo, chat: pubkey)
+        let body = try Self.json(["content": record.memo, "invoice": record.bolt11])
+        try await deliver(body: body, to: pubkey, type: MessageType.invoice, replacing: nil)
+        return record
+    }
+
+    /// Pays a pasted invoice. Refuses one that is expired, names no amount,
+    /// is this account's own, was paid before (here, or by any device the
+    /// server's history shows) or is being paid; over the balance less a
+    /// fee reserve; and over the confirmation threshold unless confirmed.
+    /// The payment is recorded as pending before anything is published, and
+    /// stays so, never to be paid again, until the server says how it went.
+    @discardableResult
+    public func payInvoice(_ bolt11: String, confirmedMsat: UInt64? = nil) async throws -> InvoiceRecord {
+        try await pay(Invoice(bolt11), chat: nil, confirmedMsat: confirmedMsat)
+    }
+
+    /// Pays someone's payment request in their chat. When the invoice pays
+    /// them, the payment carries the type 3 message that tells their app,
+    /// as the official apps do; otherwise it pays the invoice as pasted.
+    @discardableResult
+    public func payRequest(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> InvoiceRecord {
+        guard let message = try storage.message(id: messageID), message.type == MessageType.invoice, !message.fromMe,
+              let bolt11 = BodyFields.decode(message.body)?.invoice else {
+            throw PeelError("that is not someone's payment request")
+        }
+        return try await pay(Invoice(bolt11), chat: message.chat, confirmedMsat: confirmedMsat)
+    }
+
+    /// What stops paying this invoice from here, as paying it checks (the
+    /// confirmation threshold aside): no amount, expired, this account's
+    /// own, pending or paid (here or, by the history, from another device),
+    /// or more than the balance less the fee reserve. Nil when nothing does.
+    /// Reads only storage, so an app can ask before offering Pay.
+    public nonisolated func invoiceProblem(_ invoice: Invoice) throws -> Failure? {
+        guard invoice.amountMsat > 0 else { return .invoiceWithoutAmount }
+        guard !invoice.isExpired() else { return .invoiceExpired }
+        if invoice.payee == (try storage.value(for: .contactInfo))?.split(separator: "_").first.map(String.init) {
+            return .ownInvoice
+        }
+        switch try storage.paidState(paymentHash: invoice.paymentHash) {
+        case .own?: return .ownInvoice
+        case .pending?: return .invoicePending
+        case .paid?: return .invoiceAlreadyPaid
+        case nil: break
+        }
+        guard let balance = try storage.balanceMsat() else { return .balanceUnknown }
+        let (needed, overflow) = invoice.amountMsat.addingReportingOverflow(Self.feeReserveMsat(for: invoice.amountMsat))
+        return overflow || needed > balance ? .insufficientBalance : nil
+    }
+
+    private func pay(_ invoice: Invoice, chat: String?, confirmedMsat: UInt64?) async throws -> InvoiceRecord {
+        let hash = invoice.paymentHash
+        if let problem = try invoiceProblem(invoice) { throw problem }
+        // The balance and fee reserve are `invoiceProblem`'s; this asks the threshold.
+        try checkPayment(invoice.amountMsat, .threshold(confirmedMsat))
+        guard transport != nil else { throw Failure.notConnected }
+        guard payingInvoices.insert(hash).inserted else { throw Failure.invoicePending }
+        defer { payingInvoices.remove(hash) }
+
+        let toContact = chat.map { invoice.payee == $0 && Self.isPerson($0, in: state) == true } ?? false
+        var time = clock.next()
+        let result: RunReturn
+        if toContact {
+            result = try Sphinxrs.payContactInvoice(
+                seed: seed, uniqueTime: time, state: StateCodec.encode(state), bolt11: invoice.bolt11,
+                myAlias: alias, myImg: photoURL, isTribe: false
+            )
+        } else {
+            do {
+                result = try Sphinxrs.payInvoice(
+                    seed: seed, uniqueTime: time, state: StateCodec.encode(state), bolt11: invoice.bolt11,
+                    overpayMsat: invoice.amountMsat
+                )
+            } catch where invoice.hopHints.isEmpty {
+                // No route this account can build: the server pays it (its
+                // own node finds the route), as the official apps fall back.
+                time = clock.next()
+                result = try Sphinxrs.pay(seed: seed, uniqueTime: time, state: StateCodec.encode(state), bolt11: invoice.bolt11)
+            }
+        }
+        guard let tag = (result.msgs.first { $0.paymentHash == hash } ?? result.msgs.first)?.tag else {
+            throw PeelError("the core gave the payment no tag")
+        }
+        let record = InvoiceRecord(
+            paymentHash: hash, incoming: false, bolt11: invoice.bolt11, amountMsat: Int64(clamping: invoice.amountMsat),
+            memo: invoice.memo, payee: invoice.payee, createdAt: Date().millisecondsSince1970,
+            expiresAt: invoice.expiresAt?.millisecondsSince1970, status: .pending, tag: tag, chat: chat
+        )
+        // Written with the state before publishing; refused (and nothing
+        // published) if the invoice is already being paid or paid.
+        let followUps = try commit(result, time: time, expectedSender: nil, invoices: [record])
+        let unsent = transport == nil
+        do {
+            try await complete(result, followUps)
+        } catch {
+            guard unsent else {
+                let message = "The connection failed while paying; the payment may have gone. "
+                    + "It stays unconfirmed until the server says (\(error))"
+                if let chat { emit.yield(.conversationError(chat: chat, message: message)) } else { emit.yield(.coreError(message)) }
+                return record
+            }
+            try storage.setStatus(.failed, tag: tag, error: "not connected")
+            emit.yield(.sendStatus(tag: tag, status: Message.Delivery.failed.rawValue))
+            throw error
+        }
+        return record
+    }
+
+    /// A payment request's invoice, from its JSON; nil when it cannot be read.
+    static func requestInvoice(_ body: String?) -> Invoice? {
+        BodyFields.decode(body)?.invoice.flatMap { try? Invoice($0) }
     }
 
     /// Whether the bindings would split this JSON into type 34 fragments
@@ -984,6 +1218,10 @@ public actor Engine {
                 replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,
                 amountMsat: amountMsat.map { Int64(clamping: $0) }
             )
+            if type == MessageType.invoice, let invoice = Self.requestInvoice(body) {
+                outgoing?.paymentHash = invoice.paymentHash
+                outgoing?.amountMsat = Int64(clamping: invoice.amountMsat)
+            }
         }
         let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend)
         // Nothing is published without a connection (`complete` checks first).
@@ -1074,12 +1312,18 @@ public actor Engine {
     /// `sendText`, a failure is reported through events, not thrown; the
     /// upload reports `.transfer` progress. `stored` is told the row's id as
     /// soon as the row exists, before the upload (an app shows the file from
-    /// disk meanwhile). Returns the row's id.
+    /// disk meanwhile). `priceSats` sells it, as the official apps do: the
+    /// price goes in the media token and, in a direct message, the key stays
+    /// out of the message until a buyer pays (see `answerPurchase`).
+    /// Returns the row's id.
     @discardableResult
     public func sendAttachment(
         _ file: URL, text: String = "", to pubkey: String, replyTo: String? = nil, inThread: String? = nil,
-        stored: (@Sendable (Int64) -> Void)? = nil
+        priceSats: UInt64? = nil, stored: (@Sendable (Int64) -> Void)? = nil
     ) async throws -> Int64 {
+        if let priceSats, priceSats == 0 || priceSats > Self.maxAttachmentPriceSats {
+            throw PeelError("a price must be from 1 to \(Self.maxAttachmentPriceSats.formatted()) sats")
+        }
         let tribe = try openTribe(pubkey)
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
         _ = try memesServer()
@@ -1097,7 +1341,7 @@ public actor Engine {
         }.value
         let body = try Self.attachmentBody(
             text: text, key: key, mediaType: outgoing.mediaType, token: nil,
-            replyTo: links.replyTo, thread: links.thread
+            replyTo: links.replyTo, thread: links.thread, draftPrice: priceSats
         )
         let draft = Message(
             type: MessageType.attachment, chat: pubkey, fromMe: true, body: body, content: text,
@@ -1126,10 +1370,17 @@ public actor Engine {
     /// key twice (the core encrypts `mediaKeyForSelf` to this account, so our
     /// other devices and a restore can read it), the MIME type and, once
     /// uploaded, the media token.
+    /// A paid one in a direct message leaves `mediaKey` out (the seller
+    /// sends it to each buyer); a tribe keeps it, as the official apps do.
+    /// Before the upload the row keeps the price as `price`, which never
+    /// goes out: the sent JSON is made again with the token.
     private static func attachmentBody(
-        text: String?, key: String, mediaType: String?, token: String?, replyTo: String?, thread: String?
+        text: String?, key: String, mediaType: String?, token: String?, replyTo: String?, thread: String?,
+        withholdKey: Bool = false, draftPrice: UInt64? = nil
     ) throws -> String {
-        var fields = ["content": text ?? "", "mediaKey": key, "mediaKeyForSelf": key]
+        var fields = ["content": text ?? "", "mediaKeyForSelf": key]
+        if !withholdKey { fields["mediaKey"] = key }
+        fields["price"] = draftPrice.map(String.init)
         fields["mediaType"] = mediaType
         fields["mediaToken"] = token
         fields["replyUuid"] = replyTo
@@ -1145,7 +1396,7 @@ public actor Engine {
     @discardableResult
     private func uploadAndDeliver(_ message: Message, file: (plain: Data, sealed: Data)? = nil) async throws -> String? {
         guard let id = message.id, var body = message.body, let fields = AttachmentFields.decode(body),
-              let key = fields.mediaKey else { throw Failure.notRetryable }
+              let key = fields.ownKey else { throw Failure.notRetryable }
         if message.uploadState != .done {
             if file == nil {
                 guard try storage.claimUpload(id: id) else { throw Failure.uploadInProgress }
@@ -1163,13 +1414,21 @@ public actor Engine {
                 }
                 // A year, as the official apps give their tokens.
                 let expiry = UInt32(clamping: Int(Date().timeIntervalSince1970) + 365 * 24 * 3600)
-                let token = try Sphinxrs.makeMediaToken(
-                    seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state), host: memes.host,
-                    muid: muid, to: message.chat, expiry: expiry
+                let price = BodyFields.decode(body)?.price.flatMap { UInt64($0) }
+                let (time, coreState) = (clock.next(), try StateCodec.encode(state))
+                let token = try price.map {
+                    try Sphinxrs.makeMediaTokenWithPrice(
+                        seed: seed, uniqueTime: time, state: coreState, host: memes.host, muid: muid, to: message.chat,
+                        expiry: expiry, price: $0
+                    )
+                } ?? Sphinxrs.makeMediaToken(
+                    seed: seed, uniqueTime: time, state: coreState, host: memes.host, muid: muid, to: message.chat,
+                    expiry: expiry
                 )
                 body = try Self.attachmentBody(
                     text: message.content, key: key, mediaType: message.mediaType, token: token,
-                    replyTo: message.replyUUID, thread: message.threadUUID
+                    replyTo: message.replyUUID, thread: message.threadUUID,
+                    withholdKey: price != nil && tribes[message.chat] == nil
                 )
                 try storage.setUpload(.done, id: id, body: body)
                 // Our own copy is in the cache from the start, as in the official apps.
@@ -1203,8 +1462,12 @@ public actor Engine {
         guard let message = try storage.message(id: messageID), message.type == MessageType.attachment,
               let fields = AttachmentFields.decode(message.body), let mediaToken = fields.mediaToken,
               let token = MediaToken(mediaToken) else { throw Failure.notAnAttachment }
-        // A paid attachment comes without its key until it is bought.
-        guard let key = fields.mediaKey?.nilIfEmpty else { throw Failure.attachmentWithoutKey }
+        // A paid one comes without its key: someone else's opens with the key
+        // its seller sent once bought; our own keeps it as `mediaKeyForSelf`.
+        let carried = message.fromMe ? fields.ownKey : fields.mediaKey
+        guard let key = try carried?.nilIfEmpty ?? storage.purchasedKey(for: message) else {
+            throw Failure.attachmentWithoutKey
+        }
         let memes = try memesServer()
         guard token.host == memes.host else { throw Failure.untrustedMediaHost(token.host) }
         let declared = AttachmentKind(mediaType: fields.mediaType)
@@ -1234,6 +1497,74 @@ public actor Engine {
         return DownloadedAttachment(
             file: stored.file, kind: stored.kind, fileName: fileName, size: stored.size, cached: cached != nil
         )
+    }
+
+    // MARK: - Paid attachments
+
+    /// The most an attachment may be sold for: a mistyped price should not
+    /// be a fortune.
+    public static let maxAttachmentPriceSats: UInt64 = 10_000_000
+
+    /// Buys someone else's paid attachment, as the official apps do: a
+    /// purchase (type 7) to the seller carrying the price its media token
+    /// names, with that token and the attachment's uuid. The seller's app
+    /// answers with the key (type 8), and the attachment then downloads and
+    /// decrypts like any other; or with a refund (type 9). Nothing of it is
+    /// fetched before. Refused when not for sale, already bought or on its
+    /// way, over the balance, or over the confirmation threshold unless
+    /// confirmed. Delivery is reported as for `sendText`.
+    @discardableResult
+    public func buyAttachment(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> String? {
+        guard let message = try storage.message(id: messageID), !message.fromMe, !message.deleted,
+              let price = message.attachmentPriceMsat, let uuid = message.uuid, MessageUUID.isValid(uuid),
+              let token = AttachmentFields.decode(message.body)?.mediaToken else {
+            throw PeelError("that is not a paid attachment someone sent")
+        }
+        // Only from this account's memes server, like any download.
+        guard let host = MediaToken(token)?.host, host == (try memesServer()).host else {
+            throw Failure.untrustedMediaHost(MediaToken(token)?.host ?? "")
+        }
+        switch try storage.purchaseState(of: message) {
+        case .processing?: throw PeelError("this attachment is already being bought")
+        case .unlocked?: throw PeelError("this attachment is already bought")
+        case .locked?, .failed?, .denied?, .forSale?, nil: break
+        }
+        try checkPayment(price, .threshold(confirmedMsat))
+        let purchaseKey = "purchase \(token)"
+        guard payingInvoices.insert(purchaseKey).inserted else { throw PeelError("this attachment is already being bought") }
+        defer { payingInvoices.remove(purchaseKey) }
+        let body = try Self.json(["content": "", "mediaToken": token, "replyUuid": uuid])
+        return try await deliver(body: body, to: message.chat, type: MessageType.purchase, amountMsat: price, replacing: nil)
+    }
+
+    /// The seller's side, as the official apps answer a purchase of one of
+    /// their paid attachments in a direct message (in a tribe the tribes
+    /// server holds the key and answers): the key when the sats that came
+    /// (`msat`, what really arrived) cover the price, give or take the
+    /// official apps' 3 sats for routing (never more than a tenth of the
+    /// price, so a cheap one is not given away). A purchase is answered
+    /// once. One that pays too little is left unanswered: the official apps
+    /// refund it automatically, but two of this account's devices online at
+    /// once would each refund it (see docs/phases/04-money.md).
+    private func answerPurchase(_ purchase: Message) async throws {
+        guard !purchase.fromMe, tribes[purchase.chat] == nil,
+              let token = AttachmentFields.decode(purchase.body)?.mediaToken,
+              let attachment = try storage.ownAttachment(token: token, in: purchase.chat),
+              let price = attachment.attachmentPriceMsat,
+              let fields = AttachmentFields.decode(attachment.body),
+              let key = fields.ownKey,
+              try !storage.isAnswered(purchase: purchase, token: token) else { return }
+        let paid = UInt64(max(purchase.msat ?? 0, 0))
+        guard paid > 0, paid + min(3000, price / 10) >= price else {
+            emit.yield(.conversationError(
+                chat: purchase.chat,
+                message: "A purchase of your paid attachment brought \(paid / 1000) of \(price / 1000) sats, so its key was not sent"
+            ))
+            return
+        }
+        var answer = ["content": "", "mediaKey": key, "mediaKeyForSelf": key, "mediaToken": token]
+        answer["mediaType"] = fields.mediaType
+        try await deliver(body: try Self.json(answer), to: purchase.chat, type: MessageType.purchaseAccept, replacing: nil)
     }
 
     /// The account's memes server: the one recorded, else the official
@@ -1760,13 +2091,15 @@ public actor Engine {
         var restorePlan: MessageCounts?
         /// Tribes first seen in this call, whose names are still to be looked up.
         var discoveredTribes = false
+        /// Purchases of our paid attachments to answer.
+        var purchases: [Message] = []
     }
 
     /// The synchronous half: one transaction with everything the core reported,
     /// then the in-memory bookkeeping and events.
     private func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
-        outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil
+        outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = []
     ) throws -> FollowUps {
         var followUps = FollowUps()
         var commit = Storage.Commit()
@@ -1804,6 +2137,28 @@ public actor Engine {
         }
         if let outgoing {
             commit.messages.append((outgoing, trustSender: false, replaces: nil))
+        }
+        commit.invoices = invoices
+        // A send the asynchronous way lists the payment first, then its ping.
+        if result.asyncpayTopic != nil, let main = result.msgs.first?.paymentHash {
+            commit.pings = result.msgs.dropFirst().compactMap(\.paymentHash).filter { $0 != main }.map { ($0, main) }
+        }
+        var page: [PaymentRecord]?
+        if let json = result.payments {
+            page = PaymentRecord.decode(json)
+            commit.payments = page ?? []
+        }
+        // A payment to an invoice made here, which this call settles
+        // (`settle_inner` found its preimage): what arrived for it.
+        if result.settleTopic != nil {
+            commit.settling = result.msgs.compactMap { msg in
+                guard let hash = msg.paymentHash, let msat = msg.msat else { return nil }
+                return (hash, Int64(clamping: msat))
+            }
+        }
+        let settled = result.settledStatus.flatMap { try? JSONDecoder().decode(SettledStatus.self, from: Data($0.utf8)) }
+        if let settled, settled.status == Message.Delivery.delivered.rawValue, let hash = settled.paymentHash {
+            commit.settled = [(hash, Date().millisecondsSince1970)]
         }
         var landedPings: [String] = []
         var knownTribes = tribes
@@ -1883,6 +2238,12 @@ public actor Engine {
         let answers = records.map { Self.recordedStatuses($0, unrecorded: unrecordedPayments) } ?? []
         if let live { commit.statuses.append(live) }
         commit.statuses += answers
+        // Why a send failed, as the server put it (kept for an invoice we pay).
+        for reply in [sent].compactMap({ $0 }) + (records ?? []) where reply.status == Message.Delivery.failed.rawValue {
+            if let tag = reply.tag, let reason = (reply.message ?? reply.error)?.nilIfEmpty {
+                commit.sendErrors[tag] = reason
+            }
+        }
 
         var purged: [String] = []
         var received: [Message] = []
@@ -1898,6 +2259,7 @@ public actor Engine {
         }
         state = newState
         if records != nil { unrecordedPayments = [] }
+        if awaitingPayments, let page { paymentPage = page }
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
         }
@@ -1941,6 +2303,10 @@ public actor Engine {
         for message in stored {
             emit.yield(.message(message, arrival))
         }
+        // Purchases of our paid attachments, answered once this commit is done.
+        if arrival != .restore {
+            followUps.purchases = stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
+        }
         for message in received {
             emit.yield(.moneyReceived(message))
         }
@@ -1950,6 +2316,10 @@ public actor Engine {
         }
         for (tag, status) in answers {
             emit.yield(.sendStatus(tag: tag, status: status))
+        }
+        // Every payment that arrives settles; only one to an invoice made here is news.
+        for (hash, _) in commit.settled where try storage.invoice(paymentHash: hash, incoming: true)?.status == .paid {
+            emit.yield(.invoicePaid(paymentHash: hash))
         }
         if let error = result.error {
             // The core reports a failed "online" reply only in this text, with
@@ -2028,6 +2398,13 @@ public actor Engine {
         if followUps.discoveredTribes {
             Task { [weak self] in await self?.refreshTribes() }
         }
+        for purchase in followUps.purchases {
+            do {
+                try await answerPurchase(purchase)
+            } catch {
+                emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(error)"))
+            }
+        }
         if followUps.justRegistered {
             await cameOnline()
         }
@@ -2079,8 +2456,25 @@ public actor Engine {
             amountMsat: MessageType.payments.contains(Int(type))
                 ? msat ?? (fromMe ? DeclaredAmount.decode(msg.message) : nil) : nil
         )
-        if message.type == MessageType.attachment, let fields = AttachmentFields.decode(msg.message) {
-            message.mediaType = fields.mediaType
+        switch message.type {
+        case MessageType.attachment:
+            if let fields = AttachmentFields.decode(msg.message) { message.mediaType = fields.mediaType }
+        case MessageType.invoice:
+            // What a request asks for is what its invoice says, whatever its JSON claims.
+            let invoice = requestInvoice(message.body)
+            message.paymentHash = invoice?.paymentHash
+            message.amountMsat = invoice.map { Int64(clamping: $0.amountMsat) }
+            if let memo = invoice?.memo.nilIfEmpty { message.content = memo }
+        case MessageType.invoicePayment:
+            // Someone else's names the request only by the payment it rode
+            // on (the core's hash, from the topic); our own copy carries no
+            // payment, so its JSON (which we wrote) names it.
+            if fromMe { message.paymentHash = msg.paymentHash ?? BodyFields.decode(msg.message)?.paymentHash?.lowercased() }
+            message.amountMsat = msat
+        case MessageType.purchase, MessageType.purchaseDeny:
+            message.amountMsat = msat ?? (fromMe ? DeclaredAmount.decode(msg.message) : nil)
+        default:
+            break
         }
         return (message, trustSender)
     }
@@ -2180,12 +2574,14 @@ public actor Engine {
         let pending = try storage.pendingSends(
             textBefore: Date.now.addingTimeInterval(-Message.confirmationTimeout).millisecondsSince1970
         )
-        guard !pending.isEmpty else { return }
+        // Invoices we pay are tracked the same way.
+        let invoices = try storage.pendingInvoicePayments()
+        guard !pending.isEmpty || !invoices.isEmpty else { return }
         let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout)
         unrecordedPayments = Set(pending.compactMap { message in
-            MessageType.payments.contains(message.type) && message.date < cutoff ? message.tag : nil
-        })
-        let tags = pending.compactMap(\.tag)
+            MessageType.moneySends.contains(message.type) && message.date < cutoff ? message.tag : nil
+        } + invoices.compactMap { $0.created < cutoff ? $0.tag : nil })
+        let tags = pending.compactMap(\.tag) + invoices.compactMap(\.tag)
         try await run { time, state in
             try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: tags, pubkey: nil)
         }
@@ -2370,6 +2766,20 @@ extension Engine {
 struct SentStatus: Decodable {
     let tag: String?
     let status: String
+    /// Why a send failed: `message` on a send's status, `error` on `get_tags`.
+    var message: String?
+    var error: String?
+}
+
+/// The server's answer to settling a payment to an invoice made here.
+private struct SettledStatus: Decodable {
+    let status: String
+    let paymentHash: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case paymentHash = "payment_hash"
+    }
 }
 
 /// Every core call needs a time that is never reused, even across restarts.

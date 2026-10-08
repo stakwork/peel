@@ -72,6 +72,8 @@ final class AppModel {
     var replyTargets: [ComposerID: Message] = [:]
     /// Files waiting in each composer until it sends.
     var pendingFiles: [ComposerID: [URL]] = [:]
+    /// The price in sats, as typed, the files in a composer are sold for; empty for free.
+    var attachmentPrices: [ComposerID: String] = [:]
     /// Bumped to put the cursor in a composer.
     var composerFocus: [ComposerID: Int] = [:]
     /// The image viewer, when open.
@@ -266,15 +268,16 @@ final class AppModel {
         guard let chat = selectedChat else { return chatRows = [] }
         chatRows = ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
-            inTribe: isTribe(chat), people: people(in: chat), newAfter: newMessagesAfter(in: chat)
+            requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
+            newAfter: newMessagesAfter(in: chat)
         )
     }
 
     private func rebuildThreadRows() {
         guard let open = openThread, let thread else { return threadRows = [] }
         threadRows = ChatRow.rows(
-            thread.messages, parents: thread.parents, boosts: thread.boosts, inTribe: isTribe(open.chat),
-            people: people(in: open.chat), threadRoot: open.uuid, original: thread.original,
+            thread.messages, parents: thread.parents, boosts: thread.boosts, purchases: thread.purchases,
+            inTribe: isTribe(open.chat), people: people(in: open.chat), threadRoot: open.uuid, original: thread.original,
             newAfter: newMessagesAfter(in: open.chat)
         )
     }
@@ -769,9 +772,10 @@ final class AppModel {
                 if let id = row.id { attachmentHandles[id] = nil }
             case .message(let message, let arrival):
                 notifier.received(message, arrival)
-            case .sendStatus, .moneyReceived:
+            case .sendStatus, .moneyReceived, .invoicePaid:
                 // `.moneyReceived` is for the notifier to take up (payments
-                // to you, boosts on your messages); not shown yet.
+                // to you, boosts on your messages); not shown yet. Receive
+                // follows its invoice's row rather than `.invoicePaid`.
                 break
             }
         }

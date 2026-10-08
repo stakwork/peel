@@ -7,7 +7,8 @@ import GRDB
 /// two processes running core calls against their own copies of the core state
 /// would corrupt the account.
 public final class Storage: Sendable {
-    private let pool: DatabasePool
+    /// Internal so the payments history (`PaymentHistory.swift`) can read it.
+    let pool: DatabasePool
     private let lock: Int32?
     /// The profile directory; attachments are kept under `media/`.
     let directory: URL
@@ -197,6 +198,55 @@ public final class Storage: Sendable {
                 t.add(column: "readPending", .integer).notNull().defaults(to: 0)
             }
         }
+        migrator.registerMigration("v13") { db in
+            // The server's payment history, as `fetch_payments` pages it in.
+            try db.create(table: "payment") { t in
+                t.column("rhash", .text).notNull()
+                t.column("ts", .integer).notNull()
+                t.column("amountMsat", .integer).notNull()
+                t.column("incoming", .boolean).notNull()
+                t.column("msgIndex", .integer)
+                t.column("remote", .boolean).notNull().defaults(to: false)
+                t.column("error", .text)
+                t.primaryKey(["rhash", "incoming", "ts"])
+            }
+            try db.create(index: "payment_ts", on: "payment", columns: ["ts"])
+            // Invoices this account made (to receive, or to request in a
+            // chat) and paid; an outgoing one is tracked by its send's tag.
+            try db.create(table: "invoice") { t in
+                t.column("paymentHash", .text).notNull()
+                t.column("incoming", .boolean).notNull()
+                t.column("bolt11", .text).notNull()
+                t.column("amountMsat", .integer).notNull()
+                t.column("memo", .text).notNull().defaults(to: "")
+                t.column("payee", .text).notNull()
+                t.column("createdAt", .integer).notNull()
+                t.column("expiresAt", .integer)
+                t.column("status", .text).notNull()
+                t.column("paidAt", .integer)
+                t.column("paidMsat", .integer)
+                t.column("tag", .text)
+                t.column("chat", .text)
+                t.column("error", .text)
+                t.primaryKey(["paymentHash", "incoming"])
+            }
+            // The 1-sat ping that goes with a payment sent the asynchronous
+            // way (`asyncpay`), by its payment hash: part of that payment's
+            // cost, not a payment of its own.
+            try db.create(table: "paymentPing") { t in
+                t.primaryKey("rhash", .text)
+                t.column("forHash", .text).notNull()
+            }
+            try db.execute(sql: """
+                CREATE INDEX invoice_tag ON invoice (tag) WHERE tag IS NOT NULL;
+                CREATE INDEX payment_msgIndex ON payment (msgIndex) WHERE msgIndex IS NOT NULL;
+                CREATE INDEX message_money ON message (timestamp)
+                    WHERE type IN (\(MessageType.sqlList(MessageType.moneySends + [MessageType.invoicePayment])));
+                CREATE INDEX message_purchase ON message (chat)
+                    WHERE type IN (\(MessageType.purchase), \(MessageType.purchaseAccept), \(MessageType.purchaseDeny));
+                CREATE INDEX message_paymentHash ON message (paymentHash) WHERE paymentHash IS NOT NULL;
+                """)
+        }
         return migrator
     }
 }
@@ -316,6 +366,10 @@ public struct Timeline: Sendable, Equatable {
     /// The boosts on `messages` and the collapsed threads' originals, by
     /// the boosted message's uuid.
     public var boosts: [String: BoostSummary] = [:]
+    /// The payment requests among `messages` (type 2), by row id.
+    public var requests: [Int64: PaymentRequest] = [:]
+    /// The paid attachments among `messages`, by row id.
+    public var purchases: [Int64: PurchaseState] = [:]
 }
 
 /// The boosts on one message, summed as the Mac app shows them. Deleted
@@ -384,6 +438,8 @@ public struct ChatThread: Sendable, Equatable {
     public var parents: [String: Message]
     /// The boosts on the original and `messages`, by the boosted uuid.
     public var boosts: [String: BoostSummary] = [:]
+    /// The paid attachments among the original and `messages`, by row id.
+    public var purchases: [Int64: PurchaseState] = [:]
 }
 
 // MARK: - Reading
@@ -682,7 +738,7 @@ extension Storage {
                 db,
                 sql: """
                     SELECT * FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
-                        AND (type IN (\(MessageType.sqlList(MessageType.payments))) OR timestamp < ?)
+                        AND (type IN (\(MessageType.sqlList(MessageType.moneySends))) OR timestamp < ?)
                     ORDER BY id DESC LIMIT 200
                     """,
                 arguments: [cutoff]
@@ -692,7 +748,15 @@ extension Storage {
 
     func chat(forTag tag: String) throws -> String? {
         try pool.read { db in
-            try String.fetchOne(db, sql: "SELECT chat FROM message WHERE tag = ? LIMIT 1", arguments: [tag])
+            try String.fetchOne(
+                db,
+                sql: """
+                    SELECT chat FROM message WHERE tag = ?1
+                    UNION ALL SELECT chat FROM invoice WHERE tag = ?1 AND chat IS NOT NULL
+                    LIMIT 1
+                    """,
+                arguments: [tag]
+            )
         }
     }
 
@@ -871,7 +935,9 @@ extension Storage {
                 }
                 return Timeline(
                     messages: messages, parents: try Self.parents(of: messages, in: chat, db), threads: threads,
-                    boosts: try Self.boosts(on: messages + threads.values.map(\.original), in: chat, db)
+                    boosts: try Self.boosts(on: messages + threads.values.map(\.original), in: chat, db),
+                    requests: try Self.requests(in: messages, db),
+                    purchases: try Self.purchases(in: messages + threads.values.map(\.original), db)
                 )
             }
             .removeDuplicates()
@@ -891,7 +957,8 @@ extension Storage {
                     original: original,
                     messages: messages,
                     parents: try Self.parents(of: messages, in: chat, db),
-                    boosts: try Self.boosts(on: messages + [original].compactMap { $0 }, in: chat, db)
+                    boosts: try Self.boosts(on: messages + [original].compactMap { $0 }, in: chat, db),
+                    purchases: try Self.purchases(in: messages + [original].compactMap { $0 }, db)
                 )
             }
             .removeDuplicates()
@@ -960,7 +1027,7 @@ extension Storage {
         try pool.read { db in try Self.message(uuid: uuid, in: chat, db) }
     }
 
-    private static func message(uuid: String, in chat: String, _ db: Database) throws -> Message? {
+    static func message(uuid: String, in chat: String, _ db: Database) throws -> Message? {
         try Message.fetchOne(db, sql: "SELECT * FROM message WHERE uuid = ? AND chat = ?", arguments: [uuid, chat])
     }
 
@@ -1102,6 +1169,20 @@ extension Storage {
         var resend: Resend?
         typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64)
         var tribes: [Tribe] = []
+        /// Rows of the server's payment history.
+        var payments: [PaymentRecord] = []
+        /// Invoices made here, or about to be paid (written before publishing).
+        var invoices: [InvoiceRecord] = []
+        /// Why a send failed, by tag, as the server said.
+        var sendErrors: [String: String] = [:]
+        /// Payments to invoices made here that the core is settling: payment
+        /// hash and the msat that arrived.
+        var settling: [(paymentHash: String, msat: Int64)] = []
+        /// Payment hashes the server confirmed settled, and when.
+        var settled: [(paymentHash: String, at: Int64)] = []
+        /// Pings sent with an asynchronous payment: the ping's payment hash
+        /// and the payment's.
+        var pings: [(rhash: String, forHash: String)] = []
     }
 
     /// Returns the stored rows; messages the upsert rejected are left out.
@@ -1170,8 +1251,19 @@ extension Storage {
             where message.type == MessageType.delete && !(message.fromMe && message.serverIndex == nil) {
                 if let deleted = try Self.applyDelete(message, purged: &purged, in: db) { stored.append(deleted) }
             }
+            for record in commit.payments {
+                try record.upsert(db)
+            }
+            for invoice in commit.invoices {
+                try Self.insert(invoice, db)
+            }
+            for (rhash, forHash) in commit.pings {
+                try db.execute(
+                    sql: "INSERT OR IGNORE INTO paymentPing (rhash, forHash) VALUES (?, ?)", arguments: [rhash, forHash]
+                )
+            }
             for (tag, status) in commit.statuses {
-                try Self.setStatus(db, status, tag: tag)
+                try Self.setStatus(db, status, tag: tag, error: commit.sendErrors[tag])
                 if status == Message.Delivery.delivered.rawValue,
                    let delete = try Message.fetchOne(
                        db, sql: "SELECT * FROM message WHERE tag = ? AND fromMe = 1 AND type = ?",
@@ -1180,6 +1272,22 @@ extension Storage {
                    let deleted = try Self.applyDelete(delete, purged: &purged, in: db) {
                     stored.append(deleted)
                 }
+            }
+            for (hash, msat) in commit.settling {
+                try db.execute(
+                    sql: "UPDATE invoice SET paidMsat = ? WHERE paymentHash = ? AND incoming = 1 AND status = 'OPEN'",
+                    arguments: [msat, hash]
+                )
+            }
+            for (hash, at) in commit.settled {
+                try db.execute(
+                    sql: """
+                        UPDATE invoice SET paidAt = ?,
+                            status = CASE WHEN IFNULL(paidMsat, 0) >= amountMsat THEN 'COMPLETE' ELSE 'UNDERPAID' END
+                        WHERE paymentHash = ? AND incoming = 1 AND status = 'OPEN'
+                        """,
+                    arguments: [at, hash]
+                )
             }
             for (chat, index) in commit.reads {
                 try Self.applyServerRead(db, chat: chat, index: index)
@@ -1194,14 +1302,17 @@ extension Storage {
                 let row = try Message.fetchOne(
                     db,
                     sql: """
-                        UPDATE message SET uuid = ?, tag = ?, paymentHash = ?, status = ?, timestamp = ?
+                        UPDATE message SET uuid = ?, tag = ?,
+                            paymentHash = CASE WHEN type = \(MessageType.invoice) THEN COALESCE(?, paymentHash) ELSE ? END,
+                            status = ?, timestamp = ?
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
-                            AND type IN (\(MessageType.sqlList(MessageType.content + MessageType.payments)))
-                            AND (status = ? OR (status = ? AND type IN (\(MessageType.contentSQL))))
+                            AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
+                            AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))))
                         RETURNING *
                         """,
                     arguments: [
-                        resend.uuid, resend.tag, resend.paymentHash, Message.Delivery.pending.rawValue, resend.timestamp,
+                        resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, Message.Delivery.pending.rawValue,
+                        resend.timestamp,
                         resend.id, resend.chat,
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]
@@ -1446,26 +1557,64 @@ extension Storage {
         try pool.write { db in try Self.setMute(db, chat: chat, level: level.rawValue) }
     }
 
-    func setStatus(_ status: Message.Delivery, tag: String) throws {
-        try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag) }
+    func setStatus(_ status: Message.Delivery, tag: String, error: String? = nil) throws {
+        try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag, error: error) }
     }
 
     /// Only a payment or boost can be unsettled. A status only moves forward: an unconfirmed send becomes delivered,
     /// unsettled or failed, an unsettled one delivered or failed, a failed
     /// one delivered (the server had it after all), and a delivered one never
     /// changes. So a late or synthesised failure can never make a payment
-    /// that went through retryable.
-    private static func setStatus(_ db: Database, _ status: String, tag: String) throws {
+    /// that went through retryable. An invoice we pay follows the same rule
+    /// (unsettled leaves it pending), and keeps the server's reason for a failure.
+    private static func setStatus(_ db: Database, _ status: String, tag: String, error: String? = nil) throws {
         try db.execute(
             sql: """
                 UPDATE message SET status = ?1 WHERE tag = ?2
                     AND (status IS NULL OR status = 'PENDING'
                         OR (status = 'UNSETTLED' AND ?1 IN ('COMPLETE', 'FAILED'))
                         OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
-                    AND (?1 != 'UNSETTLED' OR type IN (\(MessageType.sqlList(MessageType.payments))))
+                    AND (?1 != 'UNSETTLED' OR type IN (\(MessageType.sqlList(MessageType.moneySends))))
                 """,
             arguments: [status, tag]
         )
+        try db.execute(
+            sql: """
+                UPDATE invoice SET status = ?1,
+                    paidAt = CASE WHEN ?1 = 'COMPLETE' THEN COALESCE(paidAt, ?3) ELSE paidAt END,
+                    error = CASE WHEN ?1 = 'FAILED' THEN COALESCE(?4, error) WHEN ?1 = 'COMPLETE' THEN NULL ELSE error END
+                WHERE tag = ?2 AND incoming = 0
+                    AND (status = 'PENDING'
+                        OR (status = 'UNSETTLED' AND ?1 IN ('COMPLETE', 'FAILED'))
+                        OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
+                """,
+            arguments: [status, tag, Date().millisecondsSince1970, error]
+        )
+    }
+
+    /// Writes an invoice made here, or one about to be paid. An invoice
+    /// already being paid or paid is never written over: only a failed
+    /// payment may be tried again. Refusing throws, so the whole commit,
+    /// and with it the publish, is abandoned.
+    private static func insert(_ invoice: InvoiceRecord, _ db: Database) throws {
+        let written = try String.fetchOne(
+            db,
+            sql: """
+                INSERT INTO invoice
+                    (paymentHash, incoming, bolt11, amountMsat, memo, payee, createdAt, expiresAt, status, tag, chat)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(paymentHash, incoming) DO UPDATE SET
+                    status = excluded.status, tag = excluded.tag, createdAt = excluded.createdAt,
+                    chat = COALESCE(excluded.chat, invoice.chat), error = NULL
+                WHERE invoice.incoming = 0 AND invoice.status = 'FAILED'
+                RETURNING paymentHash
+                """,
+            arguments: [
+                invoice.paymentHash, invoice.incoming, invoice.bolt11, invoice.amountMsat, invoice.memo,
+                invoice.payee, invoice.createdAt, invoice.expiresAt, invoice.status.rawValue, invoice.tag, invoice.chat,
+            ]
+        )
+        guard written != nil else { throw PeelError("that invoice is already being paid or paid") }
     }
 
     /// Removes one of our own messages that never reached the server.

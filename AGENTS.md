@@ -30,7 +30,7 @@ is a short plan. Update the status and the journal when you finish something.
   - `MessageMarkup.swift` — how message text reads: paragraphs, list items,
     fenced code, and inline code, https links and mentions
   - `TimeZones.swift` — time zones: the offset in a message's `metadata`
-    (sent only where the chat's switch is on, never to a public tribe; read
+    (sent unless the chat's switch is off, never to a public tribe; read
     with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
   - `StateCodec.swift` — the MessagePack shape the core uses for its state

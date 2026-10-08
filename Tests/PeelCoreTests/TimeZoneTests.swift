@@ -120,29 +120,52 @@ struct TimeZoneSharingTests {
         return try storedTZ(body)
     }
 
-    @Test func offByDefaultEverywhere() async throws {
-        let (engine, _) = try engine()
-        for chat in [person, publicTribe, privateTribe] {
-            #expect(try await !engine.timeZoneSharing(in: chat))
-            #expect(try await sent(to: chat, engine) == nil)
-        }
-    }
-
-    @Test func sentInADirectMessageAndAPrivateTribeOnlyWhenOn() async throws {
-        let (engine, _) = try engine()
+    /// On by default, as in the official apps: a chat with no row shares in
+    /// a direct message, and in a private tribe by the switch (the registry
+    /// is still asked at send time); a public tribe never.
+    @Test func onByDefaultWithNoRow() async throws {
+        let (engine, storage) = try engine()
         try await engine.setTimeZone("Asia/Kolkata")
-        try await engine.setTimeZoneSharing(true, in: person)
-        try await engine.setTimeZoneSharing(true, in: privateTribe)
+        for chat in [person, publicTribe, privateTribe] {
+            #expect(try await engine.timeZoneSharing(in: chat))
+            #expect(try storage.chatTimeZone(chat) == nil)
+        }
         #expect(try await sent(to: person, engine) == "GMT+5:30")
         #expect(try await engine.offsetShared(in: person) == "GMT+5:30")
+        #expect(try await sent(to: publicTribe, engine) == nil)
+        #expect(try await engine.offsetShared(in: publicTribe) == nil)
         // A tribe gets it only while its registry says it is private, asked
         // at send time; this one has no registry to ask, so nothing.
         #expect(try await engine.sharedOffset(in: privateTribe, type: MessageType.text) == "GMT+5:30")
+        #expect(try await engine.offsetShared(in: privateTribe) == "GMT+5:30")
         #expect(try await sent(to: privateTribe, engine) == nil)
-        // A retry of a message sent while it was on follows the switch as it is now.
+    }
+
+    /// Turning it off writes the row the preferences file would hold, and
+    /// stops the offset, a retry's included; turning it on again sends.
+    @Test func turningItOffWritesARowAndStopsIt() async throws {
+        let (engine, storage) = try engine()
+        try await engine.setTimeZone("Asia/Kolkata")
+        let before = Int64(Date.now.timeIntervalSince1970)
         try await engine.setTimeZoneSharing(false, in: person)
+        try await engine.setTimeZoneSharing(false, in: privateTribe)
+        for chat in [person, privateTribe] {
+            let row = try #require(try storage.chatTimeZone(chat))
+            #expect(!row.enabled && row.identifier == nil)
+            #expect(row.updatedAt >= before && row.updatedAt <= Int64(Date.now.timeIntervalSince1970))
+            #expect(try await !engine.timeZoneSharing(in: chat))
+            #expect(try await engine.sharedOffset(in: chat, type: MessageType.text) == nil)
+            #expect(try await engine.offsetShared(in: chat) == nil)
+        }
+        // A retry of a message sent while it was on follows the switch as it is now.
         #expect(try await sent(to: person, engine, body: body(tz: "GMT+5:30")) == nil)
-        #expect(try await engine.offsetShared(in: person) == nil)
+        try await engine.setTimeZoneSharing(true, in: person)
+        try await engine.setTimeZoneSharing(true, in: privateTribe)
+        for chat in [person, privateTribe] {
+            #expect(try storage.chatTimeZone(chat)?.enabled == true)
+        }
+        #expect(try await sent(to: person, engine) == "GMT+5:30")
+        #expect(try await engine.offsetShared(in: privateTribe) == "GMT+5:30")
     }
 
     /// No switch in a public tribe, and a row that says on (from a tribe
@@ -151,6 +174,7 @@ struct TimeZoneSharingTests {
     @Test func neverInAPublicTribe() async throws {
         let (engine, storage) = try engine()
         let stranger = strangerKey
+        #expect(try await sent(to: stranger, engine) == nil)
         await #expect(throws: PeelError.self) { try await engine.setTimeZoneSharing(true, in: publicTribe) }
         await #expect(throws: Engine.Failure.notAChat) { try await engine.setTimeZoneSharing(true, in: stranger) }
         try await storage.pool.write { db in
@@ -169,7 +193,6 @@ struct TimeZoneSharingTests {
 
     @Test func onlyTextAttachmentsAndPaymentsCarryIt() async throws {
         let (engine, _) = try engine()
-        try await engine.setTimeZoneSharing(true, in: person)
         for type in [MessageType.text, MessageType.attachment, MessageType.directPayment] {
             #expect(try await engine.sharedOffset(in: person, type: type) != nil)
         }

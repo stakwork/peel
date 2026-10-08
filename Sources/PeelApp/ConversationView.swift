@@ -458,8 +458,9 @@ struct UndeliveredActions: View {
                 Button("Keep") { confirmingDiscard = false }
                     .foregroundStyle(Theme.accent)
             } else if let armed = attempt.armed {
-                Button("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))") {
-                    Task { await retry() }
+                Button { Task { await retry() } } label: {
+                    Text("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))")
+                        .buttonProgress(attempt.working, size: .mini)
                 }
                 .monospacedDigit()
                 .foregroundStyle(Theme.attention)
@@ -471,7 +472,7 @@ struct UndeliveredActions: View {
                 Text(label)
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
-                Button("Retry") { Task { await retry() } }
+                Button { Task { await retry() } } label: { Text("Retry").buttonProgress(attempt.working, size: .mini) }
                     .foregroundStyle(Theme.accent)
                     .disabled(attempt.working)
                 Button("Discard") { confirmingDiscard = true }

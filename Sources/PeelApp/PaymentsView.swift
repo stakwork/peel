@@ -781,10 +781,13 @@ private struct ReceivePane: View {
                 .font(Theme.font(13))
                 .fieldBoxed()
         }
-        FormFooter(problem: problem, working: working) {
-            Button(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice") {
+        FormFooter(problem: problem) {
+            Button {
                 guard let amountMsat else { return }
                 Task { await create(amountMsat) }
+            } label: {
+                Text(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice")
+                    .buttonProgress(working)
             }
             .buttonStyle(GhostButtonStyle(prominent: true))
             .keyboardShortcut(.defaultAction)
@@ -1036,7 +1039,7 @@ private struct PayInvoicePane: View {
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
                 }
-                FormFooter(problem: attempt.problem, working: attempt.working) {
+                FormFooter(problem: attempt.problem) {
                     Button("Cancel", action: close).buttonStyle(GhostButtonStyle())
                     PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                         await model.payInvoice(invoice, confirmedMsat: confirmed)

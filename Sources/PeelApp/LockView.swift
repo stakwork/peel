@@ -84,16 +84,15 @@ struct ForgetAccountControl: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.secondaryText)
-                    Button("Forget account") {
+                    Button {
                         working = true
                         Task {
                             do { try await model.forgetAccount() } catch { problem = PeelError.readable(error) }
                             working = false
                         }
-                    }
+                    } label: { Text("Forget account").buttonProgress(working) }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.destructive)
-                    if working { ProgressView().controlSize(.small) }
                 }
                 .font(Theme.font(13, .medium))
                 .disabled(working)

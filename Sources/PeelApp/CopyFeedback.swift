@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// What every copy action shows once it has copied: a button's icon turns
-/// into a green check and its title into "Copied" for a moment
+/// into a check (green, or the button's text colour on a filled button) and
+/// its title into "Copied" for a moment
 /// (`CopyButton`, `CopyLabel`); a menu, which has closed by then, shows a
 /// "Copied" pill at the bottom of the window (`MenuEntry.copy`, through
 /// `MenuPresenter.showToast`). VoiceOver hears "Copied" either way.
@@ -81,6 +82,7 @@ struct CopyLabel: View {
     let copiedAt: Date?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.filledButton) private var filled
     @State private var copied = false
 
     init(_ title: String, systemImage: String = "doc.on.doc", iconOnly: Bool = false, copiedAt: Date?) {
@@ -99,7 +101,8 @@ struct CopyLabel: View {
                     .scaleEffect(copied && !reduceMotion ? 0.6 : 1)
                 Image(systemName: "checkmark")
                     .fontWeight(.semibold)
-                    .foregroundStyle(Theme.confirmed)
+                    // Green clashes with a fill: there it keeps the button's text colour.
+                    .foregroundStyle(filled ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.confirmed))
                     .opacity(copied ? 1 : 0)
                     .scaleEffect(copied || reduceMotion ? 1 : 0.6)
             }

@@ -264,10 +264,14 @@ copy (the Payments screen's invoice and payment hash included), never a bare
   not). It takes the surrounding button style (`GhostButtonStyle`);
   `iconOnly: true` draws the small hover icon button instead, with the title
   as its tooltip. `systemImage` defaults to `doc.on.doc`. After the click
-  the icon becomes a green check and the title "Copied" (a spring of about
+  the icon becomes a check and the title "Copied" (a spring of about
   180 ms, no overshoot, scale and fade; leaving in 140 ms), held 1.5 s; another
   click starts the wait again. Both labels are laid out at once, so the button
-  never changes width. Reduce Motion keeps only the cross-fade.
+  never changes width. Reduce Motion keeps only the cross-fade. The check is
+  green on a bordered or plain button; on a filled one (`GhostButtonStyle(prominent:)`,
+  `PrimaryButtonStyle`) it takes the button's own text colour, since green
+  on the blue fill clashes (Tom, 2026-10-08). The filled styles say so
+  through `\.filledButton`.
 - **A button that copies in two steps** (the twelve words, after their
   warning): `CopyLabel("Copy", copiedAt: date)` as the label, setting
   `copiedAt` when the copy really happens.
@@ -280,6 +284,24 @@ copy (the Payments screen's invoice and payment hash included), never a bare
 - The twelve words keep their warning, Peel-only concealed copy and
   one-minute clear; only the Copy button's label changed.
 - VoiceOver hears "Copied" each time (`CopyFeedback.announce`).
+
+### A button while it works
+
+The spinner goes inside the button that was clicked, in its label's place,
+never beside it (Tom, 2026-10-08: "we've discussed before this shouldn't
+happen"; the onboarding Next button did this first). The label stays laid
+out, hidden, so the button keeps its width and nothing next to it moves.
+Use `Text("Save").buttonProgress(working)` as the label (in
+`ButtonStyles.swift`, with the button styles; `size: .mini` for the
+small text buttons of a row); on a filled button the spinner is drawn light
+against the fill. It needs a style SwiftUI draws (`GhostButtonStyle`,
+`PrimaryButtonStyle`, `.plain`), so the popover forms' commit buttons (Look
+up, Join, Add, Create) are `GhostButtonStyle(prominent: true)` like the
+payment forms'. Where one row has several buttons
+that run (Approve and Decline, Remove photo and Save), only the clicked one
+spins; the others are off. A spinner that stands for a status rather than a
+click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
+checked under its field) stays where it is.
 
 ## What the engine needs
 

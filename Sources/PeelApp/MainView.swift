@@ -656,13 +656,15 @@ struct JoinTribeForm: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
             }
-            FormFooter(problem: problem, working: working) {
+            FormFooter(problem: problem) {
                 if info == nil {
-                    Button("Look up") { Task { await lookUp() } }
+                    Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(working) }
+                        .buttonStyle(GhostButtonStyle(prominent: true))
                         .keyboardShortcut(.defaultAction)
                         .disabled(working || link.trimmed.isEmpty)
                 } else {
-                    Button("Join") { Task { await join() } }
+                    Button { Task { await join() } } label: { Text("Join").buttonProgress(working) }
+                        .buttonStyle(GhostButtonStyle(prominent: true))
                         .keyboardShortcut(.defaultAction)
                         .disabled(working)
                 }
@@ -743,8 +745,9 @@ struct AddContactForm: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Name (optional)", text: $name)
                 .textFieldStyle(.roundedBorder)
-            FormFooter(problem: problem, working: working) {
-                Button("Add") { Task { await add() } }
+            FormFooter(problem: problem) {
+                Button { Task { await add() } } label: { Text("Add").buttonProgress(working) }
+                    .buttonStyle(GhostButtonStyle(prominent: true))
                     .keyboardShortcut(.defaultAction)
                     .disabled(working || contactInfo.trimmed.isEmpty)
             }
@@ -779,17 +782,16 @@ struct ProblemText: View {
     }
 }
 
-/// A popover form's last row: what went wrong, a spinner while working, and its buttons.
+/// A popover form's last row: what went wrong, and its buttons (the one
+/// running shows its spinner inside it, `buttonProgress`).
 struct FormFooter<Buttons: View>: View {
     let problem: String?
-    let working: Bool
     @ViewBuilder let buttons: Buttons
 
     var body: some View {
         HStack {
             if let problem { ProblemText(problem) }
             Spacer()
-            if working { ProgressView().controlSize(.small) }
             buttons
         }
     }

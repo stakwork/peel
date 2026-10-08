@@ -253,8 +253,8 @@ extension Storage {
             sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
-                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat, noWords)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     mentionsMe = CASE WHEN message.deleted THEN 0 ELSE MAX(message.mentionsMe, excluded.mentionsMe) END,
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
@@ -266,6 +266,9 @@ extension Storage {
                     -- A deleted message stays empty whatever copy comes again.
                     body = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.body, excluded.body) END,
                     content = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.content, excluded.content) END,
+                    -- Goes with the content kept.
+                    noWords = CASE WHEN message.content IS NULL AND NOT message.deleted THEN excluded.noWords
+                        ELSE message.noWords END,
                     replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
                     threadUUID = COALESCE(message.threadUUID, excluded.threadUUID),
                     mediaType = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.mediaType, excluded.mediaType) END,
@@ -279,6 +282,7 @@ extension Storage {
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
                 message.status, message.mentionsMe, message.replyUUID, message.threadUUID,
                 message.mediaType, message.fileName, message.fileSize, message.upload, message.amountMsat,
+                message.hasNoWords,
             ]
         )
     }
@@ -530,6 +534,39 @@ extension Storage {
                 arguments: [checkedAt ?? 0]
             ) ?? false
         }
+    }
+
+    /// The version of `Message.hasNoWords` that `markNoWords` checks stored
+    /// messages by; raise it when that rule changes.
+    static let noWordsVersion = "1"
+
+    /// Sets `noWords` on the stored messages, once per `noWordsVersion`
+    /// (`Setting.noWordsScan`): rows stored before v17, or by an older rule.
+    /// One pass over the table in chunks, each its own transaction, in which
+    /// SQLite hands over only the rows that could have no words: calls, and
+    /// text whose content, past ASCII spaces, is empty or starts beyond
+    /// ASCII (any other ASCII character is a word); and those marked now.
+    /// A deleted row keeps what it had: its content is gone.
+    func markNoWords(chunk: Int = 500) throws {
+        guard try value(for: .noWordsScan) != Self.noWordsVersion else { return }
+        try inChunks(of: chunk) { db, after in
+            try Row.fetchAll(
+                db, sql: """
+                    SELECT id, type, content, noWords FROM message
+                    WHERE id > ? AND deleted = 0 AND (noWords = 1 OR type = \(MessageType.call)
+                        OR (type = \(MessageType.text)
+                            AND IFNULL(unicode(ltrim(content, char(9, 10, 11, 12, 13, 32))), 128) >= 128))
+                    ORDER BY id LIMIT ?
+                    """,
+                arguments: [after, chunk]
+            )
+        } update: { db, row in
+            let noWords = Message.hasNoWords(type: row["type"], content: row["content"])
+            if noWords != row["noWords"] {
+                try db.execute(sql: "UPDATE message SET noWords = ? WHERE id = ?", arguments: [noWords, row["id"] as Int64])
+            }
+        }
+        try set(Self.noWordsVersion, for: .noWordsScan)
     }
 
     /// Removes one of our own messages that never reached the server.

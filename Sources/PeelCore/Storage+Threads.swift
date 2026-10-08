@@ -7,6 +7,12 @@ extension Storage {
     /// say whom they were for. (Only the owner can send them.)
     private static let messagesSQL = messagesSQL(also: "")
 
+    /// A thread message, for the row `alias`: text or an attachment with
+    /// words (`Message.hasNoWords`).
+    private static func threadMessage(_ alias: String) -> String {
+        "\(alias).type IN (\(MessageType.contentSQL)) AND \(alias).noWords = 0"
+    }
+
     private static func messagesSQL(also condition: String) -> String {
         """
         SELECT * FROM (
@@ -22,27 +28,33 @@ extension Storage {
     /// What a tribe's main conversation hides, as the Mac app does: every
     /// message of a thread of two or more but the newest, and the thread's
     /// original. A thread whose original is not stored is not collapsed.
+    /// Messages with no words are not counted, and one is hidden once its
+    /// thread has a message with words.
     private static let tribeTimelineSQL = messagesSQL(also: """
         AND NOT (m.threadUUID IS NOT NULL AND m.type IN (\(MessageType.contentSQL))
             AND EXISTS (SELECT 1 FROM message o WHERE o.uuid = m.threadUUID AND o.chat = m.chat)
-            AND EXISTS (
+            AND (EXISTS (
                 SELECT 1 FROM message n
-                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND n.type IN (\(MessageType.contentSQL))
+                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND \(threadMessage("n"))
                     AND (n.timestamp, n.id) > (m.timestamp, m.id)
-            ))
+            ) OR (m.noWords = 1 AND EXISTS (
+                SELECT 1 FROM message n
+                WHERE n.chat = m.chat AND n.threadUUID = m.threadUUID AND \(threadMessage("n"))
+            ))))
         AND NOT (m.uuid IS NOT NULL AND EXISTS (
             SELECT 1 FROM message n
-            WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND n.type IN (\(MessageType.contentSQL))
+            WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND \(threadMessage("n"))
             LIMIT 1 OFFSET 1
         ))
         """)
 
-    /// A thread's newest 200 messages, oldest first.
-    private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND type IN (\(MessageType.contentSQL))")
+    /// A thread's newest 200 messages with words, oldest first.
+    private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND \(threadMessage("m"))")
 
     /// Threads of two or more messages with their original stored, each with
     /// its original's columns plus `threadCount`, `threadLast` and
-    /// `threadUnread`. `filter` narrows the thread messages `t`.
+    /// `threadUnread`; messages with no words are left out. `filter`
+    /// narrows the thread messages `t`.
     private static func threadsSQL(where filter: String) -> String {
         """
         SELECT o.*, g.threadCount, g.threadLast, g.threadUnread, g.latestID
@@ -50,11 +62,11 @@ extension Storage {
             SELECT t.chat, t.threadUUID, COUNT(*) AS threadCount, MAX(t.timestamp) AS threadLast,
                 SUM(t.fromMe = 0 AND t.serverIndex > COALESCE(s.lastRead, -1)) AS threadUnread,
                 (SELECT l.id FROM message l
-                 WHERE l.chat = t.chat AND l.threadUUID = t.threadUUID AND l.type IN (\(MessageType.contentSQL))
+                 WHERE l.chat = t.chat AND l.threadUUID = t.threadUUID AND \(threadMessage("l"))
                  ORDER BY l.timestamp DESC, l.id DESC LIMIT 1) AS latestID
             FROM message t
             LEFT JOIN chatState s ON s.chat = t.chat
-            WHERE t.threadUUID IS NOT NULL AND t.type IN (\(MessageType.contentSQL)) AND \(filter)
+            WHERE t.threadUUID IS NOT NULL AND \(threadMessage("t")) AND \(filter)
             GROUP BY t.chat, t.threadUUID
             -- A tribe thread is one from two messages (what collapses); with a
             -- contact, from the first reply (Tom, 2026-10-07).
@@ -179,12 +191,12 @@ extension Storage {
         }
     }
 
-    /// How many text messages and attachments are in a thread.
+    /// How many text messages and attachments with words are in a thread.
     public func threadCount(_ uuid: String, in chat: String) throws -> Int {
         try pool.read { db in
             try Int.fetchOne(
                 db,
-                sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND threadUUID = ? AND type IN (\(MessageType.contentSQL))",
+                sql: "SELECT COUNT(*) FROM message WHERE chat = ? AND threadUUID = ? AND \(Self.threadMessage("message"))",
                 arguments: [chat, uuid]
             ) ?? 0
         }
@@ -285,7 +297,7 @@ extension Storage {
             db,
             sql: """
                 SELECT chat, threadUUID, fromMe, sender, MAX(timestamp) AS last FROM message
-                WHERE type IN (\(MessageType.contentSQL))
+                WHERE \(threadMessage("message"))
                     AND chat IN (\(databaseQuestionMarks(count: chats.count)))
                     AND threadUUID IN (\(databaseQuestionMarks(count: threads.count)))
                 GROUP BY chat, threadUUID, fromMe, sender

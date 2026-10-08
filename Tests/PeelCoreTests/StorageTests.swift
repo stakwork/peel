@@ -294,6 +294,56 @@ struct StorageTests {
         #expect(messages.last?.content == "m249")
     }
 
+    // MARK: Messages with no words
+
+    private func noWords(_ uuid: String) throws -> Bool? {
+        try rows(profile, "SELECT noWords FROM message WHERE uuid = '\(uuid)'").first?["noWords"]
+    }
+
+    /// Stored with the message, filled in by a later copy that brings the
+    /// content, and kept through a delete: what was not news stays so.
+    @Test func noWordsGoesWithTheContentKept() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(contacts: [(pubkey: dm, ready: true)], messages: [
+            (.fixture(uuid: "u1", content: nil), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, content: " \u{200B}"), false, nil),
+            (.fixture(uuid: "u3", content: "hi"), false, nil),
+        ]))
+        #expect(try [noWords("u1"), noWords("u2"), noWords("u3")] == [true, true, false])
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", content: "late"), false, nil),
+            (.fixture(uuid: "u3", content: ""), false, nil),
+        ]))
+        #expect(try [noWords("u1"), noWords("u3")] == [false, false])
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "d1", serverIndex: 9, type: MessageType.delete, content: "", replyUUID: "u2"), false, nil),
+        ]))
+        #expect(try rows(profile, "SELECT deleted FROM message WHERE uuid = 'u2'").first?["deleted"] == true)
+        #expect(try noWords("u2") == true)
+        let states = try #require(try await first(storage.readStates()))
+        #expect(states[dm]?.unread ?? 0 == 0)
+    }
+
+    /// Unread counts, Mark as unread and the sidebar's preview pass over
+    /// messages with no words.
+    @Test func messagesWithNoWordsAreNotUnreadOrPreviewed() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: dm, ready: true)],
+            messages: [
+                (.fixture(uuid: "u1", serverIndex: 1, content: "words", timestamp: 1_000), false, nil),
+                (.fixture(uuid: "u2", serverIndex: 2, content: " ", timestamp: 2_000), false, nil),
+                (.fixture(uuid: "u3", serverIndex: 3, type: MessageType.call, content: "\u{FEFF}", timestamp: 3_000), false, nil),
+            ]
+        ))
+        let states = try #require(try await first(storage.readStates()))
+        #expect(states[dm]?.unread == 1)
+        #expect(try storage.newestIncomingIndex(in: dm) == 1)
+        let conversations = try #require(try await first(storage.conversations()))
+        #expect(conversations.first?.lastContent == "words")
+        #expect(conversations.first?.lastTimestamp == 1_000)
+    }
+
     // MARK: Profile lock
 
     @Test func secondWritableStorageIsRejected() throws {

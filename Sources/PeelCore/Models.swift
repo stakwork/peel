@@ -26,6 +26,9 @@ public enum Setting: String, Sendable {
     /// The aliases stored tribe messages were last checked for mentions of
     /// this account (`MentionScan`); a change checks them again.
     case mentionScan
+    /// The `Storage.noWordsVersion` stored messages were last checked by
+    /// for having no words; a new version checks them again.
+    case noWordsScan
     /// Payments and boosts over this many msat need the person's confirmation.
     case paymentConfirmationMsat
     /// What a one-tap boost tips, in msat (the official apps' "Default tip amount").

@@ -25,6 +25,7 @@ public final class Storage: Sendable {
         pool = try DatabasePool(path: directory.appendingPathComponent("peel.sqlite").path, configuration: configuration)
         if !readOnly {
             try Self.migrator.migrate(pool)
+            try markNoWords()
         }
     }
 

@@ -202,6 +202,51 @@ struct ThreadTests {
         #expect(tribeThread.participants.map(\.alias) == ["dan", "cat", "ann"])
     }
 
+    /// A thread message with no words, as `text` makes one with words.
+    private func blank(
+        _ n: Int, chat: String = tribe, thread: Int, index: Int64? = nil
+    ) -> (Message, Bool, String?) {
+        var row = text(n, chat: chat, thread: thread, index: index)
+        row.0.content = " \u{200B}"
+        return row
+    }
+
+    /// Messages with no words are not thread messages: not in the counts,
+    /// the unread, the latest or the collapse, and not where a thread opens.
+    @Test func messagesWithNoWordsAreLeftOutOfThreads() async throws {
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: tribe)])
+        _ = try storage.apply(Storage.Commit(
+            messages: [
+                text(1, fromMe: true, index: 1), text(2, thread: 1, index: 2), blank(3, thread: 1, index: 3),
+                text(4, thread: 1, index: 4), blank(5, thread: 1, index: 5),
+                // One reply with words and one without: not a thread of two.
+                text(10, fromMe: true, index: 10), text(11, thread: 10, index: 11), blank(12, thread: 10, index: 12),
+            ],
+            reads: [tribe: 2]
+        ))
+        let timeline = try #require(try await first(storage.timeline(in: tribe)))
+        // m4 stands for its thread; the other thread shows its one reply.
+        #expect(timeline.messages.map(\.content) == ["m4", "m10", "m11"])
+        let summary = try #require(timeline.threads[uuid(1)])
+        #expect(summary.count == 2)
+        #expect(summary.unread == 1)
+        #expect(summary.lastTimestamp == 4_000)
+        #expect(summary.latest?.content == "m4")
+        #expect(timeline.threads[uuid(10)] == nil)
+
+        let threads = try #require(try await first(storage.threads()))
+        #expect(threads.map(\.uuid) == [uuid(1)])
+        #expect(threads.first?.count == 2)
+        #expect(try storage.threadCount(uuid(1), in: tribe) == 2)
+        #expect(try storage.threadCount(uuid(10), in: tribe) == 1)
+
+        let thread = try #require(try await first(storage.thread(uuid(1), in: tribe)))
+        #expect(thread.messages.map(\.content) == ["m2", "m4"])
+        #expect(try storage.firstUnreadReply(inThread: uuid(1), in: tribe, after: 2)?.content == "m4")
+        #expect(try storage.firstUnreadReply(inThread: uuid(10), in: tribe, after: 11) == nil)
+    }
+
     @Test func messagePreviewNamesAnAttachmentWithoutCaption() {
         var image = Message.fixture(type: MessageType.attachment, content: "")
         image.mediaType = "image/jpg"

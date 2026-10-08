@@ -14,10 +14,16 @@ struct PeelApp: App {
         umask(0o077)
         // At info and below LiveKit logs the server it connects to.
         LiveKitSDK.setLogLevel(.warning)
+        #if os(macOS)
+        // One main window: its tab bar's "+" would open a second.
+        NSWindow.allowsAutomaticWindowTabbing = false
+        #endif
     }
 
     var body: some Scene {
-        WindowGroup {
+        // One main window (the web pane, the viewer and the selection are
+        // the app's, not a window's): New Window brings it to the front.
+        WindowGroup(id: MainWindow.id, for: MainWindow.Key.self) { _ in
             RootView()
                 .environment(model)
                 .tint(Theme.accent)
@@ -41,11 +47,16 @@ struct PeelApp: App {
                     model.willTerminate()
                 }
                 #endif
+        } defaultValue: {
+            .main
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 760)
         .commands {
+            CommandGroup(replacing: .newItem) {
+                MainWindow.MenuItem()
+            }
             // The account screen stands in for Settings.
             CommandGroup(replacing: .appSettings) {
                 Button("Account…") { model.destination = .account }
@@ -82,6 +93,27 @@ struct PeelApp: App {
         .defaultLaunchBehavior(CallTest.config(for: model) != nil ? .presented : .suppressed)
         #endif
     }
+}
+
+/// The one main window: a group of windows that only ever shows `.main`,
+/// so opening it again brings the open one to the front.
+enum MainWindow {
+    static let id = "main"
+
+    enum Key: String, Codable, Hashable { case main }
+
+    #if os(macOS)
+    /// File › New Window (⌘N): the main window to the front, or opened
+    /// again once it has been closed, never a second one.
+    struct MenuItem: View {
+        @Environment(\.openWindow) private var openWindow
+
+        var body: some View {
+            Button("New Window") { openWindow(id: MainWindow.id, value: Key.main) }
+                .keyboardShortcut("n", modifiers: .command)
+        }
+    }
+    #endif
 }
 
 #if os(macOS)

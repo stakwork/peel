@@ -791,8 +791,13 @@ final class AppModel {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
         Clipboard.clearSecret()
+        // Players are keyed by message id, which the next account reuses.
+        MediaPlayback.shared.closeFullScreen()
+        MediaPlayback.shared.stop()
         conversations = []
+        focus = nil
         destination = nil
+        searchQuery = ""
         timeline = .empty
         openThread = nil
         threads = []
@@ -801,6 +806,9 @@ final class AppModel {
         (pendingFiles.values.joined() + attachmentHandles.values.compactMap(\.localFile))
             .forEach { IncomingFiles.discard($0) }
         pendingFiles = [:]
+        attachmentPrices = [:]
+        composerFocus = [:]
+        dropTarget = nil
         viewer = nil
         attachmentHandles = [:]
         drafts = [:]
@@ -809,6 +817,9 @@ final class AppModel {
         readStates = [:]
         conversationNotices = [:]
         notice = nil
+        connection = .offline(retryIn: nil)
+        connectionError = nil
+        reconnectAt = nil
         restoreProgress = RestoreProgress()
         myAlias = nil
         myPhotoURL = nil
@@ -820,6 +831,8 @@ final class AppModel {
         callPresence = [:]
         callWatchers = [:]
         callFailures = [:]
+        joiningRoom = nil
+        startingCallIn = nil
         leaveCall()
         money.reset()
         balanceMsat = nil

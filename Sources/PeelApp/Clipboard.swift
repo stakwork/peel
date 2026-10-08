@@ -29,10 +29,12 @@ enum Clipboard {
         board.prepareForNewContents(with: .currentHostOnly)
         board.setString(text, forType: .string)
         board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-        secretChangeCount = board.changeCount
+        let copied = board.changeCount
+        secretChangeCount = copied
         Task { @MainActor in
             try? await Task.sleep(for: clearAfter)
-            clearSecret()
+            // Words copied again since then wait for their own clear.
+            if secretChangeCount == copied { clearSecret() }
         }
         #else
         UIPasteboard.general.setItems(

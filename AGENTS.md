@@ -64,9 +64,15 @@ is a short plan. Update the status and the journal when you finish something.
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
     per engine
-  - `Media.swift` — attachments: the official apps' encryption (RNCryptor v3),
-    media tokens, the memes server (sign-in, upload, download), what a file
-    is by its bytes, and the profile's `media/` cache and outbox
+  - `Media.swift` — what an attachment is: `AttachmentKind` (by its bytes),
+    `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`
+  - `MediaCrypto.swift` — the official apps' attachment encryption
+    (RNCryptor v3)
+  - `MemesServer.swift` — the memes server: sign-in, upload, download, the
+    transfer with its size limit and progress
+  - `MediaStore.swift` — the profile's `media/` cache and outbox
+  - `Files.swift` — `ImageDecoding`, `ProfilePhoto` and `UserFiles` (files
+    saved for the person, quarantined)
   - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
     pasteboard items attach, image bytes and promised files written to Peel's
     own temp folder and checked

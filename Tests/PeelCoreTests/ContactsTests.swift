@@ -125,7 +125,33 @@ struct InviteStorageTests {
         _ = try storage.apply(Storage.Commit(statuses: [(sending.tag!, "FAILED")]))
         #expect(try storage.invite(code: sending.code)?.status == .ready)
         #expect(try storage.listPendingInvites().map(\.code) == [sending.code])
-        #expect(try storage.sendingInvites().isEmpty)
+        #expect(try storage.pendingSendTags(textBefore: .max).isEmpty)
+    }
+
+    /// Q2: a funding payment the mixer left unsettled is still on its way.
+    /// The invite stays sending, is asked about on the next connect, and
+    /// moves once the server has the last word.
+    @Test func anUnsettledFundingPaymentLeavesTheInviteSending() throws {
+        let storage = try profile.storage()
+        let invite = record()
+        _ = try storage.apply(Storage.Commit(invites: [invite]))
+        _ = try storage.apply(Storage.Commit(statuses: [(invite.tag!, "UNSETTLED")]))
+        #expect(try storage.invite(code: invite.code)?.status == .sending)
+        #expect(try storage.pendingSendTags(textBefore: 0).map(\.tag) == [invite.tag!])
+        _ = try storage.apply(Storage.Commit(statuses: [(invite.tag!, "COMPLETE")]))
+        #expect(try storage.invite(code: invite.code)?.status == .ready)
+    }
+
+    /// The one forward-only rule: a failed funding payment the server had
+    /// after all makes the invite ready, as it would a payment delivered.
+    @Test func aFailedInviteTheServerConfirmsAfterAllIsReady() throws {
+        let storage = try profile.storage()
+        let invite = record(status: .failed)
+        _ = try storage.apply(Storage.Commit(invites: [invite]))
+        _ = try storage.apply(Storage.Commit(statuses: [(invite.tag!, "UNSETTLED")]))
+        #expect(try storage.invite(code: invite.code)?.status == .failed)
+        _ = try storage.apply(Storage.Commit(statuses: [(invite.tag!, "COMPLETE")]))
+        #expect(try storage.invite(code: invite.code)?.status == .ready)
     }
 
     /// Someone who signs up with the invite adds this account with its code.

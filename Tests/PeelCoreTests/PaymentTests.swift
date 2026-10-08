@@ -341,6 +341,35 @@ struct SendStatusTests {
         #expect(recorded(records) == ["t1 COMPLETE", "t3 FAILED"])
     }
 
+    /// The connect-time check reads the three tables that track a send by
+    /// tag in one go: our payments and boosts at once and text only once it
+    /// has waited, the invoices we pay, and the payments funding invites.
+    @Test func pendingSendsAreReadFromAllThreeTables() throws {
+        let storage = try profile.storage()
+        let pending = Message.Delivery.pending.rawValue
+        var commit = Storage.Commit(contacts: [(dm, true)], messages: [
+            (.fixture(uuid: uuid(1), type: MessageType.boost, chat: dm, fromMe: true, timestamp: 5_000, tag: "boost",
+                      status: pending), false, nil),
+            (.fixture(uuid: uuid(2), chat: dm, fromMe: true, timestamp: 1_000, tag: "old", status: pending), false, nil),
+            (.fixture(uuid: uuid(3), chat: dm, fromMe: true, timestamp: 9_000, tag: "new", status: pending), false, nil),
+        ])
+        commit.invoices = [InvoiceRecord(
+            paymentHash: coffeeHash, incoming: false, bolt11: coffee, amountMsat: 1, memo: "", payee: coffeePayee,
+            createdAt: 2_000, status: .pending, tag: "invoice"
+        )]
+        commit.invites = [InviteRecord(
+            code: String(repeating: "ab", count: 32), link: "sphinx.chat://?action=i&d=x", amountMsat: 1,
+            tag: "invite", status: .sending, createdAt: 3_000
+        )]
+        _ = try storage.apply(commit)
+        #expect(Set(try storage.pendingSendTags(textBefore: 2_000)) == [
+            .init(tag: "boost", createdAt: 5_000, movesMoney: true),
+            .init(tag: "old", createdAt: 1_000, movesMoney: false),
+            .init(tag: "invoice", createdAt: 2_000, movesMoney: true),
+            .init(tag: "invite", createdAt: 3_000, movesMoney: true),
+        ])
+    }
+
     @Test func unrecordedOldPaymentsFailWhenTheServerHasNoRecord() {
         #expect(recorded([status("t1", "PENDING")], unrecorded: ["t1", "t2"]) == ["t2 FAILED"])
     }
@@ -364,7 +393,7 @@ struct SendStatusTests {
         #expect(stored.delivery == .unsettled)
         #expect(!stored.isRetryable())
         // Not asked about again: the mixer's records say PENDING for good.
-        #expect(try storage.pendingSends(textBefore: .max).isEmpty)
+        #expect(try storage.pendingSendTags(textBefore: .max).isEmpty)
         let summary = try #require(try await first(storage.timeline(in: dm))?.boosts[uuid(1)])
         #expect(summary.count == 1)
         #expect(summary.pendingSince == nil)

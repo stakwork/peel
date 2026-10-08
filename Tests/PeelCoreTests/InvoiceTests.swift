@@ -190,7 +190,7 @@ struct InvoiceTests {
         _ = try storage.apply(Storage.Commit(statuses: [("t1", "UNSETTLED")]))
         #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .unsettled)
         #expect(try storage.paidState(paymentHash: coffeeHash) == .pending)
-        #expect(try storage.pendingInvoicePayments().isEmpty)
+        #expect(try storage.pendingSendTags(textBefore: .max).isEmpty)
         #expect(throws: (any Error).self) { try storage.apply(commit) }
         _ = try storage.apply(Storage.Commit(statuses: [("t1", "COMPLETE")]))
         #expect(try storage.invoice(paymentHash: coffeeHash, incoming: false)?.status == .paid)

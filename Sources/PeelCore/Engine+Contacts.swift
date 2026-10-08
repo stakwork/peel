@@ -84,27 +84,24 @@ extension Engine {
             inviterRouteHint: nil
         )
         guard let link = result.newInvite, let tag = result.msgs.first?.tag else {
-            throw PeelError("the core made no invite")
+            throw Failure.coreReturnedNothing("invite")
         }
         let code = try Sphinxrs.codeFromInvite(inviteQr: link)
         let record = InviteRecord(
             code: code, link: link, amountMsat: Int64(amountMsat), nickname: nickname, message: message, tag: tag,
             status: .sending, createdAt: Date().millisecondsSince1970
         )
-        let followUps = try commit(result, time: time, expectedSender: nil, invites: [record])
-        do {
-            try await complete(result, followUps)
-        } catch Failure.notConnected {
-            // The connection went before anything was published: nothing moved.
-            _ = try? storage.setInviteStatus(code: code, to: .failed, from: [.sending])
+        switch try await commitAndPublish(result, time: time, invites: [record]) {
+        case .all:
+            break
+        case .none:
+            // Nothing moved.
+            try? storage.setStatus(.failed, tag: tag)
             throw Failure.notConnected
-        } catch {
-            // Any other failure may have published the payment: waited for
-            // like any other, and returned still sending if the server is quiet.
-            emit.yield(.coreError(
-                "The connection failed while making an invite; its payment may have gone. "
-                    + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
-            ))
+        case .unknown(let error):
+            // Waited for like any other payment, and returned still sending
+            // if the server is quiet.
+            emit.yield(.coreError(Self.mayHaveGone(error)))
         }
         return try await confirmedInvite(code: code, wait: wait)
     }

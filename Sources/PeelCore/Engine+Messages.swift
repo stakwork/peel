@@ -180,9 +180,9 @@ extension Engine {
     /// local row is written in the same transaction as the state, before
     /// publishing. If the publish fails the row is marked failed, ready to send
     /// again, and the failure is reported as a send status rather than thrown.
-    /// A payment is marked failed only when nothing was published (no
-    /// connection): once anything went out it may have paid, so it stays
-    /// pending, never to be sent again, until the server says.
+    /// A payment is marked failed only when nothing was published
+    /// (`commitAndPublish`'s `.none`): once anything went out it may have
+    /// paid, so it stays pending, never to be sent again, until the server says.
     func deliver(
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
         replacing id: Int64?
@@ -224,24 +224,24 @@ extension Engine {
                 outgoing?.amountMsat = Int64(clamping: invoice.amountMsat)
             }
         }
-        let followUps = try commit(result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend)
-        // Nothing is published without a connection (`complete` checks first).
-        let unsent = transport == nil
-        do {
-            try await complete(result, followUps)
-        } catch {
-            guard amountMsat == nil || unsent else {
-                emit.yield(.conversationError(
-                    chat: pubkey, message: "The connection failed while sending; the payment may have gone. "
-                        + "It stays unconfirmed until the server says (\(error))"
-                ))
-                return sent?.tag
-            }
+        let failure: (any Error)?
+        switch try await commitAndPublish(result, time: time, outgoing: outgoing, resend: resend) {
+        case .all:
+            failure = nil
+        case .none:
+            failure = Failure.notConnected
+        case .unknown(let error) where amountMsat != nil:
+            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error)))
+            return sent?.tag
+        case .unknown(let error):
+            failure = error
+        }
+        if let failure {
             if let tag = sent?.tag {
                 try storage.setStatus(.failed, tag: tag)
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
-            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(error))"))
+            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(failure))"))
             return sent?.tag
         }
         // The server moves the chat's read marker to what was just sent.

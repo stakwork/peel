@@ -199,20 +199,40 @@ extension Storage {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
     }
 
-    /// Our sends the server has not confirmed or refused: every payment or
-    /// boost, and text that has waited past the confirmation timeout, newest
-    /// first, at most 200 (`message_pending`).
-    func pendingSends(textBefore cutoff: Int64) throws -> [Message] {
-        try pool.read { db in
-            try Message.fetchAll(
+    /// A send tracked by tag that the server has not confirmed or refused.
+    struct PendingSend: Hashable {
+        var tag: String
+        /// When it was sent or written, in milliseconds since 1970.
+        var createdAt: Int64
+        /// It pays: a payment, boost or purchase, an invoice we pay or an
+        /// invite's funding payment, so one the server never recorded failed
+        /// (`Message.unrecordedPaymentTimeout`).
+        var movesMoney: Bool
+    }
+
+    /// Every send the server has not confirmed or refused, from the three
+    /// tables that track one by tag: our payments, boosts and purchases, and
+    /// text that has waited past `cutoff` (newest first, at most 200,
+    /// `message_pending`); invoices we pay (newest first, at most 200); and
+    /// invites whose funding payment is still sending.
+    func pendingSendTags(textBefore cutoff: Int64) throws -> [PendingSend] {
+        let moneySends = MessageType.sqlList(MessageType.moneySends)
+        return try pool.read { db in
+            try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT * FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
-                        AND (type IN (\(MessageType.sqlList(MessageType.moneySends))) OR timestamp < ?)
-                    ORDER BY id DESC LIMIT 200
+                    SELECT * FROM (
+                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, type IN (\(moneySends)) AS movesMoney
+                        FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
+                            AND (type IN (\(moneySends)) OR timestamp < ?)
+                        ORDER BY id DESC LIMIT 200)
+                    UNION ALL SELECT * FROM (
+                        SELECT tag, createdAt, 1 FROM invoice WHERE incoming = 0 AND status = 'PENDING' AND tag IS NOT NULL
+                        ORDER BY createdAt DESC LIMIT 200)
+                    UNION ALL SELECT tag, createdAt, 1 FROM invite WHERE status = ? AND tag IS NOT NULL
                     """,
-                arguments: [cutoff]
-            )
+                arguments: [cutoff, InviteRecord.Status.sending.rawValue]
+            ).map { PendingSend(tag: $0["tag"], createdAt: $0["createdAt"], movesMoney: $0["movesMoney"]) }
         }
     }
 
@@ -397,16 +417,6 @@ extension Storage {
 
     public func invite(code: String) throws -> InviteRecord? {
         try pool.read { db in try InviteRecord.fetchOne(db, key: code) }
-    }
-
-    /// Invites whose funding payment the server has not confirmed.
-    func sendingInvites() throws -> [InviteRecord] {
-        try pool.read { db in
-            try InviteRecord.fetchAll(
-                db, sql: "SELECT * FROM invite WHERE status = ? AND tag IS NOT NULL",
-                arguments: [InviteRecord.Status.sending.rawValue]
-            )
-        }
     }
 
     /// Every conversation, newest first, re-emitted whenever one changes.

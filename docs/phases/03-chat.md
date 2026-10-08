@@ -12,6 +12,8 @@ message (#23, in `02-messaging.md` item 7).
 - A production run of tribe create, edit, pin and delete on the throwaway: "Tribes", "Open".
 - Clicking through what no session could exercise: "Chat UI", "Open".
 - A Reply action on notifications: "Notifications", "Open". (Payments and boosts notify since 2026-10-08: `04-money.md`, "Sats received".)
+- Markdown beyond inline code and fences, search, voice messages and
+  Giphy: added to v1 on 2026-10-08 (evening), planned in `10-v1-extras.md`.
 
 **Decided:** no auto-join of the invite's tribe; delete sends only
 `delete_tribe`; one Reply, threads grow from replies, no Copy link; files

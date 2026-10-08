@@ -136,6 +136,47 @@ public actor Engine {
         case invoiceWithoutAmount
         case serverTimedOut
         case noInvoiceFromServer
+        case notAnInvoice
+        case unreadableInvoice
+        /// The server's invoice differs from the one asked of it.
+        case invoiceMismatch
+        case memoTooLong
+        case requestToTribe
+        case requestExpired
+        case notAPaymentRequest
+        case notAContact
+        case emptyName
+        case photoNotHTTPS
+        case unreadableTribeHost(String)
+        case unreadableCallServer(String)
+        case callOnAnotherServer
+        case accountClosed
+        case notDeletable
+        /// The tribe's price per message is now above what this message or
+        /// boost (`boost`) paid.
+        case tribePriceRose(boost: Bool)
+        case joinPriceChanged
+        case noRouteToTribe
+        case ownerCannotLeave
+        case tribeChangeInProgress
+        case tribeServerMismatch
+        case tribeNeedsName
+        case tribeImageNotHTTPS
+        /// A tribe price or escrow over what the network carries.
+        case amountTooLarge
+        case notAMemberKey
+        case memberNotWaiting
+        case alreadyAnswered
+        case notPinnable
+        case invalidPrice
+        case notAFile(String)
+        case notAPaidAttachment
+        case purchaseInProgress
+        case alreadyBought
+        case unknownTimeZone(String)
+        case publicTribeTimeZone
+        /// A tribe's local time is per member.
+        case memberNeeded
 
         public var description: String {
             switch self {
@@ -170,12 +211,51 @@ public actor Engine {
             case .notDelivered: "that message has not been delivered yet; reply once it has"
             case .notInThread: "that message is not in that thread"
             case .notAChat: "that is neither a contact nor a tribe this account is in"
-            case .noMemesServer: "this account has no memes server for attachments (set one with --memes-host)"
-            case .noCallServer: "this account has no call server (set one with --call-server)"
+            case .noMemesServer: "this account has no memes server for attachments"
+            case .noCallServer: "this account has no call server"
             case .notAnAttachment: "that message is not an attachment"
             case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
             case .uploadInProgress: "this attachment is still uploading"
+            case .notAnInvoice: "that is not a Lightning invoice"
+            case .unreadableInvoice: "that invoice cannot be read"
+            case .invoiceMismatch: "the server's invoice does not match what was asked for"
+            case .memoTooLong: "the memo is too long for an invoice"
+            case .requestToTribe: "payment requests go to a person, not a tribe"
+            case .requestExpired: "this request's invoice has expired; ask again with a new one"
+            case .notAPaymentRequest: "that is not someone's payment request"
+            case .notAContact: "that is not a contact"
+            case .emptyName: "the name cannot be empty"
+            case .photoNotHTTPS: "a photo must be an https URL"
+            case .unreadableTribeHost(let host): "unreadable tribes host \(host)"
+            case .unreadableCallServer(let host): "unreadable call server \(host)"
+            case .callOnAnotherServer: "that call is not on this account's call server"
+            case .accountClosed: "this account is closed"
+            case .notDeletable:
+                "only your own sent messages, or any in a tribe you own, can be deleted; "
+                    + "not a thread's first message while it has replies"
+            case .tribePriceRose(let boost):
+                "this tribe now charges more per message; \(boost ? "boost again as a new boost" : "send it as a new message")"
+            case .joinPriceChanged: "the price to join has changed; look the tribe up again"
+            case .noRouteToTribe: "the tribes server gave no route to this tribe"
+            case .ownerCannotLeave: "the owner cannot leave a tribe; delete it instead"
+            case .tribeChangeInProgress: "another change to this tribe is still being saved"
+            case .tribeServerMismatch: "the tribes server answered for a different tribe"
+            case .tribeNeedsName: "a tribe needs a name"
+            case .tribeImageNotHTTPS: "the image must be an https link"
+            case .amountTooLarge: "an amount is too large"
+            case .notAMemberKey: "that is not a member's key"
+            case .memberNotWaiting: "that member is not waiting for an answer"
+            case .alreadyAnswered: "that request has already been answered"
+            case .notPinnable: "only a message the tribe has delivered can be pinned"
+            case .invalidPrice: "a price must be from 1 to \(Engine.maxAttachmentPriceSats.formatted()) sats"
+            case .notAFile(let path): "\(path) is not a file"
+            case .notAPaidAttachment: "that is not a paid attachment someone sent"
+            case .purchaseInProgress: "this attachment is already being bought"
+            case .alreadyBought: "this attachment is already bought"
+            case .unknownTimeZone(let identifier): "unknown time zone \(identifier); use a name like Europe/London"
+            case .publicTribeTimeZone: "your time zone is never sent in public tribes"
+            case .memberNeeded: "a tribe has a local time per member; name the member"
             }
         }
     }
@@ -420,7 +500,7 @@ public actor Engine {
     /// the official apps. Nothing is announced and sent messages keep the old one.
     public func setAlias(_ alias: String) throws {
         let alias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !alias.isEmpty else { throw PeelError("the name cannot be empty") }
+        guard !alias.isEmpty else { throw Failure.emptyName }
         try storage.set(alias, for: .alias)
         self.alias = alias
         emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
@@ -466,7 +546,7 @@ public actor Engine {
     /// from this Mac on the memes server and passes its link here.
     public func setPhotoURL(_ url: String) throws {
         let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard url.isEmpty || url.httpsOnly != nil else { throw PeelError("a photo must be an https URL") }
+        guard url.isEmpty || url.httpsOnly != nil else { throw Failure.photoNotHTTPS }
         try storage.set(url, for: .photoURL)
         photoURL = url
         emit.yield(.profile(alias: alias, photoURL: myPhotoURL))
@@ -518,7 +598,7 @@ public actor Engine {
 
     /// The tribes server this account's own tribes are listed on, as `host[:port]`.
     public func setTribeHost(_ host: String) throws {
-        guard TribeLink.isPlainHost(host) else { throw PeelError("unreadable tribes host \(host)") }
+        guard TribeLink.isPlainHost(host) else { throw Failure.unreadableTribeHost(host) }
         try storage.set(host, for: .tribeHost)
     }
 
@@ -531,7 +611,7 @@ public actor Engine {
     /// The call server calls are started on, as `host[:port]`.
     public func setCallServer(_ host: String) throws {
         let host = host.lowercased()
-        guard TribeLink.baseURL(host) != nil else { throw PeelError("unreadable call server \(host)") }
+        guard TribeLink.baseURL(host) != nil else { throw Failure.unreadableCallServer(host) }
         try storage.set(host, for: .callServer)
         // Its socket would otherwise stay open to the old server.
         if let old = calls, old.host != host {
@@ -803,10 +883,7 @@ public actor Engine {
             inTribe: tribe != nil, ownsTribe: tribe?.canManage == true,
             threadCount: try storage.threadCount(uuid, in: message.chat)
         ) else {
-            throw PeelError(
-                "only your own sent messages, or any in a tribe you own, can be deleted; "
-                    + "not a thread's first message while it has replies"
-            )
+            throw Failure.notDeletable
         }
         _ = try await deliver(
             body: try Self.json(["content": "", "replyUuid": uuid]), to: message.chat, type: MessageType.delete,
@@ -832,14 +909,14 @@ public actor Engine {
         let tribe = try openTribe(message.chat)
         guard MessageType.payments.contains(message.type) else {
             if let tribe, let paid = message.msat, tribe.messageAmountMsat > UInt64(max(paid, 0)) {
-                throw PeelError("this tribe now charges more per message; send it as a new message")
+                throw Failure.tribePriceRose(boost: false)
             }
             if message.type == MessageType.attachment {
                 return try await uploadAndDeliver(message)
             }
             if message.type == MessageType.invoice,
                Self.requestInvoice(body)?.isExpired() != false {
-                throw PeelError("this request's invoice has expired; ask again with a new one")
+                throw Failure.requestExpired
             }
             return try await deliver(body: body, to: message.chat, type: message.type, replacing: messageID)
         }
@@ -851,7 +928,7 @@ public actor Engine {
             _ = try boostTarget(message.replyUUID.flatMap { try storage.message(uuid: $0, in: message.chat) })
         }
         if let tribe, tribe.paymentPriceMsat > amount {
-            throw PeelError("this tribe now charges more per message; boost again as a new boost")
+            throw Failure.tribePriceRose(boost: true)
         }
         try checkPayment(amount, .threshold(confirmedMsat))
         return try await deliver(body: body, to: message.chat, type: message.type, amountMsat: amount, replacing: messageID)
@@ -975,7 +1052,7 @@ public actor Engine {
     ) async throws -> String? {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard tribes[pubkey] == nil else { throw Failure.paymentToTribe }
-        guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
+        guard Self.isPerson(pubkey, in: state) == true else { throw Failure.notAContact }
         try checkPayment(amountMsat, .threshold(confirmedMsat))
         let body = try Self.json(["content": text])
         return try await deliver(
@@ -1070,7 +1147,7 @@ public actor Engine {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard isRegistered, transport != nil, let server = try ownKeys()?.server else { throw Failure.notConnected }
         let memo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard memo.utf8.count <= 300 else { throw PeelError("the memo is too long for an invoice") }
+        guard memo.utf8.count <= 300 else { throw Failure.memoTooLong }
         // The server's answer names no request, so one at a time: wait for
         // the one on its way, as a history page does.
         try await poll(timeout: .seconds(30), failure: .serverTimedOut) { awaitingInvoice ? nil : () }
@@ -1109,7 +1186,7 @@ public actor Engine {
         let invoice = try Invoice(bolt11)
         guard invoice.payee == server, invoice.amountMsat == amountMsat, invoice.memo == memo,
               !invoice.isExpired(now: now) else {
-            throw PeelError("the server's invoice does not match what was asked for")
+            throw Failure.invoiceMismatch
         }
         return invoice
     }
@@ -1162,8 +1239,8 @@ public actor Engine {
     /// invoice; the message's delivery is reported as for `sendText`.
     @discardableResult
     public func requestPayment(from pubkey: String, amountMsat: UInt64, memo: String = "") async throws -> InvoiceRecord {
-        guard tribes[pubkey] == nil else { throw PeelError("payment requests go to a person, not a tribe") }
-        guard Self.isPerson(pubkey, in: state) == true else { throw PeelError("that is not a contact") }
+        guard tribes[pubkey] == nil else { throw Failure.requestToTribe }
+        guard Self.isPerson(pubkey, in: state) == true else { throw Failure.notAContact }
         let record = try await serverInvoice(amountMsat: amountMsat, memo: memo, chat: pubkey)
         let body = try Self.json(["content": record.memo, "invoice": record.bolt11])
         try await deliver(body: body, to: pubkey, type: MessageType.invoice, replacing: nil)
@@ -1188,7 +1265,7 @@ public actor Engine {
     public func payRequest(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> InvoiceRecord {
         guard let message = try storage.message(id: messageID), message.type == MessageType.invoice, !message.fromMe,
               let bolt11 = BodyFields.decode(message.body)?.invoice else {
-            throw PeelError("that is not someone's payment request")
+            throw Failure.notAPaymentRequest
         }
         return try await pay(Invoice(bolt11), chat: message.chat, confirmedMsat: confirmedMsat)
     }
@@ -1490,7 +1567,7 @@ public actor Engine {
         priceSats: UInt64? = nil, stored: (@Sendable (Int64) -> Void)? = nil
     ) async throws -> Int64 {
         if let priceSats, priceSats == 0 || priceSats > Self.maxAttachmentPriceSats {
-            throw PeelError("a price must be from 1 to \(Self.maxAttachmentPriceSats.formatted()) sats")
+            throw Failure.invalidPrice
         }
         let tribe = try openTribe(pubkey)
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
@@ -1499,7 +1576,7 @@ public actor Engine {
         let limit = Self.attachmentLimit
         let (outgoing, plain, sealed, key) = try await Task.detached {
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            guard values.isRegularFile == true else { throw PeelError("\(file.path) is not a file") }
+            guard values.isRegularFile == true else { throw Failure.notAFile(file.path) }
             guard (values.fileSize ?? 0) <= limit else { throw MemesServer.Failure.tooLarge(limit) }
             let plain = try Data(contentsOf: file)
             guard plain.count <= limit else { throw MemesServer.Failure.tooLarge(limit) }
@@ -1686,20 +1763,20 @@ public actor Engine {
         guard let message = try storage.message(id: messageID), !message.fromMe, !message.deleted,
               let price = message.attachmentPriceMsat, let uuid = message.uuid, MessageUUID.isValid(uuid),
               let token = AttachmentFields.decode(message.body)?.mediaToken else {
-            throw PeelError("that is not a paid attachment someone sent")
+            throw Failure.notAPaidAttachment
         }
         // Only from this account's memes server, like any download.
         guard let host = MediaToken(token)?.host, host == (try memesServer()).host else {
             throw Failure.untrustedMediaHost(MediaToken(token)?.host ?? "")
         }
         switch try storage.purchaseState(of: message) {
-        case .processing?: throw PeelError("this attachment is already being bought")
-        case .unlocked?: throw PeelError("this attachment is already bought")
+        case .processing?: throw Failure.purchaseInProgress
+        case .unlocked?: throw Failure.alreadyBought
         case .locked?, .failed?, .denied?, .forSale?, nil: break
         }
         try checkPayment(price, .threshold(confirmedMsat))
         let purchaseKey = "purchase \(token)"
-        guard payingInvoices.insert(purchaseKey).inserted else { throw PeelError("this attachment is already being bought") }
+        guard payingInvoices.insert(purchaseKey).inserted else { throw Failure.purchaseInProgress }
         defer { payingInvoices.remove(purchaseKey) }
         let body = try Self.json(["content": "", "mediaToken": token, "replyUuid": uuid])
         return try await deliver(body: body, to: message.chat, type: MessageType.purchase, amountMsat: price, replacing: nil)
@@ -1797,9 +1874,9 @@ public actor Engine {
     /// setting changes. A link from another server is refused: a ticket is
     /// only ever asked of the configured server.
     private func callConnection(for link: CallLink) async throws -> CallServer {
-        guard !closed else { throw PeelError("this account is closed") }
+        guard !closed else { throw Failure.accountClosed }
         let host = try callServer()
-        guard link.server == host else { throw PeelError("that call is not on this account's call server") }
+        guard link.server == host else { throw Failure.callOnAnotherServer }
         if let calls, calls.host == host { return calls }
         let old = calls
         let server = try CallServer(host: host)
@@ -1871,9 +1948,9 @@ public actor Engine {
         }
         let info = try await tribeInfo(link)
         if let agreedJoinMsat, info.joinAmountMsat != agreedJoinMsat {
-            throw PeelError("the price to join has changed; look the tribe up again")
+            throw Failure.joinPriceChanged
         }
-        guard let routeHint = info.routeHint else { throw PeelError("the tribes server gave no route to this tribe") }
+        guard let routeHint = info.routeHint else { throw Failure.noRouteToTribe }
         let previous = tribes[link.pubkey]
         var tribe = previous ?? Tribe(pubkey: link.pubkey)
         tribe.update(from: info)
@@ -1904,7 +1981,7 @@ public actor Engine {
     public func leaveTribe(_ pubkey: String) async throws {
         guard let joined = tribes[pubkey], !joined.left else { throw Failure.notInTribe }
         if joined.isOwner, joined.status == .active {
-            throw PeelError("the owner cannot leave a tribe; delete it instead")
+            throw Failure.ownerCannotLeave
         }
         var tribe = joined
         tribe.left = true
@@ -1948,7 +2025,7 @@ public actor Engine {
         guard let host = tribe.host else { throw Failure.noTribeServer }
         let server = try tribeServer()
         guard changingTribes.insert(pubkey).inserted else {
-            throw PeelError("another change to this tribe is still being saved")
+            throw Failure.tribeChangeInProgress
         }
         defer { changingTribes.remove(pubkey) }
         return try await change(tribe, host, server)
@@ -1972,7 +2049,7 @@ public actor Engine {
         case .message(let uuid):
             fields["replyUuid"] = uuid
         case .member(let member, let alias):
-            guard member.isPubkey else { throw PeelError("that is not a member's key") }
+            guard member.isPubkey else { throw Failure.notAMemberKey }
             // The request may not be stored, so the server's list must show
             // the member waiting; fetched when this session has none.
             if memberLists[pubkey] == nil {
@@ -1980,7 +2057,7 @@ public actor Engine {
                 tribe = try ownedTribe(pubkey)
             }
             guard memberLists[pubkey]?.pending.contains(where: { $0.pubkey == member }) == true else {
-                throw PeelError("that member is not waiting for an answer")
+                throw Failure.memberNotWaiting
             }
             fields["member"] = member
             fields["replyUuid"] = try storage.joinRequest(in: pubkey, from: alias)
@@ -1990,7 +2067,7 @@ public actor Engine {
         // request is held in `sentAnswers` and the member taken off the list.
         let replyUuid = fields["replyUuid"]
         if let replyUuid, try sentAnswers.contains(replyUuid) || storage.isAnswered(request: replyUuid, in: pubkey) {
-            throw PeelError("that request has already been answered")
+            throw Failure.alreadyAnswered
         }
         if let replyUuid { sentAnswers.insert(replyUuid) }
         if let member = fields["member"] { memberLists[pubkey]?.pending.removeAll { $0.pubkey == member } }
@@ -2008,7 +2085,7 @@ public actor Engine {
     /// refuses to remove the owner.
     public func kickMember(_ member: String, from pubkey: String) async throws {
         let tribe = try ownedTribe(pubkey)
-        guard member.isPubkey else { throw PeelError("that is not a member's key") }
+        guard member.isPubkey else { throw Failure.notAMemberKey }
         try await sendToTribe(tribe, type: MessageType.groupKick, fields: ["member": member])
     }
 
@@ -2068,7 +2145,7 @@ public actor Engine {
     public func pinMessage(_ uuid: String?, in pubkey: String) async throws {
         // Every member must hold the message under the same uuid: the tribe's.
         if let uuid, try storage.message(uuid: uuid, in: pubkey)?.isPinnable != true {
-            throw PeelError("only a message the tribe has delivered can be pinned")
+            throw Failure.notPinnable
         }
         try await updateRegistry(pubkey) { record in
             var record = record
@@ -2088,7 +2165,7 @@ public actor Engine {
             let data = try await TribeInfo.record(pubkey: pubkey, host: host)
             guard let current = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   current["pubkey"] as? String == pubkey else {
-                throw PeelError("the tribes server answered for a different tribe")
+                throw Failure.tribeServerMismatch
             }
             var fields = try change(current)
             fields["pubkey"] = pubkey

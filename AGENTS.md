@@ -164,7 +164,8 @@ fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
-times, a sender's zone at a moment for a page of runs, the v14 column on stored history); and the whole migration chain from a v1
+times, a sender's zone at a moment for a page of runs, the v14 column on stored history); refusals as typed
+`Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations. Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.

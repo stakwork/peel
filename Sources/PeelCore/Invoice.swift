@@ -24,7 +24,7 @@ public struct Invoice: Sendable, Equatable {
     public init(_ text: String) throws {
         var bolt11 = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if bolt11.hasPrefix("lightning:") { bolt11.removeFirst("lightning:".count) }
-        guard bolt11.hasPrefix("ln"), bolt11.count < 4096 else { throw PeelError("that is not a Lightning invoice") }
+        guard bolt11.hasPrefix("ln"), bolt11.count < 4096 else { throw Engine.Failure.notAnInvoice }
         let parsed = try Self.parse(bolt11)
         self.bolt11 = bolt11
         paymentHash = parsed.paymentHash
@@ -47,7 +47,7 @@ public struct Invoice: Sendable, Equatable {
         if let known = parsed.withLock({ $0[bolt11] }) { return known }
         guard let json = try? Sphinxrs.parseInvoice(invoiceJson: bolt11),
               let read = try? JSONDecoder().decode(Parsed.self, from: Data(json.utf8)), read.paymentHash.isHash else {
-            throw PeelError("that invoice cannot be read")
+            throw Engine.Failure.unreadableInvoice
         }
         parsed.withLock { cache in
             if cache.count >= 512 { cache.removeAll() }

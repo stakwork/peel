@@ -204,7 +204,7 @@ struct TimeZoneSharingTests {
         let (engine, storage) = try engine()
         let stranger = strangerKey
         #expect(try await sent(to: stranger, engine) == nil)
-        await #expect(throws: PeelError.self) { try await engine.setTimeZoneSharing(true, in: publicTribe) }
+        await #expect(throws: Engine.Failure.publicTribeTimeZone) { try await engine.setTimeZoneSharing(true, in: publicTribe) }
         await #expect(throws: Engine.Failure.notAChat) { try await engine.setTimeZoneSharing(true, in: stranger) }
         try await storage.pool.write { db in
             for chat in [publicTribe, stranger] {
@@ -240,7 +240,7 @@ struct TimeZoneSharingTests {
         #expect(try await engine.sharedOffset(in: person, type: MessageType.text) == "GMT+7")
         try await engine.setTimeZoneSharing(false, in: person)
         #expect(try storage.chatTimeZone(person)?.identifier == "Asia/Bangkok")
-        await #expect(throws: PeelError.self) { try await engine.setTimeZone("BST") }
+        await #expect(throws: Engine.Failure.unknownTimeZone("BST")) { try await engine.setTimeZone("BST") }
     }
 
     @Test func theirLocalTimeIsTheNewestReadableOffsetWithin90Days() async throws {
@@ -269,7 +269,7 @@ struct TimeZoneSharingTests {
         #expect(try await engine.localTime(of: privateTribe, member: "ann", at: now)?.difference == 19_800)
         #expect(try await engine.localTime(of: privateTribe, member: "bob", at: now) == nil)
         // A tribe has no local time of its own, only its members.
-        await #expect(throws: PeelError.self) { try await engine.localTime(of: privateTribe, at: now) }
+        await #expect(throws: Engine.Failure.memberNeeded) { try await engine.localTime(of: privateTribe, at: now) }
     }
 
     /// A run header's fallback: per sender, the newest offset at or before

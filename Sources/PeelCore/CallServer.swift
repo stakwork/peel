@@ -83,7 +83,7 @@ actor CallServer {
     }
 
     init(host: String) throws {
-        guard let base = TribeLink.baseURL(host) else { throw PeelError("unreadable call server \(host)") }
+        guard let base = TribeLink.baseURL(host) else { throw Engine.Failure.unreadableCallServer(host) }
         self.host = host
         self.base = base
     }

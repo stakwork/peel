@@ -91,6 +91,15 @@ struct MoneyRefusalTests {
         await #expect(throws: Engine.Failure.paymentToTribe) {
             try await engine.sendPayment(to: tribe, amountMsat: 1, text: longNote)
         }
+        await #expect(throws: Engine.Failure.requestToTribe) { try await engine.requestPayment(from: tribe, amountMsat: 1) }
+    }
+
+    @Test func aPaymentOrRequestToAStrangerIsRefused() async throws {
+        let (engine, _) = try engine()
+        await #expect(throws: Engine.Failure.notAContact) {
+            try await engine.sendPayment(to: strangerKey, amountMsat: 1, text: longNote)
+        }
+        await #expect(throws: Engine.Failure.notAContact) { try await engine.requestPayment(from: strangerKey, amountMsat: 1) }
     }
 
     @Test func aPaymentOverTheThresholdAsksForExactlyItsAmount() async throws {
@@ -264,8 +273,7 @@ struct MoneyRefusalTests {
             text(1, chat: tribe), ownPayment(2, type: MessageType.boost, chat: tribe, on: 1, msat: 4_000),
         ])
         let id = try id(2, in: tribe, storage)
-        let error = await #expect(throws: PeelError.self) { try await engine.resend(messageID: id) }
-        #expect(error?.description.contains("charges more") == true)
+        await #expect(throws: Engine.Failure.tribePriceRose(boost: true)) { try await engine.resend(messageID: id) }
     }
 
     // MARK: Invoices
@@ -282,8 +290,7 @@ struct MoneyRefusalTests {
         ])
         for n in [1, 2] {
             let id = try id(n, storage)
-            let error = await #expect(throws: PeelError.self) { try await engine.payRequest(messageID: id) }
-            #expect(error?.description == "that is not someone's payment request")
+            await #expect(throws: Engine.Failure.notAPaymentRequest) { try await engine.payRequest(messageID: id) }
         }
     }
 }

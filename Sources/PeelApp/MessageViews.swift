@@ -683,12 +683,26 @@ struct RunHeader: View {
                 .foregroundStyle(Theme.secondaryText)
                 .help(message.date.formatted(date: .complete, time: .shortened))
             if message.fromMe, message.delivery == .delivered {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Theme.confirmed)
-                    .help("Delivered")
+                DeliveredBolt()
             }
         }
+    }
+}
+
+/// The green bolt after the time on a delivered message of ours, in a
+/// `.firstTextBaseline` row. A symbol sits on the baseline like text of its
+/// own (smaller) size, so it would ride low; its centre goes to the middle
+/// of the time's capitals and digits instead, from that font's own metrics.
+struct DeliveredBolt: View {
+    /// The time's font beside it, `Theme.font(12)`.
+    private static let timeCapHeight = NSFont.systemFont(ofSize: 12).capHeight
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Theme.confirmed)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
+            .help("Delivered")
     }
 }
 

@@ -11,6 +11,10 @@ struct Sidebar: View {
     var body: some View {
         @Bindable var model = model
         let unreadMentions = model.unreadMentions
+        let sections = model.sidebarSections
+        // Read here, where the mentions count already reads them all, and
+        // passed down: one chat's tick redraws only its own row.
+        let readStates = model.readStates
         VStack(alignment: .leading, spacing: 12) {
             SidebarHeader()
             SearchField(text: $model.searchQuery)
@@ -31,15 +35,15 @@ struct Sidebar: View {
                         PaymentsLink(money: model.money)
                     }
                     SidebarSection("Tribes", expanded: $showTribes) {
-                        ForEach(model.tribeConversations) { conversation in
-                            ConversationLink(conversation: conversation)
+                        ForEach(sections.tribes) { conversation in
+                            ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                         }
                         SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
                         SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
                     }
                     SidebarSection("Direct messages", expanded: $showDirect) {
-                        ForEach(model.directConversations) { conversation in
-                            ConversationLink(conversation: conversation)
+                        ForEach(sections.direct) { conversation in
+                            ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                         }
                         ContactsSidebarRows()
                     }
@@ -240,9 +244,10 @@ struct ConversationLink: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
     let conversation: Conversation
+    /// The chat's unread count and level, `model.readStates[chat]`.
+    let state: ChatReadState?
 
     var body: some View {
-        let state = model.readStates[conversation.chat]
         let level = state?.mute ?? .all
         let unread = state?.shownUnread ?? 0
         let onCall = model.liveCallCount(in: conversation.chat)
@@ -295,7 +300,7 @@ enum ConversationMenu {
         } else if (try? model.engine?.storage.newestIncomingIndex(in: chat)) != nil {
             read.append(.button("Mark as unread", systemImage: "envelope.badge") { Task { await model.markUnread(chat) } })
         }
-        guard conversation.isTribe, let tribe = model.tribe(chat) else {
+        guard conversation.isTribe, let tribe = model.tribes[chat] else {
             return .sections(read, levels(for: conversation, model: model))
         }
         return .sections(read, levels(for: conversation, model: model), link(tribe), leave(conversation, tribe, model: model))
@@ -380,10 +385,13 @@ struct ConnectionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(label(at: context.date))
-                    .font(Theme.font(14, .medium))
-                    .monospacedDigit()
+            // Ticks only while counting down to a retry.
+            if case .offline = model.connection, let at = model.reconnectAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    label(Self.countdown(to: at, now: context.date))
+                }
+            } else {
+                label(model.connection.label)
             }
             if let error = model.connectionError {
                 Text(error)
@@ -403,8 +411,13 @@ struct ConnectionCard: View {
         .frame(width: 260, alignment: .leading)
     }
 
-    private func label(at now: Date) -> String {
-        guard case .offline = model.connection, let at = model.reconnectAt else { return model.connection.label }
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.font(14, .medium))
+            .monospacedDigit()
+    }
+
+    private static func countdown(to at: Date, now: Date) -> String {
         let seconds = max(0, Int(at.timeIntervalSince(now).rounded(.up)))
         return seconds > 0 ? "Offline, retrying in \(seconds)s" : "Offline, retrying"
     }

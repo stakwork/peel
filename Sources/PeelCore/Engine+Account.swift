@@ -163,6 +163,36 @@ extension Engine {
         try storage.set(shows ? "1" : "0", for: .notificationText)
     }
 
+    /// What an app shows of the account when it opens, read in one call off
+    /// its actor. A setting that cannot be read is nil, as each getter's
+    /// failure would be.
+    public struct Settings: Sendable {
+        public let alias: String
+        public let photoURL: String?
+        public let echoedAliases: [String: Set<String>]
+        public let contactInfo: String?
+        /// The server this account talks to, as `host:port`.
+        public let server: String?
+        public let callServer: String?
+        public let pinTimeoutHours: Int?
+        public let balanceMsat: UInt64?
+        public let paymentConfirmationMsat: UInt64?
+        public let boostAmountMsat: UInt64?
+        public let notificationShowsText: Bool?
+        public let connection: ConnectionState
+    }
+
+    public func settings() -> Settings {
+        Settings(
+            alias: myAlias, photoURL: myPhotoURL, echoedAliases: echoedOwnAliases,
+            contactInfo: try? storage.value(for: .contactInfo), server: try? storage.value(for: .server),
+            callServer: try? callServer(), pinTimeoutHours: try? pinTimeoutHours(),
+            balanceMsat: try? storage.balanceMsat(),
+            paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
+            notificationShowsText: try? notificationShowsText(), connection: connection
+        )
+    }
+
     /// A server's `host[:port]`: the setting if recorded, else `fallback`,
     /// except on a local test server, which has none unless named.
     func configuredHost(_ setting: Setting, default fallback: String) throws -> String? {

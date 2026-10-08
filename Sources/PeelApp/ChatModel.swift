@@ -129,7 +129,7 @@ extension AppModel {
     /// with the thread's size read when the menu opens.
     func canDelete(_ message: Message, inTribe: Bool) -> Bool {
         guard let uuid = message.uuid, let storage = engine?.storage else { return false }
-        let owns = selectedTribe.map { $0.pubkey == message.chat && $0.canManage } ?? false
+        let owns = tribes[message.chat]?.canManage ?? false
         let count = (try? storage.threadCount(uuid, in: message.chat)) ?? 0
         return message.isDeletable(inTribe: inTribe, ownsTribe: owns, threadCount: count)
     }
@@ -177,13 +177,6 @@ extension AppModel {
     func closeThread() {
         if let openThread { replyTargets[.thread(openThread)] = nil }
         openThread = nil
-    }
-
-    /// A joined tribe's record, for a menu opened on its row: the open one
-    /// as observed, any other read once.
-    func tribe(_ pubkey: String) -> Tribe? {
-        if let selectedTribe, selectedTribe.pubkey == pubkey { return selectedTribe }
-        return (try? engine?.storage.tribes())?.first { $0.pubkey == pubkey }
     }
 
     /// Leaves a tribe, or removes one this account can no longer post in;

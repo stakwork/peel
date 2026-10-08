@@ -179,14 +179,12 @@ final class Notifier {
         flushTask = nil
         let batch = pending.filter { $0.uuid.map { posted.insert($0).inserted } ?? false }
         pending = []
-        guard let center, let model, let storage else { return }
-        // Only a join request needs to know who owns the tribe.
-        let owned = batch.contains { $0.type == MessageType.memberRequest }
-            ? Set(((try? storage.tribes()) ?? []).filter(\.isOwner).map(\.pubkey)) : []
+        guard let center, let model, storage != nil else { return }
         let (policy, locked) = policy(model)
         for (chat, messages) in Dictionary(grouping: batch, by: \.chat) {
+            let owns = model.tribes[chat]?.isOwner == true
             let shown = messages.filter {
-                policy.notifies($0, ownsTribe: owned.contains(chat), callServer: model.callServer) != nil
+                policy.notifies($0, ownsTribe: owns, callServer: model.callServer) != nil
             }
             guard !shown.isEmpty else { continue }
             // A call always shows on its own; more than a few others become one summary.

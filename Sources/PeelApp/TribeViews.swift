@@ -315,8 +315,9 @@ struct JoinRequestNote: View {
     }
 }
 
-/// The message the owner pinned, under the tribe's header. The Mac app
-/// shows it only when the message is here; so does Peel.
+/// The message the owner pinned, under the tribe's header, read from
+/// storage however old (Tom, Q5); the Mac app shows it only when it is
+/// among the messages loaded.
 struct PinnedMessageBar: View {
     @Environment(AppModel.self) private var model
     let message: Message

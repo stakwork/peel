@@ -230,10 +230,28 @@ extension Storage {
         }
     }
 
-    /// One tribe's record, re-emitted whenever it changes.
-    public func tribe(_ pubkey: String) -> some AsyncSequence<Tribe?, any Error> {
+    /// Every tribe this account knows, joined or left, by pubkey,
+    /// re-emitted whenever one changes.
+    public func tribesByPubkey() -> some AsyncSequence<[String: Tribe], any Error> {
         ValueObservation
-            .trackingConstantRegion { db in try Tribe.fetchOne(db, key: pubkey) }
+            .trackingConstantRegion { db in
+                Dictionary(try Tribe.fetchAll(db).map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
+            }
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// The message a tribe's owner pinned, however old, re-emitted whenever
+    /// the pin or the message changes; nil when nothing is pinned or the
+    /// message is not stored here.
+    public func pinnedMessage(in tribe: String) -> some AsyncSequence<Message?, any Error> {
+        // Not a constant region: the message is read only once there is a pin.
+        ValueObservation
+            .tracking { db -> Message? in
+                guard let pin = try String.fetchOne(db, sql: "SELECT pin FROM tribe WHERE pubkey = ?", arguments: [tribe])
+                else { return nil }
+                return try Self.message(uuid: pin, in: tribe, db)
+            }
             .removeDuplicates()
             .values(in: pool)
     }
@@ -355,10 +373,12 @@ extension Storage {
             .values(in: pool)
     }
 
-    /// Invites still waiting to be used, newest first, re-emitted whenever they change.
-    public func pendingInvites() -> some AsyncSequence<[InviteRecord], any Error> {
+    /// Every invite made here, newest first, re-emitted whenever one changes.
+    public func invites() -> some AsyncSequence<[InviteRecord], any Error> {
         ValueObservation
-            .trackingConstantRegion { db in try Self.pendingInvites(db) }
+            .trackingConstantRegion { db in
+                try InviteRecord.fetchAll(db, sql: "SELECT * FROM invite ORDER BY createdAt DESC")
+            }
             .removeDuplicates()
             .values(in: pool)
     }
@@ -377,14 +397,6 @@ extension Storage {
 
     public func invite(code: String) throws -> InviteRecord? {
         try pool.read { db in try InviteRecord.fetchOne(db, key: code) }
-    }
-
-    /// One invite as it changes; nil if there is none.
-    public func inviteUpdates(code: String) -> some AsyncSequence<InviteRecord?, any Error> {
-        ValueObservation
-            .trackingConstantRegion { db in try InviteRecord.fetchOne(db, key: code) }
-            .removeDuplicates()
-            .values(in: pool)
     }
 
     /// Invites whose funding payment the server has not confirmed.

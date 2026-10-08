@@ -171,6 +171,30 @@ struct TribeTests {
         #expect(throws: Engine.Failure.tribeImageNotHTTPS) { try settings.validated(currentImage: "https://x/other.png") }
     }
 
+    @Test func thePinnedMessageIsReadFromStorageHoweverOld() async throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        var tribe = Tribe(pubkey: "02t1")
+        try storage.save([tribe])
+        _ = try storage.apply(Storage.Commit(messages: (1...Storage.pageSize + 50).map { (text($0, chat: "02t1"), false, nil) }))
+        #expect(try await first(storage.pinnedMessage(in: "02t1")) == .some(nil))
+
+        tribe.pin = uuid(1)
+        // Another tribe pinning the same uuid finds nothing of its own.
+        try storage.save([tribe, Tribe(pubkey: "02t2", pin: uuid(1))])
+        for try await timeline in storage.timeline(in: "02t1") {
+            #expect(!timeline.messages.contains { $0.uuid == uuid(1) })
+            break
+        }
+        #expect(try await first(storage.pinnedMessage(in: "02t1"))??.content == "m1")
+        #expect(try await first(storage.pinnedMessage(in: "02t2")) == .some(nil))
+    }
+
+    private func first(_ values: some AsyncSequence<Message?, any Error>) async throws -> Message?? {
+        for try await value in values { return value }
+        return nil
+    }
+
     @Test func onlyAnActiveMemberWhoHasNotLeftCanPost() {
         #expect(Tribe(pubkey: "02ab").canPost)
         #expect(!Tribe(pubkey: "02ab", left: true).canPost)

@@ -10,16 +10,18 @@ extension AppModel {
     /// Rows with the sender's zone when they wrote: a run's first message's
     /// own offset, else the sender's newest earlier on the page, else their
     /// newest within 90 days before it from storage (one query for the page,
-    /// one answer per sender, kept in `senderZoneCache`); the rest of a run
+    /// off the main thread, one answer per sender, kept in `senderZoneCache`;
+    /// the rows are worked out again when it comes back); the rest of a run
     /// take their own offset or the run's. Never on yours.
     func withSenderZones(_ rows: [ChatRow], in chat: String) -> [ChatRow] {
         var rows = rows
         // The chat open and its thread share a chat; others are let go.
         if senderZoneCache[chat] == nil { senderZoneCache = senderZoneCache.filter { $0.key == selectedChat } }
-        var cache = senderZoneCache[chat] ?? [:]
+        let cache = senderZoneCache[chat] ?? [:]
         // By sender: a tribe member's alias, or "" for the contact.
         var latest: [String: TimeZone] = [:]
-        var unresolved: [String: (timestamp: Int64, rows: [Int])] = [:]
+        // Each sender still to look up, at their first run's first message.
+        var unresolved: [String: Int64] = [:]
         var runZone: TimeZone?
         for index in rows.indices where rows[index].kind == .message {
             let row = rows[index]
@@ -31,8 +33,8 @@ extension AppModel {
             let first = row.images.first ?? row.message
             if row.startsRun {
                 runZone = first.senderTimeZone ?? latest[sender] ?? cache[sender] ?? nil
-                if runZone == nil, cache[sender] == nil, let timestamp = first.timestamp {
-                    unresolved[sender, default: (timestamp, [])].rows.append(index)
+                if runZone == nil, cache[sender] == nil, unresolved[sender] == nil, let timestamp = first.timestamp {
+                    unresolved[sender] = timestamp
                 }
                 rows[index].senderZone = runZone
             } else {
@@ -40,27 +42,31 @@ extension AppModel {
             }
             if let zone = row.shown.last(where: { $0.senderTZ != nil })?.senderTimeZone { latest[sender] = zone }
         }
-        let senders = Array(unresolved.keys)
-        let inTribe = isTribe(chat)
-        if !senders.isEmpty, let found = try? engine?.storage.senderTimeZones(
-            in: chat, inTribe: inTribe, wanted: senders.map { (inTribe ? $0 : nil, unresolved[$0]!.timestamp) }
-        ) {
-            for (position, sender) in senders.enumerated() {
-                cache[sender] = .some(found[position])
-                guard let zone = found[position] else { continue }
-                for index in unresolved[sender]!.rows {
-                    rows[index].senderZone = zone
-                    // The rest of its run, up to the next run start.
-                    var next = index + 1
-                    while next < rows.count, !rows[next].startsRun, rows[next].kind == .message {
-                        if rows[next].message.senderTZ == nil { rows[next].senderZone = zone }
-                        next += 1
-                    }
-                }
-            }
-            senderZoneCache[chat] = cache
-        }
+        lookUpSenderZones(unresolved, in: chat)
         return rows
+    }
+
+    /// Reads the senders' zones from storage off the main thread, keeps
+    /// them, and works the rows out again with them. A sender already being
+    /// looked up is not asked twice; one whose read failed is asked again
+    /// at the next rebuild.
+    private func lookUpSenderZones(_ wanted: [String: Int64], in chat: String) {
+        let senders = wanted.keys.filter { !(senderZonesAsked[chat]?.contains($0) ?? false) }
+        guard !senders.isEmpty, let storage = engine?.storage else { return }
+        senderZonesAsked[chat, default: []].formUnion(senders)
+        let inTribe = isTribe(chat)
+        let points = senders.map { (alias: inTribe ? $0 : nil, timestamp: wanted[$0]!) }
+        Task {
+            let found = try? await Task.detached {
+                try storage.senderTimeZones(in: chat, inTribe: inTribe, wanted: points)
+            }.value
+            senderZonesAsked[chat]?.subtract(senders)
+            guard let found, engine?.storage === storage, chat == selectedChat else { return }
+            for (position, sender) in senders.enumerated() {
+                senderZoneCache[chat, default: [:]][sender] = .some(found[position])
+            }
+            rebuildRows()
+        }
     }
 
     /// Their offset minus yours at `date`, in seconds: positive when they

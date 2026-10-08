@@ -2,6 +2,23 @@ import Foundation
 import GRDB
 
 extension Storage {
+    /// Text and attachments, plus the membership notes only tribes send. The owner's own
+    /// removals are left out, as in the Mac app: the tribe's copy does not
+    /// say whom they were for. (Only the owner can send them.)
+    private static let messagesSQL = messagesSQL(also: "")
+
+    private static func messagesSQL(also condition: String) -> String {
+        """
+        SELECT * FROM (
+            SELECT * FROM message m
+            WHERE chat = ? AND type IN (\(MessageType.sqlList(MessageType.shownInChats)))
+                AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
+            \(condition)
+            ORDER BY timestamp DESC, id DESC LIMIT ?
+        ) ORDER BY timestamp, id
+        """
+    }
+
     /// What a tribe's main conversation hides, as the Mac app does: every
     /// message of a thread of two or more but the newest, and the thread's
     /// original. A thread whose original is not stored is not collapsed.

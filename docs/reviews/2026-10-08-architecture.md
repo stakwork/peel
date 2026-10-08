@@ -162,6 +162,7 @@ The same person shows as "Unknown" in a row and "Someone" in its quote.
 *Fix:* show `notice` in the main window as a quiet dismissible bar (tom-ui: not red). Use `PeelError.readable` in every `catch`.
 
 **2.2 Settings are read two ways (low).** `attach` reads some settings through engine accessors (`pinTimeoutHours`, `paymentConfirmationMsat`, `boostAmountMsat`) and others straight from storage (`contactInfo`, `server`, `balanceMsat`, `AppModel.swift:586–590`). `Storage.set(_:for:)` is `public` (`Storage.swift:396`), so nothing stops a client writing `.clock` or `.needsRestore`. *Fix:* make `set` internal and read settings through the engine.
+*Done 2026-10-08 (#60), in part:* `set` is internal; reading settings through the engine is still open.
 
 **2.3 Naming (low).**
 - `ChatModel.swift` holds `extension AppModel`; it should be `AppModel+Chat.swift`, as should `PaymentViews`' extension (`AppModel+Payments.swift`).

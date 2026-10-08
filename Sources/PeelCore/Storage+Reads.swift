@@ -105,23 +105,6 @@ extension Storage {
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
         """
 
-    /// Text and attachments, plus the membership notes only tribes send. The owner's own
-    /// removals are left out, as in the Mac app: the tribe's copy does not
-    /// say whom they were for. (Only the owner can send them.)
-    static let messagesSQL = messagesSQL(also: "")
-
-    static func messagesSQL(also condition: String) -> String {
-        """
-        SELECT * FROM (
-            SELECT * FROM message m
-            WHERE chat = ? AND type IN (\(MessageType.sqlList(MessageType.shownInChats)))
-                AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
-            \(condition)
-            ORDER BY timestamp DESC, id DESC LIMIT ?
-        ) ORDER BY timestamp, id
-        """
-    }
-
     /// How many of a chat's newest messages a timeline shows.
     public static let pageSize = 200
 

@@ -98,46 +98,6 @@ final class MediaPlayback {
     }
 }
 
-/// Each video's and recording's `MediaInfo` (with a video's poster), read
-/// once per file and shared by rows made and dropped while scrolling.
-@MainActor
-final class MediaInfoCache {
-    static let shared = MediaInfoCache()
-
-    private final class Entry {
-        let read: Task<MediaInfo?, Never>
-        var info: MediaInfo??
-        init(_ read: Task<MediaInfo?, Never>) { self.read = read }
-    }
-
-    private let cache: NSCache<NSString, Entry> = {
-        let cache = NSCache<NSString, Entry>()
-        cache.countLimit = 200
-        return cache
-    }()
-
-    static let posterPixels = Int(ImageTile.maxSide * 2)
-
-    /// Already read, to lay a row out at once when it scrolls back.
-    func cached(_ file: URL?) -> MediaInfo?? {
-        file.flatMap { cache.object(forKey: $0.path as NSString)?.info }
-    }
-
-    /// Nil when AVFoundation cannot play the file.
-    func info(_ file: URL, kind: AttachmentKind) async -> MediaInfo? {
-        let key = file.path as NSString
-        let entry = cache.object(forKey: key) ?? {
-            let pixels = kind == .video ? Self.posterPixels : nil
-            let entry = Entry(Task.detached(priority: .userInitiated) { await MediaInfo.load(file, posterPixels: pixels) })
-            cache.setObject(entry, forKey: key)
-            return entry
-        }()
-        let info = await entry.read.value
-        entry.info = .some(info)
-        return info
-    }
-}
-
 extension AttachmentKind {
     /// The symbol for a video or a recording where a small mark stands for it.
     var symbol: String? {
@@ -196,10 +156,14 @@ private struct MediaLoading: ViewModifier {
     /// The file read and what it holds (nil info: not playable).
     @Binding var read: (file: URL, info: MediaInfo?)?
 
+    /// What was read for `file`, or is cached from an earlier row.
+    static func known(_ read: (file: URL, info: MediaInfo?)?, file: URL?) -> MediaInfo?? {
+        read.flatMap { $0.file == file ? .some($0.info) : nil } ?? MediaInfoCache.shared.cached(file)
+    }
+
     func body(content: Content) -> some View {
         content
-            // Again once an upload of ours is done (a retry claims no preview).
-            .task(id: "\(message.id ?? 0)/\(message.upload ?? "")") { await model.autoDownload(message) }
+            .autoDownload(message)
             .task(id: file) {
                 guard let file, let kind = message.attachmentKind else { return }
                 read = (file, await MediaInfoCache.shared.info(file, kind: kind))
@@ -236,47 +200,38 @@ struct VideoTile: View {
 
     private func tile(_ handle: AttachmentHandle) -> some View {
         let file = handle.file
-        // What was read for this file, or is cached from an earlier row.
-        let known: MediaInfo?? = read.flatMap { $0.file == file ? .some($0.info) : nil } ?? MediaInfoCache.shared.cached(file)
+        let known = MediaLoading.known(read, file: file)
         let info = known ?? nil
         let frame = AttachmentFormat.fitted(width: info?.size?.width ?? 0, height: info?.size?.height ?? 0, maxSide: ImageTile.maxSide)
         let inline = playback.current == id ? playback.player : nil
-        return Color.clear
-            .aspectRatio(frame.width / frame.height, contentMode: .fit)
-            .frame(maxWidth: frame.width)
-            .overlay {
-                if let inline {
-                    PlayerSurface(player: inline, style: .inline) { openViewer() }
-                } else {
-                    still(handle, info: info, unplayable: known != nil && info == nil)
+        return Group {
+            if let inline {
+                PlayerSurface(player: inline, style: .inline) { openViewer() }
+            } else {
+                still(handle, info: info, unplayable: known != nil && info == nil)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { if info != nil { openViewer() } }
+                    .onTapGesture { if info != nil, let file { playback.play(id, file: file) } }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if info != nil, hovering || inline != nil {
+                Button(action: openViewer) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                        .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { if info != nil { openViewer() } }
-                        .onTapGesture { if info != nil, let file { playback.play(id, file: file) } }
                 }
+                .buttonStyle(.plain)
+                .help("Full screen (double-click)")
+                .padding(4)
             }
-            .overlay(alignment: .topTrailing) {
-                if info != nil, hovering || inline != nil {
-                    Button(action: openViewer) {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.6), radius: 3)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Full screen (double-click)")
-                    .padding(4)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if message.fromMe, message.uploadState == .pending {
-                    TransferBar(label: "Uploading", progress: handle.progress).padding(8)
-                }
-            }
-            .attachmentTile()
-            .onHover { hovering = $0 }
-            .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Video")
+        }
+        .attachmentTile(fitted: frame, message: message, handle: handle)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Video")
     }
 
     /// The poster with play and length, or a plain tile saying where the video is.
@@ -321,7 +276,7 @@ struct VideoTile: View {
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
-                    .help(failure(handle) ?? "")
+                    .help(handle.failureReason ?? "")
                 if case .held = status {
                     Button("Load") { Task { await model.download(message) } }
                         .buttonStyle(GhostButtonStyle())
@@ -334,10 +289,6 @@ struct VideoTile: View {
         }
         .multilineTextAlignment(.center)
         .padding(12)
-    }
-
-    private func failure(_ handle: AttachmentHandle) -> String? {
-        if case .failed(let reason) = handle.state { reason } else { nil }
     }
 
     private func openViewer() {
@@ -400,7 +351,7 @@ struct AudioCard: View {
     var body: some View {
         let handle = model.attachment(id)
         let file = handle.file
-        let known: MediaInfo?? = read.flatMap { $0.file == file ? .some($0.info) : nil } ?? MediaInfoCache.shared.cached(file)
+        let known = MediaLoading.known(read, file: file)
         let info = known ?? nil
         let status = MediaStatus(message, handle, unplayable: known != nil && info == nil)
         VStack(alignment: .leading, spacing: 4) {
@@ -418,13 +369,7 @@ struct AudioCard: View {
                     AudioScrubber(id: id, file: file, duration: info?.duration)
                 }
             }
-            if message.fromMe, message.uploadState == .pending {
-                TransferBar(label: "Uploading", progress: handle.progress)
-            } else if case .downloading = handle.state, let progress = handle.progress {
-                TransferBar(label: "Downloading", progress: progress)
-            } else if let saved = handle.savedTo {
-                SavedNote(file: saved)
-            }
+            AttachmentStatus(message: message, handle: handle, isRecording: true)
         }
         .attachmentCard()
         .accessibilityElement(children: .contain)

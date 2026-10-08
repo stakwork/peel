@@ -1,4 +1,3 @@
-import ImageIO
 import SwiftUI
 import PeelCore
 
@@ -63,7 +62,7 @@ struct Avatar: View {
     private var image: CGImage? {
         guard let photo else { return nil }
         if let loaded, loaded.url == photo { return loaded.image }
-        return PhotoCache.shared.cached(photo)
+        return ImageCache.photos.cached(photo: photo)
     }
 
     var body: some View {
@@ -82,55 +81,10 @@ struct Avatar: View {
             }
         }
         .task(id: photo) {
-            if let photo, let image = await PhotoCache.shared.image(for: photo) { loaded = (photo, image) }
+            if let photo, let image = await ImageCache.photos.image(photo: photo) { loaded = (photo, image) }
         }
         .frame(width: size, height: size)
         .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
-    }
-}
-
-/// Photos fetched once per URL and kept for the session. A row in a lazy list
-/// is made and dropped as it scrolls; each `AsyncImage` fetched on its own and
-/// a row dropped mid-fetch was left on its initial for good, so every run of a
-/// tribe member's messages after the first showed no photo. Here the fetch
-/// belongs to the cache, not the row, and every row with that URL shares it.
-@MainActor
-final class PhotoCache {
-    static let shared = PhotoCache()
-
-    private var images: [URL: CGImage] = [:]
-    /// A fetch that throws (no answer, or the server busy or failing) is tried
-    /// again next time; one that returns nil got no image and joins `failed`.
-    private var loads: [URL: Task<CGImage?, any Error>] = [:]
-    /// URLs whose server gave no image, not asked for again this session.
-    private var failed: Set<URL> = []
-
-    func cached(_ url: URL) -> CGImage? { images[url] }
-
-    func image(for url: URL) async -> CGImage? {
-        if let image = images[url] { return image }
-        guard !failed.contains(url) else { return nil }
-        let load: Task<CGImage?, any Error>
-        if let running = loads[url] {
-            load = running
-        } else {
-            load = Task.detached(priority: .utility) {
-                guard let data = try await Web.photo(at: url),
-                      let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-                // Decoded here, at avatar size (the short side still covers a
-                // 36pt avatar at 2x for photos up to 3:1, as it is filled), so
-                // drawing neither decodes on the main thread nor keeps the full photo.
-                return ImageDecoding.thumbnail(source, maxPixels: 256)
-            }
-            loads[url] = load
-        }
-        let result = await load.result
-        loads[url] = nil
-        switch result {
-        case .success(let image?): images[url] = image; return image
-        case .success(nil): failed.insert(url); return nil
-        case .failure: return nil
-        }
     }
 }
 

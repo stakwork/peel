@@ -1,5 +1,4 @@
 import Foundation
-import ImageIO
 import Observation
 import UniformTypeIdentifiers
 #if os(macOS)
@@ -78,6 +77,11 @@ final class AttachmentHandle {
 
     var downloaded: DownloadedAttachment? {
         if case .ready(let downloaded) = state { downloaded } else { nil }
+    }
+
+    /// Why its download failed, when it did.
+    var failureReason: String? {
+        if case .failed(let reason) = state { reason } else { nil }
     }
 }
 
@@ -394,7 +398,7 @@ extension AppModel {
         handle.state = .downloading
         // Owned by the model, not the view that asked: a lazy row is made and
         // dropped as the list lays out, and its task's cancellation would cut
-        // the download off (as it once did photos, see `PhotoCache`).
+        // the download off (as it once did photos, see `ImageCache`).
         let download = Task {
             do {
                 handle.state = .ready(try await engine.downloadAttachment(messageID: id, upTo: upTo))
@@ -432,11 +436,9 @@ extension AppModel {
     /// Nothing is opened; the card then offers Show in Finder.
     func saveToDownloads(_ message: Message) async {
         await download(message)
-        guard let id = message.id, let file = attachment(id).file,
-              let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
-        let name = fileName(of: message) ?? file.lastPathComponent
+        guard let id = message.id, let file = attachment(id).file else { return }
         do {
-            attachment(id).savedTo = try await Task.detached { try UserFiles.save(file, named: name, in: downloads) }.value
+            attachment(id).savedTo = try await UserFiles.saveToDownloads(file, named: fileName(of: message) ?? file.lastPathComponent)
         } catch {
             conversationNotices[message.chat] = "Could not save to Downloads: \(PeelError.readable(error))"
         }
@@ -491,41 +493,4 @@ extension AppModel {
         guard let viewer, viewer.messages.indices.contains(viewer.index + by) else { return }
         self.viewer?.index += by
     }
-}
-
-/// Images decoded off the main thread at the size they are drawn, kept
-/// while memory allows.
-@MainActor
-final class ImageCache {
-    static let shared = ImageCache()
-
-    private let cache: NSCache<NSString, CGImage> = {
-        let cache = NSCache<NSString, CGImage>()
-        cache.totalCostLimit = 200 * 1024 * 1024
-        return cache
-    }()
-
-    /// Decodes running now, so rows made and dropped while scrolling share one.
-    private var decoding: [NSString: Task<CGImage?, Never>] = [:]
-
-    /// Already decoded, to draw a row that scrolls back without a blank frame.
-    func cached(_ file: URL?, maxPixels: Int) -> CGImage? {
-        file.flatMap { cache.object(forKey: Self.key($0, maxPixels)) }
-    }
-
-    /// The image at `file`, at most `maxPixels` on its long side, upright.
-    func image(_ file: URL, maxPixels: Int) async -> CGImage? {
-        let key = Self.key(file, maxPixels)
-        if let image = cache.object(forKey: key) { return image }
-        let decode = decoding[key] ?? Task.detached(priority: .userInitiated) {
-            ImageDecoding.thumbnail(file, maxPixels: maxPixels)
-        }
-        decoding[key] = decode
-        let image = await decode.value
-        decoding[key] = nil
-        if let image { cache.setObject(image, forKey: key, cost: image.bytesPerRow * image.height) }
-        return image
-    }
-
-    private static func key(_ file: URL, _ maxPixels: Int) -> NSString { "\(maxPixels)|\(file.path)" as NSString }
 }

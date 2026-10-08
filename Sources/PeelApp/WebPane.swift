@@ -327,10 +327,7 @@ extension WebPane: WKDownloadDelegate {
     func downloadDidFinish(_ download: WKDownload) {
         take(download) { file, name in
             do {
-                guard let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-                    throw PeelError("there is no Downloads folder")
-                }
-                self.download = .saved(try UserFiles.save(file, named: name, in: folder))
+                self.download = .saved(try await UserFiles.saveToDownloads(file, named: name))
             } catch {
                 self.download = .failed(name, reason: PeelError.readable(error))
             }
@@ -341,11 +338,14 @@ extension WebPane: WKDownloadDelegate {
         take(download) { _, name in self.download = .failed(name, reason: error.localizedDescription) }
     }
 
-    /// The download's entry, removed; its private copy goes once `body` is done.
-    private func take(_ download: WKDownload, _ body: (_ file: URL, _ name: String) -> Void) {
+    /// The download's entry, removed; its private copy goes once `body` is
+    /// done (the copy into Downloads runs off the main thread).
+    private func take(_ download: WKDownload, _ body: @escaping (_ file: URL, _ name: String) async -> Void) {
         guard let (file, name) = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        body(file, name)
-        IncomingFiles.discard(file, root: Self.downloadsRoot)
+        Task {
+            await body(file, name)
+            IncomingFiles.discard(file, root: Self.downloadsRoot)
+        }
     }
 }
 

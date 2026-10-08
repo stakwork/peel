@@ -67,8 +67,7 @@ struct LockedAttachment: View {
         }
         .frame(width: 320)
         .background(Theme.quote)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
+        .attachmentTile()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Paid \(isPicture ? (kind == .video ? "video" : "photo") : "attachment"), "
             + Sats.format(msat: message.attachmentPriceMsat ?? 0))

@@ -353,7 +353,7 @@ built for them yet:
   - Every call-server request (the ticket, `/api/participants` and the
     WebSocket) uses its own ephemeral `URLSession` with `urlCache = nil` and
     no cookies, and refuses redirects, as `MemesServer` does
-    (`Media.swift:315-344`). Never `URLSession.shared` (used today by
+    (`MemesServer.swift:54-69`). Never `URLSession.shared` (used today by
     `Tribe.swift:306`, `ServerConfig.swift:20`, `MainView.swift:925`), which
     would write the token response to `~/Library/Caches/dev.peel.mac/Cache.db`
     and keep the call server's cookies. PR 2 tests that `URLCache.shared`
@@ -464,7 +464,7 @@ built for them yet:
   - The link must be `https` (plain `http` only when the configured call
     server is itself loopback, exactly `127.0.0.1`, `localhost` or `::1`,
     `ServerAddress.isLoopback` in `Transport.swift:37-39`, as
-    `MemesServer.redirect` uses it, `Media.swift:336-338`). Its host,
+    `MemesServer.redirect` uses it, `MemesServer.swift:62`). Its host,
     parsed from URL components rather than substring-matched (the official
     check is `contains`, `String.swift:783-787`), must equal the configured
     call server's host, with a room matching `^sphinx\.call\.[A-Za-z0-9._-]{1,128}$`.

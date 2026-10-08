@@ -132,6 +132,10 @@ phase files' names and stay as they are.
 | 8 | Audit before sharing: whole-repo review, features frozen | planned, after parity | [phases/08-audit.md](phases/08-audit.md) |
 | 9 | Local runtimes: dispatch to Claude Code, Goose or Codex | planned, after the agent host | [phases/09-local-tools.md](phases/09-local-tools.md) |
 
+Calls come before parity (Tom, 2026-10-08): they are core messaging, the
+team starts calls from chats every day, and Peel cannot be his daily client
+without them.
+
 ## Scope (decided 2026-10-05, changed 2026-10-08)
 
 In v1: onboarding (invite signup, mnemonic restore, name, PIN, photo); contacts

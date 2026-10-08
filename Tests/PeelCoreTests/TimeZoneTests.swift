@@ -6,6 +6,8 @@ import Testing
 private let person = keyG
 private let publicTribe = key2G
 private let privateTribe = key3G
+/// Not a host: a registry read fails before any request is made.
+private let unreadableHost = "no host"
 
 private func date(_ text: String) -> Date { try! Date(text, strategy: .iso8601) }
 
@@ -105,7 +107,11 @@ struct TimeZoneSharingTests {
     /// An engine with a person, a public and a private tribe in the core's state.
     private func engine() throws -> (Engine, Storage) {
         let storage = try profile.storage()
-        try storage.save([Tribe(pubkey: publicTribe), Tribe(pubkey: privateTribe, isPrivate: true)])
+        // Neither registry can be reached: nothing below may need it.
+        try storage.save([
+            Tribe(pubkey: publicTribe, host: unreadableHost),
+            Tribe(pubkey: privateTribe, host: unreadableHost, isPrivate: true),
+        ])
         let state = coreContact(person, contactKey: key3G)
             .merging(coreContact(publicTribe, contactKey: nil)) { $1 }
             .merging(coreContact(privateTribe, contactKey: nil)) { $1 }
@@ -114,15 +120,21 @@ struct TimeZoneSharingTests {
     }
 
     /// The offset in what `deliver` would hand the core for a text to `chat`.
+    /// `offsetShared` is synchronous: deciding never waits on the network.
     private func sent(to chat: String, _ engine: Engine, body: String = #"{"content":"hi"}"#) async throws -> String? {
-        let body = try await engine.outgoingBody(body, to: chat, type: MessageType.text, tribe: engine.knownTribe(chat))
+        let body = try TimeZoneOffset.setting(try await engine.offsetShared(in: chat, type: MessageType.text), in: body)
         #expect(BodyFields.decode(body)?.content == "hi")
         return try storedTZ(body)
     }
 
+    /// The private tribe's registry record, as `refreshTribes` would read it.
+    private func record(isPrivate: Bool) throws -> TribeInfo {
+        try JSONDecoder().decode(TribeInfo.self, from: Data(#"{"pubkey":"\#(privateTribe)","name":"T","private":\#(isPrivate)}"#.utf8))
+    }
+
     /// On by default, as in the official apps: a chat with no row shares in
-    /// a direct message, and in a private tribe by the switch (the registry
-    /// is still asked at send time); a public tribe never.
+    /// a direct message and in a tribe stored as private, by the stored
+    /// record alone; a public tribe never.
     @Test func onByDefaultWithNoRow() async throws {
         let (engine, storage) = try engine()
         try await engine.setTimeZone("Asia/Kolkata")
@@ -134,10 +146,27 @@ struct TimeZoneSharingTests {
         #expect(try await engine.offsetShared(in: person) == "GMT+5:30")
         #expect(try await sent(to: publicTribe, engine) == nil)
         #expect(try await engine.offsetShared(in: publicTribe) == nil)
-        // A tribe gets it only while its registry says it is private, asked
-        // at send time; this one has no registry to ask, so nothing.
-        #expect(try await engine.sharedOffset(in: privateTribe, type: MessageType.text) == "GMT+5:30")
+        // The stored record decides; its registry is never asked first.
         #expect(try await engine.offsetShared(in: privateTribe) == "GMT+5:30")
+        #expect(try await sent(to: privateTribe, engine) == "GMT+5:30")
+    }
+
+    /// After a send to a private tribe its record is queued for the
+    /// background refresh only once the last one read is older than
+    /// `tribeRecheck`.
+    @Test func aStalePrivateRecordIsRecheckedInTheBackground() async throws {
+        let (engine, _) = try engine()
+        let start = ContinuousClock.now
+        await engine.saveRecords([try record(isPrivate: true)], asked: start)
+        #expect(await !engine.recheckIfStale(privateTribe, now: start + .seconds(60)))
+        #expect(await engine.recheckIfStale(privateTribe, now: start + Engine.tribeRecheck + .seconds(1)))
+    }
+
+    /// A record read since that says public stops the offset with the next message.
+    @Test func aTribeMadePublicStopsGettingItOnceRead() async throws {
+        let (engine, _) = try engine()
+        await engine.saveRecords([try record(isPrivate: false)], asked: .now)
+        #expect(await engine.knownTribe(privateTribe)?.isPrivate == false)
         #expect(try await sent(to: privateTribe, engine) == nil)
     }
 

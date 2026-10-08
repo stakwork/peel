@@ -261,6 +261,11 @@ public actor Engine {
     /// The background registry refresh; see `refreshTribesInBackground`.
     private var tribeRefresh: Task<Void, Never>?
     private var tribesNeedRefresh = false
+    /// Tribes queued for the next round of the refresh alone; see `recheckIfStale`.
+    private var tribesToRecheck: Set<String> = []
+    /// When each tribe's last read record was asked for, this session.
+    private var tribeReadAt: [String: ContinuousClock.Instant] = [:]
+    static let tribeRecheck: Duration = .seconds(5 * 60)
     /// A page of payment history asked for and not yet answered; the
     /// answer lands here (see `fetchPaymentHistory`).
     private var awaitingPayments = false
@@ -1302,31 +1307,6 @@ public actor Engine {
         String(decoding: try JSONEncoder().encode(fields), as: UTF8.self)
     }
 
-    /// `body` as it goes to `pubkey`: with this account's offset only where
-    /// the chat's switch is on (`sharedOffset`) and the chat is private now;
-    /// taken out anywhere else (`TimeZones.swift`).
-    func outgoingBody(_ body: String, to pubkey: String, type: Int, tribe: Tribe?) async throws -> String {
-        guard let offset = try sharedOffset(in: pubkey, type: type) else { return try TimeZoneOffset.setting(nil, in: body) }
-        let isPrivate = if let tribe { await isPrivateNow(tribe) } else { isContact(pubkey) }
-        return try TimeZoneOffset.setting(isPrivate ? offset : nil, in: body)
-    }
-
-    /// Whether a tribe's registry says it is private at this moment: a
-    /// member learns that a tribe went public only there (and an owner may
-    /// have changed it on another device), so a send asks. No answer is no,
-    /// and offline it is not asked: nothing is published, and a retry asks.
-    /// With sharing on by default this is a round trip on every send to a
-    /// private tribe; a cached answer would let a tribe made public keep
-    /// getting the offset until it expired.
-    private func isPrivateNow(_ tribe: Tribe) async -> Bool {
-        guard transport != nil, tribe.isPrivate, let host = tribe.host,
-              let info = try? await TribeInfo.fetch(pubkey: tribe.pubkey, host: host), info.deleted != true else {
-            return false
-        }
-        if let changed = merged(info) { try? record(changed) }
-        return info.isPrivate == true
-    }
-
     /// Whether the core holds `pubkey` as a person (not a tribe).
     func isContact(_ pubkey: String) -> Bool { Self.isPerson(pubkey, in: state) == true }
 
@@ -1348,9 +1328,12 @@ public actor Engine {
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
         replacing id: Int64?
     ) async throws -> String? {
-        var body = try await outgoingBody(body, to: pubkey, type: type, tribe: try openTribe(pubkey))
-        // The registry may have just changed the tribe, its price too.
         let tribe = try openTribe(pubkey)
+        // By what is stored: a send never waits on the network, so sends go
+        // at once and in order (`TimeZones.swift`).
+        let offset = try offsetShared(in: pubkey, type: type)
+        var body = try TimeZoneOffset.setting(offset, in: body)
+        if tribe != nil, offset != nil { recheckIfStale(pubkey) }
         let myAlias = tribe == nil ? alias : tribeAlias(alias)
         if amountMsat != nil, Self.wouldBeSplit(body, alias: myAlias, photoURL: photoURL) {
             // A payment's note fits without the offset rather than not at all.
@@ -2220,9 +2203,12 @@ public actor Engine {
     /// Runs `refreshTribes` in the background. A call while it runs makes it
     /// go round once more instead of starting a second one; `disconnect` cancels it.
     private func refreshTribesInBackground() {
-        guard !closed else { return }
         tribesNeedRefresh = true
-        guard tribeRefresh == nil else { return }
+        startTribeRefresh()
+    }
+
+    private func startTribeRefresh() {
+        guard !closed, tribeRefresh == nil else { return }
         tribeRefresh = Task { [weak self] in
             await self?.recordConfiguredTribeHost()
             await self?.refreshTribes()
@@ -2237,12 +2223,17 @@ public actor Engine {
     }
 
     /// Takes the registry's current name, photo and prices for each joined
-    /// tribe, a few at a time, and saves what changed in one write. Failures
-    /// leave what is stored.
+    /// tribe (or only those in `tribesToRecheck`), a few at a time, and saves
+    /// what changed in one write. Failures leave what is stored.
     private func refreshTribes() async {
-        while tribesNeedRefresh, !Task.isCancelled {
+        while tribesNeedRefresh || !tribesToRecheck.isEmpty, !Task.isCancelled {
+            let all = tribesNeedRefresh, only = tribesToRecheck
             tribesNeedRefresh = false
-            let joined = tribes.values.compactMap { tribe in tribe.left ? nil : tribe.host.map { (tribe.pubkey, $0) } }
+            tribesToRecheck = []
+            let joined = tribes.values.compactMap { tribe in
+                tribe.left || !(all || only.contains(tribe.pubkey)) ? nil : tribe.host.map { (tribe.pubkey, $0) }
+            }
+            let asked = ContinuousClock.now
             let infos = await withTaskGroup(of: TribeInfo?.self) { group in
                 var pending = joined[...]
                 func addNext() {
@@ -2257,17 +2248,37 @@ public actor Engine {
                 }
                 return infos
             }
-            let changed = infos.compactMap(merged)
             guard !Task.isCancelled else { break }
-            do {
-                try storage.save(changed)
-                for tribe in changed { tribes[tribe.pubkey] = tribe }
-            } catch {
-                emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
-            }
+            saveRecords(infos, asked: asked)
         }
         // A cancelled refresh has already been replaced or stopped.
         if !Task.isCancelled { tribeRefresh = nil }
+    }
+
+    /// Saves what registry answers change in joined tribes, in one write,
+    /// and notes when each answered tribe was asked (`tribeReadAt`).
+    func saveRecords(_ infos: [TribeInfo], asked: ContinuousClock.Instant) {
+        for info in infos { tribeReadAt[info.pubkey] = asked }
+        let changed = infos.compactMap(merged)
+        do {
+            try storage.save(changed)
+            for tribe in changed { tribes[tribe.pubkey] = tribe }
+        } catch {
+            emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
+        }
+    }
+
+    /// After a send that carried the offset to a tribe: queues its record
+    /// for the background refresh when the last one read this session is
+    /// older than `tribeRecheck`, so a tribe made public soon stops getting
+    /// it (design README, "Time zones"). The send never waits. True when queued.
+    @discardableResult
+    func recheckIfStale(_ pubkey: String, now: ContinuousClock.Instant = .now) -> Bool {
+        guard tribeReadAt[pubkey].map({ now - $0 > Self.tribeRecheck }) ?? true,
+              !tribesToRecheck.contains(pubkey) else { return false }
+        tribesToRecheck.insert(pubkey)
+        startTribeRefresh()
+        return true
     }
 
     /// Asks the server for messages newer than the newest one stored locally.

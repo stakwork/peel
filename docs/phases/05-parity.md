@@ -74,6 +74,10 @@ accepts any certificate before building it.
 - **Languages:** the official app's six languages through String Catalogs;
   Peel stays in English for now.
 
+## Journal
+
+The build log, kept as written.
+
 ## Account screen
 
 Opened from your row at the foot of the sidebar or with ⌘, (the app menu's

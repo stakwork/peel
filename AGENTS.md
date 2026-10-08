@@ -62,7 +62,10 @@ is a short plan. Update the status and the journal when you finish something.
   - `PersonHue.swift` — a person's colour (direction D): the official apps'
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
-    account's call server, and makes new rooms (phase 6)
+    account's call server, and makes new rooms (phase 6); `WatchedCall`,
+    the recent calls across chats whose presence the app keeps, and their
+    live query (`Storage.recentCallMessages`, beside them as
+    `PaymentHistory.swift` keeps its own)
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
@@ -123,7 +126,9 @@ is a short plan. Update the status and the journal when you finish something.
   `UnreadBadge`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
-  watching, the in-place switch confirm, the sidebar's on-a-call bar),
+  watching, the model's watches of recent calls in every chat and the
+  sidebar's green phone count, the in-place switch confirm, the sidebar's
+  on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
   and devices), `CallWindow` (the grid, the focus layout with its strip,
   keep on top and the control bar) and `CallScreenShare` (the system picker,
@@ -247,7 +252,9 @@ query keys) and the call server setting; which calls notify (someone
 else's, recent, valid) and the chat's notification level; call tickets (strict query encoding,
 the media server allowlist, token claims, the token never described, and a
 fetch from an in-process loopback stub that leaves no cookie or URL cache) and
-the presence feed (each message, names, photos, joins and leaves); time zones (the offset's format and
+the presence feed (each message, names, photos, joins and leaves); the
+calls watched across chats (the newest valid per chat, the cap of eight,
+ageing out, chats left or not ready, a closed account); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
 times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; contacts

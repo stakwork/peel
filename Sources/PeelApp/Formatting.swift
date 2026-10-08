@@ -24,6 +24,11 @@ enum Formatting {
         count == 1 ? "1 reply" : "\(count) replies"
     }
 
+    /// "1 person", "5 people".
+    static func people(_ count: Int) -> String {
+        count == 1 ? "1 person" : "\(count) people"
+    }
+
     /// How long ago, as Slack writes it: "just now", "5 min ago", "today at
     /// 14:32", "yesterday at 09:10", "3 days ago", "2 Oct", "2 Oct 2025"
     /// (times and dates in the user's format). Everything is measured from

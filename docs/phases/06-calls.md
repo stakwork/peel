@@ -32,6 +32,10 @@ decided (Tom, 2026-10-08; see "Decided" below).
   the on-a-call bar and the in-place switch confirm; see the PR 5 journal.
 - Built (PR 7): a call someone starts is an ordinary message notification
   ("Started a call" under who started it), never a ring; see the PR 7 journal.
+- Built (live-call indicator): the model watches each chat's newest
+  recent call (at most eight across chats), so the sidebar's green phone
+  shows on any tribe or DM with people on its call and a card shows its
+  count at once after switching chats; see its journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PRs 6 and 8 (screen share, the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -468,7 +472,8 @@ built for them yet:
     likely in its access logs.
   - Your IP, and which rooms you are watching, on every presence subscribe.
   - Keeping presence to on-screen cards under 12 hours old limits the second
-    leak.
+    leak. Since the live-call indicator, each chat's newest recent call is
+    watched too, at most eight, and none while locked (see its journal).
   - The SFU sees all media: calls are not end-to-end encrypted, here or in
     the official apps.
 - **A hostile call message** cannot steer Peel elsewhere:
@@ -1308,6 +1313,93 @@ the build, so it lands before any UI depends on it.
   - One mute rule shared with `ChatReadState.shownUnread` and
     `moneyReceived`: counts and receipts are not messages, and it would
     touch code outside this PR.
+
+## Live-call indicator journal (2026-10-08)
+
+Tom: "There's a call in a tribe. We should render the green icon to know
+that there's a call in the tribe. Currently when you move tribes it drops."
+
+- **Premise, confirmed in the code**: presence was watched only by views.
+  The card's `.task` and the header's `.task` (the open chat's newest
+  three calls, from `chatRows`) called `AppModel.watchCall`, whose
+  `defer` dropped `callPresence[room]` once the last watcher left. So
+  switching chats cancelled both tasks and cleared the room's presence:
+  the sidebar's phone (tribes only, from the watched rooms) went out, and
+  coming back the card showed nothing until the feed answered again. The
+  feed itself was fine: `CallServer` already shares one `/ws` socket per
+  call server with a subscription per room, and backs off on drops.
+- **Built**:
+  - PeelCore (`Call.swift`): `WatchedCall.watched(in:server:now:)` picks,
+    from messages newest first, each chat's newest call link valid against
+    the call server that `CallLink.mayBeLive` (recent, not a call of yours
+    that was never sent; the card uses it too), at most
+    `WatchedCall.limit` (8). `WatchedCall.nextChange` is the soonest a
+    watched call ages out or a call dated ahead becomes recent.
+    `Storage.recentCallMessages()` is the live query feeding it: call
+    messages and text holding `sphinx.call.` in shown chats (ready
+    contacts, tribes not left), not deleted, under 12 hours, at most 500;
+    beside `CallLink` rather than in `Storage+Reads.swift` (storage is
+    being cleaned up in parallel), as `PaymentHistory.swift` keeps its own.
+    `Message.notSent` names the rule the card and `isDiscardable` share.
+  - The app (`CallViews.swift`): `observeRecentCalls` (an account task)
+    and `refreshCallWatches`, one model watch per call and chat through
+    the same `watchCall`, so a card or the header shares its presence. A
+    watch stops when its call ages out (one wake-up at `nextChange`), its
+    chat is left or deleted (it leaves the query), on lock (`phase` is not
+    `.ready`) and on an account change (`stopWatchingCalls`, one line in
+    `resetAccountState`). A watch that ends on its own (a refusal, a
+    closed feed) is started again by the next refresh, never in a loop.
+  - The sidebar: `liveCallCounts` (chat to the busiest watched call's
+    count) replaces `liveCallChats`; `liveCallCount(in:)` adds the call
+    you are on. The green `phone.fill` (11 pt, `Theme.confirmed`, the
+    card's live green) now shows on DMs too, before the unread badge,
+    labelled "Call in progress, N people" (help and accessibility), and
+    hides at zero.
+- **Privacy**: this widens what the call server learns. Before, it saw
+  the rooms of cards on screen and the open chat's header; now it sees up
+  to eight recent rooms whenever Peel is unlocked, from the same IP. Only
+  the configured call server, only rooms that passed `CallLink`'s checks,
+  none while locked. Tom asked for it; the cap is the bound.
+- **Verified** on a local stack (broker 2071, tribes 8971, mixer 8171,
+  `livekit-server --dev` on 8040, PR 4's call stub on 8973), profiles
+  `lv-alice` (the app) and `lv-bob` (the CLI), tribes alpha and beta:
+  - Bob's `call-start` in alpha, one `lk load-test` audio publisher in
+    the room, Alice's app opened on beta (a scratch launch argument, not
+    committed): the stub got one subscribe for alpha's room while beta was
+    open, and alpha's row showed the green phone.
+  - Switched to alpha: the card read "1 on the call" and the header
+    "Join · 1" in the first frame; the model's log at the switch already
+    held the count, and no second subscribe went out.
+  - The publisher gone: the phone left alpha's row and the card read "No
+    one on the call".
+  - **Not verified**: a DM's phone (the same code path), the cap and the
+    age-out in the app (unit-tested), lock and unlock in the app, and your
+    own call's phone. Tom: `.build/PeelLiveCallTest.app`.
+- **Reviews**: `/code-review` (high): a watch that ends on its own is
+  restarted; one watch per call and chat, and counts refreshed when a
+  watcher comes or goes; a wake-up for calls dated ahead; the engine's
+  "only on screen" contract and the file map updated; storage's newest
+  first trusted (no second sort). `/simplify`: `Message.notSent` and
+  `CallLink.mayBeLive` shared with the card and header;
+  `Formatting.people`; `refreshLiveCallCounts`; no double refresh; one
+  dictionary for the wanted watches; the query's comment says it is a
+  coarse filter. `/security-review`: no findings at confidence 8 or above
+  (checked: the SQL has only constants and one bound argument; links
+  checked against the call server twice; nothing new shown from the feed
+  but a count; locked and account-reset paths). Not applied, with
+  reasons:
+  - The watch set owned by the engine (`liveCalls()` for the CLI and
+    agents): presence state has lived in the app since PR 4; worth it
+    when an agent needs "which chats have a live call".
+  - The header's three folded into the model's watches: it still adds
+    the open chat's second and third calls.
+  - Selecting fewer columns, or a stored call flag with a partial index:
+    a few ms per write at worst on a pool reader, and a migration; only if
+    a sync profile shows it.
+  - Calling `refreshCallWatches` at the lock and unlock sites instead of
+    `phase`'s `didSet`: three sites set `phase`, one observer covers them.
+  - Your own call's count folded into `liveCallCounts`: rows read
+    `call` only on join and leave, and `people` changes only on joins.
 
 ## Decided (Tom, 2026-10-08)
 

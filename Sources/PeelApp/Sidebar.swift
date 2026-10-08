@@ -253,15 +253,17 @@ struct ConversationLink: View {
         let state = model.readStates[conversation.chat]
         let level = state?.mute ?? .all
         let unread = state?.shownUnread ?? 0
+        let onCall = model.liveCallCount(in: conversation.chat)
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: level == .muted) {
             ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
-            if conversation.isTribe, model.liveCallChats.contains(conversation.chat) {
+            if onCall > 0 {
+                let people = Formatting.people(onCall)
                 Image(systemName: "phone.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.confirmed)
-                    .help("A call is live")
-                    .accessibilityLabel("Call live")
+                    .help("Call in progress, \(people)")
+                    .accessibilityLabel("Call in progress, \(people)")
             }
             if unread > 0 {
                 UnreadBadge(count: unread)

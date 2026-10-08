@@ -39,7 +39,10 @@ final class AppModel {
         case chat(String)
     }
 
-    var phase: Phase = .loading
+    var phase: Phase = .loading {
+        // Locked, no call is watched.
+        didSet { if phase != oldValue { refreshCallWatches() } }
+    }
     var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
     /// The open chat's main conversation: in a tribe with threads collapsed,
@@ -111,26 +114,32 @@ final class AppModel {
     /// The call server links are checked against (`Engine.callServer`);
     /// nil when the account has none, and then no message is a call.
     var callServer: String?
-    /// Who is on each call a card or the header is watching, by room.
+    /// Who is on each call being watched, by room: the recent calls across
+    /// chats (`callWatches`), and those a card or the header shows.
     var callPresence: [String: CallPresence] = [:] {
-        didSet { refreshLiveCallChats() }
+        didSet { refreshLiveCallCounts() }
     }
-    /// The views watching each room and the chat each shows it in; not
-    /// observed, so a card scrolling in or out redraws nothing.
+    /// The views and model watches on each room and the chat each shows it
+    /// in; not observed, so a card scrolling in or out redraws nothing.
     @ObservationIgnored var callWatchers: [String: [UUID: String]] = [:]
+    /// The messages that may be recent calls, across chats, from storage.
+    @ObservationIgnored var recentCallMessages: [Message] = []
+    /// The model's own watch of each `WatchedCall`, by chat and room,
+    /// whatever chat is open, and the wake-up for the next change.
+    @ObservationIgnored var callWatches: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var callWatchExpiry: Task<Void, Never>?
     /// The open chat's newest calls under 12 hours, at most three, newest
     /// first: what the header watches. Set with the rows, when it changes.
     var recentCalls: [CallLink] = []
     /// The call this Mac is on, and its window.
-    var call: CallSession? {
-        didSet { refreshLiveCallChats() }
-    }
+    var call: CallSession?
     /// The goodbye of the calls left, which a quit waits for.
     @ObservationIgnored var callLeaving: Task<Void, Never>?
-    /// Chats with a watched call someone is on, or the one you are on: the
-    /// sidebar's green phone. Kept apart so presence ticks redraw no row
-    /// whose answer did not change.
-    var liveCallChats: Set<String> = []
+    /// How many are on each chat's watched calls (the busiest), for chats
+    /// with someone on one: the sidebar's green phone, with the call you
+    /// are on (`liveCallCount(in:)`). Kept apart so a presence tick that
+    /// changes no count redraws no row.
+    var liveCallCounts: [String: Int] = [:]
     /// Why the last join of a room failed, shown beside its Join.
     var callFailures: [String: String] = [:]
     /// The room being joined and the chat a call is being started in, for
@@ -830,6 +839,7 @@ final class AppModel {
         callServer = nil
         callPresence = [:]
         callWatchers = [:]
+        stopWatchingCalls()
         callFailures = [:]
         joiningRoom = nil
         startingCallIn = nil
@@ -872,6 +882,7 @@ final class AppModel {
             Task { await self.observeConversations(storage) },
             Task { await self.observeReadStates(storage) },
             Task { await self.observeThreads(storage) },
+            Task { await self.observeRecentCalls(storage) },
             Task { await self.consumeEvents(engine) },
         ]
         await engine.start()

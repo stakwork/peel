@@ -419,25 +419,11 @@ private struct WebSplit: ViewModifier {
     private var minimumDetail: CGFloat { model.destination == .payments ? 760 : 400 }
 
     func body(content detail: Content) -> some View {
-        // Always inside the reader, so opening the pane keeps the detail
-        // column (its scroll position and drafts) rather than making it again.
-        GeometryReader { geometry in
-            let room = Double(geometry.size.width - minimumDetail - 1)
-            let both = room >= Self.paneRange.lowerBound
-            HStack(spacing: 0) {
-                if !pane.isOpen || both {
-                    detail
-                }
-                if pane.isOpen {
-                    if both {
-                        let range = Self.paneRange.lowerBound...min(Self.paneRange.upperBound, room)
-                        PaneDivider(width: $paneWidth, range: range, standard: WebPaneView.width, growsTo: .leading)
-                    }
-                    WebPaneView(pane: pane)
-                        .frame(width: both ? min(paneWidth, room) : nil)
-                        .transition(.move(edge: .trailing))
-                }
-            }
+        SidePanelSplit(isOpen: pane.isOpen, width: $paneWidth, range: Self.paneRange,
+                       standard: WebPaneView.width, minimumMain: minimumDetail) {
+            detail
+        } panel: { _ in
+            WebPaneView(pane: pane)
         }
         .onDisappear { pane.close() }
     }

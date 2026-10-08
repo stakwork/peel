@@ -653,6 +653,7 @@ merged. Batches marked **behaviour** need Tom's eye.
 
 **Status.**
 - **Batch 1:** in review, #80 (2026-10-08). It also touches `Transport.swift`, `Engine+History` (`request`) and `AddContactForm`, which Q1 needed. Left for batch 9: `deliver`'s `transport == nil` snapshot, the three "may have gone" sentences, and `inviteNotConfirmed`'s unused text.
+- **Batch 4:** in review (2026-10-08). 1.13's end marker left as it is: since #84 the list ends flush on its last row (checked on a copy of `og-div2`), so no scrolling changed for it.
 
 ### Waves
 

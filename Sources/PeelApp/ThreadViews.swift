@@ -7,6 +7,8 @@ struct ThreadPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let ref: ThreadRef
+    /// Beside the chat, rather than in its place.
+    let beside: Bool
 
     static let width: CGFloat = 360
 
@@ -27,15 +29,10 @@ struct ThreadPanel: View {
             } else {
                 Spacer()
             }
-            if let tribe, !tribe.canPost {
-                TribeStatusBar(conversation: conversation, tribe: tribe)
-            } else {
-                Composer(
-                    composer: composer, placeholder: "Reply in thread",
-                    loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil
-                )
-                .id(ref)
-            }
+            // The chat's notices (a reply refused here among them) when
+            // the chat they would show under is not drawn.
+            ChatFooter(conversation: conversation, tribe: tribe, composer: composer,
+                       placeholder: "Reply in thread", showsNotice: !beside)
         }
         .background(Theme.panel)
         .fileDrop(into: composer, for: conversation)

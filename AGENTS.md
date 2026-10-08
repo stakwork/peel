@@ -40,6 +40,8 @@ is a short plan. Update the status and the journal when you finish something.
   `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
   `ImageViewer`, `PaymentViews` (boosts, payment rows, send sats), and `PeelMenu`, the one menu used instead of native ones;
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
+  `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
+  `buttonProgress`, the spinner inside a running button);
   `Notifier` for local notifications and the Dock badge)
 - `Sources/peel/` — command-line harness for PeelCore
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static

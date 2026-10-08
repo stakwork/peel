@@ -219,13 +219,7 @@ struct OnboardingView: View {
                 .font(Theme.font(14))
                 .foregroundStyle(Theme.secondaryText)
             Spacer()
-            Button(action: action) {
-                // The spinner takes the label's place, so the button keeps its size.
-                ZStack {
-                    Text(next).opacity(working ? 0 : 1)
-                    if working { ProgressView().controlSize(.small) }
-                }
-            }
+            Button(action: action) { Text(next).buttonProgress(working) }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!enabled)
             .keyboardShortcut(.defaultAction)
@@ -516,34 +510,6 @@ struct PinField: View {
             if digits != value { pin = digits }
             if digits.count == 6 { complete() }
         }
-    }
-}
-
-struct PrimaryButtonStyle: ButtonStyle {
-    var fullWidth = false
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.font(14, .bold))
-            .foregroundStyle(Theme.buttonText)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 11)
-            .frame(maxWidth: fullWidth ? .infinity : nil)
-            .background(Theme.button, in: RoundedRectangle(cornerRadius: 8))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
-    }
-}
-
-struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.font(14))
-            .foregroundStyle(Theme.text)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity)
-            .background(configuration.isPressed ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.divider))
     }
 }
 

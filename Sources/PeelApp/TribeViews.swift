@@ -22,8 +22,11 @@ struct TribeSettingsForm: View {
     @State private var unlisted = false
     /// What the tribe had, so a field left as it was shown sends exactly that.
     @State private var original: TribeSettings?
-    @State private var working = false
+    /// What is on its way: Create or Save (which spins), or Delete.
+    @State private var working: Action?
     @State private var problem: String?
+
+    private enum Action { case save, delete }
 
     private var loaded: Bool { editing == nil || original != nil }
 
@@ -42,13 +45,17 @@ struct TribeSettingsForm: View {
                     InlineConfirm(trigger: "Delete tribe", prompt: "Delete it for everyone?", confirm: "Delete") {
                         await delete()
                     }
+                    .disabled(working != nil)
                     Spacer()
                 }
             }
-            FormFooter(problem: problem, working: working) {
-                Button(editing == nil ? "Create" : "Save") { Task { await save() } }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(working || !loaded || name.trimmed.isEmpty)
+            FormFooter(problem: problem) {
+                Button { Task { await save() } } label: {
+                    Text(editing == nil ? "Create" : "Save").buttonProgress(working == .save)
+                }
+                .buttonStyle(GhostButtonStyle(prominent: true))
+                .keyboardShortcut(.defaultAction)
+                .disabled(working != nil || !loaded || name.trimmed.isEmpty)
             }
         }
         .padding(16)
@@ -138,8 +145,9 @@ struct TribeSettingsForm: View {
     }
 
     private func save() async {
-        working = true
-        defer { working = false }
+        guard working == nil else { return }
+        working = .save
+        defer { working = nil }
         problem = nil
         do {
             if let editing {
@@ -154,9 +162,9 @@ struct TribeSettingsForm: View {
     }
 
     private func delete() async {
-        guard let editing else { return }
-        working = true
-        defer { working = false }
+        guard let editing, working == nil else { return }
+        working = .delete
+        defer { working = nil }
         do {
             try await model.deleteTribe(editing.pubkey)
             done()
@@ -279,7 +287,8 @@ struct JoinRequestButtons: View {
     /// Returns whether the answer went out.
     let answer: (_ approve: Bool) async -> Bool
 
-    @State private var working = false
+    /// The answer on its way, as `sent`: true to approve, false to decline.
+    @State private var sending: Bool?
     @State private var sent: Bool?
 
     var body: some View {
@@ -288,25 +297,22 @@ struct JoinRequestButtons: View {
                 Text(sent ? "Approving…" : "Declining…")
                     .foregroundStyle(Theme.secondaryText)
             } else {
-                if working {
-                    ProgressView().controlSize(.mini)
-                }
-                Button("Decline") { run(false) }
+                Button { run(false) } label: { Text("Decline").buttonProgress(sending == false, size: .mini) }
                     .foregroundStyle(Theme.secondaryText)
-                Button("Approve") { run(true) }
+                Button { run(true) } label: { Text("Approve").buttonProgress(sending == true, size: .mini) }
                     .foregroundStyle(Theme.accent)
             }
         }
         .buttonStyle(.plain)
         .font(Theme.font(12, .medium))
-        .disabled(working)
+        .disabled(sending != nil)
     }
 
     private func run(_ approve: Bool) {
-        working = true
+        sending = approve
         Task {
             if await answer(approve) { sent = approve }
-            working = false
+            sending = nil
         }
     }
 }

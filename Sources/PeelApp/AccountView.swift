@@ -83,8 +83,11 @@ private struct IdentitySection: View {
     @Environment(AppModel.self) private var model
     @State private var editing = false
     @State private var link = ""
-    @State private var working = false
+    /// The change on its way, so its own button shows the progress.
+    @State private var working: Action?
     @State private var problem: String?
+
+    private enum Action { case upload, remove, save }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -114,8 +117,10 @@ private struct IdentitySection: View {
             if editing {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
-                        Button("Choose a picture…") { Task { await upload() } }
-                            .buttonStyle(GhostButtonStyle())
+                        Button { Task { await upload() } } label: {
+                            Text("Choose a picture…").buttonProgress(working == .upload)
+                        }
+                        .buttonStyle(GhostButtonStyle())
                         Text("or paste a link")
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)
@@ -126,20 +131,22 @@ private struct IdentitySection: View {
                     Text("Shown beside the messages you send from now on.")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
-                    FormFooter(problem: problem, working: working) {
+                    FormFooter(problem: problem) {
                         if model.myPhotoURL != nil {
-                            Button("Remove photo") { Task { await save("") } }
-                                .buttonStyle(GhostButtonStyle())
+                            Button { Task { await save("", as: .remove) } } label: {
+                                Text("Remove photo").buttonProgress(working == .remove)
+                            }
+                            .buttonStyle(GhostButtonStyle())
                         }
                         Button("Cancel") { editing = false }
                             .buttonStyle(GhostButtonStyle())
-                        Button("Save") { Task { await save(link) } }
+                        Button { Task { await save(link) } } label: { Text("Save").buttonProgress(working == .save) }
                             .buttonStyle(GhostButtonStyle(prominent: true))
                             .keyboardShortcut(.defaultAction)
                             .disabled(link.trimmed.isEmpty)
                     }
-                    .disabled(working)
                 }
+                .disabled(working != nil)
                 .padding(16)
                 .panelBoxed()
             }
@@ -148,9 +155,9 @@ private struct IdentitySection: View {
 
     /// A picture from this Mac, uploaded to the memes server as the Mac app does.
     private func upload() async {
-        guard !working, let file = model.choosePicture() else { return }
-        working = true
-        defer { working = false }
+        guard working == nil, let file = model.choosePicture() else { return }
+        working = .upload
+        defer { working = nil }
         do {
             try await model.uploadPhoto(file)
             editing = false
@@ -159,10 +166,10 @@ private struct IdentitySection: View {
         }
     }
 
-    private func save(_ url: String) async {
-        guard !working else { return }
-        working = true
-        defer { working = false }
+    private func save(_ url: String, as action: Action = .save) async {
+        guard working == nil else { return }
+        working = action
+        defer { working = nil }
         do {
             try await model.setPhotoURL(url)
             editing = false
@@ -253,10 +260,10 @@ private struct NameRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, settingsValueInset)
                     .padding(.trailing, 16)
-                FormFooter(problem: problem, working: working) {
+                FormFooter(problem: problem) {
                     Button("Cancel") { editing = false }
                         .buttonStyle(GhostButtonStyle())
-                    Button("Save") { Task { await save() } }
+                    Button { Task { await save() } } label: { Text("Save").buttonProgress(working) }
                         .buttonStyle(GhostButtonStyle(prominent: true))
                         .keyboardShortcut(.defaultAction)
                         .disabled(draft.trimmed.isEmpty || draft.trimmed == model.myAlias)
@@ -723,31 +730,5 @@ private struct SettingsRow<Value: View, Trailing: View>: View {
 extension SettingsRow where Trailing == EmptyView {
     init(_ label: String, @ViewBuilder value: () -> Value) {
         self.init(label, value: value, trailing: { EmptyView() })
-    }
-}
-
-/// The quiet bordered button of the account screen; `prominent` for the one
-/// that commits (`fill` in place of the button colour, such as orange for a
-/// payment waiting for its second click).
-struct GhostButtonStyle: ButtonStyle {
-    var prominent = false
-    var fill: Color?
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.font(13, prominent ? .medium : .regular))
-            .foregroundStyle(prominent ? Theme.buttonText : Theme.text)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(prominent ? fill ?? Theme.button : configuration.isPressed ? Theme.hover : .clear)
-            )
-            .overlay {
-                if !prominent { RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.divider) }
-            }
-            .opacity(isEnabled ? (configuration.isPressed && prominent ? 0.85 : 1) : 0.45)
-            .contentShape(Rectangle())
     }
 }

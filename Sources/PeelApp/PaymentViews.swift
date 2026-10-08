@@ -154,6 +154,7 @@ struct PayButton: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
+                    .buttonProgress(attempt.working)
             }
             .buttonStyle(GhostButtonStyle(prominent: true, fill: attempt.armed == nil ? nil : Theme.attention))
             .keyboardShortcut(isDefault ? .defaultAction : nil)
@@ -245,7 +246,7 @@ struct SendSatsPanel: View {
             switch mode {
             case .send:
                 BalanceLine()
-                FormFooter(problem: attempt.problem, working: attempt.working) {
+                FormFooter(problem: attempt.problem) {
                     PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
                         guard let amountMsat else { return .refused("Enter an amount.") }
                         return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, confirmedMsat: confirmed)
@@ -255,8 +256,8 @@ struct SendSatsPanel: View {
                 Text("\(name) gets an invoice in this chat, payable for an hour.")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
-                FormFooter(problem: requestProblem, working: requesting) {
-                    Button("Request") {
+                FormFooter(problem: requestProblem) {
+                    Button {
                         guard let amountMsat else { return }
                         Task {
                             requesting = true
@@ -268,7 +269,7 @@ struct SendSatsPanel: View {
                                 requestProblem = PeelError.readable(error)
                             }
                         }
-                    }
+                    } label: { Text("Request").buttonProgress(requesting) }
                     .buttonStyle(GhostButtonStyle(prominent: true))
                     .keyboardShortcut(.defaultAction)
                     .disabled(amountMsat == nil || requesting)

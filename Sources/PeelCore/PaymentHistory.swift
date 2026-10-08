@@ -659,8 +659,8 @@ extension Storage {
                 case .failed: item.status = .failed; item.error = invoice.error
                 case .paid: break
                 case .underpaid:
-                    let paid = invoice.paidMsat.map { "\($0 / 1000)" } ?? "an unknown amount"
-                    item.note = "Partly paid: \(paid) of \(invoice.amountMsat / 1000) sats"
+                    item.note = "Partly paid: " + (invoice.paidMsat.map { Sats.format(msat: $0, of: invoice.amountMsat) }
+                        ?? "an unknown amount of \(Sats.format(msat: invoice.amountMsat))")
                 }
             }
             if let message {

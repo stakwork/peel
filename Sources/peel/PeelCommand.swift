@@ -172,7 +172,7 @@ struct PeelCommand {
         case "whoami":
             let storage = try Storage(directory: profile.directory, readOnly: true)
             print("contact info: \(try storage.value(for: .contactInfo) ?? "not registered yet")")
-            print("balance: \(try storage.balanceMsat().map { "\($0 / 1000) sats (\($0) msat)" } ?? "unknown")")
+            print("balance: \(try storage.balanceMsat().map { "\(Sats.format(msat: $0)) (\($0) msat)" } ?? "unknown")")
             print("server: \(try storage.value(for: .server) ?? "none")")
             print("name: \(try storage.value(for: .alias) ?? "")")
             print("photo: \(try storage.value(for: .photoURL).flatMap(\.nilIfEmpty) ?? "none")")
@@ -257,7 +257,7 @@ struct PeelCommand {
                     Session.printRow(row, parents: timeline.parents)
                     if let boosts = row.uuid.flatMap({ timeline.boosts[$0] }) {
                         let who = boosts.boosts.map { $0.fromMe ? "me" : $0.alias ?? "?" }
-                        print("      boosted \(boosts.count)x, \(boosts.totalMsat / 1000) sats, by \(who.joined(separator: ", "))")
+                        print("      boosted \(boosts.count)x, \(Sats.format(msat: boosts.totalMsat)), by \(who.joined(separator: ", "))")
                     }
                     if let thread = row.threadUUID.flatMap({ timeline.threads[$0] }) {
                         print("      thread of \(thread.count), \(thread.unread) unread, started by \(Session.line(thread.original))")
@@ -268,7 +268,7 @@ struct PeelCommand {
                         print("      request \(request.state)\(expired)\(payee)")
                     }
                     if let purchase = row.id.flatMap({ timeline.purchases[$0] }) {
-                        print("      paid attachment, \((row.attachmentPriceMsat ?? 0) / 1000) sats: \(purchase)")
+                        print("      paid attachment, \(Sats.format(msat: row.attachmentPriceMsat ?? 0)): \(purchase)")
                     }
                 }
                 break
@@ -357,7 +357,7 @@ struct PeelCommand {
                     tribe.isOwner ? "owner" : nil, tribe.left ? "left" : nil, tribe.isPrivate ? "private" : nil,
                     tribe.status == .active ? nil : "\(tribe.status)", tribe.pin.map { "pin \($0)" },
                 ].compactMap { $0 }
-                print("\(tribe.pubkey)  #\(tribe.displayName)  \(tribe.messageAmountMsat / 1000) sats/msg"
+                print("\(tribe.pubkey)  #\(tribe.displayName)  \(Sats.format(msat: tribe.messageAmountMsat))/msg"
                     + (flags.isEmpty ? "" : "  (\(flags.joined(separator: ", ")))"))
                 if let link = tribe.link { print("  \(link)") }
             }
@@ -477,7 +477,7 @@ struct PeelCommand {
             if let msat = try arguments.next().map(satsArgument) {
                 try await confirming(confirmed) { try await engine.setBoostAmount(msat: msat, confirmedMsat: $0) }
             }
-            print("boost amount: \(try await engine.boostAmountMsat() / 1000) sats")
+            print("boost amount: \(Sats.format(msat: try await engine.boostAmountMsat()))")
 
         case "payments":
             let storage = try Storage(directory: profile.directory, readOnly: true)
@@ -518,7 +518,7 @@ struct PeelCommand {
         case "decode":
             guard let text = arguments.next() else { throw PeelError("decode needs an invoice") }
             let invoice = try Invoice(text)
-            print("amount: \(invoice.amountMsat / 1000) sats (\(invoice.amountMsat) msat)")
+            print("amount: \(Sats.format(msat: invoice.amountMsat)) (\(invoice.amountMsat) msat)")
             print("payee: \(invoice.payee)")
             print("memo: \(invoice.memo)")
             print("expires: \(invoice.expiresAt.map { "\($0)\(invoice.isExpired() ? " (expired)" : "")" } ?? "never")")
@@ -531,7 +531,7 @@ struct PeelCommand {
             let session = try await Session(load()).connect(insecure: insecure)
             try await confirming(confirmed) {
                 let paid = try await session.engine.payInvoice(text, confirmedMsat: $0)
-                print("paying \(paid.amountMsat / 1000) sats, tag \(paid.tag ?? "-")")
+                print("paying \(Sats.format(msat: paid.amountMsat)), tag \(paid.tag ?? "-")")
             }
             try await session.finish(after: wait)
 
@@ -543,7 +543,7 @@ struct PeelCommand {
             let invoice = try await session.engine.requestPayment(
                 from: pubkey, amountMsat: msat, memo: arguments.rest().joined(separator: " ")
             )
-            print("requested \(msat / 1000) sats, invoice \(invoice.paymentHash)")
+            print("requested \(Sats.format(msat: msat)), invoice \(invoice.paymentHash)")
             try await session.finish(after: wait)
 
         case "pay-request":
@@ -551,7 +551,7 @@ struct PeelCommand {
             let session = try await Session(load()).connect(insecure: insecure)
             try await confirming(confirmed) {
                 let paid = try await session.engine.payRequest(messageID: id, confirmedMsat: $0)
-                print("paying \(paid.amountMsat / 1000) sats, tag \(paid.tag ?? "-")")
+                print("paying \(Sats.format(msat: paid.amountMsat)), tag \(paid.tag ?? "-")")
             }
             try await session.finish(after: wait)
 
@@ -608,7 +608,7 @@ struct Session {
         case .registered(let contactInfo):
             "registered: \(contactInfo ?? "contact info not known yet")"
         case .balance(let msat):
-            "balance: \(msat / 1000) sats"
+            "balance: \(Sats.format(msat: msat))"
         case .message(let message, _):
             "\(message.fromMe ? "->" : "<-") \(message.chat.prefix(12))  \(line(message))"
         case .sendStatus(let tag, let status):
@@ -630,7 +630,7 @@ struct Session {
         case .transfer(let id, let direction, let bytes, let total):
             "\(direction) \(id): \(bytes) of \(total) bytes"
         case .moneyReceived(let message):
-            "received \((message.amountMsat ?? 0) / 1000) sats in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
+            "received \(Sats.format(msat: message.amountMsat ?? 0)) in \(message.chat.prefix(12)) (row \(message.id ?? 0))"
         case .invoicePaid(let hash):
             "invoice paid \(hash)"
         }
@@ -657,10 +657,10 @@ extension Session {
         let who = message.fromMe ? "me" : message.senderAlias ?? String(message.chat.prefix(12))
         let kind = switch message.type {
         case MessageType.text: ""
-        case MessageType.directPayment: " paid \((message.amountMsat ?? 0) / 1000) sats"
-        case MessageType.boost: " boosted \((message.amountMsat ?? 0) / 1000) sats on \(message.replyUUID?.prefix(12) ?? "-")"
-        case MessageType.invoice: " requested \((message.amountMsat ?? 0) / 1000) sats"
-        case MessageType.invoicePayment: " paid a request, \((message.amountMsat ?? 0) / 1000) sats"
+        case MessageType.directPayment: " paid \(Sats.format(msat: message.amountMsat ?? 0))"
+        case MessageType.boost: " boosted \(Sats.format(msat: message.amountMsat ?? 0)) on \(message.replyUUID?.prefix(12) ?? "-")"
+        case MessageType.invoice: " requested \(Sats.format(msat: message.amountMsat ?? 0))"
+        case MessageType.invoicePayment: " paid a request, \(Sats.format(msat: message.amountMsat ?? 0))"
         default: " type \(message.type)"
         }
         var file = ""
@@ -685,7 +685,7 @@ extension Session {
         let place = item.isTribe ? " in #\(item.chatName ?? "")" : ""
         let fee = item.feeMsat.map { " fee \($0) msat" } ?? ""
         let time = item.date.formatted(date: .numeric, time: .standard)
-        return "\(time)  \(sign)\(item.amountMsat / 1000) sats\(status)  \(item.kind) \(who)\(place)"
+        return "\(time)  \(sign)\(Sats.format(msat: item.amountMsat))\(status)  \(item.kind) \(who)\(place)"
             + "  \(item.note ?? "")\(fee)  \(item.paymentHash?.prefix(12) ?? "-")"
     }
 }
@@ -708,7 +708,7 @@ struct TribeOptions {
         summary = arguments.option("--description")
         photoURL = arguments.option("--image")
         func option(_ name: String, unit: UInt64, of what: String) throws -> UInt64? {
-            try arguments.option(name).map { try amount($0, unit: unit, of: what) }
+            try arguments.option(name).map { try Sats.parse($0, unit: unit, of: what) }
         }
         pricePerMessage = try option("--price-per-message", unit: 1000, of: "price per message")
         priceToJoin = try option("--price-to-join", unit: 1000, of: "price to join")
@@ -745,7 +745,7 @@ func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throw
     do {
         try await send(nil)
     } catch Engine.Failure.needsConfirmation(let msat) where yes {
-        print("confirmed \(msat / 1000) sats (\(msat) msat)")
+        print("confirmed \(Sats.format(msat: msat)) (\(msat) msat)")
         try await send(msat)
     }
 }

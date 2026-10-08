@@ -71,7 +71,7 @@ struct LockedAttachment: View {
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Paid \(isPicture ? (kind == .video ? "video" : "photo") : "attachment"), "
-            + Formatting.sats(msat: message.attachmentPriceMsat ?? 0))
+            + Sats.format(msat: message.attachmentPriceMsat ?? 0))
     }
 
     private func lockMark(size: CGFloat) -> some View {
@@ -106,7 +106,7 @@ struct LockedAttachment: View {
         case .locked, .failed:
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top) {
-                    Text(Formatting.sats(msat: price))
+                    Text(Sats.format(msat: price))
                         .font(Theme.font(14, .semibold))
                         .monospacedDigit()
                         .padding(.top, 5)
@@ -159,7 +159,7 @@ struct ForSaleNote: View {
 
     var body: some View {
         Label {
-            Text("For sale at \(Formatting.sats(msat: priceMsat)) · "
+            Text("For sale at \(Sats.format(msat: priceMsat)) · "
                 + (purchases == 0 ? "not bought yet" : purchases == 1 ? "bought once" : "bought \(purchases) times"))
         } icon: {
             Image(systemName: "lock")

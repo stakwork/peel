@@ -156,18 +156,6 @@ struct TribeTests {
         ))
     }
 
-    @Test func amountsAreExactInTheSmallerUnit() throws {
-        #expect(try amount("", unit: 1000, of: "price") == 0)
-        #expect(try amount("3", unit: 1000, of: "price") == 3000)
-        #expect(try amount("1.5", unit: 1000, of: "price") == 1500)
-        #expect(try amount("0.5", unit: 3_600_000, of: "time") == 1_800_000)
-        #expect(throws: PeelError.self) { try amount("0.0001", unit: 1000, of: "price") }
-        #expect(throws: PeelError.self) { try amount("-1", unit: 1000, of: "price") }
-        #expect(throws: PeelError.self) { try amount("1.2.3", unit: 1000, of: "price") }
-        #expect(throws: PeelError.self) { try amount("1e3", unit: 1000, of: "price") }
-        #expect(throws: PeelError.self) { try amount("99999999999999999", unit: 1000, of: "price") }
-    }
-
     @Test func anImageTheTribeAlreadyHasIsKeptWhateverItsScheme() throws {
         let settings = TribeSettings(name: "Club", photoURL: "http://x/p.png")
         #expect(try settings.validated(currentImage: "http://x/p.png").photoURL == "http://x/p.png")

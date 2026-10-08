@@ -141,7 +141,7 @@ public actor Engine {
             case .invalidAmount: "the amount must be more than nothing"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
-            case .needsConfirmation(let msat): "\(msat / 1000) sats is over the confirmation threshold; confirm it first"
+            case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) is over the confirmation threshold; confirm it first"
             case .notBoostable: "only someone else's delivered message can be boosted"
             case .paymentToTribe: "a payment to a tribe goes to the tribes server; boost a message instead"
             case .noteTooLong: "the note is too long to go with a payment"
@@ -1665,7 +1665,7 @@ public actor Engine {
         guard paid > 0, paid + min(3000, price / 10) >= price else {
             emit.yield(.conversationError(
                 chat: purchase.chat,
-                message: "A purchase of your paid attachment brought \(paid / 1000) of \(price / 1000) sats, so its key was not sent"
+                message: "A purchase of your paid attachment brought \(Sats.format(msat: paid, of: price)), so its key was not sent"
             ))
             return
         }

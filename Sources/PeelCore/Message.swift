@@ -193,18 +193,6 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 }
 
-/// Amounts as people type them.
-public enum Sats {
-    /// A whole number of sats above zero ("1,000" too), as msat; nil for
-    /// anything else, or too many to count in msat.
-    public static func msat(_ text: String) -> UInt64? {
-        let digits = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "")
-        guard let sats = UInt64(digits), sats > 0 else { return nil }
-        let (msat, overflow) = sats.multipliedReportingOverflow(by: 1000)
-        return overflow ? nil : msat
-    }
-}
-
 /// Someone who wrote in a thread, for the avatars on its summary.
 public struct ThreadParticipant: Sendable, Equatable, Hashable {
     public var alias: String?

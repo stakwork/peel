@@ -114,7 +114,7 @@ struct TribeSettingsForm: View {
 
     /// An amount in the unit people type, blank for zero as the Mac app shows them.
     private static func text(_ value: UInt64, unit: UInt64) -> String {
-        // A point for the decimals whatever the locale, as `amount` reads them.
+        // A point for the decimals whatever the locale, as `Sats.parse` reads them.
         value == 0 ? "" : (Decimal(value) / Decimal(unit)).formatted(
             .number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.fractionLength(0...6))
         )
@@ -125,7 +125,7 @@ struct TribeSettingsForm: View {
         /// where the shown text was rounded (an escrow time of 20 minutes).
         func value(_ text: String, unit: UInt64, of what: String, _ stored: KeyPath<TribeSettings, UInt64>) throws -> UInt64 {
             if let original, text == Self.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
-            return try amount(text, unit: unit, of: what)
+            return try Sats.parse(text, unit: unit, of: what)
         }
         return TribeSettings(
             name: name, summary: summary, photoURL: photoURL,

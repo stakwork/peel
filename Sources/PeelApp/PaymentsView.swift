@@ -407,11 +407,11 @@ struct SignedAmount: View {
 
     /// "+500" received, "2,000" sent: the banking apps' way (Tom, 2026-10-07).
     static func text(msat: Int64, incoming: Bool) -> String {
-        "\(incoming ? "+" : "")\(Formatting.satsNumber(msat: msat))"
+        "\(incoming ? "+" : "")\(Sats.number(msat: msat))"
     }
 
     private var label: String {
-        let amount = Formatting.sats(msat: msat)
+        let amount = Sats.format(msat: msat)
         switch status {
         case .complete: return "\(incoming ? "Received" : "Sent") \(amount)"
         case .pending: return "\(incoming ? "Receiving" : "Sending") \(amount), pending"
@@ -597,12 +597,12 @@ private struct PaymentDetailPane: View {
         rows.append(.init(key: "When", value: item.date.formatted(
             .dateTime.weekday(.wide).day().month(.wide).hour().minute().second()
         )))
-        rows.append(.init(key: "Amount", value: "\(Formatting.sats(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
+        rows.append(.init(key: "Amount", value: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
         if let fee = item.feeMsat {
-            rows.append(.init(key: "Routing fee", value: fee == 0 ? "None" : Formatting.sats(msat: fee)))
+            rows.append(.init(key: "Routing fee", value: fee == 0 ? "None" : Sats.format(msat: fee)))
         }
         if let ping = item.pingMsat {
-            rows.append(.init(key: "Ping", value: "\(Formatting.sats(msat: ping)), sent with it to reach them"))
+            rows.append(.init(key: "Ping", value: "\(Sats.format(msat: ping)), sent with it to reach them"))
         }
         if let hash = item.paymentHash {
             rows.append(.init(key: "Payment hash", value: Formatting.shortKey(hash), monospaced: true, copy: hash))
@@ -782,7 +782,7 @@ private struct ReceivePane: View {
                 .fieldBoxed()
         }
         FormFooter(problem: problem, working: working) {
-            Button(amountMsat.map { "Create invoice for \(Formatting.sats(msat: $0))" } ?? "Create invoice") {
+            Button(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice") {
                 guard let amountMsat else { return }
                 Task { await create(amountMsat) }
             }
@@ -827,7 +827,7 @@ private struct ReceivePane: View {
         }
         .frame(maxWidth: .infinity)
         HStack(spacing: 7) {
-            Text(Formatting.sats(msat: invoice.amountMsat)).font(Theme.font(15, .semibold)).monospacedDigit()
+            Text(Sats.format(msat: invoice.amountMsat)).font(Theme.font(15, .semibold)).monospacedDigit()
             if !invoice.memo.isEmpty {
                 Text(invoice.memo).font(Theme.font(13)).foregroundStyle(Theme.secondaryText).lineLimit(2)
             }
@@ -845,7 +845,7 @@ private struct ReceivePane: View {
                 .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
             Text(full ? "Paid" : "Partly paid").font(Theme.font(20, .bold))
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(invoice.paidMsat.map { "+\(Formatting.satsNumber(msat: $0))" } ?? "Amount not known")
+                Text(invoice.paidMsat.map { "+\(Sats.number(msat: $0))" } ?? "Amount not known")
                     .font(Theme.font(32, .bold))
                     .foregroundStyle(full ? Theme.confirmed : Theme.text)
                 Text("sats").font(Theme.font(15)).foregroundStyle(Theme.secondaryText)
@@ -858,7 +858,7 @@ private struct ReceivePane: View {
         Theme.divider.frame(height: 1)
         KeyValues(rows: [
             .init(key: "Received", value: (invoice.paid ?? .now).formatted(.dateTime.hour().minute().second())),
-            .init(key: "Invoice for", value: Formatting.sats(msat: invoice.amountMsat)),
+            .init(key: "Invoice for", value: Sats.format(msat: invoice.amountMsat)),
         ])
         HStack(spacing: 8) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
@@ -1009,7 +1009,7 @@ private struct PayInvoicePane: View {
     @ViewBuilder private func details(_ invoice: Invoice) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(Formatting.satsNumber(msat: Int64(clamping: invoice.amountMsat)))
+                Text(Sats.number(msat: invoice.amountMsat))
                     .font(Theme.font(30, .bold))
                 Text("sats").font(Theme.font(15)).foregroundStyle(Theme.secondaryText)
             }
@@ -1043,7 +1043,7 @@ private struct PayInvoicePane: View {
                     }, sent: {}, namesAmount: false)
                 }
                 Text(model.paymentConfirmationMsat == 0 ? "Every payment takes a second click."
-                     : "Payments over \(Formatting.sats(msat: model.paymentConfirmationMsat)) take a second click.")
+                     : "Payments over \(Sats.format(msat: model.paymentConfirmationMsat)) take a second click.")
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
@@ -1096,8 +1096,8 @@ private struct PayInvoicePane: View {
                                "It may already have paid, so it cannot be paid again until the server says.")
         case .insufficientBalance:
             (title, detail) = ("Not enough sats",
-                               "This needs \(Formatting.sats(msat: invoice.amountMsat)) plus up to \(Formatting.sats(msat: reserve)) "
-                                   + "for routing. You have \(Formatting.sats(msat: model.balanceMsat ?? 0)).")
+                               "This needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: reserve)) "
+                                   + "for routing. You have \(Sats.format(msat: model.balanceMsat ?? 0)).")
             link = ("Receive sats", receive)
         default:
             (title, detail) = ("This invoice cannot be paid now", problem.description)
@@ -1112,11 +1112,11 @@ private struct PayInvoicePane: View {
         switch payment.status {
         case .paid:
             VStack(alignment: .leading, spacing: 8) {
-                Label("Paid \(Formatting.sats(msat: payment.amountMsat))", systemImage: "checkmark")
+                Label("Paid \(Sats.format(msat: payment.amountMsat))", systemImage: "checkmark")
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
-                Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Formatting.sats(msat: $0))." }
+                Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Sats.format(msat: $0))." }
                      ?? "The fee shows once the server's history has this payment.")
                     .font(Theme.font(12))
                     .monospacedDigit()
@@ -1128,7 +1128,7 @@ private struct PayInvoicePane: View {
                 }
             }
         case .unsettled:
-            Text("Not settled yet: the server holds this payment of \(Formatting.sats(msat: payment.amountMsat)) and may "
+            Text("Not settled yet: the server holds this payment of \(Sats.format(msat: payment.amountMsat)) and may "
                  + "never settle it. It is not paid again from here.")
                 .font(Theme.font(13))
                 .monospacedDigit()
@@ -1137,7 +1137,7 @@ private struct PayInvoicePane: View {
         default:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Paying \(Formatting.sats(msat: payment.amountMsat)). It stays pending until the server confirms.")
+                Text("Paying \(Sats.format(msat: payment.amountMsat)). It stays pending until the server confirms.")
                     .font(Theme.font(13))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
@@ -1201,7 +1201,7 @@ struct PaymentRequestRow: View {
             .foregroundStyle(Theme.secondaryText)
             if let invoice {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(Formatting.satsNumber(msat: Int64(clamping: invoice.amountMsat)))
+                    Text(Sats.number(msat: invoice.amountMsat))
                         .font(Theme.font(22, .bold))
                     Text("sats").font(Theme.font(14)).foregroundStyle(Theme.secondaryText)
                 }
@@ -1233,7 +1233,7 @@ struct PaymentRequestRow: View {
     @ViewBuilder private func footer(_ invoice: Invoice) -> some View {
         switch request?.state ?? .open {
         case .underpaid(let msat):
-            Text("Partly paid: \(msat.map { Formatting.sats(msat: $0) } ?? "an unknown amount") came; this invoice cannot take the rest.")
+            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount") came; this invoice cannot take the rest.")
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.attention)

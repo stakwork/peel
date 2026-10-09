@@ -118,12 +118,25 @@ public enum MessageLink: Sendable, Equatable {
         }
     }
 
-    /// The first in `text`, if any. Each word is read on its own, from a
-    /// `sphinx.chat://` in it (so a Markdown `[label](link)` counts) and
-    /// without the brackets, quotes and punctuation around it.
-    public static func first(in text: String) -> MessageLink? {
+    /// A message's card: its first link, and the text drawn above the card,
+    /// with that link taken out.
+    public struct Card: Sendable, Equatable {
+        public let link: MessageLink
+        /// Empty when the message is only the link. A Markdown
+        /// `[label](link)` leaves its label; other links stay as typed.
+        public let text: String
+    }
+
+    /// The card for `text`, if any: its first link outside code. Each word
+    /// is read on its own, from a `sphinx.chat://` in it (so a Markdown
+    /// `[label](link)` counts) and without the brackets, quotes and
+    /// punctuation around it. Copying and quoting keep the whole text.
+    public static func card(in text: String) -> Card? {
+        // Ranges into the text as `MessageMarkup` reads it.
+        let text = text.contains("\r\n") ? text.replacingOccurrences(of: "\r\n", with: "\n") : text
+        var code: [Range<String.Index>]?
         for word in text.split(whereSeparator: \.isWhitespace) {
-            let candidate: Substring
+            var candidate: Substring
             if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive) {
                 candidate = word[scheme.lowerBound...]
             } else if word.count >= minContactInfoLength, word.contains("_") {
@@ -131,21 +144,72 @@ public enum MessageLink: Sendable, Equatable {
             } else {
                 continue
             }
-            let trimmed = candidate.trimmingCharacters(in: around)
-            switch try? ContactCode.read(trimmed) {
-            case .tribe(let link): return .tribe(link)
-            case .contact(let info): return .contact(info: info)
+            while let first = candidate.first, around.contains(first) { candidate.removeFirst() }
+            while let last = candidate.last, around.contains(last) { candidate.removeLast() }
+            let link: MessageLink
+            switch try? ContactCode.read(String(candidate)) {
+            case .tribe(let tribe): link = .tribe(tribe)
+            case .contact(let info): link = .contact(info: info)
             default: continue
             }
+            let range = candidate.startIndex..<candidate.endIndex
+            // Found once, and only for text with a link in it.
+            code = code ?? MessageMarkup.codeRanges(text)
+            if code?.contains(where: { $0.overlaps(range) }) == true { continue }
+            return Card(link: link, text: without(range, in: word, of: text))
         }
         return nil
+    }
+
+    /// `text` without the link at `range` (in `word`). A Markdown link
+    /// becomes its label. Otherwise the link goes with the brackets or
+    /// marks around it and the space before it; punctuation after it stays
+    /// unless what is left already ends in some ("Join us: <link>." is
+    /// "Join us:"); and a line left with only a list or quote mark goes.
+    private static func without(_ range: Range<String.Index>, in word: Substring, of text: String) -> String {
+        if text.contains("]("),
+           let named = MessageMarkup.namedLink?.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            .first(where: { Range($0.range(at: 2), in: text) == range }),
+           let whole = Range(named.range, in: text), let label = Range(named.range(at: 1), in: text) {
+            return text.replacingCharacters(in: whole, with: text[label]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var start = range.lowerBound, end = range.upperBound
+        while start > word.startIndex, opening.contains(text[text.index(before: start)]) { start = text.index(before: start) }
+        // A bracket closes only what opened beside the link: "(see <link>)" keeps its ")".
+        let opened = text[start..<range.lowerBound]
+        while end < word.endIndex, closing.contains(text[end]), brackets[text[end]].map(opened.contains) ?? true {
+            end = text.index(after: end)
+        }
+        var left = text[..<start]
+        var right = text[word.endIndex...]
+        if start == word.startIndex {
+            while left.last == " " || left.last == "\t" { left.removeLast() }
+        }
+        let lineStart = left.lastIndex(of: "\n").map(text.index(after:)) ?? text.startIndex
+        if right.prefix(while: { $0 != "\n" }).allSatisfy(\.isWhitespace),
+           left[lineStart...].allSatisfy({ $0.isWhitespace || listOrQuoteMarks.contains($0) }) {
+            left = left[..<lineStart]
+        }
+        let endsLine = left.isEmpty || left.last == "\n"
+        if !endsLine, left.last?.isPunctuation != true { left += text[end..<word.endIndex] }
+        if endsLine {
+            right = right.drop { $0 == " " || $0 == "\t" }
+            if right.first == "\n" { right = right.dropFirst() }
+        }
+        return (left + right).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Two 66-character keys, two underscores and a channel id.
     private static let minContactInfoLength = 66 * 2 + 3
     /// What wraps a link in prose or Markdown: never part of one, which
     /// ends in a host, a port or a channel id.
-    private static let around = CharacterSet(charactersIn: "()[]<>{}\"'`*_.,;:!?")
+    private static let around = Set("()[]<>{}\"'`*_.,;:!?")
+    /// Of those, what goes with the link it wraps.
+    private static let opening = Set("([<{\"'`*_")
+    private static let closing = Set(")]>}\"'`*_")
+    private static let brackets: [Character: Character] = [")": "(", "]": "[", ">": "<", "}": "{"]
+    /// What a list item, quote or heading starts with.
+    private static let listOrQuoteMarks = Set("-•*>#.)0123456789")
 }
 
 extension Character {

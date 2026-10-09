@@ -1,9 +1,5 @@
 import Foundation
 import Observation
-import UniformTypeIdentifiers
-#if os(macOS)
-import AppKit
-#endif
 import PeelCore
 
 /// A thread, by its chat and its original's uuid.
@@ -333,21 +329,7 @@ extension AppModel {
 
     /// Picks files to attach, beside the window.
     func chooseFiles(for composer: ComposerID) {
-        addFiles(Self.chooseFiles(prompt: "Attach", multiple: true), to: composer)
-    }
-
-    /// Files picked in an open panel beside the window, of the given types if any.
-    static func chooseFiles(prompt: String, multiple: Bool, types: [UTType] = []) -> [URL] {
-        #if os(macOS)
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = multiple
-        panel.canChooseDirectories = false
-        if !types.isEmpty { panel.allowedContentTypes = types }
-        panel.prompt = prompt
-        return panel.runModal() == .OK ? panel.urls : []
-        #else
-        return []
-        #endif
+        addFiles(FilePicking.open(prompt: "Attach", multiple: true) ?? [], to: composer)
     }
 
     // MARK: Attachments
@@ -398,17 +380,13 @@ extension AppModel {
     /// (Save as…). Quarantined; nothing is opened.
     func save(_ message: Message) async {
         await download(message)
-        #if os(macOS)
-        guard let id = message.id, let file = attachment(id).file else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = fileName(of: message) ?? file.lastPathComponent
-        guard panel.runModal() == .OK, let target = panel.url else { return }
+        guard let id = message.id, let file = attachment(id).file,
+              let target = FilePicking.saveLocation(named: fileName(of: message) ?? file.lastPathComponent) else { return }
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
             conversationNotices[message.chat] = "Could not save: \(PeelError.readable(error))"
         }
-        #endif
     }
 
     /// The one click on a file: downloads and decrypts it, then puts it in
@@ -426,9 +404,7 @@ extension AppModel {
 
     /// Shows a saved file in the Finder, selected. Never opens it.
     func showInFinder(_ file: URL) {
-        #if os(macOS)
-        NSWorkspace.shared.activateFileViewerSelecting([file])
-        #endif
+        FilePicking.reveal(file)
     }
 
     private func fileName(of message: Message) -> String? {

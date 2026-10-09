@@ -412,3 +412,35 @@ or received, from Peel or the official apps.
   attachment, and only the format says what a decode costs. Refused, it
   reads "Too large to show" in the chat and the viewer, "… is too large"
   for a profile photo, "… too large to look for a code in" for a QR scan.
+
+## 6. Sidebar for many chats
+
+**Asked by Tom on 2026-10-09:** with 14 tribes and many direct messages,
+the DMs fell below the fold and a "1" on one was easy to miss; the Dock
+badge was the only other cue. **Done (branch `sidebar-unread-first`):**
+
+- An Unread section on top (direct messages, then tribes that mention
+  you, then other tribes; muted chats only when they mention you), then
+  Tribes, then Direct messages, each the five most recent with "Show all
+  14 tribes" / "Show all 10 people". The open chat always shows; the
+  search finds everything. Open and shown-in-full states kept with
+  the account. Details in `../design/README.md`, "Sidebar".
+- Go › Next and Previous Unread Chat (⌥⇧↓, ⌥⇧↑), a menu command from
+  anywhere in the main window, guarded in the action (`AppModel.takesCommands`). The sidebar's own keys (#123) are unchanged and still
+  have one owner, its `KeyMonitor`, which lets ⌥⇧-arrows through.
+- `ChatSections` (PeelCore) works the sections out, with
+  `ChatSectionsTests`; `ChatReadState.sidebarCount` and `isUnread`.
+- Checked offscreen (`scripts/check-app.sh`, from the open #135, not part
+  of this branch) on a new development profile seeded with local rows.
+- Independent review (2026-10-10), applied: the Mentions row counts muted
+  tribes' mentions as the gold badges do (the Dock badge does not); the
+  commands, and ⌘F, act only while the main window is key with no menu or
+  panel up (`AppModel.takesCommands`); the layout is an account setting
+  (`Setting.sidebarLayout`) rather than `UserDefaults`, read with defaults
+  for missing fields; no chevron while searching; Unread's title aligned;
+  VoiceOver labels and heading traits.
+- **For Tom to confirm:** contacts you have never messaged sort last, so
+  they fall below the top five; a "New" contact counts as unread; the
+  chat opened from Unread stays there until you open another; ⌥⇧↓ goes
+  round; the shortcuts win in every text field.
+- **Not built:** drag-and-drop ordering (later, Tom).

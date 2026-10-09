@@ -61,6 +61,10 @@ is a short plan. Update the status and the journal when you finish something.
   - `Models.swift` — the public value types Storage returns: `Setting`,
     `Conversation`, `MuteLevel`, `ChatReadState`, `Timeline`, `BoostSummary`,
     `ThreadSummary`, `ChatThread`
+  - `ChatSections.swift` — the sidebar's chats in order: Unread (direct
+    messages, then tribes that mention you, then other tribes), the five
+    most recent tribes and direct messages with "Show all", the open chat
+    always shown, the search, and the next unread chat (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states, tribes and their senders, mentions, payments, the shared SQL
     (`tribeChats`, `chatsSQL`, `countsAsUnreadSQL`)
@@ -175,7 +179,7 @@ is a short plan. Update the status and the journal when you finish something.
   `focus(on:inThread:)`, the highlight in message text);
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt, arrow keys and Return while it has focus,
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus,
   `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
@@ -243,7 +247,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,

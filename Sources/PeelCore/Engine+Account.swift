@@ -170,6 +170,16 @@ extension Engine {
         try storage.set(shows ? "1" : "0", for: .notificationText)
     }
 
+    /// Which sidebar sections are open and shown in full; the defaults
+    /// until one is saved, and for a field the saved one lacks.
+    public func sidebarLayout() throws -> ChatSections.Layout {
+        JSON.decode(ChatSections.Layout.self, from: try storage.value(for: .sidebarLayout)) ?? ChatSections.Layout()
+    }
+
+    public func setSidebarLayout(_ layout: ChatSections.Layout) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(layout), as: UTF8.self), for: .sidebarLayout)
+    }
+
     /// What an app shows of the account when it opens, read in one call off
     /// its actor. A setting that cannot be read is nil, as each getter's
     /// failure would be.
@@ -186,6 +196,7 @@ extension Engine {
         public let paymentConfirmationMsat: UInt64?
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
+        public let sidebarLayout: ChatSections.Layout?
         public let connection: ConnectionState
     }
 
@@ -196,7 +207,8 @@ extension Engine {
             callServer: try? callServer(), pinTimeoutHours: try? pinTimeoutHours(),
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
-            notificationShowsText: try? notificationShowsText(), connection: connection
+            notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
+            connection: connection
         )
     }
 

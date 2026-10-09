@@ -39,6 +39,9 @@ public enum Setting: String, Sendable {
     /// The zone this account's offset comes from, an IANA name; unset or ""
     /// means this Mac's.
     case timeZone
+    /// Which sidebar sections are open and shown in full
+    /// (`ChatSections.Layout`, as JSON).
+    case sidebarLayout
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -106,8 +109,14 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
         }
     }
 
-    /// Unread mentions, unless the chat is muted.
-    public var shownMentions: Int { mute == .muted ? 0 : mentions }
+    /// A sidebar row's count: `shownUnread`, except that a muted chat still
+    /// counts what mentions this account (Tom, 2026-10-09), as the Mentions
+    /// row does. The Dock badge stays `shownUnread`: a muted chat never
+    /// counts there.
+    public var sidebarCount: Int { mute == .muted ? mentions : shownUnread }
+
+    /// In the sidebar's Unread section (`ChatSections`).
+    public var isUnread: Bool { sidebarCount > 0 || isNew }
 }
 
 /// What a chat's main conversation shows.

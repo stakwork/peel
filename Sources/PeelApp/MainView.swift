@@ -38,7 +38,7 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
-        .peelMenuHost()
+        .peelMenuHost(main: true)
     }
 }
 

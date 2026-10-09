@@ -51,6 +51,7 @@ final class AppModel {
     var destination: Destination? {
         didSet {
             if selectedChat != oldValue?.chat {
+                heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
                 keepsUnread = nil
                 // A jump into this chat (`focus(on:)`) set both just before.
@@ -110,8 +111,25 @@ final class AppModel {
     /// Downloads, uploads and local copies of attachments, by message id;
     /// each observed on its own so a progress tick redraws only its tile.
     @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
+    /// The main window's menus and panels (`peelMenuHost(main:)`).
+    @ObservationIgnored weak var mainPresenter: MenuPresenter?
     /// The sidebar's search, which filters its lists.
     var searchQuery = ""
+    /// Which sidebar sections are open and shown in full, kept with the
+    /// account (`Engine.sidebarLayout`).
+    var sidebarLayout = ChatSections.Layout() {
+        didSet {
+            guard sidebarLayout != savedLayout, let engine else { return }
+            savedLayout = sidebarLayout
+            let layout = sidebarLayout
+            Task { try? await engine.setSidebarLayout(layout) }
+        }
+    }
+    /// The layout as the account has it, so loading it saves nothing.
+    @ObservationIgnored private var savedLayout = ChatSections.Layout()
+    /// The open chat's read state as it was when it was opened from Unread
+    /// (`sidebarSections`).
+    private var heldUnread: ChatReadState?
     /// Bumped to put the cursor in the sidebar's search (⌘F with no chat open).
     var sidebarSearchFocus = 0
     var myAlias: String?
@@ -199,9 +217,10 @@ final class AppModel {
     /// The open chat's timeline reaches back to this message (older than
     /// the newest 200), for `focus`.
     private var timelineLimit: Int?
-    /// Unread mentions in tribes that are not muted, for the sidebar.
+    /// Unread mentions, muted chats too, for the sidebar's Mentions row:
+    /// they agree with the rows' gold counts (`sidebarCount`).
     var unreadMentions: Int {
-        readStates.values.reduce(0) { $0 + $1.shownMentions }
+        readStates.values.reduce(0) { $0 + $1.mentions }
     }
     /// Unread messages by each chat's notification level; the Dock badge.
     var unreadCount: Int {
@@ -264,15 +283,42 @@ final class AppModel {
 
     var selectedChat: String? { destination?.chat }
 
-    /// The tribes and the direct messages matching the sidebar search, in
-    /// one pass.
-    var sidebarSections: (tribes: [Conversation], direct: [Conversation]) {
-        let query = searchQuery.trimmingCharacters(in: .whitespaces)
-        var sections: (tribes: [Conversation], direct: [Conversation]) = ([], [])
-        for conversation in conversations where query.isEmpty || conversation.name.localizedCaseInsensitiveContains(query) {
-            if conversation.isTribe { sections.tribes.append(conversation) } else { sections.direct.append(conversation) }
+    /// The sidebar's chats as shown: Unread, then the recent tribes and
+    /// direct messages, matching its search. The open chat, unread when it
+    /// was opened, stays in Unread until another is opened, so it does not
+    /// jump away as it is read and ⌥⇧↓ goes on from it.
+    var sidebarSections: ChatSections {
+        var states = readStates
+        if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
+            states[heldUnread.chat] = heldUnread
         }
-        return sections
+        return ChatSections(conversations, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
+    }
+
+    /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
+    /// sidebar's Unread section, going round. From anywhere in the main
+    /// window, as ⌘F (`takesCommands`).
+    func openUnread(by offset: Int) {
+        guard takesCommands, let chat = sidebarSections.unread(from: selectedChat, by: offset) else { return }
+        destination = .chat(chat)
+    }
+
+    /// Whether a menu command may act on the main window: unlocked, the
+    /// main window key (not the call window or a Peel panel), no Peel menu
+    /// or panel and no image viewer up.
+    /// Checked in the action, never through `.disabled`, which a command
+    /// does not follow (#131).
+    var takesCommands: Bool {
+        guard phase == .ready, !isLockDue, viewer == nil, let presenter = mainPresenter,
+              !presenter.anythingOpen else { return false }
+        #if os(macOS)
+        // The key window; with none (Peel not active, as when checked
+        // offscreen), the window the key press came to.
+        guard let window = NSApp.keyWindow ?? NSApp.currentEvent?.window else { return false }
+        return window === presenter.hostWindow
+        #else
+        return true
+        #endif
     }
 
     var selectedConversation: Conversation? {
@@ -962,6 +1008,8 @@ final class AppModel {
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        savedLayout = ChatSections.Layout()
+        sidebarLayout = savedLayout
         senderZoneCache = [:]
         lastActiveAt = nil
         notifier.reset()
@@ -984,6 +1032,8 @@ final class AppModel {
         balanceMsat = settings.balanceMsat
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+        savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
+        sidebarLayout = savedLayout
         connection = settings.connection
         // Forgotten while loading.
         guard self.engine === engine else { return }

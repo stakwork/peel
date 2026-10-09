@@ -302,6 +302,11 @@ accepts any certificate before building it.
 
 ## Settings sync: the official apps' `/preferences` file
 
+Superseded by `11-preferences-sync.md` (2026-10-10), which rechecks
+all of this with line numbers and adds what this missed: the official
+reader rewrites and can crash on some strings, `tip_amount` is in sats, and
+`pin_timeout` has its own scale (0 = every time, 25 = never).
+
 Checked 2026-10-08 in `sphinx-mac-v2`, `Managers/Data Sync Manager/`
 (`DataSyncManager.swift`, `DataSyncModels.swift`).
 

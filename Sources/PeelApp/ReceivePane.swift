@@ -40,18 +40,11 @@ struct ReceivePane: View {
 
     @ViewBuilder private var form: some View {
         let amountMsat = Sats.msat(amount)
-        VStack(alignment: .leading, spacing: 6) {
-            FormSection {
-                FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
-                FormRow(label: "Memo") {
-                    FormTextField(label: "Memo", prompt: "What it's for (optional)", text: $memo)
-                }
-            }
-            .padding(.top, -14)
-            Text("Lightning invoices from Peel name an amount; the payer cannot choose one.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 4)
+        FormItem(label: "Amount", helper: "Lightning invoices from Peel name an amount; the payer cannot choose one.") {
+            SatsField(label: "Amount", text: $amount)
+        }
+        FormItem(label: "Memo") {
+            FormTextField(label: "Memo", prompt: "What it's for (optional)", text: $memo)
         }
         FormFooter(problem: problem) {
             Button {

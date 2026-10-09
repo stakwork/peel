@@ -68,12 +68,9 @@ struct OnboardingView: View {
     private var inviteStep: some View {
         StepBody(title: "Paste your invite",
                  detail: "The link or code someone sent you. It creates your account on the Sphinx server, and may come with sats from whoever invited you.") {
-            FormSection {
-                FormRow(label: "Invite", stacked: true) {
-                    FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
-                }
+            FormItem(label: "Invite") {
+                FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
             }
-            .padding(.top, -14)
         } footer: {
             footer(next: "Continue", enabled: !invite.trimmed.isEmpty) { go(.name) }
         }
@@ -100,13 +97,10 @@ struct OnboardingView: View {
     private var nameStep: some View {
         StepBody(title: "What should people call you?",
                  detail: "Your name goes with your messages, to the people you talk to and in tribes. You can change it later.") {
-            FormSection {
-                FormRow(label: "Name") {
-                    FormTextField(label: "Name", prompt: "Required", text: $name)
-                        .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
-                }
+            FormItem(label: "Name") {
+                FormTextField(label: "Name", prompt: "Required", text: $name)
+                    .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
             }
-            .padding(.top, -14)
         } footer: {
             footer(next: "Continue", enabled: !name.trimmed.isEmpty) { go(.pin) }
         }
@@ -360,6 +354,7 @@ struct OnboardingPage<Content: View>: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .endsEditingOnClick()
         .background(Theme.background.ignoresSafeArea())
         .foregroundStyle(Theme.text)
     }

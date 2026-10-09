@@ -13,17 +13,19 @@ struct JoinTribeForm: View {
     @State private var attempt = PaymentAttempt()
 
     var body: some View {
-        // The compact form (one field): the link boxed on the popover, then the tribe.
+        // The compact form (one field): the link, then the tribe.
         FormPopover(title: "Join a tribe", compact: true, close: done) {
-            FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical, boxed: true)
-                // Return looks up, then joins once the preview is up, as the buttons would.
-                .onSubmit { Task { await submit() } }
-                .onChange(of: link) {
-                    info = nil
-                    problem = nil
-                    attempt.armed = nil
-                    attempt.problem = nil
-                }
+            FormItem(label: "Tribe link") {
+                FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
+            }
+            // Return looks up, then joins once the preview is up, as the buttons would.
+            .onSubmit { Task { await submit() } }
+            .onChange(of: link) {
+                info = nil
+                problem = nil
+                attempt.armed = nil
+                attempt.problem = nil
+            }
             if let info {
                 HStack(alignment: .top, spacing: 10) {
                     TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)

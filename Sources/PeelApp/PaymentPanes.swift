@@ -18,8 +18,11 @@ struct PaneFrame<Content: View>: View {
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // In the scroll view as well: a click there never reaches a gesture outside it.
+                .endsEditingOnClick()
             }
         }
+        .endsEditingOnClick()
     }
 }
 

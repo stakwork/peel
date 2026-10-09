@@ -187,6 +187,7 @@ struct AttachmentPriceField: View {
                 .font(.system(size: 12))
                 .foregroundStyle(text.wrappedValue.isEmpty ? Theme.secondaryText : Theme.text)
             FormNumberField(label: "Price", text: text, unit: "sats", prompt: "Free")
+                .frame(width: 120)
         }
         .help("Sell these files: buyers pay this many sats each to open one. Leave empty to send them free.")
     }

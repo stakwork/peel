@@ -158,7 +158,7 @@ struct SearchField: View {
     @Binding var text: String
 
     var body: some View {
-        FormTextField(label: "Search", prompt: "Search", text: $text, boxed: true, systemImage: "magnifyingglass")
+        FormTextField(label: "Search", prompt: "Search", text: $text, systemImage: "magnifyingglass")
     }
 }
 

@@ -80,9 +80,33 @@ struct MoneyRefusalTests {
         await #expect(throws: Engine.Failure.invalidAmount) {
             try await engine.sendPayment(to: person, amountMsat: 0, text: longNote)
         }
-        // The whole balance is allowed.
+        // The whole balance less the ping is allowed.
         await #expect(throws: Engine.Failure.noteTooLong) {
+            try await engine.sendPayment(to: person, amountMsat: 49_000, text: longNote)
+        }
+    }
+
+    /// A send to a person costs its 1-sat ping on top (integration finding
+    /// 1), so the whole balance is refused; a tribe's send carries none.
+    /// The threshold still asks for the amount alone.
+    @Test func aSendToAPersonCountsItsPing() async throws {
+        let (engine, storage) = try engine(
+            balanceMsat: 50_000, tribes: [Tribe(pubkey: tribe)],
+            messages: [text(1, chat: person), text(2, chat: tribe)]
+        )
+        #expect(Engine.pingMsat(toTribe: false) == 1_000 && Engine.pingMsat(toTribe: true) == 0)
+        await #expect(throws: Engine.Failure.insufficientBalance) {
             try await engine.sendPayment(to: person, amountMsat: 50_000, text: longNote)
+        }
+        await #expect(throws: Engine.Failure.insufficientBalance) {
+            try await engine.boost(messageID: try id(1, storage), amountMsat: 50_000)
+        }
+        try await engine.setPaymentConfirmation(msat: 0)
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 49_000)) {
+            try await engine.boost(messageID: try id(1, storage), amountMsat: 49_000)
+        }
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 50_000)) {
+            try await engine.boost(messageID: try id(2, in: tribe, storage), amountMsat: 50_000)
         }
     }
 

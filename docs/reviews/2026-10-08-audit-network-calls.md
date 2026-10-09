@@ -96,7 +96,7 @@ Verdicts:
 |---|---|---|---|
 | 3.1 | The time zone reaches a public tribe | `offsetShared` sends it only to a contact the core holds a key for, or to a tribe whose stored record says private (`TimeZones.swift:229-230`). `deliver` asks every time (`Engine+Messages.swift:190`). A tribe with no stored record gets none (`AuditPrivacyTests.aTribeWithNoStoredRecordGetsNoOffset`). The existing `TimeZoneTests` cover public tribes, strangers, the switch and types. | holds |
 | 3.2 | `isPrivate` goes stale | The record is refreshed on connect, and rechecked after a send that carried the offset when the last read is older than 5 minutes (`Engine+Tribes.swift:510`, `Engine.swift:75`). The first message after a tribe goes public can still carry it. | weak, by design |
-| 3.3 | A host lies about `isPrivate` | The record comes from the host the join link named (`Engine+Tribes.swift:45-55`, `Tribe.swift:354`), and the refresh keeps asking that host. Someone hosting a fake registry for a real public tribe sends a link with their host; the record says `private: true`, and Peel shares your zone with every member. It needs you to join from that link. | weak, open (finding 4) |
+| 3.3 | A host lies about `isPrivate` | The record comes from the host the join link named (`Engine+Tribes.swift:45-55`, `Tribe.swift:354`), and the refresh keeps asking that host. Someone hosting a fake registry for a real public tribe sends a link with their host; the record says `private: true`, and Peel shares your zone with every member. It needs you to join from that link. | **weak, fixed** 2026-10-09 (finding 4) |
 | 3.4 | Read receipts reach contacts | `Sphinxrs.read` publishes only to the account's own broker topic (`sphinx/src/bindings/details.rs:6-41`). Contacts never see it. | holds |
 | 3.5 | Presence subscriptions | The call server sees your IP and up to about 10 rooms you watch (2.7). No one else does. | weak, inherent |
 | 3.6 | Contacts or tribes leak to third parties | No request carries your contact or tribe list. Each host learns only its own part, with your IP: <ul><li>each tribe's host, on every connect (`Engine+Tribes.swift:462`);</li><li>a photo's host, when you see the photo (`Web.swift:55`);</li><li>the call server, which gets your alias and photo URL in the ticket query string.</li></ul> The official apps have the same cost. | weak, inherent (finding 7) |
@@ -119,6 +119,24 @@ Verdicts:
    public. That is about 15 lines in `joinTribe` and `refreshTribes`,
    plus a test. I left it because it changes where the registry is read,
    and that needs Tom's call.
+
+   **Decided and fixed (Tom, 2026-10-09):** `isPrivate` is taken only
+   from the account's own configured tribes host (`tribeHost`). A record
+   read from any other host, or with no tribes host recorded, leaves the
+   tribe public, so the time zone is never sent there; nothing extra is
+   fetched to compare. `Tribe.update(from:trustingPrivacy:)` takes the
+   flag only when `Engine.isOwnTribeHost` says the record's host is the
+   account's own (exact `host[:port]`, any case), on joining and on every
+   registry refresh. The time zone decision is unchanged: `offsetShared`
+   reads the stored `Tribe.isPrivate`, kept fresh by the refresh on
+   connect and the background recheck (#52). Joining still asks to join
+   (`MemberRequest`, pending) as the link's host says, so a private tribe
+   on another server can still be joined; only the time zone waits for
+   the account's own host. Owned tribes keep the flag their own tribes
+   server reports. Migration v18 clears the flag on joined tribes stored
+   from another host before this. Tests:
+   `TimeZoneSharingTests.onlyTheOwnTribesHostMakesATribePrivate`,
+   `MigrationTests.privateFlagsFromOtherHostsAreCleared`.
 5. **The media token is not checked before it goes into the download
    path** (1.10). Low. Open. *Fix:* accept a token only when it is made of
    base64 or base64url characters and dots, and contains no `..`. The
@@ -165,5 +183,5 @@ audit.
 
 ## Left
 
-Findings 4–8 above, each with the fix it needs. None blocks Tom's own use.
-Finding 4 should be decided before the repo goes to the team.
+Findings 5–8 above, each with the fix it needs. None blocks Tom's own use.
+Finding 4 was decided and fixed on 2026-10-09 (see above).

@@ -44,10 +44,11 @@ extension Engine {
     private func boost(messageID: Int64, amountMsat: UInt64, confirmation: Confirmation) async throws -> String? {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         let (message, uuid) = try boostTarget(try storage.message(id: messageID))
-        guard let total = Self.boostTotalMsat(tipMsat: amountMsat, in: try openTribe(message.chat)) else {
+        let tribe = try openTribe(message.chat)
+        guard let total = Self.boostTotalMsat(tipMsat: amountMsat, in: tribe) else {
             throw Failure.insufficientBalance
         }
-        try checkPayment(total, confirmation)
+        try checkPayment(total, confirmation, reserveMsat: Self.pingMsat(toTribe: tribe != nil))
         let body = try Self.json(["content": "", "replyUuid": uuid])
         return try await deliver(body: body, to: message.chat, type: MessageType.boost, amountMsat: total, replacing: nil)
     }
@@ -121,15 +122,26 @@ extension Engine {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard tribes[pubkey] == nil else { throw Failure.paymentToTribe }
         guard Self.isPerson(pubkey, in: state) == true else { throw Failure.notAContact }
-        try checkPayment(amountMsat, .threshold(confirmedMsat))
+        try checkPayment(amountMsat, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: false))
         let body = try Self.json(["content": text])
         return try await deliver(
             body: body, to: pubkey, type: MessageType.directPayment, amountMsat: amountMsat, replacing: nil
         )
     }
 
+    /// What a send to a person costs on top of its amount: the core sends
+    /// their sats the asynchronous way, with a 1-sat ping to their server
+    /// that the sender pays (`PING_PRICE` in `ping/asyncpay.rs`; integration
+    /// finding 1). Payments, boosts and paid attachments in a direct message
+    /// and the key exchange's sats carry it; a tribe's messages, boosts and
+    /// join and an invite's keysend do not. Counted against the balance
+    /// only: what is shown and confirmed stays the amount (Tom, 2026-10-09).
+    static func pingMsat(toTribe: Bool) -> UInt64 {
+        toTribe ? 0 : UInt64(Storage.pingPriceMsat)
+    }
+
     /// Refuses an amount over the last balance the server reported (less
-    /// `reserveMsat` kept back for routing fees), or over the confirmation
+    /// `reserveMsat` kept back for routing fees or a ping), or over the confirmation
     /// threshold unless the person confirmed exactly this amount (a
     /// confirmation never covers a total that changed since, such as a tribe
     /// raising its price between the two clicks). A one-tap boost

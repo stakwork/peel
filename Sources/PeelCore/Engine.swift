@@ -519,7 +519,8 @@ public actor Engine {
             var tribe = try knownTribes[info.pubkey] ?? Tribe(
                 pubkey: info.pubkey, host: try storage.value(for: .tribeHost), isOwner: true
             )
-            tribe.update(from: info)
+            // This account's own tribe, as its own tribes server says.
+            tribe.update(from: info, trustingPrivacy: true)
             knownTribes[tribe.pubkey] = tribe
             commit.tribes.append(tribe)
         }

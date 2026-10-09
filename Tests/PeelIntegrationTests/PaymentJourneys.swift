@@ -19,8 +19,8 @@ extension Journeys {
         }
 
         /// Keysends in a chat (type 5) both ways: each is credited to the
-        /// recipient and debited from the sender at exactly its amount, and
-        /// both sides keep a row for it.
+        /// recipient at exactly its amount and debited from the sender at
+        /// its amount plus the 1-sat ping, and both sides keep a row for it.
         @Test func keysendBothWays() async throws {
             let (alice, bob) = try await Self.pair()
             try await Self.pay(300, from: alice, to: bob, note: "for the boat")
@@ -49,16 +49,14 @@ extension Journeys {
             let recipient1 = try #require(try await recipient.balance(settlingAt: recipient0 + sats))
             #expect(recipient1 - recipient0 == sats)
             let sender1 = try #require(try await sender.settledBalance())
-            withKnownIssue("""
-                The sender is debited one sat more than the payment (seen: 301 for 300, 121 for 120) \
-                while the recipient gets the amount; Peel's row and its balance check count only the amount.
-                """) {
-                #expect(sender0 - sender1 == sats, "\(sender.name) paid \(sats) sats and lost \(sender0 - sender1)")
-            }
+            // The async payment's ping (finding 1), which `checkPayment` counts.
+            let ping = Engine.pingMsat(toTribe: false) / 1000
+            #expect(sender0 - sender1 == sats + ping, "\(sender.name) paid \(sats) sats and lost \(sender0 - sender1)")
         }
 
-        /// Peel's own gate, with the real core: over the balance, and over
-        /// the confirmation threshold unconfirmed, nothing is sent.
+        /// Peel's own gate, with the real core: the whole balance (which
+        /// leaves nothing for the ping), and over the confirmation threshold
+        /// unconfirmed, nothing is sent.
         @Test func refusedPaymentsMoveNothing() async throws {
             let (alice, bob) = try await Self.pair()
             let a0 = try #require(try await alice.settledBalance())
@@ -66,7 +64,7 @@ extension Journeys {
 
             await #expect(throws: Engine.Failure.insufficientBalance) {
                 try await alice.engine.sendPayment(
-                    to: try bob.pubkey, amountMsat: (a0 + 1) * 1000, confirmedMsat: (a0 + 1) * 1000
+                    to: try bob.pubkey, amountMsat: a0 * 1000, confirmedMsat: a0 * 1000
                 )
             }
             await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 1_000_000)) {

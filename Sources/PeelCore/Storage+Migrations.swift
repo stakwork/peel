@@ -283,6 +283,18 @@ extension Storage {
                 CREATE INDEX message_unread ON message (chat, fromMe, type, serverIndex, noWords);
                 """)
         }
+        migrator.registerMigration("v18") { db in
+            // A tribe is private only as the account's own tribes host says
+            // (`Tribe.update(from:trustingPrivacy:)`; audit C, finding 4): a
+            // joined tribe whose flag came from any other host is public
+            // from now on, so the time zone stops before the next refresh.
+            // 'tribeHost' is `Setting.tribeHost`. Owned tribes are untouched.
+            try db.execute(sql: """
+                UPDATE tribe SET isPrivate = 0
+                WHERE isPrivate = 1 AND isOwner = 0 AND (host IS NULL
+                    OR lower(host) IS NOT (SELECT lower(value) FROM setting WHERE key = 'tribeHost'))
+                """)
+        }
         return migrator
     }
 }

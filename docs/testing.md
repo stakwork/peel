@@ -124,8 +124,8 @@ directory.
 | Key exchange from an invite's code (inviter added, invite untouched) | `Contacts.keyExchangeByInvite` | pass |
 | DMs both ways through the wire tap; the plain text never on the wire (raw, base64, hex, a 16-byte run) | `DirectMessages` | pass |
 | Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |
-| Keysend both ways, both balances after each | `Payments.keysendBothWays` | **known issue**: the sender is debited 1 sat more |
-| Over the balance, over the threshold unconfirmed: nothing moves | `Payments.refusedPaymentsMoveNothing` | pass |
+| Keysend both ways, both balances after each | `Payments.keysendBothWays` | pass: the recipient gets the amount, the sender pays it plus the 1-sat ping (finding 1) |
+| The whole balance (nothing left for the ping), over the threshold unconfirmed: nothing moves | `Payments.refusedPaymentsMoveNothing` | pass |
 | `request_invoice` on a `NO_LIGHTNING` server | `Payments.requestInvoiceWithoutLightning` | pass (`noInvoiceFromServer`, nothing stored) |
 | Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments` | pass |
 | Invite: make (exactly its amount), redeem by signup, seen used | `Invites.makeAndRedeem` | pass |
@@ -139,8 +139,20 @@ Findings:
    Peel's row says 300, and its balance check (`checkPayment`) compares
    only the amount, so a payment of the whole balance would pass Peel's
    gate and fail at the mixer. `04-money.md` records the same extra sat
-   (the "1-sat async ping"); whether Peel should show or reserve it, or the
-   server should not take it, is Tom's call. Marked `withKnownIssue`.
+   (the "1-sat async ping"). **Decided (Tom, 2026-10-09):** the balance
+   check counts the ping. `Engine.pingMsat` is 1 sat for a send to a
+   person and 0 for a tribe, and `checkPayment` takes it as its reserve
+   for DM payments, DM boosts (one-tap included), retries of either,
+   paid attachments bought in a DM and the key exchange's 5 sats (now 6
+   sats needed: "adding a contact needs 6 sats"). The core sends none of
+   these to a tribe (tribe messages, boosts and joins go `not_async`), and
+   an invite is a plain keysend to the server, so those are unchanged.
+   An invoice paid by route hint can also go the async way; its fee
+   reserve (at least 10 sats) already covers the ping. The confirmation
+   threshold and the amount shown and confirmed are still the payment's
+   own. `keysendBothWays` now asserts the debit is the amount plus 1 sat,
+   `refusedPaymentsMoveNothing` that the whole balance is refused, and the
+   bank pays its balance less 1 sat.
 2. **Key exchanges move fewer sats than Peel attaches.** `addContact`
    attaches 5 sats, but balances moved by 1 to 3: Dana, signing up from a
    1,000-sat invite, held 997 after adding Alice, and Alice gained 1.

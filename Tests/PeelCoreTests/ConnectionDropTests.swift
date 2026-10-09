@@ -89,9 +89,11 @@ struct ConnectionDropTests {
         try await withEngine { engine, storage throws in
             await #expect(throws: Engine.Failure.notConnected) { try await engine.addContact(code: "\(strangerKey)_\(key3G)_9") }
             let code = "\(keyG)_\(key3G)_9"
-            try storage.set(String(Engine.keyExchangeMsat - 1), for: .balanceMsat)
+            // The key exchange's sats and its ping.
+            let needed = Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false)
+            try storage.set(String(needed - 1), for: .balanceMsat)
             await #expect(throws: Engine.Failure.contactNeedsSats) { try await engine.addContact(code: code) }
-            try storage.set(String(Engine.keyExchangeMsat), for: .balanceMsat)
+            try storage.set(String(needed), for: .balanceMsat)
             try await engine.setPaymentConfirmation(msat: 0)
             await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: Engine.keyExchangeMsat)) {
                 try await engine.addContact(code: code)

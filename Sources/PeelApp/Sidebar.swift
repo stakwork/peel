@@ -26,7 +26,7 @@ struct Sidebar: View {
         let readStates = model.readStates
         VStack(alignment: .leading, spacing: 12) {
             SidebarHeader()
-            SearchField(text: $model.searchQuery)
+            SearchField(text: $model.searchQuery, focusRequest: model.sidebarSearchFocus)
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -304,9 +304,11 @@ private struct MenuIdentity: View {
 
 struct SearchField: View {
     @Binding var text: String
+    var focusRequest = 0
 
     var body: some View {
-        FormTextField(label: "Search", prompt: "Search", text: $text, systemImage: "magnifyingglass")
+        FormTextField(label: "Search", prompt: "Search", text: $text, systemImage: "magnifyingglass",
+                      focusRequest: focusRequest)
     }
 }
 

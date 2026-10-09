@@ -80,14 +80,17 @@ approved the in-chat half before the agent; ⌘K stays for after it.
   ("1,000+"). Nothing leaves the Mac. A term in every message of a
   250,000-message database (50,000 in the chat) takes about 0.25 s, off
   the main actor; a rarer one a few milliseconds.
-- App (`ChatSearch.swift`): ⌘F, or the magnifying glass left of Call in
-  both chat headers, opens a bar under the header: the field, "3 of 12",
-  older (↑, Return) and newer (↓, Shift-Return), close (Escape, or the
+- App (`ChatSearch.swift`): ⌘F (Edit › Find…), or the magnifying glass
+  left of Call in both chat headers, opens a bar under the header: the
+  field, "12 matches" or "3 of 12", newer and older, close (Escape, or the
   button again). Under it, the matches as Slack lists them: avatar, name,
   a line around the first match with the words lit, a thread mark, and
-  the time; five and a half rows tall, scrolling, the shown one selected
-  and kept in view as the arrows step; a click goes to it. Typing
-  searches after 200 ms and goes to the newest match. Each step goes
+  the time; five and a half rows tall, scrolling, the selected one lit
+  and kept in view. Typing searches after 200 ms and lists the matches,
+  none selected; with the cursor still in the field, ↓ selects the first
+  and then the next, ↑ goes back, and Return goes to the selected match
+  (the first when none is). A click or the chevrons go to a match at once.
+  Escape or close puts the cursor back in the composer. Each step goes
   through `focus(on:inThread:)`, the jump quotes and notifications use: the
   timeline grows to reach an old message, and a message inside a thread
   opens its thread panel there, the cursor staying in the search. The
@@ -96,6 +99,24 @@ approved the in-chat half before the agent; ⌘K stays for after it.
   step's row flashes as a jump does. Changing chats closes the search.
 - Rendered on a new development account seeded with local rows (dark
   and light; the bar, the list, a thread match, `from:`, an accent).
+- ⌘F fix (2026-10-09, Tom: "it defaulted to the left sidebar search",
+  then "nothing works" after closing). Seen on a seeded offline profile
+  with synthetic keys: closing the bar (Escape or ×) left the window
+  itself with the keys, so typing went nowhere and Tab went to the
+  sidebar's search, the window's first field; and once, as the bar
+  opened, the sidebar's search took the cursor instead of the bar's
+  field, and what was typed filtered the sidebar. ⌘F was a hidden button
+  in the chat header, there only while that header was. Now ⌘F is Edit ›
+  Find… (`AppModel.find`): the open chat's search from anywhere in the
+  window, or, with no chat open (Threads, Mentions, Payments, the
+  account), the sidebar's search, which filters the lists. The bar's
+  field takes the cursor once it is in the window (`.task`, not
+  `onAppear`), and closing puts the cursor back in the composer. A menu
+  command does not follow `@Observable` state, so `find` checks the
+  phase itself rather than `.disabled` (Account… shows the same: it
+  stays disabled). Arrows (Tom: "you can't press the down key"): ↓ was
+  "newer" and the newest match was already selected, so it did nothing
+  until a click.
 - Not built: results refreshing while new messages arrive (search again by
   typing), a search in the thread panel alone, the CLI command, `from:me`
   for your own messages in a DM. The words are lit in every message shown,

@@ -64,6 +64,12 @@ struct PeelApp: App {
                     .keyboardShortcut(",", modifiers: .command)
                     .disabled(model.phase != .ready)
             }
+            // ⌘F from wherever the cursor is (`AppModel.find`). Never
+            // `.disabled` by the model: a command does not follow it.
+            CommandGroup(after: .textEditing) {
+                Button("Find…") { model.find() }
+                    .keyboardShortcut("f", modifiers: .command)
+            }
             CommandGroup(after: .windowArrangement) {
                 if CallTest.config(for: model) != nil { CallTestMenuItem() }
             }

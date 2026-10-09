@@ -108,7 +108,10 @@ final class AppModel {
     /// Downloads, uploads and local copies of attachments, by message id;
     /// each observed on its own so a progress tick redraws only its tile.
     @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
+    /// The sidebar's search, which filters its lists.
     var searchQuery = ""
+    /// Bumped to put the cursor in the sidebar's search (⌘F with no chat open).
+    var sidebarSearchFocus = 0
     var myAlias: String?
     /// The photo sent with this account's messages, https or nil.
     var myPhotoURL: String?

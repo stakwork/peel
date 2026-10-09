@@ -20,7 +20,7 @@ extension Storage {
         /// the key that decrypted the message, so its name and photo can be kept.
         /// `replaces` is the uuid of our own row that a tribe's copy of it takes over.
         var messages: [(message: Message, trustSender: Bool, replaces: String?)] = []
-        /// Send statuses by tag; each only moves a row forward (`setStatus`).
+        /// Send statuses by tag; each only moves a row forward (`applyStatus`).
         var statuses: [(tag: String, status: String)] = []
         /// Read markers from the server. They replace ours, lower ones too
         /// (marked unread on another device), except where ours is pending.
@@ -147,8 +147,9 @@ extension Storage {
                 )
             }
             for (tag, status) in commit.statuses {
-                try Self.setStatus(db, status, tag: tag, error: commit.sendErrors[tag])
-                try Self.setInviteStatus(db, status, tag: tag)
+                if let delivery = Message.Delivery(rawValue: status) {
+                    try Self.applyStatus(db, delivery, tag: tag, error: commit.sendErrors[tag])
+                }
                 if status == Message.Delivery.delivered.rawValue,
                    let delete = try Message.fetchOne(
                        db, sql: "SELECT * FROM message WHERE tag = ? AND fromMe = 1 AND type = ?",
@@ -436,40 +437,75 @@ extension Storage {
     }
 
     func setStatus(_ status: Message.Delivery, tag: String, error: String? = nil) throws {
-        try pool.write { db in try Self.setStatus(db, status.rawValue, tag: tag, error: error) }
+        try pool.write { db in try Self.applyStatus(db, status, tag: tag, error: error) }
     }
 
-    /// A status only moves forward: an unconfirmed send becomes delivered,
-    /// unsettled or failed, an unsettled one delivered or failed, a failed
-    /// one delivered (the server had it after all), and a delivered one never
-    /// changes. So a late or synthesised failure can never make a payment
-    /// that went through retryable. Only a message that moves sats
-    /// (`MessageType.moneySends`) can be unsettled. An invoice we pay follows
-    /// the same rule, unsettled included (held: it is never paid again until
-    /// it settles or fails), and keeps the server's reason for a failure.
-    private static func setStatus(_ db: Database, _ status: String, tag: String, error: String? = nil) throws {
+    /// The one rule for every send tracked by tag: a status only moves
+    /// forward. An unconfirmed send becomes delivered, unsettled or failed,
+    /// an unsettled one delivered or failed, a failed one delivered (the
+    /// server had it after all), and a delivered one never changes. So a late
+    /// or synthesised failure can never make a payment that went through
+    /// retryable. These are the statuses a row may be in to move to `status`.
+    private static func statuses(movingTo status: Message.Delivery) -> [Message.Delivery] {
+        switch status {
+        case .pending: []
+        case .unsettled: [.pending]
+        case .failed: [.pending, .unsettled]
+        case .delivered: [.pending, .unsettled, .failed]
+        }
+    }
+
+    /// An invite's status for its funding payment's: sending while it is on
+    /// its way, ready once delivered, failed. An unsettled funding payment
+    /// is still on its way (Q2, 2026-10-08): the invite stays sending and
+    /// the server is asked about it on every connect, so it has no status
+    /// of its own here.
+    private static func inviteStatus(_ funding: Message.Delivery) -> InviteRecord.Status? {
+        switch funding {
+        case .pending: .sending
+        case .delivered: .ready
+        case .failed: .failed
+        case .unsettled: nil
+        }
+    }
+
+    /// Moves the send with `tag` by the one forward-only rule
+    /// (`statuses(movingTo:)`), in whichever of the three tables tracks it:
+    /// our message, the invoice we pay, or the invite the payment funds.
+    /// Only a message that moves sats (`MessageType.moneySends`) can be
+    /// unsettled; an invoice we pay can too (held: it is never paid again
+    /// until it settles or fails), and it keeps the server's reason for a
+    /// failure. An invite is never unsettled (`inviteStatus`), and once
+    /// ready, cancelled or used no funding status moves it.
+    private static func applyStatus(_ db: Database, _ status: Message.Delivery, tag: String, error: String?) throws {
+        let from = statuses(movingTo: status)
+        guard !from.isEmpty else { return }
+        let fromSQL = from.map { "'\($0.rawValue)'" }.joined(separator: ", ")
+        let onlyMoney = status == .unsettled ? "AND type IN (\(MessageType.sqlList(MessageType.moneySends)))" : ""
         try db.execute(
             sql: """
-                UPDATE message SET status = ?1 WHERE tag = ?2
-                    AND (status IS NULL OR status = 'PENDING'
-                        OR (status = 'UNSETTLED' AND ?1 IN ('COMPLETE', 'FAILED'))
-                        OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
-                    AND (?1 != 'UNSETTLED' OR type IN (\(MessageType.sqlList(MessageType.moneySends))))
+                UPDATE message SET status = :status
+                WHERE tag = :tag AND (status IS NULL OR status IN (\(fromSQL))) \(onlyMoney)
                 """,
-            arguments: [status, tag]
+            arguments: ["status": status.rawValue, "tag": tag]
         )
         try db.execute(
             sql: """
-                UPDATE invoice SET status = ?1,
-                    paidAt = CASE WHEN ?1 = 'COMPLETE' THEN COALESCE(paidAt, ?3) ELSE paidAt END,
-                    error = CASE WHEN ?1 = 'FAILED' THEN COALESCE(?4, error) WHEN ?1 = 'COMPLETE' THEN NULL ELSE error END
-                WHERE tag = ?2 AND incoming = 0
-                    AND (status = 'PENDING'
-                        OR (status = 'UNSETTLED' AND ?1 IN ('COMPLETE', 'FAILED'))
-                        OR (status = 'FAILED' AND ?1 = 'COMPLETE'))
+                UPDATE invoice SET status = :status,
+                    paidAt = CASE WHEN :status = 'COMPLETE' THEN COALESCE(paidAt, :now) ELSE paidAt END,
+                    error = CASE WHEN :status = 'FAILED' THEN COALESCE(:error, error)
+                        WHEN :status = 'COMPLETE' THEN NULL ELSE error END
+                WHERE tag = :tag AND incoming = 0 AND status IN (\(fromSQL))
                 """,
-            arguments: [status, tag, Date().millisecondsSince1970, error]
+            arguments: ["status": status.rawValue, "tag": tag, "now": Date().millisecondsSince1970, "error": error]
         )
+        if let next = inviteStatus(status) {
+            let fromInvite = from.compactMap(inviteStatus).map { "'\($0.rawValue)'" }.joined(separator: ", ")
+            try db.execute(
+                sql: "UPDATE invite SET status = :next WHERE tag = :tag AND status IN (\(fromInvite))",
+                arguments: ["next": next.rawValue, "tag": tag]
+            )
+        }
     }
 
     /// Writes an invoice made here, or one about to be paid. An invoice
@@ -614,21 +650,6 @@ extension Storage {
                 arguments: [name, size, id]
             )
         }
-    }
-
-    /// An invite's funding payment, as the server reported it: only one
-    /// still on its way moves, to ready or failed.
-    private static func setInviteStatus(_ db: Database, _ status: String, tag: String) throws {
-        let next: InviteRecord.Status
-        switch Message.Delivery(rawValue: status) {
-        case .delivered?: next = .ready
-        case .failed?: next = .failed
-        default: return
-        }
-        try db.execute(
-            sql: "UPDATE invite SET status = ? WHERE tag = ? AND status = ?",
-            arguments: [next.rawValue, tag, InviteRecord.Status.sending.rawValue]
-        )
     }
 
     private static func markInviteUsed(code: String, by pubkey: String, _ db: Database) throws {

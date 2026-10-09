@@ -11,9 +11,10 @@ is a short plan. Update the status and the journal when you finish something.
 - `Sources/PeelCore/` — the client engine, no UI
   - `Engine.swift` — the actor that drives one account: its stored state and
     init, the connection and reconnect loop, and the core contract (`run`,
-    `commit`, `complete`, `receive`): runs core calls, commits the state they
-    return in one transaction, performs the subscribes and publishes they ask
-    for. The rest of the engine is extensions by area. Stored state, helpers
+    `commit`, `complete`, `receive`, and `commitAndPublish` for every money
+    send, whose `.none` alone may mark it failed): runs core calls, commits
+    the state they return in one transaction, performs the subscribes and
+    publishes they ask for. The rest of the engine is extensions by area. Stored state, helpers
     and nested types the extensions share are internal rather than private,
     so the module, not the file, is the boundary (`seed` among them: never
     read it, or call `run`/`commit`, from outside the engine files). What

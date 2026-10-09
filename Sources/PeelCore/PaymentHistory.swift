@@ -162,20 +162,6 @@ extension Storage {
         }
     }
 
-    /// Payments of invoices the server has not confirmed or refused, newest
-    /// first, at most 200.
-    func pendingInvoicePayments() throws -> [InvoiceRecord] {
-        try pool.read { db in
-            try InvoiceRecord.fetchAll(
-                db,
-                sql: """
-                    SELECT * FROM invoice WHERE incoming = 0 AND status = 'PENDING' AND tag IS NOT NULL
-                    ORDER BY createdAt DESC LIMIT 200
-                    """
-            )
-        }
-    }
-
     private static func invoice(_ hash: String, incoming: Bool, _ db: Database) throws -> InvoiceRecord? {
         try InvoiceRecord.fetchOne(db, key: ["paymentHash": hash, "incoming": incoming])
     }

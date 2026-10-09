@@ -11,11 +11,16 @@ struct ConnectionDropTests {
 
     /// Runs `body` on a registered engine with a balance, on `goneTransport()`,
     /// and disconnects after, which shuts the transport's client down.
-    private func withEngine(balanceMsat: UInt64? = 1_000_000, _ body: (Engine, Storage) async throws -> Void) async throws {
+    private func withEngine(
+        balanceMsat: UInt64? = 1_000_000, contact: String? = nil, _ body: (Engine, Storage) async throws -> Void
+    ) async throws {
         let storage = try profile.storage()
         var settings: [Setting: String] = [.server: "mqtt://127.0.0.1:1"]
         settings[.balanceMsat] = balanceMsat.map(String.init)
-        _ = try storage.apply(Storage.Commit(state: registeredState, settings: settings))
+        let state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
+        _ = try storage.apply(Storage.Commit(
+            state: state, settings: settings, contacts: contact.map { [($0, true)] }
+        ))
         let engine = try testEngine(storage)
         await engine.useTransportForTesting(goneTransport())
         do {
@@ -50,6 +55,20 @@ struct ConnectionDropTests {
             #expect(stored.status == .failed)
             // Not refused as pending for half an hour.
             #expect(try engine.invoiceProblem(invoice) == nil)
+        }
+    }
+
+    /// The connection went with the transport still set: the payment never
+    /// left, so it is failed at once and may be sent again, not left
+    /// pending until the server is asked.
+    @Test func aPaymentThatNeverLeftFailsAndCanBeSentAgain() async throws {
+        try await withEngine(contact: keyG) { engine, storage throws in
+            let tag = try #require(try await engine.sendPayment(to: keyG, amountMsat: 1_000, confirmedMsat: 1_000))
+            let row = try #require(try rows(profile, "SELECT id FROM message WHERE tag = '\(tag)'").first)
+            let stored = try #require(try storage.message(id: row["id"]))
+            #expect(stored.delivery == .failed)
+            #expect(stored.isRetryable())
+            #expect(try storage.pendingSendTags(textBefore: .max).isEmpty)
         }
     }
 

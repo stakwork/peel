@@ -692,6 +692,46 @@ public actor Engine {
         }
     }
 
+    /// How far a money send's publish got (`commitAndPublish`).
+    enum Published {
+        /// Everything left.
+        case all
+        /// Nothing left: the connection had gone before the first publish
+        /// (`complete`'s `notConnected`), so the send may be marked failed.
+        case none
+        /// Something failed once publishing had begun, or after: the payment
+        /// may have gone, so the send stays pending until the server says.
+        case unknown(any Error)
+    }
+
+    /// Commits a send (the state and its local row, written before anything
+    /// is published), then publishes it and reports how far that got. A
+    /// refused commit throws, and nothing is published. Every money send
+    /// goes through here and maps only `.none` to failed.
+    func commitAndPublish(
+        _ result: RunReturn, time: String, outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil,
+        invoices: [InvoiceRecord] = [], invites: [InviteRecord] = []
+    ) async throws -> Published {
+        let followUps = try commit(
+            result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend, invoices: invoices,
+            invites: invites
+        )
+        do {
+            try await complete(result, followUps)
+            return .all
+        } catch Failure.notConnected {
+            return .none
+        } catch {
+            return .unknown(error)
+        }
+    }
+
+    /// What a money send whose publish ended `.unknown` reports.
+    static func mayHaveGone(_ error: any Error) -> String {
+        "The connection failed while sending; the payment may have gone. "
+            + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
+    }
+
     private func publish(_ result: RunReturn, published: inout Int) async throws {
         let (now, later) = Self.publishPlan(result)
         if !result.subscriptionTopics.isEmpty {
@@ -887,21 +927,14 @@ public actor Engine {
     /// never reached it (the mixer records every send it handles, an async
     /// one as pending), so it is marked failed and may be sent again.
     private func checkPendingSends() async throws {
-        let pending = try storage.pendingSends(
+        let pending = try storage.pendingSendTags(
             textBefore: Date.now.addingTimeInterval(-Message.confirmationTimeout).millisecondsSince1970
         )
-        // Invoices we pay are tracked the same way.
-        let invoices = try storage.pendingInvoicePayments()
-        // And the payments that fund invites.
-        let invites = try storage.sendingInvites()
-        guard !pending.isEmpty || !invoices.isEmpty || !invites.isEmpty else { return }
-        let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout)
-        unrecordedPayments = Set(pending.compactMap { message in
-            MessageType.moneySends.contains(message.type) && message.date < cutoff ? message.tag : nil
-        } + invoices.compactMap { $0.created < cutoff ? $0.tag : nil } + invites.compactMap { $0.created < cutoff ? $0.tag : nil })
-        let tags = pending.compactMap(\.tag) + invoices.compactMap(\.tag) + invites.compactMap(\.tag)
+        guard !pending.isEmpty else { return }
+        let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout).millisecondsSince1970
+        unrecordedPayments = Set(pending.filter { $0.movesMoney && $0.createdAt < cutoff }.map(\.tag))
         try await run { time, state in
-            try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: tags, pubkey: nil)
+            try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: pending.map(\.tag), pubkey: nil)
         }
     }
 
@@ -929,7 +962,7 @@ public actor Engine {
 
 extension Engine {
     /// The row the one status the mixer publishes for a send moves
-    /// (`Storage.setStatus` only moves rows forward): COMPLETE and FAILED as
+    /// (`Storage.applyStatus` only moves rows forward): COMPLETE and FAILED as
     /// they are. A PENDING is its last word on a payment it handed to the
     /// recipient but that did not settle in its window (a local payment whose
     /// recipient answered after `TIMEOUT_MS`; a Lightning one still in flight

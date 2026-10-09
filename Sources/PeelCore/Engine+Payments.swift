@@ -395,7 +395,7 @@ extension Engine {
             }
         }
         guard let tag = (result.msgs.first { $0.paymentHash == hash } ?? result.msgs.first)?.tag else {
-            throw PeelError("the core gave the payment no tag")
+            throw Failure.coreReturnedNothing("tag for the payment")
         }
         let record = InvoiceRecord(
             paymentHash: hash, incoming: false, bolt11: invoice.bolt11, amountMsat: Int64(clamping: invoice.amountMsat),
@@ -404,19 +404,17 @@ extension Engine {
         )
         // Written with the state before publishing; refused (and nothing
         // published) if the invoice is already being paid or paid.
-        let followUps = try commit(result, time: time, expectedSender: nil, invoices: [record])
-        do {
-            try await complete(result, followUps)
-        } catch Failure.notConnected {
-            // The connection went before anything was published: nothing
-            // moved, so it is failed now rather than refused as pending for
-            // `unrecordedPaymentTimeout`, and can be paid again.
+        switch try await commitAndPublish(result, time: time, invoices: [record]) {
+        case .all:
+            break
+        case .none:
+            // Nothing moved, so it is failed now rather than refused as
+            // pending for `unrecordedPaymentTimeout`, and can be paid again.
             try storage.setStatus(.failed, tag: tag, error: "not connected")
             emit.yield(.sendStatus(tag: tag, status: Message.Delivery.failed.rawValue))
             throw Failure.notConnected
-        } catch {
-            let message = "The connection failed while paying; the payment may have gone. "
-                + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
+        case .unknown(let error):
+            let message = Self.mayHaveGone(error)
             if let chat { emit.yield(.conversationError(chat: chat, message: message)) } else { emit.yield(.coreError(message)) }
         }
         return record

@@ -1372,3 +1372,27 @@ Not applied, with why:
   cross-fade under Reduce Motion; the badge spring is slower on purpose).
 - `invoice.paidMsat ?? amountMsat` without the status check: an underpaid
   invoice with an unknown amount must count 0, not what it asked.
+
+### Money sends in one place (cleanup batch 9, 2026-10-08)
+
+The second review's 2.1, 2.2 and 4.3's ad-hoc errors.
+- **One read and one rule.** `Storage.pendingSendTags(textBefore:)` reads
+  the three tables that track a send by tag (our messages, invoices we pay,
+  invites' funding payments) for `checkPendingSends`. `Storage.applyStatus`
+  moves each by one forward-only rule (`statuses(movingTo:)`), invites
+  through `inviteStatus`.
+- **Q2 (Tom):** an unsettled funding payment is still pending. The invite
+  stays sending and is asked about on every connect.
+- **Behaviour.** A failed invite the server confirms after all is ready,
+  like a failed payment that was delivered. A payment or boost whose
+  publish never left with the transport still set is failed and can be sent
+  again. Before, `deliver` read `transport == nil` first, so it stayed pending.
+- **`commitAndPublish`** commits a send, publishes it and returns
+  `.all`, `.none` (`complete`'s `notConnected`: nothing left) or `.unknown`.
+  `deliver`, `pay` and `makeInvite` map only `.none` to failed, and say
+  `mayHaveGone` (one sentence) for `.unknown`.
+- **`Failure.coreReturnedNothing`** replaces "the core made no invite" and
+  "the core gave the payment no tag". "The attachment was not stored" is a
+  storage refusal, not the core's, and stays.
+- **Not changed:** `checkPayment` compares the amount only, while a keysend
+  costs the sender 1 sat more (integration finding 1, Tom's call).

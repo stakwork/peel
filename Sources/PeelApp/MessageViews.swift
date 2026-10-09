@@ -1041,15 +1041,16 @@ struct MessageText: View {
     var body: some View {
         let blocks = MessageMarkup.blocks(text)
         let myAliases = model.mentionAliases(in: chat)
+        let found = model.search.flatMap { $0.chat == chat ? $0.query?.terms : nil } ?? []
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let line):
-                    styled(line, myAliases)
+                    styled(line, myAliases, found)
                 case .item(let line):
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•").foregroundStyle(Theme.secondaryText)
-                        styled(line, myAliases)
+                        styled(line, myAliases, found)
                     }
                     .padding(.leading, 4)
                 case .numbered(let number, let line):
@@ -1058,20 +1059,20 @@ struct MessageText: View {
                             .font(Theme.font(14))
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
-                        styled(line, myAliases)
+                        styled(line, myAliases, found)
                     }
                     .padding(.leading, 4)
                 case .heading(let level, let line):
-                    styled(line, myAliases, font: Theme.font(level == 1 ? 20 : level == 2 ? 17 : 15, .semibold))
+                    styled(line, myAliases, found, font: Theme.font(level == 1 ? 20 : level == 2 ? 17 : 15, .semibold))
                         .padding(.top, 2)
                 case .quote(let line):
-                    styled(line, myAliases)
+                    styled(line, myAliases, found)
                         .padding(.leading, 12)
                         .overlay(alignment: .leading) {
                             Capsule().fill(Theme.secondaryText.opacity(0.4)).frame(width: 3)
                         }
                 case .code(let code):
-                    Text(code)
+                    Text(AttributedString(code).highlighting(found))
                         .font(Theme.code(13))
                         .lineSpacing(2)
                         .foregroundStyle(Theme.text)
@@ -1086,8 +1087,10 @@ struct MessageText: View {
         }
     }
 
-    private func styled(_ line: String, _ myAliases: Set<String>, font: Font = Theme.font(14)) -> some View {
-        Text(LinkText.attributed(line, myAliases: myAliases))
+    /// A line of text, with what the chat's search `found` lit.
+    private func styled(_ line: String, _ myAliases: Set<String>, _ found: [String],
+                        font: Font = Theme.font(14)) -> some View {
+        Text(LinkText.attributed(line, myAliases: myAliases).highlighting(found))
             .font(font)
             .lineSpacing(3)
             .foregroundStyle(Theme.text)

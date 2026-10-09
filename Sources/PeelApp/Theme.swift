@@ -41,6 +41,9 @@ enum Theme {
     /// at 22% under light gold text, Tom, 2026-10-08).
     static let mentionYouFill = Color(light: 0xFBE7A6, dark: 0xF2C744, darkOpacity: 0.22)
     static let mentionYouText = Color(light: 0x5C4300, dark: 0xFFE08A)
+    /// Text a chat search found (`ChatSearch`): a find highlight, warmer
+    /// than a mention of you so the two never read as one.
+    static let searchMatch = Color(light: 0xFFD54A, lightOpacity: 0.55, dark: 0xE8A800, darkOpacity: 0.42)
     /// Behind inline code and code blocks: a translucent step darker in
     /// light, lighter in dark, so it still shows on a hovered or tinted row.
     static let codeFill = Color.primary.opacity(0.07)

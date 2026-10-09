@@ -295,6 +295,49 @@ extension Storage {
                     OR lower(host) IS NOT (SELECT lower(value) FROM setting WHERE key = 'tribeHost'))
                 """)
         }
+        migrator.registerMigration("v19") { db in
+            // Search (`Storage+Search.swift`): the text of messages with a
+            // text of their own, 0, 6 being MessageType.content (text, and
+            // an attachment's caption). Indexed by runs of three characters
+            // (`trigram`), so any part of a word matches, case-insensitive,
+            // and from SQLite 3.45 accent-insensitive too. From 3.44 the
+            // index deletes for good (`secure-delete`): a message deleted
+            // for everyone leaves nothing of its text in the index's pages.
+            // Both follow the library this runs on, not a constant.
+            // The text stays in `message` (external content); the triggers
+            // keep the index in step on every insert, update and delete,
+            // indexing the same rows the back-fill does, so a delete always
+            // names the text that was indexed. An upsert that leaves the
+            // text as it was (most do) leaves the index alone.
+            let version = try sqliteVersion(db)
+            let tokenizer = version >= 3_045_000 ? "trigram remove_diacritics 1" : "trigram"
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE messageText USING fts5(
+                    content, content = 'message', content_rowid = 'id', tokenize = '\(tokenizer)');
+                """)
+            if version >= 3_044_000 {
+                try db.execute(sql: "INSERT INTO messageText (messageText, rank) VALUES ('secure-delete', 1)")
+            }
+            try db.execute(sql: """
+                INSERT INTO messageText (rowid, content)
+                    SELECT id, content FROM message WHERE type IN (0, 6) AND content IS NOT NULL;
+                CREATE TRIGGER messageText_insert AFTER INSERT ON message
+                WHEN new.type IN (0, 6) AND new.content IS NOT NULL BEGIN
+                    INSERT INTO messageText (rowid, content) VALUES (new.id, new.content);
+                END;
+                CREATE TRIGGER messageText_delete AFTER DELETE ON message
+                WHEN old.type IN (0, 6) AND old.content IS NOT NULL BEGIN
+                    INSERT INTO messageText (messageText, rowid, content) VALUES ('delete', old.id, old.content);
+                END;
+                CREATE TRIGGER messageText_update AFTER UPDATE OF type, content ON message
+                WHEN old.type IS NOT new.type OR old.content IS NOT new.content BEGIN
+                    INSERT INTO messageText (messageText, rowid, content)
+                        SELECT 'delete', old.id, old.content WHERE old.type IN (0, 6) AND old.content IS NOT NULL;
+                    INSERT INTO messageText (rowid, content)
+                        SELECT new.id, new.content WHERE new.type IN (0, 6) AND new.content IS NOT NULL;
+                END;
+                """)
+        }
         return migrator
     }
 }

@@ -65,6 +65,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
+  - `Storage+Search.swift` — message search over the `messageText`
+    FTS5 index (v19): `MessageQuery` (words, "phrases", `from:`, the
+    only FTS5 syntax built), `searchMessages` (one chat or all), snippets
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
   - `Message.swift` — `Message` (one stored message, the core's sender and
@@ -148,6 +151,9 @@ is a short plan. Update the status and the journal when you finish something.
   (`PaymentOutcome`, boosts, sends, history, invoices, buying an
   attachment), `AppModel+Contacts` (adding by code, invites) and
   `AppModel+TimeZones` (sender zones, local times, the zone setting);
+  `ChatSearch` (⌘F: the search bar under a chat's header and its results
+  list, its header button, stepping through matches with
+  `focus(on:inThread:)`, the highlight in message text);
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
@@ -211,7 +217,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `RowIdTests`, `ThreadTests`, `MessageTests`,
+  `ReadMarkerTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,

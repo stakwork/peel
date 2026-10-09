@@ -18,6 +18,9 @@ public enum QRImage {
     public static func codes(inFile file: URL) throws -> [String] {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= maxBytes else { throw PeelError("\(file.lastPathComponent) is too large to look for a code in") }
+        guard !ImageDecoding.isTooLarge(file) else {
+            throw PeelError("\(file.lastPathComponent) is too large to look for a code in")
+        }
         guard let image = ImageDecoding.thumbnail(file, maxPixels: maxPixels) else {
             throw PeelError("\(file.lastPathComponent) is not a picture")
         }
@@ -27,8 +30,11 @@ public enum QRImage {
     /// The codes in image bytes, such as a pasted picture.
     public static func codes(in data: Data) throws -> [String] {
         guard data.count <= maxBytes else { throw PeelError("that picture is too large to look for a code in") }
-        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let image = ImageDecoding.thumbnail(source, maxPixels: maxPixels) else {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            throw PeelError("that is not a picture")
+        }
+        guard !ImageDecoding.isTooLarge(source) else { throw PeelError("that picture is too large to look for a code in") }
+        guard let image = ImageDecoding.thumbnail(source, maxPixels: maxPixels) else {
             throw PeelError("that is not a picture")
         }
         return try codes(in: image)

@@ -37,6 +37,13 @@ struct AttachmentView: View {
 }
 
 enum AttachmentFormat {
+    /// Why a downloaded picture that did not decode is not drawn: "Too large
+    /// to show" when it holds more pixels than are decoded
+    /// (`ImageDecoding.isTooLarge`); nil otherwise. Read off the main actor.
+    static func notShown(_ file: URL) async -> String? {
+        await Task.detached(priority: .utility) { ImageDecoding.isTooLarge(file) ? "Too large to show" : nil }.value
+    }
+
     /// "48 KB".
     static func size(_ bytes: Int64?) -> String? {
         bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
@@ -128,6 +135,8 @@ struct ImageTile: View {
 
     @State private var loaded: CGImage?
     @State private var loadedFrames: AnimationFrames?
+    /// Downloaded but not drawn, and why (`AttachmentFormat.notShown`).
+    @State private var notShown: String?
 
     static let maxSide: CGFloat = 320
 
@@ -174,6 +183,7 @@ struct ImageTile: View {
                 // A GIF decodes once, every frame; anything else its first.
                 if isGIF { loadedFrames = await ImageCache.animations.animation(file, maxPixels: pixels) }
                 if loadedFrames == nil { loaded = await ImageCache.shared.image(file, maxPixels: pixels) }
+                if loaded == nil, loadedFrames == nil { notShown = await AttachmentFormat.notShown(file) }
             }
         }
     }
@@ -188,7 +198,11 @@ struct ImageTile: View {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 Theme.quote.overlay {
-                    if handle.failureReason != nil {
+                    if let notShown {
+                        Label(notShown, systemImage: "photo")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    } else if handle.failureReason != nil {
                         Label("Image not available", systemImage: "photo")
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)

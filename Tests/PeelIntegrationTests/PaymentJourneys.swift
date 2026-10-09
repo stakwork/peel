@@ -56,12 +56,58 @@ extension Journeys {
             await bob.close()
         }
 
+        /// A payment with a template from the memes stub: the amounts are
+        /// those of a plain payment, and both sides' rows carry the picture,
+        /// which each fetches from its own memes server. Then a payment in
+        /// the Mac app's own JSON (`formatMsg`, pretty-printed), which Peel
+        /// reads the same way.
+        @Test func templatedPaymentShowsItsPictureOnBothSides() async throws {
+            let (alice, bob) = try await Self.pair()
+            let templates = try await alice.engine.paymentTemplates()
+            let template = try #require(templates.first)
+            #expect(template.width != nil && template.height != nil)
+            try await Self.pay(200, from: alice, to: bob, note: "lunch", template: template.muid)
+
+            let sent = try #require(try alice.messages(in: bob.pubkey).last { $0.type == MessageType.directPayment })
+            #expect(sent.paymentTemplateMUID == template.muid && sent.amountMsat == 200_000 && sent.content == "lunch")
+            let got = try await eventually("Bob's row for the payment") {
+                try bob.messages(in: alice.pubkey).last { $0.type == MessageType.directPayment }
+            }
+            #expect(got.paymentTemplateMUID == template.muid && got.amountMsat == 200_000 && got.content == "lunch")
+            for (person, row) in [(bob, got), (alice, sent)] {
+                let file = try await person.engine.templateImage(messageID: try #require(row.id))
+                #expect(AttachmentKind.verified(try Data(contentsOf: file), declared: .image) == .image)
+            }
+
+            let other = try #require(templates.last)
+            let token = try await alice.engine.templateToken(muid: other.muid, to: try bob.pubkey)
+            let official = """
+            {
+              "content" : "",
+              "mediaToken" : "\(token)",
+              "mediaType" : "image/png"
+            }
+            """
+            try await alice.engine.deliver(
+                body: official, to: try bob.pubkey, type: MessageType.directPayment, amountMsat: 50_000, replacing: nil
+            )
+            let second = try await eventually("Bob's row for the official app's payment") {
+                try bob.messages(in: alice.pubkey).last { $0.paymentTemplateMUID == other.muid }
+            }
+            #expect(second.amountMsat == 50_000)
+            _ = try await bob.engine.templateImage(messageID: try #require(second.id))
+            await alice.close()
+            await bob.close()
+        }
+
         /// One keysend, with both balances checked once they settle.
-        static func pay(_ sats: UInt64, from sender: Person, to recipient: Person, note: String = "") async throws {
+        static func pay(
+            _ sats: UInt64, from sender: Person, to recipient: Person, note: String = "", template: String? = nil
+        ) async throws {
             let sender0 = try #require(try await sender.settledBalance())
             let recipient0 = try #require(try await recipient.settledBalance())
             try await sender.engine.sendPayment(
-                to: try recipient.pubkey, amountMsat: sats * 1000, text: note, confirmedMsat: sats * 1000
+                to: try recipient.pubkey, amountMsat: sats * 1000, text: note, template: template, confirmedMsat: sats * 1000
             )
             let recipient1 = try #require(try await recipient.balance(settlingAt: recipient0 + sats))
             #expect(recipient1 - recipient0 == sats)

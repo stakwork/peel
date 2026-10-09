@@ -124,6 +124,9 @@ extension Engine {
         /// its size, when known (encrypted, if the server named it).
         case largeAttachment(size: Int64?)
         case untrustedMediaHost(String)
+        /// Not a payment template's picture: no template on the payment, an
+        /// unusable muid, or bytes that are no image.
+        case noPaymentTemplate
         case uploadInProgress
         case invalidAmount
         case balanceUnknown
@@ -247,6 +250,7 @@ extension Engine {
             case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
             case .largeAttachment: "this attachment is large; it downloads when asked"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
+            case .noPaymentTemplate: "that is not a payment picture"
             case .uploadInProgress: "this attachment is still uploading"
             case .notAnInvoice: "that is not a Lightning invoice"
             case .unreadableInvoice: "that invoice cannot be read"

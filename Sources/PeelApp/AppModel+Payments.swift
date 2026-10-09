@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import PeelCore
 
@@ -51,13 +52,42 @@ extension AppModel {
         }
     }
 
-    /// Sends sats to a contact in their chat, with an optional note.
-    func sendPayment(to chat: String, amountMsat: UInt64, note: String, confirmedMsat: UInt64?) async -> PaymentOutcome {
+    /// Sends sats to a contact in their chat, with an optional note and
+    /// payment template (its muid).
+    func sendPayment(
+        to chat: String, amountMsat: UInt64, note: String, template: String?, confirmedMsat: UInt64?
+    ) async -> PaymentOutcome {
         let outcome = await pay("pay \(chat)") {
-            try await $0.sendPayment(to: chat, amountMsat: amountMsat, text: note.trimmed, confirmedMsat: confirmedMsat)
+            try await $0.sendPayment(
+                to: chat, amountMsat: amountMsat, text: note.trimmed, template: template, confirmedMsat: confirmedMsat
+            )
         }
         if case .sent = outcome { sent(in: chat) }
         return outcome
+    }
+
+    // MARK: Payment templates
+
+    /// The pictures a payment can carry, from the account's memes server.
+    func paymentTemplates() async throws -> [PaymentTemplate] {
+        try await signedIn().paymentTemplates()
+    }
+
+    /// A template's picture for the picker, drawn at `maxPixels`.
+    func templateImage(muid: String, maxPixels: Int) async -> CGImage? {
+        guard let engine else { return nil }
+        return await ImageCache.shared.image(template: muid, host: nil, maxPixels: maxPixels) {
+            try await engine.templateImage(muid: muid)
+        }
+    }
+
+    /// The picture a payment in the chat carries, drawn at `maxPixels`;
+    /// nil when it cannot be had (another host's, or the server's refusal).
+    func templateImage(of message: Message, maxPixels: Int) async -> CGImage? {
+        guard let engine, let id = message.id, let template = message.paymentTemplate else { return nil }
+        return await ImageCache.shared.image(template: template.muid, host: template.host, maxPixels: maxPixels) {
+            try await engine.templateImage(messageID: id)
+        }
     }
 
     /// Sends a failed payment or boost again, for the amount it was for.

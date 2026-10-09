@@ -125,9 +125,7 @@ struct MemesServer: Sendable {
         let transfer = Web.Transfer(limit: 1_000_000, what: "the upload", progress: progress)
         let (data, _) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let muid = json["muid"] as? String, !muid.isEmpty,
-              // It becomes part of a URL path and of the media token.
-              muid.unicodeScalars.allSatisfy({ $0.isASCII && (CharacterSet.alphanumerics.contains($0) || "-_=".unicodeScalars.contains($0)) })
+              let muid = json["muid"] as? String, MediaToken.isSafeMUID(muid)
         else {
             throw Failure.unreadableReply("the upload")
         }
@@ -136,6 +134,26 @@ struct MemesServer: Sendable {
 
     /// Where an image uploaded to `/public` is served.
     func publicURL(_ muid: String) -> URL { base.appendingPathComponent("public").appendingPathComponent(muid) }
+
+    /// `GET /templates`: the server's payment templates, as the Mac app's
+    /// `getPaymentTemplates` asks for them.
+    func templates(token: Token) async throws -> [PaymentTemplate] {
+        var request = URLRequest(url: base.appendingPathComponent("templates"))
+        request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await Self.run(Web.Transfer(limit: 1_000_000, what: "the templates", progress: nil), Self.session.dataTask(with: request))
+        guard let list = PaymentTemplate.list(from: data) else { throw Failure.unreadableReply("the templates") }
+        return list
+    }
+
+    /// `GET /template/<muid>`: a template's picture, in the clear, refusing
+    /// anything over `limit` bytes.
+    func template(_ muid: String, token: Token, limit: Int) async throws -> Data {
+        guard MediaToken.isSafeMUID(muid) else { throw Failure.unreadableReply("the template") }
+        var request = URLRequest(url: base.appendingPathComponent("template").appendingPathComponent(muid))
+        request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await Self.run(Web.Transfer(limit: limit, what: "the template", progress: nil), Self.session.dataTask(with: request))
+        return data
+    }
 
     /// `GET /file/<media token>`: the encrypted bytes and the file name the
     /// server gives, refusing anything over `limit` bytes.

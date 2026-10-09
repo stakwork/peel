@@ -17,7 +17,6 @@ struct Composer: View {
     /// In a direct message: who the bolt beside the field sends sats to.
     var paysTo: String?
 
-    @State private var sendingSats = false
     @State private var mentionable: [TribeMember] = []
     @State private var mention: String?
     @State private var highlighted = 0
@@ -103,21 +102,28 @@ struct Composer: View {
             .buttonStyle(.plain)
             .help("Attach files")
             if let paysTo {
+                let sendingSats = Binding(
+                    get: { model.sendingSats == composer },
+                    set: { model.sendingSats = $0 ? composer : nil }
+                )
                 Button {
-                    sendingSats = true
+                    sendingSats.wrappedValue = true
                 } label: {
                     Image(systemName: "bolt")
                         .font(.system(size: 14))
-                        .foregroundStyle(sendingSats ? Theme.attention : Theme.secondaryText)
+                        .foregroundStyle(sendingSats.wrappedValue ? Theme.attention : Theme.secondaryText)
                         .frame(width: 32, height: 32)
                         .overlay(Circle().strokeBorder(Theme.divider))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Send or request sats")
-                .peelPopover(isPresented: $sendingSats) {
-                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats = false }
+                .peelPopover(isPresented: sendingSats) {
+                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats.wrappedValue = false }
                 }
+                // The view stays when another chat opens in its place: the
+                // panel left behind is closed, not opened again on coming back.
+                .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
             }
             VStack(alignment: .leading, spacing: 0) {
                 if let target = model.replyTargets[composer] {

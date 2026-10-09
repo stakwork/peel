@@ -20,20 +20,35 @@ struct MediaStore: Sendable {
         return cache.appendingPathComponent(digest)
     }
 
+    /// A payment template's picture, public and in the clear, one per muid.
+    /// The name hashes no newline, which every attachment's does, so a
+    /// template never takes an attachment's file nor one of them its.
+    func template(muid: String) -> URL {
+        cache.appendingPathComponent(SHA256.hash(data: Data("template:\(muid)".utf8)).hex)
+    }
+
     func outgoing(_ id: Int64) -> URL {
         outbox.appendingPathComponent(String(id))
     }
 
     /// The cached file, touched so trimming keeps it longest.
     func lookup(muid: String, key: String) -> URL? {
-        let url = cached(muid: muid, key: key)
+        lookup(cached(muid: muid, key: key))
+    }
+
+    /// The file at `url` in the cache, if it is there, touched likewise.
+    func lookup(_ url: URL) -> URL? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
         return url
     }
 
     func store(_ data: Data, muid: String, key: String, limit: Int) throws -> URL {
-        let url = cached(muid: muid, key: key)
+        try store(data, at: cached(muid: muid, key: key), limit: limit)
+    }
+
+    /// Writes `data` to `url` in the cache, then trims the cache to `limit`.
+    func store(_ data: Data, at url: URL, limit: Int) throws -> URL {
         try write(data, to: url)
         trim(to: limit)
         return url

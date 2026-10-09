@@ -310,3 +310,105 @@ GIF attachments play too. The picker is still to come.
   "GIF", "Play GIF" and "Pause GIF"; hosts matched percent-encoded.
 
 **Open:** whether to offer stickers.
+
+## 5. Payment templates
+
+**Goal:** pick a picture to go with sats sent in a direct message, as the
+official app does, and show the picture on payments that carry one, sent
+or received, from Peel or the official apps.
+
+**The official Mac app** (`706e6f07`):
+- The list: `GET https://<memes host>/templates` with the memes bearer
+  token (`API+AttachmentsExtension.getPaymentTemplates`), a JSON array of
+  `{"muid", "width", "height"}` (`ImageTemplate`).
+- A picture: `GET https://<memes host>/template/<muid>`, bearer token,
+  plain image bytes, not encrypted (`MediaLoader.loadTemplate`,
+  `loadPublicImage`).
+- Choosing: Send in a direct message goes on from the amount and note to
+  `PaymentTemplatesView`, a carousel whose first item is no picture
+  (`noTemplate`), then the templates; Confirm sends. A tribe payment skips
+  it (`SendPaymentViewController.performConfirmAction`).
+- Sending (`PaymentTemplatesView.setSelectedImage` sets
+  `currentPayment.muid`; `PaymentViewModel.shouldSendDirectPayment`;
+  `SphinxOnionManager.finalizeDirectPayment` → `sendMessage` →
+  `formatMsg`): a type 5 whose JSON is
+  `{"content": <note>, "mediaType": "image/png", "mediaToken": <token>}`.
+  The token is the core's `make_media_token(host, muid, to, expiry)` for
+  the recipient, a year, with no meta (`loadMediaToken`, host
+  `memes.sphinx.chat`). No key: the picture is not encrypted. Without a
+  picture `mediaToken` is left out; `mediaType` is sent either way. The
+  `dimensions` of `getParams` belong to the old relay API and are never
+  sent.
+- Showing (`MessageTableCellState.messageMedia`,
+  `TransactionMessage.getTemplateURL`): a type 5 with a media token shows
+  `https://<token's host>/template/<token's muid>` aspect-fit in the
+  payment's bubble, sent and received alike; without one, no picture.
+  The token is kept from live messages, history and restores
+  (`processGenericIncomingMessage`).
+- The core knows nothing of templates; `make_media_token` is the only
+  piece used.
+
+**Peel's plan:**
+- Engine: `paymentTemplates()` (the list, kept for the session per memes
+  host), `templateImage(muid:)` and `templateImage(messageID:)` (the
+  picture from this account's memes server only, through `MemesServer`
+  and its bearer token, checked to be an image, cached on disk in the
+  media cache under its own name); `sendPayment(…template:)` adds the
+  token and `mediaType` to the type 5 and changes nothing else: the same
+  `checkPayment`, the same confirmation, the same amount.
+- A received picture whose token names another host is not fetched
+  (`untrustedMediaHost`, as attachments).
+- App: a row of pictures in Send sats (none first, chosen by default);
+  in the payment row the picture in a fixed square, reserved before it
+  loads.
+- Done means: Peel's templated payment reads in the official app's format
+  (unit tests against its body and token), the official app's reads in
+  Peel, both directions on the local stack with the memes stub's
+  templates, the amount and confirmation unchanged.
+
+**Built (2026-10-10):**
+- Engine: `paymentTemplates()`, `templateImage(muid:)`,
+  `templateImage(messageID:)` (refuses another host's,
+  `untrustedMediaHost`), `sendPayment(…template:)`; `MemesServer.templates`
+  and `.template`; `PaymentTemplate` (the list, the token in a body, the
+  body); `Message.paymentTemplateMUID`; pictures cached in the media cache
+  under `MediaStore.template(muid:)`, a name no attachment's can take.
+  The token is made after `checkPayment`, so a refused payment makes none;
+  a retry sends the stored body, picture and all. Without a template the
+  type 5 is `{"content"}` as before (the Mac app also sends `mediaType`
+  then; nothing reads it).
+- App: Send sats has a Picture row (None first and chosen; a click picks,
+  Tab then the arrows step through); the payment row draws the picture
+  aspect fit in a 140 pt square kept from the start, a quiet photo mark if
+  it cannot be had. The panel's open state moved to the model
+  (`sendingSats`) so the offscreen driver can open it (`{"open":
+  "send-sats"}`); the driver now snapshots and keys panels too
+  (`NSApp.windows`; `orderedWindows` leaves panels out).
+- Stub: `/templates` and `/template/<muid>` with three solid PNGs.
+- Tests: `PaymentTemplateTests` (the Mac app's pretty-printed body, the
+  list reply, unsafe muids, the core's token read back, another host
+  refused, the cache names); journey
+  `Payments.templatedPaymentShowsItsPictureOnBothSides` (Peel to Peel and a
+  body in the Mac app's own JSON through the real core; amounts as a plain
+  payment). Checked offscreen: the chat's rows, the picker by keys, Return
+  over the threshold arms the button as before.
+- Not verified: against the hosted memes server (its `/templates` reply and
+  whether `/template/<muid>` needs the bearer token; Peel sends it, as the
+  Mac app does) and against the official app itself; the format is read
+  from its code. CLI `pay` has no `--template`.
+- **Independent review (2026-10-10), applied:** Send sats no longer stays
+  open with no panel when its composer goes (a popover now tells its
+  trigger when it disappears, and a chat opened in the composer's place
+  closes it; checked offscreen through Account and another chat, with a
+  new `{"open": "account"}` driver step); the app's picture cache is keyed
+  by the host a payment names as well as the muid, and the engine checks
+  the host before its disk cache; a picture refused or not on the server is
+  not asked for again this session (offline is); `ImageDecoding.thumbnail`
+  refuses pictures with more source pixels than their format allows
+  (`isTooLarge`): JPEG and HEIC, which ImageIO scales while decoding, up to
+  500 M (a 200 MP phone photo, a long panorama), everything else (PNG, GIF,
+  TIFF, BMP, decoded in full) up to 100 M. By format rather than by caller,
+  because the same decode draws a photo of one's own and someone else's
+  attachment, and only the format says what a decode costs. Refused, it
+  reads "Too large to show" in the chat and the viewer, "… is too large"
+  for a profile photo, "… too large to look for a code in" for a QR scan.

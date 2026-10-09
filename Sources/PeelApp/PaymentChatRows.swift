@@ -229,6 +229,9 @@ struct PaymentRow: View {
 
     @State private var hovering = false
 
+    /// The square a payment's picture is drawn in.
+    static let templateSide: CGFloat = 140
+
     private var message: Message { row.message }
 
     var body: some View {
@@ -241,6 +244,13 @@ struct PaymentRow: View {
                 .frame(width: MessageRow.avatarSize)
             VStack(alignment: .leading, spacing: 3) {
                 RunHeader(row: row, headline: headline)
+                if message.paymentTemplateMUID != nil {
+                    // Its square is kept from the start, so the row never moves as it loads.
+                    TemplateImage(message: message, side: Self.templateSide)
+                        .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                        .padding(.vertical, 2)
+                }
                 if !message.deleted, let note = message.content?.trimmed.nilIfEmpty {
                     MessageText(text: note, chat: message.chat)
                 }

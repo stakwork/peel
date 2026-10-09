@@ -8,9 +8,8 @@ requests in chat and paid attachments (#27), sats received shown and
 notified (#51). Storage was at v13 then; it is at v21 now.
 
 **Open:**
-- Payment templates, not started: the scope list at the start of the journal.
-  Moved to the v1 extras step on 2026-10-08 (evening; `../PLAN.md`,
-  `10-v1-extras.md`).
+- Payment templates: moved to the v1 extras step on 2026-10-08 (evening;
+  `../PLAN.md`), built there on 2026-10-10 (`10-v1-extras.md`, item 5).
 - Lightning behind the server (server-made invoices, real fees), never run locally: "Not tested locally, and why".
 - Receive by `make_invoice` or `request_invoice`, and two smaller questions: "Open questions for Tom".
 - Restore loses a DM contact this account only answered: "Boosts and payments in chat", "Open".

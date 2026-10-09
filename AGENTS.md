@@ -43,7 +43,8 @@ is a short plan. Update the status and the journal when you finish something.
       invoices (made, requested, paid), payment history and the
       reconciliation against it (`reconcileInBackground`)
     - `Engine+Attachments.swift` — sending, downloading and buying
-      attachments; the memes server sign-in
+      attachments; payment templates (the list, their pictures, the
+      token a payment carries); the memes server sign-in
     - `Engine+Calls.swift` — the call server, call links, tickets, presence
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       a tribe's details, how you appear in one, the tribes registry and its
@@ -110,7 +111,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,
-    `Web.Transfer`'s failures in its own words
+    payment templates (`/templates`, `/template/<muid>`), `Web.Transfer`'s
+    failures in its own words
+  - `PaymentTemplate.swift` — a payment template, the server's list of
+    them, the token a type 5 carries for one (the official apps' format)
+    and `Message.paymentTemplateMUID`
   - `MediaStore.swift` — the profile's `media/` cache and outbox
   - `Contacts.swift` — `ContactCode` (what a scanned or pasted code is:
     contact info, a `share_contact` link, an invite, a tribe link; strict),
@@ -185,7 +190,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ComposerField` (the message field: Return sends, `@` mentions),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
-  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
+  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
   view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor`, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
   `MenuRow`), `Controls` (`MenuButton`, `HoverIconButton`, `PeelDropdown`,
@@ -242,7 +247,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
-  `MoneyRefusalTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
+  `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`,
   `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
@@ -326,6 +331,8 @@ quitting before any window opens.
 
   ```
   {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
+  {"open": "send-sats"}                   // the open chat's Send sats panel, as its bolt opens it
+  {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}
@@ -453,9 +460,9 @@ Peel's grant too.
 
 There is no memes server in `~/Documents/sphinx` (its `memes/` crate is an
 S3 upload stub with none of the endpoints the apps use) or in
-`sphinx-swarm` (which points at the hosted one). Local tests use a throwaway
-stub of the endpoints in `docs/phases/03-chat.md` ("How attachments work"),
-not kept in the repo, on a free port; pass `--memes-host 127.0.0.1:<port>` to
+`sphinx-swarm` (which points at the hosted one). Local tests use the stub
+in `scripts/test-stack-helpers.py` (the endpoints in `docs/phases/03-chat.md`,
+"How attachments work", and three payment templates), on a free port; pass `--memes-host 127.0.0.1:<port>` to
 `init` (or any later command). An account on a loopback server has no memes
 server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 

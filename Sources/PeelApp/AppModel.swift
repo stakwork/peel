@@ -82,6 +82,8 @@ final class AppModel {
     var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
     var attachmentPrices: [ComposerID: String] = [:]
+    /// The composer whose Send sats panel is open, from its bolt.
+    var sendingSats: ComposerID?
     /// Bumped to put the cursor in a composer.
     var composerFocus: [ComposerID: Int] = [:]
     /// The sidebar has the keyboard (a row was clicked): a chat opened from

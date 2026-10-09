@@ -114,16 +114,19 @@ extension Engine {
 
     /// Sends sats to a contact in their chat with an optional note (type 5),
     /// as the Mac app's payment does. Only to a person: in a tribe it would
-    /// pay the tribes server. Delivery is reported as for `sendText`.
+    /// pay the tribes server. `template` (a muid from `paymentTemplates`)
+    /// adds a picture: a media token for it, nothing else about the payment
+    /// changes. Delivery is reported as for `sendText`.
     @discardableResult
     public func sendPayment(
-        to pubkey: String, amountMsat: UInt64, text: String = "", confirmedMsat: UInt64? = nil
+        to pubkey: String, amountMsat: UInt64, text: String = "", template: String? = nil, confirmedMsat: UInt64? = nil
     ) async throws -> String? {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard tribes[pubkey] == nil else { throw Failure.paymentToTribe }
         guard Self.isPerson(pubkey, in: state) == true else { throw Failure.notAContact }
         try checkPayment(amountMsat, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: false))
-        let body = try Self.json(["content": text])
+        let token = try template.map { try templateToken(muid: $0, to: pubkey) }
+        let body = try PaymentTemplate.paymentBody(text: text, token: token)
         return try await deliver(
             body: body, to: pubkey, type: MessageType.directPayment, amountMsat: amountMsat, replacing: nil
         )

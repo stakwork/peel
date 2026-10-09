@@ -252,7 +252,12 @@ private struct PopoverModifier<Panel: View>: ViewModifier {
                     presenter?.dismissPanel(id: id)
                 }
             }
-            .onDisappear { presenter?.dismissPanel(id: id) }
+            // The trigger is told, so state kept outside the view (the
+            // model's `sendingSats`) does not stay open with no panel.
+            .onDisappear {
+                presenter?.dismissPanel(id: id)
+                if isPresented { isPresented = false }
+            }
     }
 }
 

@@ -459,6 +459,14 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 - UI follows `docs/design/README.md` (Slack-style layout, Sphinx colours and
   the system font) and Tom's `tom-ui` and `taste` skills: colour is state, not
   decoration; no red for ordinary failure; restraint in motion.
+- **Reuse before you write.** Before adding a view, helper, label, shortcut or
+  panel, search for the shared piece that already does it (`Controls.swift`,
+  FormKit, `MenuPresenter`, `PictureField`, `LinkButton`, `.menuAnchor`,
+  `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
+  thing and no shared piece exists, make one and move both onto it; never
+  write a second copy. Each behaviour has one owner: one place that handles
+  a keyboard shortcut, one way a panel opens, one function that formats a
+  given label. If your change would add a second, stop and fold them.
 - Keep this file, `docs/PLAN.md` and the phase files current when you change
   the layout or finish a step.
 
@@ -473,7 +481,9 @@ optional here: a bug in this code can lose money or leak a key.
    reference client already do.
 3. **Verify in the real medium.** `swift build`; the local test server for
    anything protocol-level; the throwaway account on production for anything
-   the server sees. Never a real account.
+   the server sees. Never a real account. For UI, drive the real path at least
+   once (the actual key press or click, in the app beside the features it sits
+   next to), not only a hook that calls the code directly.
 4. **Review.** `/code-review` for correctness, `/simplify` for reuse,
    simplicity, efficiency and altitude (it applies its fixes), then
    `/security-review`. Fix what they find. Findings deliberately not applied go

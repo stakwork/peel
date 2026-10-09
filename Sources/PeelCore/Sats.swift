@@ -16,6 +16,17 @@ public enum Sats {
         return "\(sats.formatted()) \(sats == 1 ? "sat" : "sats")"
     }
 
+    /// `format`, but an amount that is not whole sats keeps its fraction
+    /// ("0.5 sats", "3.5 sats") instead of dropping it: for a tribe's
+    /// prices, which an owner may set in msat, so what is shown is what
+    /// is sent. Whole sats read exactly as `format`.
+    public static func exact(msat: some BinaryInteger) -> String {
+        let msat = UInt64(clamping: msat)
+        guard msat % msatPerSat != 0 else { return format(msat: msat) }
+        let sats = Decimal(msat) / Decimal(msatPerSat)
+        return "\(sats.formatted(.number.precision(.fractionLength(0...3)))) sats"
+    }
+
     /// "1,210": the number alone, as `format`, for chips and lists that
     /// write "sats" apart.
     public static func number(msat: some BinaryInteger) -> String {

@@ -112,8 +112,8 @@ struct TribeDetailsPanel: View {
             case .success(let members): DetailRow("Members") { Text(members.countLabel) }
             case .failure: EmptyView()
             }
-            DetailRow("Price to join") { known(info.map { price($0.priceToJoin ?? 0) }) }
-            DetailRow("Per message") { Text(price(tribe.pricePerMessageMsat)) }
+            DetailRow("To join") { known(info?.joinPrice.described) }
+            DetailRow("Each message") { Text(tribe.messagePrice.described) }
             DetailRow("Escrow", last: true) { Text(escrow) }
         }
         .formCard()
@@ -146,14 +146,10 @@ struct TribeDetailsPanel: View {
         Text(text ?? "—").foregroundStyle(text == nil ? Theme.tertiaryText : Theme.text)
     }
 
-    private func price(_ msat: Int64) -> String {
-        msat > 0 ? Sats.format(msat: UInt64(msat)) : "Free"
-    }
-
     /// "5 sats, back after 2 hours", or None.
     private var escrow: String {
         guard tribe.escrowMsat > 0 else { return "None" }
-        let amount = Sats.format(msat: UInt64(tribe.escrowMsat))
+        let amount = Sats.exact(msat: tribe.escrowMsat)
         guard let millis = info?.escrowMillis, millis > 0 else { return amount }
         let hours = Sats.text(UInt64(millis), unit: Sats.millisecondsPerHour)
         return "\(amount), back after \(hours) \(hours == "1" ? "hour" : "hours")"

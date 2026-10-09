@@ -372,6 +372,19 @@ formatter, `Tribe.costLines`, or a `Formatting` function, used by the
 header, the details, the Join form and the CLI. Keep both fields; the
 form edits the price, the engine sends the amount.
 
+Done (batch 6, 2026-10-09): `TribePrice` in `Tribe.swift`, one per
+price (`Tribe.messagePrice`, `TribeInfo.joinPrice` and `messagePrice`,
+`TribeSettings` for the owner's form). `messageAmountMsat` and
+`joinAmountMsat`, which the engine sends, are its `msat`. The details
+read "To join: 1 sat, the minimum" and "Each message: 25 sats,
+including 5 sats escrow"; the owner's edit form keeps the typed price
+with "Members pay 3 sats, the minimum." under it when that differs;
+`tribe-info` prints "you pay" beside the owner's prices. Prices are
+exact (`Sats.exact`: "0.5 sats", "3.5 sats" where `Sats.format` would
+drop the fraction) in the details, the header, the link card, the Join
+form and the CLI's tribe lines. The 1-sat join floor is the Mac app's (`nonZeroPriceToJoin`
+in `GroupsManager`); the tribes server checks only `price_to_join`.
+
 ## 4. The Peel component library
 
 Everything lives in `Sources/PeelApp/UI/`. `Theme` stays the only source

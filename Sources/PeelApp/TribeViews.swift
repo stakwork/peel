@@ -119,10 +119,11 @@ struct TribeSettingsForm: View {
             }
         }
         FormSection("Pricing") {
-            // Two to a line.
+            // Two to a line. Under a price, what members actually pay when it is more.
+            let typed = try? settings()
             HStack(alignment: .top, spacing: 12) {
-                amountItem("Price to join", text: $priceToJoin, unit: "sats", field: .priceToJoin)
-                amountItem("Price per message", text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
+                amountItem("Price to join", helper: membersPay(typed?.joinPrice), text: $priceToJoin, unit: "sats", field: .priceToJoin)
+                amountItem("Price per message", helper: membersPay(typed?.messagePrice), text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
             }
             HStack(alignment: .top, spacing: 12) {
                 amountItem("Escrow per message", helper: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
@@ -142,6 +143,12 @@ struct TribeSettingsForm: View {
         return FormItem(label: label, helper: helper, problem: problem) {
             FormNumberField(label: label, text: text, unit: unit, problem: problem != nil)
         }
+    }
+
+    /// "Members pay 3 sats, the minimum.", only when that is not the price typed.
+    private func membersPay(_ price: TribePrice?) -> String? {
+        guard let price, price.reason != nil else { return nil }
+        return "Members pay \(price.described)."
     }
 
     private func problem(_ field: Field) -> String? {

@@ -25,6 +25,17 @@ struct SatsTests {
     }
 
     /// Sent amounts carry a true minus, received a plus; nothing for zero.
+    /// A tribe's prices keep their fraction; whole sats read as `format`.
+    @Test func exactAmountsKeepTheFraction() {
+        for msat: Int64 in [0, 1_000, 3_000, 21_000, 1_210_000, -5_000] {
+            #expect(Sats.exact(msat: msat) == Sats.format(msat: msat))
+        }
+        #expect(Sats.exact(msat: 500) == "0.5 sats")
+        #expect(Sats.exact(msat: 3_500) == "3.5 sats")
+        #expect(Sats.exact(msat: 1) == "0.001 sats")
+        #expect(Sats.exact(msat: 1_210_250) == "1,210.25 sats")
+    }
+
     @Test func signedAmountsUseATrueMinus() {
         #expect(Sats.signed(msat: 500_000, incoming: true) == "+500")
         #expect(Sats.signed(msat: 21_000, incoming: false) == "\u{2212}21")

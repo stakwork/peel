@@ -271,4 +271,46 @@ struct TribeTests {
         #expect(ChatReadState(chat: "02ab", unread: 5, mentions: 2, muteLevel: 0).shownUnread == 5)
         #expect(ChatReadState(chat: "02ab", unread: 5, mentions: 2, muteLevel: 2).shownUnread == 0)
     }
+
+    /// What a member is shown is what the engine sends: the 3-sat and 1-sat
+    /// floors, the escrow on top, and the owner's price kept apart.
+    @Test func pricesShownAreWhatMembersPay() throws {
+        func info(_ fields: String) throws -> TribeInfo {
+            try JSONDecoder().decode(TribeInfo.self, from: Data(#"{"pubkey":"02ab","name":"Club"\#(fields)}"#.utf8))
+        }
+        let free = try info("")
+        #expect(free.joinPrice == TribePrice(msat: 1_000, reason: .minimum))
+        #expect(free.joinPrice.described == "1 sat, the minimum")
+        #expect(free.messagePrice.described == "3 sats, the minimum")
+
+        let priced = try info(#","price_to_join":10000,"price_per_message":2000"#)
+        #expect(priced.joinPrice.described == "10 sats")
+        #expect(priced.messagePrice.described == "3 sats, the minimum")
+        #expect(priced.pricePerMessage == 2000)
+
+        let escrow = try info(#","price_to_join":500,"price_per_message":20000,"escrow_amount":5000"#)
+        #expect(escrow.joinPrice == TribePrice(msat: 500, reason: nil))
+        #expect(escrow.messagePrice.described == "25 sats, including 5 sats escrow")
+        #expect(TribePrice.message(pricePerMessage: 2000, escrow: 1000).reason == .escrow(1000))
+        #expect(TribePrice.message(pricePerMessage: 0, escrow: 5000).described == "5 sats, all of it escrow")
+
+        // Sub-sat prices read as sent, not rounded down.
+        #expect(escrow.joinPrice.described == "0.5 sats")
+        let fractional = TribePrice.message(pricePerMessage: 2500, escrow: 1000)
+        #expect(fractional.msat == 3500)
+        #expect(fractional.described == "3.5 sats, including 1 sat escrow")
+        #expect(TribePrice.message(pricePerMessage: 2600, escrow: 500).described == "3.1 sats, including 0.5 sats escrow")
+
+        // The engine's amounts are these prices, from the registry, the stored tribe and the owner's form.
+        for record in [free, priced, escrow] {
+            #expect(record.joinAmountMsat == record.joinPrice.msat)
+            #expect(record.messageAmountMsat == record.messagePrice.msat)
+            var tribe = Tribe(pubkey: "02ab")
+            tribe.update(from: record, trustingPrivacy: true)
+            #expect(tribe.messagePrice == record.messagePrice)
+            #expect(tribe.messageAmountMsat == record.messageAmountMsat)
+            #expect(record.settings.joinPrice == record.joinPrice)
+            #expect(record.settings.messagePrice == record.messagePrice)
+        }
+    }
 }

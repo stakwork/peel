@@ -78,9 +78,13 @@ is a short plan. Update the status and the journal when you finish something.
   - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
     `PurchaseState` and the Storage reads that join the money tables
   - `Sats.swift` — amounts as people see and type them (display and input
-    only; money is kept in msat)
+    only; money is kept in msat): `format` drops the rest of a sat as the
+    official apps do, `exact` keeps it for a tribe's prices
   - `PeelError.swift` — `PeelError`, a failure worded for the person
-  - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
+  - `Tribe.swift` — tribe records, tribe links, the tribes server's
+    registry, and `TribePrice`: what a member pays to join or per message
+    (the amount the engine sends, and why it is more than the owner's
+    price), the only price shown to someone who will pay it
   - `NotificationPolicy.swift` — what notifies (messages, payment
     requests, announced calls, join requests to owned tribes) and the one
     "quiet here" rule (the chat in view, its mute level) that messages,

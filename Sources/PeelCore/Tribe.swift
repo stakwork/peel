@@ -64,11 +64,14 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
         return String(pubkey.prefix(12))
     }
 
+    /// What each message costs to send, and why (`TribePrice.message`).
+    public var messagePrice: TribePrice {
+        .message(pricePerMessage: pricePerMessageMsat, escrow: escrowMsat)
+    }
+
     /// What each message costs to send: the official apps send at least
     /// 3 sats, or the price per message plus the escrow if higher.
-    public var messageAmountMsat: UInt64 {
-        Self.messageAmount(pricePerMessage: pricePerMessageMsat, escrow: escrowMsat)
-    }
+    public var messageAmountMsat: UInt64 { messagePrice.msat }
 
     /// What a message of `type` costs to send: a call only the 3-sat floor,
     /// because the tribes server charges no price for one
@@ -84,7 +87,7 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     }
 
     /// Prices come from the tribes server, so the sum saturates rather than overflows.
-    static func messageAmount(pricePerMessage: Int64, escrow: Int64, floor: Int64 = 3000) -> UInt64 {
+    static func messageAmount(pricePerMessage: Int64, escrow: Int64, floor: Int64 = TribePrice.messageFloorMsat) -> UInt64 {
         let (sum, overflow) = max(pricePerMessage, 0).addingReportingOverflow(max(escrow, 0))
         return UInt64(max(overflow ? Int64.max : sum, floor))
     }
@@ -167,6 +170,69 @@ public struct TribeMembers: Sendable, Equatable {
     }
 }
 
+/// What a member pays for a tribe's message or for joining it, and why
+/// that is more than the owner's price when it is. The engine sends `msat`
+/// (`Tribe.messageAmountMsat`, `TribeInfo.joinAmountMsat` are this), so
+/// every price shown to someone who will pay it is one of these; the
+/// owner's own setting stays in `pricePerMessageMsat` and `priceToJoin`.
+public struct TribePrice: Sendable, Equatable {
+    public let msat: UInt64
+    /// Why `msat` is not the owner's price alone; nil when it is.
+    public let reason: Reason?
+
+    public enum Reason: Sendable, Equatable {
+        /// The price is under what the official apps always send.
+        case minimum
+        /// The escrow staked with each message, in msat, paid back later.
+        case escrow(UInt64)
+        /// No price, only the escrow.
+        case allEscrow
+    }
+
+    /// The official apps send a tribe message with at least 3 sats
+    /// (`tribeMinSats`) and a join with at least 1 (`nonZeroPriceToJoin`);
+    /// the tribes server asks for neither.
+    static let messageFloorMsat: Int64 = 3000
+    static let joinFloorMsat: Int64 = 1000
+
+    /// The price plus the escrow, or the 3-sat floor if higher.
+    static func message(pricePerMessage: Int64, escrow: Int64) -> TribePrice {
+        let msat = Tribe.messageAmount(pricePerMessage: pricePerMessage, escrow: escrow)
+        let reason: Reason? = if msat > Tribe.messageAmount(pricePerMessage: pricePerMessage, escrow: escrow, floor: 0) {
+            .minimum
+        } else if escrow > 0 {
+            pricePerMessage > 0 ? .escrow(UInt64(escrow)) : .allEscrow
+        } else {
+            nil
+        }
+        return TribePrice(msat: msat, reason: reason)
+    }
+
+    /// The price to join, or 1 sat when there is none.
+    static func join(priceToJoin: Int64) -> TribePrice {
+        priceToJoin > 0
+            ? TribePrice(msat: UInt64(priceToJoin), reason: nil)
+            : TribePrice(msat: UInt64(joinFloorMsat), reason: .minimum)
+    }
+
+    /// "3 sats", "3.5 sats": exact, as sent.
+    public var text: String { Sats.exact(msat: msat) }
+
+    /// "the minimum", "including 5 sats escrow", "all of it escrow"; nil
+    /// for the owner's price.
+    public var note: String? {
+        switch reason {
+        case .minimum: "the minimum"
+        case .escrow(let msat): "including \(Sats.exact(msat: msat)) escrow"
+        case .allEscrow: "all of it escrow"
+        case nil: nil
+        }
+    }
+
+    /// "3 sats, the minimum": the amount, and why when it is not the price.
+    public var described: String { note.map { "\(text), \($0)" } ?? text }
+}
+
 /// What a tribe is created or edited with, as the official apps send it
 /// (`getNewGroupParams` in the Mac app). Prices are in msat and the escrow
 /// time in milliseconds, as the tribes server keeps them.
@@ -207,6 +273,13 @@ public struct TribeSettings: Codable, Sendable, Equatable {
         self.isPrivate = isPrivate
         self.unlisted = unlisted
         self.tags = tags
+    }
+
+    /// What members will pay to join and for each message with these
+    /// settings, for the owner's form.
+    public var joinPrice: TribePrice { .join(priceToJoin: Int64(clamping: priceToJoinMsat)) }
+    public var messagePrice: TribePrice {
+        .message(pricePerMessage: Int64(clamping: pricePerMessageMsat), escrow: Int64(clamping: escrowMsat))
     }
 
     /// Trimmed, with a name, an https image or none, and amounts the tribes
@@ -355,16 +428,18 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
         case isPrivate = "private"
     }
 
+    /// What joining costs, and why (`TribePrice.join`).
+    public var joinPrice: TribePrice { .join(priceToJoin: priceToJoin ?? 0) }
+
     /// What joining costs: the price to join, or 1 sat as the official apps send.
-    public var joinAmountMsat: UInt64 {
-        let price = priceToJoin ?? 0
-        return price > 0 ? UInt64(price) : 1000
+    public var joinAmountMsat: UInt64 { joinPrice.msat }
+
+    /// What each message will cost once joined; see `Tribe.messagePrice`.
+    public var messagePrice: TribePrice {
+        .message(pricePerMessage: pricePerMessage ?? 0, escrow: escrowAmount ?? 0)
     }
 
-    /// What each message will cost once joined; see `Tribe.messageAmountMsat`.
-    public var messageAmountMsat: UInt64 {
-        Tribe.messageAmount(pricePerMessage: pricePerMessage ?? 0, escrow: escrowAmount ?? 0)
-    }
+    public var messageAmountMsat: UInt64 { messagePrice.msat }
 
     /// What the tribe is set to, to start an edit from.
     public var settings: TribeSettings {

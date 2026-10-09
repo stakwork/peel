@@ -104,7 +104,7 @@ struct TribeLinkCard: View {
                 if let members { Text("· \(members)") }
             }
         } else if let info {
-            Text([info.isPrivate == true ? "Private" : nil, "\(Sats.format(msat: info.joinAmountMsat)) to join"]
+            Text([info.isPrivate == true ? "Private" : nil, "\(info.joinPrice.text) to join"]
                 .compactMap { $0 }.joined(separator: " · "))
         } else if read?.problem != nil {
             LinkButton("Try again", font: Theme.font(12, .medium)) {

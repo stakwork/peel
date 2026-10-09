@@ -451,6 +451,11 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 - Swift 6 language mode with strict concurrency in `PeelCore` and `PeelApp`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
+- Tom works on this Mac while agents run. Run builds, tests and test
+  servers at background priority so his work always comes first:
+  `taskpolicy -b swift build`, `taskpolicy -b swift test`,
+  `taskpolicy -b scripts/bundle-app.sh`, `taskpolicy -b scripts/test-stack.sh`.
+  Delete your worktree's `.build` when you finish.
 - Do not add a dependency for something under a hundred lines.
 - Keep the engine agent-ready (`docs/agent-native.md`): no UI types, global
   state or single-account assumptions in `PeelCore`; every user action is an

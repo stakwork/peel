@@ -217,8 +217,8 @@ extension AppModel {
     /// text as the last one's caption (or on its own), all with the reply
     /// and thread links the composer was set to. Returns whether the text
     /// went (true when there was none); refused files go back in the tray
-    /// with the reply target. Files go one after another, each once its
-    /// upload is done, so they arrive in order.
+    /// with the reply target. The engine sends the files
+    /// (`Engine.sendAttachments`).
     @discardableResult
     func send(_ text: String, from composer: ComposerID) async -> Bool {
         guard let engine else { return false }
@@ -244,17 +244,16 @@ extension AppModel {
                 return false
             }
         }
+        let outcome = await engine.sendAttachments(
+            files, text: text, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats
+        ) { [weak self] file, id in
+            // Shown from this Mac while it uploads.
+            Task { @MainActor in self?.attachment(id).localFile = file }
+        }
         var refused: [(file: URL, reason: String)] = []
-        var captionSent = text.isEmpty
-        for (index, file) in files.enumerated() {
-            let caption = index == files.count - 1 ? text : ""
-            do {
-                // Shown from this Mac while it uploads.
-                let id = try await engine.sendAttachment(
-                    file, text: caption, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats
-                ) {
-                    [weak self] id in Task { @MainActor in self?.attachment(id).localFile = file }
-                }
+        for (file, result) in outcome.results {
+            switch result {
+            case .success(let id):
                 // A pasted or promised file of Peel's is done with once
                 // uploaded: the engine keeps its own copy in the cache. One
                 // whose upload failed stays as the row's preview until the
@@ -262,15 +261,10 @@ extension AppModel {
                 if IncomingFiles.owns(file), (try? engine.storage.message(id: id))?.uploadState == .done {
                     release(file)
                 }
-                if !caption.isEmpty { captionSent = true }
                 sent(in: chat)
-            } catch {
+            case .failure(let error):
                 refused.append((file, "\(file.lastPathComponent): \(PeelError.readable(error))"))
             }
-        }
-        // The file the caption rode on was refused: the words still go.
-        if !captionSent, (try? await engine.sendText(text, to: chat, replyTo: replyTo, inThread: inThread)) != nil {
-            captionSent = true
         }
         if !refused.isEmpty {
             conversationNotices[chat] = "Could not send " + refused.map(\.reason).joined(separator: "; ")
@@ -280,7 +274,7 @@ extension AppModel {
             if let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
             if replyTargets[composer] == nil { replyTargets[composer] = reply }
         }
-        return captionSent
+        return outcome.textSent
     }
 
     /// The composer a reply to `message` belongs in: the open thread's if

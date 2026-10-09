@@ -117,10 +117,10 @@ struct ConnectionDropTests {
     /// by its watchdog.
     @Test func aDisconnectKeepsTheHistoryRunAndStopsItsWatchdog() async throws {
         try await withEngine { engine, _ throws in
-            let watchdog = await engine.awaitPage(of: Engine.HistoryRun(phase: .messages, next: 5, end: 10))
+            let watchdog = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
             await engine.disconnect()
             #expect(watchdog.isCancelled)
-            #expect(await engine.history?.next == 5)
+            #expect(await engine.history.active?.next == 5)
             #expect(await engine.isSyncingHistory)
         }
     }
@@ -128,8 +128,8 @@ struct ConnectionDropTests {
 
 private extension Engine {
     /// As `request` leaves it: a run in flight and its watchdog waiting.
-    func awaitPage(of run: HistoryRun) -> Task<Void, Never> {
-        history = run
+    func awaitPage(of run: HistoryCursor.Run) -> Task<Void, Never> {
+        _ = history.start([run])
         let watchdog = Task { _ = try? await Task.sleep(for: .seconds(60)) }
         historyWatchdog = watchdog
         return watchdog

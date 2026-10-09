@@ -19,21 +19,28 @@ extension Invocation {
             try await session.finish(after: wait)
 
         case "send-file":
-            guard let pubkey = arguments.next(), let path = arguments.next() else {
+            guard let pubkey = arguments.next(), !arguments.isEmpty else {
                 throw PeelError("send-file needs a pubkey and a file")
             }
+            let files = arguments.rest().map { URL(fileURLWithPath: $0) }
             let session = try await Session(load())
             await session.connectIfPossible(insecure: insecure)
             let price = try priceOption.map { text in
                 guard let sats = UInt64(text), sats > 0 else { throw PeelError("--price needs a whole number of sats") }
                 return sats
             }
-            let id = try await session.engine.sendAttachment(
-                URL(fileURLWithPath: path), text: note ?? "", to: pubkey, replyTo: replyTo, inThread: inThread,
-                priceSats: price
+            let sent = await session.engine.sendAttachments(
+                files, text: note ?? "", to: pubkey, replyTo: replyTo, inThread: inThread, priceSats: price
             )
-            print("attachment row \(id)")
+            var refused: [String] = []
+            for (file, result) in sent.results {
+                switch result {
+                case .success(let id): print("attachment row \(id)")
+                case .failure(let error): refused.append("\(file.lastPathComponent): \(PeelError.readable(error))")
+                }
+            }
             try await session.finish(after: wait)
+            if !refused.isEmpty { throw PeelError("could not send " + refused.joined(separator: "; ")) }
 
         case "buy":
             guard let id = arguments.next().flatMap({ Int64($0) }) else { throw PeelError("buy needs a message id") }

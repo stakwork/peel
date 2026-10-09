@@ -66,6 +66,40 @@ extension Engine {
         return id
     }
 
+    /// Sends several files to one chat, one message each, with `text` as
+    /// the last one's caption, all with the same reply and thread links and
+    /// price. They go one after another, each once its upload is done, so
+    /// they arrive in order. When the file the caption rode on is refused,
+    /// the text still goes on its own (best effort). Each file's row id or
+    /// why it was refused, and whether the text went (true when there was
+    /// none). `stored` is as for `sendAttachment`, with the file.
+    public func sendAttachments(
+        _ files: [URL], text: String = "", to pubkey: String, replyTo: String? = nil, inThread: String? = nil,
+        priceSats: UInt64? = nil, stored: (@Sendable (URL, Int64) -> Void)? = nil
+    ) async -> (results: [(file: URL, result: Result<Int64, any Error>)], textSent: Bool) {
+        var results: [(file: URL, result: Result<Int64, any Error>)] = []
+        var textSent = text.isEmpty
+        for (index, file) in files.enumerated() {
+            let caption = index == files.count - 1 ? text : ""
+            var storedFile: (@Sendable (Int64) -> Void)?
+            if let stored { storedFile = { id in stored(file, id) } }
+            do {
+                let id = try await sendAttachment(
+                    file, text: caption, to: pubkey, replyTo: replyTo, inThread: inThread, priceSats: priceSats,
+                    stored: storedFile
+                )
+                results.append((file, .success(id)))
+                if !caption.isEmpty { textSent = true }
+            } catch {
+                results.append((file, .failure(error)))
+            }
+        }
+        if !textSent, (try? await sendText(text, to: pubkey, replyTo: replyTo, inThread: inThread)) != nil {
+            textSent = true
+        }
+        return (results, textSent)
+    }
+
     /// The message JSON of an attachment, as the Mac app's `formatMsg`: the
     /// key twice (the core encrypts `mediaKeyForSelf` to this account, so our
     /// other devices and a restore can read it), the MIME type and, once
@@ -242,8 +276,8 @@ extension Engine {
         let toTribe = knownTribe(message.chat) != nil
         try checkPayment(price, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: toTribe))
         let purchaseKey = "purchase \(token)"
-        guard payingInvoices.insert(purchaseKey).inserted else { throw Failure.purchaseInProgress }
-        defer { payingInvoices.remove(purchaseKey) }
+        guard money.sendsInFlight.insert(purchaseKey).inserted else { throw Failure.purchaseInProgress }
+        defer { money.sendsInFlight.remove(purchaseKey) }
         let body = try Self.json(["content": "", "mediaToken": token, "replyUuid": uuid])
         return try await deliver(body: body, to: message.chat, type: MessageType.purchase, amountMsat: price, replacing: nil)
     }

@@ -29,6 +29,8 @@ public actor Engine {
     private var reconnectTask: Task<Void, Never>?
     /// Set by `close()`; nothing connects or refreshes after it.
     private(set) var closed = false
+    /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
+    private var cameOnlineHere = false
 
     /// Payments waiting for us while we were offline: payment hash and tag → the
     /// ping time to acknowledge once the payment lands.
@@ -43,14 +45,26 @@ public actor Engine {
     private var contactsByChildIndex: [UInt64: String] = [:]
     /// Every tribe this account knows, joined or left, by pubkey.
     var tribes: [String: Tribe] = [:]
-    /// Member lists the tribes server sent for tribes this account owns.
-    var memberLists: [String: TribeMembers.List] = [:]
-    /// Join requests answered this session; see `answerJoinRequest`.
-    var sentAnswers: Set<String> = []
-    /// Tribes whose update the tribes server has confirmed, until `updateRegistry` takes it.
-    var updatedTribes: Set<String> = []
-    /// Tribes with an update or delete on its way; see `changeOwnedTribe`.
-    var changingTribes: Set<String> = []
+    /// The tribes server's replies and the tribe work in flight, this session.
+    struct TribeWork {
+        /// Member lists the tribes server sent for tribes this account owns.
+        var memberLists: [String: TribeMembers.List] = [:]
+        /// Join requests answered this session; see `answerJoinRequest`.
+        var sentAnswers: Set<String> = []
+        /// Tribes whose update the tribes server has confirmed, until `updateRegistry` takes it.
+        var updated: Set<String> = []
+        /// Tribes with an update or delete on its way; see `changeOwnedTribe`.
+        var changing: Set<String> = []
+        /// The background registry refresh; see `refreshTribesInBackground`.
+        var refresh: Task<Void, Never>?
+        var needsRefresh = false
+        /// Tribes queued for the next round of the refresh alone; see `recheckIfStale`.
+        var toRecheck: Set<String> = []
+        /// When each tribe's last read record was asked for, this session.
+        var readAt: [String: ContinuousClock.Instant] = [:]
+    }
+    var tribeWork = TribeWork()
+    static let tribeRecheck: Duration = .seconds(5 * 60)
     /// Chats whose read marker was sent since `getReads` was last asked: its
     /// answer may predate the marker, so it is not applied to them.
     var readsSentSinceGetReads: Set<String> = []
@@ -65,33 +79,30 @@ public actor Engine {
     private(set) var echoedAliases: [String: Set<String>]
     /// The background re-check of stored messages for mentions; see `checkMentionsIfNeeded`.
     var mentionScan: Task<Void, Never>?
-    /// The background registry refresh; see `refreshTribesInBackground`.
-    var tribeRefresh: Task<Void, Never>?
-    var tribesNeedRefresh = false
-    /// Tribes queued for the next round of the refresh alone; see `recheckIfStale`.
-    var tribesToRecheck: Set<String> = []
-    /// When each tribe's last read record was asked for, this session.
-    var tribeReadAt: [String: ContinuousClock.Instant] = [:]
-    static let tribeRecheck: Duration = .seconds(5 * 60)
-    /// A page of payment history asked for and not yet answered; the
-    /// answer lands here (see `fetchPaymentHistory`).
-    var awaitingPayments = false
-    var paymentPage: [PaymentRecord]?
-    /// An invoice asked of the server (`request_invoice`) and not yet
-    /// answered; the answer lands here (see `serverInvoice`).
-    var awaitingInvoice = false
-    var answeredInvoice: String?
-    /// See `checkOpenInvoices`; `historyCheckedAt` is when the history was
-    /// last fetched back to what is stored (milliseconds), this session.
-    var invoiceCheck: Task<Void, Never>?
-    var invoicesNeedCheck = false
-    var historyCheckedAt: Int64?
-    /// Invoices being paid in this session, so a second click can never
-    /// pay one twice while the first is being sent.
-    var payingInvoices: Set<String> = []
-    /// An invite being cancelled: the server answers with the balance
-    /// alone, so one at a time (`cancelInvite`).
-    var cancellingInvite = false
+    /// The server's replies about money and the money work in flight, this session.
+    struct MoneyWork {
+        /// A page of payment history asked for and not yet answered; the
+        /// answer lands in `paymentPage` (see `fetchPaymentHistory`).
+        var awaitingPayments = false
+        var paymentPage: [PaymentRecord]?
+        /// An invoice asked of the server (`request_invoice`) and not yet
+        /// answered; the answer lands in `answeredInvoice` (see `serverInvoice`).
+        var awaitingInvoice = false
+        var answeredInvoice: String?
+        /// See `checkOpenInvoices`; `historyCheckedAt` is when the history was
+        /// last fetched back to what is stored (milliseconds), this session.
+        var invoiceCheck: Task<Void, Never>?
+        var invoicesNeedCheck = false
+        var historyCheckedAt: Int64?
+        /// Invoices being paid (by payment hash) and attachments being
+        /// bought (`"purchase <token>"`) in this session, so a second click
+        /// can never pay twice while the first is being sent.
+        var sendsInFlight: Set<String> = []
+        /// An invite being cancelled: the server answers with the balance
+        /// alone, so one at a time (`cancelInvite`).
+        var cancellingInvite = false
+    }
+    var money = MoneyWork()
 
     /// Attachments: the decrypted cache and the uploads waiting to go, and
     /// the memes server's bearer token (memory only).
@@ -109,18 +120,11 @@ public actor Engine {
     static let defaultMemesHost = "memes.sphinx.chat"
     static let defaultCallServer = "chat.sphinx.chat"
 
-    /// A history fetch in progress: which kind, the next index to ask for, and
-    /// where it ends (unknown until the server says). Runs queue behind one
-    /// another; a restore is contacts first, then every message from the start.
-    struct HistoryRun {
-        var phase: HistoryPhase
-        var next: UInt64
-        var end: UInt64?
-    }
-    var history: HistoryRun?
-    var queuedHistory: [HistoryRun] = []
-    private(set) var awaitingCounts = false
+    /// History fetches: the run in flight and those queued behind it.
+    var history = HistoryCursor()
     var historyWatchdog: Task<Void, Never>?
+    /// Each `poll` waiting to check again.
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     static let historyStall: Duration = .seconds(30)
 
     static let historyPageSize: UInt32 = 100
@@ -195,10 +199,10 @@ public actor Engine {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
-        tribeRefresh?.cancel()
-        tribeRefresh = nil
-        invoiceCheck?.cancel()
-        invoiceCheck = nil
+        tribeWork.refresh?.cancel()
+        tribeWork.refresh = nil
+        money.invoiceCheck?.cancel()
+        money.invoiceCheck = nil
         await teardown()
         setConnection(.offline(retryIn: nil))
     }
@@ -262,18 +266,56 @@ public actor Engine {
         }
     }
 
+    /// Registered, and `cameOnline` has asked for what it needs (history
+    /// among it, so `isSyncingHistory` already says whether it is coming).
     private func waitUntilRegistered() async throws {
-        try await poll(timeout: .seconds(30), failure: .registrationTimedOut) { isRegistered ? () : nil }
+        try await poll(timeout: .seconds(30), failure: .registrationTimedOut) {
+            isRegistered && cameOnlineHere ? () : nil
+        }
     }
 
-    /// Waits for something a server reply sets to land in the engine.
-    func poll<T>(timeout: Duration, failure: Failure, _ check: () async -> T?) async throws -> T {
+    /// Waits for something a server reply sets to land in the engine:
+    /// checks now and again after each commit (`wakeWaiters`), and also
+    /// every `interval` when what it waits for is not the engine's (the
+    /// network), until `timeout`.
+    func poll<T>(
+        timeout: Duration, every interval: Duration? = nil, failure: Failure, _ check: () async -> T?
+    ) async throws -> T {
         let deadline = ContinuousClock.now + timeout
         while true {
             if let value = await check() { return value }
-            guard ContinuousClock.now < deadline else { throw failure }
-            try await Task.sleep(for: .milliseconds(200))
+            let now = ContinuousClock.now
+            guard now < deadline else { throw failure }
+            try await nextChange(before: interval.map { min(deadline, now + $0) } ?? deadline)
         }
+    }
+
+    /// Suspends until `wakeWaiters`, or `until`; cancellation throws.
+    private func nextChange(before until: ContinuousClock.Instant) async throws {
+        try Task.checkCancellation()
+        let id = UUID()
+        let timer = Task { [weak self] in
+            try? await Task.sleep(until: until, clock: .continuous)
+            await self?.wake(id)
+        }
+        defer { timer.cancel() }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { waiters[id] = $0 }
+        } onCancel: {
+            Task { [weak self] in await self?.wake(id) }
+        }
+        try Task.checkCancellation()
+    }
+
+    private func wake(_ id: UUID) {
+        waiters.removeValue(forKey: id)?.resume()
+    }
+
+    /// Lets every `poll` check again: what it waits for may have changed.
+    func wakeWaiters() {
+        let woken = waiters
+        waiters = [:]
+        for waiter in woken.values { waiter.resume() }
     }
 
     private func reconnectLoop(attempt: Int) async {
@@ -309,6 +351,7 @@ public actor Engine {
     }
 
     private func teardown() async {
+        cameOnlineHere = false
         // A reply to this connection's status query can only come on it.
         unrecordedPayments = []
         stopHistoryWatchdog()
@@ -382,6 +425,8 @@ public actor Engine {
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
         invites: [InviteRecord] = []
     ) throws -> FollowUps {
+        // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
+        defer { wakeWaiters() }
         var followUps = FollowUps()
         var commit = Storage.Commit()
         commit.settings[.clock] = time
@@ -554,8 +599,8 @@ public actor Engine {
         }
         state = newState
         if records != nil { unrecordedPayments = [] }
-        if awaitingPayments, let page { paymentPage = page }
-        if awaitingInvoice, let bolt11 = result.invoice { answeredInvoice = bolt11 }
+        if money.awaitingPayments, let page { money.paymentPage = page }
+        if money.awaitingInvoice, let bolt11 = result.invoice { money.answeredInvoice = bolt11 }
         if let contacts {
             contactsByChildIndex = Self.index(contacts)
         }
@@ -567,21 +612,21 @@ public actor Engine {
         }
         self.droppedIndex = droppedIndex
         if let members {
-            memberLists[members.pubkey] = members
+            tribeWork.memberLists[members.pubkey] = members
         }
         if let updated = newTribe {
-            updatedTribes.insert(updated)
+            tribeWork.updated.insert(updated)
         }
 
         if let json = result.msgsCounts {
             do {
                 let counts = try JSONDecoder().decode(MessageCounts.self, from: Data(json.utf8))
-                if awaitingCounts {
-                    awaitingCounts = false
+                if history.awaitingCounts {
+                    history.awaitingCounts = false
                     followUps.restorePlan = counts
                 }
             } catch {
-                awaitingCounts = false
+                history.awaitingCounts = false
                 emit.yield(.historyFailed("unreadable message counts: \(PeelError.readable(error))"))
             }
         }
@@ -890,10 +935,10 @@ public actor Engine {
             } catch {
                 emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
             }
-            if let run = history {
+            if let run = history.active {
                 try await request(run)
             } else if restoring {
-                awaitingCounts = true
+                history.awaitingCounts = true
                 try await self.run { time, state in
                     try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
                 }
@@ -903,6 +948,8 @@ public actor Engine {
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }
+        cameOnlineHere = true
+        wakeWaiters()
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out

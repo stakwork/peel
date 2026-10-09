@@ -19,7 +19,11 @@ is a short plan. Update the status and the journal when you finish something.
     so the module, not the file, is the boundary (`seed` among them: never
     read it, or call `run`/`commit`, from outside the engine files). What
     only `Engine.swift` writes keeps `private(set)`, `state` above all: it
-    changes only in `init` and `commit`.
+    changes only in `init` and `commit`. Session bookkeeping is grouped in
+    `TribeWork`, `MoneyWork` and `HistoryCursor`. A `poll` waiting for a
+    server reply is woken by each commit (`wakeWaiters`, also called where
+    a waited-for flag clears outside one); only a network check polls on
+    an interval.
     - `EngineTypes.swift` — `Event`, `Failure` (refusals and their words),
       `ConnectionState`, `Contact`, `Invite`, `JoinRequest` and the other
       public nested types
@@ -39,8 +43,11 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Calls.swift` — the call server, call links, tickets, presence
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       the tribes registry and its background refresh
-    - `Engine+History.swift` — restore and catch-up: history runs, paging,
-      the stall watchdog, recovering the account's own photo
+    - `Engine+History.swift` — restore and catch-up: asks for the pages
+      `HistoryCursor` names, the stall watchdog, recovering the account's
+      own photo
+    - `HistoryCursor.swift` — the history machine without the network: the
+      run in flight, the queue, a restore's plan, paging and stalls (tested)
   - `Account.swift` — load, signup, create and restore: the one place that
     decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB for one profile: init, the profile lock,

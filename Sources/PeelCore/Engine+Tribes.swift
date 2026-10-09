@@ -130,10 +130,10 @@ extension Engine {
         let tribe = try ownedTribe(pubkey)
         guard let host = tribe.host else { throw Failure.noTribeServer }
         let server = try tribeServer()
-        guard changingTribes.insert(pubkey).inserted else {
+        guard tribeWork.changing.insert(pubkey).inserted else {
             throw Failure.tribeChangeInProgress
         }
-        defer { changingTribes.remove(pubkey) }
+        defer { tribeWork.changing.remove(pubkey) }
         return try await change(tribe, host, server)
     }
 
@@ -151,11 +151,11 @@ extension Engine {
             guard member.isPubkey else { throw Failure.notAMemberKey }
             // The request may not be stored, so the server's list must show
             // the member waiting; fetched when this session has none.
-            if memberLists[pubkey] == nil {
+            if tribeWork.memberLists[pubkey] == nil {
                 _ = try await tribeMembers(pubkey)
                 tribe = try ownedTribe(pubkey)
             }
-            guard memberLists[pubkey]?.pending.contains(where: { $0.pubkey == member }) == true else {
+            guard tribeWork.memberLists[pubkey]?.pending.contains(where: { $0.pubkey == member }) == true else {
                 throw Failure.memberNotWaiting
             }
             fields["member"] = member
@@ -163,18 +163,18 @@ extension Engine {
         }
         // Each answer costs the tribe's price; a request is answered once. Our
         // answer is stored only when the server echoes it, so until then the
-        // request is held in `sentAnswers` and the member taken off the list.
+        // request is held in `tribeWork.sentAnswers` and the member taken off the list.
         let replyUuid = fields["replyUuid"]
-        if let replyUuid, try sentAnswers.contains(replyUuid) || storage.isAnswered(request: replyUuid, in: pubkey) {
+        if let replyUuid, try tribeWork.sentAnswers.contains(replyUuid) || storage.isAnswered(request: replyUuid, in: pubkey) {
             throw Failure.alreadyAnswered
         }
-        if let replyUuid { sentAnswers.insert(replyUuid) }
-        if let member = fields["member"] { memberLists[pubkey]?.pending.removeAll { $0.pubkey == member } }
+        if let replyUuid { tribeWork.sentAnswers.insert(replyUuid) }
+        if let member = fields["member"] { tribeWork.memberLists[pubkey]?.pending.removeAll { $0.pubkey == member } }
         do {
             try await sendToTribe(tribe, type: approve ? MessageType.memberApprove : MessageType.memberReject, fields: fields)
         } catch {
-            if let replyUuid { sentAnswers.remove(replyUuid) }
-            if fields["member"] != nil { memberLists[pubkey] = nil }
+            if let replyUuid { tribeWork.sentAnswers.remove(replyUuid) }
+            if fields["member"] != nil { tribeWork.memberLists[pubkey] = nil }
             throw error
         }
     }
@@ -202,7 +202,8 @@ extension Engine {
                     seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
                 )
             }
-            try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) {
+            // The registry is asked once a second: nothing here says when it changes.
+            try await poll(timeout: .seconds(15), every: .seconds(1), failure: .tribeServerTimedOut) {
                 await Self.isGone(pubkey, host: host) ? () : nil
             }
             var deleted = tribe
@@ -272,13 +273,13 @@ extension Engine {
                 fields["owner_alias"] = tribeAlias(alias)
             }
             let json = String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
-            updatedTribes.remove(pubkey)
+            tribeWork.updated.remove(pubkey)
             try await run { time, state in
                 try Sphinxrs.updateTribe(
                     seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribeJson: json
                 )
             }
-            _ = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { updatedTribes.remove(pubkey) }
+            _ = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.updated.remove(pubkey) }
             return tribes[pubkey] ?? tribe
         }
     }
@@ -297,13 +298,13 @@ extension Engine {
         let seen = try storage.tribeSenders(pubkey)
         guard tribe.isOwner else { return TribeMembers(members: seen, complete: false) }
         let server = try tribeServer()
-        memberLists[pubkey] = nil
+        tribeWork.memberLists[pubkey] = nil
         try await run { time, state in
             try Sphinxrs.listTribeMembers(
                 seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
             )
         }
-        let list = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { memberLists[pubkey] }
+        let list = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
         // The server's list has no photos; take them from what members posted.
         let photos = Dictionary(seen.map { ($0.alias, $0.photoURL) }, uniquingKeysWith: { $1 })
         func members(_ entries: [TribeMembers.List.Entry], pending: Bool) -> [TribeMember] {
@@ -422,10 +423,12 @@ extension Engine {
         contact(pubkey, in: state).map { $0.contactKey != nil }
     }
 
-    /// The core's record of `pubkey`; `state` needs only its `c/` entry.
+    /// The core's record of `pubkey`, read from its `c/` entry alone (all
+    /// `get_contact` reads), so a lookup never encodes the whole state.
     static func contact(_ pubkey: String, in state: [String: Data]) -> Contact? {
-        guard state["c/\(pubkey)"] != nil,
-              let json = try? Sphinxrs.getContact(state: StateCodec.encode(state), pubkey: pubkey) else { return nil }
+        let key = "c/\(pubkey)"
+        guard let entry = state[key],
+              let json = try? Sphinxrs.getContact(state: StateCodec.encode([key: entry]), pubkey: pubkey) else { return nil }
         return JSON.decode(Contact.self, from: json)
     }
 
@@ -448,13 +451,13 @@ extension Engine {
     /// Runs `refreshTribes` in the background. A call while it runs makes it
     /// go round once more instead of starting a second one; `disconnect` cancels it.
     func refreshTribesInBackground() {
-        tribesNeedRefresh = true
+        tribeWork.needsRefresh = true
         startTribeRefresh()
     }
 
     private func startTribeRefresh() {
-        guard !closed, tribeRefresh == nil else { return }
-        tribeRefresh = Task { [weak self] in
+        guard !closed, tribeWork.refresh == nil else { return }
+        tribeWork.refresh = Task { [weak self] in
             await self?.recordConfiguredTribeHost()
             await self?.refreshTribes()
         }
@@ -477,13 +480,13 @@ extension Engine {
     }
 
     /// Takes the registry's current name, photo and prices for each joined
-    /// tribe (or only those in `tribesToRecheck`), a few at a time, and saves
+    /// tribe (or only those in `tribeWork.toRecheck`), a few at a time, and saves
     /// what changed in one write. Failures leave what is stored.
     private func refreshTribes() async {
-        while tribesNeedRefresh || !tribesToRecheck.isEmpty, !Task.isCancelled {
-            let all = tribesNeedRefresh, only = tribesToRecheck
-            tribesNeedRefresh = false
-            tribesToRecheck = []
+        while tribeWork.needsRefresh || !tribeWork.toRecheck.isEmpty, !Task.isCancelled {
+            let all = tribeWork.needsRefresh, only = tribeWork.toRecheck
+            tribeWork.needsRefresh = false
+            tribeWork.toRecheck = []
             let joined = tribes.values.compactMap { tribe in
                 tribe.left || !(all || only.contains(tribe.pubkey)) ? nil : tribe.host.map { (tribe.pubkey, $0) }
             }
@@ -506,13 +509,13 @@ extension Engine {
             saveRecords(infos, asked: asked)
         }
         // A cancelled refresh has already been replaced or stopped.
-        if !Task.isCancelled { tribeRefresh = nil }
+        if !Task.isCancelled { tribeWork.refresh = nil }
     }
 
     /// Saves what registry answers change in joined tribes, in one write,
-    /// and notes when each answered tribe was asked (`tribeReadAt`).
+    /// and notes when each answered tribe was asked (`tribeWork.readAt`).
     func saveRecords(_ infos: [TribeInfo], asked: ContinuousClock.Instant) {
-        for info in infos { tribeReadAt[info.pubkey] = asked }
+        for info in infos { tribeWork.readAt[info.pubkey] = asked }
         let changed = infos.compactMap(merged)
         do {
             try storage.save(changed)
@@ -528,9 +531,9 @@ extension Engine {
     /// it (design README, "Time zones"). The send never waits. True when queued.
     @discardableResult
     func recheckIfStale(_ pubkey: String, now: ContinuousClock.Instant = .now) -> Bool {
-        guard tribeReadAt[pubkey].map({ now - $0 > Self.tribeRecheck }) ?? true,
-              !tribesToRecheck.contains(pubkey) else { return false }
-        tribesToRecheck.insert(pubkey)
+        guard tribeWork.readAt[pubkey].map({ now - $0 > Self.tribeRecheck }) ?? true,
+              !tribeWork.toRecheck.contains(pubkey) else { return false }
+        tribeWork.toRecheck.insert(pubkey)
         startTribeRefresh()
         return true
     }

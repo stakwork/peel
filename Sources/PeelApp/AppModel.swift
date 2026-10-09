@@ -334,9 +334,8 @@ final class AppModel {
         try await signedIn().setAlias(name)
     }
 
-    /// An https image link, or empty to remove the photo.
-    func setPhotoURL(_ url: String) async throws {
-        try await signedIn().setPhotoURL(url)
+    func removePhoto() async throws {
+        try await signedIn().setPhotoURL("")
     }
 
     /// Works the rows out again when who they name changed (your profile,
@@ -393,6 +392,11 @@ final class AppModel {
     /// Uploads a picture from this Mac and makes it the photo.
     func uploadPhoto(_ file: URL) async throws {
         try await signedIn().uploadPhoto(file)
+    }
+
+    /// Uploads a picture from this Mac for a tribe's image; returns its link.
+    func uploadPicture(_ file: URL) async throws -> String {
+        try await signedIn().uploadPicture(file)
     }
 
     /// Asks for a picture, beside the window.

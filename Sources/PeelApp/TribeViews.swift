@@ -14,7 +14,9 @@ struct TribeSettingsForm: View {
 
     @State private var name = ""
     @State private var summary = ""
+    /// The image's link, never shown: what the tribe has, or an upload.
     @State private var photoURL = ""
+    @State private var uploadingImage = false
     @State private var priceToJoin = ""
     @State private var pricePerMessage = ""
     @State private var escrow = ""
@@ -80,7 +82,7 @@ struct TribeSettingsForm: View {
                 .keyboardShortcut(.defaultAction)
                 // Not off while it saves, so it keeps its fill under the
                 // spinner; `save` ignores a second click.
-                .disabled(working == .delete || !loaded || name.trimmed.isEmpty)
+                .disabled(working == .delete || !loaded || name.trimmed.isEmpty || uploadingImage)
             }
         }
         .onChange(of: [name, photoURL, priceToJoin, pricePerMessage, escrow, escrowHours]) {
@@ -97,17 +99,16 @@ struct TribeSettingsForm: View {
             FormItem(label: "What it is about", helper: "Shown in the tribes directory and the header.") {
                 FormTextField(label: "What it is about", text: $summary, axis: .vertical)
             }
-            FormItem(label: "Image link", problem: problem(.photo)) {
-                HStack(spacing: 8) {
-                    FormTextField(label: "Image link", prompt: "https://", text: $photoURL, problem: problem(.photo) != nil)
-                    // The tribe's image while the link is the one it has, its
-                    // initial otherwise: nothing is fetched while you type.
-                    TribeIcon(
-                        name: name.trimmed.nilIfEmpty ?? "?",
-                        url: original?.photoURL.flatMap { $0 == photoURL.trimmed ? $0 : nil },
-                        pubkey: editing?.pubkey ?? "", size: 32
-                    )
-                }
+            FormItem(label: "Image", problem: problem(.photo)) {
+                PictureField(
+                    picture: TribeIcon(
+                        name: name.trimmed.nilIfEmpty ?? "?", url: photoURL.nilIfEmpty,
+                        pubkey: editing?.pubkey ?? "", size: 40
+                    ).avatar,
+                    upload: { photoURL = try await model.uploadPicture($0) },
+                    remove: photoURL.isEmpty ? nil : .now { photoURL = "" },
+                    uploading: $uploadingImage
+                )
             }
         }
         FormSection("Pricing") {
@@ -184,7 +185,7 @@ struct TribeSettingsForm: View {
     }
 
     private func save() async {
-        guard working == nil else { return }
+        guard working == nil, !uploadingImage else { return }
         working = .save
         defer { working = nil }
         problem = nil

@@ -125,11 +125,19 @@ extension Engine {
     }
 
     /// Makes a picture this account's photo, as the Mac app's profile screen
-    /// does: a JPEG at quality 0.5 (here also at most 1024 px on its long
-    /// side) uploaded in the clear to the memes server's `/public` route,
-    /// whose public link becomes the photo URL. Returns the link.
+    /// does (`uploadPicture`). Returns the link.
     @discardableResult
     public func uploadPhoto(_ file: URL) async throws -> String {
+        let url = try await uploadPicture(file)
+        try setPhotoURL(url)
+        return url
+    }
+
+    /// Puts a picture on the memes server as the Mac app's
+    /// `uploadPublicImage` does, for a profile photo or a tribe's image: a
+    /// JPEG at quality 0.5 (here also at most 1024 px on its long side)
+    /// uploaded in the clear to the `/public` route. Returns its public link.
+    public func uploadPicture(_ file: URL) async throws -> String {
         let memes = try memesServer()
         let limit = Self.attachmentLimit
         let jpeg = try await Task.detached { try ProfilePhoto.jpeg(from: file, limit: limit) }.value
@@ -138,9 +146,7 @@ extension Engine {
                 jpeg, as: OutgoingFile(fileName: "image.jpg", mediaType: "image/jpg"), token: token, route: "public"
             )
         }
-        let url = memes.publicURL(muid).absoluteString
-        try setPhotoURL(url)
-        return url
+        return memes.publicURL(muid).absoluteString
     }
 
     /// Hours after which an app asks for the PIN again; 0 means only at

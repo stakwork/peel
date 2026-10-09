@@ -435,7 +435,8 @@ The system applies to every form:
 - Receive and Pay an invoice, in their pane.
 - Account. Its settings stay rows on cards (`SettingsSection` in
   `AccountView`), since they show what is set and nothing is typed in
-  them. A field that opens there, Name or Image link, is a `FormItem`.
+  them. A field that opens there, Name, is a `FormItem`. The photo is a
+  `PictureField` beside the name (see Components).
 - Onboarding: the invite and the name. The PIN's and the twelve words'
   cells take the same chrome (`FieldChrome`).
 - The sidebar's search, the time zone search and a paid attachment's
@@ -515,6 +516,10 @@ The surfaces are the existing tokens:
   - The spinner goes in the label (`buttonProgress`). A commit button stays on while it runs, keeping its fill under the spinner; its action ignores a second click.
 - **`endsEditingOnClick()`.** It goes on a form's container: the popover, the Receive and Pay pane, the Account page and onboarding. In a scroll view it goes on the content as well, since a click there never reaches a gesture outside it. A field's own click and a button's win over it.
 - **`FormFooter`** lines its problem and buttons up on their text, so "Click again to confirm" hangs under a money button.
+- **`PictureField(picture:upload:remove:uploading:label:)`.** A picture is picked, never typed: no link is shown, typed or copied (Tom, 2026-10-09).
+  - The picture (an `Avatar`), then Choose picture… and Remove as outline buttons. A picture dropped on it goes the same way.
+  - While it uploads, a spinner covers the picture and sits in Choose picture…; a failed upload says so under the row in `attention`.
+  - `remove: .now` clears a form's draft (a tribe's image, kept on Save); `.confirmed` asks again in place (`InlineConfirm`), as the Account's photo does.
 - **`FormDestructiveSection(trigger:prompt:explanation:confirm:action:)`.**
   - The destructive action is its own card at the end of the form, a full-width red row ("Delete tribe…", "Forget this account on this Mac…").
   - A click turns that row into the question ("Delete #hive for everyone?", or the explanation above the buttons) with Cancel and Delete. It is confirmed in place, never in a dialog.

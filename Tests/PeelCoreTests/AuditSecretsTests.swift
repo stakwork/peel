@@ -75,7 +75,11 @@ struct AuditSecretsTests {
     }
 
     /// Neither the words nor the seed derived from them reach the profile's
-    /// files: the engine holds the seed in memory only.
+    /// files: the engine holds the seed in memory only. Any two neighbouring
+    /// words, in order, count as a leak, so a torn page or a cut-off line is
+    /// still caught. A single word is not: the schema's own SQL holds words
+    /// of the list (" invite ", " message ", " payment "), which made a check
+    /// for one word fail about once in 57 runs.
     @Test func theProfileFilesNeverHoldTheWordsOrTheSeed() async throws {
         let words = try Engine.generateMnemonic()
         let seed: String
@@ -88,14 +92,15 @@ struct AuditSecretsTests {
         let files = try FileManager.default.subpathsOfDirectory(atPath: profile.url.path)
             .map { profile.url.appendingPathComponent($0) }
             .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true }
+        let list = Engine.words(in: words)
         var read = 0
         for file in files {
             let bytes = try Data(contentsOf: file)
             read += 1
             #expect(!bytes.contains(Data(seed.utf8)), "\(file.lastPathComponent) holds the seed")
             #expect(!bytes.contains(Data(words.utf8)), "\(file.lastPathComponent) holds the words")
-            for word in Engine.words(in: words) where word.count >= 5 {
-                #expect(!bytes.contains(Data(" \(word) ".utf8)), "\(file.lastPathComponent) holds a word")
+            for (word, next) in zip(list, list.dropFirst()) {
+                #expect(!bytes.contains(Data("\(word) \(next)".utf8)), "\(file.lastPathComponent) holds two words")
             }
         }
         #expect(read > 0)

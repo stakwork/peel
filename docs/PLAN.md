@@ -184,6 +184,27 @@ profile and bounty directory at people.sphinx.chat), LSATs, languages, feeds and
 Hive workspaces, the knowledge graph view, Jitsi, Strut dictation, Tor and
 relay-era code.
 
+## Decided 2026-10-09 (Tom): parity before the agent
+
+From the parity sweep ([reviews/2026-10-09-parity-sweep.md](reviews/2026-10-09-parity-sweep.md)):
+
+- **Before the agent:**
+  - Pictures are picked, never typed: no memes-server URL is shown or
+    entered anywhere (profile photo, tribe image). In progress.
+  - A tribe details page, with tags, the tribe's image, and a per-tribe
+    alias and photo.
+  - Payment templates, and Giphy.
+  - The foundation for preferences sync, before the iPhone app.
+  - Markdown (in progress), HTML attachments in the web pane (in
+    progress), and the payments correctness review (in progress).
+- **Tom tests:** signing up with an invite in the app.
+- **After the agent:** search and ⌘K, voice messages, the Reply action on
+  notifications (a nice-to-have).
+- **Dropped:** browsing the tribes directory.
+- **Open:** the sweep's other "before agent" items (delete a contact,
+  showing received Giphy and animated GIFs, tribe and contact link cards,
+  search inside one chat, fuller contact and tribe details).
+
 ## Decided 2026-10-09 (Tom): the Inbox is the agent's
 
 - **Agent first.** There is no standalone to-do app before the agent.

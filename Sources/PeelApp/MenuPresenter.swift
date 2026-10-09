@@ -73,11 +73,23 @@ final class MenuPresenter {
         #endif
     }
 
-    /// Opens a menu at a point (a right-click) or below a rect (a button),
-    /// both in the SwiftUI global coordinates of `window` (the key window
-    /// when nil), unless it has nothing in it.
-    func show(_ entries: [MenuEntry], at anchor: CGRect, in window: NSWindowRef = nil, source: AnyHashable? = nil,
+    /// Opens a menu below a button (`anchor`), moving with it while its
+    /// list moves and closing once it is out of sight, unless it has
+    /// nothing in it.
+    func show(_ entries: [MenuEntry], at anchor: MenuAnchor, source: AnyHashable? = nil,
               minWidth: CGFloat = 0, highlightChecked: Bool = false) {
+        show(entries, at: anchor.screenRect, in: anchor.window, following: anchor, source: source, minWidth: minWidth,
+             highlightChecked: highlightChecked)
+    }
+
+    /// Opens a menu at a point on the screen (a right-click) from `window`
+    /// (the host window when nil).
+    func show(_ entries: [MenuEntry], at point: CGPoint, in window: NSWindowRef = nil, source: AnyHashable? = nil) {
+        show(entries, at: CGRect(origin: point, size: .zero), in: window, source: source)
+    }
+
+    private func show(_ entries: [MenuEntry], at rect: CGRect, in window: NSWindowRef = nil, following: MenuAnchor? = nil,
+                      source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false) {
         guard entries.contains(where: { $0.item != nil }) else { return }
         let checked = highlightChecked ? entries.firstIndex { $0.item?.checked == true } : nil
         hideCard()
@@ -86,7 +98,8 @@ final class MenuPresenter {
         self.source = source
         #if os(macOS)
         guard let host = window ?? hostWindow else { return dismiss() }
-        menuWindow.present(environment(AnyView(MenuPanel(presenter: self))), anchor: anchor, from: host)
+        menuWindow.present(environment(AnyView(MenuPanel(presenter: self))), anchor: rect, from: host,
+                           following: following) { [weak self] in self?.dismiss() }
         startMonitoring()
         #endif
     }
@@ -104,7 +117,10 @@ final class MenuPresenter {
 
     /// Shows a panel (a form or a card) below `anchor`, in place of any other
     /// panel. `closed` runs when it goes away by a click elsewhere or Escape.
-    func showPanel(_ content: AnyView, at anchor: CGRect, id: UUID, closed: @escaping @MainActor () -> Void) {
+    /// It moves with its trigger and, unlike a menu or a card, stays at the
+    /// list's edge while the trigger is out of sight; it goes only with the
+    /// trigger's row (`PopoverModifier`).
+    func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, closed: @escaping @MainActor () -> Void) {
         #if os(macOS)
         // A trigger inside the open panel (none today) would name it; the host otherwise.
         guard let host = NSApp.keyWindow.flatMap({ $0 === panelWindow ? $0 : nil }) ?? hostWindow else { return closed() }
@@ -112,7 +128,8 @@ final class MenuPresenter {
         if panelID != id { closePanel() }
         panelID = id
         panelClosed = closed
-        panelWindow.present(environment(AnyView(PanelBox(content: content))), anchor: anchor, from: host)
+        panelWindow.present(environment(AnyView(PanelBox(content: content))), anchor: anchor.screenRect, from: host,
+                            following: anchor)
         startMonitoring()
         #endif
     }
@@ -200,7 +217,7 @@ final class MenuPresenter {
     /// shows after a moment's rest, never over an open menu or panel, and
     /// goes a moment after the pointer leaves both the trigger and the card,
     /// so it can be reached.
-    func hoverCard(_ source: AnyHashable, over: Bool, at anchor: CGRect, content: @escaping @MainActor () -> AnyView) {
+    func hoverCard(_ source: AnyHashable, over: Bool, at anchor: MenuAnchor, content: @escaping @MainActor () -> AnyView) {
         cardTimer?.cancel()
         pendingCard = nil
         guard over else { return hideCardSoon() }
@@ -223,9 +240,10 @@ final class MenuPresenter {
         hideCardSoon()
     }
 
-    private func showCard(_ content: AnyView, at anchor: CGRect, source: AnyHashable) {
+    /// Where the trigger is now, not where it was when the pointer arrived.
+    private func showCard(_ content: AnyView, at anchor: MenuAnchor, source: AnyHashable) {
         #if os(macOS)
-        guard let host = hostWindow else { return }
+        guard let host = hostWindow, anchor.isVisible else { return }
         cardSource = source
         let card = content
             .menuBoxed(cornerRadius: 10)
@@ -233,7 +251,9 @@ final class MenuPresenter {
                 self?.cardTimer?.cancel()
                 if !over { self?.hideCardSoon() }
             }
-        cardWindow.present(environment(AnyView(card)), anchor: anchor, from: host)
+        cardWindow.present(environment(AnyView(card)), anchor: anchor.screenRect, from: host, following: anchor) { [weak self] in
+            self?.hideCard()
+        }
         #endif
     }
 

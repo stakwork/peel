@@ -313,7 +313,7 @@ struct HeaderMoreButton<Details: View>: View {
             let details = MenuEntry.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) {
                 open.wrappedValue = true
             }
-            presenter?.show(entries(details), at: anchor.rect, source: source)
+            presenter?.show(entries(details), at: anchor, source: source)
         }
         .menuAnchor(anchor)
         .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { showsDetails = true }

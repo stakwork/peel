@@ -12,7 +12,7 @@ struct MenuButton<Label: View>: View {
 
     var body: some View {
         HoverIconButton(help: help) {
-            presenter?.show(entries(), at: anchor.rect, source: source)
+            presenter?.show(entries(), at: anchor, source: source)
         } label: {
             label()
         }
@@ -74,7 +74,7 @@ struct PeelDropdown<Value: Hashable>: View {
                 options.map { option in
                     .button(option.label, checked: option.value == selection) { choose(option.value) }
                 },
-                at: anchor.rect, minWidth: anchor.rect.width, highlightChecked: true
+                at: anchor, minWidth: anchor.screenRect.width, highlightChecked: true
             )
         } label: {
             HStack(spacing: 8) {

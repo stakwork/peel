@@ -13,8 +13,14 @@ final class FloatingWindow: NSPanel {
     private static let margin: CGFloat = 14
     private static let gap: CGFloat = 4
 
+    /// On the screen.
     private var anchor: CGRect = .zero
+    private var size: CGSize = .zero
     private weak var host: NSWindow?
+    /// The trigger it moves with as its list moves, and what to do once the
+    /// trigger is out of sight (nil: stay, at the list's edge).
+    private var following: (anchor: MenuAnchor, lost: (@MainActor () -> Void)?)?
+    private var watches: [any NSObjectProtocol] = []
 
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
@@ -32,11 +38,21 @@ final class FloatingWindow: NSPanel {
 
     override var canBecomeKey: Bool { takesKey }
 
-    /// `anchor` is in the SwiftUI global coordinates of `host`.
-    func present(_ content: AnyView, anchor: CGRect, from host: NSWindow) {
+    isolated deinit {
+        follow(nil)
+    }
+
+    /// `anchor` is on the screen. With `following`, the window keeps beside
+    /// that trigger as the list it sits in moves; once the trigger is out of
+    /// sight `lost` runs, or with none the window stays at the list's edge.
+    func present(_ content: AnyView, anchor: CGRect, from host: NSWindow, following: MenuAnchor? = nil,
+                 lost: (@MainActor () -> Void)? = nil) {
         if let old = self.host, old !== host { old.removeChildWindow(self) }
         self.host = host
-        self.anchor = Self.screenRect(anchor, in: host)
+        self.anchor = anchor
+        // Unplaced until the new content reports its size.
+        size = .zero
+        follow(following.map { ($0, lost) })
         alphaValue = 0
         let root = FloatingRoot(content: content, margin: Self.margin) { [weak self] size in self?.place(size) }
         contentView = NSHostingView(rootView: root)
@@ -47,6 +63,7 @@ final class FloatingWindow: NSPanel {
     /// Hides it and gives the keyboard back: to `restoringKey` when given,
     /// else to the window it opened from.
     func close(restoringKey: NSWindow?) {
+        follow(nil)
         guard isVisible else { return }
         let back = restoringKey ?? host
         host?.removeChildWindow(self)
@@ -58,18 +75,55 @@ final class FloatingWindow: NSPanel {
     /// Hides a window that never took the keyboard (a hover card), also
     /// one AppKit has already hidden with the app, so it does not come back.
     func hide() {
+        follow(nil)
         host?.removeChildWindow(self)
         orderOut(nil)
         contentView = nil
     }
 
-    /// A SwiftUI global rect (top-left origin, in the window's content) on the screen.
-    private static func screenRect(_ rect: CGRect, in window: NSWindow) -> CGRect {
-        let height = window.contentView?.bounds.height ?? window.frame.height
-        return window.convertToScreen(NSRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height))
+    /// Watches the trigger's list: its scrolling (the clip view's bounds),
+    /// its height (the clip view's frame, when the composer grows) and its
+    /// content (the document's frame, when a row above grows or the lazy
+    /// stack measures rows again).
+    private func follow(_ trigger: (anchor: MenuAnchor, lost: (@MainActor () -> Void)?)?) {
+        watches.forEach(NotificationCenter.default.removeObserver)
+        watches = []
+        following = trigger
+        guard let clip = trigger?.anchor.scrollView?.contentView else { return }
+        let watched: [(NSView?, Notification.Name)] = [
+            (clip, NSView.boundsDidChangeNotification), (clip, NSView.frameDidChangeNotification),
+            (clip.documentView, NSView.frameDidChangeNotification),
+        ]
+        watches = watched.compactMap { view, name in
+            view.map { view in
+                NotificationCenter.default.addObserver(forName: name, object: view, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.triggerMoved() }
+                }
+            }
+        }
+    }
+
+    private func triggerMoved() {
+        guard let following, size != .zero else { return }
+        if following.anchor.isVisible {
+            anchor = following.anchor.screenRect
+        } else if let lost = following.lost {
+            return lost()
+        } else if let list = following.anchor.scrollView?.contentView, let window = list.window,
+                  following.anchor.screenRect != .zero {
+            // Out of sight but still there: pinned to the list's edge it left by.
+            let visible = window.convertToScreen(list.convert(list.bounds, to: nil))
+            var pinned = following.anchor.screenRect
+            pinned.origin.y = min(max(pinned.minY, visible.minY), visible.maxY - pinned.height)
+            anchor = pinned
+        } else {
+            return
+        }
+        place(size)
     }
 
     private func place(_ size: CGSize) {
+        self.size = size
         let content = CGSize(width: size.width - Self.margin * 2, height: size.height - Self.margin * 2)
         let bounds = (host?.frame ?? screen?.visibleFrame ?? .zero).insetBy(dx: 8, dy: 8)
         var x = anchor.minX

@@ -774,8 +774,10 @@ struct MessageRow: View, Equatable {
         .rowChrome(row, lit: flashed || openThread, hovering: hovering)
         // At the row's top-right, overlapping its top edge as Slack's does;
         // never over the text, which stops well short of the right edge.
+        // Kept while this row's menu is open: its More is what the menu
+        // follows as the list moves.
         .overlay(alignment: .topTrailing) {
-            if hovering, !menuOpen, !retryable, !uploading, !message.deleted {
+            if (hovering && !menuOpen) || presenter?.source == AnyHashable(row.id), !retryable, !uploading, !message.deleted {
                 HoverBar(row: row, composer: composer)
                     .padding(.trailing, 20)
                     .offset(y: -10)

@@ -224,7 +224,7 @@ struct SidebarHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                presenter?.show(entries, at: anchor.rect, source: "you")
+                presenter?.show(entries, at: anchor, source: "you")
             } label: {
                 HStack(spacing: 9) {
                     Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 30, hue: model.myHue)

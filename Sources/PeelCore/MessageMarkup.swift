@@ -62,15 +62,7 @@ public enum MessageMarkup {
         // "\r\n" is one Character, so it would never split on "\n".
         let lines = (text.contains("\r\n") ? text.replacingOccurrences(of: "\r\n", with: "\n") : text)
             .split(separator: "\n", omittingEmptySubsequences: false)
-        // The first line from each index on that could close a fence, found
-        // once, so a message of many unclosed fences is not searched again
-        // from every one of them.
-        var closers = [Int?](repeating: nil, count: lines.count + 1)
-        if text.contains(fence) {
-            for index in lines.indices.reversed() {
-                closers[index] = lines[index].trimmingCharacters(in: .whitespaces).hasSuffix(fence) ? index : closers[index + 1]
-            }
-        }
+        let closers = closers(lines, in: text)
         var blocks: [Block] = []
         var paragraph: [Substring] = []
         var quote: [Substring] = []
@@ -118,6 +110,40 @@ public enum MessageMarkup {
         }
         flush()
         return blocks
+    }
+
+    /// For each line, the first from it on that could close a fence, found
+    /// once, so a message of many unclosed fences is not searched again
+    /// from every one of them.
+    private static func closers(_ lines: [Substring], in text: String) -> [Int?] {
+        var closers = [Int?](repeating: nil, count: lines.count + 1)
+        if text.contains(fence) {
+            for index in lines.indices.reversed() {
+                closers[index] = lines[index].trimmingCharacters(in: .whitespaces).hasSuffix(fence) ? index : closers[index + 1]
+            }
+        }
+        return closers
+    }
+
+    /// Where `text` is code as `blocks` and `spans` read it: each fenced
+    /// block, its fences included, and each inline code span. For text
+    /// with no "\r\n" (`blocks` reads those as "\n").
+    static func codeRanges(_ text: String) -> [Range<String.Index>] {
+        guard text.contains("`") else { return [] }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let closers = closers(lines, in: text)
+        var ranges: [Range<String.Index>] = []
+        var index = 0
+        while index < lines.count {
+            if lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(fence),
+               let (_, end) = fencedCode(lines, from: index, closer: closers[index + 1]) {
+                ranges.append(lines[index].startIndex..<lines[end].endIndex)
+                index = end + 1
+            } else {
+                index += 1
+            }
+        }
+        return ranges + spans(in: text).filter { $0.kind == .code }.map(\.range)
     }
 
     /// "## Notes": one to six "#", a space, then text.
@@ -204,7 +230,7 @@ public enum MessageMarkup {
     private static let code = try? NSRegularExpression(pattern: #"(?<!`)(`+)([^`\n]+)\1(?!`)"#)
     /// `[text](address)`: text on one line with no brackets, an address with
     /// no space or parentheses.
-    private static let namedLink = try? NSRegularExpression(pattern: #"\[([^\[\]\n]++)\]\(([^\s()]++)\)"#)
+    static let namedLink = try? NSRegularExpression(pattern: #"\[([^\[\]\n]++)\]\(([^\s()]++)\)"#)
     /// What marks emphasis: **bold**, __bold__, *italic*, _italic_, ~~struck~~.
     private static let emphasisMarks: Set<Character> = ["*", "_", "~"]
 

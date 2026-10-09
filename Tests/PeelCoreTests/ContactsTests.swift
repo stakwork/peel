@@ -79,28 +79,62 @@ struct ContactCodeTests {
     }
 }
 
+/// A tribe link on a tribes server.
+private let tribe = "sphinx.chat://?action=tribeV2&pubkey=\(key2G)&host=tribes.example.com"
+
 /// Tribe and contact links in message text, for the cards under them.
 struct MessageLinkTests {
-    private let tribe = "sphinx.chat://?action=tribeV2&pubkey=\(key2G)&host=tribes.example.com"
 
     @Test func findsATribeLinkInProseAndMarkdown() {
         let expected = TribeLink(tribe).map(MessageLink.tribe)
         #expect(expected != nil)
-        #expect(MessageLink.first(in: "Join us: \(tribe).") == expected)
-        #expect(MessageLink.first(in: "[our tribe](\(tribe))") == expected)
-        #expect(MessageLink.first(in: "<\(tribe)>") == expected)
-        #expect(MessageLink.first(in: "`\(tribe)`") == expected)
+        #expect(MessageLink.card(in: "Join us: \(tribe).")?.link == expected)
+        #expect(MessageLink.card(in: "[our tribe](\(tribe))")?.link == expected)
+        #expect(MessageLink.card(in: "<\(tribe)>")?.link == expected)
     }
 
     @Test func findsContactInfoBareOrShared() {
-        #expect(MessageLink.first(in: "add me \(info.uppercased())!") == .contact(info: info))
-        #expect(MessageLink.first(in: "sphinx.chat://?action=share_contact&pubKey=\(info)") == .contact(info: info))
-        #expect(MessageLink.first(in: "*\(info)*")?.pubkey == keyG)
+        #expect(MessageLink.card(in: "add me \(info.uppercased())!")?.link == .contact(info: info))
+        #expect(MessageLink.card(in: "sphinx.chat://?action=share_contact&pubKey=\(info)")?.link == .contact(info: info))
+        #expect(MessageLink.card(in: "*\(info)*")?.link.pubkey == keyG)
     }
 
     @Test func takesTheFirstOfSeveral() {
-        #expect(MessageLink.first(in: "\(info) then \(tribe)") == .contact(info: info))
-        #expect(MessageLink.first(in: "\(tribe) then \(info)")?.pubkey == key2G)
+        #expect(MessageLink.card(in: "\(info) then \(tribe)")?.link == .contact(info: info))
+        #expect(MessageLink.card(in: "\(tribe) then \(info)")?.link.pubkey == key2G)
+    }
+
+    @Test func neverCardsCode() {
+        #expect(MessageLink.card(in: "`\(tribe)`") == nil)
+        #expect(MessageLink.card(in: "try ``\(info)`` here") == nil)
+        #expect(MessageLink.card(in: "```\n\(tribe)\n```") == nil)
+        // A link after the code is still read.
+        #expect(MessageLink.card(in: "`\(tribe)` or \(info)")?.text == "`\(tribe)` or")
+    }
+
+    /// The text shown above the card: the link it stands for taken out.
+    @Test(arguments: [
+        ("\(tribe)", ""),
+        ("  <\(tribe)>.  ", ""),
+        ("Join us: \(tribe)", "Join us:"),
+        ("Join us: <\(tribe)>.", "Join us:"),
+        ("Come and \(tribe)!", "Come and!"),
+        ("\(tribe) is where we talk", "is where we talk"),
+        ("See \(tribe) today", "See today"),
+        ("See (\(tribe)) today", "See today"),
+        ("(see \(tribe))", "(see)"),
+        ("**\(tribe)** first", "first"),
+        ("Hi all\n\(tribe)\nsee you there", "Hi all\nsee you there"),
+        ("Links:\n- \(tribe)\n- https://example.com", "Links:\n- https://example.com"),
+        ("> \(tribe)", ""),
+        ("Join [here](\(tribe)) now", "Join here now"),
+        ("[**our tribe**](\(tribe))", "**our tribe**"),
+        ("\(tribe) and \(tribe)", "and \(tribe)"),
+        ("Join \(tribe)\r\nthanks", "Join\nthanks"),
+        ("add me: \(info)", "add me:"),
+    ])
+    func showsTheTextWithoutItsLink(_ text: String, _ shown: String) {
+        #expect(MessageLink.card(in: text)?.text == shown)
     }
 
     @Test(arguments: [
@@ -117,11 +151,11 @@ struct MessageLinkTests {
         "\(keyG)_\(key3G)_12_3",
     ])
     func ignoresAnythingElse(_ text: String) {
-        #expect(MessageLink.first(in: text) == nil)
+        #expect(MessageLink.card(in: text)?.link == nil)
     }
 
     @Test func leavesInvitesOut() {
-        #expect(MessageLink.first(in: inviteLink()) == nil)
+        #expect(MessageLink.card(in: inviteLink())?.link == nil)
     }
 
     @Test func aLinkCardKeepsOnlyTheLink() throws {

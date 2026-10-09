@@ -189,7 +189,8 @@ struct FieldChrome: ViewModifier {
 /// A text input, 32 tall and the width of the form, its text on the left
 /// (`axis: .vertical` for a textarea of three lines or more). `systemImage`
 /// goes before the text, as a search's magnifying glass; `focusOnAppear`
-/// takes the keyboard when it appears. The label is its accessibility name
+/// takes the keyboard when it appears, and each change of `focusRequest`
+/// takes it again. The label is its accessibility name
 /// (and, in a `FormItem`, the text above it); the prompt is its placeholder.
 struct FormTextField: View {
     let label: String
@@ -200,6 +201,7 @@ struct FormTextField: View {
     var systemImage: String?
     var monospaced = false
     var focusOnAppear = false
+    var focusRequest = 0
 
     @FocusState private var focused: Bool
     @State private var hovering = false
@@ -227,6 +229,7 @@ struct FormTextField: View {
         .focusesOnClick($focused)
         .onHover { hovering = $0 }
         .onAppear { if focusOnAppear { focused = true } }
+        .onChange(of: focusRequest) { focused = true }
     }
 }
 

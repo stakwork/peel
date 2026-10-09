@@ -14,7 +14,8 @@ final class ChatSearch {
     /// What the matches are for, as searched: its terms are lit.
     private(set) var query: MessageQuery?
     private(set) var matches: [Message] = []
-    /// The match shown, 0 the newest.
+    /// The match selected in the list (the arrows move it, Return goes to
+    /// it), 0 the newest.
     private(set) var current: Int?
     private(set) var searching = false
     private(set) var failed = false
@@ -25,12 +26,14 @@ final class ChatSearch {
         self.chat = chat
     }
 
-    /// "3 of 12", "No matches", or nothing while there is nothing to count.
+    /// "3 of 12", "12 matches", "No matches", or nothing while there is
+    /// nothing to count.
     var status: String? {
         if failed { return "Could not search" }
         guard query != nil, !searching || !matches.isEmpty else { return nil }
-        guard let current else { return matches.isEmpty ? "No matches" : nil }
+        if matches.isEmpty { return "No matches" }
         let total = matches.count >= Self.limit ? "\(Self.limit.formatted())+" : matches.count.formatted()
+        guard let current else { return matches.count == 1 ? "1 match" : "\(total) matches" }
         return "\(current + 1) of \(total)"
     }
 
@@ -49,12 +52,20 @@ final class ChatSearch {
         searching = false
     }
 
-    fileprivate func show(_ index: Int) {
+    fileprivate func select(_ index: Int) {
         current = index
     }
 }
 
 extension AppModel {
+    /// Edit › Find (⌘F): the open chat's search, or the sidebar's when no
+    /// chat is open (Threads, Mentions, Payments, the account). Not while
+    /// locked or the image viewer is up.
+    func find() {
+        guard phase == .ready, viewer == nil else { return }
+        if let chat = selectedChat { openSearch(in: chat) } else { sidebarSearchFocus += 1 }
+    }
+
     /// Opens the chat's search, or puts the cursor back in it.
     func openSearch(in chat: String) {
         if let search, search.chat == chat {
@@ -64,12 +75,15 @@ extension AppModel {
         }
     }
 
+    /// Closes the search; the cursor goes back to the chat's composer.
     func closeSearch() {
+        guard let chat = search?.chat else { return }
         search = nil
+        composerFocus[.chat(chat), default: 0] += 1
     }
 
     /// Searches the chat's stored messages for what `search` holds now, off
-    /// the main actor, and shows the newest match.
+    /// the main actor, and lists the matches, none selected yet.
     func runSearch(_ search: ChatSearch) async {
         let text = search.text
         let query = MessageQuery(text)
@@ -80,19 +94,19 @@ extension AppModel {
             // Typed on, or closed, meanwhile: a newer search has this.
             guard !Task.isCancelled, self.search === search, search.text == text else { return }
             search.found(matches, for: query)
-            if !matches.isEmpty { showSearchMatch(0) }
         } catch {
             guard !Task.isCancelled, self.search === search else { return }
             search.found([], for: query, failed: true)
         }
     }
 
-    /// To an older match (`by` 1, up the chat) or a newer one (-1), stopping
-    /// at either end.
-    func stepSearch(by step: Int) {
+    /// Selects the next match down the list (`by` 1, older) or up it (-1,
+    /// newer), stopping at either end; `show` also goes to it.
+    func stepSearch(by step: Int, show: Bool = true) {
         guard let search else { return }
         let next = (search.current ?? -1) + step
-        if search.matches.indices.contains(next) { showSearchMatch(next) }
+        guard search.matches.indices.contains(next) else { return }
+        if show { showSearchMatch(next) } else { search.select(next) }
     }
 
     /// Scrolls to a match and lights it, through the jump quotes and
@@ -101,7 +115,7 @@ extension AppModel {
     func showSearchMatch(_ index: Int) {
         guard let search, search.matches.indices.contains(index) else { return }
         let message = search.matches[index]
-        search.show(index)
+        search.select(index)
         let inThread = message.threadUUID != nil
         focus(on: message, inThread: inThread)
         // Opening a thread puts the cursor in its composer; the arrows
@@ -115,8 +129,8 @@ extension AppModel {
     }
 }
 
-/// The chat header's search button: ⌘F opens the search, the button opens
-/// or closes it.
+/// The chat header's search button opens or closes the search (⌘F, Edit ›
+/// Find, opens it: `AppModel.find`).
 struct SearchHeaderButton: View {
     @Environment(AppModel.self) private var model
     let chat: String
@@ -126,14 +140,14 @@ struct SearchHeaderButton: View {
         HeaderButton(systemImage: "magnifyingglass", help: "Search in chat (⌘F)", lit: open) {
             if open { model.closeSearch() } else { model.openSearch(in: chat) }
         }
-        .hiddenShortcut(KeyboardShortcut("f", modifiers: .command)) { model.openSearch(in: chat) }
     }
 }
 
-/// Under the chat's header while searching: the field, "3 of 12", older
-/// and newer, and close, then the matches. Words match in any order,
-/// "quoted" as a phrase, and `from:name` narrows to a sender. ↑ or Return
-/// goes to an older match, ↓ or Shift-Return to a newer one, Escape closes.
+/// Under the chat's header while searching: the field, "3 of 12", newer
+/// and older, and close, then the matches. Words match in any order,
+/// "quoted" as a phrase, and `from:name` narrows to a sender. From the
+/// field, ↓ and ↑ move through the list and Return goes to the selected
+/// match (the first when none is); Escape closes.
 struct ChatSearchBar: View {
     @Environment(AppModel.self) private var model
     @Bindable var search: ChatSearch
@@ -160,7 +174,7 @@ struct ChatSearchBar: View {
             guard !Task.isCancelled else { return }
             await model.runSearch(search)
         }
-        .onAppear { focused = true }
+        .task { focused = true }
         .onChange(of: search.focusRequests) { focused = true }
         #if os(macOS)
         .onChange(of: focused, initial: true) { _, focused in
@@ -198,12 +212,12 @@ struct ChatSearchBar: View {
             .onTapGesture { focused = true }
             .onHover { hovering = $0 }
             HStack(spacing: 2) {
-                HeaderButton(systemImage: "chevron.up", help: "Older match (↑)") { model.stepSearch(by: 1) }
-                    .disabled(!search.canStepOlder)
-                    .opacity(search.canStepOlder ? 1 : 0.4)
-                HeaderButton(systemImage: "chevron.down", help: "Newer match (↓)") { model.stepSearch(by: -1) }
+                HeaderButton(systemImage: "chevron.up", help: "Newer match") { model.stepSearch(by: -1) }
                     .disabled(!search.canStepNewer)
                     .opacity(search.canStepNewer ? 1 : 0.4)
+                HeaderButton(systemImage: "chevron.down", help: "Older match") { model.stepSearch(by: 1) }
+                    .disabled(!search.canStepOlder)
+                    .opacity(search.canStepOlder ? 1 : 0.4)
                 HeaderButton(systemImage: "xmark", help: "Close search (Esc)") { model.closeSearch() }
             }
         }
@@ -228,9 +242,11 @@ struct ChatSearchBar: View {
             let modifiers = event.modifierFlags.intersection([.command, .option, .control])
             guard modifiers.isEmpty else { return false }
             switch event.keyCode {
-            case 126: model.stepSearch(by: 1) // up
-            case 125: model.stepSearch(by: -1) // down
-            case 36, 76: model.stepSearch(by: event.modifierFlags.contains(.shift) ? -1 : 1) // Return, Enter
+            case 125: model.stepSearch(by: 1, show: false) // down
+            case 126: model.stepSearch(by: -1, show: false) // up
+            case 36, 76: // Return, Enter
+                guard let search = model.search, !search.matches.isEmpty else { return false }
+                model.showSearchMatch(search.current ?? 0)
             case 53: model.closeSearch() // Escape
             default: return false
             }

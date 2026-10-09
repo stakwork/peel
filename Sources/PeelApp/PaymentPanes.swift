@@ -128,6 +128,15 @@ extension AttentionNote where Actions == EmptyView {
     }
 }
 
+extension TimelineSchedule where Self == ExplicitTimelineSchedule<[Date]> {
+    /// Draws now and again at `date`. `.now` comes first because, before
+    /// its first entry, a timeline draws with that entry's date: a lone
+    /// future date reads as already passed.
+    static func redrawing(at date: Date?) -> Self {
+        .explicit([.now] + (date.map { [$0] } ?? []))
+    }
+}
+
 /// Its content, told whether the invoice has expired, and drawn again the
 /// moment it does, so Pay goes then rather than at the next redraw.
 struct UntilExpiry<Content: View>: View {
@@ -135,7 +144,7 @@ struct UntilExpiry<Content: View>: View {
     @ViewBuilder let content: (_ expired: Bool) -> Content
 
     var body: some View {
-        TimelineView(.explicit(invoice.expiresAt.map { [$0] } ?? [])) { context in
+        TimelineView(.redrawing(at: invoice.expiresAt)) { context in
             content(invoice.isExpired(now: context.date))
         }
     }

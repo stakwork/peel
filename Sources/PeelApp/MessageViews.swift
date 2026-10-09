@@ -672,7 +672,7 @@ struct MessageRow: View, Equatable {
         // A pending send becomes retryable after a timeout, with no change to
         // the row itself, so those rows redraw once when it passes.
         if message.delivery == .pending {
-            TimelineView(.explicit([message.date.addingTimeInterval(Message.confirmationTimeout + 0.5)])) { context in
+            TimelineView(.redrawing(at: message.date.addingTimeInterval(Message.confirmationTimeout + 0.5))) { context in
                 content(now: context.date)
             }
         } else {

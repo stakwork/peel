@@ -39,8 +39,10 @@ extension Engine {
     /// by (the tribe alias in a tribe), with its photo and a Hive link's
     /// key. Memory only; never store or log it.
     public func callTicket(for link: CallLink, in chat: String?) async throws -> CallTicket {
-        let name = chat.flatMap { tribes[$0] } != nil || alias.isEmpty ? tribeAlias(alias) : alias
-        return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: myPhotoURL)
+        let tribe = chat.flatMap { tribes[$0] }
+        let name = tribe?.sentAlias(account: alias) ?? (alias.isEmpty ? tribeAlias(alias) : alias)
+        let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
+        return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
     }
 
     /// Who is on a call, from the call server's presence feed, until the

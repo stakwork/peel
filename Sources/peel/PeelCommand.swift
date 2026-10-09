@@ -63,7 +63,12 @@ struct PeelCommand {
           tribe-edit <pubkey>         change a tribe this account owns; options left out stay as they are
                                       (both take --name (edit), --description, --image <https url>,
                                       --price-per-message, --price-to-join, --escrow in sats,
-                                      --escrow-hours, --private <yes|no>, --unlisted <yes|no>)
+                                      --escrow-hours, --private <yes|no>, --unlisted <yes|no>,
+                                      --tags <Bitcoin,Tech,...> ("" for none))
+          tribe-info <pubkey>         a tribe's details from its registry: owner, created, members, prices, tags
+          tribe-alias <pubkey> [name|-] [https photo url|-]
+                                      how this account appears in one tribe ("-" for the account's own;
+                                      left out keeps what is set)
           tribe-delete <pubkey>       delete a tribe this account owns
           tribe-approve <pubkey> <request-uuid | member-pubkey [alias]>
           tribe-reject <pubkey> <request-uuid | member-pubkey [alias]>

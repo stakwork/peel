@@ -89,14 +89,15 @@ extension Engine {
     /// alias, and at the end of each history sync.
     func checkMentionsIfNeeded() {
         guard mentionScan == nil, !restoring, !alias.isEmpty else { return }
-        let mark = MentionScan(sent: tribeAlias(alias), echoed: echoedAliases)
+        let own = tribes.values.filter { !$0.left && $0.myAlias != nil }.map { ($0.pubkey, $0.sentAlias(account: alias)) }
+        let mark = MentionScan(sent: tribeAlias(alias), echoed: echoedAliases, own: Dictionary(own) { $1 })
         let last = (try? storage.value(for: .mentionScan)).flatMap(MentionScan.init(stored:))
         guard mark != last, let stored = mark.stored else { return }
         let chats = mark.chats(changedSince: last)
         let storage = storage
         mentionScan = Task.detached { [weak self] in
             let result = Result {
-                try storage.rescanMentions(sent: mark.sent, echoed: mark.echoed, in: chats)
+                try storage.rescanMentions(sent: mark.sent, echoed: mark.echoed, own: mark.own ?? [:], in: chats)
                 try storage.set(stored, for: .mentionScan)
             }
             await self?.mentionScanEnded(result)

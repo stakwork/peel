@@ -376,6 +376,13 @@ final class AppModel {
     /// You, as the sidebar, Account, member lists and rows name you.
     var me: Sender { Sender(alias: myAlias, photoURL: myPhotoURL, hue: myHue, isMe: true) }
 
+    /// You in `chat`: as you appear in a tribe where you set your own name
+    /// or photo (`Tribe.myAlias`, `myPhotoURL`), else `me`.
+    func me(in chat: String) -> Sender {
+        guard let tribe = tribes[chat] else { return me }
+        return Sender(alias: tribe.myAlias ?? myAlias, photoURL: tribe.myPhotoURL ?? myPhotoURL, hue: myHue, isMe: true)
+    }
+
     /// You and the contact, as a chat's rows name them.
     func people(in chat: String) -> ChatRow.People {
         people(in: chat, conversation: conversations.first { $0.chat == chat })
@@ -384,7 +391,7 @@ final class AppModel {
     /// The same, with the chat's conversation already found.
     func people(in chat: String, conversation: Conversation?) -> ChatRow.People {
         ChatRow.People(
-            me: me,
+            me: me(in: chat),
             contact: Sender(alias: conversation?.name, photoURL: conversation?.photoURL,
                             hue: hue(pubkey: chat, alias: nil, inTribe: false))
         )
@@ -755,6 +762,15 @@ final class AppModel {
         try await signedIn().updateTribe(pubkey, settings: settings)
     }
 
+    func tribeDetails(_ pubkey: String) async throws -> TribeDetails {
+        try await signedIn().tribeDetails(pubkey)
+    }
+
+    /// How you appear in one tribe; nil or empty is your account's own.
+    func setTribeIdentity(_ pubkey: String, alias: String?, photoURL: String?) async throws {
+        try await signedIn().setTribeIdentity(pubkey, alias: alias, photoURL: photoURL)
+    }
+
     func deleteTribe(_ pubkey: String) async throws {
         try await signedIn().deleteTribe(pubkey)
         if selectedChat == pubkey { destination = nil }
@@ -810,7 +826,10 @@ final class AppModel {
             (tribeMentionAliases, plainMentionAliases) = ([:], [])
             return
         }
-        tribeMentionAliases = echoedAliases.mapValues { ownMentionAliases(name: name, echoed: $0) }
+        let own = tribes.values.filter { $0.myAlias != nil }.map(\.pubkey)
+        tribeMentionAliases = Dictionary(uniqueKeysWithValues: Set(echoedAliases.keys).union(own).map { chat in
+            (chat, ownMentionAliases(name: tribes[chat]?.myAlias ?? name, echoed: echoedAliases[chat] ?? []))
+        })
         plainMentionAliases = ownMentionAliases(name: name, echoed: [])
     }
 
@@ -823,7 +842,7 @@ final class AppModel {
     /// Someone in a boost, a thread or a call: you, or who they said they
     /// are (a tribe member by alias, or the contact, whose key is the chat's).
     func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool) -> Sender {
-        fromMe ? me : Sender(alias: alias, photoURL: photoURL, hue: hue(pubkey: chat, alias: alias, inTribe: inTribe))
+        fromMe ? me(in: chat) : Sender(alias: alias, photoURL: photoURL, hue: hue(pubkey: chat, alias: alias, inTribe: inTribe))
     }
 
     func hue(of member: TribeMember) -> PersonHue {
@@ -1044,7 +1063,12 @@ final class AppModel {
     private func observeTribes(_ storage: Storage) async {
         do {
             for try await records in storage.tribesByPubkey() where !Task.isCancelled {
+                let before = selectedChat.map(me(in:))
+                let renamed = records.mapValues(\.myAlias) != tribes.mapValues(\.myAlias)
                 tribes = records
+                if renamed { refreshMentionAliases() }
+                // Your own rows in the open tribe show how you appear there.
+                if selectedChat.map(me(in:)) != before { rebuildRows() }
             }
         } catch {
             if !Task.isCancelled { notice = PeelError.readable(error) }

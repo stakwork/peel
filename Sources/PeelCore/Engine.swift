@@ -504,7 +504,6 @@ public actor Engine {
         var droppedIndex = self.droppedIndex
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
-        let sentAlias = tribeAlias(alias)
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
@@ -520,7 +519,7 @@ public actor Engine {
             }
             if let tribe = knownTribes[message.chat],
                let changed = Self.membership(
-                   after: message, in: tribe, sent: sentAlias, echoed: echoedAliases[message.chat] ?? [],
+                   after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
                    replaying: restoring) {
                 knownTribes[tribe.pubkey] = changed
                 commit.tribes.append(changed)
@@ -550,7 +549,7 @@ public actor Engine {
                     replaces = decoded.fields?.originalUuid
                     if let echoed = message.senderAlias { echoedAliases[message.chat, default: []].insert(echoed) }
                 } else if MessageType.content.contains(message.type), let content = message.content {
-                    let aliases = ownTribeAliases(sent: sentAlias, echoed: echoedAliases[message.chat] ?? [])
+                    let aliases = ownTribeAliases(sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [])
                     message.mentionsMe = mentions(content, aliases: aliases)
                 }
             }

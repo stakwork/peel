@@ -193,8 +193,8 @@ extension Engine {
         let offset = try offsetShared(in: pubkey, type: type)
         var body = try TimeZoneOffset.setting(offset, in: body)
         if tribe != nil, offset != nil { recheckIfStale(pubkey) }
-        let myAlias = tribe == nil ? alias : tribeAlias(alias)
-        var photoURL = photoURL
+        let myAlias = tribe?.sentAlias(account: alias) ?? alias
+        var photoURL = tribe?.sentPhoto(account: photoURL) ?? photoURL
         if amountMsat != nil { (body, photoURL) = try Self.fittingPayment(body, alias: myAlias, photoURL: photoURL) }
         let sats = amountMsat ?? tribe?.messageAmountMsat(type: type) ?? 0
         let time = clock.next()

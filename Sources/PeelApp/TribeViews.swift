@@ -2,7 +2,7 @@ import SwiftUI
 import PeelCore
 
 /// Create a tribe, or edit one this account owns: what the Mac app's tribe
-/// form sets, in the form system's sections (Basics, Pricing, Access).
+/// form sets, in the form system's sections (Basics with the tags, Pricing, Access).
 /// Prices in sats and the escrow time in hours, as people think of them;
 /// the engine sends msat and milliseconds. Editing also holds Delete, its
 /// own section, confirmed in place.
@@ -23,6 +23,8 @@ struct TribeSettingsForm: View {
     @State private var escrowHours = ""
     @State private var isPrivate = false
     @State private var unlisted = false
+    /// Turned on, in the order they were.
+    @State private var tags: [String] = []
     /// What the tribe had, so a field left as it was shown sends exactly that.
     @State private var original: TribeSettings?
     /// What is on its way: Create or Save (which spins), or Delete.
@@ -110,6 +112,11 @@ struct TribeSettingsForm: View {
                     uploading: $uploadingImage
                 )
             }
+            FormItem(label: "Tags", helper: "The tribes directory lists tribes by tag.") {
+                // The official apps' set, and any other the tribe already has.
+                TagChips(tags: TribeSettings.tagChoices + (original?.tags ?? []).filter { !TribeSettings.tagChoices.contains($0) },
+                         selection: $tags)
+            }
         }
         FormSection("Pricing") {
             // Two to a line.
@@ -154,6 +161,7 @@ struct TribeSettingsForm: View {
             escrowHours = Sats.text(settings.escrowMillis, unit: Sats.millisecondsPerHour)
             isPrivate = settings.isPrivate
             unlisted = settings.unlisted
+            tags = settings.tags
             original = settings
         } catch {
             problem = "Could not load the tribe: \(PeelError.readable(error))"
@@ -180,7 +188,7 @@ struct TribeSettingsForm: View {
             priceToJoinMsat: try value(priceToJoin, unit: Sats.msatPerSat, \.priceToJoinMsat, .priceToJoin),
             escrowMsat: try value(escrow, unit: Sats.msatPerSat, \.escrowMsat, .escrow),
             escrowMillis: try value(escrowHours, unit: Sats.millisecondsPerHour, \.escrowMillis, .escrowHours),
-            isPrivate: isPrivate, unlisted: unlisted
+            isPrivate: isPrivate, unlisted: unlisted, tags: tags
         )
     }
 

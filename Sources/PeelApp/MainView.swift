@@ -203,10 +203,29 @@ struct Detail: View {
 struct DetailHeader<Leading: View, Trailing: View>: View {
     let title: String
     var subtitle: String?
+    /// A click on the icon or the title (a tribe's details).
+    var onTitle: (() -> Void)?
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
+        HStack(spacing: 10) {
+            if let onTitle {
+                Button(action: onTitle) { identity }
+                    .buttonStyle(.plain)
+                    .help("Details")
+            } else {
+                identity
+            }
+            Spacer()
+            trailing
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 60)
+        .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+    }
+
+    private var identity: some View {
         HStack(spacing: 10) {
             leading
             VStack(alignment: .leading, spacing: 1) {
@@ -221,12 +240,8 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
                         .lineLimit(1)
                 }
             }
-            Spacer()
-            trailing
         }
-        .padding(.horizontal, 20)
-        .frame(height: 60)
-        .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+        .contentShape(Rectangle())
     }
 }
 

@@ -36,15 +36,19 @@ extension Storage {
 
     /// Checks the stored tribe text messages and attachments from others (in
     /// `chats`, or every tribe) for a mention of this account, by the aliases
-    /// that name it in that tribe, and sets `mentionsMe` to match. In chunks,
-    /// each its own transaction, so other writes go on alongside.
+    /// that name it in that tribe (`own` names the alias sent in a tribe
+    /// that has its own, else `sent`), and sets `mentionsMe` to match. In
+    /// chunks, each its own transaction, so other writes go on alongside.
     func rescanMentions(
-        sent: String, echoed: [String: Set<String>], in chats: Set<String>? = nil, chunk: Int = 500
+        sent: String, echoed: [String: Set<String>], own: [String: String] = [:], in chats: Set<String>? = nil,
+        chunk: Int = 500
     ) throws {
         if chats?.isEmpty == true { return }
         let only = chats.map { "AND chat IN (\(databaseQuestionMarks(count: $0.count)))" } ?? ""
         let plain: Set = [sent]
-        let aliasesByChat = echoed.mapValues { ownTribeAliases(sent: sent, echoed: $0) }
+        let aliasesByChat = Dictionary(uniqueKeysWithValues: Set(echoed.keys).union(own.keys).map { chat in
+            (chat, ownTribeAliases(sent: own[chat] ?? sent, echoed: echoed[chat] ?? []))
+        })
         try inChunks(of: chunk) { db, after in
             try Row.fetchAll(
                 db, sql: """

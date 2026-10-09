@@ -69,7 +69,9 @@ struct Composer: View {
     @ViewBuilder private var field: some View {
         #if os(macOS)
         ComposerField(
-            text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0, submit: send,
+            text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
+            // A chat opened from the sidebar's keys leaves them there.
+            focusesOnAppear: !(model.sidebarHasKeys && composer.thread == nil), submit: send,
             mention: $mention, insertion: insertion, suggestionKey: handle,
             escape: { withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) } },
             attach: { model.attach($0, to: composer) },

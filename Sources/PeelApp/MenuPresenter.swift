@@ -64,7 +64,8 @@ final class MenuPresenter {
     @ObservationIgnored private var resign: (any NSObjectProtocol)?
     #endif
 
-    private var anythingOpen: Bool {
+    /// A menu or a panel is up; it has the keys.
+    var anythingOpen: Bool {
         #if os(macOS)
         open != nil || panelID != nil
         #else

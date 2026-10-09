@@ -156,7 +156,7 @@ is a short plan. Update the status and the journal when you finish something.
   `focus(on:inThread:)`, the highlight in message text);
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
+  shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt, arrow keys and Return while it has focus,
   `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),

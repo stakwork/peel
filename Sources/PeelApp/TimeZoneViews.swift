@@ -166,6 +166,8 @@ struct DirectHeader: View {
                 }
             }
         }
+        // Details opened for one contact never open over the next.
+        .onChange(of: conversation.chat) { showingInfo = false }
         // Asked again when a message of theirs brings an offset.
         .task(id: model.timeline.messages.last { !$0.fromMe && $0.senderTZ != nil }?.id) {
             local = await model.localTime(of: conversation.chat, member: nil)
@@ -177,6 +179,8 @@ struct DirectHeader: View {
 
 /// A chat's details: who or what it is, and whether your time zone goes
 /// with what you send there. A public tribe has no switch: it never gets it.
+/// A contact's also show since when, their full key with its QR code, and
+/// Remove, confirmed in place.
 struct ChatInfoPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -188,6 +192,9 @@ struct ChatInfoPanel: View {
     @State private var offset: String?
     @State private var chatZone: String?
     @State private var problem: String?
+    /// A contact's oldest message here: since when they are a contact.
+    @State private var since: Date?
+    @State private var removeProblem: String?
 
     private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
     private var target: String { conversation.title }
@@ -195,7 +202,7 @@ struct ChatInfoPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(spacing: 6) {
-                ConversationIcon(conversation: conversation, size: 56)
+                ConversationIcon(conversation: conversation, size: conversation.isTribe ? 56 : 64)
                 Text(conversation.name)
                     .font(Theme.font(16, .bold))
                     .lineLimit(1)
@@ -204,10 +211,11 @@ struct ChatInfoPanel: View {
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
                 } else {
-                    Text(Formatting.shortKey(conversation.chat))
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(Theme.secondaryText)
-                        .help(conversation.chat)
+                    if let since {
+                        Text("Contact since \(since.formatted(.dateTime.day().month(.wide).year()))")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                     TimelineView(.everyMinute) { context in
                         if let line = model.localTimeLine(local, at: context.date) {
                             Text(line)
@@ -219,6 +227,9 @@ struct ChatInfoPanel: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            if !conversation.isTribe {
+                ContactKeyCard(pubkey: conversation.chat)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel("Time zone")
                 if isPublicTribe {
@@ -243,10 +254,37 @@ struct ChatInfoPanel: View {
                     }
                 }
             }
+            if !conversation.isTribe {
+                VStack(alignment: .leading, spacing: 8) {
+                    FormDestructiveSection(
+                        trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove"
+                    ) { await remove() }
+                    if let removeProblem {
+                        ProblemText(removeProblem)
+                    }
+                }
+            }
         }
         .padding(16)
         .frame(width: 300)
         .task(id: conversation.chat) { await load() }
+    }
+
+    /// What Remove deletes, and what it leaves, in plain words.
+    private var removeExplanation: String {
+        let name = conversation.name
+        let call = model.call?.chat == conversation.chat ? " Your call here ends." : ""
+        return "Deletes your chat with \(name) from this Mac and from your server: messages, files and requests. "
+            + "Payment history stays. \(name) is not told and keeps their copy; you can add each other again.\(call)"
+    }
+
+    private func remove() async {
+        removeProblem = nil
+        do {
+            try await model.deleteContact(conversation.chat)
+        } catch {
+            removeProblem = Formatting.sentence(error)
+        }
     }
 
     private func note(_ text: String) -> some View {
@@ -274,7 +312,10 @@ struct ChatInfoPanel: View {
         sharing = (try? await engine.timeZoneSharing(in: chat)) ?? true
         offset = (try? await engine.timeZone(for: chat)).map { TimeZoneOffset.format($0) }
         chatZone = try? engine.storage.chatTimeZone(chat)?.identifier
-        if !conversation.isTribe { local = await model.localTime(of: chat, member: nil) }
+        if !conversation.isTribe {
+            since = (try? engine.storage.firstMessageTime(in: chat)).flatMap { $0 }.map(Date.init(millisecondsSince1970:))
+            local = await model.localTime(of: chat, member: nil)
+        }
     }
 
     private func set(_ on: Bool) async {
@@ -287,5 +328,36 @@ struct ChatInfoPanel: View {
             sharing = was
             problem = "Could not change it: \(PeelError.readable(error))"
         }
+    }
+}
+
+
+/// A contact's full public key, which names them everywhere: its QR code,
+/// the key itself (selectable), and copying either.
+private struct ContactKeyCard: View {
+    let pubkey: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                QRCodeTile(text: pubkey, label: "QR code of their public key", size: 92, inset: 6)
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionLabel("Public key")
+                    Text(pubkey)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.text)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 8) {
+                CopyButton("Copy key", text: pubkey)
+                CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
+            }
+            .buttonStyle(FormButtonStyle())
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .formCard()
     }
 }

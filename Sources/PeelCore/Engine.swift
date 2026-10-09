@@ -588,15 +588,7 @@ public actor Engine {
 
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let applied = try storage.apply(commit)
-        // A deleted attachment's decrypted copy goes with it.
-        let deletedFiles = applied.purged.compactMap { body -> URL? in
-            guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
-                  let key = fields.mediaKey else { return nil }
-            return media.cached(muid: token.muid, key: key)
-        }
-        if !deletedFiles.isEmpty {
-            Task.detached { for file in deletedFiles { try? FileManager.default.removeItem(at: file) } }
-        }
+        removeFiles(of: applied.purged)
         state = newState
         if records != nil { unrecordedPayments = [] }
         if money.awaitingPayments, let page { money.paymentPage = page }
@@ -684,6 +676,35 @@ public actor Engine {
             }
         }
         return followUps
+    }
+
+    /// Forgets a contact, the one state change no core call makes: the
+    /// core's `c/` entry goes as the official apps drop it
+    /// (`deleteContactFromState`), with the chat's rows in the same
+    /// transaction (`Storage.deleteContact`), then the attachments' files.
+    func forgetContact(_ pubkey: String) throws {
+        defer { wakeWaiters() }
+        var newState = state
+        newState["c/\(pubkey)"] = nil
+        let contacts = try Self.contacts(in: newState)
+        let attachments = try storage.deleteContact(pubkey)
+        state = newState
+        contactsByChildIndex = Self.index(contacts)
+        readsSentSinceGetReads.remove(pubkey)
+        removeFiles(of: attachments.compactMap(\.body), outgoing: attachments.compactMap(\.id))
+    }
+
+    /// Removes the decrypted copies of attachments by their bodies, and
+    /// uploads waiting in the outbox by message id, off the actor.
+    private func removeFiles(of bodies: [String], outgoing ids: [Int64] = []) {
+        let files = bodies.compactMap { body -> URL? in
+            guard let fields = AttachmentFields.decode(body), let token = fields.mediaToken.flatMap(MediaToken.init),
+                  let key = fields.mediaKey else { return nil }
+            return media.cached(muid: token.muid, key: key)
+        } + ids.map(media.outgoing)
+        if !files.isEmpty {
+            Task.detached { for file in files { try? FileManager.default.removeItem(at: file) } }
+        }
     }
 
     typealias Publish = (topic: String, payload: Data)

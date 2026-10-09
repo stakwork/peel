@@ -686,6 +686,26 @@ extension Storage {
         try pool.write { db in try Self.upsertContact(db, pubkey: pubkey, alias: alias, photoURL: nil) }
     }
 
+    /// Removes a contact and their chat in one transaction: the core's
+    /// `c/` entry, every message in the chat, the contact row, the read
+    /// marker and mute level, and the time zone switch. The money tables
+    /// (payments, invoices, pings, invites) stay: they are history, and
+    /// what is still settling keeps its record. Returns the removed
+    /// attachments, so their files can go too.
+    func deleteContact(_ pubkey: String) throws -> [Message] {
+        try pool.write { db in
+            let attachments = try Message.fetchAll(
+                db, sql: "SELECT * FROM message WHERE chat = ? AND type = ?", arguments: [pubkey, MessageType.attachment]
+            )
+            try CoreStateRow.deleteAll(db, keys: ["c/\(pubkey)"])
+            for table in ["message", "chatState", "chatTimeZone"] {
+                try db.execute(sql: "DELETE FROM \(table) WHERE chat = ?", arguments: [pubkey])
+            }
+            try db.execute(sql: "DELETE FROM contact WHERE pubkey = ?", arguments: [pubkey])
+            return attachments
+        }
+    }
+
     func save(_ tribes: [Tribe]) throws {
         guard !tribes.isEmpty else { return }
         try pool.write { db in

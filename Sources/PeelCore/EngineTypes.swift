@@ -150,6 +150,8 @@ extension Engine {
         case requestExpired
         case notAPaymentRequest
         case notAContact
+        /// Sats with this contact the server has not settled or refused.
+        case paymentWithContactPending
         case emptyName
         case photoNotHTTPS
         case unreadableTribeHost(String)
@@ -250,6 +252,8 @@ extension Engine {
             case .requestExpired: "this request's invoice has expired; ask again with a new one"
             case .notAPaymentRequest: "that is not someone's payment request"
             case .notAContact: "that is not a contact"
+            case .paymentWithContactPending:
+                "a payment with this contact is still on its way; remove them once it has gone through or failed"
             case .emptyName: "the name cannot be empty"
             case .photoNotHTTPS: "a photo must be an https URL"
             case .unreadableTribeHost(let host): "unreadable tribes host \(host)"

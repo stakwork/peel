@@ -139,13 +139,13 @@ struct AddContactForm: View {
             if sentTo != nil {
                 FormFooter(problem: nil) {
                     Button("Done", action: done)
-                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .buttonStyle(.peel(.primary))
                         .keyboardShortcut(.defaultAction)
                 }
             } else {
                 FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
                     Button("Cancel", action: done)
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
                     // Over the threshold the 5 sats are confirmed in place, as any payment.
                     PayButton(
@@ -394,7 +394,7 @@ struct InviteForm: View {
                     }
                     Spacer()
                     Button("Cancel", action: done)
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
                     PayButton(verb: "Invite", totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
                         guard let msat = Sats.msat(amount) else { return .refused("Enter an amount in sats.") }
@@ -478,7 +478,7 @@ private struct InviteDetail: View {
                         .help("Share the invite")
                         .accessibilityLabel("Share the invite")
                 }
-                .buttonStyle(FormButtonStyle())
+                .buttonStyle(.peel(.outline))
             }
             .padding(.top, 12)
         }
@@ -501,7 +501,7 @@ private struct InviteDetail: View {
                         }
                     }
                 }
-                .buttonStyle(FormButtonStyle())
+                .buttonStyle(.peel(.outline))
             }
             if invite.isPending {
                 InlineConfirm(
@@ -517,7 +517,7 @@ private struct InviteDetail: View {
                 }
                 .disabled(invite.status == .sending)
             } else {
-                Button("Done", action: done).buttonStyle(FormButtonStyle())
+                Button("Done", action: done).buttonStyle(.peel(.outline))
             }
         }
     }

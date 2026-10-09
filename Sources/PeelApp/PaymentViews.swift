@@ -69,7 +69,7 @@ struct PayButton: View {
                     .fixedSize()
                     .buttonProgress(attempt.working)
             }
-            .buttonStyle(FormButtonStyle(kind: .primary, fill: attempt.armed == nil ? nil : Theme.attention))
+            .buttonStyle(.peel(.primary, fill: attempt.armed == nil ? nil : Theme.attention))
             .keyboardShortcut(isDefault ? .defaultAction : nil)
             // Not off while it sends, so it keeps its fill under the spinner;
             // `PaymentAttempt.run` ignores a second click.
@@ -162,7 +162,7 @@ struct SendSatsPanel: View {
             case .send:
                 FormFooter(problem: attempt.problem) {
                     Button("Cancel", action: done)
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
                     PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
                         guard let amountMsat else { return .refused("Enter an amount.") }
@@ -172,7 +172,7 @@ struct SendSatsPanel: View {
             case .request:
                 FormFooter(problem: requestProblem) {
                     Button("Cancel", action: done)
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(requesting)
                     Button {
                         // Not twice: the button stays on, keeping its fill under the spinner.
@@ -188,7 +188,7 @@ struct SendSatsPanel: View {
                             }
                         }
                     } label: { Text("Request").buttonProgress(requesting) }
-                    .buttonStyle(FormButtonStyle(kind: .primary))
+                    .buttonStyle(.peel(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(amountMsat == nil)
                 }

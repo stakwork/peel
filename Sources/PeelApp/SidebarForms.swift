@@ -61,7 +61,7 @@ struct JoinTribeForm: View {
         } footer: {
             FormFooter(problem: problem ?? attempt.problem) {
                 Button("Cancel", action: done)
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
                     .disabled(attempt.working)
                 if let info {
                     // Over the threshold the price is confirmed in place, as any payment.
@@ -71,7 +71,7 @@ struct JoinTribeForm: View {
                     )
                 } else {
                     Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(lookingUp) }
-                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .buttonStyle(.peel(.primary))
                         .keyboardShortcut(.defaultAction)
                         // Not off while it looks up, so it keeps its fill under
                         // the spinner; `lookUp` ignores a second click.

@@ -38,11 +38,11 @@ struct FormPopover<Content: View, Footer: View>: View {
         .frame(width: compact ? 320 : 372)
         // The shadow on the box alone: on the whole view every label would cast one.
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                 .fill(Theme.sidebar)
                 .shadow(color: Theme.popoverShadow, radius: 10, y: 4)
         }
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.formEdge))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous).strokeBorder(Theme.formEdge))
         .endsEditingOnClick()
         .preference(key: DrawsOwnPanelBox.self, value: true)
     }
@@ -75,11 +75,11 @@ extension View {
     /// tribe, a contact), the Account screen's sections and boxes.
     func formCard() -> some View {
         background {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(Theme.menu)
                 .shadow(color: Theme.sectionShadow, radius: 1, y: 1)
         }
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.formEdge))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.formEdge))
     }
 }
 
@@ -166,7 +166,7 @@ struct FieldChrome: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
         let border = problem ? Theme.attention : focused ? Theme.accent
             : hovering && isEnabled ? Theme.inputBorderHover : Theme.inputBorder
         let ring = problem ? Theme.problemRing : focused ? Theme.focusRing : nil
@@ -176,7 +176,7 @@ struct FieldChrome: ViewModifier {
             // The ring is the 3 pt band just outside the border.
             .background {
                 if let ring {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control + 3, style: .continuous)
                         .strokeBorder(ring, lineWidth: 3)
                         .padding(-3)
                 }
@@ -318,67 +318,6 @@ private struct FormSwitchStyle: ToggleStyle {
     }
 }
 
-/// The form's buttons, shadcn's variants, 32 high as the inputs: `primary`
-/// (shadcn's default) commits, filled with the button colour (`fill` in its
-/// place, orange for a payment waiting for its second click); `secondary`
-/// is a quiet fill; `outline` (the default here) is bordered; `ghost` shows
-/// only under the pointer; `destructive` is filled red, for the second
-/// click of an in-place confirm. Half opacity while off.
-struct FormButtonStyle: ButtonStyle {
-    enum Kind { case primary, secondary, outline, ghost, destructive }
-    var kind: Kind = .outline
-    var fill: Color?
-
-    func makeBody(configuration: Configuration) -> some View {
-        FormButton(configuration: configuration, kind: kind, fill: fill)
-    }
-
-    private struct FormButton: View {
-        let configuration: Configuration
-        let kind: Kind
-        let fill: Color?
-        @Environment(\.isEnabled) private var isEnabled
-        @State private var hovering = false
-
-        var body: some View {
-            let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-            let filled = kind == .primary || kind == .destructive
-            configuration.label
-                .font(Theme.font(13, .medium))
-                .foregroundStyle(filled ? Theme.buttonText : Theme.text)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(background, in: shape)
-                .overlay { if kind == .outline { shape.strokeBorder(Theme.inputBorder) } }
-                .brightness(brightness)
-                .opacity(isEnabled ? 1 : 0.5)
-                .contentShape(shape)
-                .onHover { hovering = $0 }
-                .environment(\.filledButton, filled)
-        }
-
-        private var active: Bool { isEnabled && (hovering || configuration.isPressed) }
-
-        /// A filled button a touch brighter under the pointer, darker pressed.
-        private var brightness: Double {
-            guard kind != .outline, kind != .ghost, isEnabled else { return 0 }
-            return configuration.isPressed ? -0.07 : hovering ? 0.05 : 0
-        }
-
-        private var background: Color {
-            switch kind {
-            case .primary: fill ?? Theme.button
-            case .destructive: Theme.destructive
-            case .secondary: Theme.hover
-            case .outline: active ? Theme.hover : Theme.fieldFill
-            case .ghost: active ? Theme.hover : .clear
-            }
-        }
-    }
-}
-
-
 /// The destructive action as its own section at the end of a form: one red
 /// row, which turns into the question with Cancel and the action (and, with
 /// `explanation`, what it does above them), confirmed in place, never in a
@@ -416,7 +355,7 @@ struct InlineConfirm<Trigger: View>: View {
     var prompt: String?
     var explanation: String?
     let confirm: String
-    var confirmKind = FormButtonStyle.Kind.destructive
+    var confirmKind = PeelButton.Variant.destructive
     var style = Style.buttons
     var alignment = HorizontalAlignment.leading
     var confirming: Binding<Bool>?
@@ -442,7 +381,7 @@ struct InlineConfirm<Trigger: View>: View {
     @ViewBuilder private var triggerButton: some View {
         let open = { isAsking.wrappedValue = true }
         switch style {
-        case .buttons: Button(action: open) { trigger }.buttonStyle(FormButtonStyle())
+        case .buttons: Button(action: open) { trigger }.buttonStyle(.peel(.outline))
         case .text: Button(action: open) { trigger }.buttonStyle(.plain)
         case .section: SectionTrigger(action: open) { trigger }
         }
@@ -499,13 +438,13 @@ struct InlineConfirm<Trigger: View>: View {
     }
 
     /// Form buttons, or text in the colour of what the button does.
-    @ViewBuilder private func styled(_ button: some View, _ kind: FormButtonStyle.Kind) -> some View {
+    @ViewBuilder private func styled(_ button: some View, _ kind: PeelButton.Variant) -> some View {
         if style == .text {
             button
                 .buttonStyle(.plain)
                 .foregroundStyle(kind == .destructive ? Theme.destructive : kind == .primary ? Theme.accent : Theme.secondaryText)
         } else {
-            button.buttonStyle(FormButtonStyle(kind: kind))
+            button.buttonStyle(.peel(kind))
         }
     }
 }
@@ -513,7 +452,7 @@ struct InlineConfirm<Trigger: View>: View {
 extension InlineConfirm where Trigger == Text {
     init(
         trigger: String, prompt: String? = nil, explanation: String? = nil, confirm: String,
-        confirmKind: FormButtonStyle.Kind = .destructive, style: Style = .buttons,
+        confirmKind: PeelButton.Variant = .destructive, style: Style = .buttons,
         alignment: HorizontalAlignment = .leading, confirming: Binding<Bool>? = nil,
         action: @escaping () async -> Void
     ) {
@@ -537,7 +476,7 @@ private struct SectionTrigger<Label: View>: View {
                 .foregroundStyle(Theme.destructive)
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

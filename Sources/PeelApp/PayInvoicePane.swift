@@ -89,10 +89,10 @@ struct PayInvoicePane: View {
                     blocker(problem, invoice: invoice, paidAt: checked.paidAt, sent: sent)
                 }
                 HStack(spacing: 8) {
-                    Button("Cancel", action: close).buttonStyle(FormButtonStyle())
+                    Button("Cancel", action: close).buttonStyle(.peel(.outline))
                     Spacer()
                     Button("Pay") {}
-                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .buttonStyle(.peel(.primary))
                         .disabled(true)
                 }
             }
@@ -112,7 +112,7 @@ struct PayInvoicePane: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             FormFooter(problem: attempt.problem) {
-                Button("Cancel", action: close).buttonStyle(FormButtonStyle())
+                Button("Cancel", action: close).buttonStyle(.peel(.outline))
                 PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                     await model.payInvoice(invoice, confirmedMsat: confirmed)
                 }, sent: {}, namesAmount: false)
@@ -194,7 +194,7 @@ struct PayInvoicePane: View {
                 HStack {
                     if let item { LinkButton("Show the payment") { show(item.id) } }
                     Spacer()
-                    Button("Done", action: close).buttonStyle(FormButtonStyle())
+                    Button("Done", action: close).buttonStyle(.peel(.outline))
                 }
             }
         case .unsettled:

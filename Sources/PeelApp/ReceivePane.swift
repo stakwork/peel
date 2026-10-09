@@ -54,7 +54,7 @@ struct ReceivePane: View {
                 Text(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice")
                     .buttonProgress(working)
             }
-            .buttonStyle(FormButtonStyle(kind: .primary))
+            .buttonStyle(.peel(.primary))
             .keyboardShortcut(.defaultAction)
             // Not off while it runs, so it keeps its fill under the spinner;
             // `create` ignores a second click.
@@ -83,9 +83,9 @@ struct ReceivePane: View {
                 .textSelection(.enabled)
             HStack(spacing: 8) {
                 CopyButton("Copy invoice", text: invoice.bolt11)
-                    .buttonStyle(FormButtonStyle(kind: .primary))
+                    .buttonStyle(.peel(.primary))
                 CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(invoice.bolt11.uppercased()) }
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
             }
         }
         .frame(maxWidth: .infinity)
@@ -120,13 +120,13 @@ struct ReceivePane: View {
         ])
         HStack(spacing: 8) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
-                .buttonStyle(FormButtonStyle())
+                .buttonStyle(.peel(.outline))
             Button {
                 self.invoice = nil
                 amount = ""
                 memo = ""
             } label: { Text("New invoice").frame(maxWidth: .infinity) }
-                .buttonStyle(FormButtonStyle(kind: .primary))
+                .buttonStyle(.peel(.primary))
         }
     }
 }

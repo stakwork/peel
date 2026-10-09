@@ -5,7 +5,7 @@
 **Built and merged:** boosts and in-chat payments (#16), one-tap boost (#24),
 unsettled payments and boost once (#26), the Payments screen, invoices,
 requests in chat and paid attachments (#27), sats received shown and
-notified (branch `feat/money-received`). Storage is at v13.
+notified (#51). Storage was at v13 then; it is at v18 now.
 
 **Open:**
 - Payment templates, not started: the scope list at the start of the journal.
@@ -201,7 +201,7 @@ messages (7, 8, 9) and templates.
 - `MessageType.directPayment = 5`, `boost = 29`. Direct payments will show
   in a chat's timeline with the payment row's UI; boosts with a
   `replyUuid` never do.
-- Storage migration `v11` (main was at v8 then, and is at v13 now; `phase3/attachments` adds v9
+- Storage migration `v11` (main was at v8 then, and is at v18 now; `phase3/attachments` adds v9
   and `phase3/chat-ui` v10, message delete): `message.amountMsat`, the
   amount a payment or boost row stands for, filled from the copies already
   stored.

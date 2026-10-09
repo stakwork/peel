@@ -144,6 +144,9 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Connections" |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
+What is left for parity with the official Mac app, and what to do before
+the agent: [reviews/2026-10-09-parity-sweep.md](reviews/2026-10-09-parity-sweep.md) (2026-10-09).
+
 ### Refactor plan status
 
 From [reviews/2026-10-08-architecture.md](reviews/2026-10-08-architecture.md),

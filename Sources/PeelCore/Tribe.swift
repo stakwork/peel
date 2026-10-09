@@ -106,7 +106,7 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
 
     /// A shareable link in the official apps' format.
     public var link: String? {
-        host.map { "sphinx.chat://?action=tribeV2&pubkey=\(pubkey)&host=\($0)" }
+        host.map { TribeLink.text(pubkey: pubkey, host: $0) }
     }
 }
 
@@ -222,7 +222,7 @@ public struct TribeSettings: Codable, Sendable, Equatable {
 }
 
 /// A tribe link: `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`.
-public struct TribeLink: Sendable, Equatable {
+public struct TribeLink: Sendable, Hashable {
     public let pubkey: String
     public let host: String
 
@@ -236,6 +236,13 @@ public struct TribeLink: Sendable, Equatable {
               let host = value("host"), TribeLink.isPlainHost(host) else { return nil }
         self.pubkey = pubkey.lowercased()
         self.host = host
+    }
+
+    /// The link as the official apps write it, and nothing else it came with.
+    public var text: String { Self.text(pubkey: pubkey, host: host) }
+
+    static func text(pubkey: String, host: String) -> String {
+        "sphinx.chat://?action=tribeV2&pubkey=\(pubkey)&host=\(host)"
     }
 
     /// `name[:port]` and nothing else, so a link cannot smuggle a path or
@@ -282,9 +289,12 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     /// (`TribeSettings.fields(over:)`).
     public let appURL: String?
     public let secondBrainURL: String?
+    /// How many members the tribes server counts; shown, never trusted.
+    public let memberCount: Int64?
 
     enum CodingKeys: String, CodingKey {
         case pubkey, name, img, deleted, unlisted, pin
+        case memberCount = "member_count"
         case appURL = "app_url"
         case secondBrainURL = "second_brain_url"
         case routeHint = "route_hint"

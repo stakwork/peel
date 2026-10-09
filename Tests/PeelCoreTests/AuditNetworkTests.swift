@@ -69,6 +69,20 @@ struct AuditTransportTests {
         await #expect(throws: PeelError.self) { try await engine.joinTribe(link: link, agreedJoinMsat: 1000) }
     }
 
+    /// A link card reads a tribe only from the account's own tribes host:
+    /// a host named in a message is never asked (nil comes back before any
+    /// request; asking would fail here, offline).
+    @Test(arguments: [nil, "tribes.example.com"])
+    func aLinkCardNeverAsksAHostFromTheMessage(own: String?) async throws {
+        let profile = TempProfile()
+        let engine = try engine(profile, server: "mqtts://lsp.example.com:8883")
+        if let own { try await engine.setTribeHost(own) }
+        for host in ["evil.example.com", "127.0.0.1:9"] {
+            let link = try #require(TribeLink("sphinx.chat://?action=tribeV2&pubkey=\(keyG)&host=\(host)"))
+            #expect(try await engine.linkedTribeInfo(link) == nil)
+        }
+    }
+
     /// T1.7 (fixed): the memes server's redirects stay on https, keep the
     /// bearer token only on the host it was sent to, and reach plain http on
     /// this machine only from a memes server on this machine.

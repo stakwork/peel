@@ -101,6 +101,53 @@ public enum ContactCode: Sendable, Equatable {
     }
 }
 
+/// A tribe or contact link in a message's text, drawn as a card under it.
+/// Only what the Join and Add forms take (`ContactCode.read`): a `tribeV2`
+/// link, a `share_contact` link, or bare contact info. Invites are left
+/// out: they are a code for a new account, not someone to add.
+public enum MessageLink: Sendable, Equatable {
+    case tribe(TribeLink)
+    /// `pubkey_lsp_scid`, checked and in lower case.
+    case contact(info: String)
+
+    /// The tribe's or the person's key.
+    public var pubkey: String {
+        switch self {
+        case .tribe(let link): link.pubkey
+        case .contact(let info): String(info.prefix(66))
+        }
+    }
+
+    /// The first in `text`, if any. Each word is read on its own, from a
+    /// `sphinx.chat://` in it (so a Markdown `[label](link)` counts) and
+    /// without the brackets, quotes and punctuation around it.
+    public static func first(in text: String) -> MessageLink? {
+        for word in text.split(whereSeparator: \.isWhitespace) {
+            let candidate: Substring
+            if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive) {
+                candidate = word[scheme.lowerBound...]
+            } else if word.count >= minContactInfoLength, word.contains("_") {
+                candidate = word
+            } else {
+                continue
+            }
+            let trimmed = candidate.trimmingCharacters(in: around)
+            switch try? ContactCode.read(trimmed) {
+            case .tribe(let link): return .tribe(link)
+            case .contact(let info): return .contact(info: info)
+            default: continue
+            }
+        }
+        return nil
+    }
+
+    /// Two 66-character keys, two underscores and a channel id.
+    private static let minContactInfoLength = 66 * 2 + 3
+    /// What wraps a link in prose or Markdown: never part of one, which
+    /// ends in a host, a port or a channel id.
+    private static let around = CharacterSet(charactersIn: "()[]<>{}\"'`*_.,;:!?")
+}
+
 extension Character {
     var isASCIIDigit: Bool { isASCII && isNumber }
 }

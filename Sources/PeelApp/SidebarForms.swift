@@ -6,11 +6,19 @@ struct JoinTribeForm: View {
     @Environment(AppModel.self) private var model
     let done: () -> Void
 
-    @State private var link = ""
+    @State private var link: String
     @State private var info: TribeInfo?
     @State private var lookingUp = false
     @State private var problem: String?
     @State private var attempt = PaymentAttempt()
+
+    /// Opened from a link card: the link filled in, and the tribe when the
+    /// card has read it. Joining reads it again and pays only this price.
+    init(link: String = "", info: TribeInfo? = nil, done: @escaping () -> Void) {
+        _link = State(initialValue: link)
+        _info = State(initialValue: info)
+        self.done = done
+    }
 
     var body: some View {
         // The compact form (one field): the link, then the tribe.

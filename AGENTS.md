@@ -101,8 +101,9 @@ is a short plan. Update the status and the journal when you finish something.
     `Web.Transfer`'s failures in its own words
   - `MediaStore.swift` — the profile's `media/` cache and outbox
   - `Contacts.swift` — `ContactCode` (what a scanned or pasted code is:
-    contact info, a `share_contact` link, an invite, a tribe link; strict)
-    and `InviteRecord` (invites made here; the core keeps none)
+    contact info, a `share_contact` link, an invite, a tribe link; strict),
+    `MessageLink` (the first tribe or contact link in a message's text, for
+    its card) and `InviteRecord` (invites made here; the core keeps none)
   - `QRImage.swift` — QR codes in a picture (Vision), size- and
     pixel-limited
   - `Files.swift` — `ImageDecoding`, `ProfilePhoto`, `TooLarge` (bytes over
@@ -156,7 +157,8 @@ is a short plan. Update the status and the journal when you finish something.
   (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `ThreadViews`, `AttachmentViews`,
+  for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
+  cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
   `ComposerField` (the message field: Return sends, `@` mentions),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
@@ -326,7 +328,8 @@ parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
 times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, what a typed address opens (a page, a
 search, or refused), the per-profile store identifier and a tribe's app and second brain addresses; contacts
-(`ContactCode` parsing and its refusals, QR codes read from a picture,
+(`ContactCode` parsing and its refusals, tribe and contact links found
+in message text (`MessageLink`), QR codes read from a picture,
 invite statuses by tag, an invite marked used by the key exchange that
 names it, new contacts, the invite and add refusals, the price to join
 held to the balance and the threshold); refusals as typed

@@ -104,7 +104,7 @@ struct AddContactForm: View {
     @Environment(AppModel.self) private var model
     let done: () -> Void
 
-    @State private var text = ""
+    @State private var text: String
     /// What `text` is, read once per change.
     @State private var code: ContactCode?
     @State private var codeProblem: String?
@@ -117,6 +117,12 @@ struct AddContactForm: View {
     @State private var problem: String?
     /// The key exchange went out to this name.
     @State private var sentTo: String?
+
+    /// Opened from a link card: the contact info filled in.
+    init(code: String = "", done: @escaping () -> Void) {
+        _text = State(initialValue: code)
+        self.done = done
+    }
 
     var body: some View {
         FormPopover(title: "Add contact", close: done) {

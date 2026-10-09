@@ -79,6 +79,57 @@ struct ContactCodeTests {
     }
 }
 
+/// Tribe and contact links in message text, for the cards under them.
+struct MessageLinkTests {
+    private let tribe = "sphinx.chat://?action=tribeV2&pubkey=\(key2G)&host=tribes.example.com"
+
+    @Test func findsATribeLinkInProseAndMarkdown() {
+        let expected = TribeLink(tribe).map(MessageLink.tribe)
+        #expect(expected != nil)
+        #expect(MessageLink.first(in: "Join us: \(tribe).") == expected)
+        #expect(MessageLink.first(in: "[our tribe](\(tribe))") == expected)
+        #expect(MessageLink.first(in: "<\(tribe)>") == expected)
+        #expect(MessageLink.first(in: "`\(tribe)`") == expected)
+    }
+
+    @Test func findsContactInfoBareOrShared() {
+        #expect(MessageLink.first(in: "add me \(info.uppercased())!") == .contact(info: info))
+        #expect(MessageLink.first(in: "sphinx.chat://?action=share_contact&pubKey=\(info)") == .contact(info: info))
+        #expect(MessageLink.first(in: "*\(info)*")?.pubkey == keyG)
+    }
+
+    @Test func takesTheFirstOfSeveral() {
+        #expect(MessageLink.first(in: "\(info) then \(tribe)") == .contact(info: info))
+        #expect(MessageLink.first(in: "\(tribe) then \(info)")?.pubkey == key2G)
+    }
+
+    @Test(arguments: [
+        "",
+        "hello https://example.com",
+        "a bare key \(keyG) has no route",
+        "sphinx.chat://?action=share_contact&pubKey=\(keyG)",
+        "sphinx.chat://?action=tribeV2&pubkey=\(key2G)&host=evil.example.com/path",
+        "sphinx.chat://?action=tribeV2&pubkey=\(key2G)&host=user@evil.example.com",
+        "sphinx.chat://?action=tribeV2&pubkey=nothex&host=tribes.example.com",
+        "sphinx.chat://?action=tribe&uuid=abc&host=tribes.example.com",
+        "sphinx.chat://?action=invoice&invoice=lnbc1",
+        "https://sphinx.chat/?action=tribeV2&pubkey=\(key2G)&host=tribes.example.com",
+        "\(keyG)_\(key3G)_12_3",
+    ])
+    func ignoresAnythingElse(_ text: String) {
+        #expect(MessageLink.first(in: text) == nil)
+    }
+
+    @Test func leavesInvitesOut() {
+        #expect(MessageLink.first(in: inviteLink()) == nil)
+    }
+
+    @Test func aLinkCardKeepsOnlyTheLink() throws {
+        let link = try #require(TribeLink(tribe + "&extra=1"))
+        #expect(link.text == tribe)
+    }
+}
+
 struct QRImageTests {
     private func png(_ text: String) throws -> Data {
         let filter = CIFilter.qrCodeGenerator()

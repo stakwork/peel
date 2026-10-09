@@ -1,0 +1,242 @@
+import SwiftUI
+import PeelCore
+
+/// What a tribe linked in a message is, as its card last read it
+/// (`AppModel.loadLinkedTribe`).
+enum LinkedTribe: Equatable {
+    case loading
+    case loaded(TribeInfo)
+    /// Listed on a host other than the account's own: not read.
+    case elsewhere
+    case deleted
+    case failed(String)
+
+    var info: TribeInfo? {
+        if case .loaded(let info) = self { info } else { nil }
+    }
+
+    var problem: String? {
+        if case .failed(let problem) = self { problem } else { nil }
+    }
+}
+
+/// A tribe link in a message: the tribe's image, name, description, members
+/// and price when the account's own tribes host lists it, and Join through
+/// the Join form (its lookup, its price and its confirmation), or Open for a
+/// tribe this account is in.
+struct TribeLinkCard: View {
+    @Environment(AppModel.self) private var model
+    let link: TribeLink
+    @State private var joining = false
+
+    var body: some View {
+        let known = model.tribes[link.pubkey]
+        let read = model.linkedTribes[link]
+        let info = read?.info
+        let name = info?.name.trimmed.nilIfEmpty ?? known?.name?.trimmed.nilIfEmpty
+        let member = known.map { !$0.left && ($0.status == .active || $0.status == .pending) } ?? false
+        let deleted = read == .deleted || known?.status == .deleted
+        LinkCardLayout(
+            title: name ?? (read == nil || read == .loading ? "Loading tribe" : "Tribe on \(link.host)"),
+            detail: detail(read, info: info, known: known, deleted: deleted),
+            detailLines: 2,
+            placeholder: name == nil && (read == nil || read == .loading),
+            faded: deleted
+        ) {
+            if let name {
+                TribeIcon(name: name, url: info?.img ?? known?.photoURL, pubkey: link.pubkey, size: linkCardIconSize)
+            } else {
+                LinkCardGlyph(systemName: "person.3.fill", shape: .roundedSquare)
+            }
+        } facts: {
+            facts(read, info: info, known: known, member: member, deleted: deleted)
+        } action: {
+            if member {
+                Button("Open") { model.destination = .chat(link.pubkey) }
+                    .buttonStyle(GhostButtonStyle())
+                    .help("Open this tribe")
+            } else if !deleted {
+                Button("Join") { joining = true }
+                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .help(info == nil ? "Look up this tribe, then join" : "See the price, then join")
+                    .peelPopover(isPresented: $joining) {
+                        JoinTribeForm(link: link.text, info: info) { joining = false }
+                    }
+            }
+        }
+        .accessibilityLabel("Tribe link: \(name ?? link.host)")
+        .task(id: link) { await model.loadLinkedTribe(link) }
+    }
+
+    private func detail(_ read: LinkedTribe?, info: TribeInfo?, known: Tribe?, deleted: Bool) -> String? {
+        if deleted { return "This tribe has been deleted." }
+        if let problem = read?.problem { return problem }
+        if let summary = (info?.summary ?? known?.summary)?.trimmed.nilIfEmpty { return summary }
+        if read == .elsewhere, known == nil { return "Listed on another tribes server. Join looks it up there." }
+        return read == nil || read == .loading ? "Reading the tribe from your tribes server" : link.host
+    }
+
+    @ViewBuilder private func facts(
+        _ read: LinkedTribe?, info: TribeInfo?, known: Tribe?, member: Bool, deleted: Bool
+    ) -> some View {
+        let members = info?.memberCount.map { $0 == 1 ? "1 member" : "\($0.formatted()) members" }
+        if deleted {
+            EmptyView()
+        } else if member {
+            HStack(spacing: 5) {
+                if known?.status == .pending {
+                    Text("Asked to join")
+                } else {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.confirmed)
+                    Text("Joined")
+                }
+                if let members { Text("· \(members)") }
+            }
+        } else if let info {
+            Text([members, info.isPrivate == true ? "Private" : nil, "\(Sats.format(msat: info.joinAmountMsat)) to join"]
+                .compactMap { $0 }.joined(separator: " · "))
+        } else if read?.problem != nil {
+            LinkButton("Try again", font: Theme.font(12, .medium)) {
+                Task { await model.loadLinkedTribe(link, again: true) }
+            }
+        } else if read == .elsewhere {
+            Text(Formatting.shortKey(link.pubkey))
+        }
+    }
+}
+
+/// A contact link in a message: who it is when they are already a contact
+/// (their photo and name) and Open chat, else their short key and Add
+/// through the Add contact form (its name field and its 5-sat check).
+struct ContactLinkCard: View {
+    @Environment(AppModel.self) private var model
+    /// `pubkey_lsp_scid`, as `MessageLink` read it.
+    let info: String
+    @State private var adding = false
+
+    var body: some View {
+        let pubkey = String(info.prefix(66))
+        let isMe = pubkey == model.myPubkey
+        let contact = model.conversations.first { $0.chat == pubkey && !$0.isTribe }
+        let name = isMe ? "You" : contact.map(\.name) ?? "New contact"
+        LinkCardLayout(
+            title: name,
+            detail: Formatting.shortKey(pubkey),
+            detailLines: 1,
+            monospacedDetail: true
+        ) {
+            if isMe || contact != nil {
+                Avatar(
+                    name: isMe ? model.myAlias ?? "" : contact?.name ?? "",
+                    url: isMe ? model.myPhotoURL : contact?.photoURL,
+                    size: linkCardIconSize,
+                    hue: model.hue(pubkey: pubkey, alias: nil, inTribe: false)
+                )
+            } else {
+                LinkCardGlyph(systemName: "person.fill.badge.plus", shape: .circle)
+            }
+        } facts: {
+            if isMe {
+                Text("Your contact info")
+            } else if contact != nil {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.confirmed)
+                    Text("In your contacts")
+                }
+            } else {
+                Text("Adding costs \(Sats.format(msat: Engine.keyExchangeMsat))")
+            }
+        } action: {
+            if contact != nil, !isMe {
+                Button("Open chat") { model.destination = .chat(pubkey) }
+                    .buttonStyle(GhostButtonStyle())
+            } else if !isMe {
+                Button("Add") { adding = true }
+                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .help("Add as a contact")
+                    .peelPopover(isPresented: $adding) {
+                        AddContactForm(code: info) { adding = false }
+                    }
+            }
+        }
+        .accessibilityLabel("Contact link: \(name)")
+    }
+}
+
+/// The photo or icon on a link card.
+private let linkCardIconSize: CGFloat = 44
+
+/// The frame both link cards share: an icon, a title, a few lines about it,
+/// and a line of facts with the action beside it. One size whatever is
+/// known yet (the lines are reserved), so nothing moves when a tribe's
+/// details arrive.
+private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
+    let title: String
+    let detail: String?
+    let detailLines: Int
+    /// Still reading: the words are shown as soft bars.
+    var placeholder = false
+    var faded = false
+    var monospacedDetail = false
+    @ViewBuilder let icon: Icon
+    @ViewBuilder let facts: Facts
+    @ViewBuilder let action: Action
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            icon
+                .frame(width: linkCardIconSize, height: linkCardIconSize)
+                .opacity(faded ? 0.5 : 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Theme.font(14, .semibold))
+                    .foregroundStyle(faded ? Theme.secondaryText : Theme.text)
+                    .lineLimit(1)
+                    .redacted(reason: placeholder ? .placeholder : [])
+                Text(detail ?? " ")
+                    .font(monospacedDetail ? Theme.code(12) : Theme.font(12.5))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(detailLines, reservesSpace: true)
+                    .redacted(reason: placeholder ? .placeholder : [])
+                HStack(spacing: 8) {
+                    facts
+                        .font(Theme.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.tertiaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    action
+                }
+                .frame(height: 28)
+                .padding(.top, 3)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: CallCard.width, alignment: .leading)
+        .cardBoxed()
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Someone or a tribe not known yet: a quiet glyph where the photo goes.
+private struct LinkCardGlyph: View {
+    let systemName: String
+    let shape: Avatar.Shape
+
+    var body: some View {
+        let size = linkCardIconSize
+        ZStack {
+            if shape == .circle {
+                Circle().fill(Theme.hover)
+            } else {
+                RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(Theme.hover)
+            }
+            Image(systemName: systemName)
+                .font(.system(size: size * 0.36))
+                .foregroundStyle(Theme.secondaryText)
+        }
+        .frame(width: size, height: size)
+    }
+}

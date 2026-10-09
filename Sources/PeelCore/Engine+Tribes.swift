@@ -11,6 +11,15 @@ extension Engine {
         return try await tribeInfo(link)
     }
 
+    /// What a tribe linked in a message is, for its card: read only from the
+    /// account's own tribes host (`isOwnTribeHost`), never from a host a
+    /// message names. Nil for a link to any other host; Join's own lookup
+    /// asks that one only when the person opens it.
+    public func linkedTribeInfo(_ link: TribeLink) async throws -> TribeInfo? {
+        guard isOwnTribeHost(link.host) else { return nil }
+        return try await tribeInfo(link)
+    }
+
     private func tribeInfo(_ link: TribeLink) async throws -> TribeInfo {
         // Plain http to this Mac is for the local test stack: a link someone
         // sent cannot point an account on a real server at a local service.

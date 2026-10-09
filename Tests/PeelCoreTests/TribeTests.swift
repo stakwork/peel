@@ -155,10 +155,11 @@ struct TribeTests {
         let json = #"""
             {"pubkey":"02ab","name":"Club","description":"About","img":"https://x/p.png","price_per_message":2000,
              "price_to_join":5000,"escrow_amount":1000,"escrow_millis":7200000,"private":true,"unlisted":false,
-             "pin":"uuid1"}
+             "pin":"uuid1","member_count":42}
             """#
         let info = try JSONDecoder().decode(TribeInfo.self, from: Data(json.utf8))
         #expect(info.pin == "uuid1")
+        #expect(info.memberCount == 42)
         #expect(info.settings == TribeSettings(
             name: "Club", summary: "About", photoURL: "https://x/p.png", pricePerMessageMsat: 2000,
             priceToJoinMsat: 5000, escrowMsat: 1000, escrowMillis: 7_200_000, isPrivate: true, unlisted: false

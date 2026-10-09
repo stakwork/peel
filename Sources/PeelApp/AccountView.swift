@@ -20,7 +20,7 @@ struct AccountView: View {
                     SettingsSection("Account") {
                         NameRow()
                         SettingsRow("Balance") {
-                            Text(model.balanceMsat.map { Sats.format(msat: $0) } ?? "Known once connected")
+                            Text(model.balanceText ?? "Known once connected")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }

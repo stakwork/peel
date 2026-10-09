@@ -80,6 +80,40 @@ extension Journeys {
             await bob.close()
         }
 
+        /// Sats to someone offline wait at the server, still in the balance,
+        /// until their app comes online (review F1). Peel counts them as
+        /// spent: a second payment the balance could not also cover is
+        /// refused, so Bob gets exactly one when he comes online.
+        @Test func paymentsToAnOfflineContact() async throws {
+            let (alice, bob) = try await Self.pair()
+            let a0 = try #require(try await alice.settledBalance())
+            await bob.engine.disconnect()
+
+            let sats = a0 * 3 / 4
+            try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
+            // Only the ping has left: the payment itself waits for Bob.
+            #expect(try await alice.balance(settlingAt: a0 - 1) == a0 - 1)
+            #expect(try alice.storage.waitingMsat() == sats * 1000)
+            await #expect(throws: Engine.Failure.insufficientBalance) {
+                try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
+            }
+
+            try await bob.engine.connect()
+            let got = try await eventually("Bob's row for the payment") {
+                try bob.messages(in: alice.pubkey).last { $0.type == MessageType.directPayment }
+            }
+            #expect(got.amountMsat == Int64(sats * 1000))
+            #expect(try await alice.balance(settlingAt: a0 - 1 - sats) == a0 - 1 - sats)
+            try await eventually("Alice's payment to be delivered") {
+                try alice.messages(in: bob.pubkey).last { $0.type == MessageType.directPayment }?.delivery == .delivered
+            }
+            #expect(try alice.storage.waitingMsat() == 0)
+            #expect(try bob.messages(in: alice.pubkey).filter { $0.type == MessageType.directPayment }.count == 1)
+
+            await alice.close()
+            await bob.close()
+        }
+
         /// The local stack's mixer runs `NO_LIGHTNING`, so it never answers
         /// `request_invoice`: Peel says so and records no invoice. (Paying
         /// and receiving invoices needs a regtest CLN behind the mixer.)

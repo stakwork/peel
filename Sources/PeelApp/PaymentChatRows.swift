@@ -20,7 +20,7 @@ struct BoostLine: View {
                 BoostChip(boosts: boosts, chat: chat, inTribe: inTribe)
             }
             if let since = boosts.pendingSince {
-                WaitingForServer(since: since, what: "Boost")
+                WaitingForServer(since: since, what: "Boost", person: inTribe ? nil : chat)
             }
             ForEach(Array(boosts.unsettled.enumerated()), id: \.offset) { _, boost in
                 NotSettled(what: "Boost of \(Sats.format(msat: boost.amountMsat))")
@@ -177,19 +177,26 @@ private struct BoostersPanel: View {
 }
 
 /// "Waiting for the server…" once our payment or boost has gone unconfirmed
-/// past the usual wait. It may have paid, so there is no Discard or Retry
-/// until the engine marks it failed.
+/// past the usual wait; to a person (`person`, a direct message's chat)
+/// "Waiting for Bob to come online", since their server holds the sats
+/// until their app answers. It may have paid, so there is no Discard or
+/// Retry until the engine marks it failed.
 struct WaitingForServer: View {
+    @Environment(AppModel.self) private var model
     let since: Date
     let what: String
+    var person: String?
 
     var body: some View {
         TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
-                Text("\(what) waiting for the server…")
+                Text(person.map { "\(what) waiting for \(model.contactName($0) ?? "them") to come online" }
+                     ?? "\(what) waiting for the server…")
                     .font(Theme.font(11, .medium))
                     .foregroundStyle(Theme.secondaryText)
-                    .help("It may already have paid, so it cannot be sent again until the server says it failed.")
+                    .help(person == nil
+                          ? "It may already have paid, so it cannot be sent again until the server says it failed."
+                          : "Their server holds it until their app comes online. Until then it still counts against your balance.")
             }
         }
     }
@@ -201,11 +208,14 @@ struct WaitingForServer: View {
 struct NotSettled: View {
     let what: String
 
+    /// The same words in Payments' detail.
+    static let explanation = "Not settled: the server passed it on but never confirmed the sats moved; your balance shows whether they did"
+
     var body: some View {
         Text("\(what) not settled")
             .font(Theme.font(11, .medium))
             .foregroundStyle(Theme.secondaryText)
-            .help("The server passed it on but never confirmed the sats moved; your balance shows whether they did.")
+            .help(Self.explanation + ".")
     }
 }
 
@@ -236,7 +246,7 @@ struct PaymentRow: View {
                 }
                 if message.fromMe, !message.deleted {
                     switch message.delivery {
-                    case .pending: WaitingForServer(since: message.date, what: "Payment")
+                    case .pending: WaitingForServer(since: message.date, what: "Payment", person: message.chat)
                     case .unsettled: NotSettled(what: "Payment")
                     case .failed: UndeliveredActions(message: message)
                     case .delivered, nil: EmptyView()

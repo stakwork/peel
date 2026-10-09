@@ -15,6 +15,9 @@ notified (#51). Storage was at v13 then; it is at v18 now.
 - Receive by `make_invoice` or `request_invoice`, and two smaller questions: "Open questions for Tom".
 - Restore loses a DM contact this account only answered: "Boosts and payments in chat", "Open".
 - Sats counted before they settle, and the mixer's missed settle window: "Boost stuck waiting, and Boost once", "Open".
+- The payments correctness review (`../reviews/2026-10-09-payments-correctness.md`):
+  F1, F3 (Peel's half), F6 and F7 fixed ("Payments review, first set");
+  F2, F4, F5, F8, F9, F10, F11 and F3's core half open.
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -132,9 +135,17 @@ tribes server (`forward.rs` `MsgType::Boost`, price and escrow checks;
   (`fetchPayments`), which is where the Payments screen will read them.
 - **Receiving.** A paid message arrives on the account key's topic (child
   index 0) with the HTLC amount and payment hash in the topic; the core
-  peels it against the real HTLC amount and reports `msat` (never more than
-  what arrived) and `paymentHash`. A live "stream" payment is settled by the
-  core (`settle_topic`). History (`fetchMsgsBatch`) returns the same `msat`.
+  reports `msat` and `paymentHash`. **Corrected 2026-10-09 (payments
+  review F3):** this said the core peels against the real HTLC amount and
+  never reports more than arrived. That is true of the core's `master`
+  (`c3ddbb7`, SR-016), not of `bd9e140`, the rev Peel links: it ignores the
+  topic's amount (`handle_msg.rs:27`) and peels with `u64::MAX`
+  (`onion_payment.rs:196`), so `msat` is what the sender wrote in its
+  onion. Peel now caps it at what the server says arrived
+  (`Engine.cappedToArrived`): the topic's amount for a live message, the
+  amount beside each onion for a history page (`StateCodec.paymentAmounts`).
+  A live "stream" payment is settled by the core (`settle_topic`). History
+  (`fetchMsgsBatch`) returns `msat` the same way.
   The JSON `amount` is what the sender declared. The Mac app shows
   `amount ?? msat`. Peel shows `msat` when sats reached this account (or
   left it), and the declared `amount` only for our own sends and for a
@@ -791,8 +802,8 @@ The shared pieces, each in one place:
 - **Amounts are msat end to end.** Sats only at the edges (CLI arguments,
   `Sats.msat`, the views' formatting). Every amount shown or paid for an
   invoice comes from the invoice (`parse_invoice`), never from a message's
-  JSON; a received payment's amount is what arrived (`msat`), never what was
-  declared.
+  JSON; a received payment's amount is what arrived (`msat`, capped at what
+  the server says arrived since 2026-10-09), never what was declared.
 - **One confirmation rule:** `Engine.checkPayment` (balance, then the
   threshold, 100 sats by default, `confirmedMsat` naming the exact amount
   confirmed). Boosts, payments, retries, invoices, requests and purchases all
@@ -1396,3 +1407,77 @@ The second review's 2.1, 2.2 and 4.3's ad-hoc errors.
   storage refusal, not the core's, and stays.
 - **Not changed:** `checkPayment` compares the amount only, while a keysend
   costs the sender 1 sat more (integration finding 1, Tom's call).
+
+## Payments review, first set (2026-10-09, branch `fix/payments-first-set`)
+
+The first fixes from `../reviews/2026-10-09-payments-correctness.md` (its
+Status table has each finding). Done means: a received amount is never
+more than arrived; what waits for someone offline counts as spent and
+says so; key exchange sats and unsettled payments read right in Payments.
+
+- **Real amounts (F3).** `Engine.run` caps every received `msat` at what
+  the server says arrived for that message index (`cappedToArrived`), or
+  drops it when the server named nothing: the topic's last field for a
+  live `msg`/`msgs`/`stream`, the 8 bytes before each payment onion's hash
+  on a `batch` page (`StateCodec.paymentAmounts`, `encode_onion`'s
+  layout). Everything that decides something was paid reads `msat` after
+  that: `answerPurchase` (the key), `isMoneyForMe` and `.moneyReceived`,
+  the type 3 a request counts, an invoice settled on the device, received
+  rows. Our own messages are left alone.
+- **Waiting counts (F1).** `Storage.waitingMsat` sums our PENDING payments,
+  boosts and purchases to people (not tribes; unsettled and failed ones
+  are done); `spendableMsat` is the balance less that, used by
+  `checkPayment` and `invoiceProblem`. The app follows it live
+  (`waitingUpdates`): the header "4,996 sats · ◷ 4,000" (`ViewThatFits`
+  drops the amount where the header is short), "Amounts in sats · 4,000
+  waiting" on Payments, "Balance 4,996 sats · 4,000 waiting" under the pay
+  forms and in Account. A DM payment or boost unconfirmed after 30 s reads
+  "Payment waiting for Bob to come online", "Waiting" in Payments.
+- **Key exchange (F6).** `PaymentItem.Kind.keyExchange`: the other side's
+  type 10 or 11 joins its incoming row by hash, our hashless 5-sat or
+  3-sat row pairs with it by time (3 s) and amount in `pairedByTime`, and
+  the ping folds in as for payments. "Contact added" / "Added you" with the
+  name; the detail says why ("Adding Bob cost 5 sats; their app paid 3
+  sats back"). `Engine.priceToMeetMsat` is the core's `PRICE_TO_MEET`.
+- **Unsettled (F7).** `PaymentItem.Status.unsettled`: "Not settled" in the
+  list, the detail and the CLI, as in the chat.
+- **Tests.** Unit: the batch reader, the topic and the cap; waiting and
+  spendable (pending, unsettled, failed, tribe); key exchange labels and
+  pairing; unsettled status. Integration: journey 1
+  (`Payments.paymentsToAnOfflineContact`) and journey 3's −3 / +1 and
+  labels in `Contacts.keyExchangeByContactInfo`.
+- **Not done here.** F10 is not cheap (no tag or hash to track a join);
+  F2, F4, F5, F8, F9, F11 and F3's core half wait for later PRs. The
+  waiting sum leaves out the key exchange's 5 sats to someone offline
+  (no row) and invoices paid the async way by route hint. The adder's
+  ping stays a keysend when the contact was offline, since it left long
+  before the 5 sats were taken.
+- **Reviews.**
+  - `/security-review`, applied: the cap ran for every core call with an
+    empty map by default; it now runs only on what the server sent
+    (`receive`), and caps messages the core calls ours too, since the
+    core also calls a message ours when its date decrypts with the
+    sender's own shared secret (`dec_ts_matches`), which any sender can
+    arrange. That would have let a spoofed "ours" payment settle an
+    invoice made on the device at its claimed amount. Checked and sound:
+    every received payment reaches Peel through `receive` (the one
+    `Sphinxrs.handle`); `msg`, `msgs` and `stream` all use the mixer's
+    `stream_res_topic`, so the topic's amount is always there for a
+    payment; the page reader checks every length against what is left,
+    refuses trailing bytes, never indexes outside a 1430-byte item, and
+    gives up at once on lengths larger than the page (fuzzed in a test);
+    spendable never goes below 0 and the sum adds only non-negative
+    amounts.
+  - Not applied: a payment row stuck PENDING from before #26 (a live
+    PENDING then stayed pending) now counts as waiting for good, so it
+    holds back that many sats in the gate and shows as waiting. It errs on
+    refusing, never on paying twice; it goes once F5 can resolve such
+    rows. SQLite's `SUM` throws on overflow rather than wrap, so an absurd
+    total refuses the payment with a storage error.
+  - `/code-review`: no correctness finding beyond the above.
+  - `/simplify`, applied: `Engine.priceToMeetMsat` beside
+    `keyExchangeMsat` (was in `Storage`); one key exchange type list for
+    both queries; `waitingMsat` internal (the app follows `waitingUpdates`).
+- **Rendered** on a copy of dev profile `b14c` with rows written into it,
+  offline, deleted afterwards: the chat's waiting and not-settled lines,
+  the header, Payments with key exchange rows and the two details.

@@ -110,6 +110,35 @@ struct MoneyRefusalTests {
         }
     }
 
+    /// Sats to someone still offline stay in the server's balance until
+    /// their app answers (review F1), so a pending payment, boost or
+    /// purchase to a person counts as spent. An unsettled one, a failed one
+    /// and a tribe's do not: the server is done with those.
+    @Test func whatWaitsForSomeoneOfflineCountsAsSpent() async throws {
+        let (engine, storage) = try engine(
+            balanceMsat: 50_000, tribes: [Tribe(pubkey: tribe)],
+            messages: [
+                ownPayment(1, status: .pending, msat: 30_000),
+                ownPayment(2, type: MessageType.boost, status: .pending, msat: 5_000),
+                ownPayment(3, status: .unsettled, msat: 7_000),
+                ownPayment(4, status: .failed, msat: 7_000),
+                ownPayment(5, type: MessageType.boost, chat: tribe, status: .pending, msat: 7_000),
+            ]
+        )
+        #expect(try storage.waitingMsat() == 35_000)
+        #expect(try storage.spendableMsat() == 15_000)
+        await #expect(throws: Engine.Failure.insufficientBalance) {
+            try await engine.sendPayment(to: person, amountMsat: 14_001, text: longNote)
+        }
+        // What is left, less the ping, is allowed.
+        await #expect(throws: Engine.Failure.noteTooLong) {
+            try await engine.sendPayment(to: person, amountMsat: 14_000, text: longNote)
+        }
+        // Once the server takes it, the balance it reports says so.
+        _ = try storage.apply(Storage.Commit(statuses: [("t1", Message.Delivery.delivered.rawValue)]))
+        #expect(try storage.waitingMsat() == 5_000)
+    }
+
     @Test func aPaymentToATribeIsRefused() async throws {
         let (engine, _) = try engine(tribes: [Tribe(pubkey: tribe)])
         await #expect(throws: Engine.Failure.paymentToTribe) {

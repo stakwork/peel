@@ -89,7 +89,7 @@ struct SidebarHeader: View {
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(Theme.secondaryText)
                         }
-                        BalanceLabel(money: model.money)
+                        BalanceLabel(money: model.money, waitingMsat: model.waitingMsat)
                     }
                     Spacer(minLength: 0)
                 }
@@ -111,7 +111,7 @@ struct SidebarHeader: View {
     /// contact info. Receiving sats and invites join it when they are built.
     private var entries: [MenuEntry] {
         let detail = [model.myPubkey.map { "\($0.prefix(6))…\($0.suffix(4))" },
-                      model.balanceMsat.map { Sats.format(msat: $0) }].compactMap { $0 }.joined(separator: " · ")
+                      model.balanceText].compactMap { $0 }.joined(separator: " · ")
         var actions: [MenuEntry] = [
             .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
         ]

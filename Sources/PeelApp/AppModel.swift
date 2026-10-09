@@ -149,6 +149,13 @@ final class AppModel {
     var balanceMsat: UInt64? {
         didSet { if let balanceMsat { money.balance(balanceMsat) } }
     }
+    /// Sats promised to people still offline (`Storage.waitingMsat`): still
+    /// in the balance, but not to be spent again.
+    var waitingMsat: UInt64 = 0
+    /// "4,000 waiting", shown beside the balance; nil when nothing waits.
+    var waitingText: String? { waitingMsat > 0 ? "\(Sats.number(msat: waitingMsat)) waiting" : nil }
+    /// "4,996 sats · 4,000 waiting"; nil until the server reports a balance.
+    var balanceText: String? { balanceMsat.map { Sats.format(msat: $0) + (waitingText.map { " · \($0)" } ?? "") } }
     /// Payments and boosts over this ask for a second click (`Engine`'s threshold).
     var paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
     /// Payments and boosts on their way to the engine, so a double click
@@ -904,6 +911,7 @@ final class AppModel {
         leaveCall()
         money.reset()
         balanceMsat = nil
+        waitingMsat = 0
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
@@ -939,6 +947,7 @@ final class AppModel {
             Task { await self.observeConversations(storage) },
             Task { await self.observeTribes(storage) },
             Task { await self.observeInvites(storage) },
+            Task { await self.observeWaiting(storage) },
             Task { await self.observeReadStates(storage) },
             Task { await self.observeThreads(storage) },
             Task { await self.observeRecentCalls(storage) },
@@ -1042,6 +1051,16 @@ final class AppModel {
         do {
             for try await records in storage.tribesByPubkey() where !Task.isCancelled {
                 tribes = records
+            }
+        } catch {
+            if !Task.isCancelled { notice = PeelError.readable(error) }
+        }
+    }
+
+    private func observeWaiting(_ storage: Storage) async {
+        do {
+            for try await msat in storage.waitingUpdates() where !Task.isCancelled {
+                waitingMsat = msat
             }
         } catch {
             if !Task.isCancelled { notice = PeelError.readable(error) }

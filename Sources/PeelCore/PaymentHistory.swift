@@ -59,9 +59,22 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
         /// What a tribe charged for a message we posted there (its price per
         /// message and escrow, at least 3 sats), or for joining it.
         case messageFee
+        /// The sats a key exchange moves (types 10 and 11): the one who adds
+        /// pays `Engine.keyExchangeMsat`, the other's core answers at once
+        /// with the core's 3-sat `PRICE_TO_MEET`, each with a 1-sat ping.
+        /// `incoming` and the message say which side this account was on
+        /// (`addedThem`).
+        case keyExchange
     }
 
-    public enum Status: Sendable, Equatable { case pending, complete, failed }
+    public enum Status: Sendable, Equatable {
+        case pending
+        /// The server passed it on, but it never settled
+        /// (`Message.Delivery.unsettled`): it may or may not have paid.
+        case unsettled
+        case complete
+        case failed
+    }
 
     public var id: String
     public var kind: Kind
@@ -101,10 +114,14 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
     public var isToContact: Bool {
         guard !incoming, !isTribe, chat != nil else { return false }
         switch kind {
-        case .payment, .boost, .purchase: return true
+        case .payment, .boost, .purchase, .keyExchange: return true
         case .invoice, .keysend, .messageFee: return false
         }
     }
+
+    /// For a key exchange: whether this account added the contact (their
+    /// answer, type 11, is what we hold) rather than being added (type 10).
+    public var addedThem: Bool { message?.type == MessageType.contactKeyConfirmation }
 }
 
 /// What stops paying an invoice again: our payment of it on its way or
@@ -423,6 +440,12 @@ extension Storage {
     /// messages never match a row, so they never show.
     private static let tribeMessagesSQL = "fromMe = 1 AND chat IN (\(tribeChats))"
 
+    /// The other side's half of a key exchange: their request (type 10)
+    /// when they added us, their answer (type 11) when we added them. Each
+    /// carries the sats it brought and the hash the server's row has.
+    private static let keyExchangeSQL = "fromMe = 0 AND type IN (\(keyExchangeTypes))"
+    private static let keyExchangeTypes = MessageType.sqlList([MessageType.contactKey, MessageType.contactKeyConfirmation])
+
     /// How far apart a payment's server row and its message may be when
     /// they are paired by time rather than by hash.
     static let pairingWindowMsat: Int64 = 3_000
@@ -449,7 +472,7 @@ extension Storage {
         let joined = try Message.fetchAll(
             db,
             sql: """
-                SELECT * FROM message WHERE ((\(moneyMessagesSQL)) OR (\(tribeMessagesSQL))) AND (
+                SELECT * FROM message WHERE ((\(moneyMessagesSQL)) OR (\(tribeMessagesSQL)) OR (\(keyExchangeSQL))) AND (
                     paymentHash IN (SELECT value FROM json_each(?))
                     OR (fromMe = 0 AND serverIndex IN (SELECT value FROM json_each(?))))
                 """,
@@ -584,8 +607,15 @@ extension Storage {
     /// and the amount must be what it cost: the msat stored, else the
     /// tribe's price for a message, or for a payment what it declared plus
     /// at most that price.
+    ///
+    /// The same for our side of a key exchange, which the core reports no
+    /// hash for: paired with the other side's half, which comes within a
+    /// moment of ours (their core answers at once, and our payment to them
+    /// lands as they come online). Our 5 sats with their answer when we
+    /// added them, our 3-sat answer with their request when they added us.
     private static func pairedByTime(_ rows: [PaymentRecord], _ db: Database) throws -> [PaymentKey: Message] {
         guard !rows.isEmpty else { return [:] }
+        let arguments: StatementArguments = [json(rows.map(\.ts)), pairingWindowMsat, pairingWindowMsat]
         let candidates = try Message.fetchAll(
             db,
             sql: """
@@ -593,7 +623,15 @@ extension Storage {
                     ON m.chat = t.pubkey AND m.timestamp BETWEEN j.value - ? AND j.value + ?
                 WHERE m.fromMe = 1 AND m.paymentHash IS NULL
                 """,
-            arguments: [json(rows.map(\.ts)), pairingWindowMsat, pairingWindowMsat]
+            arguments: arguments
+        ) + Message.fetchAll(
+            db,
+            sql: """
+                SELECT DISTINCT m.* FROM json_each(?) j JOIN message m
+                    ON m.timestamp BETWEEN j.value - ? AND j.value + ?
+                WHERE m.fromMe = 0 AND m.type IN (\(keyExchangeTypes))
+                """,
+            arguments: arguments
         )
         guard !candidates.isEmpty else { return [:] }
         let tribes = Dictionary(
@@ -602,8 +640,13 @@ extension Storage {
         )
         var paired: [PaymentKey: Message] = [:]
         for (row, message) in uniquePairs(rows, candidates, matching: { row, message in
-            guard let at = message.timestamp, abs(at - row.ts) <= pairingWindowMsat,
-                  let tribe = tribes[message.chat] else { return false }
+            guard let at = message.timestamp, abs(at - row.ts) <= pairingWindowMsat else { return false }
+            switch message.type {
+            case MessageType.contactKeyConfirmation: return row.amountMsat == Int64(Engine.keyExchangeMsat)
+            case MessageType.contactKey: return row.amountMsat == Int64(Engine.priceToMeetMsat)
+            default: break
+            }
+            guard let tribe = tribes[message.chat] else { return false }
             if let msat = message.msat { return msat == row.amountMsat }
             guard MessageType.moneySends.contains(message.type) else {
                 return row.amountMsat == Int64(clamping: tribe.messageAmountMsat)
@@ -707,7 +750,8 @@ extension Storage {
                 item.note = invoice.memo.nilIfEmpty
                 item.chat = invoice.chat
                 switch invoice.status {
-                case .pending, .open, .unsettled: item.status = .pending
+                case .pending, .open: item.status = .pending
+                case .unsettled: item.status = .unsettled
                 case .failed: item.status = .failed; item.error = invoice.error
                 case .paid: break
                 case .underpaid:
@@ -721,17 +765,19 @@ extension Storage {
                 case MessageType.directPayment: item.kind = .payment
                 case MessageType.purchase, MessageType.purchaseDeny: item.kind = .purchase
                 case MessageType.invoice, MessageType.invoicePayment: item.kind = .invoice
+                case MessageType.contactKey, MessageType.contactKeyConfirmation: item.kind = .keyExchange
                 // Anything else ours in a tribe: what posting it cost.
                 default: item.kind = .messageFee
                 }
                 item.chat = message.chat
-                // A fee's message is shown whole, not as a note.
-                if message.type != MessageType.invoicePayment, item.kind != .messageFee {
+                // A fee's message is shown whole, not as a note; a key exchange has none.
+                if message.type != MessageType.invoicePayment, item.kind != .messageFee, item.kind != .keyExchange {
                     item.note = message.content?.nilIfEmpty
                 }
                 if invoice == nil, message.fromMe {
                     switch message.delivery {
-                    case .pending, .unsettled: item.status = .pending
+                    case .pending: item.status = .pending
+                    case .unsettled: item.status = .unsettled
                     case .failed: item.status = .failed
                     case .delivered, nil: break
                     }

@@ -29,9 +29,12 @@ extension PaymentItem {
         switch kind {
         case .invoice: return incoming ? "Invoice paid" : "Lightning invoice"
         case .keysend: return "Keysend"
-        case .payment, .boost, .purchase, .messageFee: return chatName ?? Sender.unnamed
+        case .payment, .boost, .purchase, .messageFee, .keyExchange: return chatName ?? Sender.unnamed
         }
     }
+
+    /// A key exchange, from this account's side.
+    private var keyExchangeLabel: String { addedThem ? "Contact added" : "Added you" }
 
     private var isRefund: Bool { message?.type == MessageType.purchaseDeny }
 
@@ -55,7 +58,17 @@ extension PaymentItem {
             case MessageType.memberRequest: return "Asked to join \(tribe)"
             default: return "Message fee in \(tribe)"
             }
+        case .keyExchange: return keyExchangeLabel
         }
+    }
+
+    /// Why a key exchange moves sats, for its detail.
+    var keyExchangeNote: String? {
+        guard kind == .keyExchange else { return nil }
+        let five = Sats.format(msat: Engine.keyExchangeMsat), three = Sats.format(msat: Engine.priceToMeetMsat)
+        return addedThem
+            ? "Adding \(chatName ?? "them") cost \(five); their app paid \(three) back."
+            : "\(chatName ?? "They") paid \(five) to add you; your app paid \(three) back."
     }
 
     /// "Boost received", "Payment sent".
@@ -67,7 +80,13 @@ extension PaymentItem {
         case .keysend: "Keysend"
         case .purchase: isRefund ? "Refund" : "Purchase"
         case .messageFee: "Message fee"
+        case .keyExchange: "\(keyExchangeLabel):"
         }
-        return "\(what) \(incoming ? "received" : status == .pending ? "on its way" : "sent")"
+        let how = switch status {
+        case .pending where !incoming: "on its way"
+        case .unsettled: "not settled"
+        default: incoming ? "received" : "sent"
+        }
+        return "\(what) \(how)"
     }
 }

@@ -199,6 +199,43 @@ extension Storage {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
     }
 
+    /// Our payments, boosts and purchases to people that are still pending,
+    /// in msat:
+    /// the server holds them (an async pay) until the person's app comes
+    /// online, and takes their sats from the balance only then
+    /// (`mixer/src/handler.rs`, `ASYNC_PAY`). Unsettled ones are left out:
+    /// the server handed them on and is done with them.
+    private static func waiting(_ db: Database) throws -> UInt64 {
+        let msat = try Int64.fetchOne(db, sql: """
+            SELECT IFNULL(SUM(amountMsat), 0) FROM message
+            WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL AND deleted = 0
+                AND type IN (\(MessageType.sqlList(MessageType.moneySends))) AND chat NOT IN (\(tribeChats))
+            """)
+        return UInt64(max(msat ?? 0, 0))
+    }
+
+    /// What is promised to people and still in the balance (`waiting`).
+    func waitingMsat() throws -> UInt64 {
+        try pool.read(Self.waiting)
+    }
+
+    /// `waitingMsat`, re-emitted whenever it changes.
+    public func waitingUpdates() -> some AsyncSequence<UInt64, any Error> {
+        ValueObservation
+            .tracking(Self.waiting)
+            .removeDuplicates()
+            .values(in: pool)
+    }
+
+    /// What can be promised now: the balance the server last reported, less
+    /// what is waiting for people to come online (`waitingMsat`); nil until
+    /// the server has reported a balance.
+    func spendableMsat() throws -> UInt64? {
+        guard let balance = try balanceMsat() else { return nil }
+        let waiting = try waitingMsat()
+        return balance > waiting ? balance - waiting : 0
+    }
+
     /// A send tracked by tag that the server has not confirmed or refused.
     struct PendingSend: Hashable {
         var tag: String

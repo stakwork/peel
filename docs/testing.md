@@ -111,6 +111,13 @@ random free port, never 1883 or 8000. Binaries come from `SPHINX_BIN_DIR`
 `SPHINX_MIXER`, `SPHINX_TRIBES`. It records the PIDs it started in the
 stack's directory, and `stop` kills only those.
 
+Which server this is (payments review F3): the stack is built from
+`~/Documents/sphinx` at `master`, `caa76a1` on 2026-10-09, which has the
+September security fixes (self-pay refused, tribe amounts clamped to the
+HTLC, ContactKey answered only when paid). The core Peel links is
+`bd9e140`, 70 commits older, and production's server may be older too. A
+passing journey says how Peel behaves against that `master`.
+
 Funding (`Bank.swift`): the mixer starts with `TESTING_ONLY_ADD_TO_SENDER`;
 two accounts pay each other their whole balance through Peel's normal
 checks until one holds 2,000,000 sats; then `test-stack.sh mixer <dir> real`
@@ -126,11 +133,12 @@ directory.
 | Journey | Test | Result |
 |---|---|---|
 | Sign up; restore from twelve words in a second directory | `Accounts` | pass |
-| Key exchange by contact info; both sides ready; no second exchange | `Contacts.keyExchangeByContactInfo` | pass |
+| Key exchange by contact info; both sides ready; no second exchange; the adder −3 sats, the added +1, and Payments labels the four rows (review F6, journey 3) | `Contacts.keyExchangeByContactInfo` | pass |
 | Key exchange from an invite's code (inviter added, invite untouched) | `Contacts.keyExchangeByInvite` | pass |
 | DMs both ways through the wire tap; the plain text never on the wire (raw, base64, hex, a 16-byte run) | `DirectMessages` | pass |
 | Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |
 | Keysend both ways, both balances after each | `Payments.keysendBothWays` | pass: the recipient gets the amount, the sender pays it plus the 1-sat ping (finding 1) |
+| Two payments to an offline contact, the second over what is left (review F1, journey 1) | `Payments.paymentsToAnOfflineContact` | pass (2026-10-09): the first waits, only its ping leaves the balance; the second is refused by Peel's gate; Bob comes online and gets exactly one |
 | The whole balance (nothing left for the ping), over the threshold unconfirmed: nothing moves | `Payments.refusedPaymentsMoveNothing` | pass |
 | `request_invoice` on a `NO_LIGHTNING` server | `Payments.requestInvoiceWithoutLightning` | pass (`noInvoiceFromServer`, nothing stored) |
 | Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments` | pass |
@@ -164,6 +172,10 @@ Findings:
    1,000-sat invite, held 997 after adding Alice, and Alice gained 1.
    Cause not pinned down. The invite journey asserts the invite's own
    amounts exactly and allows Dana's key exchange up to its 5 sats.
+   **Explained** (payments review F6, 2026-10-09): the adder pays 5 sats
+   and a 1-sat ping, the other side's core pays 3 back with its own ping,
+   so the adder is down 3 and the added up 1; the servers keep the pings.
+   `keyExchangeByContactInfo` asserts both.
 3. **An intermittent key exchange.** In one of three full runs, a key
    exchange (the bank adding Alice, in `History`) had not completed after
    20 s. It passed on its own and in the other runs.

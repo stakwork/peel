@@ -97,7 +97,7 @@ struct BalanceLine: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Text(model.balanceMsat.map { "Balance \(Sats.format(msat: $0))" } ?? "Balance known once connected")
+        Text(model.balanceText.map { "Balance \($0)" } ?? "Balance known once connected")
             .font(Theme.font(12))
             .monospacedDigit()
             .foregroundStyle(Theme.secondaryText)

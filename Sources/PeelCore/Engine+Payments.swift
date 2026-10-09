@@ -140,14 +140,16 @@ extension Engine {
         toTribe ? 0 : UInt64(Storage.pingPriceMsat)
     }
 
-    /// Refuses an amount over the last balance the server reported (less
-    /// `reserveMsat` kept back for routing fees or a ping), or over the confirmation
+    /// Refuses an amount over the last balance the server reported, less
+    /// what is still waiting for people to come online (the server takes
+    /// those sats only then, `Storage.spendableMsat`) and less
+    /// `reserveMsat` kept back for routing fees or a ping; or over the confirmation
     /// threshold unless the person confirmed exactly this amount (a
     /// confirmation never covers a total that changed since, such as a tribe
     /// raising its price between the two clicks). A one-tap boost
     /// (`.unasked`) is checked against the balance only.
     func checkPayment(_ amountMsat: UInt64, _ confirmation: Confirmation, reserveMsat: UInt64 = 0) throws {
-        guard let balance = try balanceMsat() else { throw Failure.balanceUnknown }
+        guard let balance = try storage.spendableMsat() else { throw Failure.balanceUnknown }
         let (needed, overflow) = amountMsat.addingReportingOverflow(reserveMsat)
         guard !overflow, needed <= balance else { throw Failure.insufficientBalance }
         if case .threshold(let confirmedMsat) = confirmation,
@@ -363,7 +365,8 @@ extension Engine {
     /// What stops paying this invoice from here, as paying it checks (the
     /// confirmation threshold aside): no amount, expired, this account's
     /// own, pending or paid (here or, by the history, from another device),
-    /// or more than the balance less the fee reserve. Nil when nothing does.
+    /// or more than the balance (less what is waiting for people to come
+    /// online) less the fee reserve. Nil when nothing does.
     /// Reads only storage, so an app can ask before offering Pay.
     public nonisolated func invoiceProblem(_ invoice: Invoice) throws -> Failure? {
         guard invoice.amountMsat > 0 else { return .invoiceWithoutAmount }
@@ -375,7 +378,7 @@ extension Engine {
         case .paid?: return .invoiceAlreadyPaid
         case nil: break
         }
-        guard let balance = try storage.balanceMsat() else { return .balanceUnknown }
+        guard let balance = try storage.spendableMsat() else { return .balanceUnknown }
         let (needed, overflow) = invoice.amountMsat.addingReportingOverflow(Self.feeReserveMsat(for: invoice.amountMsat))
         return overflow || needed > balance ? .insufficientBalance : nil
     }

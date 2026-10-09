@@ -22,6 +22,14 @@ public enum WebPage {
         return address(url)
     }
 
+    /// An attachment the pane shows as a page rather than only a file to
+    /// save: HTML, by its name or, before a download names it, its declared
+    /// type. Shown offline, with no script (`WebPane.openDocument`).
+    public static func isHTML(fileName: String?, mediaType: String?) -> Bool {
+        let ext = ((fileName ?? "") as NSString).pathExtension.lowercased()
+        return ext == "html" || ext == "htm" || mediaType?.lowercased().hasPrefix("text/html") == true
+    }
+
     /// What someone typed into the pane's address field: a web address, or
     /// else a DuckDuckGo search for the words. Only http and https ever
     /// load: any other scheme typed out (`javascript:`, `file:`, `data:`,

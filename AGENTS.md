@@ -134,8 +134,9 @@ is a short plan. Update the status and the journal when you finish something.
     "public https, or http to this machine" (`isAllowed`, `isThisMac`)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
-    (`WebPage.typed`: http or https, or a search) and each profile's
-    website data store identifier
+    (`WebPage.typed`: http or https, or a search), which attachments it
+    shows as pages (`WebPage.isHTML`) and each profile's website data
+    store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, with its extensions
   by area in `AppModel+Chat` (replies, threads, sending, attachments, and
   the chat's small types: `ComposerID`, `ThreadRef`, `AttachmentHandle`),

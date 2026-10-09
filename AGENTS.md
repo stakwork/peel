@@ -215,7 +215,8 @@ is a short plan. Update the status and the journal when you finish something.
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit
-  test room (phase 6, PR 3). PeelApp is the only target that links LiveKit
+  test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
+  `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
@@ -256,8 +257,12 @@ is a short plan. Update the status and the journal when you finish something.
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
   `LiveKitWebRTC.framework`) in `Contents/Frameworks`
+- `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
+  (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
+  development profile (see "Checking the app")
 - `scripts/run-app.sh` — `bundle-app.sh`, then installs to
   `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
+- `scripts/signing-identity.sh` — the identity both signing scripts use
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
   microphone, camera), frameworks first (see Signing)
@@ -272,8 +277,8 @@ is a short plan. Update the status and the journal when you finish something.
 ```sh
 ./scripts/build-ffi.sh      # once, and after the core changes
 swift build
-./scripts/run-app.sh -profile throwaway      # app: single dash, read via UserDefaults
-.build/debug/peel --profile throwaway listen  # CLI: double dash
+scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
+.build/debug/peel --profile <dev> listen             # CLI
 ```
 
 `scripts/build-ffi.sh` checks the static library against `Vendor/sphinxrs.lock`
@@ -283,6 +288,48 @@ new build of the core.
 The app bundle is assembled by hand in `scripts/bundle-app.sh`; there is no
 Xcode project for the app itself. To check a build without replacing the
 installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+
+## Checking the app
+
+Tom works on this Mac while agents run. Check the app only with
+`scripts/check-app.sh <dev profile> <drive file> <out dir>`: it builds
+`.build/PeelCheck.app` under its own bundle ID (its own preferences and
+saved windows) and runs it with `-offscreen YES`, so it has no Dock icon,
+never comes to the front, places every window beyond all screens (never
+full screen or minimised), keeps its own clipboard (the general pasteboard,
+by either route, is a private one), posts no notifications or beeps, and
+opens no other app or system panel (links, the Finder and System Settings
+stop at NSWorkspace; file panels, device prompts and Share are refused;
+there is no Services menu). Media and call audio still play, so a drive
+should not start them. It runs the drive file, writes the snapshots to the
+out dir (`drive.log` beside them, with what each step did) and quits; it
+fails after five minutes, and the script stops the app by its PID.
+
+The mode and the driver refuse `default`, `throwaway` and the daily app's
+bundle ID, and the check bundle refuses to run without the mode, each
+quitting before any window opens.
+
+- Never launch a visible build (`open` of a bundle without the mode,
+  `run-app.sh`), never post system events (`CGEventPost`, AppleScript, the
+  Accessibility API on any app) and never capture the screen; look only at
+  the snapshots, which are drawn from Peel's own windows.
+- A drive file is JSON lines, one step each; `//` lines are comments:
+
+  ```
+  {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
+  {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
+  {"type": "green"}
+  {"wait": 0.5}
+  {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …
+  ```
+
+  Each step waits 300 ms for the UI to settle. Keys go into Peel's own
+  event queue, so key monitors and shortcuts see them as typed; `keyCode`
+  is real only for the US-layout letters, digits, punctuation and named
+  keys above (other characters are sent with code 0). There is
+  no mouse step: posted clicks do not reach SwiftUI's buttons in an app
+  that is never active, so reach a control by its shortcut or add a
+  named step like `select`.
 
 ## Signing and the weekly re-sign
 
@@ -375,7 +422,9 @@ PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelI
 ### Local LiveKit server
 
 For the development test room (`Sources/PeelApp/CallTestRoom.swift`;
-details in `docs/phases/06-calls.md`, PR 3 journal):
+details in `docs/phases/06-calls.md`, PR 3 journal). It opens a visible
+window and asks for the microphone, so only with Tom at the Mac, never
+from an agent unasked:
 
 ```sh
 brew install livekit livekit-cli
@@ -433,8 +482,8 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
 - The app's profile `default` (`~/Library/Application Support/Peel/default`,
   words in the data-protection Keychain) holds Tom's REAL account since
   2026-10-07. Never open, test against, migrate, copy or delete it, and never
-  run `scripts/run-app.sh` (it replaces the Peel Tom uses every day); build
-  with `scripts/bundle-app.sh` into `.build` and launch with `-profile <dev>`.
+  run `scripts/run-app.sh` (it replaces the Peel Tom uses every day); check
+  the app with `scripts/check-app.sh` on a development profile.
   The CLI only opens development profiles under `Peel/dev` and requires an
   explicit `--profile` that is not `default`.
 - Develop against development profiles on the local test server; use the
@@ -499,8 +548,9 @@ optional here: a bug in this code can lose money or leak a key.
 3. **Verify in the real medium.** `swift build`; the local test server for
    anything protocol-level; the throwaway account on production for anything
    the server sees. Never a real account. For UI, drive the real path at least
-   once (the actual key press or click, in the app beside the features it sits
-   next to), not only a hook that calls the code directly.
+   once (the actual key press, in the app beside the features it sits next
+   to) with `scripts/check-app.sh`, not only a hook that calls the code
+   directly.
 4. **Review.** `/code-review` for correctness, `/simplify` for reuse,
    simplicity, efficiency and altitude (it applies its fixes), then
    `/security-review`. Fix what they find. Findings deliberately not applied go

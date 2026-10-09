@@ -257,7 +257,7 @@ final class CallSession {
 
     /// Asks macOS the first time; true when access is allowed.
     private func mayUse(_ media: AVMediaType) async -> Bool {
-        if AVCaptureDevice.authorizationStatus(for: media) == .notDetermined {
+        if AVCaptureDevice.authorizationStatus(for: media) == .notDetermined, !Offscreen.refuses("a device prompt") {
             _ = await AVCaptureDevice.requestAccess(for: media)
         }
         refreshAccess()

@@ -474,9 +474,12 @@ private struct InviteDetail: View {
                 HStack(spacing: 8) {
                     CopyButton("Copy invite", text: invite.link)
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
-                    ShareLink(item: invite.link) { Image(systemName: "square.and.arrow.up") }
-                        .help("Share the invite")
-                        .accessibilityLabel("Share the invite")
+                    // The system's share menu would hand it to another app.
+                    if !Offscreen.isOn {
+                        ShareLink(item: invite.link) { Image(systemName: "square.and.arrow.up") }
+                            .help("Share the invite")
+                            .accessibilityLabel("Share the invite")
+                    }
                 }
                 .buttonStyle(.peel(.outline))
             }

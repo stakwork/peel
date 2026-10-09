@@ -34,7 +34,7 @@ final class Notifier {
     @ObservationIgnored weak var model: AppModel?
 
     /// Nil when running outside an app bundle, where the notification
-    /// center is not available.
+    /// center is not available, and offscreen, which posts nothing.
     @ObservationIgnored private let center: UNUserNotificationCenter?
     @ObservationIgnored private let delegate: Delegate?
     @ObservationIgnored private var storage: Storage?
@@ -60,7 +60,7 @@ final class Notifier {
     static let paymentsThread = "payments"
 
     init() {
-        guard Bundle.main.bundleURL.pathExtension == "app" else {
+        guard Bundle.main.bundleURL.pathExtension == "app", !Offscreen.isOn else {
             center = nil
             delegate = nil
             return

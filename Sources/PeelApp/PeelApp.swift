@@ -17,6 +17,8 @@ struct PeelApp: App {
         #if os(macOS)
         // One main window: its tab bar's "+" would open a second.
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Quits here, before any window, when asked for where it is refused.
+        _ = Offscreen.drive
         #endif
     }
 
@@ -131,7 +133,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     private var quitting = false
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        Offscreen.start()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        OffscreenDriver.start { [weak self] in self?.model }
         // A key press, click or scroll in Peel's windows is use, which puts
         // the PIN timeout off.
         NSEvent.addLocalMonitorForEvents(

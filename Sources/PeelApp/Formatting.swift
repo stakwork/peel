@@ -52,4 +52,32 @@ enum Formatting {
             return date.formatted(sameYear ? style : style.year())
         }
     }
+
+    /// "02f7…c3a1": a key or hash, its ends only.
+    static func shortKey(_ key: String) -> String {
+        key.count > 12 ? "\(key.prefix(6))…\(key.suffix(4))" : key
+    }
+
+    /// A time beside a payment: as in the list, by how long ago it was.
+    static func when(_ date: Date) -> String {
+        paymentTime(date, in: PaymentSection(date))
+    }
+
+    /// When an invoice runs out: "14:22" today, else "15 Oct, 14:22" (the
+    /// server's invoices last a week).
+    static func expiry(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(.dateTime.hour().minute())
+            : date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+    }
+
+    /// A row's time within its section: "14:22" today and yesterday, "Mon
+    /// 08:00" this week, "30 Sep" before.
+    static func paymentTime(_ date: Date, in section: PaymentSection) -> String {
+        switch section {
+        case .today, .yesterday: date.formatted(.dateTime.hour().minute())
+        case .thisWeek: date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        case .earlier: date.formatted(.dateTime.day().month(.abbreviated))
+        }
+    }
 }

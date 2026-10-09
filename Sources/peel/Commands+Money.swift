@@ -20,9 +20,10 @@ extension Invocation {
             try await session.finish(after: wait)
 
         case "pay":
-            guard let pubkey = arguments.next(), let msat = arguments.next().flatMap(Sats.msat) else {
-                throw PeelError("pay needs a pubkey and a whole number of sats above zero")
+            guard let pubkey = arguments.next(), let amount = arguments.next() else {
+                throw PeelError("pay needs a pubkey and an amount in sats")
             }
+            let msat = try satsArgument(amount)
             let session = try await Session(load()).connectIfPossible(insecure: insecure)
             try await confirming(confirmed) {
                 try await session.engine.sendPayment(to: pubkey, amountMsat: msat, text: note ?? "", confirmedMsat: $0)
@@ -49,12 +50,12 @@ extension Invocation {
         case "history":
             let pages = arguments.next().flatMap { Int($0) } ?? 1
             let session = try await Session(load()).connectIfPossible(insecure: insecure)
-            var before: Int64?
-            for _ in 0..<max(pages, 1) {
+            for page in 0..<max(pages, 1) {
                 guard await session.engine.isRegistered else { break }
-                let count = try await session.engine.fetchPaymentHistory(before: before)
+                let count = page == 0
+                    ? try await session.engine.fetchPaymentHistory()
+                    : try await session.engine.fetchOlderPaymentHistory()
                 print("fetched \(count) rows")
-                before = try session.engine.storage.oldestPaymentTimestamp()
                 if count < Engine.paymentPageSize { break }
             }
             try await session.finish(after: 0)
@@ -64,7 +65,7 @@ extension Invocation {
             }
 
         case "invoice":
-            guard let msat = arguments.next().flatMap(Sats.msat) else { throw PeelError("invoice needs a whole number of sats above zero") }
+            guard let msat = try arguments.next().map(satsArgument) else { throw PeelError("invoice needs an amount in sats") }
             let session = try await Session(load()).connect(insecure: insecure)
             let invoice = try await session.engine.createInvoice(amountMsat: msat, memo: arguments.rest().joined(separator: " "))
             print("invoice \(invoice.paymentHash)")
@@ -93,9 +94,10 @@ extension Invocation {
             try await session.finish(after: wait)
 
         case "request":
-            guard let pubkey = arguments.next(), let msat = arguments.next().flatMap(Sats.msat) else {
+            guard let pubkey = arguments.next(), let amount = arguments.next() else {
                 throw PeelError("request needs a pubkey and an amount in sats")
             }
+            let msat = try satsArgument(amount)
             let session = try await Session(load()).connect(insecure: insecure)
             let invoice = try await session.engine.requestPayment(
                 from: pubkey, amountMsat: msat, memo: arguments.rest().joined(separator: " ")

@@ -3,6 +3,11 @@ import Foundation
 /// Amounts as people see and type them. Money is kept, charged and sent in
 /// msat; this is display and input only.
 public enum Sats {
+    /// The units amounts are typed in, each as the smaller unit sent: a sat
+    /// in msat, an hour in milliseconds (a tribe's escrow time).
+    public static let msatPerSat: UInt64 = 1000
+    public static let millisecondsPerHour: UInt64 = 3_600_000
+
     /// "1 sat", "21 sats", "1,210 sats": whole sats, never decimals, the rest
     /// of a sat dropped as the official apps drop it (1,999 msat is "1 sat",
     /// anything under a sat "0 sats"); below zero reads "0 sats".
@@ -34,14 +39,14 @@ public enum Sats {
         return "\(number(msat: part)) of \(format(msat: total))"
     }
 
-    private static func whole(_ msat: some BinaryInteger) -> UInt64 { UInt64(clamping: msat) / 1000 }
+    private static func whole(_ msat: some BinaryInteger) -> UInt64 { UInt64(clamping: msat) / msatPerSat }
 
     /// A whole number of sats above zero ("1,000" too), as msat; nil for
     /// anything else, or too many to count in msat.
     public static func msat(_ text: String) -> UInt64? {
         let digits = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "")
         guard let sats = UInt64(digits), sats > 0 else { return nil }
-        let (msat, overflow) = sats.multipliedReportingOverflow(by: 1000)
+        let (msat, overflow) = sats.multipliedReportingOverflow(by: msatPerSat)
         return overflow ? nil : msat
     }
 
@@ -63,5 +68,14 @@ public enum Sats {
         NSDecimalRound(&whole, &copy, 0, .plain)
         guard whole == scaled else { throw PeelError("the \(what) is finer than the network can carry") }
         return UInt64(truncating: whole as NSDecimalNumber)
+    }
+
+    /// `parse`'s inverse: an amount in the unit people type, blank for zero
+    /// as the Mac app shows them, with a point for the decimals whatever the
+    /// locale, as `parse` reads them.
+    public static func text(_ value: UInt64, unit: UInt64) -> String {
+        value == 0 ? "" : (Decimal(value) / Decimal(unit)).formatted(
+            .number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.fractionLength(0...6))
+        )
     }
 }

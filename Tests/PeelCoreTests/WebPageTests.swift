@@ -34,6 +34,44 @@ struct WebPageTests {
         #expect(WebPage.address("sphinx.chat://?action=tribeV2") == nil)
     }
 
+    @Test(arguments: [
+        ("example.com", "https://example.com"),
+        ("  https://example.com/a?b=c \n", "https://example.com/a?b=c"),
+        ("HTTP://Example.com", "HTTP://Example.com"),
+        ("https://example.com/a b", "https://example.com/a%20b"),
+        ("example.com:8080/x", "https://example.com:8080/x"),
+        ("www.youtube.com/watch?v=abc", "https://www.youtube.com/watch?v=abc"),
+        ("localhost:3000", "http://localhost:3000"),
+        ("127.0.0.1:8642/a", "http://127.0.0.1:8642/a"),
+        ("192.168.1.1", "https://192.168.1.1"),
+        // an international name in its xn-- form, as the field shows it
+        ("bücher.de", "https://xn--bcher-kva.de"),
+    ])
+    func aTypedAddressOpens(typed: String, expected: String) {
+        #expect(WebPage.typed(typed)?.absoluteString == expected)
+    }
+
+    @Test(arguments: [
+        ("swift tabs", "swift%20tabs"), ("hello", "hello"), ("3.14", "3.14"), ("c++ & a=b #1", "c%2B%2B%20%26%20a%3Db%20%231"),
+        // no scheme: a name with credentials is not opened, only searched for
+        ("google.com@evil.example", "google.com@evil.example"),
+        // spaces make it words, whatever the first one looks like
+        ("javascript:alert(1) x", "javascript:alert(1)%20x"),
+        ("javascript:1", "javascript:1"),
+    ])
+    func wordsAreASearch(typed: String, query: String) {
+        #expect(WebPage.typed(typed)?.absoluteString == "https://duckduckgo.com/?q=" + query)
+    }
+
+    @Test(arguments: [
+        "", "   ", "javascript:alert(1)", "JavaScript:alert(document.cookie)", "file:///etc/hosts", "data:text/html,hi",
+        "about:blank", "blob:https://example.com/1", "mailto:a@example.com", "sphinx.chat://?action=tribeV2",
+        "vbscript:x", "http:example.com", "https://", "https://exa mple.com", "https://google.com@evil.example/", "ftp://example.com",
+    ])
+    func otherSchemesAreRefused(typed: String) {
+        #expect(WebPage.typed(typed) == nil)
+    }
+
     @Test func eachProfileKeepsOneStoreIdentifier() throws {
         let one = TempProfile(), two = TempProfile()
         #expect(try WebPage.storeIdentifier(in: one.url, create: false) == nil)

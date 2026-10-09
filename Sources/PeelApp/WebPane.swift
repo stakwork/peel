@@ -4,17 +4,20 @@ import WebKit
 import PeelCore
 
 /// The web pane: a link from a message, or a tribe's app or second brain,
-/// opens beside the chat rather than in the browser, like the artifact pane
+/// opens beside the chat rather than in the browser, like the browser pane
 /// in the Claude desktop app (design README, "Web pane"). One page at a
-/// time; the next link replaces it. It stays open across chats until closed.
+/// time; the next link replaces it. It stays open across chats until closed,
+/// and closing it ends the page.
 ///
 /// A page is only a page: no `sphinx` bridge, no message handlers and no
 /// injected scripts. Website data lives in one store per profile
 /// (`WebPage.storeIdentifier`), never the shared default one.
 @MainActor @Observable
 final class WebPane: NSObject {
-    /// Nil while the pane is closed; made again on the next open, with the
-    /// same store, so sign-ins survive a close.
+    /// Open, with a page or (from the header's Browser) only its address field.
+    private(set) var isOpen = false
+    /// Nil until the first page loads; made again after a close, with the
+    /// same store, so sign-ins survive.
     private(set) var webView: PaneWebView?
     /// What the toolbar shows, read off the web view as it changes.
     private(set) var page = Page()
@@ -37,7 +40,8 @@ final class WebPane: NSObject {
     }
 
     struct Problem: Equatable {
-        /// The address that failed, which the pane is no longer showing.
+        /// The address that failed, which the pane is no longer showing; nil
+        /// for an address Peel would not open, which has nothing to try again.
         let url: URL?
         let message: String
     }
@@ -47,8 +51,6 @@ final class WebPane: NSObject {
         case saved(URL)
         case failed(String, reason: String)
     }
-
-    var isOpen: Bool { webView != nil }
 
     /// Every link SwiftUI opens in the main window (`opensLinksInWebPane`):
     /// an http or https page comes here, or goes to the default browser with
@@ -80,21 +82,41 @@ final class WebPane: NSObject {
     func open(_ url: URL) {
         guard let url = WebPage.address(url) else { return }
         let view = webView ?? makeWebView()
+        isOpen = true
         problem = nil
         view.load(URLRequest(url: url))
     }
 
+    /// The header's Browser: the page as it is, or the pane with only its
+    /// address field, which then has the keyboard.
+    func show() {
+        isOpen = true
+    }
+
+    /// What was typed into the address field and Return pressed: a web
+    /// address or a search (`WebPage.typed`); anything else is refused in
+    /// the page's place. The page then has the keyboard.
+    func go(to typed: String) {
+        guard let url = WebPage.typed(typed) else {
+            problem = Problem(url: nil, message: "Peel opens web addresses here: http and https only.")
+            return
+        }
+        open(url)
+        if let webView { webView.window?.makeFirstResponder(webView) }
+    }
+
     /// Closes the pane and ends its page, media and all.
     func close() {
+        isOpen = false
+        problem = nil
+        download = nil
+        page = Page()
         guard let view = webView else { return }
         view.stopLoading()
         view.navigationDelegate = nil
         view.uiDelegate = nil
         observations = []
         webView = nil
-        page = Page()
-        problem = nil
-        download = nil
     }
 
     func goBack() { webView?.goBack() }
@@ -113,11 +135,6 @@ final class WebPane: NSObject {
     func retry() {
         guard let failed = problem?.url else { return reloadOrStop() }
         open(failed)
-    }
-
-    /// The page in the default browser; the pane stays as it is.
-    func openInBrowser() {
-        if let url = page.url { NSWorkspace.shared.open(url) }
     }
 
     // MARK: Website data
@@ -375,17 +392,21 @@ extension View {
     }
 }
 
-/// A tribe's second brain and web app, as the first items of its header's
-/// More menu, each only when the tribe has one (stored only when
+/// The first items of a chat header's More menu: Browser, which shows the
+/// pane (its page, or an empty address field), then a tribe's second brain
+/// and web app, each only when the tribe has one (stored only when
 /// `WebPage.address` took it). `open` is the window's link router, as for a
 /// message link, so they open in the pane.
 @MainActor
-enum TribeWebEntries {
-    static func entries(for tribe: Tribe?, open: OpenURLAction) -> [MenuEntry] {
+enum WebMenuEntries {
+    static func entries(for tribe: Tribe?, pane: WebPane, open: OpenURLAction) -> [MenuEntry] {
+        let browser = MenuEntry.button("Browser", systemImage: "globe") {
+            withAnimation(.easeOut(duration: 0.2)) { pane.show() }
+        }
         let pages: [(String, String, String?)] = [
             ("Second brain", "brain", tribe?.secondBrainURL), ("Tribe app", "square.grid.2x2", tribe?.appURL),
         ]
-        return pages.compactMap { title, image, address in
+        return [browser] + pages.compactMap { title, image, address in
             guard let url = address.flatMap(URL.init(string:)) else { return nil }
             return .item(MenuItem(title: title, systemImage: image, detailSystemImage: "arrow.up.right") {
                 open(url)
@@ -442,11 +463,13 @@ struct WebPaneView: View {
         VStack(spacing: 0) {
             WebToolbar(pane: pane)
             ZStack {
+                Theme.background
                 if let webView = pane.webView {
                     WebViewHost(webView: webView)
                 }
                 if let problem = pane.problem {
-                    LoadProblem(host: (problem.url ?? pane.page.url)?.host, problem: problem.message) { pane.retry() }
+                    LoadProblem(host: problem.url?.host, problem: problem.message,
+                                retry: problem.url == nil ? nil : { pane.retry() })
                 }
             }
             if let download = pane.download {
@@ -464,32 +487,32 @@ private struct WebViewHost: NSViewRepresentable {
     func updateNSView(_ view: PaneWebView, context: Context) {}
 }
 
-/// Back, forward, reload; where the page is, its host first so a page
-/// cannot pass itself off as another; then Open in Browser, Copy Link, close.
+/// Back, forward, reload; the address field; then Open in default browser,
+/// More (⋮) and close.
 private struct WebToolbar: View {
     let pane: WebPane
 
     var body: some View {
         let page = pane.page
         HStack(spacing: 2) {
-            ToolbarIcon(systemImage: "chevron.left", help: "Back", enabled: page.canGoBack) { pane.goBack() }
-            ToolbarIcon(systemImage: "chevron.right", help: "Forward", enabled: page.canGoForward) { pane.goForward() }
+            ToolbarIcon(systemImage: "arrow.left", help: "Back", enabled: page.canGoBack) { pane.goBack() }
+            ToolbarIcon(systemImage: "arrow.right", help: "Forward", enabled: page.canGoForward) { pane.goForward() }
             ToolbarIcon(
                 systemImage: page.isLoading ? "xmark" : "arrow.clockwise",
-                help: page.isLoading ? "Stop" : "Reload"
+                help: page.isLoading ? "Stop" : "Reload", enabled: pane.webView != nil
             ) { pane.reloadOrStop() }
-            PageAddress(page: page)
-                .padding(.leading, 8)
-            Spacer(minLength: 8)
-            ToolbarIcon(systemImage: "safari", help: "Open in Browser", enabled: page.url != nil) { pane.openInBrowser() }
-            if let url = page.url {
-                CopyButton("Copy Link", text: url.absoluteString, systemImage: "link", iconOnly: true)
+            AddressField(pane: pane)
+                .padding(.horizontal, 6)
+            ToolbarIcon(systemImage: "arrow.up.right.square", help: "Open in default browser", enabled: page.url != nil) {
+                if let url = page.url { NSWorkspace.shared.open(url) }
             }
-            ToolbarIcon(systemImage: "sidebar.trailing", help: "Close (⌘W)") {
+            MoreMenu(pane: pane, url: page.url)
+            ToolbarIcon(systemImage: "xmark", help: "Close (⌘W)") {
                 withAnimation(.easeIn(duration: 0.15)) { pane.close() }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
         .frame(height: 60)
         .overlay(alignment: .bottom) {
             ZStack(alignment: .leading) {
@@ -507,40 +530,160 @@ private struct WebToolbar: View {
     }
 }
 
-/// The host, as the address names it (an international name in its
-/// `xn--` form), above the page's own title; a lock for https with nothing
-/// insecure on the page, "Not secure" otherwise.
-private struct PageAddress: View {
-    let page: WebPane.Page
+/// The full address of the page on screen: the lock, or "Not secure", then
+/// the address with its host (in its `xn--` form) in full colour. The
+/// address changes when the next page arrives, not when it is asked for
+/// (`WebPane.sync`). A click edits it; Return loads what was typed, Escape
+/// puts the address back, ⌘W closes the pane; with no page the field has
+/// the keyboard.
+private struct AddressField: View {
+    let pane: WebPane
+
+    @FocusState private var focused: Bool
+    @State private var draft = ""
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 5) {
-                if page.url != nil {
-                    if page.isSecure {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.secondaryText)
-                            .accessibilityLabel("Secure")
-                    } else {
-                        Text("Not secure")
-                            .font(Theme.font(11, .medium))
-                            .foregroundStyle(Theme.attention)
-                    }
-                }
-                Text(page.url?.host ?? "Loading…")
-                    .font(Theme.font(14, .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.head)
+        let page = pane.page
+        HStack(spacing: 6) {
+            if !focused, page.url != nil {
+                SecurityMark(isSecure: page.isSecure)
             }
-            if !page.title.isEmpty {
-                Text(page.title)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+            ZStack(alignment: .leading) {
+                TextField("", text: $draft, prompt: page.url == nil ? Text("Type a URL").foregroundStyle(Theme.tertiaryText) : nil)
+                    .textFieldStyle(.plain)
+                    .font(Theme.font(13))
+                    .focused($focused)
+                    .accessibilityLabel("Address")
+                    .onSubmit {
+                        pane.go(to: draft)
+                        if pane.problem == nil { focused = false }
+                    }
+                    .onExitCommand { draft = page.url?.absoluteString ?? "" }
+                if !focused, let url = page.url {
+                    AddressText(url: url)
+                        .allowsHitTesting(false)
+                }
             }
         }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .modifier(FieldChrome(focused: focused, hovering: hovering))
+        .onHover { hovering = $0 }
         .help(page.url?.absoluteString ?? "")
+        .background {
+            // ⌘W in the field closes the pane, as from the page.
+            if focused {
+                Button("Close") { pane.close() }
+                    .keyboardShortcut("w", modifiers: .command)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onChange(of: focused) { _, now in
+            guard now else { return draft = "" }
+            draft = pane.page.url?.absoluteString ?? ""
+            // As in a browser, the whole address is selected to type over.
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
+        .task {
+            // Opened from Browser with no page: straight to typing.
+            if pane.webView == nil { focused = true }
+        }
+    }
+}
+
+/// A small lock for https with nothing insecure on the page; "Not secure"
+/// in amber otherwise (attention, not red: nothing is broken).
+private struct SecurityMark: View {
+    let isSecure: Bool
+
+    var body: some View {
+        if isSecure {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.secondaryText)
+                .accessibilityLabel("Secure")
+        } else {
+            HStack(spacing: 6) {
+                Text("Not secure")
+                    .font(Theme.font(12, .medium))
+                    .foregroundStyle(Theme.attention)
+                    .fixedSize()
+                Theme.divider.frame(width: 1, height: 14)
+            }
+        }
+    }
+}
+
+/// The address with its host in full colour and the rest quieter, so the
+/// site is the part that reads first. The path gives way first; a host too
+/// long for the field loses its start, never its end, so
+/// `google.com.sign-in.evil.example` cannot hide `evil.example`.
+private struct AddressText: View {
+    let url: URL
+
+    var body: some View {
+        let parts = Self.parts(of: url.absoluteString)
+        HStack(spacing: 0) {
+            Text(parts.lead)
+                .foregroundStyle(Theme.secondaryText)
+                .fixedSize()
+            Text(parts.host)
+                .truncationMode(.head)
+                .layoutPriority(1)
+            Text(parts.rest)
+                .foregroundStyle(Theme.secondaryText)
+                .truncationMode(.tail)
+        }
+        .font(Theme.font(13))
+        .lineLimit(1)
+    }
+
+    /// `https://`, `host:port`, then the path, query and fragment; an
+    /// address without `://` (`about:blank`) is all `rest`.
+    static func parts(of address: String) -> (lead: Substring, host: Substring, rest: Substring) {
+        guard let scheme = address.range(of: "://") else { return ("", "", address[...]) }
+        let after = address[scheme.upperBound...]
+        let end = after.firstIndex { "/?#".contains($0) } ?? after.endIndex
+        return (address[..<scheme.upperBound], after[..<end], after[end...])
+    }
+}
+
+/// ⋮: Copy link and Open in default browser for the page, and Clear
+/// website data (asked once more in place).
+private struct MoreMenu: View {
+    @Environment(\.menuPresenter) private var presenter
+    let pane: WebPane
+    let url: URL?
+
+    @State private var frame: CGRect = .zero
+
+    var body: some View {
+        HoverIconButton(help: "More") {
+            presenter?.show(entries(), at: frame, source: "web-more")
+        } label: {
+            Image(systemName: "ellipsis").rotationEffect(.degrees(90))
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+    }
+
+    private func entries() -> [MenuEntry] {
+        let page: [MenuEntry] = url.map { url in
+            [.copy("Copy link", text: url.absoluteString, systemImage: "link"),
+             .button("Open in default browser", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }]
+        } ?? []
+        let pane = pane
+        return .sections(
+            page,
+            [.destructive("Clear website data", systemImage: "trash", confirm: "Sign out of every site?") {
+                Task {
+                    await pane.clearWebsiteData()
+                    CopyFeedback.announce("Website data cleared")
+                }
+            }]
+        )
     }
 }
 
@@ -560,19 +703,21 @@ private struct ToolbarIcon: View {
 private struct LoadProblem: View {
     let host: String?
     let problem: String
-    let retry: () -> Void
+    let retry: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 10) {
-            Text("Couldn't open \(host ?? "the page")")
+            Text("Couldn't open \(host ?? "that address")")
                 .font(Theme.font(15, .semibold))
             Text(problem)
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
-            Button("Try Again", action: retry)
-                .buttonStyle(GhostButtonStyle())
+            if let retry {
+                Button("Try Again", action: retry)
+                    .buttonStyle(GhostButtonStyle())
+            }
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -180,7 +180,7 @@ struct NoticeBar: View {
 
 
 /// A tribe's name, what it is about and what a message costs, then Call
-/// and More (H1): the second brain and the app (in the web pane), Members,
+/// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
 /// Details (⌘I), the link, Notifications, Edit tribe for the owner and
 /// Leave, confirmed in the menu. Members, Details and Edit open below More.
 struct TribeHeader: View {
@@ -231,7 +231,7 @@ struct TribeHeader: View {
             edit.append(.button("Edit tribe…", systemImage: "slider.horizontal.3") { panel = .edit })
         }
         return .sections(
-            TribeWebEntries.entries(for: tribe, open: openURL),
+            WebMenuEntries.entries(for: tribe, pane: model.web, open: openURL),
             [.button("Members", systemImage: "person.2") { panel = .members }, HeaderMoreButton.details { panel = .details }]
                 + (tribe.map(ConversationMenu.link) ?? [])
                 + [ConversationMenu.notifications(for: conversation, model: model)],

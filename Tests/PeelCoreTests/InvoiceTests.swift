@@ -338,7 +338,6 @@ struct InvoiceTests {
         _ = try storage.apply(commit)
         #expect(try storage.openInvoices(among: [coffeeHash, hash(2)]) == [coffeeHash])
         #expect(try storage.openInvoices(among: []) == [])
-        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: nil))
 
         // As `Engine.commit` turns a history page into settles.
         let page = PaymentRecord.decode(#"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#)
@@ -349,24 +348,8 @@ struct InvoiceTests {
         let record = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: true))
         #expect(record.status == .paid && record.paidAt == 42 && record.paidMsat == 250_000_000)
         #expect(try storage.openInvoices(among: [coffeeHash]).isEmpty)
-        #expect(try !storage.hasInvoicesAwaitingHistory(checkedAt: nil))
         let state = try await first(storage.timeline(in: dm))?.requests.values.first?.state
         #expect(state == .paid(at: Date(millisecondsSince1970: 42)))
-    }
-
-    /// Open, but expired before the history was last brought up to date:
-    /// any payment of it is already stored, so it is not fetched for again.
-    @Test func anInvoiceExpiredBeforeTheLastCheckIsNotWaitedFor() throws {
-        let storage = try profile.storage()
-        var commit = Storage.Commit()
-        commit.invoices = [InvoiceRecord(
-            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 250_000_000, memo: "",
-            payee: coffeePayee, createdAt: 1, expiresAt: 1000, status: .open
-        )]
-        _ = try storage.apply(commit)
-        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: nil))
-        #expect(try storage.hasInvoicesAwaitingHistory(checkedAt: 1000))
-        #expect(try !storage.hasInvoicesAwaitingHistory(checkedAt: 700_000))
     }
 
     @Test func aHistoryRowWithIndexZeroNamesNoMessage() {
@@ -436,6 +419,24 @@ struct InvoiceTests {
                                    msat: 250_000_000, timestamp: 3000, paymentHash: coffeeHash)
         _ = try storage.apply(Storage.Commit(messages: [(full, false, nil)]))
         if case .paid? = try await state() {} else { Issue.record("not paid") }
+    }
+
+    /// After a restore no invoice is left here and a plain payment brings no
+    /// type 3: the server's incoming row for the request's hash pays it,
+    /// in part if it brought less (payments review F8).
+    @Test func ourRequestIsPaidByTheHistoryAfterARestore() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(request(fromMe: true), false, nil)]))
+        func state() async throws -> PaymentRequest.State? {
+            try await first(storage.timeline(in: dm))?.requests.values.first?.state
+        }
+        func row(_ msat: Int64, ts: Int64) -> PaymentRecord {
+            PaymentRecord(rhash: coffeeHash, ts: ts, amountMsat: msat, incoming: true, remote: false)
+        }
+        _ = try storage.apply(Storage.Commit(payments: [row(1_000, ts: 40)]))
+        #expect(try await state() == .underpaid(msat: 1_000))
+        _ = try storage.apply(Storage.Commit(payments: [row(250_000_000, ts: 42)]))
+        #expect(try await state() == .paid(at: Date(millisecondsSince1970: 42)))
     }
 
     /// A timeline's requests are read together, by payment hash: each takes

@@ -241,11 +241,12 @@ extension Storage {
         )
         var summaries: [String: BoostSummary] = [:]
         // A boost on our own message pays us: only the sats that arrived
-        // count, never what its sender declared.
+        // count, never what its sender declared, and none when the server's
+        // history says they never came (`Message.arrived`).
         let ours = Set(messages.filter(\.fromMe).compactMap(\.uuid))
         for var boost in boosts {
             guard let boosted = boost.replyUUID else { continue }
-            if !boost.fromMe, ours.contains(boosted) { boost.amountMsat = boost.msat ?? 0 }
+            if !boost.fromMe, ours.contains(boosted) { boost.amountMsat = boost.arrived == false ? 0 : boost.msat ?? 0 }
             if boost.fromMe, boost.delivery == .failed {
                 summaries[boosted, default: BoostSummary()].failed.append(boost)
                 continue

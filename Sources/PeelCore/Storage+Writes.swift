@@ -59,12 +59,22 @@ extension Storage {
         /// The bodies of attachments a delete emptied, so their decrypted
         /// copies can be removed from the cache.
         var purged: [String] = []
-        /// The sats that reached this account: direct payments to it and
-        /// boosts on its own messages, stored for the first time, with real
-        /// sats (never an amount only declared), not deleted and past the
-        /// chat's read marker (so a restore or catch-up of what was already
-        /// seen stays quiet).
-        var received: [Message] = []
+        /// Someone else's payments and boosts with sats that this commit
+        /// found arrived (`arrived`): by its history rows, or by a row already
+        /// stored for a message stored now. The engine tells only those it
+        /// was waiting to tell (`announceable`), never on the message alone
+        /// (payments review F2).
+        var confirmed: [Message] = []
+        /// Ids of the sats that reached this account, stored for the first
+        /// time: direct payments to it and boosts on its own messages, with
+        /// real sats (never an amount only declared), not deleted and past
+        /// the chat's read marker as it stood then (so a restore or catch-up
+        /// of what was already seen stays quiet). Decided now, not when
+        /// confirmed: by then the open chat may have been marked read.
+        var announceable: [Int64] = []
+        /// Someone else's payment or boost with sats stored for the first
+        /// time: the history is worth asking about it.
+        var newMoney = false
         /// The key exchanges of people adding this account seen for the
         /// first time (only with `marksNewContacts`).
         var addedUs: [Message] = []
@@ -96,7 +106,7 @@ extension Storage {
                 try tribe.upsert(db)
             }
             // Payments and boosts stored for the first time, checked once
-            // this commit's read markers are in.
+            // this commit's read markers and history rows are in.
             var fresh: [Message] = []
             for (message, trustSender, replaces) in commit.messages {
                 let money = !message.fromMe && MessageType.payments.contains(message.type)
@@ -107,7 +117,7 @@ extension Storage {
                 ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 applied.stored.append(row)
-                if isNew, money { fresh.append(row) }
+                if isNew, money, (row.msat ?? 0) > 0 { fresh.append(row) }
                 if isNew, addsUs {
                     applied.addedUs.append(row)
                     try db.execute(
@@ -135,6 +145,7 @@ extension Storage {
             for record in commit.payments {
                 try record.upsert(db)
             }
+            applied.confirmed = try Self.reconcile(commit.payments, db)
             for invoice in commit.invoices {
                 try Self.insert(invoice, db)
             }
@@ -178,7 +189,12 @@ extension Storage {
             for (chat, index) in commit.reads {
                 try Self.applyServerRead(db, chat: chat, index: index)
             }
-            applied.received = try fresh.filter { try Self.isMoneyForMe($0, db) }
+            applied.newMoney = !fresh.isEmpty
+            applied.announceable = try fresh.filter { try Self.isMoneyForMe($0, db) }.compactMap(\.id)
+            // Their history row may be stored already, fetched before the message came.
+            for row in fresh {
+                if let index = row.serverIndex { applied.confirmed += try Self.markArrived(index: index, db) }
+            }
             for (chat, level) in commit.mutes {
                 try Self.setMute(db, chat: chat, level: level)
             }
@@ -326,6 +342,101 @@ extension Storage {
         guard row.type == MessageType.boost else { return true }
         guard let boosted = row.replyUUID else { return false }
         return try message(uuid: boosted, in: row.chat, db)?.fromMe == true
+    }
+
+    /// What a page of the server's history settles. Someone else's payment
+    /// or boost whose incoming row it has arrived: the message the row names
+    /// by index, the one the server delivered with those sats; a row with no
+    /// index only a message with none, by payment hash (every delivered
+    /// message has an index, so a hash a message claims never stands in for
+    /// it). A money send of ours still pending,
+    /// unsettled or failed whose outgoing row it has with no error went
+    /// through; one still pending or unsettled whose only rows failed,
+    /// failed (the server put the sats back). Our rows from a restore carry
+    /// no payment hash; those go by their tag (`Engine.checkPendingSends`).
+    /// Returns the payments now known to have arrived.
+    static func reconcile(_ page: [PaymentRecord], _ db: Database) throws -> [Message] {
+        let payments = MessageType.sqlList(MessageType.payments)
+        let sends = MessageType.sqlList(MessageType.moneySends)
+        var arrived: [Message] = []
+        for row in page where row.incoming && !row.failed {
+            if let index = row.msgIndex {
+                arrived += try markArrived(index: index, db)
+            } else {
+                // A row with no index vouches only for a message with none.
+                arrived += try Message.fetchAll(
+                    db,
+                    sql: """
+                        UPDATE message SET arrived = 1
+                        WHERE paymentHash = ? AND serverIndex IS NULL
+                            AND type IN (\(payments)) AND fromMe = 0 AND msat > 0 AND arrived IS NOT 1
+                        RETURNING *
+                        """,
+                    arguments: [row.rhash]
+                )
+            }
+        }
+        for row in page where !row.incoming {
+            if row.failed {
+                try db.execute(
+                    sql: """
+                        UPDATE message SET status = 'FAILED'
+                        WHERE paymentHash = ?1 AND fromMe = 1 AND type IN (\(sends)) AND status IN ('PENDING', 'UNSETTLED')
+                            AND NOT EXISTS (SELECT 1 FROM payment
+                                WHERE rhash = ?1 AND incoming = 0 AND IFNULL(error, '') = '')
+                        """,
+                    arguments: [row.rhash]
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                        UPDATE message SET status = 'COMPLETE'
+                        WHERE paymentHash = ? AND fromMe = 1 AND type IN (\(sends))
+                            AND status IN ('PENDING', 'UNSETTLED', 'FAILED')
+                        """,
+                    arguments: [row.rhash]
+                )
+            }
+        }
+        return arrived
+    }
+
+    /// Someone else's payment or boost with sats that the server delivered
+    /// at `index`, marked arrived: an incoming history row names it.
+    private static func markArrived(index: Int64, _ db: Database) throws -> [Message] {
+        try Message.fetchAll(
+            db,
+            sql: """
+                UPDATE message SET arrived = 1
+                WHERE serverIndex = ?1 AND type IN (\(MessageType.sqlList(MessageType.payments)))
+                    AND fromMe = 0 AND msat > 0 AND arrived IS NOT 1
+                    AND EXISTS (SELECT 1 FROM payment WHERE msgIndex = ?1 AND incoming = 1 AND IFNULL(error, '') = '')
+                RETURNING *
+                """,
+            arguments: [index]
+        )
+    }
+
+    /// Someone else's payments and boosts with sats, stored by row
+    /// `storedThrough`, sent at or after `since` (the oldest time a history
+    /// fetch reached, so their row would be in it), that the history has no
+    /// incoming row for: the message came, the sats did not (payments
+    /// review F2: a payment the server redeemed but could not pay). A row
+    /// that turns up later still marks it arrived (`reconcile`).
+    func markNotArrived(storedThrough id: Int64, since: Int64) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE message SET arrived = 0
+                    WHERE type IN (\(MessageType.sqlList(MessageType.payments))) AND timestamp >= ? AND id <= ?
+                        AND fromMe = 0 AND msat > 0 AND arrived IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.incoming = 1 AND IFNULL(p.error, '') = ''
+                            AND (p.msgIndex = message.serverIndex
+                                OR (message.serverIndex IS NULL AND p.rhash = message.paymentHash)))
+                    """,
+                arguments: [since, id]
+            )
+        }
     }
 
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
@@ -545,24 +656,6 @@ extension Storage {
                     """,
                 arguments: StatementArguments(hashes)
             ))
-        }
-    }
-
-    /// Whether an invoice made here is open and may have been paid since
-    /// `checkedAt` (milliseconds), when the history was last fetched back to
-    /// what is stored: it had not expired by then, with a margin for the
-    /// clocks (one with no expiry counts as a week, CLN's default). Nil asks
-    /// about any open one.
-    func hasInvoicesAwaitingHistory(checkedAt: Int64?) throws -> Bool {
-        try pool.read { db in
-            try Bool.fetchOne(
-                db,
-                sql: """
-                    SELECT EXISTS (SELECT 1 FROM invoice WHERE incoming = 1 AND status = 'OPEN'
-                        AND COALESCE(expiresAt, createdAt + 604800000) + 600000 > ?)
-                    """,
-                arguments: [checkedAt ?? 0]
-            ) ?? false
         }
     }
 

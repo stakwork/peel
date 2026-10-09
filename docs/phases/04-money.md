@@ -5,7 +5,7 @@
 **Built and merged:** boosts and in-chat payments (#16), one-tap boost (#24),
 unsettled payments and boost once (#26), the Payments screen, invoices,
 requests in chat and paid attachments (#27), sats received shown and
-notified (#51). Storage was at v13 then; it is at v18 now.
+notified (#51). Storage was at v13 then; it is at v21 now.
 
 **Open:**
 - Payment templates, not started: the scope list at the start of the journal.
@@ -17,7 +17,8 @@ notified (#51). Storage was at v13 then; it is at v18 now.
 - Sats counted before they settle, and the mixer's missed settle window: "Boost stuck waiting, and Boost once", "Open".
 - The payments correctness review (`../reviews/2026-10-09-payments-correctness.md`):
   F1, F3 (Peel's half), F6 and F7 fixed ("Payments review, first set");
-  F2, F4, F5, F8, F9, F10, F11 and F3's core half open.
+  F2, F4 and F8 fixed, and stale pending rows settled ("Payments review,
+  reconciliation"); F5, F9, F10, F11 and F3's core half open.
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -1510,3 +1511,111 @@ hidden with its window off the screens, Dan's chat open, 15 minutes idle:
 `sample` before: the main thread in `NSHostingView.layout` and
 `TimelineView.UpdateFilter.updateValue` on every display cycle, with no
 view body run.
+
+## Payments review, reconciliation (2026-10-09, branch `fix/payments-reconcile`)
+
+F2, F4 and F8 from `../reviews/2026-10-09-payments-correctness.md`, and
+the rows left pending by older builds (Tom's "21 waiting", the first set's
+"Not applied"). Done means: a received payment counts once the server's
+history has it, and never when it does not; a restored send says what the
+server says of it; a request of ours paid before a restore reads Paid; a
+pending send the history settled is settled.
+
+- **Premises, checked on the local stack first** (throwaway journey, then
+  kept as `Payments.twoDevicesPayAnOfflineContact`). Two devices of Alice's
+  each paid offline Bob 3,748 sats (each device's gate knows only its own
+  waiting payment, so F1's refusal does not stop the second). When Bob came
+  online both messages reached him, each with `msat` 3,748,000; his history
+  had one incoming row, by message index; Payments listed both as received.
+  The mixer delivers the onion before it moves the sats and `move_funds`
+  failed for the second, leaving no history row on either side, only the
+  send record (FAILED) under Alice's tag. A device restored afterwards
+  stored both of Alice's sends with their tags, no payment hash, no status,
+  and Payments read both as sent.
+- **One reconciliation** (`Engine.reconcileInBackground`, which
+  `checkInvoicesInBackground` became): on coming online, at the end of each
+  catch-up or restore, when the balance rises and when someone's payment
+  is stored, refresh the history (`refreshPaymentHistory`, the path Payments
+  pages from) and page back (at most 10 pages, 30 days) to the oldest send
+  of ours still open. Each page is applied by `Storage.reconcile`.
+- **Received (F2).** `message.arrived` (v21, with an index on
+  `serverIndex`): 1 once an incoming row names the message by index, also
+  when the row was stored before the message came; a row with no index
+  only a message with none, by hash (every delivered message has an
+  index). 0 once a complete refresh reached back past the message's time
+  without a row (`markNotArrived`), judged only for rows stored before the
+  previous refresh began so each has had a whole refresh for its row to
+  land; a row that turns up later still makes it 1. `.moneyReceived`
+  (notification, count-up, "+350") now comes with the 1, not the message,
+  for what was news when it was stored (`Applied.announceable`, held in
+  `MoneyWork.untold`): past the read marker then, so the open chat marking
+  it read meanwhile does not silence it; nothing from a launch or a
+  restore. The newest history page is asked from past any time, not this
+  Mac's clock. "Not received" in the chat, in Payments (struck, its own
+  detail words) and nothing in boost totals. Rows from before v21 stay
+  unknown until a refresh covers them.
+- **Restored sends (F4).** History cannot do it (no hash on the row, no row
+  for the failure), so `pendingSendTags` also returns our money rows with no
+  status, newest 200, and `checkPendingSends` runs after a restore as well
+  as on each connect. Only the server's COMPLETE or FAILED moves them; no
+  record fails nothing (they are never in the 30-minute "unrecorded" set).
+  A live status already reaches every device by tag (seen on the stack).
+- **Retry only from the device that sent it.** A failed payment or boost
+  is retryable only with the sats it sent kept (`msat`, set only by a send
+  from this Mac); the chat offers no Retry or Discard otherwise. Found by
+  `/security-review`: asking the server about every status-less row of
+  ours would let a message the core merely takes for ours (the
+  `dec_ts_matches` case in the first set) carry the tag of a failed send of
+  ours, turn failed, and offer Retry paying the amount its body declares.
+- **Requests (F8).** `requests(in:)` takes an incoming history row with the
+  request's hash: Paid, or "partly paid" for less.
+- **Stale pending sends.** `Storage.reconcile` settles our pending,
+  unsettled or failed money rows by payment hash: an outgoing row with no
+  error → COMPLETE; only failed rows → FAILED (from pending or unsettled
+  only; a success is never undone). Rule for one the server never settles:
+  it stays pending (never offered again) but counts as waiting only for
+  `Message.waitingLimit`, a week; after that it no longer holds sats back in
+  the gate or the header. Erring this way risks at worst a later payment
+  failing for want of balance, never a second payment. Tom's row is fixed
+  on the first connect after the update by the same refresh, or by the
+  week. Not tested against his account; reproduced on the stack by setting
+  a sent payment back to PENDING under an unknown tag
+  (`Payments.keysendBothWays`).
+- **Removed:** `hasInvoicesAwaitingHistory` and `historyCheckedAt`: the
+  history is now refreshed on each trigger, one page in the usual case.
+- **Tests.** Unit: arrival confirmed by index and told once, not arrived by
+  window and stored-through, a late row, Payments and boost totals
+  (`PaymentTests`); restored rows asked about by tag; history settling a
+  stale pending row, a failed row, a later success, the week rule
+  (`MoneyRefusalTests`); a request paid by the history (`InvoiceTests`).
+  Integration: journey 1 now checks Bob's received total;
+  `twoDevicesPayAnOfflineContact` (F2, and review journey 2 for F4);
+  the stale row in `keysendBothWays`.
+- **Reviews.** `/code-review`: confirm by the row's message index, not
+  only its hash (applied; a hash in a message's JSON is the sender's word on
+  a history page). `/simplify`: one history path (`refreshPaymentHistory`)
+  for Payments, invoices and the reconciliation; `inHistory` serves both
+  directions for requests; the invoice-only predicate went. `/security-review`:
+  the Retry rule above (applied); the SQL is bound, `arrived` only ever
+  lowers what counts as received, and statuses only move forward as before.
+  Not applied: `.moneyReceived` now comes a history round trip after the
+  balance, so on a slow server the header's count-up can miss its 1.5 s
+  hold and the amount simply appears (`MoneyArrivals`, as for invoices).
+- **Left for later.** A paid attachment's key is still sent on the purchase
+  message's `msat`, before the history confirms it (the same race could
+  hand a key for sats that never came). On a restored device the history's
+  outgoing row for a restored payment shows as a separate "Keysend" (the
+  restored row has no hash to join on). F1 on a second device: its gate
+  does not know the other device's waiting payments. Upstream: the mixer's
+  payment key is scid, time and amount (`pmt_key`), so two payments of the
+  same amount in the same millisecond share one row. F5, F9, F10, F11 and
+  F3's core half as before.
+- **Independent review** (merge after fixes; nothing pays twice, the week
+  and Retry rules hold), applied: F-A the open chat's payments were never
+  told (announceability decided at store time); F-B the newest page asked
+  from this Mac's clock; F-C a table scan per history row (index, the OR
+  split) and a reconcile per restore page; F-D a hash-only row vouching for
+  any message with that hash (now only one with no index); F-F a message
+  stored after its row was fetched never confirmed. Left: the paid
+  attachment's key and the mixer's key collision, above.
+

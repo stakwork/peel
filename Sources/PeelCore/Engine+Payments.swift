@@ -184,18 +184,41 @@ extension Engine {
     /// Fetches what is new since the history was last fetched: the newest
     /// page, and older ones until they reach what is stored, so a busy spell
     /// leaves no gap that paging back would skip. At most 20 pages a time.
+    /// Each page settles what it can as it is stored (`Storage.reconcile`);
+    /// once the history is whole back to where this fetch reached, someone
+    /// else's payments it should hold and does not never arrived
+    /// (`Storage.markNotArrived`).
     public func refreshPaymentHistory() async throws {
-        let started = Date().millisecondsSince1970
+        let stored = try storage.highestMessageID() ?? 0
         let newestStored = try storage.newestPaymentTimestamp()
         var before: Int64?
         for _ in 0..<20 {
             let page = try await fetchPaymentPage(before: before)
-            guard page.count >= Int(Self.paymentPageSize), let newestStored, let oldest = page.map(\.ts).min(),
-                  oldest > newestStored else {
-                money.historyCheckedAt = started
+            let oldest = page.map(\.ts).min()
+            guard page.count >= Int(Self.paymentPageSize), let newestStored, let oldest, oldest > newestStored else {
+                // A short page is the start of the history; else it is whole from the oldest row fetched.
+                let reached = page.count < Int(Self.paymentPageSize) ? 0 : oldest ?? before ?? 0
+                try storage.markNotArrived(storedThrough: money.judgedThrough, since: reached)
+                money.judgedThrough = max(money.judgedThrough, stored)
                 return
             }
             before = oldest
+        }
+    }
+
+    /// How far back the history is fetched for a send of ours the server
+    /// may have settled without telling this device (stuck pending, say,
+    /// from before #26): 30 days, 10 pages at most.
+    static let openSendReach: TimeInterval = 30 * 24 * 60 * 60
+    static let openSendPages = 10
+
+    /// Pages back through the history until it reaches the oldest send of
+    /// ours still open, so `Storage.reconcile` can settle it.
+    private func fetchBackToOpenSends() async throws {
+        let since = Date.now.addingTimeInterval(-Self.openSendReach).millisecondsSince1970
+        for _ in 0..<Self.openSendPages {
+            guard let open = try storage.oldestOpenSend(since: since), let oldest = try storage.oldestPaymentTimestamp(),
+                  oldest > open, try await fetchOlderPaymentHistory() >= Int(Self.paymentPageSize) else { return }
         }
     }
 
@@ -212,7 +235,10 @@ extension Engine {
             // The next fetch may be waiting for this one.
             wakeWaiters()
         }
-        let since = before.map { UInt64(max($0 - 1, 0)) } ?? UInt64(Date().millisecondsSince1970)
+        // The newest page starts past any time, not at this Mac's clock: one
+        // behind the server's would leave out its newest rows (and mark the
+        // payments they confirm not received).
+        let since = before.map { UInt64(max($0 - 1, 0)) } ?? UInt64(Int64.max)
         try await run { time, state in
             try Sphinxrs.fetchPayments(
                 seed: seed, uniqueTime: time, state: state, since: since, limit: Self.paymentPageSize,
@@ -295,35 +321,39 @@ extension Engine {
         ContactCode.contactInfo(contactInfo).map { $0.split(separator: "_").map(String.init) }
     }
 
-    /// Looks in the server's history for payments to invoices made here,
-    /// which arrive only as a balance change and a history row (`commit`
-    /// matches the row by payment hash): on coming online, as Peel may have
-    /// been closed when one was paid, and whenever the balance goes up. Only
-    /// while an invoice made here was open and unexpired when the history
-    /// was last brought up to date. One check at a time; a call during one
-    /// runs it again after. Stopped by `disconnect`.
-    func checkInvoicesInBackground() {
+    /// Brings what this account believes about its money in line with the
+    /// server's payment history (`refreshPaymentHistory`, which commits each
+    /// page through `Storage.reconcile`): payments to invoices made here,
+    /// which arrive only as a balance change and a history row; someone
+    /// else's payments, told only once their sats are in the history and
+    /// marked not arrived when they never are (payments review F2); and our
+    /// own sends left pending, settled or failed by their rows, reaching
+    /// back for them (`fetchBackToOpenSends`). On coming online, as Peel
+    /// may have been closed meanwhile; when the balance goes up; when
+    /// someone's payment comes. One at a time; a call during one runs it
+    /// again after. Stopped by `disconnect`.
+    func reconcileInBackground() {
         guard !closed else { return }
-        money.invoicesNeedCheck = true
-        guard money.invoiceCheck == nil else { return }
-        money.invoiceCheck = Task { [weak self] in await self?.checkOpenInvoices() }
+        money.needsReconcile = true
+        guard money.reconcile == nil else { return }
+        money.reconcile = Task { [weak self] in await self?.reconcilePayments() }
     }
 
-    private func checkOpenInvoices() async {
-        while money.invoicesNeedCheck, !Task.isCancelled {
-            money.invoicesNeedCheck = false
+    private func reconcilePayments() async {
+        while money.needsReconcile, !Task.isCancelled {
+            money.needsReconcile = false
             do {
-                guard try storage.hasInvoicesAwaitingHistory(checkedAt: money.historyCheckedAt) else { break }
                 try await refreshPaymentHistory()
+                try await fetchBackToOpenSends()
             } catch {
                 if !Task.isCancelled {
-                    emit.yield(.coreError("checking invoices for payments: \(PeelError.readable(error))"))
+                    emit.yield(.coreError("checking payments with the server: \(PeelError.readable(error))"))
                 }
                 break
             }
         }
         // A cancelled check has already been replaced or stopped.
-        if !Task.isCancelled { money.invoiceCheck = nil }
+        if !Task.isCancelled { money.reconcile = nil }
     }
 
     /// Asks a contact for sats in their chat (type 2), with an invoice the

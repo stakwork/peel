@@ -20,13 +20,13 @@ struct MoneyRefusalTests {
 
     private func ownPayment(
         _ n: Int, type: Int = MessageType.directPayment, chat: String = person, on parent: Int? = nil,
-        status: Message.Delivery = .failed, msat: Int64
+        status: Message.Delivery = .failed, msat: Int64, sent: Int64? = nil, paymentHash: String? = nil
     ) -> Message {
         let reply = parent.map { #","replyUuid":"\#(uuid($0))""# } ?? ""
         return .fixture(
-            uuid: uuid(n), type: type, chat: chat, fromMe: true, body: #"{"content":""\#(reply)}"#, content: "",
-            timestamp: Int64(n) * 1_000, tag: "t\(n)", status: status.rawValue, replyUUID: parent.map(uuid),
-            amountMsat: msat
+            uuid: uuid(n), type: type, chat: chat, fromMe: true, body: #"{"content":""\#(reply)}"#, content: "", msat: msat,
+            timestamp: sent ?? Date.now.millisecondsSince1970 - 60_000 + Int64(n) * 1_000, tag: "t\(n)",
+            paymentHash: paymentHash, status: status.rawValue, replyUUID: parent.map(uuid), amountMsat: msat
         )
     }
 
@@ -137,6 +137,42 @@ struct MoneyRefusalTests {
         // Once the server takes it, the balance it reports says so.
         _ = try storage.apply(Storage.Commit(statuses: [("t1", Message.Delivery.delivered.rawValue)]))
         #expect(try storage.waitingMsat() == 5_000)
+    }
+
+    /// A payment of ours left pending (Tom's 21 sats, stuck from before
+    /// #26): the server's history settles it by its payment hash, a failed
+    /// row fails it, and one it has no row for stops holding sats back
+    /// after `Message.waitingLimit`, still pending, never offered again.
+    @Test func theHistorySettlesAStalePendingPayment() throws {
+        let old = Date.now.millisecondsSince1970 - Int64(Message.waitingLimit * 1000) - 60_000
+        let (_, storage) = try engine(
+            balanceMsat: 50_000,
+            messages: [
+                ownPayment(1, status: .pending, msat: 21_000, sent: old + 1, paymentHash: uuid(101)),
+                ownPayment(2, status: .pending, msat: 4_000, paymentHash: uuid(102)),
+                ownPayment(3, status: .pending, msat: 3_000, sent: old, paymentHash: uuid(103)),
+                ownPayment(4, status: .pending, msat: 2_000, paymentHash: uuid(104)),
+            ]
+        )
+        // Rows 1 and 3 are over a week old: only 2 and 4 hold sats back.
+        #expect(try storage.waitingMsat() == 6_000)
+        #expect(try storage.oldestOpenSend(since: 0) == old)
+        func status(_ n: Int) throws -> String? {
+            try storage.message(uuid: uuid(n), in: person)?.status
+        }
+        func page(_ rows: [(Int, Int64, String?)]) -> [PaymentRecord] {
+            rows.map { PaymentRecord(rhash: uuid($0.0), ts: $0.1, amountMsat: 1, incoming: false, remote: false, error: $0.2) }
+        }
+        _ = try storage.apply(Storage.Commit(payments: page([(101, old + 2, nil), (102, old + 3, "insufficient balance")])))
+        #expect(try status(1) == "COMPLETE")
+        #expect(try status(2) == "FAILED")
+        #expect(try status(3) == "PENDING")
+        #expect(try status(4) == "PENDING")
+        #expect(try storage.waitingMsat() == 2_000)
+        // A later success wins over a failure; a failure never undoes a success.
+        _ = try storage.apply(Storage.Commit(payments: page([(102, old + 9, nil), (101, old + 9, "late")])))
+        #expect(try status(1) == "COMPLETE")
+        #expect(try status(2) == "COMPLETE")
     }
 
     @Test func aPaymentToATribeIsRefused() async throws {

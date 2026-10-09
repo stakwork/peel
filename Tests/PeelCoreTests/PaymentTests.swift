@@ -133,27 +133,103 @@ struct PaymentTests {
         #expect(states[dm]?.unread == 3)
     }
 
+    /// Someone's payment with its sats: told once the server's history has
+    /// its incoming row (payments review F2), never on the message alone.
+    private func paid(_ message: Message, index: Int64) -> Message {
+        var message = message
+        message.serverIndex = index
+        message.msat = message.amountMsat
+        message.paymentHash = uuid(1_000 + Int(index))
+        return message
+    }
+
+    private func arrivedRows(_ indexes: [Int64], ts: Int64 = 50_000) -> [PaymentRecord] {
+        indexes.map {
+            PaymentRecord(rhash: uuid(1_000 + Int($0)), ts: ts, amountMsat: 1, incoming: true, msgIndex: $0, remote: false)
+        }
+    }
+
     @Test func moneyForMeIsReportedOnceForNotifications() throws {
         let storage = try storage([text(1), text(2, fromMe: true)])
-        func paid(_ message: Message, index: Int64) -> Message {
-            var message = message
-            message.serverIndex = index
-            message.msat = message.amountMsat
-            return message
-        }
         let incoming = [
             paid(payment(3, sats: 10), index: 3), paid(boost(4, on: 2, sats: 5), index: 4),
             // Someone else's boost on someone else's message, and an unpaid "payment".
             paid(boost(5, on: 1, sats: 5), index: 5), payment(6, sats: 99),
         ]
         let commit = Storage.Commit(messages: incoming.map { ($0, false, nil) })
-        #expect(try storage.apply(commit).received.map(\.uuid) == [uuid(3), uuid(4)])
+        let stored = try storage.apply(commit)
+        // News when it came; told only once confirmed.
+        #expect(stored.confirmed.isEmpty && stored.newMoney)
+        let ids = try [uuid(3), uuid(4)].map { try storage.message(uuid: $0, in: dm)?.id }
+        #expect(stored.announceable == ids.compactMap { $0 })
         // The same copies again (history, the server's echo) are not news.
-        #expect(try storage.apply(commit).received.isEmpty)
+        #expect(try storage.apply(commit).announceable.isEmpty)
         // Nor is what was already read when it arrived.
         #expect(try storage.apply(
             Storage.Commit(messages: [(paid(payment(7, sats: 1), index: 7), false, nil)], reads: [dm: 7])
-        ).received.isEmpty)
+        ).announceable.isEmpty)
+        let rows = Storage.Commit(payments: arrivedRows([3, 4, 5]))
+        #expect(try storage.apply(rows).confirmed.map(\.uuid) == [uuid(3), uuid(4), uuid(5)])
+        // The same rows again (the next refresh) confirm nothing new.
+        #expect(try storage.apply(rows).confirmed.isEmpty)
+    }
+
+    /// Review F-A: a payment in the chat open on screen is marked read as it
+    /// lands, before the history confirms it; it was news when it came, so
+    /// it is still told.
+    @Test func moneyInTheOpenChatIsStillToldOnceConfirmed() throws {
+        let storage = try storage([text(1)])
+        let stored = try storage.apply(Storage.Commit(messages: [(paid(payment(3, sats: 10), index: 3), false, nil)]))
+        let id = try #require(stored.announceable.first)
+        #expect(try storage.setRead(chat: dm, index: 3, as: .read))
+        let confirmed = try storage.apply(Storage.Commit(payments: arrivedRows([3])))
+        #expect(confirmed.confirmed.map(\.id) == [id])
+    }
+
+    /// Review F-F: the history row was fetched before the message came; the
+    /// message is confirmed as it is stored.
+    @Test func aRowAlreadyStoredConfirmsTheMessageAsItLands() throws {
+        let storage = try storage([text(1)])
+        _ = try storage.apply(Storage.Commit(payments: arrivedRows([3])))
+        let stored = try storage.apply(Storage.Commit(messages: [(paid(payment(3, sats: 10), index: 3), false, nil)]))
+        #expect(stored.confirmed.map(\.uuid) == [uuid(3)] && stored.announceable.count == 1)
+    }
+
+    /// Review F-D: a row with no index never vouches for a message the
+    /// server delivered (every one has an index), whatever hash it claims.
+    @Test func aHashAloneNeverConfirmsADeliveredMessage() throws {
+        let storage = try storage([paid(payment(3, sats: 10), index: 3)])
+        let hashOnly = PaymentRecord(rhash: uuid(1_003), ts: 50_000, amountMsat: 1, incoming: true, remote: false)
+        #expect(try storage.apply(Storage.Commit(payments: [hashOnly])).confirmed.isEmpty)
+        try storage.markNotArrived(storedThrough: try #require(try storage.highestMessageID()), since: 0)
+        #expect(try storage.message(uuid: uuid(3), in: dm)?.arrived == false)
+    }
+
+    /// Two payments came, the server's history has one (review F2, journey
+    /// 1): the other never arrived, in the chat, Payments and boost totals.
+    @Test func aPaymentWhoseSatsNeverCameIsNotReceived() async throws {
+        let storage = try storage([
+            text(1, fromMe: true), paid(payment(2, sats: 4), index: 2), paid(payment(3, sats: 4), index: 3),
+            paid(boost(4, on: 1, sats: 5), index: 4),
+        ])
+        _ = try storage.apply(Storage.Commit(payments: arrivedRows([2])))
+        let stored = try #require(try storage.highestMessageID())
+        // Judged only from where the fetch reached, and only what was stored by then.
+        try storage.markNotArrived(storedThrough: stored, since: 3_500)
+        func arrived(_ n: Int) throws -> Bool? { try storage.message(uuid: uuid(n), in: dm)?.arrived }
+        #expect(try arrived(2) == true && arrived(3) == nil && arrived(4) == false)
+        try storage.markNotArrived(storedThrough: stored, since: 0)
+        #expect(try arrived(3) == false)
+
+        let items = try await storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }.filter(\.incoming)
+        #expect(items.filter { $0.status == .complete }.map(\.paymentHash) == [uuid(1_002)])
+        #expect(items.first { $0.message?.uuid == uuid(3) }?.error == PaymentItem.notArrived)
+        let timeline = try #require(try await first(storage.timeline(in: dm)))
+        #expect(timeline.boosts[uuid(1)]?.totalMsat == 0)
+
+        // A row that turns up after all still counts it, and tells it.
+        #expect(try storage.apply(Storage.Commit(payments: arrivedRows([4]))).confirmed.map(\.uuid) == [uuid(4)])
+        #expect(try arrived(4) == true)
     }
 
     @Test func aPaymentMovesItsConversationUp() async throws {
@@ -222,6 +298,9 @@ struct PaymentTests {
         // Unconfirmed may have paid: never sent again, however long it waits.
         #expect(!row.isRetryable(now: old.addingTimeInterval(3600)))
         row.status = Message.Delivery.failed.rawValue
+        // Ours from history or another device (no sats kept): failed, never paid again from here.
+        #expect(!row.isRetryable())
+        row.msat = 1_000
         #expect(row.isRetryable())
         #expect(!payment(1, sats: 1).isRetryable())
     }
@@ -352,6 +431,10 @@ struct SendStatusTests {
                       status: pending), false, nil),
             (.fixture(uuid: uuid(2), chat: dm, fromMe: true, timestamp: 1_000, tag: "old", status: pending), false, nil),
             (.fixture(uuid: uuid(3), chat: dm, fromMe: true, timestamp: 9_000, tag: "new", status: pending), false, nil),
+            // Restored, with no status (review F4): asked about, never failed for want of a record.
+            (.fixture(uuid: uuid(4), type: MessageType.directPayment, chat: dm, fromMe: true, timestamp: 7_000,
+                      tag: "restored"), false, nil),
+            (.fixture(uuid: uuid(5), chat: dm, fromMe: true, timestamp: 7_000, tag: "restored text"), false, nil),
         ])
         commit.invoices = [InvoiceRecord(
             paymentHash: coffeeHash, incoming: false, bolt11: coffee, amountMsat: 1, memo: "", payee: coffeePayee,
@@ -365,6 +448,7 @@ struct SendStatusTests {
         #expect(Set(try storage.pendingSendTags(textBefore: 2_000)) == [
             .init(tag: "boost", createdAt: 5_000, movesMoney: true),
             .init(tag: "old", createdAt: 1_000, movesMoney: false),
+            .init(tag: "restored", createdAt: 7_000, movesMoney: false),
             .init(tag: "invoice", createdAt: 2_000, movesMoney: true),
             .init(tag: "invite", createdAt: 3_000, movesMoney: true),
         ])
@@ -376,7 +460,7 @@ struct SendStatusTests {
 
     private func storedBoost(_ storage: Storage) throws -> Message? {
         let boost = Message.fixture(
-            uuid: uuid(2), type: MessageType.boost, chat: dm, fromMe: true, content: "", tag: "t1",
+            uuid: uuid(2), type: MessageType.boost, chat: dm, fromMe: true, content: "", msat: 21_000, tag: "t1",
             status: Message.Delivery.pending.rawValue, replyUUID: uuid(1), amountMsat: 21_000
         )
         _ = try storage.apply(Storage.Commit(

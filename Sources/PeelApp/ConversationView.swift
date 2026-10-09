@@ -609,17 +609,22 @@ struct UndeliveredActions: View {
                     Text(label)
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
-                    Button { Task { await retry() } } label: { Text("Retry").buttonProgress(attempt.working, size: .mini) }
-                        .foregroundStyle(Theme.accent)
-                        .disabled(attempt.working)
+                    // Ours from history or another device is never paid again from here.
+                    if message.isRetryable() {
+                        Button { Task { await retry() } } label: { Text("Retry").buttonProgress(attempt.working, size: .mini) }
+                            .foregroundStyle(Theme.accent)
+                            .disabled(attempt.working)
+                    }
                 }
-                InlineConfirm(
-                    trigger: "Discard", prompt: "Discard this \(what)?", confirm: "Discard", style: .text,
-                    confirming: $confirmingDiscard
-                ) {
-                    await model.discard(message)
+                if message.isDiscardable {
+                    InlineConfirm(
+                        trigger: "Discard", prompt: "Discard this \(what)?", confirm: "Discard", style: .text,
+                        confirming: $confirmingDiscard
+                    ) {
+                        await model.discard(message)
+                    }
+                    .foregroundStyle(Theme.secondaryText)
                 }
-                .foregroundStyle(Theme.secondaryText)
             }
             if let problem = attempt.problem {
                 ProblemText(problem)

@@ -66,6 +66,11 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// The `tz` the sender put in this message's `metadata`, as sent; the
     /// database works it out from `body` (v14), and `senderTimeZone` reads it.
     public var senderTZ: String?
+    /// For someone else's payment or boost with sats: whether the server's
+    /// payment history shows them arriving (`Storage.reconcile`); nil until
+    /// a history fetched after it came has been looked at. False means the
+    /// message came but the sats never did (payments review F2).
+    public var arrived: Bool?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -99,15 +104,23 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// means it never got it (it records a send as soon as it handles it).
     static let unrecordedPaymentTimeout: TimeInterval = 30 * 60
 
+    /// How long a pending payment of ours counts as waiting for its
+    /// recipient (`Storage.waitingMsat`): a week.
+    static let waitingLimit: TimeInterval = 7 * 24 * 60 * 60
+
     /// One of our text messages or attachments that failed, or that the
     /// server has not confirmed within the timeout, and so may be sent again
     /// or discarded. An attachment still uploading is neither. A payment or
     /// boost only once it failed: an unconfirmed one may have paid, and
-    /// sending it again would pay twice. A payment request moves no money,
-    /// so it goes again like text.
+    /// sending it again would pay twice. And only one sent from this Mac,
+    /// which keeps the sats it sent (`msat`): a row of ours from history or
+    /// another device carries none, and Retry would pay the amount its body
+    /// declares to its chat, which a message the core only takes for ours
+    /// (`Engine.cappedToArrived`) could have chosen. A payment request moves
+    /// no money, so it goes again like text.
     public func isRetryable(now: Date = .now) -> Bool {
         guard fromMe, !deleted else { return false }
-        if MessageType.payments.contains(type) { return delivery == .failed }
+        if MessageType.payments.contains(type) { return delivery == .failed && msat != nil }
         guard MessageType.resendable.contains(type), uploadState != .pending else { return false }
         switch delivery {
         case .failed: return true

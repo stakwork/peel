@@ -67,16 +67,17 @@ Tom approved fixing what the review found, one concern per PR.
 | # | Status |
 |---|---|
 | F1 | **Fixed** (PR "Payments: real amounts, waiting payments count, labelled key exchange"): `checkPayment` and `invoiceProblem` take what is waiting for people to come online from the balance (`Storage.spendableMsat`); the header shows "4,996 sats · ◷ 4,000" (the clock alone where it is short of room), Payments and the payment forms "4,000 waiting"; a waiting payment or boost in a DM reads "Payment waiting for Bob to come online", and "Waiting" in Payments. No cancel or expiry (Tom: not now). Journey 1: the second payment is refused, Bob gets one. Not counted yet: the key exchange's 5 sats to someone offline, and an invoice paid the async way by route hint |
-| F2 | Open (next PR, with F4) |
+| F2 | **Fixed** (PR "Payments: reconcile received and restored payments with the server"): someone else's payment or boost counts, and is told, only once the server's history has its incoming row (`Message.arrived`, v21; matched by message index, a hash only for a row and message with none); one a complete history fetch after it came does not have reads "Not received" in the chat and Payments and counts for nothing. Confirmed on the local stack first: two devices of one account paid an offline contact, both messages reached him, the history had one row. Journey `Payments.twoDevicesPayAnOfflineContact` |
 | F3 | **Peel's half fixed** (same PR): a received payment counts for no more than the server says arrived (`Engine.cappedToArrived`), the topic's amount for a live message and the amount beside each onion for a history page (`StateCodec.paymentAmounts`), so the key release, received rows and totals, notifications, type 3s and invoice settles all use it. `04-money.md` corrected; `testing.md` records the stack's rev. Core half (linking a core with SR-016) open |
-| F4 | Open (next PR, with F2) |
+| F4 | **Fixed** (same PR): restored rows of ours carry a tag but no payment hash and no status, and the failed one has no history row at all (the mixer's `move_funds` failed after delivering), so the history cannot settle them; the server's send record by tag can. After a restore, and on each connect, `checkPendingSends` also asks about our money rows with no status; COMPLETE or FAILED moves them, nothing else does (no "no record" failure). Same journey, on a third device |
 | F5 | Open: words only; cancelling needs a mixer change (below) |
 | F6 | **Fixed** (same PR): key exchange rows read "Contact added" / "Added you" with the contact's name, their half joined by hash, ours paired by time and amount with the ping folded in; detail says why. Journey 3 asserts −3 / +1 and the labels. Left: the adder's ping stays a keysend when the contact was offline (it went long before the 5 sats) |
 | F7 | **Fixed** (same PR): `PaymentItem.Status.unsettled`, "Not settled" in Payments as in the chat |
-| F8 | Open |
+| F8 | **Fixed** (same PR): a request of ours is also paid (or partly) by an incoming history row with its hash |
 | F9 | Open |
 | F10 | Open: not cheap. A join sends no tag or hash to track (`join_tribe` passes `is_tribe` as `not_async`, so `push_kac` pushes no message, `bindings/send.rs:189-193`); its row already shows as "Joined #tribe" by time. Keeping the tribe when the publish may have gone (`commitAndPublish`) is the small part left |
 | F11 | Open |
+| Follow-ups (from #140's review) | Open: a paid attachment's key is still sent on the purchase message's `msat`, before the history confirms the sats; the mixer keys a payment row by scid, time and amount (`pmt_key`), so two of the same amount in one millisecond share a row (upstream) |
 
 ## Findings, ranked
 

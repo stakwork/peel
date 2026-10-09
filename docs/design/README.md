@@ -398,50 +398,52 @@ spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
 checked under its field) stays where it is.
 
-## Forms (direction A)
+## Forms (shadcn's conventions)
 
-Tom picked direction A on 2026-10-08, "Grouped, like System Settings",
-with one change: Join a tribe is a single field and stays compact, with
-no settings-pane layout. Inset grouped sections sit on a recessed
-popover. Each row has its label on the left and its value on the right.
-The components are in `Sources/PeelApp/FormKit.swift`.
+On 2026-10-09 Tom replaced direction A's row fields with shadcn's form
+pattern, the web's standard for components, brought into SwiftUI. In a
+row field the label sat on the left and the value on the right. Text
+that sits on the right moves as you type, and it reads oddly. This
+supersedes direction A's label-left, value-right rows for text inputs
+(direction A, 2026-10-08: "Grouped, like System Settings"). Its
+sections, its switches and its in-place confirms stay. The components
+are in `Sources/PeelApp/FormKit.swift`.
 
-Step 1 applies the system to Create a tribe and Edit tribe
-(`TribeSettingsForm`). Every field there now has a label: Name, "What it
-is about" and Image link were placeholder-only before.
+- **A field is a `FormItem`.** The label sits above the field, then the
+  input, then a line of help. A problem replaces that line of help.
+- **Every input reads left, at the width of the form.** It is bordered
+  at rest, as on the web, and nothing moves when you click in.
+- **Sections stay a grouping.** Each is a heading (Basics, Pricing,
+  Access) over its fields, stacked. They have no inset card rows.
+  Pricing puts two fields to a line.
+- **A switch keeps its label on the left and the switch on the right.**
+  Nothing is typed there. Each switch row is a card of its own, as
+  shadcn's switch-in-a-row is.
+- **A click outside a field ends editing.** It can land on the form's
+  background, a label or a heading. The caret goes and the field is at
+  rest again (`endsEditingOnClick`). A click on another field moves the
+  caret there, and a click on a field's padding or unit focuses that
+  field. A button's click is the button's: as on the Mac, it does not
+  take the keyboard.
 
-Step 2 applies it to every other form:
+The system applies to every form:
 
-- Join a tribe takes the compact popover: the link boxed, the tribe on a
-  card under it, Cancel and Look up, then Join. Return still looks up,
-  then joins (#78); over the threshold Join turns orange and asks again
-  (#89).
-- Add contact, Invite someone and an invite's detail are full popovers
-  with sections.
-- Send or request sats is a popover; Receive and Pay an invoice keep their
-  pane, with sections in it. An invoice Peel cannot read is the field's
-  problem.
-- Account: its groups are `FormSection`s, its rows keep a 150 pt label
-  column (the page is wider than a popover) with `FormLabel`, its fields
-  are boxed `FormTextField`s and its buttons `FormButtonStyle`. Forget
-  account is the page's destructive section.
-- Onboarding: the invite and name are rows in a section; the PIN's and the
-  twelve words' cells are boxed fields (`FieldChrome`), the one being
-  typed in ringed.
+- Create a tribe and Edit tribe (`TribeSettingsForm`).
+- Join a tribe, which keeps its compact popover with one field.
+- Add contact, Invite someone and an invite's detail.
+- Send or request sats.
+- Receive and Pay an invoice, in their pane.
+- Account. Its settings stay rows on cards (`SettingsSection` in
+  `AccountView`), since they show what is set and nothing is typed in
+  them. A field that opens there, Name or Image link, is a `FormItem`.
+- Onboarding: the invite and the name. The PIN's and the twelve words'
+  cells take the same chrome (`FieldChrome`).
 - The sidebar's search, the time zone search and a paid attachment's
-  price are boxed form fields too.
-
-The tribe header (H1) is its own change. Step 2 retired `fieldBoxed`,
-`OnboardingView.boxed()` and `onboardingField()`, the radius-7 input
-boxes, `GhostButtonStyle` in forms, and the hand-rolled confirms:
-`InlineConfirm` moved into FormKit and is the one in-place confirm, used
-by `FormDestructiveSection`, `ForgetAccountControl`, Discard on an
-undelivered message and Copy words. `CallSwitchConfirm` stays its own: it
-is a choice between two calls, not a confirm.
+  price.
 
 ### Tokens
 
-The new tokens are in `Theme.swift`, with the rest of the palette. The
+The tokens are in `Theme.swift`, with the rest of the palette. The
 translucent ones use `Color(light:lightOpacity:dark:darkOpacity:)`.
 Peel is dark only for now, and its floating windows are always dark. The
 light values are kept for later, as the other light values are (see
@@ -449,23 +451,25 @@ Colour).
 
 | Token | Dark | Light | For |
 |---|---|---|---|
-| `fieldFill` | white 5.5% | `#141E2D` 5% | a hovered field, a boxed number field, a disabled primary button |
-| `formEdge` | white 7% | `#141E2D` 8% | the hairline around the popover, the sections and a disabled primary button |
+| `fieldFill` | white 5.5% | `#141E2D` 5% | inside a field, an outline button |
+| `inputBorder` | white 15% | `#141E2D` 16% | a field's and an outline button's 1 pt border (shadcn's `input`) |
+| `inputBorderHover` | white 26% | `#141E2D` 28% | the same border under the pointer |
+| `formEdge` | white 7% | `#141E2D` 8% | the hairline around the popover and its cards |
 | `focusRing` | `#618AFF` 28% | `#3F68E0` 22% | the 3 pt ring outside a focused field |
 | `problemRing` | `#FFBC58` 20% | `#A86400` 16% | the 3 pt ring outside a field with a problem |
 | `switchOff` | white 16% | `#141E2D` 16% | a switch that is off |
 | `switchKnob` | `#F4F6F8` | `#FFFFFF` | a switch's knob |
 | `popoverShadow` | black 50% | `#141E2D` 18% | the popover's shadow (radius 10, y 4) |
-| `sectionShadow` | none | `#141E2D` 4% | lifts a section in light |
+| `sectionShadow` | none | `#141E2D` 4% | lifts a card in light |
 
 The surfaces are the existing tokens:
 
 - the popover is `sidebar`;
-- a section is `menu`;
-- a focused field's well is `input`;
-- its 1 pt ring is `accent`;
-- a problem's 1 pt ring and its text are `attention`, amber rather than red, since nothing was lost;
-- a destructive action is `destructive`.
+- a card is `menu`;
+- a focused field's border is `accent`;
+- a problem's border and its text are `attention`, amber rather than
+  shadcn's red, since nothing was lost;
+- a destructive button is `destructive`.
 
 ### Components
 
@@ -473,37 +477,43 @@ The surfaces are the existing tokens:
   - The full form is 372 wide with a corner radius of 12. It has a 15 pt bold title, a close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
   - It draws its own box. The `DrawsOwnPanelBox` preference tells the presenter (`MenuPresenter.showPanel`) to leave out the menu box it gives other panels.
   - The shadow sits on the box only, so the labels cast none. It fits inside the 14 pt margin that `FloatingWindow` leaves.
-  - `compact: true` (320 wide) is for Join. It puts boxed fields straight on the popover, with no sections.
-- **`FormSection("Basics") { rows }`.**
-  - Its title is 11 pt semibold in the secondary colour.
-  - The rows sit on a `menu` card with a corner radius of 9 and a `formEdge` hairline, with a `divider` line between rows.
-- **`FormRow(label:detail:stacked:problem:) { value }`.**
-  - A row is at least 38 tall, with 12 pt of padding.
-  - The label column is 118 wide, at 13 pt, with an 11 pt secondary `detail` line under it. The value sits on the right.
-  - `stacked` puts the value under the label, for "What it is about".
-  - `problem` shows 11 pt amber text, right-aligned, under the row.
-- **`FormTextField(label:prompt:text:axis:boxed:problem:systemImage:monospaced:focusOnAppear:)`.**
-  - The field is 26 tall, with a corner radius of 6.
-  - At rest it has no box and its text sits on the right. Under the pointer it gets a `fieldFill`. While focused it becomes an `input` well with a 1 pt `accent` ring, a 3 pt `focusRing` outside it, and its text on the left.
-  - The field itself always reads left: AppKit ends editing when a field's alignment changes, so step 1's field lost the keyboard the moment it was clicked. At rest a label on the section's `menu` card covers it with the text on the right, and clicks go through to the field. A resting field therefore belongs in a `FormRow` on a `FormSection`.
-  - `systemImage` puts an icon before the text (a search), `monospaced` is for an invoice, `focusOnAppear` takes the keyboard (the time zone search).
-  - With a problem it gets the amber rings instead.
-  - `axis: .vertical` gives two to four lines, aligned with the label above it. `boxed` keeps the fill at rest, for the compact popover.
-  - The label is the field's accessibility name, and the prompt is its placeholder.
+  - `compact: true` (320 wide) is for Join, with no sections.
+  - A click anywhere on it outside a field ends editing.
+- **`FormSection("Basics") { items }`.** A 12 pt semibold heading in the secondary colour, then its items 12 pt apart. It has no card.
+- **`FormItem(label:helper:problem:) { field }`.**
+  - The label is 13 pt medium. The field sits 6 pt under it, and the 12 pt help under that is in the secondary colour.
+  - `problem` takes the help's place in `attention`.
+  - Two items go side by side in an `HStack(alignment: .top)`, as Pricing's do.
+- **`FormTextField(label:prompt:text:axis:problem:systemImage:monospaced:focusOnAppear:)`.**
+  - The field is 32 tall, the width of the form, with 12 pt of padding and a corner radius of 7. Its text reads left.
+  - `axis: .vertical` is a textarea of three to six lines, at least 64 tall.
+  - `systemImage` puts an icon before the text (a search), `monospaced` is for an invoice, and `focusOnAppear` takes the keyboard (the time zone search).
+  - The label is the field's accessibility name, and the prompt is its muted placeholder. With no prompt the field shows none, since the label above names it.
 - **`FormNumberField(label:text:unit:prompt:problem:)`.**
-  - It is 108 by 26 and always boxed, with tabular, right-aligned digits and the unit inside it in the secondary colour. The prompt is "0" unless given ("Free" for a price).
-  - It shows the same focus and problem rings as a text field. `SatsField` is one that takes digits only.
-- **`FieldChrome(focused:hovering:boxed:problem:)`.** The fills and rings of every field, also the PIN's and the twelve words' cells.
+  - It is the same input, with the unit inside the right edge in the secondary colour. The digits read left and are tabular.
+  - The prompt is "0" unless given ("Free" for a price). It fills its column, and a caller that wants it smaller sets a frame (Boost amount, a paid attachment's price, 120).
+  - `SatsField` is one that takes digits only.
+- **`FieldChrome(focused:hovering:problem:)`.** Every field's states, as shadcn's input:
+  - at rest, `fieldFill` with a 1 pt `inputBorder`;
+  - under the pointer, `inputBorderHover`;
+  - focused, an `accent` border with a 3 pt `focusRing` outside it;
+  - with a problem, an `attention` border and `problemRing`, focused or not;
+  - when disabled, at 50% opacity.
+  It is also the chrome of the PIN's and the twelve words' cells.
 - **`FormSwitchRow(label:detail:isOn:)` and `FormSwitchStyle`.**
+  - The row is a card (`formCard`), with the label and its description on the left and the switch on the right.
   - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
   - The knob moves with a short spring (0.22 s).
   - VoiceOver reads it as a toggle.
-- **`FormButtonStyle(kind:)`.** Every kind is 28 tall, with a corner radius of 7, 12 pt of horizontal padding and 13 pt text.
-  - `.primary` is `button`, semibold, with `buttonText`. It is a little brighter under the pointer and darker while pressed. When disabled it becomes a quiet chip: `fieldFill`, tertiary text and a `formEdge` hairline, never a faded blue.
-  - `.secondary` has a `divider` outline, and `hover` under the pointer.
-  - `.destructive` is outlined, with `destructive` text. It is the second click of an in-place confirm.
+- **`FormButtonStyle(kind:)`.** shadcn's variants. Each one is 32 tall, the height of the inputs, with a corner radius of 7, 12 pt of horizontal padding and 13 pt medium text. A disabled button is at 50% opacity.
+  - `.primary` (shadcn's default) is `button` with `buttonText`. It is a little brighter under the pointer and darker while pressed.
+  - `.secondary` is a quiet `hover` fill.
+  - `.outline`, the default here, is `fieldFill` with an `inputBorder`, and `hover` under the pointer.
+  - `.ghost` shows only under the pointer.
+  - `.destructive` is filled `destructive`. It is the second click of an in-place confirm.
   - `fill` replaces a primary's colour: `attention` for a money button waiting for its second click (`PayButton`).
   - The spinner goes in the label (`buttonProgress`). A commit button stays on while it runs, keeping its fill under the spinner; its action ignores a second click.
+- **`endsEditingOnClick()`.** It goes on a form's container: the popover, the Receive and Pay pane, the Account page and onboarding. In a scroll view it goes on the content as well, since a click there never reaches a gesture outside it. A field's own click and a button's win over it.
 - **`FormFooter`** lines its problem and buttons up on their text, so "Click again to confirm" hangs under a money button.
 - **`FormDestructiveSection(trigger:prompt:explanation:confirm:action:)`.**
   - The destructive action is its own card at the end of the form, a full-width red row ("Delete tribe…", "Forget this account on this Mac…").
@@ -512,9 +522,9 @@ The surfaces are the existing tokens:
   - `.buttons` (form buttons: Clear website data, Leave tribe, Cancel invite), `.text` (a row's text buttons: Remove a member, Discard, the lock screen's Forget), `.section` (`FormDestructiveSection`).
   - `confirmKind: .primary` for a second click that loses nothing (Copy words). `confirming` hands the state out, so the row can hide what stands beside it, or cancel it.
 
-Renders of every form in both themes (at rest, focused, with a problem
-and confirming), and Join side by side with the design page, are kept
-outside the repo.
+Renders of every form (at rest, focused, after a click outside, with a
+problem and confirming), and Create a tribe beside a recreation of
+shadcn's defaults, are kept outside the repo.
 
 ## What the engine needs
 

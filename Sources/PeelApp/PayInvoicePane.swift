@@ -41,19 +41,11 @@ struct PayInvoicePane: View {
     var body: some View {
         PaneFrame(title: "Pay an invoice", close: close) {
             let unreadable = !text.trimmed.isEmpty && invoice == nil
-            VStack(alignment: .leading, spacing: 6) {
-                FormSection {
-                    FormRow(label: "Invoice", stacked: true, problem: unreadable ? "That is not an invoice Peel can read." : nil) {
-                        FormTextField(label: "Invoice", prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
-                    }
-                }
-                .padding(.top, -14)
-                if !unreadable {
-                    Text("Paste one, or drop it anywhere on the window.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .padding(.horizontal, 4)
-                }
+            FormItem(
+                label: "Invoice", helper: "Paste one, or drop it anywhere on the window.",
+                problem: unreadable ? "That is not an invoice Peel can read." : nil
+            ) {
+                FormTextField(label: "Invoice", prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
             }
             if let invoice {
                 UntilExpiry(invoice: invoice) { expired in details(invoice, expired: expired) }

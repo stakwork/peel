@@ -229,8 +229,8 @@ struct SendSatsPanel: View {
             SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
                 .padding(.top, 8)
             FormSection {
-                FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
-                FormRow(label: mode == .send ? "Note" : "What it's for") {
+                FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                FormItem(label: mode == .send ? "Note" : "What it's for") {
                     FormTextField(label: mode == .send ? "Note" : "What it's for", prompt: "Optional", text: $note)
                 }
             }
@@ -243,8 +243,7 @@ struct SendSatsPanel: View {
                         .foregroundStyle(Theme.secondaryText)
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.top, 8)
+            .padding(.top, 10)
         } footer: {
             switch mode {
             case .send:
@@ -361,6 +360,7 @@ struct BoostAmountRow: View {
                 if let custom {
                     let typed = Sats.msat(custom)
                     SatsField(label: "Boost amount", text: Binding(get: { custom }, set: { self.custom = $0 }))
+                        .frame(width: 120)
                     PayButton(verb: "Save", totalMsat: typed, attempt: attempt, send: { confirmed in
                         guard let typed else { return .refused("Enter an amount.") }
                         return await model.setBoostAmount(msat: typed, confirmedMsat: confirmed)

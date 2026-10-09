@@ -11,12 +11,13 @@ struct AccountView: View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
             ScrollView {
-                // Direction A's sections (`FormSection`) on the page, a
-                // line between rows; the label column wider than a popover's.
+                // Settings, not a form: rows of what is set on cards
+                // (`SettingsSection`); a text field, when one opens, is a
+                // `FormItem`.
                 VStack(alignment: .leading, spacing: 18) {
                     IdentitySection()
                     ContactInfoSection()
-                    FormSection("Account") {
+                    SettingsSection("Account") {
                         NameRow()
                         SettingsRow("Balance") {
                             Text(model.balanceMsat.map { Sats.format(msat: $0) } ?? "Known once connected")
@@ -40,7 +41,7 @@ struct AccountView: View {
                         }
                     }
                     TimeZoneSection()
-                    FormSection("Security") {
+                    SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {
                             ChangePINRow()
                             PINTimeoutRow()
@@ -48,7 +49,7 @@ struct AccountView: View {
                         WordsRow()
                         WebsiteDataRow()
                     }
-                    FormSection("Notifications") {
+                    SettingsSection("Notifications") {
                         NotificationsRow()
                         NotificationTextRow()
                     }
@@ -63,8 +64,11 @@ struct AccountView: View {
                 .padding(.top, 32)
                 .padding(.bottom, 40)
                 .frame(maxWidth: .infinity)
+                // In the scroll view as well: a click there never reaches a gesture outside it.
+                .endsEditingOnClick()
             }
         }
+        .endsEditingOnClick()
         .font(Theme.font(13))
     }
 }
@@ -119,13 +123,12 @@ private struct IdentitySection: View {
                                 .font(Theme.font(12))
                                 .foregroundStyle(Theme.secondaryText)
                         }
-                        FormTextField(label: "Image link", prompt: "Link to an image (https)", text: $link, boxed: true)
-                            .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
+                        FormItem(label: "Image link", helper: "Shown beside the messages you send from now on.") {
+                            FormTextField(label: "Image link", prompt: "Link to an image (https)", text: $link)
+                                .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
+                        }
                     }
                     .disabled(working != nil)
-                    Text("Shown beside the messages you send from now on.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
                     FormFooter(problem: problem) {
                         Group {
                             if model.myPhotoURL != nil {
@@ -219,18 +222,16 @@ private struct NameRow: View {
 
     var body: some View {
         if editing {
-            VStack(alignment: .leading, spacing: 10) {
-                SettingsRow("Name") {
-                    FormTextField(label: "Name", text: $draft, boxed: true)
+            VStack(alignment: .leading, spacing: 14) {
+                FormItem(
+                    label: "Name",
+                    helper: "Contacts and tribes see it on the messages you send from now on. Messages already sent keep the old name."
+                ) {
+                    FormTextField(label: "Name", text: $draft)
                         .onSubmit { Task { await save() } }
                         .disabled(working)
                 }
-                Text("Contacts and tribes see it on the messages you send from now on. Messages already sent keep the old name.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, settingsValueInset)
-                    .padding(.trailing, settingsRowPadding)
+                .padding([.horizontal, .top], settingsRowPadding)
                 FormFooter(problem: problem) {
                     Button("Cancel") { editing = false }
                         .buttonStyle(FormButtonStyle())
@@ -571,7 +572,7 @@ private struct TimeZoneSection: View {
     private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
 
     var body: some View {
-        FormSection("Time zone") {
+        SettingsSection("Time zone") {
             SettingsRow("Time zone") {
                 VStack(alignment: .leading, spacing: 4) {
                     Button { picking = true } label: {
@@ -675,7 +676,7 @@ private struct ZonePicker: View {
         let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
         VStack(alignment: .leading, spacing: 4) {
             FormTextField(
-                label: "Search time zones", prompt: "Search cities or GMT+…", text: $query, boxed: true,
+                label: "Search time zones", prompt: "Search cities or GMT+…", text: $query,
                 systemImage: "magnifyingglass", focusOnAppear: true
             )
             .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
@@ -852,8 +853,36 @@ private struct WebsiteDataRow: View {
 private let settingsLabelWidth: CGFloat = 150
 private let settingsRowPadding: CGFloat = 12
 private let settingsRowSpacing: CGFloat = 12
-/// Where a row's value column starts, for notes under it.
-private let settingsValueInset = settingsRowPadding + settingsLabelWidth + settingsRowSpacing
+
+/// A titled group of Account rows on a raised card, a hairline between rows.
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(Theme.font(11, .semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.horizontal, 4)
+            Group(subviews: content) { rows in
+                VStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
+                        row
+                    }
+                }
+            }
+            .formCard()
+        }
+        .padding(.top, 12)
+    }
+}
 
 /// A row of an Account section: the label column (`FormLabel`), the value
 /// beside it, and an optional action on the right. The page is wider than

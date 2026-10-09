@@ -26,7 +26,7 @@ struct TribeSettingsForm: View {
     /// What is on its way: Create or Save (which spins), or Delete.
     @State private var working: Action?
     @State private var problem: String?
-    /// What is wrong with one field, shown under its row until a field changes.
+    /// What is wrong with one field, shown under it until a field changes.
     @State private var fieldProblem: FieldProblem?
 
     private enum Action { case save, delete }
@@ -91,16 +91,13 @@ struct TribeSettingsForm: View {
 
     @ViewBuilder private var fields: some View {
         FormSection("Basics") {
-            FormRow(label: "Name", problem: problem(.name)) {
+            FormItem(label: "Name", problem: problem(.name)) {
                 FormTextField(label: "Name", prompt: "Required", text: $name, problem: problem(.name) != nil)
             }
-            FormRow(label: "What it is about", stacked: true) {
-                FormTextField(
-                    label: "What it is about", prompt: "Shown in the tribes directory and the header",
-                    text: $summary, axis: .vertical
-                )
+            FormItem(label: "What it is about", helper: "Shown in the tribes directory and the header.") {
+                FormTextField(label: "What it is about", text: $summary, axis: .vertical)
             }
-            FormRow(label: "Image link", problem: problem(.photo)) {
+            FormItem(label: "Image link", problem: problem(.photo)) {
                 HStack(spacing: 8) {
                     FormTextField(label: "Image link", prompt: "https://", text: $photoURL, problem: problem(.photo) != nil)
                     // The tribe's image while the link is the one it has, its
@@ -108,16 +105,21 @@ struct TribeSettingsForm: View {
                     TribeIcon(
                         name: name.trimmed.nilIfEmpty ?? "?",
                         url: original?.photoURL.flatMap { $0 == photoURL.trimmed ? $0 : nil },
-                        pubkey: editing?.pubkey ?? "", size: 22
+                        pubkey: editing?.pubkey ?? "", size: 32
                     )
                 }
             }
         }
         FormSection("Pricing") {
-            amountRow("Price to join", text: $priceToJoin, unit: "sats", field: .priceToJoin)
-            amountRow("Price per message", text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
-            amountRow("Escrow per message", detail: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
-            amountRow("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
+            // Two to a line.
+            HStack(alignment: .top, spacing: 12) {
+                amountItem("Price to join", text: $priceToJoin, unit: "sats", field: .priceToJoin)
+                amountItem("Price per message", text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
+            }
+            HStack(alignment: .top, spacing: 12) {
+                amountItem("Escrow per message", helper: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
+                amountItem("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
+            }
         }
         FormSection("Access") {
             FormSwitchRow(label: "Private", detail: "People ask to join and you approve them.", isOn: $isPrivate)
@@ -125,11 +127,11 @@ struct TribeSettingsForm: View {
         }
     }
 
-    private func amountRow(
-        _ label: String, detail: String? = nil, text: Binding<String>, unit: String, field: Field
+    private func amountItem(
+        _ label: String, helper: String? = nil, text: Binding<String>, unit: String, field: Field
     ) -> some View {
         let problem = problem(field)
-        return FormRow(label: label, detail: detail, problem: problem) {
+        return FormItem(label: label, helper: helper, problem: problem) {
             FormNumberField(label: label, text: text, unit: unit, problem: problem != nil)
         }
     }

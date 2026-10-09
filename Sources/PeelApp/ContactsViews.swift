@@ -165,7 +165,6 @@ struct AddContactForm: View {
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 4)
                     .padding(.top, 8)
             } else {
                 form
@@ -203,7 +202,7 @@ struct AddContactForm: View {
 
     @ViewBuilder private var form: some View {
         FormSection {
-            FormRow(label: "Code", stacked: true) {
+            FormItem(label: "Code") {
                 FormTextField(label: "Code", prompt: "Contact info, invite or Sphinx link", text: $text, axis: .vertical)
             }
             if let code, let pubkey = code.pubkey {
@@ -225,7 +224,7 @@ struct AddContactForm: View {
         scanZone
             .padding(.top, 10)
         FormSection {
-            FormRow(label: "Name") {
+            FormItem(label: "Name") {
                 FormTextField(label: "Name", prompt: code.flatMap(\.inviterName) ?? "Optional", text: $name)
             }
         }
@@ -290,7 +289,7 @@ struct AddContactForm: View {
 }
 
 /// Who the code adds: contact info by its short key; an invite by its
-/// inviter, with what happens to its sats. A row of the code's section.
+/// inviter, with what happens to its sats. A card under the code.
 private struct CodePreview: View {
     @Environment(AppModel.self) private var model
     let code: ContactCode
@@ -315,6 +314,7 @@ private struct CodePreview: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .formCard()
     }
 
     private var detail: String {
@@ -408,13 +408,13 @@ struct InviteForm: View {
                 note("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.")
                     .padding(.top, 6)
                 FormSection {
-                    FormRow(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                    FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
                 }
                 FormSection("Only you see these") {
-                    FormRow(label: "Nickname") {
+                    FormItem(label: "Nickname") {
                         FormTextField(label: "Nickname", prompt: "Optional", text: $nickname)
                     }
-                    FormRow(label: "Message", stacked: true) {
+                    FormItem(label: "Message") {
                         FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
                     }
                 }
@@ -448,7 +448,6 @@ struct InviteForm: View {
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 4)
     }
 }
 
@@ -515,7 +514,6 @@ private struct InviteDetail: View {
                 }
                 .buttonStyle(FormButtonStyle())
             }
-            .padding(.horizontal, 4)
             .padding(.top, 12)
         }
     }

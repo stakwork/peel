@@ -68,11 +68,15 @@ enum Theme {
     /// "Expired" text and white text on an armed button.
     static let attention = Color(light: 0xA86400, dark: 0xFFBC58)
 
-    // The form system (direction A, `FormKit.swift`): translucent fills and
-    // rings over the surfaces above.
-    /// A field under the pointer, a boxed number field, a disabled primary button.
+    // The form system (shadcn's conventions, `FormKit.swift`): translucent
+    // fills, borders and rings over the surfaces above.
+    /// Inside a field, and an outline button.
     static let fieldFill = Color(light: 0x141E2D, lightOpacity: 0.05, dark: 0xFFFFFF, darkOpacity: 0.055)
-    /// The hairline around the popover, its sections and a disabled primary button.
+    /// A field's and an outline button's 1 pt border at rest (shadcn's `input`).
+    static let inputBorder = Color(light: 0x141E2D, lightOpacity: 0.16, dark: 0xFFFFFF, darkOpacity: 0.15)
+    /// The same border under the pointer.
+    static let inputBorderHover = Color(light: 0x141E2D, lightOpacity: 0.28, dark: 0xFFFFFF, darkOpacity: 0.26)
+    /// The hairline around the popover and its cards.
     static let formEdge = Color(light: 0x141E2D, lightOpacity: 0.08, dark: 0xFFFFFF, darkOpacity: 0.07)
     /// The soft ring outside a focused field.
     static let focusRing = Color(light: 0x3F68E0, lightOpacity: 0.22, dark: 0x618AFF, darkOpacity: 0.28)

@@ -1,14 +1,13 @@
 import SwiftUI
 
-// Peel's form system, direction A (Tom, 2026-10-08): inset grouped sections
-// on a recessed popover, the label on the left of each row and its value on
-// the right. See docs/design/README.md, "Forms".
+// Peel's form system: shadcn's conventions in SwiftUI (Tom, 2026-10-09),
+// replacing direction A's label-left, value-right rows for text. Each field
+// is a `FormItem`, its label above a bordered input that reads left; switches
+// keep their label on the left. See docs/design/README.md, "Forms".
 
 /// A form in a popover: the title with a close button, the sections, then
-/// the footer (`FormFooter`). The popover is recessed (`Theme.sidebar`) so
-/// the sections (`Theme.menu`) sit up off it. `compact` is for a form of one
-/// or two fields, such as Join a tribe: narrower, with boxed fields
-/// (`FormTextField(boxed:)`) straight on the popover and no sections.
+/// the footer (`FormFooter`). `compact` is for a form of one or two fields,
+/// such as Join a tribe: narrower, with no sections.
 struct FormPopover<Content: View, Footer: View>: View {
     let title: String
     var compact = false
@@ -26,16 +25,15 @@ struct FormPopover<Content: View, Footer: View>: View {
             .padding(.leading, 18)
             .padding(.trailing, 10)
             .padding(.top, 10)
-            VStack(alignment: .leading, spacing: compact ? 10 : 0) {
+            VStack(alignment: .leading, spacing: compact ? 12 : 0) {
                 content
             }
-            .padding(.horizontal, compact ? 18 : 14)
-            .padding(.top, compact ? 10 : 6)
+            .padding(.horizontal, 18)
+            .padding(.top, compact ? 10 : 2)
             .padding(.bottom, 4)
             footer
-                .padding(.leading, 18)
-                .padding(.trailing, 14)
-                .padding(.vertical, 14)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
         }
         .frame(width: compact ? 320 : 372)
         // The shadow on the box alone: on the whole view every label would cast one.
@@ -45,6 +43,7 @@ struct FormPopover<Content: View, Footer: View>: View {
                 .shadow(color: Theme.popoverShadow, radius: 10, y: 4)
         }
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.formEdge))
+        .endsEditingOnClick()
         .preference(key: DrawsOwnPanelBox.self, value: true)
     }
 }
@@ -56,7 +55,35 @@ struct DrawsOwnPanelBox: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
-/// A titled group of rows on a raised card, a hairline between rows.
+extension View {
+    /// A click on the form anywhere but a field or a control ends editing:
+    /// the caret goes and the field is at rest again, as on the web. A
+    /// field's own click, and a button's, win over this one.
+    func endsEditingOnClick() -> some View {
+        contentShape(Rectangle())
+            .onTapGesture {
+                #if os(macOS)
+                // The key window, the one clicked (a popover is a window of
+                // its own). Not `NSApp.currentEvent`'s: by the time a tap's
+                // action runs that is no longer the click.
+                NSApp.windows.first(where: \.isKeyWindow)?.makeFirstResponder(nil)
+                #endif
+            }
+    }
+
+    /// A raised card with a hairline: a switch row, a form's previews (a
+    /// tribe, a contact), the Account screen's sections and boxes.
+    func formCard() -> some View {
+        background {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Theme.menu)
+                .shadow(color: Theme.sectionShadow, radius: 1, y: 1)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.formEdge))
+    }
+}
+
+/// A group of fields under a heading ("Basics", "Pricing"), stacked.
 struct FormSection<Content: View>: View {
     var title: String?
     @ViewBuilder let content: Content
@@ -67,79 +94,43 @@ struct FormSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 12) {
             if let title {
                 Text(title)
-                    .font(Theme.font(11, .semibold))
+                    .font(Theme.font(12, .semibold))
                     .foregroundStyle(Theme.secondaryText)
-                    .padding(.horizontal, 4)
             }
-            Group(subviews: content) { rows in
-                VStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
-                        row
-                    }
-                }
-            }
-            .formCard()
+            content
         }
-        .padding(.top, title == nil ? 14 : 12)
+        .padding(.top, 16)
     }
 }
 
-extension View {
-    /// A section's raised card; also behind a form's previews (a tribe, a
-    /// contact) and the Account screen's boxes.
-    func formCard() -> some View {
-        background {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Theme.menu)
-                .shadow(color: Theme.sectionShadow, radius: 1, y: 1)
-        }
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.formEdge))
-    }
-
-    /// A row's inset and height: at least 38 tall, 12 pt in from the card.
-    fileprivate func formRowPadding() -> some View {
-        padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .frame(minHeight: 38)
-    }
-}
-
-/// One row of a section: the label (and a line under it, `detail`) on the
-/// left, the value on the right; `stacked` puts the value under the label,
-/// for a field of several lines. `problem` shows under the row.
-struct FormRow<Value: View>: View {
+/// One field: its label above it, then the field, then a line of help, or
+/// what is wrong with it in place of the help.
+struct FormItem<Field: View>: View {
     let label: String
-    var detail: String?
-    var stacked = false
+    var helper: String?
     var problem: String?
-    @ViewBuilder let value: Value
+    @ViewBuilder let field: Field
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 0) {
-            if stacked {
-                VStack(alignment: .leading, spacing: 4) {
-                    FormLabel(label, detail: detail)
-                    value
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            } else {
-                HStack(spacing: 12) {
-                    FormLabel(label, detail: detail).frame(width: 118, alignment: .leading)
-                    value.frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .formRowPadding()
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(Theme.font(13, .medium))
+            field
+            if let text = problem ?? helper {
+                Text(text)
+                    .font(Theme.font(12))
+                    .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.attention)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if let problem { FormProblem(problem) }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// A row's label, with its description under it in the secondary colour.
+/// A label with its description under it in the secondary colour: a
+/// switch row's, an Account row's.
 struct FormLabel: View {
     let title: String
     var detail: String?
@@ -162,62 +153,49 @@ struct FormLabel: View {
     }
 }
 
-/// What is wrong with one field, under its row: amber, not red, since
-/// nothing was lost.
-private struct FormProblem: View {
-    let text: String
-
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.font(11))
-            .foregroundStyle(Theme.attention)
-            .multilineTextAlignment(.trailing)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 7)
-            .padding(.top, -3)
-    }
-}
-
-/// How a field looks in each state: no box at rest (a boxed field keeps a
-/// soft fill), a soft fill under the pointer, a dark well with an accent
-/// ring while focused, an amber ring while it has a problem. Also the
-/// cells of the PIN and the twelve words.
+/// How a field looks in each state, as shadcn's input: a soft fill and a
+/// 1 pt border at rest, a stronger border under the pointer, an accent
+/// border with a 3 pt ring outside while focused, amber border and ring
+/// while it has a problem (amber, not red: nothing was lost), half
+/// opacity while off. Also the cells of the PIN and the twelve words.
 struct FieldChrome: ViewModifier {
     let focused: Bool
     var hovering = false
-    var boxed = true
     var problem = false
 
+    @Environment(\.isEnabled) private var isEnabled
+
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
-        let well = focused || problem
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let border = problem ? Theme.attention : focused ? Theme.accent
+            : hovering && isEnabled ? Theme.inputBorderHover : Theme.inputBorder
+        let ring = problem ? Theme.problemRing : focused ? Theme.focusRing : nil
         content
-            .background(well ? Theme.input : boxed || hovering ? Theme.fieldFill : .clear, in: shape)
-            .overlay { if well { shape.strokeBorder(focused ? Theme.accent : Theme.attention) } }
+            .background(Theme.fieldFill, in: shape)
+            .overlay { shape.strokeBorder(border) }
+            // The ring is the 3 pt band just outside the border.
             .background {
-                if well {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(focused ? Theme.focusRing : Theme.problemRing)
+                if let ring {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(ring, lineWidth: 3)
                         .padding(-3)
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: well)
+            .opacity(isEnabled ? 1 : 0.5)
+            .animation(.easeOut(duration: 0.12), value: focused)
     }
 }
 
-/// A one-line text field (`axis: .vertical` for several lines). In a row
-/// its text sits on the right at rest and moves left while you type; a
-/// several-line field and a `boxed` one (on a compact popover, a page, a
-/// search) read left. `systemImage` goes before the text, as a search's
-/// magnifying glass; `focusOnAppear` takes the keyboard when it appears.
+/// A text input, 32 tall and the width of the form, its text on the left
+/// (`axis: .vertical` for a textarea of three lines or more). `systemImage`
+/// goes before the text, as a search's magnifying glass; `focusOnAppear`
+/// takes the keyboard when it appears. The label is its accessibility name
+/// (and, in a `FormItem`, the text above it); the prompt is its placeholder.
 struct FormTextField: View {
     let label: String
     var prompt: String?
     @Binding var text: String
     var axis: Axis = .horizontal
-    var boxed = false
     var problem = false
     var systemImage: String?
     var monospaced = false
@@ -228,51 +206,32 @@ struct FormTextField: View {
 
     var body: some View {
         let multiline = axis == .vertical
-        HStack(spacing: 7) {
+        HStack(alignment: multiline ? .firstTextBaseline : .center, spacing: 7) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.secondaryText)
             }
-            // At rest in a row the text reads right: a label on the section's
-            // card covers the field, which keeps reading left, since AppKit
-            // ends editing when a field's alignment changes as it is focused.
-            // Clicks go through the label to the field.
-            let resting = !(focused || problem || boxed || multiline)
-            TextField(label, text: $text, prompt: prompt.map { Text($0).foregroundStyle(Theme.tertiaryText) }, axis: axis)
+            // No prompt is an empty one: the label above already names the field.
+            TextField(label, text: $text, prompt: Text(prompt ?? "").foregroundStyle(Theme.tertiaryText), axis: axis)
                 .textFieldStyle(.plain)
                 .font(Theme.font(13))
                 .fontDesign(monospaced ? .monospaced : nil)
-                .lineLimit(multiline ? 2...4 : 1...1)
+                .lineLimit(multiline ? 3...6 : 1...1)
                 .focused($focused)
-                .overlay {
-                    if resting {
-                        Text(text.isEmpty ? prompt ?? "" : text)
-                            .font(Theme.font(13))
-                            .foregroundStyle(text.isEmpty ? Theme.tertiaryText : Theme.text)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                            .background(hovering ? Theme.fieldFill : .clear)
-                            .background(Theme.menu)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
-                }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, multiline ? 5 : 0)
-        .frame(minHeight: multiline ? 44 : 26, alignment: multiline ? .topLeading : .leading)
-        .modifier(FieldChrome(focused: focused, hovering: hovering, boxed: boxed, problem: problem))
-        // A several-line field lines its text up with the label above it.
-        .padding(.horizontal, multiline && !boxed ? -8 : 0)
-        .background { FocusCatcher(focused: $focused) }
+        .padding(.horizontal, 12)
+        .padding(.vertical, multiline ? 8 : 0)
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: multiline ? .topLeading : .leading)
+        .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
+        .focusesOnClick($focused)
         .onHover { hovering = $0 }
         .onAppear { if focusOnAppear { focused = true } }
     }
 }
 
-/// A small boxed number field with its unit inside, on the right of a row.
+/// A number input, the same as a text input with the unit inside its right
+/// edge in the secondary colour; the digits read left, tabular.
 struct FormNumberField: View {
     let label: String
     @Binding var text: String
@@ -281,39 +240,38 @@ struct FormNumberField: View {
     var problem = false
 
     @FocusState private var focused: Bool
+    @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             TextField(label, text: $text, prompt: Text(prompt).foregroundStyle(Theme.tertiaryText))
                 .textFieldStyle(.plain)
                 .font(Theme.font(13))
                 .monospacedDigit()
-                .multilineTextAlignment(.trailing)
                 .focused($focused)
             Text(unit)
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
-        .padding(.horizontal, 8)
-        .frame(width: 108, height: 26)
-        .modifier(FieldChrome(focused: focused, hovering: false, boxed: true, problem: problem))
-        .background { FocusCatcher(focused: $focused) }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 32)
+        .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
+        .focusesOnClick($focused)
+        .onHover { hovering = $0 }
     }
 }
 
-/// Behind a field: a click on its padding or its unit focuses it, while
-/// clicks on the text itself stay the text field's (caret, selection).
-private struct FocusCatcher: View {
-    var focused: FocusState<Bool>.Binding
-
-    var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture { focused.wrappedValue = true }
+extension View {
+    /// A click on a field's padding or its unit focuses it; clicks on the
+    /// text itself stay the text field's (caret, selection). On the field
+    /// itself, so it wins over the form's `endsEditingOnClick`.
+    fileprivate func focusesOnClick(_ focused: FocusState<Bool>.Binding) -> some View {
+        contentShape(Rectangle()).onTapGesture { focused.wrappedValue = true }
     }
 }
 
-/// A row with a switch: the label and its description on the left.
+/// A switch in a card of its own, as shadcn's: the label and its
+/// description on the left, the switch on the right.
 struct FormSwitchRow: View {
     let label: String
     var detail: String?
@@ -322,7 +280,9 @@ struct FormSwitchRow: View {
     var body: some View {
         Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
             .toggleStyle(FormSwitchStyle())
-            .formRowPadding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .formCard()
     }
 }
 
@@ -348,21 +308,22 @@ private struct FormSwitchStyle: ToggleStyle {
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .opacity(isEnabled ? 1 : 0.45)
+            .opacity(isEnabled ? 1 : 0.5)
         }
         // One element for VoiceOver: the label, read once, as a switch.
         .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
     }
 }
 
-/// The form's buttons, 28 high: `primary` commits (a quiet neutral chip
-/// while it cannot; `fill` in place of the button colour, orange for a
-/// payment waiting for its second click), `secondary` is outlined,
-/// `destructive` is outlined with red text, for the second click of an
-/// in-place confirm.
+/// The form's buttons, shadcn's variants, 32 high as the inputs: `primary`
+/// (shadcn's default) commits, filled with the button colour (`fill` in its
+/// place, orange for a payment waiting for its second click); `secondary`
+/// is a quiet fill; `outline` (the default here) is bordered; `ghost` shows
+/// only under the pointer; `destructive` is filled red, for the second
+/// click of an in-place confirm. Half opacity while off.
 struct FormButtonStyle: ButtonStyle {
-    enum Kind { case primary, secondary, destructive }
-    var kind: Kind = .secondary
+    enum Kind { case primary, secondary, outline, ghost, destructive }
+    var kind: Kind = .outline
     var fill: Color?
 
     func makeBody(configuration: Configuration) -> some View {
@@ -378,46 +339,42 @@ struct FormButtonStyle: ButtonStyle {
 
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-            let primary = kind == .primary
+            let filled = kind == .primary || kind == .destructive
             configuration.label
-                .font(Theme.font(13, primary ? .semibold : .regular))
-                .foregroundStyle(foreground)
+                .font(Theme.font(13, .medium))
+                .foregroundStyle(filled ? Theme.buttonText : Theme.text)
                 .lineLimit(1)
                 .padding(.horizontal, 12)
-                .frame(height: 28)
+                .frame(height: 32)
                 .background(background, in: shape)
-                .overlay { shape.strokeBorder(border) }
+                .overlay { if kind == .outline { shape.strokeBorder(Theme.inputBorder) } }
                 .brightness(brightness)
+                .opacity(isEnabled ? 1 : 0.5)
                 .contentShape(shape)
                 .onHover { hovering = $0 }
-                .environment(\.filledButton, primary && isEnabled)
+                .environment(\.filledButton, filled)
         }
 
-        private var foreground: Color {
-            switch kind {
-            case .primary: isEnabled ? Theme.buttonText : Theme.tertiaryText
-            case .secondary: isEnabled ? Theme.text : Theme.tertiaryText
-            case .destructive: isEnabled ? Theme.destructive : Theme.tertiaryText
-            }
-        }
+        private var active: Bool { isEnabled && (hovering || configuration.isPressed) }
 
-        /// A primary button a touch brighter under the pointer, darker pressed.
+        /// A filled button a touch brighter under the pointer, darker pressed.
         private var brightness: Double {
-            guard kind == .primary, isEnabled else { return 0 }
+            guard kind != .outline, kind != .ghost, isEnabled else { return 0 }
             return configuration.isPressed ? -0.07 : hovering ? 0.05 : 0
         }
 
-        private var border: Color {
-            guard kind == .primary else { return Theme.divider }
-            return isEnabled ? .clear : Theme.formEdge
-        }
-
         private var background: Color {
-            if kind == .primary { return isEnabled ? fill ?? Theme.button : Theme.fieldFill }
-            return isEnabled && (hovering || configuration.isPressed) ? Theme.hover : .clear
+            switch kind {
+            case .primary: fill ?? Theme.button
+            case .destructive: Theme.destructive
+            case .secondary: Theme.hover
+            case .outline: active ? Theme.hover : Theme.fieldFill
+            case .ghost: active ? Theme.hover : .clear
+            }
         }
     }
 }
+
 
 /// The destructive action as its own section at the end of a form: one red
 /// row, which turns into the question with Cancel and the action (and, with
@@ -433,7 +390,7 @@ struct FormDestructiveSection: View {
     var body: some View {
         InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
             .formCard()
-            .padding(.top, 14)
+            .padding(.top, 16)
     }
 }
 
@@ -445,7 +402,7 @@ struct FormDestructiveSection: View {
 /// asks, or to cancel it from outside.
 struct InlineConfirm<Trigger: View>: View {
     enum Style {
-        /// Outlined form buttons.
+        /// Form buttons: an outline Cancel, then the action.
         case buttons
         /// A row's small text buttons, in the row's font.
         case text
@@ -521,7 +478,7 @@ struct InlineConfirm<Trigger: View>: View {
                 }
             }
             if style == .section { Spacer(minLength: 8) }
-            styled(Button("Cancel") { isAsking.wrappedValue = false }, .secondary)
+            styled(Button("Cancel") { isAsking.wrappedValue = false }, .outline)
             styled(
                 Button {
                     working = true

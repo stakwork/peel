@@ -41,7 +41,7 @@ extension Engine {
             // Found in history on another tribes server, so never looked up:
             // the link the person pasted says where it is listed.
             guard joined.host == nil else { return joined }
-            joined.update(from: try await tribeInfo(link))
+            joined.update(from: try await tribeInfo(link), trustingPrivacy: isOwnTribeHost(link.host))
             joined.host = link.host
             try record(joined)
             return joined
@@ -56,17 +56,20 @@ extension Engine {
         guard let routeHint = info.routeHint else { throw Failure.noRouteToTribe }
         let previous = tribes[link.pubkey]
         var tribe = previous ?? Tribe(pubkey: link.pubkey)
-        tribe.update(from: info)
+        tribe.update(from: info, trustingPrivacy: isOwnTribeHost(link.host))
         tribe.host = link.host
         tribe.left = false
-        // A private tribe's owner must approve the request first.
-        tribe.status = tribe.isPrivate ? .pending : .active
+        // A private tribe's owner must approve the request first. Asked as
+        // the link's host says, wherever it is: only the time zone waits for
+        // the account's own host to call a tribe private.
+        let asksToJoin = info.isPrivate == true
+        tribe.status = asksToJoin ? .pending : .active
         try record(tribe)
         do {
             try await run { time, state in
                 try Sphinxrs.joinTribe(
                     seed: seed, uniqueTime: time, state: state, tribePubkey: tribe.pubkey, tribeRouteHint: routeHint,
-                    alias: tribeAlias(alias), amtMsat: info.joinAmountMsat, isPrivate: tribe.isPrivate
+                    alias: tribeAlias(alias), amtMsat: info.joinAmountMsat, isPrivate: asksToJoin
                 )
             }
         } catch {
@@ -457,10 +460,19 @@ extension Engine {
         }
     }
 
+    /// Whether `host` is the account's own tribes host (`tribeHost`), the
+    /// one registry whose "private" counts (`Tribe.update(from:trustingPrivacy:)`).
+    /// No host recorded, or one that cannot be read, trusts none.
+    func isOwnTribeHost(_ host: String?) -> Bool {
+        guard let host, let own = try? storage.value(for: .tribeHost) else { return false }
+        return host.caseInsensitiveCompare(own) == .orderedSame
+    }
+
     /// A joined tribe as its registry record now says, if that changes it.
+    /// The record was read from the tribe's stored `host`.
     private func merged(_ info: TribeInfo) -> Tribe? {
         guard var current = tribes[info.pubkey], !current.left else { return nil }
-        current.update(from: info)
+        current.update(from: info, trustingPrivacy: isOwnTribeHost(current.host))
         return current == tribes[info.pubkey] ? nil : current
     }
 

@@ -350,13 +350,18 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
 
 extension Tribe {
     /// Takes what the registry says, keeping what only this account knows.
-    mutating func update(from info: TribeInfo) {
+    /// Private only when `trustingPrivacy`: the record came from the
+    /// account's own tribes host (`Engine.isOwnTribeHost`). Any other host
+    /// could mark a public tribe private and have Peel send the time zone to
+    /// its members, so a tribe read there counts as public (audit C, finding
+    /// 4; Tom, 2026-10-09).
+    mutating func update(from info: TribeInfo, trustingPrivacy: Bool) {
         name = info.name
         photoURL = info.img?.httpsOnly
         summary = info.summary
         pricePerMessageMsat = max(info.pricePerMessage ?? 0, 0)
         escrowMsat = max(info.escrowAmount ?? 0, 0)
-        isPrivate = info.isPrivate ?? false
+        isPrivate = trustingPrivacy && info.isPrivate == true
         pin = info.pin?.nilIfEmpty
         appURL = WebPage.address(info.appURL)?.absoluteString
         secondBrainURL = WebPage.address(info.secondBrainURL)?.absoluteString

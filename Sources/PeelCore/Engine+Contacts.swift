@@ -10,8 +10,8 @@ extension Engine {
     /// as anyone would be and the invite's sats stay where they are. A tribe
     /// link, this account's own contact info or anything else is refused.
     /// Someone already a contact is not added again (another key exchange
-    /// would cost sats for nothing). The key exchange pays `keyExchangeMsat`,
-    /// through the usual balance and threshold checks (`checkPayment`): over
+    /// would cost sats for nothing). The key exchange pays `keyExchangeMsat`
+    /// (and its ping, `pingMsat`, which the balance must cover too), through the usual balance and threshold checks (`checkPayment`): over
     /// the threshold it throws `needsConfirmation`, and the second call, with
     /// that amount as `confirmedMsat`, adds them. Too few sats, or no
     /// balance yet, throws `contactNeedsSats`. Returns their pubkey, which
@@ -29,7 +29,7 @@ extension Engine {
         // Nobody confirms a payment that cannot go.
         guard transport != nil else { throw Failure.notConnected }
         do {
-            try checkPayment(Self.keyExchangeMsat, .threshold(confirmedMsat))
+            try checkPayment(Self.keyExchangeMsat, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: false))
         } catch Failure.balanceUnknown, Failure.insufficientBalance {
             // Connected, no balance yet is a new account's 0 sats: its server
             // reports one only when it changes.

@@ -107,7 +107,9 @@ struct TimeZoneSharingTests {
     /// An engine with a person, a public and a private tribe in the core's state.
     private func engine() throws -> (Engine, Storage) {
         let storage = try profile.storage()
-        // Neither registry can be reached: nothing below may need it.
+        // Neither registry can be reached: nothing below may need it. Both
+        // are listed on the account's own tribes host.
+        try storage.set(unreadableHost, for: .tribeHost)
         try storage.save([
             Tribe(pubkey: publicTribe, host: unreadableHost),
             Tribe(pubkey: privateTribe, host: unreadableHost, isPrivate: true),
@@ -166,6 +168,20 @@ struct TimeZoneSharingTests {
     @Test func aTribeMadePublicStopsGettingItOnceRead() async throws {
         let (engine, _) = try engine()
         await engine.saveRecords([try record(isPrivate: false)], asked: .now)
+        #expect(await engine.knownTribe(privateTribe)?.isPrivate == false)
+        #expect(try await sent(to: privateTribe, engine) == nil)
+    }
+
+    /// Only the account's own tribes host may call a tribe private (audit
+    /// C, finding 4): the same record from any other host leaves the tribe
+    /// public, and the time zone unsent.
+    @Test func onlyTheOwnTribesHostMakesATribePrivate() async throws {
+        let (engine, storage) = try engine()
+        try await engine.setTimeZone("Asia/Kolkata")
+        await engine.saveRecords([try record(isPrivate: true)], asked: .now)
+        #expect(try await sent(to: privateTribe, engine) == "GMT+5:30")
+        try storage.set("tribes.example.com", for: .tribeHost)
+        await engine.saveRecords([try record(isPrivate: true)], asked: .now)
         #expect(await engine.knownTribe(privateTribe)?.isPrivate == false)
         #expect(try await sent(to: privateTribe, engine) == nil)
     }

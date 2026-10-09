@@ -214,6 +214,37 @@ struct MigrationTests {
         #expect(try storage.value(for: .noWordsScan) == Storage.noWordsVersion)
     }
 
+    /// v18 makes public every joined tribe whose "private" came from a host
+    /// other than the account's own tribes host; owned tribes keep theirs.
+    @Test func privateFlagsFromOtherHostsAreCleared() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v17")
+        // pubkey, host, isOwner, and whether it stays private.
+        let cases: [(String, String?, Bool, Bool)] = [
+            ("own", "tribes.example.com", false, true),
+            ("ownCase", "Tribes.Example.com", false, true),
+            ("other", "fake.example.net", false, false),
+            ("otherPort", "tribes.example.com:8443", false, false),
+            ("noHost", nil, false, false),
+            ("owned", "fake.example.net", true, true),
+        ]
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO setting (key, value) VALUES ('tribeHost', 'tribes.example.com')")
+            for (pubkey, host, isOwner, _) in cases {
+                try db.execute(
+                    sql: "INSERT INTO tribe (pubkey, host, isOwner, isPrivate) VALUES (?, ?, ?, 1)",
+                    arguments: [pubkey, host, isOwner]
+                )
+            }
+        }
+        try Storage.migrator.migrate(queue, upTo: "v18")
+        let found = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT pubkey, isPrivate FROM tribe")
+                .reduce(into: [String: Bool]()) { found, row in found[row["pubkey"]] = row["isPrivate"] }
+        }
+        #expect(found == Dictionary(uniqueKeysWithValues: cases.map { ($0.0, $0.3) }))
+    }
+
     /// Unread counts and Mark as unread still search `message_unread`, which
     /// holds `noWords`, so only a boost reads its row.
     @Test func unreadCountsStillSearchTheUnreadIndex() throws {

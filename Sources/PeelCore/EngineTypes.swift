@@ -286,7 +286,9 @@ extension Engine {
             case .inviteWithoutInviter: "that invite names nobody to add"
             case .tribeLinkNotContact: "that is a tribe link; join it from Join a tribe"
             case .ownContactInfo: "that is this account's own contact info"
-            case .contactNeedsSats: "adding a contact needs \(Sats.format(msat: Engine.keyExchangeMsat))"
+            case .contactNeedsSats:
+                // The key exchange's sats and their ping.
+                "adding a contact needs \(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false)))"
             case .noSuchInvite: "there is no such invite"
             case .inviteNotPending: "that invite is no longer waiting to be used"
             case .inviteNotRefunded:

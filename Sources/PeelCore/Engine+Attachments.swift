@@ -239,7 +239,8 @@ extension Engine {
         case .unlocked?: throw Failure.alreadyBought
         case .locked?, .failed?, .denied?, .forSale?, nil: break
         }
-        try checkPayment(price, .threshold(confirmedMsat))
+        let toTribe = knownTribe(message.chat) != nil
+        try checkPayment(price, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: toTribe))
         let purchaseKey = "purchase \(token)"
         guard payingInvoices.insert(purchaseKey).inserted else { throw Failure.purchaseInProgress }
         defer { payingInvoices.remove(purchaseKey) }

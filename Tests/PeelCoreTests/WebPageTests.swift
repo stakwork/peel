@@ -52,13 +52,13 @@ struct WebPageTests {
         #expect(info.appURL == " https://app.example.com ")
         #expect(info.secondBrainURL == "https://brain.example.com/graph")
         var tribe = Tribe(pubkey: "02ab")
-        tribe.update(from: info)
+        tribe.update(from: info, trustingPrivacy: true)
         #expect(tribe.appURL == "https://app.example.com")
         #expect(tribe.secondBrainURL == "https://brain.example.com/graph")
 
         // Gone from the record, or not a web page: none.
         let other = #"{"pubkey":"02ab","name":"Club","app_url":"javascript:alert(1)","second_brain_url":""}"#
-        tribe.update(from: try JSONDecoder().decode(TribeInfo.self, from: Data(other.utf8)))
+        tribe.update(from: try JSONDecoder().decode(TribeInfo.self, from: Data(other.utf8)), trustingPrivacy: true)
         #expect(tribe.appURL == nil)
         #expect(tribe.secondBrainURL == nil)
     }

@@ -139,7 +139,7 @@ extension Engine {
         if let tribe, tribe.paymentPriceMsat > amount {
             throw Failure.tribePriceRose(boost: true)
         }
-        try checkPayment(amount, .threshold(confirmedMsat))
+        try checkPayment(amount, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: tribe != nil))
         return try await deliver(body: body, to: message.chat, type: message.type, amountMsat: amount, replacing: messageID)
     }
 

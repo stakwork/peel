@@ -4,8 +4,9 @@ import PeelCore
 /// A tribe's details (the header's Tribe details, ⌘I, or a click on its
 /// name): what it is, who owns it, what it costs, its link with a QR, its
 /// app and second brain, how you appear in it, and the time zone switch.
-/// What only the registry knows (owner, created, members, price to join,
-/// tags) arrives when the tribes server answers; the rest is stored.
+/// What only the registry knows (owner, created, price to join, tags)
+/// arrives when the tribes server answers, the member count with the
+/// Members panel's list (`TribeMembers.countLabel`); the rest is stored.
 struct TribeDetailsPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -17,6 +18,9 @@ struct TribeDetailsPanel: View {
 
     @State private var details: TribeDetails?
     @State private var problem: String?
+    /// Who is in it, as the Members panel lists them; the row goes when
+    /// they cannot be read.
+    @State private var memberList: Result<TribeMembers, any Error>?
 
     private var info: TribeInfo? { details?.info }
 
@@ -54,6 +58,13 @@ struct TribeDetailsPanel: View {
             footer
         }
         .task(id: tribe.pubkey) { await load() }
+        .task(id: tribe.pubkey) {
+            do {
+                memberList = .success(try await model.tribeMembers(tribe.pubkey))
+            } catch {
+                memberList = .failure(error)
+            }
+        }
     }
 
     // MARK: Parts
@@ -96,8 +107,10 @@ struct TribeDetailsPanel: View {
     @ViewBuilder private var facts: some View {
         VStack(spacing: 0) {
             DetailRow("Owner") { owner }
-            DetailRow("Members") {
-                known(info?.memberCount.map { $0 == 1 ? "1 member" : "\($0.formatted()) members" })
+            switch memberList {
+            case nil: DetailRow("Members") { known(nil) }
+            case .success(let members): DetailRow("Members") { Text(members.countLabel) }
+            case .failure: EmptyView()
             }
             DetailRow("Price to join") { known(info.map { price($0.priceToJoin ?? 0) }) }
             DetailRow("Per message") { Text(price(tribe.pricePerMessageMsat)) }
@@ -217,6 +230,20 @@ struct TribeDetailsPanel: View {
         } catch {
             problem = "The tribes server did not answer: \(PeelError.readable(error))"
         }
+    }
+}
+
+extension TribeMembers {
+    /// How many are in the tribe, counted as the Members panel lists them:
+    /// for the owner, the tribes server's list ("12 members", requests to
+    /// join not counted); for anyone else, who has posted and themself ("4
+    /// seen", as its "Seen in #tribe"). Never the registry's `member_count`:
+    /// an edit or pin from the official apps drops it, a kick after that
+    /// counts down from nothing to 0, and a leave never counts down.
+    var countLabel: String {
+        guard complete else { return "\((members.count + 1).formatted()) seen" }
+        let count = members.count { !$0.pending }
+        return count == 1 ? "1 member" : "\(count.formatted()) members"
     }
 }
 

@@ -203,7 +203,8 @@ struct Detail: View {
 struct DetailHeader<Leading: View, Trailing: View>: View {
     let title: String
     var subtitle: String?
-    /// A click on the icon or the title (a tribe's details).
+    /// A click on the icon or the title: the chat's details, which open
+    /// below More (`HeaderMoreButton`), not here.
     var onTitle: (() -> Void)?
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing

@@ -20,8 +20,9 @@ enum LinkedTribe: Equatable {
     }
 }
 
-/// A tribe link in a message: the tribe's image, name, description, members
-/// and price when the account's own tribes host lists it, and Join through
+/// A tribe link in a message: the tribe's image, name, description and
+/// price when the account's own tribes host lists it (its members only
+/// once joined), and Join through
 /// the Join form (its lookup, its price and its confirmation), or Open for a
 /// tribe this account is in.
 struct TribeLinkCard: View {
@@ -66,6 +67,16 @@ struct TribeLinkCard: View {
         }
         .accessibilityLabel("Tribe link: \(name ?? link.host)")
         .task(id: link) { await model.loadLinkedTribe(link) }
+        .task(id: joined) {
+            if joined { await model.loadKnownMembers(link.pubkey) }
+        }
+    }
+
+    /// In the tribe, not only asking: its members are counted as in its
+    /// details (`TribeMembers.countLabel`). Not otherwise: the registry's
+    /// count is not kept up.
+    private var joined: Bool {
+        model.tribes[link.pubkey].map { !$0.left && $0.status == .active } ?? false
     }
 
     private func detail(_ read: LinkedTribe?, info: TribeInfo?, known: Tribe?, deleted: Bool) -> String? {
@@ -79,7 +90,7 @@ struct TribeLinkCard: View {
     @ViewBuilder private func facts(
         _ read: LinkedTribe?, info: TribeInfo?, known: Tribe?, member: Bool, deleted: Bool
     ) -> some View {
-        let members = info?.memberCount.map { $0 == 1 ? "1 member" : "\($0.formatted()) members" }
+        let members = joined ? model.knownMembers[link.pubkey]?.countLabel : nil
         if deleted {
             EmptyView()
         } else if member {
@@ -93,7 +104,7 @@ struct TribeLinkCard: View {
                 if let members { Text("· \(members)") }
             }
         } else if let info {
-            Text([members, info.isPrivate == true ? "Private" : nil, "\(Sats.format(msat: info.joinAmountMsat)) to join"]
+            Text([info.isPrivate == true ? "Private" : nil, "\(Sats.format(msat: info.joinAmountMsat)) to join"]
                 .compactMap { $0 }.joined(separator: " · "))
         } else if read?.problem != nil {
             LinkButton("Try again", font: Theme.font(12, .medium)) {

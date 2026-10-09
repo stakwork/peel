@@ -703,6 +703,34 @@ details (created date, admin, join price, QR for the link).
 - Renders on seeded dev profiles (owner, member, alias draft, edit with
   tags), dark and light, kept outside the repo.
 
+### Follow-up: member count and one place it opens (2026-10-09)
+
+Tom, on his real tribe: "The tribe details is saying 0 members", and the
+panel opened under the title from a click but under More from the menu.
+
+- Found: the registry's `member_count` (`sphinx/tribes` `db/members.rs`)
+  counts up on `add_member` (pending requests too) and down only on a kick
+  or decline; `GroupLeave` removes nobody. `TribeCmd::Update` replaces the
+  whole record, and the official apps' edit and pin
+  (`GroupsManager.getNewGroupParams`) send no `member_count`, so it goes;
+  a kick after that counts down from nothing to `Some(0)`. Reproduced on
+  the local stack: three joined, an official-app-shaped edit, one kick,
+  registry 0, the owner's list 2.
+- Built: `TribeMembers.countLabel`, the one label: the owner's list
+  ("2 members", pending not counted) or, for a member, who has posted and
+  themself ("3 seen", as the Members panel's "Seen in #tribe"). The details
+  row and a joined tribe's link card use it; a card for a tribe not joined
+  shows no count. Cards read `AppModel.knownMembers` (the owner's list is
+  asked of the server once a session, never twice at once).
+- One place: `HeaderMoreButton` presents the chat's details below More for
+  the menu's Details, ⌘I and a click on the header's name or icon (DMs now
+  open their details from the name too). Members and Edit already opened
+  below More.
+- Left: a member who leaves stays on the server's list (and its count)
+  until kicked; the header's "3 sats a message" and the details' "Per
+  message: Free" disagree (`messageAmountMsat` against
+  `pricePerMessageMsat`).
+
 ### Not done
 
 - Setting how you appear before joining (the Mac app's join screen): the

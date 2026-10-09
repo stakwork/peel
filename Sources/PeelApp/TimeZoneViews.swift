@@ -137,7 +137,7 @@ struct PersonCard: View {
 
 /// A direct message's header: under the name, "02:14 local time · 6 h
 /// ahead" while their offset is not yours, moving on with the minute; and
-/// the chat's details.
+/// the chat's details, below More, also from a click on the name or icon.
 struct DirectHeader: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -148,20 +148,21 @@ struct DirectHeader: View {
 
     var body: some View {
         TimelineView(.everyMinute) { context in
-            DetailHeader(title: conversation.name, subtitle: model.localTimeLine(local, at: context.date)) {
+            DetailHeader(
+                title: conversation.name, subtitle: model.localTimeLine(local, at: context.date),
+                onTitle: { showingInfo = true }
+            ) {
                 ConversationIcon(conversation: conversation, size: 32)
             } trailing: {
                 HStack(spacing: 4) {
                     SearchHeaderButton(chat: conversation.chat)
                     CallHeaderButton(chat: conversation.chat)
-                    HeaderMoreButton(chat: conversation.chat, details: { showingInfo = true }) {
+                    HeaderMoreButton(chat: conversation.chat, showsDetails: $showingInfo) { details in
                         .sections(
                             WebMenuEntries.entries(for: nil, pane: model.web, open: openURL),
-                            [HeaderMoreButton.details { showingInfo = true },
-                             ConversationMenu.notifications(for: conversation, model: model)]
+                            [details, ConversationMenu.notifications(for: conversation, model: model)]
                         )
-                    }
-                    .peelPopover(isPresented: $showingInfo) {
+                    } details: {
                         ChatInfoPanel(conversation: conversation)
                     }
                 }

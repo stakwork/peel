@@ -397,7 +397,7 @@ final class AppModel {
 
     /// Asks for a picture, beside the window.
     func choosePicture() -> URL? {
-        Self.chooseFiles(prompt: "Choose", multiple: false, types: [.image]).first
+        FilePicking.open(prompt: "Choose", multiple: false, types: [.image])?.first
     }
 
     /// The twelve words, after the PIN. Nothing here keeps or logs them.

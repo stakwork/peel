@@ -127,7 +127,16 @@ is a short plan. Update the status and the journal when you finish something.
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search) and each profile's
     website data store identifier
-- `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
+- `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, with its extensions
+  by area in `AppModel+Chat` (replies, threads, sending, attachments, and
+  the chat's small types: `ComposerID`, `ThreadRef`, `AttachmentHandle`),
+  `AppModel+Calls` (join, start, leave, presence and the watches of recent
+  calls; the view passes the call window's opening in), `AppModel+Payments`
+  (`PaymentOutcome`, boosts, sends, history, invoices, buying an
+  attachment), `AppModel+Contacts` (adding by code, invites) and
+  `AppModel+TimeZones` (sender zones, local times, the zone setting);
+  `FilePicking` (the open and save panels and Show in Finder, the only
+  callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
   `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
@@ -136,8 +145,7 @@ is a short plan. Update the status and the journal when you finish something.
   (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `ChatModel` (replies, threads, sending, attachments),
-  `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
+  for the chat: `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
@@ -147,9 +155,7 @@ is a short plan. Update the status and the journal when you finish something.
   `UnreadBadge`, `LinkButton`, `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
-  watching, the model's watches of recent calls in every chat and the
-  sidebar's green phone count, the in-place switch confirm, the sidebar's
-  on-a-call bar),
+  watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
   and devices), `CallWindow` (the grid, the focus layout with its strip,
   keep on top and the control bar) and `CallScreenShare` (the system picker,

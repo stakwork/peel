@@ -309,10 +309,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
         initiatedByFrame frame: WKFrameInfo
     ) async -> [URL]? {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.canChooseDirectories = parameters.allowsDirectories
-        return panel.runModal() == .OK ? panel.urls : nil
+        FilePicking.open(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {

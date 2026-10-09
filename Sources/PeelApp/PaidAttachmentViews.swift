@@ -1,16 +1,6 @@
 import SwiftUI
 import PeelCore
 
-// MARK: - Model
-
-extension AppModel {
-    /// Buys someone else's paid attachment; it opens once its seller sends the key.
-    func buyAttachment(_ message: Message, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let id = message.id else { return .refused("This attachment cannot be bought.") }
-        return await pay("purchase \(id)") { try await $0.buyAttachment(messageID: id, confirmedMsat: confirmedMsat) }
-    }
-}
-
 // MARK: - Buying
 
 /// Someone else's paid attachment before it is bought, as the official apps

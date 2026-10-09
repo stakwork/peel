@@ -264,6 +264,8 @@ final class AppModel {
     /// Every tribe's details by pubkey, joined or left: price, description,
     /// the pin, whether this account owns it.
     private(set) var tribes: [String: Tribe] = [:]
+    /// Tribes linked in messages, by link, as their cards last read them.
+    private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
     /// The open tribe's pinned message, read from storage however old.
     private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
@@ -693,6 +695,26 @@ final class AppModel {
         return try await engine.tribeInfo(link: link)
     }
 
+    /// Reads a tribe linked in a message for its card, once per link
+    /// (`Engine.linkedTribeInfo`: only from the account's own tribes host).
+    /// `again` reads a failed one again.
+    func loadLinkedTribe(_ link: TribeLink, again: Bool = false) async {
+        guard let engine, linkedTribes[link] == nil || again && linkedTribes[link]?.problem != nil else { return }
+        // A long scroll through shared links stays bounded.
+        if linkedTribes.count >= 200 { linkedTribes = linkedTribes.filter { $0.value == .loading } }
+        linkedTribes[link] = .loading
+        let read: LinkedTribe
+        do {
+            read = try await engine.linkedTribeInfo(link).map(LinkedTribe.loaded) ?? .elsewhere
+        } catch Engine.Failure.tribeDeleted {
+            read = .deleted
+        } catch {
+            read = .failed(Formatting.sentence(error))
+        }
+        // Not for an account switched to meanwhile.
+        if self.engine === engine { linkedTribes[link] = read }
+    }
+
     /// Joins a tribe from its link, paying only the price shown, through the
     /// engine's payment checks, and opens it.
     func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
@@ -833,6 +855,7 @@ final class AppModel {
         MediaPlayback.shared.stop()
         conversations = []
         tribes = [:]
+        linkedTribes = [:]
         invites = [:]
         pendingInvites = []
         focus = nil

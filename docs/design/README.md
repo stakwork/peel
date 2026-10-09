@@ -88,6 +88,15 @@ No tabs and no filter chips. Sorting inside each section: most recent first.
   everywhere (rows, quotes, notifications), with "?" as their initials.
   Payments and payment requests share the rows' chrome (`rowChrome`) and
   run header; cards in a chat are `cardBoxed`.
+- **Link cards:** the first tribe or contact link in a message gets a 320 pt
+  card under the text, at one height whatever is known yet (lines
+  reserved; soft bars while loading). A tribe: its image, name, two lines
+  of description, then members, Private and the price to join, with Join
+  (the Join form, filled in) or Open and "Joined" once a member; "Tribe on
+  host" when it is listed elsewhere (never read from there) or could not
+  be read (Try again); faded with no button once deleted. A contact: photo
+  and name when already a contact (Open chat), else a quiet add glyph,
+  "New contact", the short key and Add (the Add contact form, filled in).
 - **Day dividers** ("Today", "Yesterday", then dates).
 - **New messages divider**: a blue line with "New messages" (12 semibold,
   accent) on the right, above the first incoming message that was unread

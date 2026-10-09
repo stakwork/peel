@@ -3,7 +3,7 @@
 Status: **PRs 1 to 4 merged** (the call link and message, #44; the ticket
 and presence, #54; LiveKit in the bundle, #55; the card and header, #59);
 PR 5 (the window, #64), PR 6 (screen share, focus, keep on top, #70) and
-PR 7 (notifications, #74) merged; PR 8 open. Finishing calls is first in the order Tom set on the
+PR 7 (notifications, #74) merged; PR 8 (docs only) closed 2026-10-09, later work covered it. Calls are done. Finishing calls is first in the order Tom set on the
 evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).

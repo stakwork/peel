@@ -338,6 +338,14 @@ extension Storage {
                 END;
                 """)
         }
+        migrator.registerMigration("v20") { db in
+            // How this account appears in a tribe (`Tribe.myAlias`,
+            // `myPhotoURL`): set here only, as the official apps keep them.
+            try db.alter(table: "tribe") { t in
+                t.add(column: "myAlias", .text)
+                t.add(column: "myPhotoURL", .text)
+            }
+        }
         return migrator
     }
 }

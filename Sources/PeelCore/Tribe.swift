@@ -29,6 +29,12 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     /// https only (`WebPage.address`), opened in the web pane.
     public var appURL: String?
     public var secondBrainURL: String?
+    /// How this account appears in this tribe, set here only: the name and
+    /// the https photo sent with every message to it, in place of the
+    /// account's (the Mac app's `my_alias` and `my_photo_url`). Nil is the
+    /// account's own.
+    public var myAlias: String?
+    public var myPhotoURL: String?
 
     /// Where this account stands in a tribe. The first three are the official
     /// apps' chat statuses; the tribe tells a member each change with a
@@ -108,6 +114,25 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     public var link: String? {
         host.map { TribeLink.text(pubkey: pubkey, host: $0) }
     }
+
+    /// The alias this account sends here, given the account's name: its
+    /// own for this tribe, or the account's, as a tribe alias (as the Mac
+    /// app's `sendMessage` picks it).
+    func sentAlias(account: String) -> String {
+        tribeAlias(myAlias ?? account)
+    }
+
+    /// The photo this account sends here: its own for this tribe, or the account's.
+    func sentPhoto(account: String) -> String {
+        myPhotoURL ?? account
+    }
+}
+
+/// A tribe's registry record as its details show it, with the owner's
+/// photo from what they posted (the registry has none).
+public struct TribeDetails: Sendable, Equatable {
+    public let info: TribeInfo
+    public let ownerPhotoURL: String?
 }
 
 /// Someone in a tribe. Only the owner gets the full list from the tribes
@@ -159,11 +184,18 @@ public struct TribeSettings: Codable, Sendable, Equatable {
     public var isPrivate: Bool
     /// Not shown in the tribes server's public listing.
     public var unlisted: Bool
+    /// What the tribe is about, for the tribes directory's filter: the
+    /// official apps' names (`tagChoices`), sent as they are.
+    public var tags: [String]
+
+    /// The tags the official apps offer, in their order (`getGroupTags` in
+    /// the Mac app's `GroupsManager`); the registry keeps them by name.
+    public static let tagChoices = ["Bitcoin", "Lightning", "Sphinx", "Crypto", "Tech", "Altcoins", "Music", "Podcast"]
 
     public init(
         name: String, summary: String? = nil, photoURL: String? = nil, pricePerMessageMsat: UInt64 = 0,
         priceToJoinMsat: UInt64 = 0, escrowMsat: UInt64 = 0, escrowMillis: UInt64 = 0,
-        isPrivate: Bool = false, unlisted: Bool = false
+        isPrivate: Bool = false, unlisted: Bool = false, tags: [String] = []
     ) {
         self.name = name
         self.summary = summary
@@ -174,6 +206,7 @@ public struct TribeSettings: Codable, Sendable, Equatable {
         self.escrowMillis = escrowMillis
         self.isPrivate = isPrivate
         self.unlisted = unlisted
+        self.tags = tags
     }
 
     /// Trimmed, with a name, an https image or none, and amounts the tribes
@@ -185,6 +218,7 @@ public struct TribeSettings: Codable, Sendable, Equatable {
         settings.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         settings.photoURL = photoURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        settings.tags = Self.cleaned(tags)
         guard !settings.name.isEmpty else { throw Engine.Failure.tribeNeedsName }
         if let photo = settings.photoURL, photo != currentImage, photo.httpsOnly == nil {
             throw Engine.Failure.tribeImageNotHTTPS
@@ -194,9 +228,15 @@ public struct TribeSettings: Codable, Sendable, Equatable {
         return settings
     }
 
+    /// Tags trimmed, without blanks or repeats, in their order.
+    static func cleaned(_ tags: [String]) -> [String] {
+        var seen: Set<String> = []
+        return tags.compactMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }.filter { seen.insert($0).inserted }
+    }
+
     /// These settings as JSON fields, laid over `record`. The tribes server
     /// replaces a tribe's whole record on an update, so whatever Peel does
-    /// not edit (tags, feeds, the pin, the owner's alias) must go back as it
+    /// not edit (feeds, the pin, the owner's alias, the member count) must go back as it
     /// was. A cleared description or image is sent as null.
     func fields(over record: [String: Any] = [:]) throws -> [String: Any] {
         let data = try JSONEncoder().encode(self)
@@ -210,7 +250,7 @@ public struct TribeSettings: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, unlisted
+        case name, unlisted, tags
         case summary = "description"
         case photoURL = "img"
         case pricePerMessageMsat = "price_per_message"
@@ -291,9 +331,16 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     public let secondBrainURL: String?
     /// How many members the tribes server counts; shown, never trusted.
     public let memberCount: Int64?
+    public let tags: [String]?
+    /// The owner's alias in the tribe, as the owner's app sent it.
+    public let ownerAlias: String?
+    /// When the tribes server made the tribe, in milliseconds.
+    public let createdMillis: Int64?
 
     enum CodingKeys: String, CodingKey {
-        case pubkey, name, img, deleted, unlisted, pin
+        case pubkey, name, img, deleted, unlisted, pin, tags
+        case ownerAlias = "owner_alias"
+        case createdMillis = "created"
         case memberCount = "member_count"
         case appURL = "app_url"
         case secondBrainURL = "second_brain_url"
@@ -324,8 +371,13 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
             name: name, summary: summary?.nilIfEmpty, photoURL: img?.nilIfEmpty,
             pricePerMessageMsat: amount(pricePerMessage), priceToJoinMsat: amount(priceToJoin),
             escrowMsat: amount(escrowAmount), escrowMillis: amount(escrowMillis),
-            isPrivate: isPrivate ?? false, unlisted: unlisted ?? false
+            isPrivate: isPrivate ?? false, unlisted: unlisted ?? false, tags: TribeSettings.cleaned(tags ?? [])
         )
+    }
+
+    /// When the tribe was made, if the server says.
+    public var created: Date? {
+        createdMillis.flatMap { $0 > 0 ? Date(timeIntervalSince1970: Double($0) / 1000) : nil }
     }
 
     public static func fetch(pubkey: String, host: String) async throws -> TribeInfo {
@@ -434,11 +486,20 @@ func approvalNamesUs(_ alias: String, sent: String, echoed: Set<String>) -> Bool
 }
 
 /// What stored tribe messages were last checked for mentions with
-/// (`Setting.mentionScan`): the account's tribe alias (`sent`) and the
-/// aliases each tribe echoed back.
+/// (`Setting.mentionScan`): the account's tribe alias (`sent`), the
+/// aliases each tribe echoed back, and the alias sent in each tribe that
+/// has its own (`own`, `Tribe.myAlias`; nil for none, as scans stored
+/// before it have).
 struct MentionScan: Codable, Equatable, Sendable {
     var sent: String
     var echoed: [String: Set<String>]
+    var own: [String: String]?
+
+    init(sent: String, echoed: [String: Set<String>], own: [String: String] = [:]) {
+        self.sent = sent
+        self.echoed = echoed
+        self.own = own.isEmpty ? nil : own
+    }
 
     var stored: String? {
         (try? JSONEncoder().encode(self)).map { String(decoding: $0, as: UTF8.self) }
@@ -446,10 +507,12 @@ struct MentionScan: Codable, Equatable, Sendable {
 
     /// The tribes whose messages need checking again since `last`: all of
     /// them (nil) when there was none or the account's alias changed, else
-    /// those whose echoed aliases changed.
+    /// those whose echoed aliases or own alias changed.
     func chats(changedSince last: MentionScan?) -> Set<String>? {
         guard let last, last.sent == sent else { return nil }
+        let own = own ?? [:], lastOwn = last.own ?? [:]
         return Set(echoed.keys).union(last.echoed.keys).filter { echoed[$0] != last.echoed[$0] }
+            .union(Set(own.keys).union(lastOwn.keys).filter { own[$0] != lastOwn[$0] })
     }
 }
 
@@ -461,7 +524,7 @@ extension String {
 
 /// Aliases in tribes: letters, digits and underscores, spaces as underscores,
 /// as the official apps send them.
-func tribeAlias(_ alias: String) -> String {
+public func tribeAlias(_ alias: String) -> String {
     let fixed = String(alias.replacingOccurrences(of: " ", with: "_").filter(isAliasCharacter))
     return fixed.isEmpty ? "Unknown" : fixed
 }

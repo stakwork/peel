@@ -184,8 +184,9 @@ struct NoticeBar: View {
 
 /// A tribe's name, what it is about and what a message costs, then Call
 /// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
-/// Details (⌘I), the link, Notifications, Edit tribe for the owner and
-/// Leave, confirmed in the menu. Members, Details and Edit open below More.
+/// Tribe details (⌘I), the link, Notifications, Edit tribe for the owner and
+/// Leave, confirmed in the menu. Members, Tribe details and Edit open below
+/// More; a click on the tribe's name or icon opens its details below them.
 struct TribeHeader: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -194,7 +195,7 @@ struct TribeHeader: View {
 
     @State private var panel: Panel?
 
-    private enum Panel { case members, details, edit }
+    private enum Panel: Equatable { case members, details(fromTitle: Bool), edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -205,21 +206,20 @@ struct TribeHeader: View {
     }
 
     var body: some View {
-        DetailHeader(title: conversation.name, subtitle: subtitle) {
+        DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details(fromTitle: true) }) {
             ConversationIcon(conversation: conversation, size: 32)
+                .peelPopover(isPresented: shows(.details(fromTitle: true))) { details }
         } trailing: {
             HStack(spacing: 4) {
                 SearchHeaderButton(chat: conversation.chat)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }
-                HeaderMoreButton(chat: conversation.chat, details: { panel = .details }, entries: entries)
+                HeaderMoreButton(chat: conversation.chat, details: { panel = .details(fromTitle: false) }, entries: entries)
                     .peelPopover(isPresented: shows(.members)) {
                         TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
                     }
-                    .peelPopover(isPresented: shows(.details)) {
-                        ChatInfoPanel(conversation: conversation, tribe: tribe)
-                    }
+                    .peelPopover(isPresented: shows(.details(fromTitle: false))) { details }
                     .peelPopover(isPresented: shows(.edit)) {
                         if let tribe { TribeSettingsForm(editing: tribe) { panel = nil } }
                     }
@@ -229,6 +229,14 @@ struct TribeHeader: View {
         .onChange(of: conversation.chat) { panel = nil }
     }
 
+    @ViewBuilder private var details: some View {
+        if let tribe {
+            TribeDetailsPanel(
+                conversation: conversation, tribe: tribe, members: { panel = .members }, edit: { panel = .edit }
+            ) { panel = nil }
+        }
+    }
+
     private func entries() -> [MenuEntry] {
         var edit: [MenuEntry] = []
         if let tribe, tribe.canManage {
@@ -236,7 +244,8 @@ struct TribeHeader: View {
         }
         return .sections(
             WebMenuEntries.entries(for: tribe, pane: model.web, open: openURL),
-            [.button("Members", systemImage: "person.2") { panel = .members }, HeaderMoreButton.details { panel = .details }]
+            [.button("Members", systemImage: "person.2") { panel = .members },
+             HeaderMoreButton.details("Tribe details") { panel = .details(fromTitle: false) }]
                 + (tribe.map(ConversationMenu.link) ?? [])
                 + [ConversationMenu.notifications(for: conversation, model: model)],
             edit + (tribe.map { ConversationMenu.leave(conversation, $0, model: model) } ?? [])
@@ -287,9 +296,9 @@ struct HeaderMoreButton: View {
 
     private var source: AnyHashable { "more-\(chat)" }
 
-    /// Details, the same in a tribe's menu and a contact's.
-    static func details(_ action: @escaping @MainActor () -> Void) -> MenuEntry {
-        .button("Details", systemImage: "info.circle", shortcut: .command("i"), action: action)
+    /// Details (⌘I), in a tribe's menu and a contact's.
+    static func details(_ title: String = "Details", _ action: @escaping @MainActor () -> Void) -> MenuEntry {
+        .button(title, systemImage: "info.circle", shortcut: .command("i"), action: action)
     }
 
     var body: some View {
@@ -379,7 +388,8 @@ struct TribeMembersPanel: View {
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
-                        MemberRow(alias: model.me.name, photoURL: model.myPhotoURL, hue: model.myHue, note: "you")
+                        let me = model.me(in: conversation.chat)
+                        MemberRow(alias: me.name, photoURL: me.photoURL, hue: me.hue, note: "you")
                     }
                     ForEach(confirmed) { member in
                         let isMe = member.pubkey != nil && member.pubkey == me

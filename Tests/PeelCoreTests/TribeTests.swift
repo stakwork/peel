@@ -61,6 +61,13 @@ struct TribeTests {
         #expect(scan.chats(changedSince: MentionScan(sent: "Tom", echoed: scan.echoed)) == nil)
         let before = MentionScan(sent: "Tom_Smith", echoed: ["02a": ["Tom_Smith"], "02c": ["x"]])
         #expect(scan.chats(changedSince: before) == ["02b", "02c"])
+        // A tribe's own alias set, changed or cleared rechecks that tribe alone.
+        let renamed = MentionScan(sent: "Tom_Smith", echoed: scan.echoed, own: ["02a": "Tommy"])
+        #expect(renamed.chats(changedSince: scan) == ["02a"])
+        #expect(scan.chats(changedSince: renamed) == ["02a"])
+        #expect(MentionScan(stored: try #require(renamed.stored)) == renamed)
+        // Scans stored before own aliases read as none.
+        #expect(MentionScan(stored: #"{"sent":"Tom_Smith","echoed":{}}"#) == MentionScan(sent: "Tom_Smith", echoed: [:]))
     }
 
     @Test func echoedAliasesComeFromOwnTribeMessages() throws {
@@ -108,6 +115,9 @@ struct TribeTests {
         #expect(try flagged() == [uuid(5), uuid(8)])
         try storage.rescanMentions(sent: "Tom_Smith", echoed: [:])
         #expect(try flagged() == [uuid(1), uuid(5), uuid(8)])
+        // In a tribe with its own alias, that alias names this account.
+        try storage.rescanMentions(sent: "Tom_Smith", echoed: [:], own: ["02t1": "tom_smith_2"])
+        #expect(try flagged() == [uuid(2), uuid(5), uuid(8)])
     }
 
     @Test func settingsAreSentWithTheOfficialKeysInMsat() throws {
@@ -132,9 +142,9 @@ struct TribeTests {
             "pubkey": "02ab", "name": "Old", "description": "Old about", "img": "https://x/old.png",
             "tags": ["Bitcoin"], "pin": "uuid1", "owner_alias": "ann", "feed_url": "https://x/feed",
         ]
-        let fields = try TribeSettings(name: "New").fields(over: record)
+        let fields = try TribeSettings(name: "New", tags: ["Tech"]).fields(over: record)
         #expect(fields["name"] as? String == "New")
-        #expect(fields["tags"] as? [String] == ["Bitcoin"])
+        #expect(fields["tags"] as? [String] == ["Tech"])
         #expect(fields["pin"] as? String == "uuid1")
         #expect(fields["owner_alias"] as? String == "ann")
         #expect(fields["feed_url"] as? String == "https://x/feed")
@@ -164,6 +174,57 @@ struct TribeTests {
             name: "Club", summary: "About", photoURL: "https://x/p.png", pricePerMessageMsat: 2000,
             priceToJoinMsat: 5000, escrowMsat: 1000, escrowMillis: 7_200_000, isPrivate: true, unlisted: false
         ))
+    }
+
+    /// Tags go as the official apps send them (names in a `tags` list) and
+    /// come back from the registry into the form as they were, with the
+    /// details the registry alone knows.
+    @Test func tagsAndDetailsRoundTripThroughTheRegistry() throws {
+        let sent = try TribeSettings(name: "Club", tags: [" Bitcoin ", "Tech", "", "Bitcoin"]).validated()
+        #expect(sent.tags == ["Bitcoin", "Tech"])
+        let fields = try sent.fields(over: ["tags": ["Music"], "member_count": 7, "created": 1_700_000_000_000])
+        #expect(fields["tags"] as? [String] == ["Bitcoin", "Tech"])
+        #expect(fields["member_count"] as? Int == 7)
+        #expect(fields["created"] as? Int == 1_700_000_000_000)
+
+        var record = fields
+        record["pubkey"] = "02ab"
+        record["owner_alias"] = "ann"
+        let info = try JSONDecoder().decode(TribeInfo.self, from: JSONSerialization.data(withJSONObject: record))
+        #expect(info.settings.tags == ["Bitcoin", "Tech"])
+        #expect(info.ownerAlias == "ann")
+        #expect(info.memberCount == 7)
+        #expect(info.created == Date(timeIntervalSince1970: 1_700_000_000))
+        let bare = try JSONDecoder().decode(TribeInfo.self, from: Data(#"{"pubkey":"02ab","name":"Club","created":0}"#.utf8))
+        #expect(bare.settings.tags.isEmpty)
+        #expect(bare.created == nil)
+    }
+
+    /// How this account appears in a tribe is kept per tribe, sent there in
+    /// place of the account's (as a tribe alias), and survives a restart.
+    @Test func aTribeAliasAndPhotoAreKeptAndSentThere() async throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: "02t1"), Tribe(pubkey: "02t2", left: true)])
+        let engine = try testEngine(storage)
+        let set = try await engine.setTribeIdentity("02t1", alias: " Tom in Club ", photoURL: " https://x/me.png ")
+        #expect(set.myAlias == "Tom in Club")
+        #expect(set.myPhotoURL == "https://x/me.png")
+        #expect(set.sentAlias(account: "Tom Smith") == "Tom_in_Club")
+        #expect(set.sentPhoto(account: "https://x/account.png") == "https://x/me.png")
+        #expect(Tribe(pubkey: "02t3").sentAlias(account: "Tom Smith") == "Tom_Smith")
+        #expect(Tribe(pubkey: "02t3").sentPhoto(account: "https://x/account.png") == "https://x/account.png")
+        await #expect(throws: Engine.Failure.photoNotHTTPS) {
+            try await engine.setTribeIdentity("02t1", alias: nil, photoURL: "http://x/me.png")
+        }
+        await #expect(throws: Engine.Failure.notInTribe) { try await engine.setTribeIdentity("02t2", alias: "x", photoURL: nil) }
+        await #expect(throws: Engine.Failure.notInTribe) { try await engine.setTribeIdentity("02t9", alias: "x", photoURL: nil) }
+        #expect(try storage.tribes().first { $0.pubkey == "02t1" }?.myAlias == "Tom in Club")
+        // Empty is the account's own again.
+        let cleared = try await engine.setTribeIdentity("02t1", alias: "  ", photoURL: "")
+        #expect(cleared.myAlias == nil && cleared.myPhotoURL == nil)
+        #expect(try storage.tribes().first { $0.pubkey == "02t1" }?.myPhotoURL == nil)
+        await engine.close()
     }
 
     @Test func anImageTheTribeAlreadyHasIsKeptWhateverItsScheme() throws {

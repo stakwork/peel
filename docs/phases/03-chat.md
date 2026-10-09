@@ -8,7 +8,7 @@ replies and threads (#8), attachments (#9), the chat UI and Peel's menu
 message (#23, in `02-messaging.md` item 7).
 
 **Open:**
-- Tribe parity leftovers (tags, app and second brain URLs, image upload, per-tribe alias, details page, directory, link QR): "Tribes", "Open".
+- Tribe parity leftovers (app, feed and second brain URLs in the form, the directory): "Tribes", "Open". Tags, the details page, the link QR and how you appear in a tribe are built (branch `feat/tribe-details`, awaiting Tom's look): "Tribe details, tags, how you appear".
 - A production run of tribe create, edit, pin and delete on the throwaway: "Tribes", "Open".
 - Clicking through what no session could exercise: "Chat UI", "Open".
 - A Reply action on notifications: "Notifications", "Open". (Payments and boosts notify since 2026-10-08: `04-money.md`, "Sats received".)
@@ -60,9 +60,10 @@ messages, payments and boosts are separate tasks and not listed.
 | Join by link, paying the price to join | `joinTribe` | `join_tribe` (type 14) | Done |
 | Read, post, leave | `sendMessage`, `exitTribe` | `send` (0), `send` (15) | Done |
 | Members list (owner) | TribeMembersDataSource | `list_tribe_members` | Done |
-| Copy link | Share | — | Done (no QR) |
+| Copy link, QR | Share | — | Done (QR in the tribe details) |
 | Create: name, description, image URL, price to join, price per message, escrow amount and time, private, unlisted | CreateTribeViewModel, `getNewGroupParams` | `create_tribe` (msat, millis) | Done: engine, CLI, app form |
-| Create: tags, app URL, feed URL and type, second brain URL | same form | `create_tribe` | Open (kept untouched on edit) |
+| Create: tags | same form | `create_tribe` `tags` | Done (chips, the official apps' eight) |
+| Create: app URL, feed URL and type, second brain URL | same form | `create_tribe` | Open (kept untouched on edit) |
 | Image upload (rather than a URL) | `uploadPublicImage` | memes server | Done: app form picks a picture (`PictureField`); the CLI keeps `--image` |
 | Edit | `updateTribe` (whole record) | `update_tribe` | Done: whole registry record sent back, edited fields laid over it |
 | Delete (owner) | sends 22, then `deleteTribe` | `delete_tribe` (server sends 22) | Done: command only, see "Decided" |
@@ -80,8 +81,8 @@ messages, payments and boosts are separate tasks and not listed.
 | Mentions list across tribes | badge only | — | Done (sidebar Mentions) |
 | Pinned message (owner pins, everyone sees it) | `shouldTogglePinState`, PinMessageBarView | `update_tribe` `pin` | Done (pin bar, context menu) |
 | Owner recognised after a restore | `checkOwnerRole` (asks for members) | `role: 0` on own messages | Done (from `role`) |
-| Per-tribe alias and photo | GroupDetails (local only) | — | Open |
-| Tribe details page (created on, admin, member count) | GroupDetailsViewController | registry | Open (header shows description, price, private) |
+| Per-tribe alias and photo | GroupDetails (local only) | `send` `myAlias`, `myImg` | Done (tribe details) |
+| Tribe details page (created on, admin, member count) | GroupDetailsViewController | registry | Done (`TribeDetailsPanel`) |
 | Browse or search the tribes directory | not checked | registry | Open |
 
 ### How tribes work (checked against the code, 2026-10-07)
@@ -395,9 +396,9 @@ exact, e.g. "1.999 sats"); `isPerson` duplicated the contact lookup.
   mentions correctly. Nobody else's tribe is touched.
 - Click through the parity UI on a development profile (see "Verified for
   parity").
-- From the parity table: tags, app and feed URLs, second brain URL; image
-  upload; per-tribe alias and photo; a tribe details page; browsing the
-  tribes directory; a QR code for the link.
+- From the parity table: app and feed URLs and the second brain URL in the
+  form; browsing the tribes directory. (Image upload, tags, the details
+  page, its link QR and per-tribe alias and photo are built.)
 - (Done in "Mentions fix": back-fill of mentions stored before v7, and the
   alias the tribes server made unique for us, `name_2`.)
 - Escrow refunds are the tribes server's job; nothing to build, not checked.
@@ -641,6 +642,72 @@ malicious tribe server can stamp `role: 0` on our own message and show
 owner controls for its tribe (its owner actions are refused by our own
 tribes server, and nothing is paid without a click); a transient 500 from
 our own registry during a delete would hide the tribe locally.
+
+## Tribe details, tags, how you appear (branch `feat/tribe-details`, 2026-10-09)
+
+Tom: "the tribes details page, the tags, and image upload are per tribe",
+plus a per-tribe alias and photo for yourself and the sweep's fuller
+details (created date, admin, join price, QR for the link).
+
+### Found (checked before building)
+
+- Peel had `ChatInfoPanel` for both kinds of chat (icon, name, public or
+  private, the time zone switch); Members, Edit, Copy link and Leave were
+  in More. No date, owner, join price, tags or QR.
+- The registry (`sphinx/tribes` `GET /tribes/<pubkey>`, the core's `Tribe`)
+  has `tags`, `owner_alias`, `created` (ms, kept across updates by the
+  server), `member_count`, `price_to_join` and `escrow_millis`; no owner
+  key or photo.
+- Mac app tags (`GroupsManager.getGroupTags`): Bitcoin, Lightning, Sphinx,
+  Crypto, Tech, Altcoins, Music, Podcast, sent as `tags: [String]` of the
+  selected names (`[]` for none), read back by name.
+- Mac app per-tribe identity: `Chat.myAlias` and `Chat.myPhotoUrl`, Core
+  Data only (`GroupDetailsViewController.updateChat`); nothing goes to a
+  server when they change. `sendMessage` passes them to the core's `send`
+  as `myAlias` (`fixedAlias`) and `myImg`, falling back to the account's;
+  the core puts them in the message's `sender` (`alias`, `photo_url`),
+  and the tribes server forwards that. The Mac app's push check uses the
+  tribe alias too.
+
+### Built
+
+- `Tribe.myAlias`, `myPhotoURL` (migration v20), `sentAlias(account:)`
+  and `sentPhoto(account:)`, used by every send to a tribe (`deliver`,
+  `sendToTribe`), the call ticket's name and photo, and the alias that
+  names this account in mentions and approvals. `Engine.setTribeIdentity`
+  (https photo or none; empty is the account's); the mention scan keeps
+  each tribe's own alias (`MentionScan.own`, older scans read as none).
+- `TribeSettings.tags`, `tagChoices`; `TribeInfo` reads `tags`,
+  `owner_alias`, `created`. `Engine.tribeDetails` reads the registry (and
+  saves what changed, as the refresh does) with the owner's photo from
+  what they posted.
+- CLI: `tribe-info`, `tribe-alias <pubkey> [name|-] [photo|-]`, `--tags`.
+- App: `TribeDetailsPanel` (`PeelApp/TribeDetails.swift`), opened from
+  More's "Tribe details" (⌘I) below More, or from a click on the tribe's
+  name or icon below them. Tags as chips (`TagChips`, a toggle set in
+  the edit form). "How you appear in #tribe": name field (helper shows
+  the alias members will read) and `PictureField`, Save and Revert. Your
+  own rows in that tribe, the members list's "you" and mentions follow
+  it. `ChatInfoPanel` is now a contact's; the time zone switch is
+  `ChatTimeZoneSection`, shared by both.
+
+### Verified
+
+- Unit: tags and registry details round trip; the identity kept,
+  refused (http photo, a tribe left or unknown), cleared; the mention
+  scan with own aliases.
+- Integration (`TribeJourneys.detailsTagsAndHowYouAppear`, local stack):
+  tags from create read back by a member, edited by the owner; Bob's
+  "Bobby Tables" and photo arrive at Alice as `Bobby_Tables` with the
+  photo; Alice's `@Bobby_Tables` counts as a mention for Bob.
+- Renders on seeded dev profiles (owner, member, alias draft, edit with
+  tags), dark and light, kept outside the repo.
+
+### Not done
+
+- Setting how you appear before joining (the Mac app's join screen): the
+  join goes under the account's name.
+- App, feed and second brain URLs in the form.
 
 ## Threads and replies
 

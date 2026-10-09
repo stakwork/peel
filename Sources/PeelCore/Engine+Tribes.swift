@@ -117,7 +117,8 @@ extension Engine {
         try await run { time, state in
             try Sphinxrs.send(
                 seed: seed, uniqueTime: time, to: tribe.pubkey, msgType: UInt8(type), msgJson: body,
-                state: state, myAlias: tribeAlias(alias), myImg: photoURL, amtMsat: tribe.messageAmountMsat,
+                state: state, myAlias: tribe.sentAlias(account: alias), myImg: tribe.sentPhoto(account: photoURL),
+                amtMsat: tribe.messageAmountMsat,
                 isTribe: true
             )
         }
@@ -232,6 +233,37 @@ extension Engine {
         } catch {
             return false
         }
+    }
+
+    /// What the tribe's registry says about it now, for its details: the
+    /// owner, when it was made, its tags, prices and member count. What
+    /// changed is kept, as the background refresh keeps it. The owner's
+    /// photo is the one they last posted with, when they have.
+    public func tribeDetails(_ pubkey: String) async throws -> TribeDetails {
+        guard let host = tribes[pubkey]?.host else { throw Failure.noTribeServer }
+        let asked = ContinuousClock.now
+        let info = try await TribeInfo.fetch(pubkey: pubkey, host: host)
+        saveRecords([info], asked: asked)
+        let owner = info.ownerAlias?.nilIfEmpty
+        let photo = try owner.flatMap { owner in try storage.tribeSenders(pubkey).first { $0.alias == owner }?.photoURL }
+        return TribeDetails(info: info, ownerPhotoURL: photo)
+    }
+
+    /// How this account appears in a tribe it is in: a name and an https
+    /// photo sent with each message there from now on, in place of the
+    /// account's, as the official apps send `my_alias` and `my_photo_url`.
+    /// Empty or nil is the account's own. Kept on this Mac only, as theirs
+    /// are; members see it on the next message, never on what was sent.
+    @discardableResult
+    public func setTribeIdentity(_ pubkey: String, alias: String?, photoURL: String?) throws -> Tribe {
+        guard var tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
+        let photo = photoURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        if let photo, photo.httpsOnly == nil { throw Failure.photoNotHTTPS }
+        tribe.myAlias = alias?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        tribe.myPhotoURL = photo
+        try record(tribe)
+        checkMentionsIfNeeded()
+        return tribe
     }
 
     /// What a tribe this account owns is set to, to start an edit from.

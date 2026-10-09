@@ -162,7 +162,7 @@ struct DirectHeader: View {
                         )
                     }
                     .peelPopover(isPresented: $showingInfo) {
-                        ChatInfoPanel(conversation: conversation, tribe: nil)
+                        ChatInfoPanel(conversation: conversation)
                     }
                 }
             }
@@ -178,91 +178,49 @@ struct DirectHeader: View {
 
 // MARK: - The per-chat switch (T6)
 
-/// A chat's details: who or what it is, and whether your time zone goes
-/// with what you send there. A public tribe has no switch: it never gets it.
-/// A contact's also show since when, their full key with its QR code, and
-/// Remove, confirmed in place.
+/// A contact's details: since when, their local time, their full key with
+/// its QR code, whether your time zone goes with what you send them, and
+/// Remove, confirmed in place. A tribe's are `TribeDetailsPanel`.
 struct ChatInfoPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
-    let tribe: Tribe?
 
-    /// A contact's local time.
+    /// Their local time.
     @State private var local: LocalTime?
-    @State private var sharing: Bool?
-    @State private var offset: String?
-    @State private var chatZone: String?
-    @State private var problem: String?
-    /// A contact's oldest message here: since when they are a contact.
+    /// Their oldest message here: since when they are a contact.
     @State private var since: Date?
     @State private var removeProblem: String?
-
-    private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
-    private var target: String { conversation.title }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(spacing: 6) {
-                ConversationIcon(conversation: conversation, size: conversation.isTribe ? 56 : 64)
+                ConversationIcon(conversation: conversation, size: 64)
                 Text(conversation.name)
                     .font(Theme.font(16, .bold))
                     .lineLimit(1)
-                if conversation.isTribe {
-                    Text(tribe?.isPrivate == true ? "Private tribe" : "Public tribe")
+                if let since {
+                    Text("Contact since \(since.formatted(.dateTime.day().month(.wide).year()))")
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
-                } else {
-                    if let since {
-                        Text("Contact since \(since.formatted(.dateTime.day().month(.wide).year()))")
+                }
+                TimelineView(.everyMinute) { context in
+                    if let line = model.localTimeLine(local, at: context.date) {
+                        Text(line)
                             .font(Theme.font(12))
+                            .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
-                    }
-                    TimelineView(.everyMinute) { context in
-                        if let line = model.localTimeLine(local, at: context.date) {
-                            Text(line)
-                                .font(Theme.font(12))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
-                        }
                     }
                 }
             }
             .frame(maxWidth: .infinity)
-            if !conversation.isTribe {
-                ContactKeyCard(pubkey: conversation.chat)
-            }
+            ContactKeyCard(pubkey: conversation.chat)
+            ChatTimeZoneSection(conversation: conversation, tribe: nil)
             VStack(alignment: .leading, spacing: 8) {
-                SectionLabel("Time zone")
-                if isPublicTribe {
-                    Text("Your time zone is never sent in public tribes.")
-                        .font(Theme.font(13))
-                    note("You still see the local time of members who share theirs.")
-                } else if let sharing {
-                    Toggle(isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })) {
-                        Text("Share my time zone with \(target)")
-                            .font(Theme.font(13))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .tint(Theme.accent)
-                    note(sharingNote(sharing))
-                    if let chatZone {
-                        note("Uses \(chatZone), set on another device.")
-                    }
-                    if let problem {
-                        ProblemText(problem)
-                    }
-                }
-            }
-            if !conversation.isTribe {
-                VStack(alignment: .leading, spacing: 8) {
-                    FormDestructiveSection(
-                        trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove"
-                    ) { await remove() }
-                    if let removeProblem {
-                        ProblemText(removeProblem)
-                    }
+                FormDestructiveSection(
+                    trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove"
+                ) { await remove() }
+                if let removeProblem {
+                    ProblemText(removeProblem)
                 }
             }
         }
@@ -286,6 +244,58 @@ struct ChatInfoPanel: View {
         } catch {
             removeProblem = Formatting.sentence(error)
         }
+    }
+
+    private func load() async {
+        guard let engine = model.engine else { return }
+        let chat = conversation.chat
+        since = (try? engine.storage.firstMessageTime(in: chat)).flatMap { $0 }.map(Date.init(millisecondsSince1970:))
+        local = await model.localTime(of: chat, member: nil)
+    }
+}
+
+/// Whether your time zone goes with what you send in a chat, under a
+/// "Time zone" heading. A public tribe has no switch: it never gets it.
+struct ChatTimeZoneSection: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
+    let tribe: Tribe?
+
+    @State private var sharing: Bool?
+    @State private var offset: String?
+    @State private var chatZone: String?
+    @State private var problem: String?
+
+    private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
+    private var target: String { conversation.title }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("Time zone")
+            if isPublicTribe {
+                Text("Your time zone is never sent in public tribes.")
+                    .font(Theme.font(13))
+                note("You still see the local time of members who share theirs.")
+            } else if let sharing {
+                Toggle(isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })) {
+                    Text("Share my time zone with \(target)")
+                        .font(Theme.font(13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(Theme.accent)
+                note(sharingNote(sharing))
+                if let chatZone {
+                    note("Uses \(chatZone), set on another device.")
+                }
+                if let problem {
+                    ProblemText(problem)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: conversation.chat) { await load() }
     }
 
     private func note(_ text: String) -> some View {
@@ -313,10 +323,6 @@ struct ChatInfoPanel: View {
         sharing = (try? await engine.timeZoneSharing(in: chat)) ?? true
         offset = (try? await engine.timeZone(for: chat)).map { TimeZoneOffset.format($0) }
         chatZone = try? engine.storage.chatTimeZone(chat)?.identifier
-        if !conversation.isTribe {
-            since = (try? engine.storage.firstMessageTime(in: chat)).flatMap { $0 }.map(Date.init(millisecondsSince1970:))
-            local = await model.localTime(of: chat, member: nil)
-        }
     }
 
     private func set(_ on: Bool) async {
@@ -331,7 +337,6 @@ struct ChatInfoPanel: View {
         }
     }
 }
-
 
 /// A contact's full public key, which names them everywhere: its QR code,
 /// the key itself (selectable), and copying either.

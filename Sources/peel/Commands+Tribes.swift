@@ -36,6 +36,39 @@ extension Invocation {
             }
             try await session.finish(after: 0)
 
+        case "tribe-info":
+            guard let pubkey = arguments.next() else { throw PeelError("tribe-info needs a tribe pubkey") }
+            let details = try await load().tribeDetails(pubkey)
+            let info = details.info
+            func sats(_ msat: Int64?) -> String { Sats.format(msat: UInt64(max(msat ?? 0, 0))) }
+            print("#\(info.name)  \(info.isPrivate == true ? "private" : "public")")
+            if let summary = info.summary?.nilIfEmpty { print("  \(summary)") }
+            print("  owner \(info.ownerAlias ?? "unknown")" + (details.ownerPhotoURL.map { "  \($0)" } ?? ""))
+            if let created = info.created { print("  created \(created.formatted(.iso8601))") }
+            if let count = info.memberCount { print("  \(count) members") }
+            print("  join \(sats(info.priceToJoin)), per message \(sats(info.pricePerMessage)), escrow \(sats(info.escrowAmount))")
+            if let tags = info.tags, !tags.isEmpty { print("  tags \(tags.joined(separator: ", "))") }
+
+        case "tribe-alias":
+            guard let pubkey = arguments.next() else {
+                throw PeelError("tribe-alias needs a tribe pubkey, then a name and a photo url (- for the account's)")
+            }
+            let engine = try await load()
+            guard let current = try engine.storage.tribes().first(where: { $0.pubkey == pubkey }) else {
+                throw Engine.Failure.notInTribe
+            }
+            /// Left out keeps what is set; "-" is the account's own.
+            func value(_ given: String?, _ current: String?) -> String? {
+                guard let given else { return current }
+                return given == "-" ? nil : given
+            }
+            let alias = value(arguments.next(), current.myAlias)
+            let tribe = try await engine.setTribeIdentity(
+                pubkey, alias: alias, photoURL: value(arguments.next(), current.myPhotoURL)
+            )
+            print("in #\(tribe.displayName): \(tribe.myAlias ?? "the account's name")"
+                + ", \(tribe.myPhotoURL ?? "the account's photo")")
+
         case "tribe-leave":
             guard let pubkey = arguments.next() else { throw PeelError("tribe-leave needs a tribe pubkey") }
             let session = try await Session(load()).connect(insecure: insecure)
@@ -125,6 +158,7 @@ struct TribeOptions {
     var escrowMillis: UInt64?
     var isPrivate: Bool?
     var unlisted: Bool?
+    var tags: [String]?
 
     init(_ arguments: inout Arguments) throws {
         name = arguments.option("--name")
@@ -139,6 +173,7 @@ struct TribeOptions {
         escrowMillis = try option("--escrow-hours", unit: Sats.millisecondsPerHour, of: "escrow time")
         isPrivate = try arguments.option("--private").map(yesNo)
         unlisted = try arguments.option("--unlisted").map(yesNo)
+        tags = arguments.option("--tags").map { $0.split(separator: ",").map(String.init) }
     }
 
     func apply(to settings: TribeSettings) -> TribeSettings {
@@ -152,6 +187,7 @@ struct TribeOptions {
         if let escrowMillis { settings.escrowMillis = escrowMillis }
         if let isPrivate { settings.isPrivate = isPrivate }
         if let unlisted { settings.unlisted = unlisted }
+        if let tags { settings.tags = tags }
         return settings
     }
 }

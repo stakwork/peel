@@ -635,6 +635,20 @@ menu's place (‹ back, Left or Escape) with the sidebar's levels, the
 current one beside it ("All"). Members, Details and Edit open below
 More. The members panel keeps its own Copy link and Leave.
 
+**Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
+More's Details is "Tribe details" (⌘I); a click on the tribe's name or
+icon opens the same panel below them. It is a `FormPopover`, scrolling
+under a fade above its footer: the image, name, public or private and
+"Created 9 Oct 2026", the description, the tags as chips, a card of facts
+(owner, members, price to join, per message, escrow; a dash until the
+registry answers), Tribe app and Second brain as buttons into the web
+pane, the link's QR with Copy link and Copy QR image, "How you appear in
+#tribe" (a name whose helper shows the alias members will read, and a
+`PictureField`; Save and Revert appear once something changed), and the
+time zone switch. Its footer: Members, then Edit tribe… for the owner or
+Leave tribe, confirmed in place. Tags in the edit form are the same chips,
+toggled, the selected ones in `selection` with a tick.
+
 The rejected native-sidebar variant and the first Slack-skin build are kept in
 the session scratchpad only; the mock canvas has all four mocked directions.
 

@@ -43,7 +43,8 @@ is a short plan. Update the status and the journal when you finish something.
       attachments; the memes server sign-in
     - `Engine+Calls.swift` — the call server, call links, tickets, presence
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
-      the tribes registry and its background refresh
+      a tribe's details, how you appear in one, the tribes registry and its
+      background refresh
     - `Engine+History.swift` — restore and catch-up: asks for the pages
       `HistoryCursor` names, the stall watchdog, recovering the account's
       own photo
@@ -163,7 +164,7 @@ is a short plan. Update the status and the journal when you finish something.
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
   (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
@@ -191,7 +192,7 @@ is a short plan. Update the status and the journal when you finish something.
   `endsEditingOnClick` and `InlineConfirm`, the one in-place confirm, over
   the form tokens in `Theme`; used by every form, see `docs/design/README.md`, "Forms");
   `PictureField` (a picture picked or dropped, uploaded, never typed: the
-  Account's photo, a tribe's image);
+  Account's photo, a tribe's image, your photo in a tribe);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
   time, the hover card, a chat's details panel with the time zone switch,
   and for a contact their key, its QR code and Remove);

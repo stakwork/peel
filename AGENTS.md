@@ -238,6 +238,8 @@ is a short plan. Update the status and the journal when you finish something.
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports
+- `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
+  files it touches and its size; see "How a change ships"
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
@@ -493,9 +495,20 @@ optional here: a bug in this code can lose money or leak a key.
    simplicity, efficiency and altitude (it applies its fixes), then
    `/security-review`. Fix what they find. Findings deliberately not applied go
    in the phase file with the reason.
-5. **Record.** Update the phase file (done, learned, next) and this file if the
+5. **Rank the risk.** Run `scripts/risk.sh`. It reads what the branch touches
+   and prints a tier with its reasons; the tier decides the extra review below.
+   You may raise the tier, never lower it. Put its first line and the checks
+   you ran at the top of the PR description (`Risk: high, touches
+   Engine+Payments`).
+6. **Record.** Update the phase file (done, learned, next) and this file if the
    layout or rules changed.
-6. **Ship.** Commit with a plain message and push.
+7. **Ship.** Commit with a plain message and push. Do not merge your own PR.
+
+| Tier | What puts it there | Before merge |
+|---|---|---|
+| Low | Docs, tests only, copy, pure styling | The chain above. |
+| Medium | Other engine, storage or app code, scripts, or a diff over 400 lines | The chain, plus one real key press or click check in the app, plus the reviewer's look at the diff and renders. |
+| High | Money, keys and secrets, migrations and writes, untrusted input (web, markup, links, the core boundary), the message list, keyboard and focus | Medium, plus an independent review by an agent that did not write the change, briefed to find problems rather than approve (money and keys also get a separate security-only pass); the integration journeys that cover the area; and Tom's sign-off when it changes what he would notice. |
 
 This chain reviews one diff. Before the repo goes to the team, phase 8
 (`docs/phases/08-audit.md`) reviews the whole of it, features frozen.

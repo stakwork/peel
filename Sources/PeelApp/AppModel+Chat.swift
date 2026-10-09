@@ -411,6 +411,24 @@ extension AppModel {
         message.id.flatMap { attachment($0).downloaded?.fileName } ?? message.fileName
     }
 
+    /// Whether a file attachment opens as a page in the web pane: HTML.
+    func opensAsPage(_ message: Message) -> Bool {
+        WebPage.isHTML(fileName: fileName(of: message), mediaType: message.mediaType)
+    }
+
+    /// Downloads and decrypts an HTML attachment, then shows it in the web
+    /// pane like a clicked link, offline and without script
+    /// (`WebPane.openDocument`).
+    func openPage(_ message: Message) async {
+        await download(message)
+        guard let id = message.id, let file = attachment(id).file, opensAsPage(message) else { return }
+        do {
+            try await web.openDocument(file, named: fileName(of: message) ?? "Page")
+        } catch {
+            conversationNotices[message.chat] = "Could not open: \(PeelError.readable(error))"
+        }
+    }
+
     /// What an attachment is: what its bytes turned out to be once
     /// downloaded (a fake video is a file), else what it says.
     func attachmentKind(of message: Message) -> AttachmentKind? {

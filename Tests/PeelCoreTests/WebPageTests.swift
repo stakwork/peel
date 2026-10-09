@@ -120,4 +120,14 @@ struct WebPageTests {
         try storage.save([tribe])
         #expect(try storage.tribes() == [tribe])
     }
+
+    @Test func htmlAttachmentsAreShownAsPages() {
+        #expect(WebPage.isHTML(fileName: "Report.HTML", mediaType: "application/octet-stream"))
+        #expect(WebPage.isHTML(fileName: "notes.htm", mediaType: nil))
+        // Before a download names it, by what it says it is.
+        #expect(WebPage.isHTML(fileName: nil, mediaType: "text/html; charset=utf-8"))
+        #expect(!WebPage.isHTML(fileName: "page.html.zip", mediaType: "application/zip"))
+        #expect(!WebPage.isHTML(fileName: "notes.txt", mediaType: "text/plain"))
+        #expect(!WebPage.isHTML(fileName: nil, mediaType: nil))
+    }
 }

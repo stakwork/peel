@@ -810,6 +810,17 @@ app's browser pane, without its tabs (decided 2026-10-08, restyled
 - **Downloads** land in Downloads like a saved attachment (clean name,
   quarantined) and a bar at the pane's foot says "Saved name to Downloads"
   with Show in Finder; a failure says so in amber, never red.
+- **HTML attachments** (2026-10-09) open in the pane like a link: a click
+  on the file card, or its globe, downloads and decrypts the file, then
+  shows it. It is someone else's page, so it is shown offline: a copy in its
+  own temp folder that is the only file it may read, no script, a store
+  that keeps nothing, and a content rule list that blocks every load but
+  the file (images, styles, fonts, media, frames, pings, preconnects). The
+  address field shows a page mark and the file's name, never a path; Copy
+  link and Open in default browser are off. A web link clicked in it opens
+  as a message's link does (⌘-click to the browser); any other navigation
+  it asks for is refused. The copy is removed when the page closes or the
+  next one replaces it. A paid one opens only once bought.
 - **Website data:** one store per profile, so a Google or YouTube sign-in
   sticks for this account only. Account › Security › Website data, or the
   pane's More, clears it.

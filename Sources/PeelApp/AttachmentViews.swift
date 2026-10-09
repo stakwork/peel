@@ -5,7 +5,8 @@ import PeelCore
 /// An attachment in a message: an image (or a grid of a run of them), a
 /// video, a recording or a file card. Images download as soon as they
 /// show, videos and recordings up to `Engine.autoDownloadLimit`; files
-/// when asked. Nothing is ever opened for the person.
+/// when asked. Nothing is ever opened outside Peel; an HTML file, when
+/// clicked, shows offline in the web pane.
 struct AttachmentView: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
@@ -218,6 +219,8 @@ struct TransferBar: View {
 
 /// A file: its type, name and size. One click downloads it into Downloads
 /// ("name (1).ext" when taken) and offers Show in Finder; Save as… in its menu asks where.
+/// An HTML file also opens in the web pane, on a click on the card or its
+/// globe, like a link (`AppModel.openPage`).
 struct FileCard: View {
     @Environment(AppModel.self) private var model
     let message: Message
@@ -246,6 +249,12 @@ struct FileCard: View {
         }
         // The name truncates in the middle.
         .attachmentCard()
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture { if model.opensAsPage(message) { openPage() } }
+    }
+
+    private func openPage() {
+        Task { await model.openPage(message) }
     }
 
     @ViewBuilder private func action(_ handle: AttachmentHandle) -> some View {
@@ -258,6 +267,9 @@ struct FileCard: View {
             case .downloading:
                 EmptyView()
             case .idle, .held, .failed, .ready:
+                if model.opensAsPage(message) {
+                    HoverIconButton(systemImage: "globe", help: "Open in Peel", action: openPage)
+                }
                 if handle.savedTo == nil {
                     HoverIconButton(systemImage: "arrow.down.to.line", help: "Download to Downloads") {
                         Task { await model.saveToDownloads(message) }

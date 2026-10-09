@@ -27,7 +27,11 @@ final class WebPane: NSObject {
     var download: Download?
 
     struct Page: Equatable {
+        /// The web address on show; nil for an HTML attachment, which has
+        /// none to copy or open elsewhere.
         var url: URL?
+        /// An HTML attachment's name, shown in the address's place.
+        var fileName: String?
         var title = ""
         var canGoBack = false
         var canGoForward = false
@@ -70,6 +74,9 @@ final class WebPane: NSObject {
     @ObservationIgnored private var downloads: [ObjectIdentifier: (file: URL, name: String)] = [:]
     /// When the page's web content process last ended under it.
     @ObservationIgnored private var lastTermination: ContinuousClock.Instant?
+    /// The HTML attachment on show (`openDocument`): Peel's copy, removed
+    /// with the page, and the name the address field shows.
+    @ObservationIgnored private var document: (file: URL, name: String)?
 
     init(profile: Profile?) {
         self.profile = profile
@@ -81,10 +88,40 @@ final class WebPane: NSObject {
     /// `WebPage.address` accepts; the caller sends anything else elsewhere.
     func open(_ url: URL) {
         guard let url = WebPage.address(url) else { return }
+        // An HTML attachment's web view is not for the web: a new one replaces it.
+        if document != nil { endPage() }
         let view = webView ?? makeWebView()
         isOpen = true
         problem = nil
         view.load(URLRequest(url: url))
+    }
+
+    /// Shows an HTML attachment as a page, replacing what the pane showed.
+    /// It is someone else's, so it is shown offline: a copy in its own temp
+    /// folder that is the only file the page may read, no script, a store
+    /// that keeps nothing, and every load but the copy itself blocked
+    /// (`offlineRules`), so opening it cannot fetch, track or send anything.
+    /// A link clicked in it goes where a message's link goes (`linkAction`).
+    /// The address field shows `name`; the copy goes when the page does.
+    func openDocument(_ file: URL, named name: String) async throws {
+        let rules = try await Self.offlineRules()
+        let root = Self.pagesRoot
+        let copy = try await Task.detached {
+            let copy = try IncomingFiles.newFolder(in: root).appendingPathComponent("page.html")
+            do {
+                try FileManager.default.copyItem(at: file, to: copy)
+            } catch {
+                IncomingFiles.discard(copy, root: root)
+                throw error
+            }
+            return copy
+        }.value
+        endPage()
+        document = (copy, name)
+        let view = makeWebView(offline: rules)
+        isOpen = true
+        problem = nil
+        view.loadFileURL(copy, allowingReadAccessTo: copy)
     }
 
     /// The header's Browser: the page as it is, or the pane with only its
@@ -110,7 +147,14 @@ final class WebPane: NSObject {
         isOpen = false
         problem = nil
         download = nil
+        endPage()
+    }
+
+    /// Ends the page and its web view; an HTML attachment's copy goes with it.
+    private func endPage() {
         page = Page()
+        if let document { IncomingFiles.discard(document.file, root: Self.pagesRoot) }
+        document = nil
         guard let view = webView else { return }
         view.stopLoading()
         view.navigationDelegate = nil
@@ -142,8 +186,8 @@ final class WebPane: NSObject {
     /// Signs out of every site opened in the pane on this profile and
     /// clears their cookies, storage and cache. An open page is loaded again.
     func clearWebsiteData() async {
-        guard let store = webView?.configuration.websiteDataStore ?? storeID(create: false).map(WKWebsiteDataStore.init)
-        else { return }
+        // The profile's store, not an HTML attachment's, which keeps nothing.
+        guard let store = storeID(create: false).map(WKWebsiteDataStore.init) else { return }
         await Self.removeAllData(from: store)
         webView?.reload()
     }
@@ -168,12 +212,20 @@ final class WebPane: NSObject {
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
 
-    private func makeWebView() -> PaneWebView {
+    /// A web view for the web, or with `offline` rules for an HTML attachment.
+    private func makeWebView(offline rules: WKContentRuleList? = nil) -> PaneWebView {
         let configuration = WKWebViewConfiguration()
-        // Without a profile folder, a store that keeps nothing: never the
-        // default store other apps' pages and other profiles would share.
-        configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
-        // No message handlers, no user scripts: the controller stays empty.
+        if let rules {
+            // Someone else's page: no script, nothing kept, nothing fetched.
+            configuration.websiteDataStore = .nonPersistent()
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+            configuration.userContentController.add(rules)
+        } else {
+            // Without a profile folder, a store that keeps nothing: never the
+            // default store other apps' pages and other profiles would share.
+            configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
+        }
+        // No message handlers, no user scripts: the controller holds at most the rules.
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         // As in Safari: video plays, but nothing starts making sound until clicked.
         configuration.mediaTypesRequiringUserActionForPlayback = .audio
@@ -181,6 +233,8 @@ final class WebPane: NSObject {
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
+        // A force click's preview would load the link outside the rules.
+        view.allowsLinkPreview = rules == nil
         view.close = { [weak self] in self?.close() }
         func watch<Value>(_ keyPath: KeyPath<PaneWebView, Value>) -> NSKeyValueObservation {
             view.observe(keyPath) { [weak self] _, _ in MainActor.assumeIsolated { self?.sync() } }
@@ -199,12 +253,14 @@ final class WebPane: NSObject {
     /// could start a load that never arrives and wear another site's host.
     /// So the address changes only once the new page commits (`committed`),
     /// or while nothing is loading (a page's own history changes); the
-    /// first load, which Peel started, shows where it goes.
+    /// first load, which Peel started, shows where it goes. An HTML
+    /// attachment shows its name, never its copy's path.
     private func sync(committed: Bool = false) {
         guard let webView else { return }
-        let url = committed || !webView.isLoading || page.url == nil ? webView.url ?? page.url : page.url
+        let url = document != nil ? nil
+            : committed || !webView.isLoading || page.url == nil ? webView.url ?? page.url : page.url
         let new = Page(
-            url: url, title: webView.title ?? "",
+            url: url, fileName: document?.name, title: webView.title ?? "",
             canGoBack: webView.canGoBack, canGoForward: webView.canGoForward,
             isLoading: webView.isLoading, progress: webView.estimatedProgress,
             hasOnlySecureContent: webView.hasOnlySecureContent
@@ -215,12 +271,34 @@ final class WebPane: NSObject {
     /// Where downloads wait until they are finished and put in Downloads.
     private static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("Peel Web Downloads", isDirectory: true)
+
+    /// Where an HTML attachment's copy waits while it is on show.
+    private static let pagesRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Peel Web Pages", isDirectory: true)
+
+    /// Blocks every load but a file's, whatever its kind: images, styles,
+    /// fonts, media, frames, pings, preloads and preconnects. With the page
+    /// allowed to read only itself, nothing outside it reaches the screen.
+    private static let offlineRuleList = """
+        [{"trigger": {"url-filter": ".*"}, "action": {"type": "block"}},
+         {"trigger": {"url-filter": "^file:"}, "action": {"type": "ignore-previous-rules"}}]
+        """
+
+    /// `offlineRuleList`, compiled for each page (milliseconds), so a list
+    /// WebKit kept from an older Peel is never the one used.
+    private static func offlineRules() async throws -> WKContentRuleList {
+        guard let rules = try await WKContentRuleListStore.default()?.compileContentRuleList(
+            forIdentifier: "peel-offline", encodedContentRuleList: offlineRuleList
+        ) else { throw PeelError("the page could not be made safe to show") }
+        return rules
+    }
 }
 
 // MARK: - What a page may do
 
 extension WebPane: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
+        if let document { return documentPolicy(for: action, file: document.file) }
         if action.shouldPerformDownload { return .download }
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame ?? true
@@ -242,6 +320,26 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             // file:, sphinx.chat:, mailto: and every app's scheme: not from a page.
             return .cancel
         }
+    }
+
+    /// An HTML attachment loads only itself (its own `#` links among it)
+    /// and its `srcdoc` frames. A web link clicked in it opens as one
+    /// clicked in a message would; nothing else it asks for goes anywhere:
+    /// no other scheme, no form, no refresh, no download.
+    private func documentPolicy(for action: WKNavigationAction, file: URL) -> WKNavigationActionPolicy {
+        guard let url = action.request.url else { return .cancel }
+        if url.isFileURL, url.path == file.path { return .allow }
+        if url.scheme?.lowercased() == "about", action.targetFrame?.isMainFrame == false { return .allow }
+        if action.navigationType == .linkActivated { follow(url) }
+        return .cancel
+    }
+
+    /// A web link clicked in an HTML attachment, through the message links'
+    /// router once WebKit has its answer, since the page it leaves is ended.
+    private func follow(_ url: URL) {
+        guard WebPage.address(url) != nil else { return }
+        let open = linkAction
+        Task { @MainActor in open(url) }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
@@ -269,7 +367,9 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         let error = error as NSError
         if error.domain == NSURLErrorDomain, error.code == NSURLErrorCancelled { return }
         if error.domain == WebKitErrorDomain, error.code == WebKitErrorFrameLoadInterruptedByPolicyChange { return }
-        problem = Problem(url: error.userInfo[NSURLErrorFailingURLErrorKey] as? URL, message: error.localizedDescription)
+        // An HTML attachment's copy is never offered to try again as an address.
+        let url = document == nil ? error.userInfo[NSURLErrorFailingURLErrorKey] as? URL : nil
+        problem = Problem(url: url, message: error.localizedDescription)
     }
 
     /// Loads the page again, once: a page that brings its process down
@@ -279,7 +379,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         let now = ContinuousClock.now
         defer { lastTermination = now }
         if let last = lastTermination, now - last < .seconds(60) {
-            problem = Problem(url: webView.url ?? page.url, message: "The page stopped working.")
+            problem = Problem(url: document == nil ? webView.url ?? page.url : nil, message: "The page stopped working.")
             return
         }
         webView.reload()
@@ -290,7 +390,10 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = action.request.url, WebPage.address(url) != nil {
+        guard let url = action.request.url, WebPage.address(url) != nil else { return nil }
+        if document != nil {
+            if action.navigationType == .linkActivated { follow(url) }
+        } else {
             webView.load(action.request)
         }
         return nil
@@ -532,7 +635,8 @@ private struct WebToolbar: View {
 /// address changes when the next page arrives, not when it is asked for
 /// (`WebPane.sync`). A click edits it; Return loads what was typed, Escape
 /// puts the address back, ⌘W closes the pane; with no page the field has
-/// the keyboard.
+/// the keyboard. An HTML attachment shows a page's mark and its name, and a
+/// click starts a new address.
 private struct AddressField: View {
     let pane: WebPane
 
@@ -543,11 +647,17 @@ private struct AddressField: View {
     var body: some View {
         let page = pane.page
         HStack(spacing: 6) {
-            if !focused, page.url != nil {
+            if !focused, page.fileName != nil {
+                Image(systemName: "doc.richtext")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.secondaryText)
+                    .accessibilityHidden(true)
+            } else if !focused, page.url != nil {
                 SecurityMark(isSecure: page.isSecure)
             }
             ZStack(alignment: .leading) {
-                TextField("", text: $draft, prompt: page.url == nil ? Text("Type a URL").foregroundStyle(Theme.tertiaryText) : nil)
+                let empty = page.url == nil && page.fileName == nil
+                TextField("", text: $draft, prompt: empty ? Text("Type a URL").foregroundStyle(Theme.tertiaryText) : nil)
                     .textFieldStyle(.plain)
                     .font(Theme.font(13))
                     .focused($focused)
@@ -557,7 +667,13 @@ private struct AddressField: View {
                         if pane.problem == nil { focused = false }
                     }
                     .onExitCommand { draft = page.url?.absoluteString ?? "" }
-                if !focused, let url = page.url {
+                if !focused, let name = page.fileName {
+                    Text(name)
+                        .font(Theme.font(13))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .allowsHitTesting(false)
+                } else if !focused, let url = page.url {
                     AddressText(url: url)
                         .allowsHitTesting(false)
                 }
@@ -567,7 +683,7 @@ private struct AddressField: View {
         .frame(height: 30)
         .modifier(FieldChrome(focused: focused, hovering: hovering))
         .onHover { hovering = $0 }
-        .help(page.url?.absoluteString ?? "")
+        .help(page.url?.absoluteString ?? page.fileName ?? "")
         // ⌘W in the field closes the pane, as from the page.
         .hiddenShortcut(KeyboardShortcut("w", modifiers: .command), enabled: focused) { pane.close() }
         .onChange(of: focused) { _, now in

@@ -101,7 +101,7 @@ public enum ContactCode: Sendable, Equatable {
     }
 }
 
-private extension Character {
+extension Character {
     var isASCIIDigit: Bool { isASCII && isNumber }
 }
 

@@ -1855,7 +1855,9 @@ used for every text message), which also renders: bold (`**`/`__`),
 italic (`*`/`_`), bold italic, strikethrough (`~~`), headings (`#`),
 quotes (`> `), ordered lists, task lists (`- [ ]`), horizontal rules,
 `[text](url)` links, emails, `sphinx.chat://` links and http links. Peel
-still shows those as typed. Where both render, differences: the official
+showed those as typed; since 2026-10-09 it renders emphasis, headings,
+quotes, numbered lists and https `[text](url)` links (`10-v1-extras.md`,
+"2. Markdown"). Where both render, differences: the official
 app pads inline code with spaces; an unclosed fence there runs to the end
 of the message; text after an opening fence is always dropped as a
 language name, so ```x``` on one line loses `x` and turns the lines after

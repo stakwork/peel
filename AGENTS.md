@@ -111,9 +111,10 @@ is a short plan. Update the status and the journal when you finish something.
   - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
     pasteboard items attach, image bytes and promised files written to Peel's
     own temp folder and checked
-  - `MessageMarkup.swift` — how message text reads: paragraphs, list items,
-    fenced code, and inline code, https links and mentions; `plainText`, the
-    one line that previews show
+  - `MessageMarkup.swift` — how message text reads: paragraphs, list and
+    numbered items, headings, quotes, fenced code, and inline code, https
+    and `[text](url)` links, mentions and emphasis; `plainText`, the one
+    line that previews show
   - `TimeZones.swift` — time zones: the offset in a message's `metadata`
     (sent unless the chat's switch is off, never to a public tribe; read
     with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`

@@ -41,6 +41,7 @@ func finishes(within limit: Duration, _ body: () -> Void) -> Bool {
 let markupPieces = [
     "`", "``", "```", "\n", "\r\n", " ", "\t", "@", "@a", "a", "-", "- ", "* ", "• ", "https://a.co/", "https://b.co/`x",
     "\u{00A0}", "\u{0301}", "\u{202E}", "\u{2028}", "é", "😀", "swift", "#",
+    "*", "**", "_", "~~", "> ", "1. ", "# ",
 ]
 
 struct AuditMarkupTests {
@@ -50,6 +51,7 @@ struct AuditMarkupTests {
             let kind = switch span.kind {
             case .code: "code"
             case .link(let url): "link \(url.absoluteString)"
+            case .namedLink(let url): "named \(url.absoluteString)"
             case .mention: "mention"
             }
             let start = text.distance(from: text.startIndex, to: span.range.lowerBound)
@@ -58,14 +60,25 @@ struct AuditMarkupTests {
     }
 
     /// The span rules as they were before the audit, written the obvious
-    /// (quadratic) way: the reference the linear parse must agree with.
+    /// (quadratic) way: the reference the linear parse must agree with. Since
+    /// markdown, emphasis marks at the end of a link or mention are not its.
     private func referenceSpans(_ text: String) -> [MessageMarkup.Span] {
         let whole = NSRange(text.startIndex..., in: text)
         let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        func trimmed(_ range: Range<String.Index>) -> Range<String.Index> {
+            var shown = text[range]
+            while let last = shown.last, "*_~".contains(last) { shown = shown.dropLast() }
+            return shown.startIndex..<shown.endIndex
+        }
         let links: [MessageMarkup.Span] = detector.matches(in: text, range: whole).compactMap { match in
-            guard let url = match.url, url.scheme?.lowercased() == "https", url.user == nil, url.password == nil,
-                  let range = Range(match.range, in: text) else { return nil }
-            return MessageMarkup.Span(kind: .link(url), range: range, text: String(text[range]))
+            guard let found = Range(match.range, in: text) else { return nil }
+            let range = trimmed(found)
+            let address = String(text[range])
+            guard let again = detector.firstMatch(in: address, range: NSRange(address.startIndex..., in: address)),
+                  again.range.length == address.utf16.count,
+                  let url = again.url, url.scheme?.lowercased() == "https", url.user == nil, url.password == nil
+            else { return nil }
+            return MessageMarkup.Span(kind: .link(url), range: range, text: address)
         }
         let code = try! NSRegularExpression(pattern: #"(?<!`)(`+)([^`\n]+)\1(?!`)"#)
         var codes: [MessageMarkup.Span] = []
@@ -82,7 +95,8 @@ struct AuditMarkupTests {
         var spans = codes + links.filter { link in !codes.contains { $0.range.overlaps(link.range) } }
         let mention = try! NSRegularExpression(pattern: #"\B@[^\s]+"#)
         for match in text.contains("@") ? mention.matches(in: text, range: whole) : [] {
-            guard let range = Range(match.range, in: text), !spans.contains(where: { $0.range.overlaps(range) }) else { continue }
+            guard let range = Range(match.range, in: text).map(trimmed), text[range].count > 1,
+                  !spans.contains(where: { $0.range.overlaps(range) }) else { continue }
             spans.append(MessageMarkup.Span(kind: .mention, range: range, text: String(text[range])))
         }
         return spans.sorted { $0.range.lowerBound < $1.range.lowerBound }
@@ -110,10 +124,18 @@ struct AuditMarkupTests {
         ("mentions, code and links", String(repeating: "@a `b` https://c.co ", count: 3_200)),
         ("backticks", String(repeating: "`", count: 64_000)),
         ("item markers", String(repeating: "- a\n", count: 16_000)),
+        ("emphasis marks", String(repeating: "*a _b ~~c ", count: 6_400)),
+        ("unclosed emphasis", String(repeating: "**a ", count: 16_000)),
+        ("nested emphasis", String(repeating: "*_", count: 16_000) + "a" + String(repeating: "_*", count: 16_000)),
+        ("named links", String(repeating: "[a](https://a.co) ", count: 3_500)),
+        ("links closing emphasis", String(repeating: "https://a.co/* ", count: 4_300)),
+        ("quotes", String(repeating: "> a\n", count: 16_000)),
+        ("headings and numbers", String(repeating: "# a\n1. b\n", count: 6_400)),
     ])
     func longAdversarialTextParsesInLinearTime(name: String, text: String) {
         #expect(finishes(within: .seconds(3)) {
             _ = MessageMarkup.spans(in: text)
+            _ = MessageMarkup.inlines(text)
             _ = MessageMarkup.blocks(text)
             _ = MessageMarkup.plainText(text)
         }, "\(name)")

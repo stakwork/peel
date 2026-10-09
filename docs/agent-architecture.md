@@ -1,6 +1,6 @@
 # Peel and the personal agent: architecture
 
-Last updated 2026-10-08. The single source of truth for the personal Sphinx
+Last updated 2026-10-09. The single source of truth for the personal Sphinx
 agent that Peel is the client for. Nothing here is built. It brings together
 three sources:
 
@@ -223,6 +223,33 @@ queues it.
   Buzz's harness, adopted as rules, not code (`research/acp-harnesses.md`,
   section 8).
 
+### Inbox items
+
+Phase 9's Wave D (`phases/09b-inbox.md`). The agent keeps Tom's to-dos
+and reminders as Item nodes. Peel's Inbox is a read-mostly view of them,
+drawn from a local cache on each device.
+
+```
+ Tom ── "remind me about this tomorrow at 2" (T) ──▶ peel-agent
+                                                   loop: inbox_add
+                                                   Item ─ABOUT▶ Artifact
+ Tom ◀── reply in T ─────────────────────────────────┤
+ Peel (Mac, phone) ◀── item.state {id, rev, fields} ─┘ to Tom's account
+ Peel ── item.put {id, base rev, doneAt | remindAt} ─▶ peel-agent  (tick, snooze)
+ Peel ── item.sync {since rev} ─▶ … ◀── item.snapshot (paged)
+```
+
+- These are typed messages under the `peel` key, in the agent DM and
+  outside threads, with short fallback text for the official apps.
+- The `inbox_*` tools write the agent's own memory and have no outside
+  effect, so the gate answers them without an ask card. Upkeep that
+  changes the list is an ask card.
+- Each device schedules reminders from its cache, so the host's sleep
+  (decision 12) does not lose one. The lock rule applies.
+- The message an item is about reaches the host as a pointer only.
+- Quick capture (⌃⌥Space, later) sends a line to the agent as a message,
+  or queues it while offline.
+
 ### Payments and mandates
 
 Spending follows AP2's shape: a mandate is a signed, capped, revocable
@@ -265,6 +292,26 @@ REL PARENT_OF (Concept → Concept)  REL ABOUT     (Job | Claim → Concept)
 
 Later, for Connections: Person (linked to a Sphinx contact) and Event.
 
+**Inbox items** (phase 9 Wave D, `phases/09b-inbox.md`, decided
+2026-10-09):
+
+```
+NODE Item     (id PK, text, created_ms, updated_ms, done_ms, remind_ms,
+               deleted_ms, state: open | suggested, origin,
+               thread_uuid, rev)
+
+REL ABOUT     (Item → Artifact)    the message it is about: kind message,
+                                   ref "<chat>/<uuid>", no text copied
+REL HANDED_TO (Item → Job)         when the agent works the item
+REL ABOUT     (Item → Concept)     later, for grouping
+```
+
+- `thread_uuid` is the agent thread the item came from. Peel's Inbox
+  links to it.
+- `ABOUT` gains the `Item` endpoint pairs. If multi-pair rel tables are
+  awkward in the Swift bindings, the message edge is named `SAVED_FROM`.
+- Assigning an item to a person waits for the Person node.
+
 ### Write rules
 
 1. **One writer.** Only `peel-agent` opens the file read-write. Strut,
@@ -277,12 +324,21 @@ Later, for Connections: Person (linked to a Sphinx contact) and Event.
    as `proposed`.
 4. **Artifacts are pointers.** A PR URL, a message uuid, a file path with a
    content hash. The graph never copies content.
-5. **Concepts are read-only to the agent.** Glimmer's seed files are the
+5. **Items are written by the host on an event:**
+   - Tom's `item.put` (a tick or a snooze);
+   - an `inbox_*` tool call in a turn Tom started;
+   - Tom keeping a suggestion;
+   - upkeep Tom approved with a card.
+
+   An item the agent infers on its own is a suggestion until Tom keeps
+   it. Upkeep (merging, dropping a stale item, ticking from a chat) is
+   an ask card, in the spirit of rule 6.
+6. **Concepts are read-only to the agent.** Glimmer's seed files are the
    source of truth and the Concept tables are a view rebuilt from them. An
    agent that wants to change Tom's tree sends a proposal card; approving
    it edits a seed file, and the rebuild picks it up. Nothing writes a
    Concept directly (decision 7).
-6. **Reads are by tool.** `graph_query` for jobs, runs and claims;
+7. **Reads are by tool.** `graph_query` for jobs, runs and claims;
    `concept_open` and `concept_walk` for the tree, the same names Glimmer
    uses in stakgraph, so Claude Code and the agent read the tree the same way.
 
@@ -328,6 +384,13 @@ In roadmap order (see `PLAN.md`):
    activity log and, later, Connections. Each control sends a typed
    message; the host answers with the new state.
 8. **The host itself:** `peel-agent` on the engine, from phase 9.
+9. **The Inbox** (phase 9 Wave D), after graph memory:
+   - the `item.*` messages in the codec;
+   - Peel's cache;
+   - the read-mostly view;
+   - per-device reminders.
+
+   Quick capture comes later.
 
 ## What Strut and the company need
 

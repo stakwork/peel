@@ -330,8 +330,42 @@ on the local stack, never `run-app.sh`.
     amount. Needs 8, 15. Verify on the local stack: a payment inside the
     cap goes, one over it asks, one after `revoke` asks. A day.
 
+### Wave D: the Inbox
+
+The agent's commitments to Tom, kept as Item nodes in the graph and shown
+in Peel as a read-mostly list. The design is in
+[09b-inbox.md](09b-inbox.md).
+
+21. **Items in the host.** The Item node and its edges in the graph
+    schema, by a versioned migration. The `inbox_add`, `inbox_update`,
+    `inbox_done`, `inbox_list` and `inbox_snooze` loop tools, and the
+    `item.*` messages in the codec. Inferred items are suggestions, and
+    upkeep (merge, stale, done in a chat) is an ask card. Needs 8, 9 and
+    16. Verify: "remind me about this tomorrow at 2" in a thread writes
+    one Item about the replied-to message, with `remind_ms` in Tom's
+    zone, and the host sends an `item.state`. Two days.
+22. **Peel's cache.** The `inboxItem` table and migration, applying
+    `item.state` and `item.snapshot`, `tick` and `snooze` sent as
+    `item.put` with `pending`, and `item.sync` on a new or restored
+    device. Needs 21. Verify on the local stack: two devices of the owner
+    converge after a tick on one; a tick made offline syncs on reconnect.
+    A day.
+23. **The Inbox view.** The sidebar row with its count, the list (Today,
+    Later, Suggested, Done folded), tick and snooze on hover, and the
+    item's thread opening in the right-hand panel. Needs 11 and 22.
+    Verify with click-through tests in both themes. A day.
+24. **Reminders per device.** Scheduling from the cache, the lock and quit
+    rewrite, the notification actions and the pending list from before
+    unlock. Needs 22. Verify: a reminder fires with Peel closed, says
+    nothing while locked, and a snooze on one device moves it on the
+    other. A day.
+
 ### Later
 
+- **Inbox quick capture.** ⌃⌥Space in any app opens a one-line panel
+  that sends the line to the agent, or queues it while offline; Carbon
+  `RegisterEventHotKey`, no Accessibility permission
+  ([09b-inbox.md](09b-inbox.md), "Quick capture").
 - **Codex and goose.** `set_mode read-only` before Codex's first prompt,
   `workspace-write` only by grant; goose once a provider is configured.
 - **Custom worker JSON** in `~/Library/Application Support/Peel/workers/`:
@@ -349,6 +383,7 @@ on the local stack, never `run-app.sh`.
 Sessions: Wave A splits as client (1 first and alone, then 2, 3, 4), host
 (7, 8, 9) and worker CLI (5, 6, 10), each owning its directories. Wave B is
 one app session. Wave C is one host session, with 18 waiting on Strut.
+Wave D is a host session (21) and then an app session (22 to 24).
 
 ## Acceptance for the phase
 

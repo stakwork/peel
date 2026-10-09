@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-08. This is the architecture and the phase index. Each phase
+Last updated 2026-10-09. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -137,11 +137,12 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | Hardening (2026-10-08, beside cleanup) | **now**: real unit tests, integration journeys on the local stack with the real core, click-through end-to-end tests, and a three-part security audit | [testing.md](testing.md); audits in [reviews/](reviews/) |
 | — | 2. Polish | a pass over the app: the form and popover redesign (which takes in first-review row 9, styles and confirm controls; step 1 #85, step 2 rolls the forms out and retires the old boxes and confirms), and the tribe header as Call plus a More menu | [design/README.md](design/README.md), "Forms" |
 | 10 | 3. Markdown in messages | pulled forward from phase 10, because agent replies are Markdown | [phases/10-v1-extras.md](phases/10-v1-extras.md), item 2 |
-| 9 | 4. The personal agent: one agent contact, the agent host, workers over ACP, then graph memory and Strut jobs | planned; the plan was refreshed 2026-10-08 | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md) |
+| 9 | 4. The personal agent: one agent contact, the agent host, workers over ACP, then graph memory and Strut jobs, then the Inbox (Wave D) | planned; the plan was refreshed 2026-10-08 | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md); Inbox: [phases/09b-inbox.md](phases/09b-inbox.md) |
 | 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, preferences sync, self-hosted certificates | planned; findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
 | 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
 | — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Connections" |
+| — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 ### Refactor plan status
 
@@ -174,10 +175,26 @@ In v1:
 - Preferences sync and self-hosted certificates.
 
 The personal agent (phase 9) is built after Markdown and before the rest
-of the v1 extras (decided 2026-10-08 night). Out of v1: People (the public profile and bounty
-directory at people.sphinx.chat), LSATs, languages, feeds and podcasts,
+of the v1 extras (decided 2026-10-08 night). The Inbox is part of the
+personal agent, its Wave D (2026-10-09). Out of v1: People (the public
+profile and bounty directory at people.sphinx.chat), LSATs, languages, feeds and podcasts,
 Hive workspaces, the knowledge graph view, Jitsi, Strut dictation, Tor and
 relay-era code.
+
+## Decided 2026-10-09 (Tom): the Inbox is the agent's
+
+- **Agent first.** There is no standalone to-do app before the agent.
+  The agent keeps items in its LadybugDB from the first day.
+- **The Inbox is a read-mostly view.** It shows the agent's commitments
+  to Tom: the open items and their reminder times, one-click tick and
+  snooze, and a link to the conversation each item came from.
+- **Everything else goes through the agent,** by text or voice:
+  capture, questions, grouping, briefs and upkeep.
+- **Peel keeps a local cache** for the view and for per-device
+  reminders.
+- **When:** it is phase 9's Wave D, after graph memory
+  ([phases/09b-inbox.md](phases/09b-inbox.md)).
+- **Quick capture** (⌃⌥Space) comes later.
 
 ## Decided 2026-10-08 (night, Tom)
 

@@ -3,7 +3,7 @@ import PeelCore
 
 extension Invocation {
     /// Runs `command` if it is a contacts command: adding by code or QR
-    /// picture, and invites with sats. False if it is not one.
+    /// picture, removing, and invites with sats. False if it is not one.
     mutating func contacts(_ command: String) async throws -> Bool {
         switch command {
         case "add":
@@ -15,6 +15,13 @@ extension Invocation {
                 let (pubkey, added) = try await session.engine.addContact(code: code, alias: alias, confirmedMsat: $0)
                 print(added ? "adding \(pubkey)" : "already a contact: \(pubkey)")
             }
+            try await session.finish(after: wait)
+
+        case "contact-delete":
+            guard let pubkey = arguments.next() else { throw PeelError("contact-delete needs a contact's pubkey") }
+            let session = try await Session(load()).connect(insecure: insecure)
+            try await session.engine.deleteContact(pubkey)
+            print("removed \(pubkey)")
             try await session.finish(after: wait)
 
         case "scan":

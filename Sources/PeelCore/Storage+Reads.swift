@@ -236,6 +236,45 @@ extension Storage {
         }
     }
 
+    /// Whether sats with this chat are still on their way: a payment, boost
+    /// or purchase of ours, or an invoice of theirs we are paying, that the
+    /// server has neither confirmed nor refused.
+    func hasPendingPayment(in chat: String) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM message WHERE chat = ?1 AND fromMe = 1 AND status = ?2
+                        AND type IN (\(MessageType.sqlList(MessageType.moneySends))))
+                    OR EXISTS (SELECT 1 FROM invoice WHERE chat = ?1 AND incoming = 0 AND status = ?2)
+                    """,
+                arguments: [chat, Message.Delivery.pending.rawValue]
+            ) ?? false
+        }
+    }
+
+    /// The server indexes of a chat's messages of these types.
+    func serverIndexes(in chat: String, types: [Int]) throws -> [UInt64] {
+        try pool.read { db in
+            try Int64.fetchAll(
+                db,
+                sql: """
+                    SELECT serverIndex FROM message WHERE chat = ? AND serverIndex IS NOT NULL
+                        AND type IN (\(MessageType.sqlList(types)))
+                    """,
+                arguments: [chat]
+            ).compactMap { UInt64(exactly: $0) }
+        }
+    }
+
+    /// When the chat began: its oldest message (the key exchange, for a
+    /// contact added here or by someone), in milliseconds since 1970.
+    public func firstMessageTime(in chat: String) throws -> Int64? {
+        try pool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MIN(timestamp) FROM message WHERE chat = ?", arguments: [chat])
+        }
+    }
+
     func chat(forTag tag: String) throws -> String? {
         try pool.read { db in
             try String.fetchOne(

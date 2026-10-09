@@ -30,6 +30,31 @@ extension AppModel {
         return (outcome, made)
     }
 
+    /// Removes a contact (`Engine.deleteContact`), then what this window
+    /// kept for their chat: a call in it is left, its thread, drafts,
+    /// replies, files waiting and notifications go, and the selection moves
+    /// to the next direct message (or the one above, or nothing).
+    func deleteContact(_ pubkey: String) async throws {
+        let direct = sidebarSections.direct.map(\.chat)
+        try await signedIn().deleteContact(pubkey)
+        if call?.chat == pubkey { leaveCall() }
+        if openThread?.chat == pubkey { openThread = nil }
+        let composers = Set(drafts.keys).union(replyTargets.keys).union(pendingFiles.keys).union(attachmentPrices.keys)
+        for composer in composers where composer.chat == pubkey {
+            drafts[composer] = nil
+            replyTargets[composer] = nil
+            attachmentPrices[composer] = nil
+            pendingFiles.removeValue(forKey: composer)?.forEach { IncomingFiles.discard($0) }
+        }
+        conversationNotices[pubkey] = nil
+        notifier.removeDelivered(in: [pubkey])
+        if selectedChat == pubkey {
+            let index = direct.firstIndex(of: pubkey)
+            let next = index.flatMap { direct.indices.contains($0 + 1) ? direct[$0 + 1] : $0 > 0 ? direct[$0 - 1] : nil }
+            destination = next.map(Destination.chat)
+        }
+    }
+
     func cancelInvite(_ code: String) async throws {
         try await signedIn().cancelInvite(code: code)
     }

@@ -329,6 +329,11 @@ public enum MessageType {
     /// From someone who used one of our invites, its sender names the code.
     public static let contactKey = 10
     public static let contactKeyConfirmation = 11
+    /// What a contact's removal deletes from the server by index, asked
+    /// with the account's own key, as the official apps do
+    /// (`Chat.getOkKeyMessages`): the key exchange and the money. The rest
+    /// goes with everything on the contact's child key.
+    static let accountKeyTypes = [invoicePayment, directPayment, purchase, boost, contactKey, contactKeyConfirmation]
 }
 
 /// What a message says about who sent it. Self-declared: trust it only when the

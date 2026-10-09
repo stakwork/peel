@@ -287,7 +287,8 @@ struct ConversationLink: View {
 
 /// A sidebar row's menu: Mark as read (or unread), the notification level, and for a
 /// tribe its link and leaving it (confirmed in place). Direct messages have
-/// no Leave, and no Delete chat: the engine cannot delete a conversation.
+/// no Leave: a contact is removed from their details (`ChatInfoPanel`),
+/// where the confirm can stand beside its trigger.
 /// The chat header's More menu (`HeaderMoreButton`) shares its pieces.
 @MainActor
 enum ConversationMenu {

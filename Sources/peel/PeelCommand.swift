@@ -19,6 +19,8 @@ struct PeelCommand {
           add <code|picture> [name]   start a key exchange with someone: their contact info, a
                                       sphinx.chat share_contact link, an invite (adds its inviter), or a
                                       picture with one of those in a QR code
+          contact-delete <pubkey>     remove a contact: their chat here and on the server; they can be
+                                      added again (refused while a payment with them is on its way)
           scan <picture>              the QR codes in a picture and what each one is
           invite <sats>               make an invite with sats for someone new and print it (--nickname
                                       <name>, --message <text>, kept here only; always asks: --yes)

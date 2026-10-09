@@ -40,6 +40,36 @@ extension Engine {
         return (pubkey, true)
     }
 
+    // MARK: - Removing
+
+    /// Removes a contact as the official apps do (`deleteContactOrChatMsgsFor`,
+    /// `deleteContactFromState`, `deleteContactObjectsFor`): the server
+    /// deletes the chat's key exchange and payment messages by index (once
+    /// the exchange completed) and everything on the contact's child key,
+    /// so a restore never brings them back; then the core forgets them and
+    /// the chat's rows and files go here (`forgetContact`). Nothing is sent
+    /// to them: they keep their copy, and either side can add the other
+    /// again. Payment history stays.
+    ///
+    /// Refused for a tribe, while sats with them are still on their way
+    /// (so no payment loses its chat before the server says how it went),
+    /// and offline, since the server's copy must go first.
+    public func deleteContact(_ pubkey: String) async throws {
+        guard tribes[pubkey] == nil, let contact = Self.contact(pubkey, in: state) else { throw Failure.notAContact }
+        guard try !storage.hasPendingPayment(in: pubkey) else { throw Failure.paymentWithContactPending }
+        guard isRegistered, transport != nil else { throw Failure.notConnected }
+        let indexes = try storage.serverIndexes(in: pubkey, types: MessageType.accountKeyTypes)
+        if contact.contactKey != nil, !indexes.isEmpty {
+            try await run { time, state in
+                try Sphinxrs.deleteMsgs(seed: seed, uniqueTime: time, state: state, pubkey: nil, msgIdxs: indexes)
+            }
+        }
+        try await run { time, state in
+            try Sphinxrs.deleteMsgs(seed: seed, uniqueTime: time, state: state, pubkey: pubkey, msgIdxs: nil)
+        }
+        try forgetContact(pubkey)
+    }
+
     // MARK: - Invites
 
     /// Makes an invite holding `amountMsat` for someone without an account,

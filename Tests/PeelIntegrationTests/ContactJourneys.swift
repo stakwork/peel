@@ -51,5 +51,45 @@ extension Journeys {
             await carol.close()
             await dana.close()
         }
+
+        /// Erin removes Frank after a word each way: his chat goes here and
+        /// on the server, so her words on a second device do not bring him
+        /// back. Frank keeps his copy, and Erin can add him again.
+        @Test func removingAContact() async throws {
+            let erin = try await Person.create("erin")
+            let frank = try await Person.create("frank")
+            try await Bank.shared.give(1_000, to: erin)
+            try await erin.engine.addContact(code: try frank.contactInfo)
+            try await eventually("Erin and Frank to be contacts") {
+                try erin.isReadyContact(frank) && frank.isReadyContact(erin)
+            }
+            let tag = UUID().uuidString.prefix(6)
+            try await erin.engine.sendText("hello \(tag)", to: try frank.pubkey)
+            try await frank.engine.sendText("hi back \(tag)", to: try erin.pubkey)
+            try await eventually("Erin to receive Frank's reply") {
+                try erin.messages(in: frank.pubkey).contains { $0.content == "hi back \(tag)" }
+            }
+
+            try await erin.engine.deleteContact(try frank.pubkey)
+            #expect(try erin.messages(in: frank.pubkey).isEmpty)
+            #expect(try !Engine.contacts(in: erin.storage).contains { $0.pubkey == (try frank.pubkey) })
+            #expect(try frank.messages(in: erin.pubkey).contains { $0.content == "hello \(tag)" })
+
+            let second = try await Person.restore("erin", mnemonic: erin.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) {
+                await !second.engine.isSyncingHistory
+            }
+            #expect(try !Engine.contacts(in: second.storage).contains { $0.pubkey == (try frank.pubkey) })
+            #expect(try second.messages(in: frank.pubkey).isEmpty)
+            await second.close()
+
+            let (_, added) = try await erin.engine.addContact(code: try frank.contactInfo)
+            #expect(added)
+            try await eventually("Erin and Frank to be contacts again") {
+                try erin.isReadyContact(frank) && frank.isReadyContact(erin)
+            }
+            await erin.close()
+            await frank.close()
+        }
     }
 }

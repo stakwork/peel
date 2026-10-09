@@ -370,3 +370,101 @@ struct ContactEngineTests {
         #expect(try storage.invite(code: ready.code)?.status == .cancelled)
     }
 }
+
+/// Removing a contact (`Engine.deleteContact`): what goes, what stays, and
+/// the refusals made before anything is sent.
+struct ContactDeleteTests {
+    let profile = TempProfile()
+
+    /// `keyG` and `key2G` are people and `key3G` a tribe, each with
+    /// messages, a mute level and a time zone switch; `keyG`'s chat has an
+    /// attachment, a payment of ours, an invoice paid and its history row.
+    private func storage(payment status: Message.Delivery = .delivered) throws -> Storage {
+        let storage = try profile.storage()
+        try storage.save([Tribe(pubkey: key3G)])
+        let state = coreContact(keyG, contactKey: key3G).merging(coreContact(key2G, contactKey: key3G)) { $1 }
+            .merging(coreContact(key3G, contactKey: nil)) { $1 }
+        let attachment = Message.fixture(
+            uuid: uuid(3), serverIndex: 3, type: MessageType.attachment, chat: keyG, body: #"{"mediaToken":"x"}"#
+        )
+        let payment = Message.fixture(
+            uuid: uuid(4), type: MessageType.directPayment, chat: keyG, fromMe: true, content: "",
+            tag: "t4", status: status.rawValue, amountMsat: 1_000
+        )
+        let messages = [text(1, chat: keyG), attachment, payment, text(5, chat: key2G), text(6, chat: key3G)]
+        _ = try storage.apply(Storage.Commit(
+            state: state, contacts: [(keyG, true), (key2G, true)],
+            messages: messages.map { ($0, true, nil) }, mutes: [keyG: 2, key2G: 1, key3G: 1],
+            payments: [PaymentRecord(rhash: "r1", ts: 1, amountMsat: 1_000, incoming: false, remote: false)]
+        ))
+        for chat in [keyG, key2G, key3G] { try storage.setTimeZoneSharing(false, in: chat, at: .now) }
+        try storage.pool.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO invoice (paymentHash, incoming, bolt11, amountMsat, payee, createdAt, status, chat)
+                    VALUES ('h1', 0, 'lnbc1', 1000, ?1, 1, 'COMPLETE', ?1)
+                    """,
+                arguments: [keyG]
+            )
+        }
+        return storage
+    }
+
+    private func count(_ table: String, _ column: String = "chat", is value: String, _ storage: Storage) throws -> Int {
+        try storage.pool.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table) WHERE \(column) = ?", arguments: [value]) ?? 0
+        }
+    }
+
+    @Test func storageRemovesTheChatAndNothingElse() throws {
+        let storage = try storage()
+        #expect(try storage.deleteContact(keyG).map(\.uuid) == [uuid(3)])
+        for (table, column) in [("message", "chat"), ("chatState", "chat"), ("chatTimeZone", "chat"), ("contact", "pubkey")] {
+            #expect(try count(table, column, is: keyG, storage) == 0, "\(table)")
+            #expect(try count(table, column, is: key2G, storage) == 1, "\(table)")
+        }
+        #expect(try count("message", is: key3G, storage) == 1)
+        #expect(try count("chatState", is: key3G, storage) == 1)
+        let state = try storage.loadCoreState()
+        #expect(state["c/\(keyG)"] == nil)
+        #expect(state["c/\(key2G)"] != nil && state["c/\(key3G)"] != nil)
+        // The money tables are history.
+        #expect(try count("invoice", is: keyG, storage) == 1)
+        #expect(try count("payment", "rhash", is: "r1", storage) == 1)
+    }
+
+    @Test func theEngineForgetsThemAndTheChatLeavesTheList() async throws {
+        let storage = try storage()
+        let engine = try testEngine(storage)
+        try await engine.forgetContact(keyG)
+        #expect(try await engine.contacts().map(\.pubkey).sorted() == [key2G, key3G].sorted())
+        #expect(await engine.isContact(keyG) == false)
+        for try await list in storage.conversations() {
+            #expect(list.map(\.chat).sorted() == [key2G, key3G].sorted())
+            break
+        }
+        // A fresh engine reads the same from what was stored.
+        #expect(try Engine.contacts(in: storage).map(\.pubkey).sorted() == [key2G, key3G].sorted())
+    }
+
+    @Test func refusesATribeAStrangerAndOffline() async throws {
+        let storage = try storage()
+        let engine = try testEngine(storage)
+        for pubkey in [key3G, strangerKey] {
+            await #expect(throws: Engine.Failure.notAContact) { try await engine.deleteContact(pubkey) }
+        }
+        // The server's copy must go first: offline, nothing is removed.
+        await #expect(throws: Engine.Failure.notConnected) { try await engine.deleteContact(keyG) }
+        #expect(await engine.isContact(keyG))
+        #expect(try count("message", is: keyG, storage) == 3)
+    }
+
+    @Test func aPaymentStillOnItsWayKeepsTheContact() async throws {
+        let storage = try storage(payment: .pending)
+        let engine = try testEngine(storage)
+        await #expect(throws: Engine.Failure.paymentWithContactPending) { try await engine.deleteContact(keyG) }
+        #expect(try count("message", is: keyG, storage) == 3)
+        #expect(try storage.hasPendingPayment(in: keyG))
+        #expect(try storage.hasPendingPayment(in: key2G) == false)
+    }
+}

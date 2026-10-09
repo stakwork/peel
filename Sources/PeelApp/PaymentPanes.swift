@@ -131,9 +131,12 @@ extension AttentionNote where Actions == EmptyView {
 extension TimelineSchedule where Self == ExplicitTimelineSchedule<[Date]> {
     /// Draws now and again at `date`. `.now` comes first because, before
     /// its first entry, a timeline draws with that entry's date: a lone
-    /// future date reads as already passed.
+    /// future date reads as already passed. A date already passed is left
+    /// out: entries must not go back in time, or the timeline redraws on
+    /// every frame for as long as it is on screen.
     static func redrawing(at date: Date?) -> Self {
-        .explicit([.now] + (date.map { [$0] } ?? []))
+        let now = Date.now
+        return .explicit([now] + [date].compactMap { $0 }.filter { $0 > now })
     }
 }
 

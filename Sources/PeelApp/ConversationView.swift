@@ -204,7 +204,7 @@ struct TribeHeader: View {
         guard let tribe else { return nil }
         return [
             tribe.isPrivate ? "Private" : nil, tribe.summary?.trimmed.nilIfEmpty,
-            "\(Sats.format(msat: tribe.messageAmountMsat)) a message",
+            "\(tribe.messagePrice.text) a message",
         ].compactMap { $0 }.joined(separator: " · ")
     }
 

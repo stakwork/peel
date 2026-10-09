@@ -12,7 +12,7 @@ extension Invocation {
                     tribe.isOwner ? "owner" : nil, tribe.left ? "left" : nil, tribe.isPrivate ? "private" : nil,
                     tribe.status == .active ? nil : "\(tribe.status)", tribe.pin.map { "pin \($0)" },
                 ].compactMap { $0 }
-                print("\(tribe.pubkey)  #\(tribe.displayName)  \(Sats.format(msat: tribe.messageAmountMsat))/msg"
+                print("\(tribe.pubkey)  #\(tribe.displayName)  \(tribe.messagePrice.text)/msg"
                     + (flags.isEmpty ? "" : "  (\(flags.joined(separator: ", ")))"))
                 if let link = tribe.link { print("  \(link)") }
             }
@@ -40,13 +40,15 @@ extension Invocation {
             guard let pubkey = arguments.next() else { throw PeelError("tribe-info needs a tribe pubkey") }
             let details = try await load().tribeDetails(pubkey)
             let info = details.info
-            func sats(_ msat: Int64?) -> String { Sats.format(msat: UInt64(max(msat ?? 0, 0))) }
+            func sats(_ msat: Int64?) -> String { Sats.exact(msat: max(msat ?? 0, 0)) }
             print("#\(info.name)  \(info.isPrivate == true ? "private" : "public")")
             if let summary = info.summary?.nilIfEmpty { print("  \(summary)") }
             print("  owner \(info.ownerAlias ?? "unknown")" + (details.ownerPhotoURL.map { "  \($0)" } ?? ""))
             if let created = info.created { print("  created \(created.formatted(.iso8601))") }
             if let count = info.memberCount { print("  \(count) members") }
-            print("  join \(sats(info.priceToJoin)), per message \(sats(info.pricePerMessage)), escrow \(sats(info.escrowAmount))")
+            func paid(_ price: TribePrice) -> String { price.text + (price.note.map { " (\($0))" } ?? "") }
+            print("  you pay: join \(paid(info.joinPrice)), each message \(paid(info.messagePrice))")
+            print("  owner's prices: join \(sats(info.priceToJoin)), per message \(sats(info.pricePerMessage)), escrow \(sats(info.escrowAmount))")
             if let tags = info.tags, !tags.isEmpty { print("  tags \(tags.joined(separator: ", "))") }
 
         case "tribe-alias":

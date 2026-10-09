@@ -46,7 +46,7 @@ struct JoinTribeForm: View {
                                 .foregroundStyle(Theme.secondaryText)
                                 .lineLimit(3)
                         }
-                        Text("Joining costs \(Sats.format(msat: info.joinAmountMsat)) · \(Sats.format(msat: info.messageAmountMsat)) a message")
+                        Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
                             .font(Theme.font(12))
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)

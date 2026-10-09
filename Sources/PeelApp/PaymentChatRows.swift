@@ -251,6 +251,11 @@ struct PaymentRow: View {
                     case .failed: UndeliveredActions(message: message)
                     case .delivered, nil: EmptyView()
                     }
+                } else if !message.deleted, message.arrived == false {
+                    Text("Not received")
+                        .font(Theme.font(11, .medium))
+                        .foregroundStyle(Theme.secondaryText)
+                        .help(PaymentItem.notArrived + ". The message came; the sats did not.")
                 }
             }
             .frame(maxWidth: MessageRow.textWidth, alignment: .leading)

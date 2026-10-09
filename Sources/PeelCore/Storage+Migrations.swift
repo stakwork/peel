@@ -346,6 +346,17 @@ extension Storage {
                 t.add(column: "myPhotoURL", .text)
             }
         }
+        migrator.registerMigration("v21") { db in
+            // Whether someone else's payment or boost really brought its sats
+            // (`Message.arrived`, payments review F2): 1 once the server's
+            // history has its incoming row, 0 once a history fetched after
+            // it came has none. Rows from before are left unknown.
+            try db.alter(table: "message") { t in
+                t.add(column: "arrived", .boolean)
+            }
+            // A history row names its message by index (`Storage.reconcile`).
+            try db.execute(sql: "CREATE INDEX message_serverIndex ON message (serverIndex)")
+        }
         return migrator
     }
 }

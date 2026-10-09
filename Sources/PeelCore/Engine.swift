@@ -89,11 +89,18 @@ public actor Engine {
         /// answered; the answer lands in `answeredInvoice` (see `serverInvoice`).
         var awaitingInvoice = false
         var answeredInvoice: String?
-        /// See `checkOpenInvoices`; `historyCheckedAt` is when the history was
-        /// last fetched back to what is stored (milliseconds), this session.
-        var invoiceCheck: Task<Void, Never>?
-        var invoicesNeedCheck = false
-        var historyCheckedAt: Int64?
+        /// See `reconcileInBackground`.
+        var reconcile: Task<Void, Never>?
+        var needsReconcile = false
+        /// Received payments stored up to this row id are judged by the
+        /// next complete history refresh (`Storage.markNotArrived`): those
+        /// stored before the last one began, so each has had a whole
+        /// refresh for its row to land. Starts at what was stored at launch.
+        var judgedThrough: Int64 = 0
+        /// Received payments to tell once the history confirms them, by row
+        /// id (`Storage.Applied.announceable`): what a launch or a restore
+        /// found stored never enters.
+        var untold: Set<Int64> = []
         /// Invoices being paid (by payment hash) and attachments being
         /// bought (`"purchase <token>"`) in this session, so a second click
         /// can never pay twice while the first is being sent.
@@ -159,6 +166,8 @@ public actor Engine {
         // The profile lock means no other process is uploading; anything
         // still uploading was cut off, and can be retried.
         try storage.failInterruptedUploads()
+        let stored = try storage.highestMessageID() ?? 0
+        money.judgedThrough = stored
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -201,8 +210,8 @@ public actor Engine {
         reconnectTask = nil
         tribeWork.refresh?.cancel()
         tribeWork.refresh = nil
-        money.invoiceCheck?.cancel()
-        money.invoiceCheck = nil
+        money.reconcile?.cancel()
+        money.reconcile = nil
         await teardown()
         setConnection(.offline(retryIn: nil))
     }
@@ -409,8 +418,9 @@ public actor Engine {
         var discoveredTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
-        /// The balance went up: maybe an invoice made here was paid.
-        var checkInvoices = false
+        /// The balance went up, or someone's payment came: the server's
+        /// history may now settle an invoice made here or confirm the sats.
+        var reconcile = false
     }
 
     /// What received payments brought, as Peel takes it: never more than the
@@ -495,8 +505,8 @@ public actor Engine {
 
         if let balance = result.newBalance {
             commit.settings[.balanceMsat] = String(balance)
-            // Sats came in: maybe for an invoice made here.
-            followUps.checkInvoices = balance > (try storage.balanceMsat() ?? 0)
+            // Sats came in: maybe for an invoice made here, or a payment.
+            followUps.reconcile = balance > (try storage.balanceMsat() ?? 0)
         }
         if let info = result.myContactInfo {
             commit.settings[.contactInfo] = info
@@ -676,7 +686,11 @@ public actor Engine {
         if arrival != .restore {
             followUps.purchases = applied.stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
         }
-        for message in applied.received where arrival != .restore {
+        // A restore ends with a reconcile of its own.
+        if applied.newMoney, arrival != .restore { followUps.reconcile = true }
+        // Told once the history confirms the sats, if it was news when it came.
+        if arrival != .restore { money.untold.formUnion(applied.announceable) }
+        for message in applied.confirmed where money.untold.remove(message.id ?? -1) != nil {
             emit.yield(.moneyReceived(message))
         }
         for message in applied.addedUs {
@@ -857,7 +871,7 @@ public actor Engine {
             }
         }
         if followUps.discoveredTribes { refreshTribesInBackground() }
-        if followUps.checkInvoices { checkInvoicesInBackground() }
+        if followUps.reconcile { reconcileInBackground() }
         for purchase in followUps.purchases {
             do {
                 try await answerPurchase(purchase)
@@ -982,7 +996,7 @@ public actor Engine {
     private func cameOnline() async {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
-        checkInvoicesInBackground()
+        reconcileInBackground()
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
@@ -1033,7 +1047,7 @@ public actor Engine {
     /// A payment the server has no record of this long after it was sent
     /// never reached it (the mixer records every send it handles, an async
     /// one as pending), so it is marked failed and may be sent again.
-    private func checkPendingSends() async throws {
+    func checkPendingSends() async throws {
         let pending = try storage.pendingSendTags(
             textBefore: Date.now.addingTimeInterval(-Message.confirmationTimeout).millisecondsSince1970
         )

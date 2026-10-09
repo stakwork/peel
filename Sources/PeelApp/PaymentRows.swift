@@ -110,7 +110,7 @@ struct PaymentListRow: View {
         case .complete: return time
         case .pending: return "\(item.isToContact ? "Waiting" : "Pending") · \(time)"
         case .unsettled: return "Not settled · \(time)"
-        case .failed: return "Failed · \(time)"
+        case .failed: return "\(item.incoming ? "Not received" : "Failed") · \(time)"
         }
     }
 }
@@ -213,6 +213,8 @@ struct PaymentDetailPane: View {
             rows.append(.init(key: "Status", value: pendingStatus, symbol: "clock"))
         case .unsettled:
             rows.append(.init(key: "Status", value: NotSettled.explanation, symbol: "questionmark.circle"))
+        case .failed where item.incoming:
+            rows.append(.init(key: "Status", value: item.error ?? "Not received", symbol: "xmark"))
         case .failed:
             rows.append(.init(key: "Status", value: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark"))
         }

@@ -85,6 +85,7 @@ extension PaymentItem {
         let how = switch status {
         case .pending where !incoming: "on its way"
         case .unsettled: "not settled"
+        case .failed where incoming: "not received"
         default: incoming ? "received" : "sent"
         }
         return "\(what) \(how)"

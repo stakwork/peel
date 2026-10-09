@@ -38,7 +38,8 @@ is a short plan. Update the status and the journal when you finish something.
       `deliver` (every message through the core), the `openTribe`,
       `isContact` and `knownTribe` lookups, read markers and mutes
     - `Engine+Payments.swift` — payments, boosts, confirmation thresholds,
-      invoices (made, requested, paid), payment history
+      invoices (made, requested, paid), payment history and the
+      reconciliation against it (`reconcileInBackground`)
     - `Engine+Attachments.swift` — sending, downloading and buying
       attachments; the memes server sign-in
     - `Engine+Calls.swift` — the call server, call links, tickets, presence

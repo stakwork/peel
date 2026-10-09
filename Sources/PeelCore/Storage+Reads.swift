@@ -89,6 +89,27 @@ extension Storage {
     }
 
     /// The newest server index stored.
+    func highestMessageID() throws -> Int64? {
+        try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM message") }
+    }
+
+    /// When the oldest money send of ours still waiting on the server and
+    /// tied to a payment hash was sent, if after `since` (milliseconds): how
+    /// far back the history must reach to settle it (`Storage.reconcile`).
+    func oldestOpenSend(since: Int64) throws -> Int64? {
+        try pool.read { db in
+            try Int64.fetchOne(
+                db,
+                sql: """
+                    SELECT MIN(timestamp) FROM message
+                    WHERE type IN (\(MessageType.sqlList(MessageType.moneySends))) AND timestamp >= ?
+                        AND fromMe = 1 AND status IN ('PENDING', 'UNSETTLED') AND paymentHash IS NOT NULL
+                    """,
+                arguments: [since]
+            )
+        }
+    }
+
     func highestServerIndex() throws -> Int64? {
         try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }
     }
@@ -208,13 +229,19 @@ extension Storage {
     /// the server holds them (an async pay) until the person's app comes
     /// online, and takes their sats from the balance only then
     /// (`mixer/src/handler.rs`, `ASYNC_PAY`). Unsettled ones are left out:
-    /// the server handed them on and is done with them.
+    /// the server handed them on and is done with them. So are ones sent
+    /// more than `Message.waitingLimit` ago: they stay pending (never sent
+    /// again) but no longer hold sats back, so a row the server never
+    /// settles, such as one stuck from before #26, cannot shrink what can
+    /// be spent for ever. If one still pays later, the worst is a later
+    /// payment failing for want of balance, never a second payment.
     private static func waiting(_ db: Database) throws -> UInt64 {
+        let since = Date.now.addingTimeInterval(-Message.waitingLimit).millisecondsSince1970
         let msat = try Int64.fetchOne(db, sql: """
             SELECT IFNULL(SUM(amountMsat), 0) FROM message
-            WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL AND deleted = 0
+            WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL AND deleted = 0 AND timestamp >= ?
                 AND type IN (\(MessageType.sqlList(MessageType.moneySends))) AND chat NOT IN (\(tribeChats))
-            """)
+            """, arguments: [since])
         return UInt64(max(msat ?? 0, 0))
     }
 
@@ -254,8 +281,12 @@ extension Storage {
     /// Every send the server has not confirmed or refused, from the three
     /// tables that track one by tag: our payments, boosts and purchases, and
     /// text that has waited past `cutoff` (newest first, at most 200,
-    /// `message_pending`); invoices we pay (newest first, at most 200); and
-    /// invites whose funding payment is still sending.
+    /// `message_pending`); our payments, boosts and purchases with no status
+    /// at all, which came from history or another device (newest first, at
+    /// most 200; payments review F4), never failed for want of a record:
+    /// only the server's own COMPLETE or FAILED moves them; invoices we pay
+    /// (newest first, at most 200); and invites whose funding payment is
+    /// still sending.
     func pendingSendTags(textBefore cutoff: Int64) throws -> [PendingSend] {
         let moneySends = MessageType.sqlList(MessageType.moneySends)
         return try pool.read { db in
@@ -266,6 +297,10 @@ extension Storage {
                         SELECT tag, COALESCE(timestamp, 0) AS createdAt, type IN (\(moneySends)) AS movesMoney
                         FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
                             AND (type IN (\(moneySends)) OR timestamp < ?)
+                        ORDER BY id DESC LIMIT 200)
+                    UNION ALL SELECT * FROM (
+                        SELECT tag, COALESCE(timestamp, 0), 0
+                        FROM message WHERE type IN (\(moneySends)) AND fromMe = 1 AND status IS NULL AND tag IS NOT NULL
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, createdAt, 1 FROM invoice WHERE incoming = 0 AND status = 'PENDING' AND tag IS NOT NULL

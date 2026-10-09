@@ -80,7 +80,16 @@ extension Engine {
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know.
             try await fetchReadsAndMutes()
+            // Our restored sends carry no status (payments review F4): the
+            // server's record of each, by its tag, says how it went.
+            do {
+                try await checkPendingSends()
+            } catch {
+                emit.yield(.coreError("checking restored payments: \(PeelError.readable(error))"))
+            }
         }
+        // What came while away, checked against the server's history.
+        reconcileInBackground()
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
     }

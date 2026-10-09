@@ -34,6 +34,23 @@ extension Journeys {
             }
             #expect(!got.fromMe && got.amountMsat == 300_000 && got.content == "for the boat")
 
+            // A row left pending by an older Peel (Tom's 21 sats, from before
+            // #26), under a tag the server has no word on: the history settles
+            // it by its payment hash on the next connect.
+            let unknownTag = UUID().uuidString
+            try await alice.storage.pool.write { db in
+                try db.execute(
+                    sql: "UPDATE message SET status = 'PENDING', tag = ? WHERE uuid = ?", arguments: [unknownTag, sent.uuid]
+                )
+            }
+            #expect(try alice.storage.waitingMsat() == 300_000)
+            await alice.engine.disconnect()
+            try await alice.engine.connect()
+            try await eventually("the stale row to be settled by the history") {
+                try alice.messages(in: bob.pubkey).last { $0.type == MessageType.directPayment }?.delivery == .delivered
+            }
+            #expect(try alice.storage.waitingMsat() == 0)
+
             try await Self.pay(120, from: bob, to: alice)
             await alice.close()
             await bob.close()
@@ -109,7 +126,82 @@ extension Journeys {
             }
             #expect(try alice.storage.waitingMsat() == 0)
             #expect(try bob.messages(in: alice.pubkey).filter { $0.type == MessageType.directPayment }.count == 1)
+            // Bob's history confirms it: one payment received, for its amount.
+            try await eventually("Bob's payment to be confirmed by the history") {
+                try await bob.engine.refreshPaymentHistory()
+                return try bob.messages(in: alice.pubkey).last { $0.type == MessageType.directPayment }?.arrived == true
+            }
+            #expect(try Self.received(by: bob, from: alice) == [Int64(sats * 1000)])
 
+            await alice.close()
+            await bob.close()
+        }
+
+        /// What Payments counts as received from `payer`: the amounts.
+        static func received(by person: Person, from payer: Person) throws -> [Int64] {
+            let chat = try payer.pubkey
+            return try person.storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }
+                .filter { $0.incoming && $0.kind == .payment && $0.status == .complete && $0.chat == chat }
+                .map(\.amountMsat)
+        }
+
+        /// Two devices of Alice's each pay offline Bob most of her balance
+        /// (each device's gate knows only its own waiting payment). Bob comes
+        /// online and the server can move the sats only once; when it redeems
+        /// both at once, both messages reach him. Review F2: Bob's history
+        /// has one; any other reads not received, and Payments counts one. Review journey 2 (F4): on
+        /// a third device restored afterwards, the failed one reads failed
+        /// from the server's record of its tag, not sent.
+        @Test func twoDevicesPayAnOfflineContact() async throws {
+            let (alice, bob) = try await Self.pair()
+            let a0 = try #require(try await alice.settledBalance())
+            await bob.engine.disconnect()
+            let sats = a0 * 3 / 4
+            try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
+            #expect(try await alice.balance(settlingAt: a0 - 1) == a0 - 1)
+
+            let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !second.engine.isSyncingHistory }
+            try await second.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
+            try await bob.engine.connect()
+
+            // One of the two went through and one failed, whichever the server took first.
+            // The first device hears both statuses (each by its tag).
+            let sent = try await eventually("both sends to be settled") { () -> [Message]? in
+                let rows = try alice.messages(in: bob.pubkey).filter { $0.type == MessageType.directPayment && $0.fromMe }
+                return rows.count == 2 && Set(rows.map(\.delivery)) == [.delivered, .failed] ? rows : nil
+            }
+            let failedTag = try #require(sent.first { $0.delivery == .failed }?.tag)
+            let paidTag = try #require(sent.first { $0.delivery == .delivered }?.tag)
+
+            // When the server redeems both at once, both messages reach Bob
+            // (review F2); taken one after the other, the second is refused
+            // before it is delivered. Either way his history settles them:
+            // one arrived, and a second message, if any, did not.
+            let payments = { try bob.messages(in: alice.pubkey).filter { $0.type == MessageType.directPayment } }
+            try await eventually("Bob's history to settle the payments") {
+                try await bob.engine.refreshPaymentHistory()
+                let arrived = try payments().map(\.arrived)
+                return arrived.count <= 2 && arrived.filter { $0 == true }.count == 1 && !arrived.contains(nil)
+            }
+            #expect(try Self.received(by: bob, from: alice) == [Int64(sats * 1000)])
+
+            // A third device, restored now: the failed send is failed, the other sent.
+            let third = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !third.engine.isSyncingHistory }
+            try await eventually("the restored sends to take the server's word") {
+                let rows = try third.messages(in: bob.pubkey).filter { $0.type == MessageType.directPayment && $0.fromMe }
+                return rows.first { $0.tag == failedTag }?.delivery == .failed
+                    && rows.first { $0.tag == paidTag }?.delivery == .delivered
+            }
+            // Failed, and never paid again from a device that did not send it.
+            let failed = try third.messages(in: bob.pubkey).first { $0.tag == failedTag }
+            #expect(failed?.isRetryable() == false)
+            let items = try await third.storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }
+            #expect(items.filter { $0.kind == .payment && !$0.incoming && $0.status == .failed }.count == 1)
+
+            await third.close()
+            await second.close()
             await alice.close()
             await bob.close()
         }

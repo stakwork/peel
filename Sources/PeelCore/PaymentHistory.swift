@@ -109,6 +109,10 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
 
     public var date: Date { Date(millisecondsSince1970: timestamp) }
 
+    /// Why someone else's payment that came without its sats is `failed`
+    /// (`Message.arrived`).
+    public static let notArrived = "Not received: the server has no record of these sats arriving"
+
     /// Sats of ours to a contact, which go the asynchronous way: they wait
     /// for the contact's app to come online, with a ping to wake it.
     public var isToContact: Bool {
@@ -185,7 +189,8 @@ extension Storage {
 
     /// The state of each payment request among `messages`. Ours is paid once
     /// the invoice we made settled, or another device saw the payer's
-    /// payment (type 3) bring at least its amount; theirs follows our
+    /// payment (type 3) bring at least its amount, or the history has the
+    /// payment to it (a restore keeps no invoices; payments review F8); theirs follows our
     /// payment of it, or a successful payment of it in the history.
     /// `requesterNodes` are the chat's (`requesterNodes(_:)`). One read each
     /// of the invoices, the history and the payers' type 3s, by payment
@@ -207,6 +212,7 @@ extension Storage {
             uniquingKeysWith: { a, _ in a }
         )
         let sent = try sentInHistory(hashes, db)
+        let received = try inHistory(hashes, incoming: true, db)
         // The payer's message proves the sats came only with the payment it rode on.
         let payerPayments = Dictionary(
             grouping: try Message.fetchAll(
@@ -232,7 +238,8 @@ extension Storage {
                     let amount = Int64(clamping: invoice.amountMsat)
                     request.state = requestOfOursState(
                         made: invoices[MoneyKey(hash, false)],
-                        payerPayment: payerPayments[hash]?.first { $0.chat == message.chat && ($0.msat ?? -1) >= amount }
+                        payerPayment: payerPayments[hash]?.first { $0.chat == message.chat && ($0.msat ?? -1) >= amount },
+                        received: received[hash], amountMsat: amount
                     )
                 } else {
                     request.state = ourPayment(invoices[MoneyKey(hash, true)], sent: { sent[hash] }) ?? .open
@@ -263,20 +270,29 @@ extension Storage {
         return nodes
     }
 
-    /// A request of ours, from the invoice we made for it and the earliest
-    /// payer's type 3 that brought at least its amount.
-    private static func requestOfOursState(made: InvoiceRecord?, payerPayment: Message?) -> PaymentRequest.State {
+    /// A request of ours, from the invoice we made for it, the earliest
+    /// payer's type 3 that brought at least its amount, and the newest
+    /// payment to it in the history (what came, and when).
+    private static func requestOfOursState(
+        made: InvoiceRecord?, payerPayment: Message?, received: (at: Date, msat: Int64)?, amountMsat: Int64
+    ) -> PaymentRequest.State {
         if let made {
             if made.status == .paid { return .paid(at: made.paid) }
             if made.status == .underpaid { return .underpaid(msat: made.paidMsat) }
         }
-        return payerPayment.map { .paid(at: $0.date) } ?? .open
+        if let payerPayment { return .paid(at: payerPayment.date) }
+        guard let received else { return .open }
+        return received.msat >= amountMsat ? .paid(at: received.at) : .underpaid(msat: received.msat)
     }
 
     /// Our payment of someone else's invoice, as a request's state; nil when
     /// there is none.
     private static func ourPayment(of hash: String, _ db: Database) throws -> PaymentRequest.State? {
         try ourPayment(try Self.invoice(hash, incoming: false, db), sent: { try sentInHistory([hash], db)[hash] })
+    }
+
+    private static func sentInHistory(_ hashes: [String], _ db: Database) throws -> [String: Date] {
+        try inHistory(hashes, incoming: false, db).mapValues(\.at)
     }
 
     /// From our invoice payment record (`ours`) and, read only when needed,
@@ -299,21 +315,23 @@ extension Storage {
     }
 
     /// The newest successful payment of each of `hashes` in the history,
-    /// from any device.
-    private static func sentInHistory(_ hashes: [String], _ db: Database) throws -> [String: Date] {
-        var sent: [String: Date] = [:]
+    /// one way, from any device: when, and its amount.
+    private static func inHistory(
+        _ hashes: [String], incoming: Bool, _ db: Database
+    ) throws -> [String: (at: Date, msat: Int64)] {
+        var found: [String: (at: Date, msat: Int64)] = [:]
         for row in try Row.fetchAll(
             db,
             sql: """
-                SELECT rhash, MAX(ts) AS ts FROM payment
-                WHERE rhash IN (SELECT value FROM json_each(?)) AND incoming = 0 AND IFNULL(error, '') = ''
+                SELECT rhash, MAX(ts) AS ts, amountMsat FROM payment
+                WHERE rhash IN (SELECT value FROM json_each(?)) AND incoming = ? AND IFNULL(error, '') = ''
                 GROUP BY rhash
                 """,
-            arguments: [json(hashes)]
+            arguments: [json(hashes), incoming]
         ) {
-            sent[row["rhash"]] = Date(millisecondsSince1970: row["ts"])
+            found[row["rhash"]] = (Date(millisecondsSince1970: row["ts"]), row["amountMsat"])
         }
-        return sent
+        return found
     }
 
     // MARK: Paid attachments
@@ -781,6 +799,9 @@ extension Storage {
                     case .failed: item.status = .failed
                     case .delivered, nil: break
                     }
+                } else if message.arrived == false {
+                    item.status = .failed
+                    item.error = PaymentItem.notArrived
                 }
                 item.boosted = message.replyUUID.flatMap { boosted[$0] }
             }

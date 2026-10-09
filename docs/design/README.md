@@ -418,6 +418,21 @@ spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
 checked under its field) stays where it is.
 
+## Component library (planned)
+
+The form system below is Peel's only shared component set so far.
+Outside forms, buttons, panels, rows, cards and badges are still drawn
+by hand in several variants. The review
+[../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
+inventories them and proposes the library, shadcn-style, in
+`Sources/PeelApp/UI/`: `PeelButton` (variants and sizes), `IconButton`,
+`Panel` (with the placement rule for its actions), the composer with
+its buttons inside the field, `SectionHeader`, `Card`, `Callout`,
+`Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`, built over
+`Theme`. Its batch plan comes before the payments fixes and the
+personal agent. Until a batch lands, new UI uses the pieces that exist
+(`FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+
 ## Forms (shadcn's conventions)
 
 On 2026-10-09 Tom replaced direction A's row fields with shadcn's form

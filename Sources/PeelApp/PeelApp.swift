@@ -58,11 +58,13 @@ struct PeelApp: App {
             CommandGroup(replacing: .newItem) {
                 MainWindow.MenuItem()
             }
-            // The account screen stands in for Settings.
+            // The account screen stands in for Settings. Guarded in the
+            // action, not `.disabled`: a command does not follow the model.
             CommandGroup(replacing: .appSettings) {
-                Button("Account…") { model.destination = .account }
-                    .keyboardShortcut(",", modifiers: .command)
-                    .disabled(model.phase != .ready)
+                Button("Account…") {
+                    if model.phase == .ready { model.destination = .account }
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
             // ⌘F from wherever the cursor is (`AppModel.find`). Never
             // `.disabled` by the model: a command does not follow it.

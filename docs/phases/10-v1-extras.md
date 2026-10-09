@@ -113,8 +113,8 @@ approved the in-chat half before the agent; ⌘K stays for after it.
   field takes the cursor once it is in the window (`.task`, not
   `onAppear`), and closing puts the cursor back in the composer. A menu
   command does not follow `@Observable` state, so `find` checks the
-  phase itself rather than `.disabled` (Account… shows the same: it
-  stays disabled). Arrows (Tom: "you can't press the down key"): ↓ was
+  phase itself rather than `.disabled`; Account… (⌘,) now does the
+  same. Arrows (Tom: "you can't press the down key"): ↓ was
   "newer" and the newest match was already selected, so it did nothing
   until a click.
 - Not built: results refreshing while new messages arrive (search again by

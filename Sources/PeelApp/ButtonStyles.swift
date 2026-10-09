@@ -27,49 +27,6 @@ struct GhostButtonStyle: ButtonStyle {
     }
 }
 
-extension EnvironmentValues {
-    /// Set by the filled button styles (`GhostButtonStyle(prominent:)`,
-    /// `PrimaryButtonStyle`): marks in the label (the copy check, the
-    /// spinner) take the button's own text colour, not their usual one.
-    @Entry var filledButton = false
-}
-
-extension View {
-    /// A button's label while its action runs: the spinner takes the label's
-    /// place inside the button and the label stays laid out, hidden, so the
-    /// button keeps its width and nothing beside it moves. Never a spinner
-    /// beside a button. `size` is `.mini` for the small text buttons of a row.
-    /// Only in a style SwiftUI draws (`GhostButtonStyle`, `PrimaryButtonStyle`,
-    /// `.plain`): the system bordered button may not animate what its label holds.
-    ///
-    ///     Button { Task { await save() } } label: { Text("Save").buttonProgress(working) }
-    func buttonProgress(_ working: Bool, size: ControlSize = .small) -> some View {
-        modifier(ButtonProgress(working: working, size: size))
-    }
-}
-
-private struct ButtonProgress: ViewModifier {
-    let working: Bool
-    let size: ControlSize
-    @Environment(\.filledButton) private var filled
-    @Environment(\.colorScheme) private var colorScheme
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(working ? 0 : 1)
-            .accessibilityValue(working ? "Working" : "")
-            .overlay {
-                if working {
-                    ProgressView()
-                        .controlSize(size)
-                        // The system spinner draws in its scheme's grey; on a fill
-                        // the other scheme's grey reads like the button's text.
-                        .environment(\.colorScheme, filled ? (colorScheme == .dark ? .light : .dark) : colorScheme)
-                }
-            }
-    }
-}
-
 struct PrimaryButtonStyle: ButtonStyle {
     var fullWidth = false
     @Environment(\.isEnabled) private var isEnabled

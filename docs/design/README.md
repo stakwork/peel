@@ -405,33 +405,89 @@ never beside it (Tom, 2026-10-08: "we've discussed before this shouldn't
 happen"; the onboarding Next button did this first). The label stays laid
 out, hidden, so the button keeps its width and nothing next to it moves.
 Use `Text("Save").buttonProgress(working)` as the label (in
-`ButtonStyles.swift`, with the button styles; `size: .mini` for the
+`UI/PeelButton.swift`, with the button style; `size: .mini` for the
 small text buttons of a row); on a filled button the spinner is drawn light
-against the fill. It needs a style SwiftUI draws (`GhostButtonStyle`,
-`PrimaryButtonStyle`, `.plain`), so the popover forms' commit buttons (Look
-up, Join, Add, Create) are `GhostButtonStyle(prominent: true)` like the
-payment forms', and so are the buttons of an inline confirm (Delete,
-Leave, Remove from Peel; a member's Remove stays `.plain`, with the mini
-spinner). Where one row has several buttons
+against the fill. It needs a style SwiftUI draws (`PeelButton`, `.plain`),
+so the popover forms' commit buttons (Look up, Join, Add, Create), the
+payment forms' and the buttons of an inline confirm (Delete, Leave, Remove
+from Peel) are `PeelButton`s; a member's Remove stays `.plain`, with the
+mini spinner. Where one row has several buttons
 that run (Approve and Decline, Remove photo and Save), only the clicked one
 spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
 checked under its field) stays where it is.
 
-## Component library (planned)
+## Component library
 
-The form system below is Peel's only shared component set so far.
-Outside forms, buttons, panels, rows, cards and badges are still drawn
-by hand in several variants. The review
+The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
+`Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
-inventories them and proposes the library, shadcn-style, in
-`Sources/PeelApp/UI/`: `PeelButton` (variants and sizes), `IconButton`,
-`Panel` (with the placement rule for its actions), the composer with
-its buttons inside the field, `SectionHeader`, `Card`, `Callout`,
-`Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`, built over
-`Theme`. Its batch plan comes before the payments fixes and the
-personal agent. Until a batch lands, new UI uses the pieces that exist
-(`FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+inventories what is still drawn by hand and plans the rest in batches:
+`IconButton`, `Panel` (with the placement rule for its actions), the
+composer with its buttons inside the field, `SectionHeader`, `Card`,
+`Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
+batch plan comes before the payments fixes and the personal agent. Until
+a batch lands, new UI uses the pieces that exist (`PeelButton`, `FormKit`,
+`Controls`, `CopyButton`) and adds no new variant.
+
+Built so far:
+
+- **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
+  (a form's cards), `panel` 12 (the popover).
+
+### Buttons (`PeelButton`)
+
+shadcn's `Button`: one style with a variant and a size.
+
+```swift
+Button("Save") { … }.buttonStyle(.peel(.primary))
+Button("Join") { … }.buttonStyle(.peel(.outline, size: .sm))
+Button("Show in Finder") { … }.buttonStyle(.peel(.link))
+Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // armed
+```
+
+```
+ primary    secondary   outline     ghost      destructive   link
+[▓ Save ▓] [░ Copy ░]  [  Copy  ]   Copy      [▓ Leave ▓]   Show in Finder
+```
+
+| Variant | Looks | Use it for |
+|---|---|---|
+| `.primary` | `button` fill, `buttonText` | The one commit of a form or pane: Save, Send, Join, Create, Pay. One per footer. |
+| `.secondary` | a quiet `hover` fill | A second action that should not read as the commit. |
+| `.outline` | `fieldFill` with a 1 pt `inputBorder`, as the inputs | Everything else: Cancel, Done, Copy link, Members, Edit tribe…, Choose picture…, an inline confirm's trigger. The default choice. |
+| `.ghost` | nothing until the pointer is over it | A quiet undo beside a commit (Revert). |
+| `.destructive` | `destructive` fill | Only the second click of an in-place confirm (Delete, Leave, Remove). Never a first click. |
+| `.link` | `link` text at regular weight, no box | A text action inside a line or a note (Make a new one, Show the payment). |
+
+| Size | Height | Text | Padding | Where |
+|---|---|---|---|---|
+| `.sm` | 28 | 12 medium | 10 | chat cards, rows |
+| `.md` (default) | 32 | 13 medium | 12 | panels, forms, panes (the inputs' height) |
+| `.lg` | 40 | 14 medium | 16 | onboarding |
+
+- Every variant has its states: under the pointer (outline and ghost
+  take `hover`; primary, secondary and destructive are a touch brighter;
+  link underlines), pressed (those three darker, outline and ghost keep
+  `hover`, link dimmer) and disabled (50% opacity, no hover). There is
+  no focus styling yet: it comes in a later batch, checked with keyboard
+  navigation on.
+- Text is medium weight at every size, except `.link`, which is regular,
+  as most of `LinkButton`'s callers are. The two medium-weight links,
+  a file card's Show in Finder (`AttachmentViews.swift:319`) and a link
+  card's Try again (`LinkCards.swift:110`), turn regular when batch 2
+  moves them onto `.link`.
+- The radius is `Theme.Radius.control` for every variant and size.
+- `fill` replaces a primary's colour: `attention` for a money button
+  waiting for its second click (`PayButton`).
+- A full-width button puts the frame on its label:
+  `Text("Done").frame(maxWidth: .infinity)`.
+- The spinner goes in the label (`buttonProgress`). A commit button stays
+  on while it runs, keeping its fill under the spinner; its action ignores
+  a second click.
+- Not on it yet (batch 2): `GhostButtonStyle`, `PrimaryButtonStyle`,
+  `SecondaryButtonStyle`, `LinkButton`, the Payments header's
+  `HeaderAction` and the hand-styled text buttons.
 
 ## Forms (shadcn's conventions)
 
@@ -541,14 +597,7 @@ The surfaces are the existing tokens:
   - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
   - The knob moves with a short spring (0.22 s).
   - VoiceOver reads it as a toggle.
-- **`FormButtonStyle(kind:)`.** shadcn's variants. Each one is 32 tall, the height of the inputs, with a corner radius of 7, 12 pt of horizontal padding and 13 pt medium text. A disabled button is at 50% opacity.
-  - `.primary` (shadcn's default) is `button` with `buttonText`. It is a little brighter under the pointer and darker while pressed.
-  - `.secondary` is a quiet `hover` fill.
-  - `.outline`, the default here, is `fieldFill` with an `inputBorder`, and `hover` under the pointer.
-  - `.ghost` shows only under the pointer.
-  - `.destructive` is filled `destructive`. It is the second click of an in-place confirm.
-  - `fill` replaces a primary's colour: `attention` for a money button waiting for its second click (`PayButton`).
-  - The spinner goes in the label (`buttonProgress`). A commit button stays on while it runs, keeping its fill under the spinner; its action ignores a second click.
+- **Buttons** are `PeelButton` (see Component library): the form's buttons are `.md`, 32 tall as the inputs, outline unless they commit.
 - **`endsEditingOnClick()`.** It goes on a form's container: the popover, the Receive and Pay pane, the Account page and onboarding. In a scroll view it goes on the content as well, since a click there never reaches a gesture outside it. A field's own click and a button's win over it.
 - **`FormFooter`** lines its problem and buttons up on their text, so "Click again to confirm" hangs under a money button.
 - **`PictureField(picture:upload:remove:uploading:label:)`.** A picture is picked, never typed: no link is shown, typed or copied (Tom, 2026-10-09).

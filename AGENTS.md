@@ -190,13 +190,18 @@ is a short plan. Update the status and the journal when you finish something.
   keep on top and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
-  `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`, and
-  `buttonProgress`, the spinner inside a running button);
+  `UI/`, the component library over `Theme` (`docs/design/README.md`,
+  "Component library"): `PeelButton`, shadcn's button (variants primary,
+  secondary, outline, ghost, destructive, link; sizes sm, md, lg;
+  `.buttonStyle(.peel(...))`), with `buttonProgress`, the spinner inside a
+  running button; `ButtonStyles` (`GhostButtonStyle`, `PrimaryButtonStyle`,
+  `SecondaryButtonStyle`, the older styles batch 2 of the design library
+  review moves onto `PeelButton`);
   `FormKit` (the form system, shadcn's conventions: `FormPopover`, `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
-  `FormButtonStyle`, `FormDestructiveSection`, `FieldChrome`,
+  `FormDestructiveSection`, `FieldChrome`,
   `endsEditingOnClick` and `InlineConfirm`, the one in-place confirm, over
-  the form tokens in `Theme`; used by every form, see `docs/design/README.md`, "Forms");
+  the form tokens in `Theme`, its buttons `PeelButton`; used by every form, see `docs/design/README.md`, "Forms");
   `PictureField` (a picture picked or dropped, uploaded, never typed: the
   Account's photo, a tribe's image, your photo in a tribe);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
@@ -472,7 +477,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `MenuPresenter`, `PictureField`, `LinkButton`, `.menuAnchor`,
+  FormKit, `PeelButton`, `MenuPresenter`, `PictureField`, `LinkButton`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

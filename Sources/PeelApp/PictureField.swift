@@ -52,7 +52,7 @@ struct PictureField<Label: View>: View {
                     Button { Task { await choose() } } label: {
                         Text("Choose picture…").buttonProgress(working)
                     }
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
                     .disabled(working)
                 }
                 removeButton.disabled(working)
@@ -78,7 +78,7 @@ struct PictureField<Label: View>: View {
                 problem = nil
                 action()
             }
-            .buttonStyle(FormButtonStyle())
+            .buttonStyle(.peel(.outline))
         case .confirmed(let confirm, let action):
             InlineConfirm(trigger: "Remove", confirm: confirm, confirming: $confirmingRemove) {
                 problem = nil

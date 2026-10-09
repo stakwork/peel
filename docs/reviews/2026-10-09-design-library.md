@@ -639,3 +639,31 @@ feedback, `Sats` formatting, member counts, link parsing in `PeelCore`,
 `Theme` as the colour source, and ⌘F and ⌘I with one owner each. The
 code itself is DRY by a clone detector's measure; what it lacks is a
 library outside forms.
+
+## Progress
+
+- **Batch 1, `PeelButton` (2026-10-09).** Built as
+  `PeelApp/UI/PeelButton.swift` (not `Button.swift`: the name says what
+  it is beside SwiftUI's `Button`). `FormButtonStyle` is gone. Its 43
+  call sites and `InlineConfirm`'s two now use `.peel(...)`, mapped 1:1
+  (outline, primary, ghost, and primary with `fill`), and the default
+  drawing is `FormButtonStyle`'s. `buttonProgress` and `filledButton`
+  moved with it. `Theme.Radius` (`control`, `card`, `panel`) is in, and
+  `PeelButton` and `FormKit` use it. `Theme.Space` waits for a consumer
+  (batch 14). New: sizes (`sm` 28, `md` 32, `lg` 40) and the `link`
+  variant, at regular weight. There is no full-width option: a label
+  with `.frame(maxWidth: .infinity)` does it, as Receive's Done and New
+  invoice already did.
+  - Focus styling was left out. It is unverified, it may double the
+    system's focus effect, and `isFocused` lights up for any focusable
+    ancestor, such as the sidebar's scroll view. It comes in a later
+    batch, checked with keyboard navigation on.
+  - Renders: the screens rendered before and after match pixel for pixel
+    where buttons moved. The Payments list rows differ, but those are
+    not buttons. Not rendered after: the armed Send button (only a forced
+    gallery shows `fill`), tribe details' Revert and Save (below the
+    panel's scroll), and Pay an invoice's buttons (they need a real
+    invoice, and the loopback stack has no Lightning). Hover and pressed
+    were never rendered in the app, because the offscreen app is never
+    active. A temporary gallery forced them through the real drawing
+    code instead.

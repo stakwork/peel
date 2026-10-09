@@ -121,7 +121,7 @@ private struct ContactInfoSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let info = model.myContactInfo {
                     CopyButton("Copy contact info", text: info)
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .id(info)
                         .padding(.top, 4)
                 }
@@ -156,12 +156,12 @@ private struct NameRow: View {
                 .padding([.horizontal, .top], settingsRowPadding)
                 FormFooter(problem: problem) {
                     Button("Cancel") { editing = false }
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(working)
                     // On while it saves, keeping its fill under the spinner;
                     // `save` ignores a second click.
                     Button { Task { await save() } } label: { Text("Save").buttonProgress(working) }
-                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .buttonStyle(.peel(.primary))
                         .keyboardShortcut(.defaultAction)
                         .disabled(draft.trimmed.isEmpty || draft.trimmed == model.myAlias)
                 }
@@ -176,7 +176,7 @@ private struct NameRow: View {
                     problem = nil
                     editing = true
                 }
-                .buttonStyle(FormButtonStyle())
+                .buttonStyle(.peel(.outline))
             }
         }
     }
@@ -220,10 +220,10 @@ private struct ChangePINRow: View {
             } trailing: {
                 if step == .closed {
                     Button("Change") { reset(to: .old) }
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                 } else {
                     Button("Cancel") { reset(to: .closed) }
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                         .disabled(working)
                 }
             }
@@ -358,10 +358,10 @@ private struct WordsRow: View {
             } trailing: {
                 if words.isEmpty, !askingPIN {
                     Button("Show words") { start() }
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                 } else {
                     Button(words.isEmpty ? "Cancel" : "Hide") { hide() }
-                        .buttonStyle(FormButtonStyle())
+                        .buttonStyle(.peel(.outline))
                 }
             }
             if askingPIN {
@@ -404,7 +404,7 @@ private struct WordsRow: View {
             .privacySensitive()
             HStack(spacing: 8) {
                 Button(visible ? "Mask" : "Reveal") { visible.toggle() }
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
                 // Not a loss, so the second click is the commit button, not red.
                 InlineConfirm(
                     prompt: "Other apps can read the clipboard. Peel clears it after a minute.", confirm: "Copy words",
@@ -692,10 +692,10 @@ private struct NotificationsRow: View {
             switch model.notifier.permission {
             case .notAsked:
                 Button("Turn on") { Task { await model.enableNotifications() } }
-                    .buttonStyle(FormButtonStyle(kind: .primary))
+                    .buttonStyle(.peel(.primary))
             case .allowed, .denied:
                 Button("System Settings…") { model.openNotificationSettings() }
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
             case .unavailable:
                 EmptyView()
             }

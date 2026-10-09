@@ -361,7 +361,7 @@ private struct ContactKeyCard: View {
                 CopyButton("Copy key", text: pubkey)
                 CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
             }
-            .buttonStyle(FormButtonStyle())
+            .buttonStyle(.peel(.outline))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

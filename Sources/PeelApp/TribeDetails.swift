@@ -172,7 +172,7 @@ struct TribeDetailsPanel: View {
             } label: {
                 Label(title, systemImage: systemImage)
             }
-            .buttonStyle(FormButtonStyle())
+            .buttonStyle(.peel(.outline))
             .help("Opens beside the chat")
         }
     }
@@ -188,7 +188,7 @@ struct TribeDetailsPanel: View {
                 CopyButton("Copy link", text: link, systemImage: "link")
                 CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
             }
-            .buttonStyle(FormButtonStyle())
+            .buttonStyle(.peel(.outline))
             Spacer(minLength: 0)
         }
         .padding(12)
@@ -199,11 +199,11 @@ struct TribeDetailsPanel: View {
     private var footer: some View {
         HStack(spacing: 8) {
             Button("Members", action: members)
-                .buttonStyle(FormButtonStyle())
+                .buttonStyle(.peel(.outline))
             Spacer()
             if tribe.canManage {
                 Button("Edit tribe…", action: edit)
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
             } else if tribe.canPost {
                 InlineConfirm(trigger: "Leave tribe", confirm: "Leave") {
                     do {
@@ -310,10 +310,10 @@ private struct TribeIdentitySection: View {
                 HStack {
                     Spacer()
                     Button("Revert") { reset() }
-                        .buttonStyle(FormButtonStyle(kind: .ghost))
+                        .buttonStyle(.peel(.ghost))
                         .disabled(saving)
                     Button { Task { await save() } } label: { Text("Save").buttonProgress(saving) }
-                        .buttonStyle(FormButtonStyle(kind: .primary))
+                        .buttonStyle(.peel(.primary))
                         .disabled(uploading)
                 }
             }

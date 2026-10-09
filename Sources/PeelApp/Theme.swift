@@ -93,6 +93,14 @@ enum Theme {
     /// Lifts a section off the popover in light; nothing in dark.
     static let sectionShadow = Color(light: 0x141E2D, lightOpacity: 0.04, dark: 0x000000, darkOpacity: 0)
 
+    /// Corner radii: a control (a button, a field), a card inside a form,
+    /// a panel. Chips are capsules.
+    enum Radius {
+        static let control: CGFloat = 7
+        static let card: CGFloat = 9
+        static let panel: CGFloat = 12
+    }
+
     /// The system font (SF Pro), Tom's choice for readability on 2026-10-07.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         Font.system(size: size, weight: weight)

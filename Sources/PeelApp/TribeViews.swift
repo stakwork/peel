@@ -75,12 +75,12 @@ struct TribeSettingsForm: View {
         } footer: {
             FormFooter(problem: problem) {
                 Button("Cancel", action: done)
-                    .buttonStyle(FormButtonStyle())
+                    .buttonStyle(.peel(.outline))
                     .disabled(working != nil)
                 Button { Task { await save() } } label: {
                     Text(editing == nil ? "Create" : "Save").buttonProgress(working == .save)
                 }
-                .buttonStyle(FormButtonStyle(kind: .primary))
+                .buttonStyle(.peel(.primary))
                 .keyboardShortcut(.defaultAction)
                 // Not off while it saves, so it keeps its fill under the
                 // spinner; `save` ignores a second click.

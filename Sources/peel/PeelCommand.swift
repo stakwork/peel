@@ -45,8 +45,9 @@ struct PeelCommand {
           share-timezone <pubkey> [yes|no]  whether this account's offset goes with what it sends in a
                                       direct message or private tribe (on unless turned off; never in
                                       a public tribe); sets it when given
-          send-file <pubkey> <path>   send a file to a contact or a tribe (--text <caption>, --reply, --thread,
-                                      --price <sats> to sell it: buyers pay to get its key)
+          send-file <pubkey> <path>...  send files to a contact or a tribe, one message each (--text <caption>
+                                      on the last, --reply, --thread, --price <sats> to sell them: buyers pay
+                                      to get the key)
           buy <id>                    buy someone's paid attachment (row id from messages; --yes over the
                                       confirmation threshold); it then downloads like any other
           download <id> <out path>    download and decrypt an attachment to a new file (never opened)

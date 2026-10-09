@@ -136,9 +136,9 @@ extension Engine {
         guard let invite = try storage.invite(code: code) else { throw Failure.noSuchInvite }
         guard invite.status == .ready || invite.status == .cancelling else { throw Failure.inviteNotPending }
         guard isRegistered, transport != nil else { throw Failure.notConnected }
-        guard !cancellingInvite else { throw Failure.cancelInProgress }
-        cancellingInvite = true
-        defer { cancellingInvite = false }
+        guard !money.cancellingInvite else { throw Failure.cancelInProgress }
+        money.cancellingInvite = true
+        defer { money.cancellingInvite = false }
 
         guard let before = try balanceMsat() else { throw Failure.balanceUnknown }
         let wasReady = invite.status == .ready

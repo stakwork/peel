@@ -183,7 +183,7 @@ extension Engine {
             let page = try await fetchPaymentPage(before: before)
             guard page.count >= Int(Self.paymentPageSize), let newestStored, let oldest = page.map(\.ts).min(),
                   oldest > newestStored else {
-                historyCheckedAt = started
+                money.historyCheckedAt = started
                 return
             }
             before = oldest
@@ -193,13 +193,15 @@ extension Engine {
     /// One page at a time: a fetch waits for the one on its way (the
     /// server's answer names no request).
     private func fetchPaymentPage(before: Int64?) async throws -> [PaymentRecord] {
-        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { awaitingPayments ? nil : () }
+        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { money.awaitingPayments ? nil : () }
         guard transport != nil else { throw Failure.notConnected }
-        awaitingPayments = true
-        paymentPage = nil
+        money.awaitingPayments = true
+        money.paymentPage = nil
         defer {
-            awaitingPayments = false
-            paymentPage = nil
+            money.awaitingPayments = false
+            money.paymentPage = nil
+            // The next fetch may be waiting for this one.
+            wakeWaiters()
         }
         let since = before.map { UInt64(max($0 - 1, 0)) } ?? UInt64(Date().millisecondsSince1970)
         try await run { time, state in
@@ -208,7 +210,7 @@ extension Engine {
                 scid: nil, remoteOnly: false, minMsat: 0, reverse: true
             )
         }
-        return try await poll(timeout: .seconds(15), failure: .serverTimedOut) { paymentPage }
+        return try await poll(timeout: .seconds(15), failure: .serverTimedOut) { money.paymentPage }
     }
 
     public static let paymentPageSize: UInt32 = 50
@@ -230,12 +232,13 @@ extension Engine {
         guard memo.utf8.count <= 300 else { throw Failure.memoTooLong }
         // The server's answer names no request, so one at a time: wait for
         // the one on its way, as a history page does.
-        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { awaitingInvoice ? nil : () }
-        awaitingInvoice = true
-        answeredInvoice = nil
+        try await poll(timeout: .seconds(30), failure: .serverTimedOut) { money.awaitingInvoice ? nil : () }
+        money.awaitingInvoice = true
+        money.answeredInvoice = nil
         defer {
-            awaitingInvoice = false
-            answeredInvoice = nil
+            money.awaitingInvoice = false
+            money.answeredInvoice = nil
+            wakeWaiters()
         }
         try await run { time, state in
             try Sphinxrs.requestInvoice(seed: seed, uniqueTime: time, state: state, amtMsat: amountMsat, description: memo)
@@ -243,8 +246,8 @@ extension Engine {
         // The server sends nothing back when it cannot make one (no Lightning
         // node). A late answer to an earlier request that differs is dropped.
         let invoice = try await poll(timeout: .seconds(30), failure: .noInvoiceFromServer) { () -> Invoice? in
-            guard let bolt11 = answeredInvoice else { return nil }
-            answeredInvoice = nil
+            guard let bolt11 = money.answeredInvoice else { return nil }
+            money.answeredInvoice = nil
             return try? Self.checkServerInvoice(bolt11, amountMsat: amountMsat, memo: memo, server: server)
         }
         let record = InvoiceRecord(
@@ -292,16 +295,16 @@ extension Engine {
     /// runs it again after. Stopped by `disconnect`.
     func checkInvoicesInBackground() {
         guard !closed else { return }
-        invoicesNeedCheck = true
-        guard invoiceCheck == nil else { return }
-        invoiceCheck = Task { [weak self] in await self?.checkOpenInvoices() }
+        money.invoicesNeedCheck = true
+        guard money.invoiceCheck == nil else { return }
+        money.invoiceCheck = Task { [weak self] in await self?.checkOpenInvoices() }
     }
 
     private func checkOpenInvoices() async {
-        while invoicesNeedCheck, !Task.isCancelled {
-            invoicesNeedCheck = false
+        while money.invoicesNeedCheck, !Task.isCancelled {
+            money.invoicesNeedCheck = false
             do {
-                guard try storage.hasInvoicesAwaitingHistory(checkedAt: historyCheckedAt) else { break }
+                guard try storage.hasInvoicesAwaitingHistory(checkedAt: money.historyCheckedAt) else { break }
                 try await refreshPaymentHistory()
             } catch {
                 if !Task.isCancelled {
@@ -311,7 +314,7 @@ extension Engine {
             }
         }
         // A cancelled check has already been replaced or stopped.
-        if !Task.isCancelled { invoiceCheck = nil }
+        if !Task.isCancelled { money.invoiceCheck = nil }
     }
 
     /// Asks a contact for sats in their chat (type 2), with an invoice the
@@ -376,8 +379,8 @@ extension Engine {
         // The balance and fee reserve are `invoiceProblem`'s; this asks the threshold.
         try checkPayment(invoice.amountMsat, .threshold(confirmedMsat))
         guard transport != nil else { throw Failure.notConnected }
-        guard payingInvoices.insert(hash).inserted else { throw Failure.invoicePending }
-        defer { payingInvoices.remove(hash) }
+        guard money.sendsInFlight.insert(hash).inserted else { throw Failure.invoicePending }
+        defer { money.sendsInFlight.remove(hash) }
 
         let toContact = chat.map { invoice.payee == $0 && Self.isPerson($0, in: state) == true } ?? false
         var time = clock.next()

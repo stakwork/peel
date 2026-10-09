@@ -3,48 +3,32 @@ import Sphinxrs
 
 extension Engine {
     /// True while a restore or catch-up is still asking the server for history.
-    public var isSyncingHistory: Bool {
-        awaitingCounts || history != nil || !queuedHistory.isEmpty
-    }
+    public var isSyncingHistory: Bool { history.isSyncing }
 
     /// Asks the server for messages newer than the newest one stored locally.
     public func syncMessages() async throws {
         // Messages dropped from left tribes are not stored but still count.
         let highest = max(try storage.highestServerIndex() ?? -1, droppedIndex)
         let next = highest < 0 ? 0 : UInt64(highest) + 1
-        try await startHistory(HistoryRun(phase: .messages, next: next, end: nil))
+        if let run = history.start([HistoryCursor.Run(phase: .messages, next: next, end: nil)]) {
+            try await request(run)
+        }
     }
 
-    /// Contacts first (one message per contact key, from which the core
-    /// recreates each contact), then every message from the beginning.
+    /// Contacts first, then every message from the beginning
+    /// (`HistoryCursor.plan`).
     func startRestore(_ counts: MessageCounts) async throws {
-        var runs: [HistoryRun] = []
-        if counts.firstForEachKey > 0 {
-            runs.append(HistoryRun(phase: .contacts, next: 0, end: counts.firstForEachKeyHighestIndex))
-        }
-        if counts.total > 0 {
-            runs.append(HistoryRun(phase: .messages, next: 0, end: counts.totalHighestIndex))
-        }
-        guard let first = runs.first else {
+        let runs = HistoryCursor.plan(counts)
+        guard !runs.isEmpty else {
             try await historyEnded()
             return
         }
-        queuedHistory.append(contentsOf: runs.dropFirst())
-        try await startHistory(first)
-    }
-
-    /// Starts a run, or queues it behind the one in flight: all batch replies
-    /// look alike, so two runs can never be in the air at once.
-    private func startHistory(_ run: HistoryRun) async throws {
-        guard history == nil else {
-            queuedHistory.append(run)
-            return
+        if let first = history.start(runs) {
+            try await request(first)
         }
-        history = run
-        try await request(run)
     }
 
-    func request(_ run: HistoryRun) async throws {
+    func request(_ run: HistoryCursor.Run) async throws {
         let asked = transport
         try await self.run { time, state in
             switch run.phase {
@@ -72,34 +56,19 @@ extension Engine {
         }
     }
 
-    /// History comes a page at a time. Each page moves the cursor past its
-    /// highest index; a page that moves it nowhere ends the run, so an
-    /// unreadable message cannot cause an endless loop.
+    /// History comes a page at a time; the cursor says what follows each
+    /// (`HistoryCursor.advance`).
     func advanceHistory(with result: RunReturn) async throws {
-        guard var run = history else { return }
-        run.end = run.end ?? result.msgsTotal
-        let reached = result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }.max()
-        guard let reached, reached >= run.next, reached < UInt64(Int64.max) else {
-            try await finish(run)
-            return
+        let indices = result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
+        guard let page = history.advance(indices: indices, total: result.msgsTotal) else { return }
+        if let progress = page.progress {
+            emit.yield(.history(phase: progress.phase, reached: progress.reached, end: progress.end))
         }
-        run.next = reached + 1
-        emit.yield(.history(phase: run.phase, reached: reached, end: run.end))
-        if let end = run.end, run.next > end {
-            try await finish(run)
-            return
-        }
-        history = run
-        try await request(run)
-    }
-
-    private func finish(_ run: HistoryRun) async throws {
+        // The page came: its watchdog is done, and a next page gets its own.
         stopHistoryWatchdog()
-        history = nil
-        if !queuedHistory.isEmpty {
-            try await startHistory(queuedHistory.removeFirst())
-        } else {
-            try await historyEnded()
+        switch page.step {
+        case .request(let run): try await request(run)
+        case .ended: try await historyEnded()
         }
     }
 
@@ -130,9 +99,7 @@ extension Engine {
     }
 
     private func historyStalled(at expected: UInt64) {
-        guard let run = history, run.next == expected else { return }
-        history = nil
-        queuedHistory = []
+        guard let run = history.stalled(at: expected) else { return }
         emit.yield(.historyFailed("no answer from the server for \(Self.historyStall) while fetching \(run.phase)"))
     }
 }

@@ -1481,3 +1481,32 @@ says so; key exchange sats and unsettled payments read right in Payments.
 - **Rendered** on a copy of dev profile `b14c` with rows written into it,
   offline, deleted afterwards: the chat's waiting and not-settled lines,
   the header, Payments with key exchange rows and the two details.
+
+## Idle CPU: a timeline redrawing every frame (2026-10-09, branch `idle/timeline-past-dates`)
+
+Tom's Peel, idle, used 25–30% CPU without a break. Cause: `redrawing(at:)`
+(#110) put `.now` before the date, and a date already passed made the
+entries go back in time (`[now, past]`). A `TimelineView` on such a
+schedule updates on every frame for as long as it is on screen. Three
+views use it: a payment waiting for someone to come online
+(`WaitingForServer`), a message of yours still pending past its 30
+seconds (`MessageRow`), and an invoice past its expiry (`UntilExpiry`,
+an old request in a chat). A waiting payment in the open chat was enough.
+
+Fix: a date already passed is left out; the timeline draws once, with
+now, which is what it drew before. Nothing else changes.
+
+Measured on a fresh development profile on the local stack (6 accounts,
+4 tribes, 7,000 messages, one payment waiting for Dan), the app launched
+hidden with its window off the screens, Dan's chat open, 15 minutes idle:
+
+| | before | after |
+|---|---|---|
+| CPU, 15-minute average | 19.6% (34% in a quieter minute) | 0.08% |
+| Energy impact (`top`) | 15–20 | 0.0–0.3 |
+| Footprint after 15 minutes | 50 MB, flat | 50 MB, flat |
+| `leaks` | 3 leaks, 112 bytes (system) | the same |
+
+`sample` before: the main thread in `NSHostingView.layout` and
+`TimelineView.UpdateFilter.updateValue` on every display cycle, with no
+view body run.

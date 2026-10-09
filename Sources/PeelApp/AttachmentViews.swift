@@ -304,10 +304,7 @@ struct SavedNote: View {
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .help(file.lastPathComponent)
-            Button("Show in Finder") { model.showInFinder(file) }
-                .buttonStyle(.plain)
-                .font(Theme.font(12, .medium))
-                .foregroundStyle(Theme.link)
+            LinkButton("Show in Finder", font: Theme.font(12, .medium)) { model.showInFinder(file) }
         }
     }
 }

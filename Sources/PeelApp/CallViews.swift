@@ -424,7 +424,7 @@ struct CallHeaderButton: View {
     @Environment(\.openWindow) private var openWindow
     let chat: String
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
     /// What waits for "Leave and join" (or start), and the call it leaves.
     @State private var pending: (action: Pending, other: String)?
 
@@ -464,19 +464,15 @@ struct CallHeaderButton: View {
                 HeaderButton(systemImage: "phone", help: "Start a call", working: model.startingCallIn == chat) {
                     showMenu(header: false)
                 }
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+                .menuAnchor(anchor)
             }
         }
-        .background {
-            // ⌥⌘A and ⌥⌘V start a call from anywhere in the chat.
-            Group {
-                Button("") { start(audioOnly: true) }.keyboardShortcut("a", modifiers: [.option, .command])
-                Button("") { start(audioOnly: false) }.keyboardShortcut("v", modifiers: [.option, .command])
-            }
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .disabled(model.startingCallIn != nil)
-            .accessibilityHidden(true)
+        // ⌥⌘A and ⌥⌘V start a call from anywhere in the chat.
+        .hiddenShortcut(KeyboardShortcut("a", modifiers: [.option, .command]), enabled: model.startingCallIn == nil) {
+            start(audioOnly: true)
+        }
+        .hiddenShortcut(KeyboardShortcut("v", modifiers: [.option, .command]), enabled: model.startingCallIn == nil) {
+            start(audioOnly: false)
         }
         // A tribe's header is kept when another tribe opens: a question
         // asked in one chat is never answered in the next.
@@ -529,7 +525,7 @@ struct CallHeaderButton: View {
             .accessibilityLabel("More call options")
         }
         .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .menuAnchor(anchor)
     }
 
     private func showMenu(header: Bool) {
@@ -537,7 +533,7 @@ struct CallHeaderButton: View {
             .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: frame, source: "call-\(chat)")
+        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor.rect, source: "call-\(chat)")
     }
 
     private func start(audioOnly: Bool) {

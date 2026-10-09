@@ -279,7 +279,7 @@ struct HeaderMoreButton: View {
     let details: () -> Void
     let entries: @MainActor () -> [MenuEntry]
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
 
     private var source: AnyHashable { "more-\(chat)" }
 
@@ -290,16 +290,10 @@ struct HeaderMoreButton: View {
 
     var body: some View {
         HeaderButton(systemImage: "ellipsis", help: "More", lit: presenter?.isOpen == true && presenter?.source == source) {
-            presenter?.show(entries(), at: frame, source: source)
+            presenter?.show(entries(), at: anchor.rect, source: source)
         }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
-        .background {
-            Button("", action: details)
-                .keyboardShortcut("i", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        }
+        .menuAnchor(anchor)
+        .hiddenShortcut(KeyboardShortcut("i", modifiers: .command), action: details)
     }
 }
 

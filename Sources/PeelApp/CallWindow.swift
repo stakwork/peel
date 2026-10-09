@@ -69,16 +69,9 @@ private struct CallRoomView: View {
             keepOnTopChanged()
         }
         .onChange(of: call.keepOnTop) { keepOnTopChanged() }
-        .background {
-            // Escape goes back to the grid. A button rather than
-            // `onExitCommand`, which needs a focused view the call window
-            // usually lacks.
-            Button("Show everyone", action: call.showGrid)
-                .keyboardShortcut(.cancelAction)
-                .disabled(call.focus == nil)
-                .opacity(0)
-                .accessibilityHidden(true)
-        }
+        // Escape goes back to the grid. A button rather than `onExitCommand`,
+        // which needs a focused view the call window usually lacks.
+        .hiddenShortcut(.cancelAction, enabled: call.focus != nil, action: call.showGrid)
     }
 
     private func keepOnTopChanged() {
@@ -279,20 +272,21 @@ private struct CallControls: View {
     @Environment(\.menuPresenter) private var presenter
     let call: CallSession
 
-    /// Each chevron's frame, by its shortcut key, to open the menu beside.
-    @State private var chevrons: [String: CGRect] = [:]
+    /// Each chevron's frame, to open the device menu beside.
+    @State private var micChevron = MenuAnchor()
+    @State private var cameraChevron = MenuAnchor()
 
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 segment(
                     systemImage: call.micOn ? "mic" : "mic.slash", on: call.micOn,
-                    label: call.micOn ? "Mute" : "Unmute", key: "A",
+                    label: call.micOn ? "Mute" : "Unmute", key: "A", chevron: micChevron,
                     refused: call.micAccess == .refused, action: call.toggleMicrophone
                 )
                 segment(
                     systemImage: call.cameraOn ? "video" : "video.slash", on: call.cameraOn,
-                    label: call.cameraOn ? "Turn camera off" : "Turn camera on", key: "V",
+                    label: call.cameraOn ? "Turn camera off" : "Turn camera on", key: "V", chevron: cameraChevron,
                     refused: call.cameraAccess == .refused, action: call.toggleCamera
                 )
                 share
@@ -340,7 +334,8 @@ private struct CallControls: View {
 
     /// A control and its chevron, which opens the device menu.
     private func segment(
-        systemImage: String, on: Bool, label: String, key: String, refused: Bool, action: @escaping () -> Void
+        systemImage: String, on: Bool, label: String, key: String, chevron: MenuAnchor, refused: Bool,
+        action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 0) {
             Button(action: action) {
@@ -357,7 +352,7 @@ private struct CallControls: View {
             .help("\(label) (⌘⇧\(key))")
             .accessibilityLabel(label)
             Theme.callChevronLine.frame(width: 1)
-            Button { showDevices(at: chevrons[key] ?? .zero) } label: {
+            Button { showDevices(at: chevron.rect) } label: {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.secondaryText)
@@ -368,7 +363,7 @@ private struct CallControls: View {
             .buttonStyle(.plain)
             .help("Microphone, speaker and camera")
             .accessibilityLabel("Choose devices")
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { chevrons[key] = $0 }
+            .menuAnchor(chevron)
         }
         .frame(height: 44)
         .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
@@ -406,9 +401,7 @@ private struct CallControls: View {
             Text(text).foregroundStyle(Theme.secondaryText)
             if let action {
                 Text("·").foregroundStyle(Theme.secondaryText)
-                Button(action, action: perform)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.link)
+                LinkButton(action, font: Theme.font(12), action: perform)
             }
         }
         .font(Theme.font(12))

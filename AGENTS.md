@@ -124,7 +124,9 @@ is a short plan. Update the status and the journal when you finish something.
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
     "public https, or http to this machine" (`isAllowed`, `isThisMac`)
   - `WebPage.swift` — what the app's web pane may open
-    (`WebPage.address`) and each profile's website data store identifier
+    (`WebPage.address`), what an address typed into it opens
+    (`WebPage.typed`: http or https, or a search) and each profile's
+    website data store identifier
 - `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (rows, header, connection bolt,
   `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
@@ -163,8 +165,9 @@ is a short plan. Update the status and the journal when you finish something.
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
   time, the hover card, a chat's details panel with the time zone switch);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
-  own data store, its toolbar, the routing of http and https links, a
-  tribe's second brain and app as More menu items);
+  own data store, its toolbar and address field, the routing of http and
+  https links, Browser and a tribe's second brain and app as More menu
+  items);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit
@@ -281,7 +284,8 @@ calls watched across chats (the newest valid per chat, the cap of eight,
 ageing out, chats left or not ready, a closed account); the network and calls audit's regressions (`Audit*`: plaintext refusal, host allowlists, redirects, no push token, no offset to a tribe not known to be private); time zones (the offset's format and
 parser, malformed metadata, the per-chat switch and public tribes, the
 stored tribe record and its background recheck, local
-times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, the per-profile store identifier and a tribe's app and second brain addresses; contacts
+times, a sender's zone at a moment for a page of runs, the v14 column on stored history); what opens in the web pane, what a typed address opens (a page, a
+search, or refused), the per-profile store identifier and a tribe's app and second brain addresses; contacts
 (`ContactCode` parsing and its refusals, QR codes read from a picture,
 invite statuses by tag, an invite marked used by the key exchange that
 names it, new contacts, the invite and add refusals, the price to join

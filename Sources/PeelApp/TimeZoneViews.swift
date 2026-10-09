@@ -236,6 +236,7 @@ struct PersonCard: View {
 /// the chat's details.
 struct DirectHeader: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     let conversation: Conversation
 
     @State private var local: LocalTime?
@@ -249,8 +250,11 @@ struct DirectHeader: View {
                 HStack(spacing: 4) {
                     CallHeaderButton(chat: conversation.chat)
                     HeaderMoreButton(chat: conversation.chat, details: { showingInfo = true }) {
-                        [HeaderMoreButton.details { showingInfo = true },
-                         ConversationMenu.notifications(for: conversation, model: model)]
+                        .sections(
+                            WebMenuEntries.entries(for: nil, pane: model.web, open: openURL),
+                            [HeaderMoreButton.details { showingInfo = true },
+                             ConversationMenu.notifications(for: conversation, model: model)]
+                        )
                     }
                     .peelPopover(isPresented: $showingInfo) {
                         ChatInfoPanel(conversation: conversation, tribe: nil)

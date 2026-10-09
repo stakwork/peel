@@ -156,7 +156,8 @@ The open questions, answered; the look is in `../design/README.md`, "Web pane".
 
 - **Where:** a pane beside the chat, resizable on a divider. It stays open
   across chats until closed (✕, or ⌘W while the page has the keyboard).
-  One page, which the next link replaces; no tabs in v1.
+  One page, which the next link replaces; no tabs in v1 (kept on
+  2026-10-09, "Browser look" below).
 - **Which links:** every http and https link (message markup still makes
   links only of https, unchanged since #42), plus the tribe's `app_url`
   and `second_brain_url`. ⌘-click, or the pane's Open in Browser, sends a
@@ -243,6 +244,47 @@ The open questions, answered; the look is in `../design/README.md`, "Web pane".
   sidebar's and thread's do; Payments' 760 pt minimum is a constant until
   a detail column can publish its own; a finished download is copied into
   Downloads on the main thread (a clone on the same volume).
+
+### Browser look (2026-10-09, branch `feat/browser-tabs`)
+
+Tom's brief (2026-10-09, with a screenshot of the Claude desktop app's
+browser pane): better icons and a URL field like Claude's. Tabs and a
+browser per tribe were built first, then dropped the same day by Tom's
+choice: keep one page until people ask for tabs (they can be added later).
+
+- **Built:** the toolbar restyled: back, forward, reload or stop as arrows;
+  an editable address field (`FieldChrome`) holding the lock or "Not
+  secure" and the full address with the host emphasised, still the
+  committed page's; Open in default browser as an arrow out of a square in
+  place of Safari's compass; ⋮ with Copy link, Open in default browser and
+  Clear website data; × to close. The header's More (tribes and DMs) gains
+  Browser, which shows the pane as it is or empty with the field focused.
+  Closing the pane still ends the page.
+- **Typed addresses** (`WebPage.typed`): an explicit http or https address
+  loads as written; a bare name (`example.com`, `bücher.de`, an IP) gets
+  https, this machine (`localhost:3000`) http; words, or a name that does
+  not read as a host, are a DuckDuckGo search (`+`, `&`, `=`, `#`
+  escaped); any other scheme typed out (`javascript:`, `file:`, `data:`,
+  `about:`, `mailto:`) is refused and the pane says so. DuckDuckGo because
+  it keeps no search history tied to the person.
+- **Skipped:** tabs, the layout toggle and the pointer tool from Claude's
+  pane.
+- **Left as it was:** one page that the next link replaces, pop-ups in the
+  same pane, downloads (no ask before saving, Tom is undecided), the
+  per-profile store, no bridge, camera and microphone denied.
+- **Verified:** renders of the pane in dark and light (a page, the empty
+  pane with the field focused, a page loading, "Not secure", the ⋮ menu
+  open), from a scratch build driven into each state on a development
+  profile copy, with a side-by-side against Tom's screenshot (not
+  committed). `swift test`. Not exercised by hand (no input automation):
+  typing into the field, ⌘W from the field, hover states, Clear website
+  data from the menu.
+- **Reviews (2026-10-09):** `/code-review`, `/simplify` and
+  `/security-review` inline. Fixed: an explicit http(s) address with a
+  space in its path loads rather than searching; a host too long for the
+  field truncates at its start, keeping its real domain in view; a refused
+  address names no host. Left: the ⋮ button repeats `MenuButton`'s few
+  lines to turn its icon upright.
 
 ## Self-hosted servers
 

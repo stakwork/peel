@@ -282,6 +282,12 @@ struct MessageList: View {
     private var userScrolling: Bool { phase == .interacting || phase == .decelerating }
     /// A scroll back to the end is waiting for the layout pass to finish.
     @State private var repinning = false
+    /// A re-pin scrolled and the list has not reached its end since: the
+    /// lazy stack's estimates can leave that scroll short, so it goes again.
+    @State private var pinning = false
+    /// Whether the list last reported itself at its end, so a re-pin with
+    /// nothing to move does not start `pinning`. Not read by `body`.
+    @State private var atEnd = true
     /// Others' messages take the list down: while it is at the bottom or on
     /// its way there, until you scroll away by hand or it opens at "New messages".
     @State private var following = true
@@ -295,15 +301,17 @@ struct MessageList: View {
     @State private var seenUpTo: Int64?
 
     /// The end of the list, under its padding. Scrolling to the last row
-    /// stops at that padding, short of the scroll view's own bottom, where
-    /// its bottom anchor no longer holds the list as the rows below grow.
+    /// stops at that padding, short of the scroll view's own bottom.
     private static let bottomID = "bottom"
 
-    /// Where the list sits against its bottom, as the scroll position or
-    /// the content's height changes.
+    /// Where the list sits against its bottom, as the scroll position, the
+    /// content's height or the list's own height changes.
     private struct BottomDistance: Equatable {
         var height: CGFloat
-        /// Exactly at the end, as far as layout goes.
+        /// The list's own height: the composer growing a line, or the
+        /// search bar opening, takes room from it.
+        var container: CGFloat
+        /// At the end, as far as layout goes, or short of filling the list.
         var atEnd: Bool
         var atBottom: Bool
         var far: Bool
@@ -361,7 +369,11 @@ struct MessageList: View {
             // Either starts at the bottom once there is more than fits.
             .defaultScrollAnchor(composer.thread == nil ? .bottom : .top, for: .alignment)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            // No bottom anchor for size changes. When the list's own height
+            // changed at the end, the anchor moved it to the lazy stack's
+            // estimated end, and once the rows were measured the stack could
+            // draw nothing there: a blank list until something scrolled it.
+            // Holding the end is the re-pin's job (below).
             // A lazy list only estimates the rows it has not drawn, so the
             // initial anchor can land short of the end; go to the newest.
             // With "New messages", open at it instead.
@@ -382,17 +394,27 @@ struct MessageList: View {
                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 }
             }
-            .onScrollPhaseChange { _, new in phase = new }
+            .onScrollPhaseChange { _, new in
+                phase = new
+                if new == .interacting { pinning = false }
+            }
             .onScrollGeometryChange(for: BottomDistance.self) { geometry in
                 let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
-                return BottomDistance(height: geometry.contentSize.height, atEnd: abs(below) <= 0.5,
-                                      atBottom: below <= 24, far: below > geometry.containerSize.height)
+                return BottomDistance(height: geometry.contentSize.height, container: geometry.containerSize.height,
+                                      atEnd: below <= 0.5, atBottom: below <= 24,
+                                      far: below > geometry.containerSize.height)
             } action: { old, new in
+                if atEnd != new.atEnd { atEnd = new.atEnd }
+                if pinning, new.atEnd { pinning = false }
+                // Back from far by a re-pin, whose early return below skipped
+                // the crossing.
+                if new.atBottom, farFromBottom { farFromBottom = false }
                 // A row that changed height under a list following at its end
                 // (one that does not reserve its final size, such as a video
-                // sizing itself) moved the end, and the bottom anchor holds
-                // only a list exactly at it: back to the end.
-                if new.height != old.height, old.atBottom, !new.atEnd, following, phase == .idle {
+                // sizing itself), or the list's own height changing there,
+                // moved the end; or a re-pin fell short: back to the end.
+                let resized = new.height != old.height || new.container != old.container
+                if (resized && old.atBottom) || pinning, !new.atEnd, following, phase == .idle {
                     return repin(proxy)
                 }
                 guard new.atBottom != old.atBottom || new.far != old.far else { return }
@@ -503,7 +525,10 @@ struct MessageList: View {
         repinning = true
         Task {
             repinning = false
-            if following, !userScrolling { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+            if following, !userScrolling {
+                if !atEnd { pinning = true }
+                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+            }
         }
     }
 

@@ -2345,3 +2345,92 @@ reflows the narrower column around its bottom anchor, so the divider can
 move out of view (as on main, where the chat was at its end anyway). No
 tests: the changed rules live in `PeelApp`, which has no test target.
 
+## The blank timeline when the list's height changes (branch `fix/blank-timeline`, 2026-10-09)
+
+From Tom on his everyday build: typing, then Shift-Return a few times, and
+every message above disappeared; the list was empty and dark above a six
+line composer. Also from Tom on main: opening ⌘F's search bar in a tribe
+blanked the screen.
+
+Done means: the list keeps drawing its rows while its own height changes
+(the composer growing or shrinking, the search bar and its results opening
+and closing), and still opens and stays flush with its newest row.
+
+Reproduced on a fresh offline dev profile (80 text messages in one direct
+message), in the bundled app driven by a temporary in-process hook, not
+committed: the window kept off every screen and the app never active, text
+and Shift-Return put in through the composer's text view, the search
+opened and closed through the model, renders taken of the app's own
+window, and the rows on screen counted from their `onAppear` and
+`onDisappear`. On main every run blanked: growing the composer line by line
+from the bottom left no row on screen within 4 cycles in 6 of 6 runs, and
+opening the search bar blanked it in 19 of 20 cycles over 5 runs. Also
+on 108f886, before the 2026-10-09 merges: not a regression of #117 to #126.
+The anchor has been there since the chat UI (#13).
+
+Cause: `.defaultScrollAnchor(.bottom, for: .sizeChanges)`. Each change of
+the list's own height re-estimated the lazy stack (5 369 pt measured, 6 088
+estimated, for 80 rows), and the anchor moved the offset to the end of
+that estimate. Usually the rows were measured again and it came back;
+sometimes the content height settled between the two (5 863 pt) with the
+offset at 5 409 for a 454 pt list: the visible rect lay past the last
+drawn row, every row had left (`onDisappear`), and the geometry said the
+list was at its end. A scroll to the end marker could not move it (it was
+there), which is why a re-pin with the anchor kept failed in every run.
+Send brought the rows back in the one run tried (the composer shrank back
+to one line); a wheel event handed to the list in-process did not.
+
+Changed, in `MessageList`:
+
+- No bottom anchor for size changes (`.alignment` and `.initialOffset` stay,
+  and the lazy stack stays).
+- The re-pin (#68) also runs when the list's own height changes at the
+  bottom (`BottomDistance.container`), and again while a re-pin's scroll
+  fell short (`pinning`, until the list reports its end): without the
+  anchor, a scroll to the end marker through rows still estimated stopped
+  about 60 pt short on opening, in every run. `pinning` starts only when
+  the list was not already at its end (`atEnd`, the last report, kept for
+  the re-pin and not read by `body`), and a hand scroll clears it.
+  `BottomDistance.atEnd` also counts a list shorter than its space.
+- Reaching the bottom hides the round jump button: a re-pin returns before
+  the button's bookkeeping, and on opening it skipped the crossing back from
+  far, leaving the button up at the bottom (6 of 8 runs before this line).
+  Comparing against the button as shown instead also worked, but its
+  animation carried the re-pin's scroll and the list opened 60 pt short.
+
+Before and after, same hook and profile: growing the composer, 0 runs of 8
+with a blank (4 cycles each); the search bar, 0 of 3 (4 cycles each of
+open, no matches, matches, closed); every open flush with the end (0 pt,
+as on main); the jump button down at the end of every run, never up while
+the composer grew, and up for about 20 ms during the open in 4 of 8 runs.
+Not checked: a real trackpad scroll out of the blank state (a wheel event
+handed to the scroll view in-process did not scroll it), a reader scrolled
+up while the composer grows (no hand scroll in the hook), a tribe with link
+cards, videos and calls, and the thread panel's composer.
+
+Behaviour that changes with the anchor gone: a reader scrolled up keeps
+the rows at the top of the list in place when the composer grows (the
+bottom ones go under it) where the anchor kept the bottom ones; and a
+window resized at the bottom is brought back to the end by the re-pin, a
+pass later, rather than held there.
+
+Reviews (inline). Code review: a short list is at its end, so it neither
+re-pins nor starts `pinning`; a re-pin that lands in the same place reports
+nothing and stops; at the bottom the list is never far, so hiding the
+button there cannot hide one that should show.
+
+Independent review (before merge), applied: a re-pin with nothing to move
+(at the end on opening, or after a send's scroll) left `pinning` set, since
+no report came to clear it, and the next scroll with no phase away from the
+bottom (a key, likely a plain wheel) snapped back to the end; and `pinning`
+cleared 24 pt short of the end (`atBottom`). Now it starts only when not at
+the end, clears at the end, and clears when you take the list by hand.
+Rechecked with the same hook (window off every screen from its first
+frame): composer 0 blanks in 4 runs, search 0 in 60 checks over 3 runs,
+every open flush, and a scroll with no phase a screen up after opening
+stayed put in 3 of 3 runs (offset 5 176 to 4 676, unchanged 2 s later). Simplify: the change stays in `MessageList`'s existing re-pin
+rather than a second mechanism; dropped on the way, a scroll-phase re-pin
+that did not help. Security: layout state only, no input, storage, network
+or logging.
+
+No unit test: the rule lives in `PeelApp`, which has no test target.

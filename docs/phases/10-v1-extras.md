@@ -3,7 +3,7 @@
 ## Status (2026-10-08)
 
 **Added to v1 by Tom on 2026-10-08 (evening); reordered the same night.**
-Nothing is built. Markdown (item 2) is pulled forward: it comes after the
+Markdown (item 2) is built (2026-10-09); the rest is not. It was pulled forward: it comes after the
 cleanup and the polish pass, before the personal agent (phase 9), because
 agent replies are Markdown. The rest (search and ⌘K, voice, Giphy, and the
 payment templates of `04-money.md`, preferences sync and self-hosted
@@ -55,9 +55,9 @@ ahead of the rest of this phase.
 unordered lists, and `[text](url)` links. Inline code and fences are already
 built (#41).
 
-**Built today:** `MessageMarkup` (PeelCore) reads paragraphs, "- ", "• " and
+**Before:** `MessageMarkup` (PeelCore) read paragraphs, "- ", "• " and
 "* " items, fenced code, inline code, https links and mentions. Everything
-else shows as typed.
+else showed as typed.
 
 **The official Mac app** renders every text message through
 `Scenes/Dashboard/Workspaces/MarkdownRenderer.swift`. What it covers, and
@@ -66,10 +66,36 @@ how it differs from Peel's code rules, is recorded in `03-chat.md`
 code rules, and the new syntax extends `MessageMarkup`. That keeps the
 iPhone app and `Message.preview` (`MessageMarkup.plainText`) on one reader.
 
-**Open:** a `[text](url)` link hides its address, so the link's host
-should show on hover or beside the text. Only https stays clickable, as
-today. Task lists and horizontal rules are in the official renderer but
-not in Tom's list.
+**Done (branch `feat/markdown`, 2026-10-09).** `MessageMarkup` gained:
+- Blocks: `# ` to `###### ` headings, `>` quotes (lines in a row are one
+  quote), `1. ` / `1) ` numbered items (the number as typed). Lists stay one
+  level: an indented item is an item.
+- `inlines(_:)`: the spans plus emphasis, `**`/`__` bold, `*`/`_` italic,
+  `~~` strikethrough, nested in any order. Marks pair by CommonMark's
+  flanking rules ("a * b", "snake_case" and an unclosed "**" stay as
+  typed), each kind of mark on its own stack, so a message is read once
+  whatever it nests. Marks are never read inside a span: code shows as
+  typed.
+- `[text](url)` (`Span.Kind.namedLink`): opens only when the detector reads
+  the whole address as an https link, the same rule as a typed-out link;
+  `http:`, `javascript:`, `file:`, `user@host` and the rest stay as typed.
+  The text shows in the link colour with its host beside it, "docs
+  (github.com)", in the `xn--` form `linkLabel` uses and isolated left to
+  right so a direction override in the text cannot turn it around. A click
+  opens the web pane, as any link.
+- Emphasis marks at the end of a link or mention are not theirs:
+  `**https://a.co**` was the link "a.co**".
+- `plainText` (previews, notifications) drops every mark; a named link is
+  its text; a numbered item keeps its number.
+
+`MessageText` draws headings at 20/17/15 pt semibold, a quote behind a
+bar, numbered items like bullets; `LinkText` sets emphasis as
+presentation intents, so it scales with the heading's size. Tested in
+`MessageMarkupTests`; the long adversarial inputs of `AuditMarkupTests`
+cover emphasis, named links, quotes and headings.
+
+Not built, as typed: task lists, tables, horizontal rules, nested lists,
+backslash escapes, markup inside a named link's text.
 
 ## 3. Voice messages
 

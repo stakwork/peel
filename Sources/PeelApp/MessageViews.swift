@@ -1018,9 +1018,10 @@ private extension View {
     }
 }
 
-/// Message text as `MessageMarkup` reads it: links, mentions and inline
-/// code marked, list items with a hanging indent, ``` blocks as code. Its
-/// own view, so hovering the row does not redo the parsing.
+/// Message text as `MessageMarkup` reads it: links, mentions, inline code
+/// and emphasis marked, list items with a hanging indent, headings larger,
+/// quotes behind a bar, ``` blocks as code. Its own view, so hovering the
+/// row does not redo the parsing.
 struct MessageText: View {
     @Environment(AppModel.self) private var model
     let text: String
@@ -1041,6 +1042,24 @@ struct MessageText: View {
                         styled(line, myAliases)
                     }
                     .padding(.leading, 4)
+                case .numbered(let number, let line):
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(number).")
+                            .font(Theme.font(14))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.secondaryText)
+                        styled(line, myAliases)
+                    }
+                    .padding(.leading, 4)
+                case .heading(let level, let line):
+                    styled(line, myAliases, font: Theme.font(level == 1 ? 20 : level == 2 ? 17 : 15, .semibold))
+                        .padding(.top, 2)
+                case .quote(let line):
+                    styled(line, myAliases)
+                        .padding(.leading, 12)
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(Theme.secondaryText.opacity(0.4)).frame(width: 3)
+                        }
                 case .code(let code):
                     Text(code)
                         .font(Theme.code(13))
@@ -1057,9 +1076,9 @@ struct MessageText: View {
         }
     }
 
-    private func styled(_ line: String, _ myAliases: Set<String>) -> some View {
+    private func styled(_ line: String, _ myAliases: Set<String>, font: Font = Theme.font(14)) -> some View {
         Text(LinkText.attributed(line, myAliases: myAliases))
-            .font(Theme.font(14))
+            .font(font)
             .lineSpacing(3)
             .foregroundStyle(Theme.text)
             .textSelection(.enabled)

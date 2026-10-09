@@ -4,10 +4,10 @@
 # account's words in the data-protection Keychain (`keychain-access-groups`).
 # Usage: scripts/sign-app.sh path/to/Peel.app
 #
-# PEEL_SIGN_IDENTITY (a SHA-1 hash or a name) picks the identity; with exactly
-# one Apple Development identity present it is chosen by its hash. Without one
-# the script refuses: an ad-hoc app could not load its embedded frameworks
-# under library validation, nor use the Keychain.
+# The identity comes from scripts/signing-identity.sh: PEEL_SIGN_IDENTITY (a
+# SHA-1 hash or a name), else the one Apple Development identity. Without one
+# it refuses: an ad-hoc app could not load its embedded frameworks under
+# library validation, nor use the Keychain.
 #
 # The profile and entitlements come from scripts/provision, an empty app that
 # Xcode (signed in to the Apple ID under Settings > Accounts) builds with
@@ -22,22 +22,7 @@
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:?usage: sign-app.sh path/to/Peel.app}"
-IDENTITY="${PEEL_SIGN_IDENTITY:-}"
-if [ -z "$IDENTITY" ]; then
-  HASHES="$(security find-identity -v -p codesigning 2>/dev/null \
-    | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Apple Development: .*/\1/p')"
-  case "$(printf '%s\n' "$HASHES" | grep -c .)" in
-    0) IDENTITY="-" ;;
-    1) IDENTITY="$HASHES" ;;
-    *) echo "several Apple Development identities found; set PEEL_SIGN_IDENTITY to one of:" >&2
-       security find-identity -v -p codesigning >&2
-       exit 1 ;;
-  esac
-fi
-if [ "$IDENTITY" = "-" ]; then
-  echo "no Apple Development identity: the app's frameworks and Keychain need one; see AGENTS.md, Signing" >&2
-  exit 1
-fi
+IDENTITY="$("$ROOT/scripts/signing-identity.sh")"
 # Hardened runtime; no timestamp: the bundle is re-signed on every launch,
 # never distributed as is.
 sign() { codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$@"; }

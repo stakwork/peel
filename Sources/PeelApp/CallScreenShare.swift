@@ -45,6 +45,7 @@ final class ScreenShare {
     /// Shows macOS's sharing picker; nil when it was cancelled or could
     /// not open. Peel's own windows and apps are not offered.
     static func pick() async -> SCContentFilter? {
+        guard !Offscreen.refuses("the share picker") else { return nil }
         let shared = SCContentSharingPicker.shared
         var configuration = SCContentSharingPickerConfiguration()
         if let peel = Bundle.main.bundleIdentifier { configuration.excludedBundleIDs = [peel] }

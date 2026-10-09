@@ -34,6 +34,9 @@ stands.
 3. **UI.** `PeelApp` has no test target. Agents cannot click the app
    (synthetic events do not reach a background app, and the terminal has no
    Accessibility permission), so every click-through so far was Tom's.
+   Since 2026-10-09 agents drive it offscreen instead, with events posted
+   into Peel's own queue and snapshots drawn from its own windows
+   (`scripts/check-app.sh`, AGENTS.md "Checking the app").
 
 ## Plan
 

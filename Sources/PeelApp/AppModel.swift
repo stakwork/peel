@@ -60,10 +60,13 @@ final class AppModel {
                 }
                 observeMessages()
                 if openThread?.chat != selectedChat { openThread = nil }
+                if search?.chat != selectedChat { search = nil }
             }
             markSelectedChatRead()
         }
     }
+    /// The search open in the chat, if any (`ChatSearch.swift`).
+    var search: ChatSearch?
     /// The thread open in the side panel, and what it holds.
     var openThread: ThreadRef? {
         didSet { if openThread != oldValue { observeThread() } }

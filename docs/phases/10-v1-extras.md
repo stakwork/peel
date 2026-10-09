@@ -3,7 +3,9 @@
 ## Status (2026-10-08)
 
 **Added to v1 by Tom on 2026-10-08 (evening); reordered the same night.**
-Markdown (item 2) is built (2026-10-09); the rest is not. It was pulled forward: it comes after the
+Markdown (item 2) is built (2026-10-09), and search in a chat (item 1,
+first half) the same day, pulled ahead of the agent by the parity sweep;
+the rest is not. It was pulled forward: it comes after the
 cleanup and the polish pass, before the personal agent (phase 9), because
 agent replies are Markdown. The rest (search and ⌘K, voice, Giphy, and the
 payment templates of `04-money.md`, preferences sync and self-hosted
@@ -45,6 +47,61 @@ An engine operation should do the search so that the CLI and an agent host
 get it too. Open: whether to use SQLite FTS5 or `LIKE`; how to rank
 results; whether text inside code and quotes counts; what ⌘K offers besides
 search (actions such as "Start call" or "Pay invoice").
+
+**Search in a chat: done (branch `feat/chat-search`, 2026-10-09).** Tom
+approved the in-chat half before the agent; ⌘K stays for after it.
+- Storage (v19): `messageText`, an FTS5 table over `message.content` with
+  the `trigram` tokenizer, so any part of a word matches, ignoring case.
+  The migration reads the SQLite library's version: from 3.45 the index
+  also ignores accents (`remove_diacritics 1`; "cafe" finds "café"), and
+  from 3.44 it deletes for good (`secure-delete`), so a message deleted for
+  everyone leaves no trace of its text in the index's pages. macOS 26 has
+  3.51; an older library gets the plain index (macOS 15 may ship 3.43,
+  without either). External content: the text stays in `message`, and
+  triggers on insert, update (of type or content, when either changed) and
+  delete keep the index in step. Only text and attachment captions (types
+  0 and 6) are indexed; the migration back-fills the rows stored before.
+  Payment notes, requests and call links are not searched, as in the
+  official app. A database with this index cannot be written by an older
+  SQLite without the option (Python's 3.42, say).
+- `MessageQuery` reads what is typed: words match on their own, in any
+  order, and all must; text in double quotes is one phrase (an unclosed
+  quote runs to the end); `from:ann` or `from:"ann lee"` keeps messages
+  whose sender's name, as it came with the message, contains it (case
+  aside), with words or alone. Words and phrases under three characters
+  are left out (the trigram index finds nothing shorter; "3 or more
+  characters" when nothing is left). NULs are dropped (FTS5 ends a query
+  string at one).
+- `Storage.searchMessages(_:in:limit:)`: messages, newest first, in one
+  chat or (with nil, for ⌘K later) every chat; not deleted, with words.
+  The only FTS5 syntax is Peel's own: each term one quoted string, quotes
+  doubled, joined by AND, bound as a parameter; the `from:` name is a
+  bound LIKE pattern with `%`, `_` and `\` escaped. At most 1,000 matches
+  ("1,000+"). Nothing leaves the Mac. A term in every message of a
+  250,000-message database (50,000 in the chat) takes about 0.25 s, off
+  the main actor; a rarer one a few milliseconds.
+- App (`ChatSearch.swift`): ⌘F, or the magnifying glass left of Call in
+  both chat headers, opens a bar under the header: the field, "3 of 12",
+  older (↑, Return) and newer (↓, Shift-Return), close (Escape, or the
+  button again). Under it, the matches as Slack lists them: avatar, name,
+  a line around the first match with the words lit, a thread mark, and
+  the time; five and a half rows tall, scrolling, the shown one selected
+  and kept in view as the arrows step; a click goes to it. Typing
+  searches after 200 ms and goes to the newest match. Each step goes
+  through `focus(on:inThread:)`, the jump quotes and notifications use: the
+  timeline grows to reach an old message, and a message inside a thread
+  opens its thread panel there, the cursor staying in the search. The
+  words are lit (`Theme.searchMatch`) in the chat's rendered text, threads
+  and code blocks too, ignoring case and accents as the index does; the
+  step's row flashes as a jump does. Changing chats closes the search.
+- Rendered on a new development account seeded with local rows (dark
+  and light; the bar, the list, a thread match, `from:`, an accent).
+- Not built: results refreshing while new messages arrive (search again by
+  typing), a search in the thread panel alone, the CLI command, `from:me`
+  for your own messages in a DM. The words are lit in every message shown,
+  matched or not (a message with only one of two words lights it). Lit in
+  rendered text, so a search for Markdown marks (`**bold**`) finds the
+  message but lights nothing.
 
 ## 2. Markdown
 

@@ -152,6 +152,7 @@ struct DirectHeader: View {
                 ConversationIcon(conversation: conversation, size: 32)
             } trailing: {
                 HStack(spacing: 4) {
+                    SearchHeaderButton(chat: conversation.chat)
                     CallHeaderButton(chat: conversation.chat)
                     HeaderMoreButton(chat: conversation.chat, details: { showingInfo = true }) {
                         .sections(

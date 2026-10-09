@@ -98,6 +98,9 @@ private struct ChatColumn: View {
                 DirectHeader(conversation: conversation)
                     .id(conversation.chat)
             }
+            if let search = model.search, search.chat == conversation.chat {
+                ChatSearchBar(search: search, placeholder: "Search in \(conversation.title)")
+            }
             MessageList(rows: model.chatRows, composer: composer, canAnswer: tribe?.canManage == true)
             // A fresh scroll view per chat: reusing one across chats left the
             // lazy stack blank at the bottom anchor until it was scrolled.
@@ -206,6 +209,7 @@ struct TribeHeader: View {
             ConversationIcon(conversation: conversation, size: 32)
         } trailing: {
             HStack(spacing: 4) {
+                SearchHeaderButton(chat: conversation.chat)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }

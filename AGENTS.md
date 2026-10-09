@@ -181,6 +181,8 @@ is a short plan. Update the status and the journal when you finish something.
   `FormButtonStyle`, `FormDestructiveSection`, `FieldChrome`,
   `endsEditingOnClick` and `InlineConfirm`, the one in-place confirm, over
   the form tokens in `Theme`; used by every form, see `docs/design/README.md`, "Forms");
+  `PictureField` (a picture picked or dropped, uploaded, never typed: the
+  Account's photo, a tribe's image);
   `TimeZoneViews` (the run header's "14:05 local", the DM header's local
   time, the hover card, a chat's details panel with the time zone switch);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's

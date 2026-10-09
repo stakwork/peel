@@ -75,108 +75,30 @@ struct AccountView: View {
 
 // MARK: - Identity
 
-/// Photo, name and key, with the photo editor below when open.
+/// Photo, name and key. A photo is chosen or dropped, uploaded at once,
+/// and removed after a second click; its link is never shown.
 private struct IdentitySection: View {
     @Environment(AppModel.self) private var model
-    @State private var editing = false
-    @State private var link = ""
-    /// The change on its way, so its own button shows the progress.
-    @State private var working: Action?
-    @State private var problem: String?
-
-    private enum Action { case upload, remove, save }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 20) {
-                Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 88, hue: model.myHue)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.me.name)
-                        .font(Theme.font(24, .bold))
-                        .lineLimit(1)
-                    if let key = model.myPubkey {
-                        Text(Formatting.shortKey(key))
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(Theme.secondaryText)
-                            .help(key)
-                    }
-                }
-                Spacer(minLength: 12)
-                if !editing {
-                    Button(model.myPhotoURL == nil ? "Add photo" : "Change photo") {
-                        link = model.myPhotoURL ?? ""
-                        problem = nil
-                        editing = true
-                    }
-                    .buttonStyle(FormButtonStyle())
+        PictureField(
+            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 88, hue: model.myHue),
+            upload: { try await model.uploadPhoto($0) },
+            remove: model.myPhotoURL == nil ? nil : .confirmed("Remove photo") { try await model.removePhoto() }
+        ) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.me.name)
+                    .font(Theme.font(24, .bold))
+                    .lineLimit(1)
+                if let key = model.myPubkey {
+                    Text(Formatting.shortKey(key))
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(Theme.secondaryText)
+                        .help(key)
                 }
             }
-            if editing {
-                VStack(alignment: .leading, spacing: 10) {
-                    Group {
-                        HStack(spacing: 10) {
-                            Button { Task { await upload() } } label: {
-                                Text("Choose a picture…").buttonProgress(working == .upload)
-                            }
-                            .buttonStyle(FormButtonStyle())
-                            Text("or paste a link")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                        FormItem(label: "Image link", helper: "Shown beside the messages you send from now on.") {
-                            FormTextField(label: "Image link", prompt: "Link to an image (https)", text: $link)
-                                .onSubmit { if !link.trimmed.isEmpty { Task { await save(link) } } }
-                        }
-                    }
-                    .disabled(working != nil)
-                    FormFooter(problem: problem) {
-                        Group {
-                            if model.myPhotoURL != nil {
-                                Button { Task { await save("", as: .remove) } } label: {
-                                    Text("Remove photo").buttonProgress(working == .remove)
-                                }
-                                .buttonStyle(FormButtonStyle())
-                            }
-                            Button("Cancel") { editing = false }
-                                .buttonStyle(FormButtonStyle())
-                        }
-                        .disabled(working != nil)
-                        Button { Task { await save(link) } } label: { Text("Save").buttonProgress(working == .save) }
-                            .buttonStyle(FormButtonStyle(kind: .primary))
-                            .keyboardShortcut(.defaultAction)
-                            // On while it saves, keeping its fill under the
-                            // spinner; `save` ignores a second click.
-                            .disabled(link.trimmed.isEmpty || working == .upload || working == .remove)
-                    }
-                }
-                .padding(14)
-                .formCard()
-            }
-        }
-    }
-
-    /// A picture from this Mac, uploaded to the memes server as the Mac app does.
-    private func upload() async {
-        guard working == nil, let file = model.choosePicture() else { return }
-        working = .upload
-        defer { working = nil }
-        do {
-            try await model.uploadPhoto(file)
-            editing = false
-        } catch {
-            problem = "Could not upload the picture: \(PeelError.readable(error))"
-        }
-    }
-
-    private func save(_ url: String, as action: Action = .save) async {
-        guard working == nil else { return }
-        working = action
-        defer { working = nil }
-        do {
-            try await model.setPhotoURL(url)
-            editing = false
-        } catch {
-            problem = PeelError.readable(error)
+            .padding(.leading, 8)
+            Spacer(minLength: 12)
         }
     }
 }

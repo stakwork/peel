@@ -2,8 +2,9 @@
 
 ## Status (2026-10-08)
 
-**Built:** the Account screen (#10): name, photo by link (upload from this
-Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
+**Built:** the Account screen (#10): name, photo (upload from this Mac
+came with #13; since 2026-10-09 picked, never typed as a link), contact QR,
+twelve words, PIN, forget. See "Account screen" below.
 The web pane (#73): links and a tribe's apps
 open beside the chat. See "Web window" below.
 
@@ -393,6 +394,16 @@ canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
   call; nothing fakes an upload today. Shown through the shared
   `Avatar`/`PhotoCache` in the screen, the sidebar footer and the tribe
   member list.
+- **Pictures are picked, never typed** (2026-10-09, Tom: "Nobody should see
+  the URL. It's not a user-facing thing."). The Account's photo and a
+  tribe's image are a `PictureField`: the picture, Choose picture… (or a
+  picture dropped on it) and Remove. The photo uploads at once and Remove
+  asks again in place; a tribe's image uploads on choosing and goes out
+  with Save. Both use the Mac app's `uploadPublicImage` route
+  (`Engine.uploadPicture`, `/public` on the account's memes server, JPEG
+  at most 1024 px). The link stays the stored value and the wire format;
+  the CLI still takes one (`--image`). An account with no memes server (a
+  local test server with none named) cannot set a picture in the app.
 - **Restore recovers the photo.** The official app keeps the account's own
   photo only in its local owner record (`UserContact.avatarUrl`; Data Sync
   carries tip amount, private photo and PIN timeout, not the photo). During

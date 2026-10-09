@@ -63,7 +63,7 @@ messages, payments and boosts are separate tasks and not listed.
 | Copy link | Share | — | Done (no QR) |
 | Create: name, description, image URL, price to join, price per message, escrow amount and time, private, unlisted | CreateTribeViewModel, `getNewGroupParams` | `create_tribe` (msat, millis) | Done: engine, CLI, app form |
 | Create: tags, app URL, feed URL and type, second brain URL | same form | `create_tribe` | Open (kept untouched on edit) |
-| Image upload (rather than a URL) | `uploadPublicImage` | memes server | Open (attachments task) |
+| Image upload (rather than a URL) | `uploadPublicImage` | memes server | Done: app form picks a picture (`PictureField`); the CLI keeps `--image` |
 | Edit | `updateTribe` (whole record) | `update_tribe` | Done: whole registry record sent back, edited fields laid over it |
 | Delete (owner) | sends 22, then `deleteTribe` | `delete_tribe` (server sends 22) | Done: command only, see "Decided" |
 | Owner cannot leave, only delete | `exitAndDeleteGroup` | — | Done |

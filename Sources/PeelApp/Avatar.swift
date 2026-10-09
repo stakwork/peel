@@ -26,7 +26,9 @@ struct TribeIcon: View {
     let pubkey: String
     let size: CGFloat
 
-    var body: some View {
+    var body: some View { avatar }
+
+    var avatar: Avatar {
         Avatar(name: name, url: url, size: size, hue: PersonHue(pubkey: pubkey, alias: nil, inTribe: false),
                shape: .roundedSquare)
     }
@@ -84,7 +86,12 @@ struct Avatar: View {
             if let photo, let image = await ImageCache.photos.image(photo: photo) { loaded = (photo, image) }
         }
         .frame(width: size, height: size)
-        .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25)))
+        .clipShape(outline)
+    }
+
+    /// Its shape at its size, for what is drawn over it.
+    var outline: AnyShape {
+        shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25))
     }
 }
 

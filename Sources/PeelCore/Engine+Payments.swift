@@ -172,6 +172,13 @@ extension Engine {
         try await fetchPaymentPage(before: before).count
     }
 
+    /// Fetches the page of the server's history older than what is stored.
+    /// Returns how many rows came: fewer than a page means the end.
+    @discardableResult
+    public func fetchOlderPaymentHistory() async throws -> Int {
+        try await fetchPaymentHistory(before: storage.oldestPaymentTimestamp())
+    }
+
     /// Fetches what is new since the history was last fetched: the newest
     /// page, and older ones until they reach what is stored, so a busy spell
     /// leaves no gap that paging back would skip. At most 20 pages a time.

@@ -50,4 +50,32 @@ struct SatsTests {
         #expect(throws: PeelError.self) { try Sats.parse("1e3", unit: 1000, of: "price") }
         #expect(throws: PeelError.self) { try Sats.parse("99999999999999999", unit: 1000, of: "price") }
     }
+
+    /// Every amount field and CLI amount: whole sats above zero, commas and
+    /// surrounding spaces allowed, nothing that would overflow in msat.
+    @Test func typedSatsAreWholeAndAboveZero() {
+        #expect(Sats.msat("21") == 21_000)
+        #expect(Sats.msat("1,000") == 1_000_000)
+        #expect(Sats.msat("  500 ") == 500_000)
+        #expect(Sats.msat("18446744073709551") == 18_446_744_073_709_551_000)
+        #expect(Sats.msat("18446744073709552") == nil)
+        #expect(Sats.msat(String(UInt64.max)) == nil)
+        for refused in ["", " ", "0", "0,000", "-5", "1.5", "1e3", "abc", "1 000", "\t5\n"] {
+            #expect(Sats.msat(refused) == nil, "\(refused)")
+        }
+    }
+
+    /// What a form shows for a stored amount, read back by `parse` as the same amount.
+    @Test func storedAmountsShowAsParseReadsThem() throws {
+        #expect(Sats.text(0, unit: Sats.msatPerSat) == "")
+        #expect(Sats.text(3_000, unit: Sats.msatPerSat) == "3")
+        #expect(Sats.text(1_500, unit: Sats.msatPerSat) == "1.5")
+        #expect(Sats.text(1_234_567_000, unit: Sats.msatPerSat) == "1234567")
+        #expect(Sats.text(1_800_000, unit: Sats.millisecondsPerHour) == "0.5")
+        // 20 minutes is a third of an hour: shown rounded, so not read back exactly.
+        #expect(Sats.text(1_200_000, unit: Sats.millisecondsPerHour) == "0.333333")
+        for msat: UInt64 in [1, 999, 1_000, 21_500, 1_234_567_000] {
+            #expect(try Sats.parse(Sats.text(msat, unit: Sats.msatPerSat), unit: Sats.msatPerSat, of: "price") == msat)
+        }
+    }
 }

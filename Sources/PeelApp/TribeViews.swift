@@ -145,24 +145,16 @@ struct TribeSettingsForm: View {
             name = settings.name
             summary = settings.summary ?? ""
             photoURL = settings.photoURL ?? ""
-            priceToJoin = Self.text(settings.priceToJoinMsat, unit: 1000)
-            pricePerMessage = Self.text(settings.pricePerMessageMsat, unit: 1000)
-            escrow = Self.text(settings.escrowMsat, unit: 1000)
-            escrowHours = Self.text(settings.escrowMillis, unit: 3_600_000)
+            priceToJoin = Sats.text(settings.priceToJoinMsat, unit: Sats.msatPerSat)
+            pricePerMessage = Sats.text(settings.pricePerMessageMsat, unit: Sats.msatPerSat)
+            escrow = Sats.text(settings.escrowMsat, unit: Sats.msatPerSat)
+            escrowHours = Sats.text(settings.escrowMillis, unit: Sats.millisecondsPerHour)
             isPrivate = settings.isPrivate
             unlisted = settings.unlisted
             original = settings
         } catch {
             problem = "Could not load the tribe: \(PeelError.readable(error))"
         }
-    }
-
-    /// An amount in the unit people type, blank for zero as the Mac app shows them.
-    private static func text(_ value: UInt64, unit: UInt64) -> String {
-        // A point for the decimals whatever the locale, as `Sats.parse` reads them.
-        value == 0 ? "" : (Decimal(value) / Decimal(unit)).formatted(
-            .number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.fractionLength(0...6))
-        )
     }
 
     private func settings() throws -> TribeSettings {
@@ -172,7 +164,7 @@ struct TribeSettingsForm: View {
         func value(
             _ text: String, unit: UInt64, _ stored: KeyPath<TribeSettings, UInt64>, _ field: Field
         ) throws -> UInt64 {
-            if let original, text == Self.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
+            if let original, text == Sats.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
             do {
                 return try Sats.parse(text, unit: unit, of: field.rawValue)
             } catch {
@@ -181,10 +173,10 @@ struct TribeSettingsForm: View {
         }
         return TribeSettings(
             name: name, summary: summary, photoURL: photoURL,
-            pricePerMessageMsat: try value(pricePerMessage, unit: 1000, \.pricePerMessageMsat, .pricePerMessage),
-            priceToJoinMsat: try value(priceToJoin, unit: 1000, \.priceToJoinMsat, .priceToJoin),
-            escrowMsat: try value(escrow, unit: 1000, \.escrowMsat, .escrow),
-            escrowMillis: try value(escrowHours, unit: 3_600_000, \.escrowMillis, .escrowHours),
+            pricePerMessageMsat: try value(pricePerMessage, unit: Sats.msatPerSat, \.pricePerMessageMsat, .pricePerMessage),
+            priceToJoinMsat: try value(priceToJoin, unit: Sats.msatPerSat, \.priceToJoinMsat, .priceToJoin),
+            escrowMsat: try value(escrow, unit: Sats.msatPerSat, \.escrowMsat, .escrow),
+            escrowMillis: try value(escrowHours, unit: Sats.millisecondsPerHour, \.escrowMillis, .escrowHours),
             isPrivate: isPrivate, unlisted: unlisted
         )
     }

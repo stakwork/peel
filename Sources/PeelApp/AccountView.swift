@@ -1,5 +1,3 @@
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 import PeelCore
 
@@ -93,7 +91,7 @@ private struct IdentitySection: View {
                         .font(Theme.font(24, .bold))
                         .lineLimit(1)
                     if let key = model.myPubkey {
-                        Text("\(key.prefix(6))…\(key.suffix(4))")
+                        Text(Formatting.shortKey(key))
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundStyle(Theme.secondaryText)
                             .help(key)
@@ -207,42 +205,6 @@ private struct ContactInfoSection: View {
         }
         .padding(16)
         .formCard()
-    }
-}
-
-/// A QR code on white, 132 pt; faint and empty while `text` is nil.
-struct QRCodeTile: View {
-    let text: String?
-    let label: String
-    @State private var code: CGImage?
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8).fill(.white)
-            if let code, text != nil {
-                Image(decorative: code, scale: 1)
-                    .interpolation(.none)
-                    .resizable()
-                    .padding(8)
-            }
-        }
-        .frame(width: 132, height: 132)
-        .opacity(text == nil ? 0.3 : 1)
-        .accessibilityLabel(label)
-        .task(id: text) { code = text.flatMap(QRCode.image) }
-    }
-}
-
-enum QRCode {
-    private static let context = CIContext()
-
-    /// One module per pixel; draw it with `.interpolation(.none)`.
-    static func image(_ text: String) -> CGImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage else { return nil }
-        return context.createCGImage(output, from: output.extent)
     }
 }
 
@@ -409,7 +371,7 @@ private struct PINTimeoutRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 PeelDropdown(
                     selection: model.pinTimeoutHours,
-                    options: (Self.choices + (Self.choices.contains(model.pinTimeoutHours) ? [] : [model.pinTimeoutHours]))
+                    options: presets(Self.choices, including: model.pinTimeoutHours)
                         .map { ($0, Self.label($0)) }
                 ) { hours in
                     Task {

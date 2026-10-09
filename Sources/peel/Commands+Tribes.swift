@@ -133,10 +133,10 @@ struct TribeOptions {
         func option(_ name: String, unit: UInt64, of what: String) throws -> UInt64? {
             try arguments.option(name).map { try Sats.parse($0, unit: unit, of: what) }
         }
-        pricePerMessage = try option("--price-per-message", unit: 1000, of: "price per message")
-        priceToJoin = try option("--price-to-join", unit: 1000, of: "price to join")
-        escrow = try option("--escrow", unit: 1000, of: "escrow")
-        escrowMillis = try option("--escrow-hours", unit: 3_600_000, of: "escrow time")
+        pricePerMessage = try option("--price-per-message", unit: Sats.msatPerSat, of: "price per message")
+        priceToJoin = try option("--price-to-join", unit: Sats.msatPerSat, of: "price to join")
+        escrow = try option("--escrow", unit: Sats.msatPerSat, of: "escrow")
+        escrowMillis = try option("--escrow-hours", unit: Sats.millisecondsPerHour, of: "escrow time")
         isPrivate = try arguments.option("--private").map(yesNo)
         unlisted = try arguments.option("--unlisted").map(yesNo)
     }

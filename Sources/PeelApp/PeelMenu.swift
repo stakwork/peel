@@ -155,6 +155,18 @@ extension View {
     func peelPopover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
         modifier(PopoverModifier(isPresented: isPresented, content: content))
     }
+
+    /// Keeps this view's frame in `anchor`, for the menu or panel it opens.
+    func menuAnchor(_ anchor: MenuAnchor) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { anchor.rect = $0 }
+    }
+}
+
+/// Where a view that opens a menu is, in the window. Not state: it moves
+/// with every scroll and only a click or hover reads it, so keeping it
+/// redraws nothing. Hold one in `@State` and pass it to `.menuAnchor`.
+final class MenuAnchor {
+    var rect: CGRect = .zero
 }
 
 private struct MenuHost: ViewModifier {
@@ -208,16 +220,14 @@ private struct HoverCardModifier<Card: View>: ViewModifier {
     let source: AnyHashable
     let card: () -> Card
 
-    /// Not state: it moves with every scroll, and only a hover reads it.
-    final class Frame { var rect: CGRect = .zero }
-    @State private var frame = Frame()
+    @State private var anchor = MenuAnchor()
 
     func body(content view: Content) -> some View {
         view
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame.rect = $0 }
+            .menuAnchor(anchor)
             .onHover { over in
                 let card = card
-                presenter?.hoverCard(source, over: over, at: frame.rect) { AnyView(card()) }
+                presenter?.hoverCard(source, over: over, at: anchor.rect) { AnyView(card()) }
             }
             .onDisappear { presenter?.triggerGone(source) }
     }
@@ -228,16 +238,16 @@ private struct PopoverModifier<Panel: View>: ViewModifier {
     @Binding var isPresented: Bool
     let content: () -> Panel
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
     @State private var id = UUID()
 
     func body(content view: Content) -> some View {
         view
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            .menuAnchor(anchor)
             .onChange(of: isPresented) { _, shown in
                 if shown {
                     let binding = $isPresented
-                    presenter?.showPanel(AnyView(content()), at: frame, id: id) { binding.wrappedValue = false }
+                    presenter?.showPanel(AnyView(content()), at: anchor.rect, id: id) { binding.wrappedValue = false }
                 } else {
                     presenter?.dismissPanel(id: id)
                 }

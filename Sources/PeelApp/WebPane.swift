@@ -571,16 +571,8 @@ private struct AddressField: View {
         .modifier(FieldChrome(focused: focused, hovering: hovering))
         .onHover { hovering = $0 }
         .help(page.url?.absoluteString ?? "")
-        .background {
-            // ⌘W in the field closes the pane, as from the page.
-            if focused {
-                Button("Close") { pane.close() }
-                    .keyboardShortcut("w", modifiers: .command)
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-            }
-        }
+        // ⌘W in the field closes the pane, as from the page.
+        .hiddenShortcut(KeyboardShortcut("w", modifiers: .command), enabled: focused) { pane.close() }
         .onChange(of: focused) { _, now in
             guard now else { return draft = "" }
             draft = pane.page.url?.absoluteString ?? ""
@@ -654,19 +646,13 @@ private struct AddressText: View {
 /// ⋮: Copy link and Open in default browser for the page, and Clear
 /// website data (asked once more in place).
 private struct MoreMenu: View {
-    @Environment(\.menuPresenter) private var presenter
     let pane: WebPane
     let url: URL?
 
-    @State private var frame: CGRect = .zero
-
     var body: some View {
-        HoverIconButton(help: "More") {
-            presenter?.show(entries(), at: frame, source: "web-more")
-        } label: {
+        MenuButton(help: "More", source: "web-more", entries: entries) {
             Image(systemName: "ellipsis").rotationEffect(.degrees(90))
         }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
     }
 
     private func entries() -> [MenuEntry] {

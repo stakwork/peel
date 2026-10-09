@@ -1,20 +1,28 @@
 import SwiftUI
 
 /// An icon button that opens a menu below it, such as a message's More.
-struct MenuButton: View {
+struct MenuButton<Label: View>: View {
     @Environment(\.menuPresenter) private var presenter
-    let systemImage: String
     let help: String
     var source: AnyHashable?
     let entries: @MainActor () -> [MenuEntry]
+    @ViewBuilder let label: () -> Label
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
 
     var body: some View {
-        HoverIconButton(systemImage: systemImage, help: help) {
-            presenter?.show(entries(), at: frame, source: source)
+        HoverIconButton(help: help) {
+            presenter?.show(entries(), at: anchor.rect, source: source)
+        } label: {
+            label()
         }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .menuAnchor(anchor)
+    }
+}
+
+extension MenuButton where Label == Image {
+    init(systemImage: String, help: String, source: AnyHashable? = nil, entries: @escaping @MainActor () -> [MenuEntry]) {
+        self.init(help: help, source: source, entries: entries) { Image(systemName: systemImage) }
     }
 }
 
@@ -57,7 +65,7 @@ struct PeelDropdown<Value: Hashable>: View {
     let options: [(value: Value, label: String)]
     let choose: @MainActor (Value) -> Void
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
     @State private var hovering = false
 
     var body: some View {
@@ -66,7 +74,7 @@ struct PeelDropdown<Value: Hashable>: View {
                 options.map { option in
                     .button(option.label, checked: option.value == selection) { choose(option.value) }
                 },
-                at: frame, minWidth: frame.width, highlightChecked: true
+                at: anchor.rect, minWidth: anchor.rect.width, highlightChecked: true
             )
         } label: {
             HStack(spacing: 8) {
@@ -81,7 +89,43 @@ struct PeelDropdown<Value: Hashable>: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .menuAnchor(anchor)
+    }
+}
+
+/// A text link inside a pane or note: Show in Finder, Make a new one.
+struct LinkButton: View {
+    let title: String
+    let font: Font
+    let action: () -> Void
+
+    init(_ title: String, font: Font = Theme.font(13), action: @escaping () -> Void) {
+        self.title = title
+        self.font = font
+        self.action = action
+    }
+
+    var body: some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(font)
+            .foregroundStyle(Theme.link)
+    }
+}
+
+extension View {
+    /// A keyboard shortcut with no button to show: `action` runs on
+    /// `shortcut` while this view is on screen and `enabled` holds.
+    func hiddenShortcut(_ shortcut: KeyboardShortcut, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        background {
+            if enabled {
+                Button("", action: action)
+                    .keyboardShortcut(shortcut)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 

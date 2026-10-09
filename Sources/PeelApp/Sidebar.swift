@@ -70,13 +70,13 @@ struct SidebarHeader: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
 
-    @State private var frame: CGRect = .zero
+    @State private var anchor = MenuAnchor()
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                presenter?.show(entries, at: frame, source: "you")
+                presenter?.show(entries, at: anchor.rect, source: "you")
             } label: {
                 HStack(spacing: 9) {
                     Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 30, hue: model.myHue)
@@ -101,7 +101,7 @@ struct SidebarHeader: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            .menuAnchor(anchor)
             .help("You")
             ConnectionBolt()
         }

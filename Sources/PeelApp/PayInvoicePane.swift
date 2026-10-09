@@ -174,7 +174,7 @@ struct PayInvoicePane: View {
             (title, detail) = ("This invoice cannot be paid now", problem.description)
         }
         return AttentionNote(title: title, detail: detail) {
-            if let link { PaneLink(title: link.0, action: link.1) }
+            if let link { LinkButton(link.0, action: link.1) }
         }
     }
 
@@ -192,7 +192,7 @@ struct PayInvoicePane: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
                 HStack {
-                    if let item { PaneLink(title: "Show the payment") { show(item.id) } }
+                    if let item { LinkButton("Show the payment") { show(item.id) } }
                     Spacer()
                     Button("Done", action: close).buttonStyle(FormButtonStyle())
                 }

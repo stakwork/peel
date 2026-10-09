@@ -607,15 +607,9 @@ private struct JumpToNewestButton: View {
         .buttonStyle(.plain)
         .help("Jump to newest (End)")
         .accessibilityLabel(count > 0 ? "Jump to newest, \(newMessages)" : "Jump to newest")
-        .background {
-            // Shortcuts, only while the button shows.
-            if shortcuts {
-                ForEach([KeyboardShortcut(.end, modifiers: []), KeyboardShortcut(.downArrow, modifiers: .command)],
-                        id: \.key) { shortcut in
-                    Button("", action: action).keyboardShortcut(shortcut).opacity(0).frame(width: 0, height: 0)
-                }
-            }
-        }
+        // Shortcuts, only while the button shows.
+        .hiddenShortcut(KeyboardShortcut(.end, modifiers: []), enabled: shortcuts, action: action)
+        .hiddenShortcut(KeyboardShortcut(.downArrow, modifiers: .command), enabled: shortcuts, action: action)
     }
 }
 

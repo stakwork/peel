@@ -128,19 +128,6 @@ extension AttentionNote where Actions == EmptyView {
     }
 }
 
-/// A text link inside a pane or note.
-struct PaneLink: View {
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(Theme.font(13))
-            .foregroundStyle(Theme.link)
-    }
-}
-
 /// Its content, told whether the invoice has expired, and drawn again the
 /// moment it does, so Pay goes then rather than at the next redraw.
 struct UntilExpiry<Content: View>: View {

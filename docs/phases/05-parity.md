@@ -4,10 +4,10 @@
 
 **Built:** the Account screen (#10): name, photo by link (upload from this
 Mac came with #13), contact QR, twelve words, PIN, forget. See "Account screen" below.
-The web pane (branch `feat/web-pane`, in review): links and a tribe's apps
+The web pane (#73): links and a tribe's apps
 open beside the chat. See "Web window" below.
 
-**Built (2026-10-08, `feat/contacts`):** contacts: adding by a scanned QR
+**Built (2026-10-08, #75):** contacts: adding by a scanned QR
 picture or pasted code, invites with sats, new contacts who added you. See
 "Contacts" below.
 

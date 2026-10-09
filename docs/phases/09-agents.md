@@ -272,7 +272,7 @@ on the local stack, never `run-app.sh`.
 11. **Threads in DMs.** The tribe thread rule in 1:1 chats: a thread of
     two or more collapses into its thread row, and the thread panel opens
     from it. The rows builder's `inTribe` rule in `MessageViews.swift` and
-    the thread list in `ChatModel.swift`. Peel already stores `threadUuid`
+    the thread handling in `AppModel+Chat.swift`. Peel already stores `threadUuid`
     in DMs. Verify: a DM thread from the CLI collapses and opens in the
     panel; the official app still shows the replies inline. A day.
 12. **The agent contact.** A `kind` on PeelCore's `contact` (person, your

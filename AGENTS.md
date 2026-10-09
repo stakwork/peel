@@ -66,6 +66,15 @@ is a short plan. Update the status and the journal when you finish something.
     mutes, send status, invoices, uploads, contacts and tribes
   - `Storage+Migrations.swift` — the schema migrations: append-only, never edit a
     shipped one, literal values only (no live `MessageType` or `Tribe.Status`)
+  - `Message.swift` — `Message` (one stored message, the core's sender and
+    body JSON kept whole), `MessageType` and the fields read from a body
+  - `Invoice.swift` — `Invoice` (an invoice as the core reads it) and the
+    money tables' records, `InvoiceRecord` and `PaymentRecord`
+  - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
+    `PurchaseState` and the Storage reads that join the money tables
+  - `Sats.swift` — amounts as people see and type them (display and input
+    only; money is kept in msat)
+  - `PeelError.swift` — `PeelError`, a failure worded for the person
   - `Tribe.swift` — tribe records, tribe links, the tribes server's registry
   - `NotificationPolicy.swift` — what notifies (messages, payment
     requests, announced calls, join requests to owned tribes) and the one
@@ -145,7 +154,9 @@ is a short plan. Update the status and the journal when you finish something.
   (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `ThreadViews`, `AttachmentViews`, `ComposerView`,
+  for the chat: `MessageViews`, `ThreadViews`, `AttachmentViews`,
+  `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
+  `ComposerField` (the message field: Return sends, `@` mentions),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
@@ -190,7 +201,26 @@ is a short plan. Update the status and the journal when you finish something.
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
-- `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below)
+- `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
+  a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
+  `ReadMarkerTests`, `RowIdTests`, `ThreadTests`, `MessageTests`,
+  `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
+  `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`,
+  `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
+  `MoneyRefusalTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
+  `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
+  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`,
+  `ServerAddressTests`, `WebTests`, `WebPageTests`; the audits'
+  `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
+  `AuditSecretsTests`; `TestSupport` (shared fixtures)
+- `Tests/PeelIntegrationTests/` — journeys through the real core against the
+  local stack (opt-in, see Tests below): `Stack` (finds or starts
+  `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
+  come from), `Journeys` (runs them one at a time) and the journeys by area,
+  `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
+  `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`
+- `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
+  stack the integration journeys use, on random ports
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
   `sphinx-mac-v2` checkouts
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle

@@ -1,13 +1,15 @@
 # Testing plan
 
-Status (2026-10-08): part 1 (integration journeys) built, see "Integration
-journeys: built" below; part 2 (click-through) not started. Tom: "do we
-have any proper tests? … encryption, payments, etc. Integration and user journey click
-through tests for real."
+Status (2026-10-09): part 1, the integration journeys, is built and
+merged (#91), see "Integration journeys: built" below. Part 2, the
+click-through tests (XCUITest), and an audit of the unit tests were
+stopped by Tom: "be really pragmatic". Tom's
+original ask: "do we have any proper tests? … encryption, payments, etc.
+Integration and user journey click through tests for real."
 
 ## What exists
 
-About 350 tests in `Tests/PeelCoreTests`, run by `swift test`. They test
+About 450 tests in `Tests/PeelCoreTests`, run by `swift test`. They test
 real logic, mostly without the Rust core or a server:
 
 - Media encryption against an RNCryptor vector; wrong keys and tampering are
@@ -19,7 +21,11 @@ real logic, mostly without the Rust core or a server:
 - Call links, time zones, markup, contact codes, dropped connections (fake
   transport).
 
-## What is missing
+## What was missing
+
+Written before part 1. Items 1 and 2 are now covered by
+`Tests/PeelIntegrationTests`, which runs the real core; item 3 still
+stands.
 
 1. **The real core.** Only `PublishPlanTests` calls `Sphinxrs`. Sending,
    receiving, key exchange, payments and invites are tested against fakes.

@@ -2,8 +2,8 @@
 
 Status: **PRs 1 to 4 merged** (the call link and message, #44; the ticket
 and presence, #54; LiveKit in the bundle, #55; the card and header, #59);
-PR 5 (the window, #64) and PR 7 (notifications, #74) merged; PR 6
-(screen share, focus, keep on top) in review; PR 8 open. Finishing calls is first in the order Tom set on the
+PR 5 (the window, #64), PR 6 (screen share, focus, keep on top, #70) and
+PR 7 (notifications, #74) merged; PR 8 open. Finishing calls is first in the order Tom set on the
 evening of 2026-10-08 (`../PLAN.md`). Plan and boards
 C1 to C6 approved by Tom on 2026-10-08. The five defaults PR 1 used are
 decided (Tom, 2026-10-08; see "Decided" below).
@@ -37,7 +37,7 @@ decided (Tom, 2026-10-08; see "Decided" below).
   shows on any tribe or DM with people on its call and a card shows its
   count at once after switching chats; see its journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
-  see the PR 2 journal), PRs 6 and 8 (screen share, the record); one mic-allowed run of the test room (PR 3
+  see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
 - Decided in PR 1, done in PR 4: calls joined `shownInChats`,
   `unreadTypes` and the preview with the card.

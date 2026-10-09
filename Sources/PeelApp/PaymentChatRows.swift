@@ -184,7 +184,7 @@ struct WaitingForServer: View {
     let what: String
 
     var body: some View {
-        TimelineView(.explicit([since.addingTimeInterval(Message.confirmationTimeout)])) { context in
+        TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
                 Text("\(what) waiting for the server…")
                     .font(Theme.font(11, .medium))

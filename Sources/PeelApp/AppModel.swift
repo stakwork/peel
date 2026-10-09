@@ -84,6 +84,9 @@ final class AppModel {
     var attachmentPrices: [ComposerID: String] = [:]
     /// Bumped to put the cursor in a composer.
     var composerFocus: [ComposerID: Int] = [:]
+    /// The sidebar has the keyboard (a row was clicked): a chat opened from
+    /// it leaves the cursor out of its composer, so the arrows go on moving.
+    var sidebarHasKeys = false
     /// The image viewer, when open.
     var viewer: ImageViewerState?
     /// What each composer holds unsent, kept while a thread covers its

@@ -16,6 +16,8 @@ struct ComposerField: View {
     let placeholder: String
     /// Bump to put the cursor in the field.
     let focusRequest: Int
+    /// Takes the cursor when it appears, not only on a bump.
+    var focusesOnAppear = true
     let submit: () -> Void
     var mention: Binding<String?> = .constant(nil)
     var insertion: MentionInsertion?
@@ -32,7 +34,8 @@ struct ComposerField: View {
 
     var body: some View {
         ComposerTextView(
-            text: $text, height: $height, mention: mention, focusRequest: focusRequest, insertion: insertion,
+            text: $text, height: $height, mention: mention, focusRequest: focusRequest, focusesOnAppear: focusesOnAppear,
+            insertion: insertion,
             submit: submit, suggestionKey: suggestionKey, escape: escape, attach: attach,
             dropTargeted: dropTargeted
         )
@@ -64,6 +67,7 @@ private struct ComposerTextView: NSViewRepresentable {
     @Binding var height: CGFloat
     @Binding var mention: String?
     let focusRequest: Int
+    let focusesOnAppear: Bool
     let insertion: MentionInsertion?
     let submit: () -> Void
     let suggestionKey: (SuggestionKey) -> Bool
@@ -140,6 +144,7 @@ private struct ComposerTextView: NSViewRepresentable {
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
+            if !parent.focusesOnAppear { focusedRequest = parent.focusRequest }
         }
 
         func textDidChange(_ notification: Notification) {

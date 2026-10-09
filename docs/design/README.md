@@ -53,6 +53,17 @@ Top to bottom:
    tribes are bold. Ends with "Join a tribe". The section collapses.
 7. **Direct messages.** One row per contact, unread ones bold with a count.
    Ends with "Add contact". The section collapses.
+**Keys.** Clicking a row gives the sidebar the keyboard: Down and Up move a
+soft highlight (the hover fill) through Threads, Mentions, Payments, the
+tribes and the direct messages, skipping the "+" rows, invites and collapsed
+sections, and stopping at the ends; it scrolls into view and VoiceOver reads
+the row. Return opens the highlighted row as a click does, Escape clears it.
+A chat opened this way leaves the cursor in the sidebar; typing (or ⌘V)
+moves it to that chat's composer and the keys go there as typed, through
+input methods and accents. Clicking the composer, a field or the web pane
+ends it; the keys are never taken from a text field, a menu, a panel, the
+image viewer or another window, nor while Peel is locked or due to lock. While the sidebar has focus Return never reaches
+a pane's default button.
 (The footer with your name and the Peel logo in the header are gone since
 S2; the app's icon still shows on the lock and welcome screens.)
 
@@ -600,8 +611,9 @@ Not built, noticed in use:
 - ~~No notification for incoming messages.~~ Local notifications and the
   Dock badge built on `phase3/notifications`; see `../phases/03-chat.md`,
   "Notifications".
-- Sidebar rows are buttons, not a `List`, so arrow keys do not move between
-  conversations yet.
+- ~~Sidebar rows are buttons, not a `List`, so arrow keys do not move between
+  conversations yet.~~ Down, Up, Return and Escape once a row is clicked
+  (see "Sidebar", Keys).
 - The sidebar width is fixed at 260 pt and does not collapse; the window's
   minimum width (760 pt) keeps the conversation readable.
 

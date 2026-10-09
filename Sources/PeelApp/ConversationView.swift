@@ -114,7 +114,10 @@ private struct ChatColumn: View {
             )
         }
         .fileDrop(into: composer, for: conversation)
-        .onAppear { model.composerFocus[composer, default: 0] += 1 }
+        .onAppear {
+            // Opened from the sidebar's keys, the keys stay there.
+            if !model.sidebarHasKeys { model.composerFocus[composer, default: 0] += 1 }
+        }
     }
 }
 

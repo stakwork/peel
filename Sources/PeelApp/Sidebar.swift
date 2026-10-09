@@ -5,8 +5,17 @@ import PeelCore
 
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
     @State private var showTribes = true
     @State private var showDirect = true
+    /// Keyboard: the row the arrows are on, nil at the selected one.
+    @State private var highlighted: AppModel.Destination?
+    @FocusState private var focused: Bool
+    #if os(macOS)
+    @State private var keys = KeyMonitor()
+    /// Keys typed here, for the composer once it has the cursor.
+    @State private var typedAhead: [NSEvent] = []
+    #endif
 
     var body: some View {
         @Bindable var model = model
@@ -18,39 +27,53 @@ struct Sidebar: View {
         VStack(alignment: .leading, spacing: 12) {
             SidebarHeader()
             SearchField(text: $model.searchQuery)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(spacing: 1) {
-                        let unreadThreads = model.unreadThreads
-                        SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
-                            Image(systemName: "bubble.left").font(.system(size: 13))
-                        } accessory: {
-                            if unreadThreads > 0 { UnreadBadge(count: unreadThreads) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(spacing: 1) {
+                            let unreadThreads = model.unreadThreads
+                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
+                                Image(systemName: "bubble.left").font(.system(size: 13))
+                            } accessory: {
+                                if unreadThreads > 0 { UnreadBadge(count: unreadThreads) }
+                            }
+                            SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
+                                Image(systemName: "at").font(.system(size: 13))
+                            } accessory: {
+                                if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                            }
+                            PaymentsLink(money: model.money)
                         }
-                        SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
-                            Image(systemName: "at").font(.system(size: 13))
-                        } accessory: {
-                            if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                        SidebarSection("Tribes", expanded: $showTribes) {
+                            ForEach(sections.tribes) { conversation in
+                                ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                            }
+                            SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                            SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
                         }
-                        PaymentsLink(money: model.money)
+                        SidebarSection("Direct messages", expanded: $showDirect) {
+                            ForEach(sections.direct) { conversation in
+                                ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                            }
+                            ContactsSidebarRows()
+                        }
                     }
-                    SidebarSection("Tribes", expanded: $showTribes) {
-                        ForEach(sections.tribes) { conversation in
-                            ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                        }
-                        SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
-                        SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
-                    }
-                    SidebarSection("Direct messages", expanded: $showDirect) {
-                        ForEach(sections.direct) { conversation in
-                            ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                        }
-                        ContactsSidebarRows()
-                    }
+                    .padding(.bottom, 12)
                 }
-                .padding(.bottom, 12)
+                .scrollIndicators(.automatic)
+                .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
             }
-            .scrollIndicators(.automatic)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focused)
+            .environment(\.sidebarHighlight, highlighted)
+            .environment(\.sidebarClicked) {
+                highlighted = nil
+                // Now, not on the focus change: the chat this click opens
+                // reads it as it appears.
+                model.sidebarHasKeys = true
+                focused = true
+            }
             if let call = model.call {
                 OnCallBar(call: call)
             }
@@ -60,7 +83,132 @@ struct Sidebar: View {
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.sidebar.ignoresSafeArea())
+        .onChange(of: focused) {
+            model.sidebarHasKeys = focused
+            highlighted = nil
+            #if os(macOS)
+            if focused {
+                // The responder that has the keys now; any other (a field,
+                // the web page, a composer) and the keys are its own.
+                let responder = presenter?.hostWindow?.firstResponder
+                keys.start { handle($0, responder: responder) }
+            } else {
+                keys.stop()
+                replayTypedAhead()
+            }
+            #endif
+        }
+        .onDisappear {
+            // Locked or gone: nothing kept, nothing typed on.
+            model.sidebarHasKeys = false
+            #if os(macOS)
+            keys.stop()
+            typedAhead = []
+            #endif
+        }
     }
+
+    /// The rows the arrows move through, top to bottom: not the "+" rows
+    /// or invites, nor the rows of a collapsed section.
+    private var rows: [(destination: AppModel.Destination, title: String)] {
+        let sections = model.sidebarSections
+        let chats = (showTribes ? sections.tribes : []) + (showDirect ? sections.direct : [])
+        return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
+            + chats.map { (.chat($0.chat), $0.name) }
+    }
+
+    /// The row `offset` from `current` (the selection when nothing is
+    /// highlighted), stopping at the ends; the first or last row from
+    /// anywhere else.
+    static func step(_ rows: [AppModel.Destination], from current: AppModel.Destination?, by offset: Int)
+        -> AppModel.Destination? {
+        guard let index = current.flatMap(rows.firstIndex(of:)) else { return offset > 0 ? rows.first : rows.last }
+        return rows[min(max(index + offset, 0), rows.count - 1)]
+    }
+
+    #if os(macOS)
+    /// While the sidebar has focus, in the main window, unlocked, with no
+    /// menu, panel or viewer up: Down and Up move the highlight, Return
+    /// opens it, Escape clears it. Typing goes to the open chat.
+    private func handle(_ event: NSEvent, responder: NSResponder?) -> Bool {
+        guard model.phase == .ready, !model.isLockDue, let window = presenter?.hostWindow, event.window === window,
+              responder != nil, !(responder is NSText), window.firstResponder === responder,
+              presenter?.anythingOpen != true, model.viewer == nil, !event.modifierFlags.contains(.control)
+        else { return false }
+        // Typing ahead: the keys after the first go the same way, in order,
+        // for the second a composer has to take the cursor.
+        if let first = typedAhead.first {
+            guard event.timestamp - first.timestamp > 1 else {
+                typedAhead.append(event)
+                return true
+            }
+            typedAhead = []
+        }
+        let rows = rows
+        let plain = event.modifierFlags.isDisjoint(with: [.command, .option, .shift])
+        switch event.keyCode {
+        case 125 where plain, 126 where plain: // Down, Up
+            let next = Self.step(rows.map(\.destination), from: highlighted ?? model.destination,
+                                 by: event.keyCode == 125 ? 1 : -1)
+            highlighted = next
+            if let title = rows.first(where: { $0.destination == next })?.title {
+                AccessibilityNotification.Announcement(title).post()
+            }
+        case 36 where plain, 76 where plain:
+            // Return, Enter: taken even with nothing highlighted, so a
+            // second press never reaches a pane's default button (Pay).
+            if let highlighted, rows.contains(where: { $0.destination == highlighted }) {
+                model.destination = highlighted
+                self.highlighted = nil
+            }
+        case 53 where plain: // Escape
+            guard highlighted != nil else { return false }
+            highlighted = nil
+        default:
+            return typeAhead(event)
+        }
+        return true
+    }
+
+    /// A character (or a dead key, or ⌘V) typed here: the open chat's
+    /// composer takes the cursor and gets the key once it has it
+    /// (`replayTypedAhead`), so input methods, accents and paste work as
+    /// typed there. Not Tab, Delete or the other arrows.
+    private func typeAhead(_ event: NSEvent) -> Bool {
+        let command = event.modifierFlags.contains(.command)
+        let printable = event.characters?.unicodeScalars.allSatisfy {
+            !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value)
+        } ?? false
+        guard command ? event.charactersIgnoringModifiers == "v" : printable,
+              case .chat(let chat) = model.destination, model.tribes[chat]?.canPost ?? true
+        else { return false }
+        typedAhead.append(event)
+        model.composerFocus[.chat(chat), default: 0] += 1
+        return true
+    }
+
+    /// The keys typed ahead, in order, once a composer has the cursor;
+    /// dropped if anything else took it (a field, the PIN), Peel locked, or
+    /// they are over a second old.
+    private func replayTypedAhead() {
+        let events = typedAhead
+        typedAhead = []
+        let now = ProcessInfo.processInfo.systemUptime
+        guard model.phase == .ready, !model.isLockDue, let window = presenter?.hostWindow,
+              let composer = window.firstResponder as? NSTextView, !composer.isFieldEditor
+        else { return }
+        for event in events.reversed() where event.window === window && now - event.timestamp < 1 {
+            NSApp.postEvent(event, atStart: true)
+        }
+    }
+    #endif
+}
+
+extension EnvironmentValues {
+    /// The sidebar row the arrow keys are on.
+    @Entry var sidebarHighlight: AppModel.Destination?
+    /// A sidebar row was clicked: the sidebar takes the keys.
+    @Entry var sidebarClicked: @MainActor () -> Void = {}
 }
 
 /// You, at the top of the sidebar like a workspace switcher: your photo,
@@ -201,6 +349,8 @@ struct SidebarSection<Content: View>: View {
 /// A sidebar row that selects a destination, with an optional trailing accessory.
 struct SidebarLink<Icon: View, Accessory: View>: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.sidebarHighlight) private var highlight
+    @Environment(\.sidebarClicked) private var clicked
     let title: String
     let destination: AppModel.Destination
     var unread = false
@@ -223,6 +373,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
     var body: some View {
         Button {
             model.destination = destination
+            clicked()
         } label: {
             HStack(spacing: 9) {
                 icon.frame(width: 18)
@@ -232,7 +383,9 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
             }
             .opacity(dimmed ? 0.6 : 1)
         }
-        .buttonStyle(SidebarRowStyle(selected: model.destination == destination, unread: unread))
+        .buttonStyle(SidebarRowStyle(selected: model.destination == destination, unread: unread,
+                                     highlighted: highlight == destination))
+        .id(destination)
     }
 }
 
@@ -452,15 +605,18 @@ struct SidebarRowStyle: ButtonStyle {
     let selected: Bool
     /// Unread rows are bold and bright, as in Slack.
     var unread = false
+    /// The arrow keys are on it: drawn as hovered.
+    var highlighted = false
 
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration, selected: selected, unread: unread)
+        Row(configuration: configuration, selected: selected, unread: unread, highlighted: highlighted)
     }
 
     private struct Row: View {
         let configuration: Configuration
         let selected: Bool
         let unread: Bool
+        let highlighted: Bool
         @State private var hovering = false
 
         var body: some View {
@@ -472,7 +628,7 @@ struct SidebarRowStyle: ButtonStyle {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(selected ? Theme.selection : hovering ? Theme.hover : .clear)
+                        .fill(selected ? Theme.selection : hovering || highlighted ? Theme.hover : .clear)
                 )
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }

@@ -386,14 +386,16 @@ public actor Engine {
 
     /// Runs one core call against the current state. The returned state is
     /// committed before this function first suspends, so no other call can ever
-    /// run against stale state.
+    /// run against stale state. For what the server sent (`receive`), a
+    /// payment counts for no more than `arrived` says came (`cappedToArrived`).
     @discardableResult
     func run(
-        expectedSender: String? = nil,
+        expectedSender: String? = nil, arrived: [String: UInt64]? = nil,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
-        let result = try call(time, StateCodec.encode(state))
+        var result = try call(time, StateCodec.encode(state))
+        if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
         let followUps = try commit(result, time: time, expectedSender: expectedSender)
         try await complete(result, followUps)
         return result
@@ -409,6 +411,42 @@ public actor Engine {
         var purchases: [Message] = []
         /// The balance went up: maybe an invoice made here was paid.
         var checkInvoices = false
+    }
+
+    /// What received payments brought, as Peel takes it: never more than the
+    /// server says arrived for that message index (`arrived`), and nothing
+    /// when it says nothing. The core Peel links reports the amount the
+    /// sender wrote in the onion (`handle_msg.rs` ignores the topic's amount,
+    /// and peels against `u64::MAX`), which a modified client can set to
+    /// anything. "From me" is capped too: the core also calls a message
+    /// ours when its date decrypts with the sender's shared secret
+    /// (`dec_ts_matches`), which any sender can arrange, and our own copies
+    /// carry no payment, so nothing real is lost.
+    static func cappedToArrived(_ msgs: [Msg], _ arrived: [String: UInt64]) -> [Msg] {
+        msgs.map { msg in
+            guard let msat = msg.msat else { return msg }
+            var msg = msg
+            msg.msat = msg.index.flatMap { arrived[$0] }.map { min($0, msat) }
+            return msg
+        }
+    }
+
+    /// What arrived with a live message or a page of history, by message
+    /// index, as the server sent it: a live payment's topic ends with its
+    /// index, time, payment hash and amount
+    /// (`{root}/{pk}/{idx}/res/{device}/{kind}/{index}/{ts}/{hash}/{msat}`,
+    /// the mixer's `stream_res_topic`); a page carries each payment's amount
+    /// beside its onion (`StateCodec.paymentAmounts`).
+    static func arrivedMsat(kind: String, topic parts: [Substring], payload: Data) -> [String: UInt64] {
+        switch kind {
+        case "batch":
+            return StateCodec.paymentAmounts(inBatch: payload) ?? [:]
+        case "msg", "msgs", "stream":
+            guard parts.count > 9, let msat = UInt64(parts[9]) else { return [:] }
+            return [String(parts[6]): msat]
+        default:
+            return [:]
+        }
     }
 
     /// History rows that pay an invoice made here and still open: incoming,
@@ -875,8 +913,8 @@ public actor Engine {
             timestamp: msg.timestamp.map { Int64(clamping: $0) },
             tag: msg.tag, paymentHash: msg.paymentHash,
             replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,
-            // What reached this account, which the core checked against the
-            // payment; only without sats what the sender declared.
+            // What reached this account (`msat`, held to what the server says
+            // arrived by `cappedToArrived`); only without sats what the sender declared.
             amountMsat: MessageType.payments.contains(Int(type))
                 ? msat ?? (fromMe ? DeclaredAmount.decode(msg.message) : nil) : nil
         )
@@ -918,7 +956,8 @@ public actor Engine {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            try await run(expectedSender: expectedSender) { time, state in
+            let arrived = Self.arrivedMsat(kind: kind, topic: parts, payload: inbound.payload)
+            try await run(expectedSender: expectedSender, arrived: arrived) { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL

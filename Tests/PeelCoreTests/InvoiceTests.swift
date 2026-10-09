@@ -145,6 +145,55 @@ struct InvoiceTests {
         #expect(fee.message?.content == "gm" && fee.status == .complete)
     }
 
+    /// A key exchange's sats (review F6), as the local stack records them:
+    /// their half of each exchange joins its row by hash; our half, which
+    /// the core reports no hash for, pairs with it by time and amount, with
+    /// its ping folded in. Someone adding us (type 10) and our adding them
+    /// (their answer, type 11).
+    @Test func keyExchangeSatsAreLabelled() async throws {
+        let storage = try profile.storage()
+        let other = "03other"
+        var commit = Storage.Commit(contacts: [(dm, true), (other, true)])
+        commit.messages = [
+            (.fixture(uuid: uuid(1), serverIndex: 0, type: MessageType.contactKey, chat: dm,
+                      msat: 5000, timestamp: 10_000, paymentHash: hash(1)), false, nil),
+            (.fixture(uuid: uuid(2), serverIndex: 4, type: MessageType.contactKeyConfirmation, chat: other,
+                      msat: 3000, timestamp: 50_900, paymentHash: hash(2)), false, nil),
+        ]
+        commit.payments = PaymentRecord.decode("""
+            [{"amt_msat":5000,"rhash":"\(hash(1))","ts":10020,"msg_idx":0},
+             {"amt_msat":1000,"rhash":"\(hash(3))","ts":10800},
+             {"amt_msat":3000,"rhash":"\(hash(4))","ts":10900},
+             {"amt_msat":1000,"rhash":"\(hash(5))","ts":50000},
+             {"amt_msat":5000,"rhash":"\(hash(6))","ts":50080},
+             {"amt_msat":3000,"rhash":"\(hash(2))","ts":50900,"msg_idx":4}]
+            """)
+        _ = try storage.apply(commit)
+
+        let items = try #require(try await first(storage.paymentHistory(limit: 50)))
+        #expect(items.allSatisfy { $0.kind == .keyExchange })
+        #expect(items.map(\.paymentHash) == [hash(2), hash(6), hash(4), hash(1)])
+        #expect(items.map(\.addedThem) == [true, true, false, false])
+        #expect(items.map(\.incoming) == [true, false, false, true])
+        #expect(items.map(\.pingMsat) == [nil, 1000, 1000, nil])
+        #expect(items[0].counterpart == items[1].counterpart && items[2].counterpart == items[3].counterpart)
+        #expect(items.allSatisfy { $0.note == nil && $0.status == .complete })
+    }
+
+    /// An unsettled payment reads the same in Payments as in the chat
+    /// (review F7), not as on its way.
+    @Test func anUnsettledPaymentStaysUnsettled() async throws {
+        let storage = try profile.storage()
+        var commit = Storage.Commit(contacts: [(dm, true)])
+        commit.messages = [
+            (.fixture(uuid: uuid(1), type: MessageType.directPayment, chat: dm, fromMe: true, timestamp: 1000,
+                      tag: "t1", paymentHash: hash(1), status: "UNSETTLED", amountMsat: 2000), false, nil),
+        ]
+        _ = try storage.apply(commit)
+        let items = try #require(try await first(storage.paymentHistory(limit: 50)))
+        #expect(items.map(\.status) == [.unsettled])
+    }
+
     // MARK: Paying: never twice
 
     private func outgoing(_ status: InvoiceRecord.Status, tag: String = "t1") -> InvoiceRecord {

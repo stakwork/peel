@@ -177,23 +177,45 @@ final class MoneyArrivals {
 /// The balance under your name in the sidebar header: it rolls up, digit by
 /// digit, when a payment arrives. Nothing moves: the line keeps the width of
 /// the larger of the two numbers from the start, in tabular digits. Under
-/// Reduce Motion the number just changes.
+/// Reduce Motion the number just changes. Sats promised to people still
+/// offline follow it as the pending clock and the amount, or the clock alone
+/// where the header has no room (the tooltip, VoiceOver and Payments say it
+/// in words).
 struct BalanceLabel: View {
     let money: MoneyArrivals
+    var waitingMsat: UInt64 = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let shown = money.shownMsat {
-            ZStack(alignment: .leading) {
-                Text(Sats.format(msat: max(shown, money.balanceMsat ?? 0))).hidden()
-                Text(Sats.format(msat: shown))
-                    .contentTransition(reduceMotion ? .identity : .numericText(value: Double(shown)))
+            Group {
+                if waitingMsat > 0 {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 0) { balance(shown); Text(" · ") + clock + Text(" \(Sats.number(msat: waitingMsat))") }
+                        HStack(spacing: 0) { balance(shown); Text(" · ") + clock }
+                    }
+                    .help("\(Sats.format(msat: waitingMsat)) waiting for people to come online: their server takes it then, so it is not yours to spend.")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(Sats.format(msat: shown)), \(Sats.format(msat: waitingMsat)) waiting")
+                } else {
+                    balance(shown)
+                }
             }
             .font(Theme.font(12))
             .monospacedDigit()
             .lineLimit(1)
             .foregroundStyle(Theme.secondaryText)
+        }
+    }
+
+    private var clock: Text { Text(Image(systemName: "clock")) }
+
+    private func balance(_ shown: UInt64) -> some View {
+        ZStack(alignment: .leading) {
+            Text(Sats.format(msat: max(shown, money.balanceMsat ?? 0))).hidden()
+            Text(Sats.format(msat: shown))
+                .contentTransition(reduceMotion ? .identity : .numericText(value: Double(shown)))
         }
     }
 }

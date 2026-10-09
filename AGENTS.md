@@ -125,7 +125,9 @@ is a short plan. Update the status and the journal when you finish something.
     (sent unless the chat's switch is off, never to a public tribe; read
     with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
-  - `StateCodec.swift` — the MessagePack shape the core uses for its state
+  - `StateCodec.swift` — the MessagePack shape the core uses for its state,
+    and the amounts beside the onions of a history page
+    (`paymentAmounts`, what really arrived)
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
     claims, unchecked) and `.hex` for bytes

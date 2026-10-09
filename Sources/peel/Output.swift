@@ -128,6 +128,7 @@ extension Session {
         let status = switch item.status {
         case .complete: ""
         case .pending: " [pending]"
+        case .unsettled: " [not settled]"
         case .failed: " [failed\(item.error.map { ": \($0)" } ?? "")]"
         }
         let who = item.counterpart ?? (item.kind == .keysend ? "keysend" : "-")

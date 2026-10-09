@@ -60,6 +60,24 @@ F1, F2, F3 and F4 too.
 The 1–3 sats a key exchange moves are explained (F6). They are the core's
 fixed prices, and they add up exactly.
 
+## Status
+
+Tom approved fixing what the review found, one concern per PR.
+
+| # | Status |
+|---|---|
+| F1 | **Fixed** (PR "Payments: real amounts, waiting payments count, labelled key exchange"): `checkPayment` and `invoiceProblem` take what is waiting for people to come online from the balance (`Storage.spendableMsat`); the header shows "4,996 sats · ◷ 4,000" (the clock alone where it is short of room), Payments and the payment forms "4,000 waiting"; a waiting payment or boost in a DM reads "Payment waiting for Bob to come online", and "Waiting" in Payments. No cancel or expiry (Tom: not now). Journey 1: the second payment is refused, Bob gets one. Not counted yet: the key exchange's 5 sats to someone offline, and an invoice paid the async way by route hint |
+| F2 | Open (next PR, with F4) |
+| F3 | **Peel's half fixed** (same PR): a received payment counts for no more than the server says arrived (`Engine.cappedToArrived`), the topic's amount for a live message and the amount beside each onion for a history page (`StateCodec.paymentAmounts`), so the key release, received rows and totals, notifications, type 3s and invoice settles all use it. `04-money.md` corrected; `testing.md` records the stack's rev. Core half (linking a core with SR-016) open |
+| F4 | Open (next PR, with F2) |
+| F5 | Open: words only; cancelling needs a mixer change (below) |
+| F6 | **Fixed** (same PR): key exchange rows read "Contact added" / "Added you" with the contact's name, their half joined by hash, ours paired by time and amount with the ping folded in; detail says why. Journey 3 asserts −3 / +1 and the labels. Left: the adder's ping stays a keysend when the contact was offline (it went long before the 5 sats) |
+| F7 | **Fixed** (same PR): `PaymentItem.Status.unsettled`, "Not settled" in Payments as in the chat |
+| F8 | Open |
+| F9 | Open |
+| F10 | Open: not cheap. A join sends no tag or hash to track (`join_tribe` passes `is_tribe` as `not_async`, so `push_kac` pushes no message, `bindings/send.rs:189-193`); its row already shows as "Joined #tribe" by time. Keeping the tribe when the publish may have gone (`commitAndPublish`) is the small part left |
+| F11 | Open |
+
 ## Findings, ranked
 
 | # | Finding | Severity | Confidence | Official app | Fix |
@@ -199,6 +217,37 @@ fixed prices, and they add up exactly.
 - **Fix.** S: say so on the row and in its detail: "Pays when Bob next
   opens Sphinx. It cannot be cancelled." Count it in F1's "on their way".
   L: a cancel needs the mixer.
+- **Can it be cancelled? (Tom asked, 2026-10-09.)** Not as things are;
+  possible with a mixer change and a core binding to ask for it.
+  Checked in `~/Documents/sphinx` at `caa76a1` (mixer) and the core at
+  `bd9e140`.
+  - The mixer keeps a held payment in one table and has exactly two ways
+    to take one out: `redeem_async_pay`, which pays it, and `drain_asyncpay`,
+    which empties the whole table with the rest of the database
+    (`mixer/src/db/asyncpay.rs:9`, `:14`, `:29`; `db/mod.rs:60-62`). The
+    only caller of the first is the recipient's "online" answer to the
+    ping (`ping.rs:52`, `pay_now` at `:87`). `ASYNC_PAY` only adds
+    (`handler.rs:231-243`). No topic in the core's list withdraws one
+    (`sphinx/src/topics.rs:1-32`).
+  - Nothing expires it: the time in its key (`asyncpay.rs:72`) is never
+    swept, and `cltv_delay` matters only once it is paid (`ln.rs:289`).
+  - The sender cannot take back the ping either: it is stored on the
+    recipient's server under the recipient's key, and only the recipient
+    removes it (`PING_DONE`, `handler.rs:299-304`).
+  - The sender's core has no call for it: the bindings offer
+    `cancelInvite`, `pingDone` and `fetchPings`, nothing for an async pay
+    (generated `sphinxrs.swift:2450`, `:2720`, `:2733`). The TypeScript
+    client only waits for the tag (`wasm/test/auto/main.ts:25-41`,
+    `:83-93`); the Mac app sends and waits the same way and shows nothing
+    pending (`SphinxOnionManager+HandleStateExtension.swift:97`,
+    `:154-155`). Neither ever withdraws a payment.
+  - What a cancel would take: a mixer topic (say `cancelasyncpay`) that
+    removes the async pay by tag only when its `from` is the asking
+    account's scid (as `ASYNC_PAY` checks, `handler.rs:235-238`), records
+    the send FAILED and answers on `send`; redb's `remove` lets it race
+    `pay_now` safely (whoever removes it first wins). And a core binding to
+    publish it. The recipient's ping would stay; their answer would find
+    nothing ("async pay not found", which Peel already handles).
 
 ### F6. The key exchange's 1–3 sats
 

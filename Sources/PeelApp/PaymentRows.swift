@@ -27,6 +27,7 @@ struct SignedAmount: View {
         switch status {
         case .complete: return "\(incoming ? "Received" : "Sent") \(amount)"
         case .pending: return "\(incoming ? "Receiving" : "Sending") \(amount), pending"
+        case .unsettled: return "\(incoming ? "Receiving" : "Sending") \(amount), not settled"
         case .failed: return "\(incoming ? "Receipt" : "Send") of \(amount) failed"
         }
     }
@@ -107,7 +108,8 @@ struct PaymentListRow: View {
         let time = Formatting.paymentTime(item.date, in: section)
         switch item.status {
         case .complete: return time
-        case .pending: return "Pending · \(time)"
+        case .pending: return "\(item.isToContact ? "Waiting" : "Pending") · \(time)"
+        case .unsettled: return "Not settled · \(time)"
         case .failed: return "Failed · \(time)"
         }
     }
@@ -209,6 +211,8 @@ struct PaymentDetailPane: View {
             rows.append(.init(key: "Status", value: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed))
         case .pending:
             rows.append(.init(key: "Status", value: pendingStatus, symbol: "clock"))
+        case .unsettled:
+            rows.append(.init(key: "Status", value: NotSettled.explanation, symbol: "questionmark.circle"))
         case .failed:
             rows.append(.init(key: "Status", value: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark"))
         }
@@ -218,6 +222,9 @@ struct PaymentDetailPane: View {
         rows.append(.init(key: "Amount", value: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
         if let fee = item.feeMsat {
             rows.append(.init(key: "Routing fee", value: fee == 0 ? "None" : Sats.format(msat: fee)))
+        }
+        if let why = item.keyExchangeNote {
+            rows.append(.init(key: "Why", value: why))
         }
         if let ping = item.pingMsat {
             rows.append(.init(key: "Ping", value: "\(Sats.format(msat: ping)), sent with it to reach them"))

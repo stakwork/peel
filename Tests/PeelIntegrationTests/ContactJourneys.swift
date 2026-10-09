@@ -5,11 +5,16 @@ import Testing
 extension Journeys {
     @Suite struct Contacts {
         /// Alice adds Bob by his contact info: the key exchange completes on
-        /// both sides, and each knows the other's name.
+        /// both sides, and each knows the other's name. Its sats (review F6):
+        /// Alice pays 5 and a 1-sat ping, Bob's core pays 3 back with its own
+        /// ping, so Alice is down 3 and Bob up 1; Payments names each row
+        /// for the key exchange, pings folded in, instead of keysends.
         @Test func keyExchangeByContactInfo() async throws {
             let alice = try await Person.create("alice")
             let bob = try await Person.create("bob")
             try await Bank.shared.give(100, to: alice)
+            let a0 = try #require(try await alice.settledBalance())
+            let b0 = try await bob.settledBalance() ?? 0
 
             let (pubkey, added) = try await alice.engine.addContact(code: try bob.contactInfo)
             #expect(added)
@@ -17,6 +22,12 @@ extension Journeys {
             try await eventually("both sides to hold the other's key") {
                 try alice.isReadyContact(bob) && bob.isReadyContact(alice)
             }
+            #expect(try await alice.balance(settlingAt: a0 - 3) == a0 - 3)
+            #expect(try await bob.balance(settlingAt: b0 + 1) == b0 + 1)
+            let five = Int64(Engine.keyExchangeMsat), three = Int64(Engine.priceToMeetMsat)
+            #expect(try await keyExchangeRows(alice, with: "bob") == [Row(false, five, ping: true), Row(true, three, ping: false)])
+            #expect(try await keyExchangeRows(bob, with: "alice") == [Row(false, three, ping: true), Row(true, five, ping: false)])
+            #expect(try await bob.storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }.allSatisfy { $0.kind == .keyExchange })
             #expect(try Engine.contacts(in: bob.storage).contains { $0.pubkey == (try alice.pubkey) && $0.contactKey != nil })
             try await eventually("Bob to see Alice's name") {
                 try bob.messages(in: alice.pubkey).contains { $0.senderAlias == "alice" }
@@ -27,6 +38,23 @@ extension Journeys {
 
             await alice.close()
             await bob.close()
+        }
+
+        /// One Payments row: sent or received, its amount, and whether a ping was folded in.
+        struct Row: Equatable {
+            let incoming: Bool
+            let msat: Int64
+            let ping: Bool
+            init(_ incoming: Bool, _ msat: Int64, ping: Bool) { (self.incoming, self.msat, self.ping) = (incoming, msat, ping) }
+        }
+
+        /// `person`'s key exchange rows with `name`, from the server's history, sent first.
+        func keyExchangeRows(_ person: Person, with name: String) async throws -> [Row] {
+            try await person.engine.refreshPaymentHistory()
+            return try await person.storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }
+                .filter { $0.kind == .keyExchange && $0.counterpart == name }
+                .map { Row($0.incoming, $0.amountMsat, ping: $0.pingMsat == Storage.pingPriceMsat) }
+                .sorted { !$0.incoming && $1.incoming }
         }
 
         /// Dana adds Carol from an invite Carol made: the invite names its

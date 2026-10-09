@@ -32,7 +32,8 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                DetailHeader(title: "Payments", subtitle: "Amounts in sats", leading: { EmptyView() }) {
+                DetailHeader(title: "Payments", subtitle: "Amounts in sats" + (model.waitingText.map { " · \($0)" } ?? ""),
+                             leading: { EmptyView() }) {
                     HStack(spacing: 8) {
                         HeaderAction(title: "Receive", systemImage: "arrow.down.left", active: pane == .receive) {
                             pane = pane == .receive ? nil : .receive

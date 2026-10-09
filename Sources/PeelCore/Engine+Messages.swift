@@ -6,6 +6,9 @@ extension Engine {
 
     /// What a key exchange pays: the official apps attach 5 sats to its first message.
     public static let keyExchangeMsat: UInt64 = 5_000
+    /// What the other side's core pays back at once when answering a key
+    /// exchange (`PRICE_TO_MEET` in the core's `bindings/mod.rs`).
+    public static let priceToMeetMsat: UInt64 = 3_000
 
     /// Starts a key exchange with a contact given as `pubkey_lsp_scid`,
     /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks.

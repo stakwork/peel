@@ -19,6 +19,7 @@ enum StateCodec {
         static let map = Family(fix: 0x80...0x8F, marker8: nil, marker16: 0xDE, marker32: 0xDF)
         static let str = Family(fix: 0xA0...0xBF, marker8: 0xD9, marker16: 0xDA, marker32: 0xDB)
         static let bin = Family(fix: nil, marker8: 0xC4, marker16: 0xC5, marker32: 0xC6)
+        static let array = Family(fix: 0x90...0x9F, marker8: nil, marker16: 0xDC, marker32: 0xDD)
     }
 
     static func encode(_ state: [String: Data]) -> Data {
@@ -52,6 +53,29 @@ enum StateCodec {
             throw Malformed(description: "trailing bytes after state map")
         }
         return state
+    }
+
+    /// What really arrived with each payment on a page of history (the
+    /// `batch` payload), in msat by message index. The server sends a
+    /// MessagePack array of onions, each followed by its index, time and
+    /// child index and, for a payment, its amount and payment hash
+    /// (`encode_onion` in the core's `ping/onion.rs`); the core reports the
+    /// amount the sender wrote in the onion instead. Messages without a
+    /// payment are left out; nil when the page cannot be read.
+    static func paymentAmounts(inBatch data: Data) -> [String: UInt64]? {
+        // ping/onion.rs: a 1366-byte onion, then id, ts, key index and amount (8 bytes each), then the hash.
+        let onion = 1366, paymentLength = 1430
+        var reader = Reader(data: data)
+        guard let count = try? reader.length(of: .array, "array") else { return nil }
+        var amounts: [String: UInt64] = [:]
+        for _ in 0..<count {
+            guard let length = try? reader.length(of: .bin, "onion"), let item = try? reader.take(length) else { return nil }
+            guard length == paymentLength else { continue }
+            let bytes = [UInt8](item)
+            let number = { (at: Int) in bytes[at..<at + 8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) } }
+            amounts[String(number(onion))] = number(onion + 24)
+        }
+        return reader.isAtEnd ? amounts : nil
     }
 
     private static func write(_ length: Int, as family: Family, to out: inout Data) {

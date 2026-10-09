@@ -329,7 +329,9 @@ public struct TribeInfo: Decodable, Sendable, Equatable {
     /// (`TribeSettings.fields(over:)`).
     public let appURL: String?
     public let secondBrainURL: String?
-    /// How many members the tribes server counts; shown, never trusted.
+    /// How many members the tribes server counts. Not kept up (an edit
+    /// from the official apps drops it, a leave never counts down), so the
+    /// app counts the member list instead (`TribeMembers.countLabel`).
     public let memberCount: Int64?
     public let tags: [String]?
     /// The owner's alias in the tribe, as the owner's app sent it.

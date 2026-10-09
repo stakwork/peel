@@ -649,10 +649,10 @@ More. The members panel keeps its own Copy link and Leave.
 
 **Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
 More's Details is "Tribe details" (⌘I); a click on the tribe's name or
-icon opens the same panel below them. It is a `FormPopover`, scrolling
+icon opens the same panel in the same place, below More (a DM's name opens its details there too). It is a `FormPopover`, scrolling
 under a fade above its footer: the image, name, public or private and
 "Created 9 Oct 2026", the description, the tags as chips, a card of facts
-(owner, members, price to join, per message, escrow; a dash until the
+(owner, members as "2 members" for the owner or "3 seen" for a member, price to join, per message, escrow; a dash until the
 registry answers), Tribe app and Second brain as buttons into the web
 pane, the link's QR with Copy link and Copy QR image, "How you appear in
 #tribe" (a name whose helper shows the alias members will read, and a

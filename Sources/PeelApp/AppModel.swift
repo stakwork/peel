@@ -279,6 +279,10 @@ final class AppModel {
     private(set) var tribes: [String: Tribe] = [:]
     /// Tribes linked in messages, by link, as their cards last read them.
     private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
+    /// Each tribe's members as last read (`tribeMembers`), for the counts
+    /// shown outside the Members panel (`TribeMembers.countLabel`).
+    private(set) var knownMembers: [String: TribeMembers] = [:]
+    @ObservationIgnored private var readingMembers: Set<String> = []
     /// The open tribe's pinned message, read from storage however old.
     private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
@@ -755,7 +759,19 @@ final class AppModel {
     }
 
     func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
-        try await signedIn().tribeMembers(pubkey)
+        let members = try await signedIn().tribeMembers(pubkey)
+        knownMembers[pubkey] = members
+        return members
+    }
+
+    /// A tribe's members for a link card's count: read again each time for
+    /// a member (who has posted, stored here), but asked of the tribes
+    /// server only once a session for the owner, and never twice at once.
+    func loadKnownMembers(_ pubkey: String) async {
+        guard knownMembers[pubkey] == nil || tribes[pubkey]?.isOwner != true,
+              readingMembers.insert(pubkey).inserted else { return }
+        defer { readingMembers.remove(pubkey) }
+        _ = try? await tribeMembers(pubkey)
     }
 
     /// Creates a tribe owned by this account and opens it.
@@ -892,6 +908,7 @@ final class AppModel {
         conversations = []
         tribes = [:]
         linkedTribes = [:]
+        knownMembers = [:]
         invites = [:]
         pendingInvites = []
         focus = nil

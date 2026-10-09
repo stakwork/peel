@@ -189,7 +189,7 @@ struct NoticeBar: View {
 /// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
 /// Tribe details (⌘I), the link, Notifications, Edit tribe for the owner and
 /// Leave, confirmed in the menu. Members, Tribe details and Edit open below
-/// More; a click on the tribe's name or icon opens its details below them.
+/// More, the details from a click on the tribe's name or icon too.
 struct TribeHeader: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -198,7 +198,7 @@ struct TribeHeader: View {
 
     @State private var panel: Panel?
 
-    private enum Panel: Equatable { case members, details(fromTitle: Bool), edit }
+    private enum Panel: Equatable { case members, details, edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -209,23 +209,25 @@ struct TribeHeader: View {
     }
 
     var body: some View {
-        DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details(fromTitle: true) }) {
+        DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details }) {
             ConversationIcon(conversation: conversation, size: 32)
-                .peelPopover(isPresented: shows(.details(fromTitle: true))) { details }
         } trailing: {
             HStack(spacing: 4) {
                 SearchHeaderButton(chat: conversation.chat)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }
-                HeaderMoreButton(chat: conversation.chat, details: { panel = .details(fromTitle: false) }, entries: entries)
-                    .peelPopover(isPresented: shows(.members)) {
-                        TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
-                    }
-                    .peelPopover(isPresented: shows(.details(fromTitle: false))) { details }
-                    .peelPopover(isPresented: shows(.edit)) {
-                        if let tribe { TribeSettingsForm(editing: tribe) { panel = nil } }
-                    }
+                HeaderMoreButton(
+                    chat: conversation.chat, detailsTitle: "Tribe details", showsDetails: shows(.details), entries: entries
+                ) {
+                    details
+                }
+                .peelPopover(isPresented: shows(.members)) {
+                    TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
+                }
+                .peelPopover(isPresented: shows(.edit)) {
+                    if let tribe { TribeSettingsForm(editing: tribe) { panel = nil } }
+                }
             }
         }
         // A panel asked for in one tribe never opens over the next.
@@ -240,7 +242,7 @@ struct TribeHeader: View {
         }
     }
 
-    private func entries() -> [MenuEntry] {
+    private func entries(details: MenuEntry) -> [MenuEntry] {
         var edit: [MenuEntry] = []
         if let tribe, tribe.canManage {
             edit.append(.button("Edit tribe…", systemImage: "slider.horizontal.3") { panel = .edit })
@@ -248,7 +250,7 @@ struct TribeHeader: View {
         return .sections(
             WebMenuEntries.entries(for: tribe, pane: model.web, open: openURL),
             [.button("Members", systemImage: "person.2") { panel = .members },
-             HeaderMoreButton.details("Tribe details") { panel = .details(fromTitle: false) }]
+             details]
                 + (tribe.map(ConversationMenu.link) ?? [])
                 + [ConversationMenu.notifications(for: conversation, model: model)],
             edit + (tribe.map { ConversationMenu.leave(conversation, $0, model: model) } ?? [])
@@ -287,29 +289,35 @@ struct HeaderButton: View {
     }
 }
 
-/// A chat header's More (•••): its menu below it, and ⌘I for Details from
-/// anywhere in the chat.
-struct HeaderMoreButton: View {
+/// A chat header's More (•••): its menu below it, and the chat's details
+/// panel, which opens below it however it is asked for: the menu's Details
+/// (handed to `entries` to place), ⌘I from anywhere in the chat, or a click
+/// on the header's name or icon (the header sets `showsDetails`).
+struct HeaderMoreButton<Details: View>: View {
     @Environment(\.menuPresenter) private var presenter
     let chat: String
-    let details: () -> Void
-    let entries: @MainActor () -> [MenuEntry]
+    /// "Details" for a contact, "Tribe details" for a tribe.
+    var detailsTitle = "Details"
+    @Binding var showsDetails: Bool
+    /// The menu, given its Details entry.
+    let entries: @MainActor (_ details: MenuEntry) -> [MenuEntry]
+    @ViewBuilder let details: () -> Details
 
     @State private var anchor = MenuAnchor()
 
     private var source: AnyHashable { "more-\(chat)" }
 
-    /// Details (⌘I), in a tribe's menu and a contact's.
-    static func details(_ title: String = "Details", _ action: @escaping @MainActor () -> Void) -> MenuEntry {
-        .button(title, systemImage: "info.circle", shortcut: .command("i"), action: action)
-    }
-
     var body: some View {
         HeaderButton(systemImage: "ellipsis", help: "More", lit: presenter?.isOpen == true && presenter?.source == source) {
-            presenter?.show(entries(), at: anchor.rect, source: source)
+            let open = $showsDetails
+            let details = MenuEntry.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) {
+                open.wrappedValue = true
+            }
+            presenter?.show(entries(details), at: anchor.rect, source: source)
         }
         .menuAnchor(anchor)
-        .hiddenShortcut(KeyboardShortcut("i", modifiers: .command), action: details)
+        .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { showsDetails = true }
+        .peelPopover(isPresented: $showsDetails, content: details)
     }
 }
 

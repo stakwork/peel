@@ -257,7 +257,10 @@ The graph tools above join them once the graph lands.
 
 ### Models
 
-AgentKit has one provider interface with two kinds of provider:
+AgentKit has one provider interface, implemented by two small clients of
+our own (Anthropic, and OpenAI-compatible for OpenAI and OpenRouter), not
+swift-ai-sdk; the reasons are in [phases/09-agents.md](phases/09-agents.md).
+Two kinds of provider:
 
 - **Pasted API keys:** Anthropic, OpenAI, OpenRouter and others. These
   work on every platform. Keys are kept in the Keychain.
@@ -311,9 +314,12 @@ compaction and the memory tools.
 
 The old plan's parts, still wanted, now behind the seams above:
 
-- **Always-on.** AgentKit and PeelCore run headless on a server. The
-  agent gets its own Sphinx account and becomes a contact; you reach it
-  from any Sphinx app while your devices sleep.
+- **Always-on.** Proactive work, and an agent reachable while your devices
+  sleep, need a server. Strut (TypeScript, already bundled in the official
+  Mac app) is the alternative to weigh then, against AgentKit and PeelCore
+  run headless on a server; the tool, event and provider contracts keep
+  either move cheap. Either way the agent gets its own Sphinx account and
+  becomes a contact, reachable from any Sphinx app.
 - **Coding agents over ACP** (Claude Code, Codex), on the Mac or the
   server. The ACP research stays in
   [research/acp-harnesses.md](research/acp-harnesses.md).

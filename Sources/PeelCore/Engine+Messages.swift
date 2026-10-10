@@ -113,8 +113,23 @@ extension Engine {
     /// the same amount, within the balance and, like a new one, confirmed
     /// when over the threshold; a boost in a tribe only if that amount still
     /// covers the tribe's price, and only while its message can be boosted.
+    /// On a connection it is pinged first (`connectionAnswers`): one that
+    /// looks connected but no longer answers is dropped and reconnected, and
+    /// the Retry refused as `connectionDropped`, rather than sent into it to
+    /// wait unseen. The checks run after the ping, so nothing waits between
+    /// them and the send's commit; with no connection at all they still run
+    /// (a refusal says more), then `notConnected`.
     @discardableResult
     public func resend(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> String? {
+        guard try storage.message(id: messageID)?.isRetryable() == true else { throw Failure.notRetryable }
+        if transport != nil, await !connectionAnswers() { throw Failure.connectionDropped }
+        return try await resend(messageID, confirmedMsat: confirmedMsat, auto: false)
+    }
+
+    /// `resend` without the ping. `auto`, for a reconnect's own sends
+    /// (`resendRecent`, new on their connection), says nothing when one
+    /// fails (the row shows it) and marks the row as sent again by itself.
+    private func resend(_ messageID: Int64, confirmedMsat: UInt64?, auto: Bool) async throws -> String? {
         guard let message = try storage.message(id: messageID), message.isRetryable(), let body = message.body else {
             throw Failure.notRetryable
         }
@@ -123,14 +138,15 @@ extension Engine {
             if let tribe, let paid = message.msat, tribe.messageAmountMsat > UInt64(max(paid, 0)) {
                 throw Failure.tribePriceRose(boost: false)
             }
-            if message.type == MessageType.attachment {
-                return try await uploadAndDeliver(message)
-            }
             if message.type == MessageType.invoice,
                Self.requestInvoice(body)?.isExpired() != false {
                 throw Failure.requestExpired
             }
-            return try await deliver(body: body, to: message.chat, type: message.type, replacing: messageID)
+            guard transport != nil else { throw Failure.notConnected }
+            if message.type == MessageType.attachment {
+                return try await uploadAndDeliver(message, auto: auto)
+            }
+            return try await deliver(body: body, to: message.chat, type: message.type, replacing: messageID, auto: auto)
         }
         guard let amount = message.amountMsat.flatMap(UInt64.init(exactly:)), amount > 0 else {
             throw Failure.notRetryable
@@ -143,7 +159,62 @@ extension Engine {
             throw Failure.tribePriceRose(boost: true)
         }
         try checkPayment(amount, .threshold(confirmedMsat), reserveMsat: Self.pingMsat(toTribe: tribe != nil))
+        guard transport != nil else { throw Failure.notConnected }
         return try await deliver(body: body, to: message.chat, type: message.type, amountMsat: amount, replacing: messageID)
+    }
+
+    /// How long a reconnect waits for the server's records of its candidates
+    /// (`checkPendingSends`); without them it sends only what never got a tag.
+    static let recordsWait: Duration = .seconds(10)
+
+    /// The messages a reconnect may send again by itself, as of now: recent
+    /// undelivered ones of ours that move no money (`Message.isAutoResendable`),
+    /// never in a tribe, oldest first.
+    func autoResendCandidates() throws -> [Message] {
+        let since = Date.now.addingTimeInterval(-Message.autoResendWindow).millisecondsSince1970
+        return try storage.undeliveredSends(since: since).filter { $0.isAutoResendable() && tribes[$0.chat] == nil }
+    }
+
+    /// After the connection comes back (`cameOnline`), on that connection:
+    /// sends each `autoResendCandidates` row again by itself, once and oldest
+    /// first, through `resend`'s checks. One with a tag goes only if
+    /// `checkPendingSends` asked the server about that tag and its records do
+    /// not name it, whatever their status: one that reached the server,
+    /// however this Mac marked it, is never sent twice. One with no tag never
+    /// left. A send that fails again stays failed, for Retry
+    /// (`Message.autoResentAt` is stored, so a relaunch does not send it
+    /// again), and nothing new is shown beyond its row.
+    func resendRecent(on connection: Transport) async {
+        _ = try? await poll(timeout: Self.recordsWait, failure: .notConnected) {
+            resendGate == nil || resendGate?.recorded != nil ? () : nil
+        }
+        guard let candidates = try? autoResendCandidates() else { return }
+        for candidate in candidates {
+            guard transport === connection, !Task.isCancelled else { return }
+            // As stored now: a record or an echo may have landed since.
+            guard let id = candidate.id, let message = try? storage.message(id: id), tribes[message.chat] == nil,
+                  Self.autoResends(message, gate: resendGate, now: .now) else { continue }
+            _ = try? await resend(id, confirmedMsat: nil, auto: true)
+        }
+    }
+
+    /// The tags of a reconnect's candidates the server was asked about, and
+    /// those its records named, any status (nil until it answers).
+    typealias ResendGate = (asked: Set<String>, recorded: Set<String>?)
+
+    /// Whether a reconnect sends `message` again by itself: one of ours that
+    /// moves no money (`Message.isAutoResendable`). With no tag it never
+    /// left, so only a failed one goes. With a tag, only if the server was
+    /// asked about it and its records do not name it, whatever their status;
+    /// and a pending one only once first sent over `Message.inFlightLimit`
+    /// ago, as the server records a send only once it has finished.
+    static func autoResends(_ message: Message, gate: ResendGate?, now: Date) -> Bool {
+        guard message.isAutoResendable(now: now) else { return false }
+        guard let tag = message.tag else { return message.delivery == .failed }
+        guard let gate, let recorded = gate.recorded, gate.asked.contains(tag), !recorded.contains(tag) else {
+            return false
+        }
+        return message.delivery != .pending || now.timeIntervalSince(message.firstSent) > Message.inFlightLimit
     }
 
     /// Drops an undelivered message of ours from this Mac. It never reached the
@@ -186,9 +257,10 @@ extension Engine {
     /// A payment is marked failed only when nothing was published
     /// (`commitAndPublish`'s `.none`): once anything went out it may have
     /// paid, so it stays pending, never to be sent again, until the server says.
+    /// `auto` (a reconnect's own resend) leaves a failure to the row alone.
     func deliver(
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
-        replacing id: Int64?
+        replacing id: Int64?, auto: Bool = false
     ) async throws -> String? {
         let tribe = try openTribe(pubkey)
         // By what is stored: a send never waits on the network, so sends go
@@ -211,7 +283,7 @@ extension Engine {
         var outgoing: Message?
         var resend: Storage.Commit.Resend?
         if let id {
-            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, now)
+            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, now, auto)
         } else {
             let fields = BodyFields.decode(body)
             outgoing = Message(
@@ -244,7 +316,9 @@ extension Engine {
                 try storage.setStatus(.failed, tag: tag)
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
-            emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(failure))"))
+            if !auto {
+                emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(failure))"))
+            }
             return sent?.tag
         }
         // The server moves the chat's read marker to what was just sent.

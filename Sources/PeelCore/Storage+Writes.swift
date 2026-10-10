@@ -27,9 +27,12 @@ extension Storage {
         var reads: [String: Int64] = [:]
         var mutes: [String: Int] = [:]
         /// An outgoing row sent again: it takes the new send's uuid, tag and
-        /// payment hash.
+        /// payment hash, keeps when it was first sent, and with `auto` notes
+        /// that a reconnect sent it (`Message.autoResentAt`).
         var resend: Resend?
-        typealias Resend = (id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64)
+        typealias Resend = (
+            id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64, auto: Bool
+        )
         var tribes: [Tribe] = []
         /// Rows of the server's payment history.
         var payments: [PaymentRecord] = []
@@ -206,7 +209,8 @@ extension Storage {
                     sql: """
                         UPDATE message SET uuid = ?, tag = ?,
                             paymentHash = CASE WHEN type = \(MessageType.invoice) THEN COALESCE(?, paymentHash) ELSE ? END,
-                            status = ?, timestamp = ?
+                            status = ?, timestamp = ?, firstSentAt = COALESCE(firstSentAt, timestamp),
+                            autoResentAt = COALESCE(?, autoResentAt)
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
                             AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
                             AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))))
@@ -214,7 +218,7 @@ extension Storage {
                         """,
                     arguments: [
                         resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, Message.Delivery.pending.rawValue,
-                        resend.timestamp,
+                        resend.timestamp, resend.auto ? resend.timestamp : nil,
                         resend.id, resend.chat,
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]

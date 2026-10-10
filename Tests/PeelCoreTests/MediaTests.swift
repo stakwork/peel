@@ -218,7 +218,7 @@ struct AttachmentStorageTests {
         #expect(try !storage.claimUpload(id: id))
 
         // Sending it then takes over the row, as a resend does for text.
-        let sent = try storage.apply(Storage.Commit(resend: (id, "02aa", "u9", "tag9", nil, 5_000))).stored
+        let sent = try storage.apply(Storage.Commit(resend: (id, "02aa", "u9", "tag9", nil, 5_000, false))).stored
         #expect(sent.first?.uuid == "u9")
         #expect(sent.first?.delivery == .pending)
         #expect(sent.first?.uploadState == .done)

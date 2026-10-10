@@ -96,6 +96,9 @@ extension Engine {
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case noServer
         case notConnected
+        /// The connection looked open but stopped answering; it is being
+        /// made again (`Engine.connectionAnswers`).
+        case connectionDropped
         /// A core call returned without what it exists to make (an invite's
         /// code, a payment's tag), named here; nothing was committed or sent.
         case coreReturnedNothing(String)
@@ -223,6 +226,7 @@ extension Engine {
             case .notRetryable: "only an undelivered message of ours can be sent again or discarded"
             case .noServer: "this account has no server recorded"
             case .notConnected: "not connected to the server"
+            case .connectionDropped: "the connection had stopped answering; reconnecting now"
             case .coreReturnedNothing(let what): "the core returned no \(what); nothing was sent"
             case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
             case .registrationTimedOut: "the server did not confirm registration in time"

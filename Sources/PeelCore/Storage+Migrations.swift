@@ -357,6 +357,15 @@ extension Storage {
             // A history row names its message by index (`Storage.reconcile`).
             try db.execute(sql: "CREATE INDEX message_serverIndex ON message (serverIndex)")
         }
+        migrator.registerMigration("v22") { db in
+            // A send of ours sent again: when it was first sent (a resend
+            // moves `timestamp` to now) and when a reconnect sent it again by
+            // itself, which it does once (`Message.isAutoResendable`).
+            try db.alter(table: "message") { t in
+                t.add(column: "firstSentAt", .integer)
+                t.add(column: "autoResentAt", .integer)
+            }
+        }
         return migrator
     }
 }

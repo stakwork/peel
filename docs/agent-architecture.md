@@ -19,17 +19,22 @@ other places to run the same code ("Later", below).
 - **One graph per user, the same data everywhere.** Every device, in Peel
   and in the official Sphinx apps, holds the same graph. Tom T is adding
   LadybugDB to the official apps first (below); Peel reuses what he learns.
-- **Sync is an encrypted change log,** the way Sphinx already works: each
-  write is a small event, sent as Sphinx messages to the user's own
-  account, and every device replays it into its local LadybugDB file.
-  Last write wins per field.
+- **Sync is an encrypted change log:** each write is a small event, kept
+  in a local log and uploaded as encrypted files to the memes server, as
+  the official apps already do for their preferences file. Every device
+  replays the others' events into its local LadybugDB file. Last write
+  wins per field.
 - **The graph is the knowledge.** The agent has a short system prompt and
   walks the graph toward its goal. Glimmer, the concept tree, is content
   in the graph: Concept is one node type among others, read and walked
   with the same generic tools.
-- **Version 1 can:** answer by walking the graph, remember, and act in
-  Sphinx (read chats, send, pay).
-- **Only payments ask for approval.** Sends go out directly (see "Risks").
+- **Version 1 is the foundational agent:** connect a model, chat, read
+  and search your Sphinx chats, and send messages. No memory, graph,
+  payments or approvals yet; the plan is in
+  [phases/09-agents.md](phases/09-agents.md).
+- **Sends go out directly,** as in the official apps, and every send shows
+  in the agent chat. Each tool declares its effect (read or send), so an
+  approval gate can come later without changing the tools.
 - **Memory comes from the agent chat and explicit Remember only.** The
   agent never reads other chats to learn, only to carry out a task.
 - **Agent conversations are graph nodes,** so they sync with everything
@@ -63,16 +68,13 @@ both platforms; building it for macOS is still to be tried.
  Peel (Mac now, iPhone next)          official Sphinx apps (Tom T)
  ┌────────────────────────────────┐   ┌───────────────────────────────┐
  │ Agent chat UI (per platform)   │   │ their own UI                  │
- │ AgentKit: loop · tools · gate  │   │                               │
+ │ AgentKit: loop · tools         │   │                               │
  │ PeelCore engine                │   │ their engine                  │
  │ GraphKit + GraphSync ──────────┼───┼─ GraphKit + GraphSync         │
  │ Ladybug: local file            │   │ Ladybug: local file           │
  └───────────────┬────────────────┘   └───────────────┬───────────────┘
                  │   change-log events, encrypted,    │
-                 └──── Sphinx messages to yourself ───┘
-                                 │
-                         broker + mixer: queues for
-                         devices that are offline
+                 └──── files on the memes server ─────┘
 ```
 
 Proposed packages, all platform-neutral Swift with no AppKit or UIKit.
@@ -82,7 +84,7 @@ None is built yet; GraphKit and GraphSync are to be agreed with Tom T.
 |---|---|---|
 | GraphKit | Shared with Tom T | The graph tools over `Ladybug`, on the generic Node and Edge tables |
 | GraphSync | Shared with Tom T | The change log, field timestamps, encryption keyed from the seed, batching, snapshots, and a transport protocol |
-| AgentKit | Peel | The loop, model providers, tool registry, payment gate, compaction and context assembly |
+| AgentKit | Peel | The loop, model providers, tool registry, compaction and context assembly; an approval gate later |
 | PeelCore | Peel | The Sphinx engine the Sphinx tools call |
 
 ### Where things run
@@ -95,7 +97,7 @@ implementation, not AgentKit.
 | Channel: how you talk to the agent | A local Agent chat in Peel, calling AgentKit directly | Sphinx messages to the agent's own account; the agent is a contact |
 | Graph | The local LadybugDB file | A local file on the server, synced the same way |
 | Tools | Graph, then Sphinx actions | Adds schedules, coding agents (ACP) and connectors |
-| Gate | Payments ask | The same, plus spending caps for unattended runs |
+| Approvals | None in v1 | An approval gate, with spending caps for unattended runs |
 
 ## The graph
 
@@ -176,13 +178,26 @@ Every write becomes one event:
   file. For each field the value with the latest `ts` wins; ties go to the
   higher `device`. The local file is a view of the log and can be rebuilt
   from it.
-- **Encryption.** Events are encrypted with a key derived from the user's
-  seed. The broker, the mixer and anyone else see only ciphertext.
-- **Transport.** Events are batched (one message per few seconds of
-  activity, not one per event) and sent as Sphinx messages to the user's
-  own account. Each device catches up by message index, as it already does
-  for chats and read markers (verified on two devices of one account in
-  [phases/02-messaging.md](phases/02-messaging.md)).
+- **Encryption.** Events are encrypted with the account's key, as the
+  preferences file is (RNCryptor with the node secret key; see
+  [phases/11-preferences-sync.md](phases/11-preferences-sync.md)). The
+  memes server sees only ciphertext.
+- **Transport** (Tom T's plan, 2026-10-10: every write logged locally with
+  its timestamp, uploaded to the memes server as an encrypted file; the
+  fetch and push rules are still to be agreed). Proposed rules:
+  - Each device writes only its own append-only segment files (such as
+    `graph/<device>/<seq>`), so no two devices write the same file.
+  - Push new segments in batches after a few seconds of quiet; never
+    re-upload history.
+  - Fetch other devices' new segments on launch, on return to the
+    foreground and on an interval; apply them idempotently by `event_id`.
+  - Never overwrite on a failed read: the memes server answers 404 for
+    any storage error, not only a missing file. A bad event is skipped,
+    not treated as an empty log; unknown ops and fields are kept.
+- **Not like the preferences file:** that file is one shared document
+  that each device reads, merges and re-uploads whole, so two devices can
+  overwrite each other and one unreadable item can wipe it. A growing graph
+  log cannot work that way.
 - **New devices.** A new device loads an encrypted snapshot, then the
   events after it, instead of replaying everything.
 - **Not synced.** Embeddings; each device computes its own.
@@ -190,10 +205,9 @@ Every write becomes one event:
   It is agreed with Tom T before either side writes data, and versioned
   by `v`.
 
-Open: whether the core can send a message to your own account, and what
-each message costs in sats and latency. If it cannot, the fallback is a
-relay that stores encrypted batches it cannot read, behind the same
-transport protocol.
+Open: whether the memes server can store several named files per account,
+or only the one `/preferences` slot. Per-device segments need named files
+or a new endpoint.
 
 ## The agent
 
@@ -202,10 +216,10 @@ transport protocol.
 One turn per message in the Agent chat:
 
 1. Write the user's message as a turn node in the Conversation.
-2. Assemble context: the short system prompt, the recent turns, and the
-   results of a first `search` on the message.
-3. Call the model with the tool list. Run each tool call; ask before any
-   payment.
+2. Assemble context: the short system prompt and the recent turns (later,
+   the latest summary and the results of a first `search` on the message).
+3. Call the model with the tool list, streaming the reply, and run each
+   tool call.
 4. Write the reply as a turn node, and any memories with `source` set to
    the turn.
 
@@ -229,13 +243,17 @@ device computes its own).
 
 ### Tools
 
-The graph tools above, plus the Sphinx tools through PeelCore:
+The Sphinx tools through PeelCore, under the official apps' names where
+they exist; the full v1 list is in [phases/09-agents.md](phases/09-agents.md).
+The graph tools above join them once the graph lands.
 
-| Tool | Does |
-|---|---|
-| `read_chat(chat, limit)` | Recent messages from a Sphinx chat, for a task |
-| `send(chat, text)` | Sends a Sphinx message |
-| `pay(contact or invoice, amount)` | Pays, after the user approves |
+| Tool | Effect | Does |
+|---|---|---|
+| `get_contacts_and_tribes` | read | Contacts and tribes, with names and keys |
+| `read_recent_messages`, `read_unseen_messages` | read | Messages from a chat, for a task |
+| `read_threads`, `search_messages` | read | Peel's own: tribe threads; search across chats |
+| `send_sphinx_message` | send | Sends a message, optionally in a thread or as a reply |
+| `mark_chat_as_seen` | send | Marks a chat read |
 
 ### Models
 
@@ -243,20 +261,19 @@ AgentKit has one provider interface with two kinds of provider:
 
 - **Pasted API keys:** Anthropic, OpenAI, OpenRouter and others. These
   work on every platform. Keys are kept in the Keychain.
-- **Linked accounts:** a Claude or Codex subscription. Vendors limit their
-  subscription sign-ins inside third-party apps, so check each vendor's
-  terms before building this. On the Mac, the route that stays inside the
-  terms is running the vendor's own CLI over ACP under the user's login;
-  that is not possible on iPhone.
+- **Linked accounts:** OpenRouter's sign-in first (the user signs in on
+  openrouter.ai and Peel receives a key they control). Claude and ChatGPT
+  subscriptions only once each vendor's terms are checked; on the Mac the
+  route inside the terms may be the vendor's own CLI over ACP, which is not
+  possible on iPhone.
 
 ## Risks
 
 - **Sends without approval.** To carry out a task the agent reads a chat,
-  and text in that chat could tell it to message someone. Guard: sends go
-  out without asking only to contacts the user named in the request;
-  anything else asks.
-- **Message cost.** Unknown until the sync spike; batching keeps the count
-  low.
+  and text in that chat could tell it to message someone. v1 accepts this,
+  as the official apps do, and shows every send in the agent chat. The
+  first gate rule, when it comes: sends go out without asking only to
+  contacts the user named in the request.
 - **Search on iPhone.** Whether LadybugDB's full-text and vector extensions
   work on iOS is unknown. The fallback is a SQLite FTS index beside the
   graph.
@@ -270,18 +287,16 @@ run in parallel and meet at one gate.
 
 **Peel, now: AgentKit**
 
-1. **Models.** Pasted API keys for any provider and OpenRouter; linked
-   Claude or Codex accounts where the vendor's terms allow.
-2. **Agent chat.** The loop, chat messages, the tool registry and a short
-   system prompt, on the SQLite storage above.
-3. **Sphinx tools.** `read_chat`, `send`, and `pay` with approval.
-4. **Compaction.**
+The pull requests and what "done" means for each are in
+[phases/09-agents.md](phases/09-agents.md): the data layer, models and the
+turn loop, the Sphinx read tools, the Agent chat, the send tool. Then
+compaction and the memory tools.
 
 **With Tom T, in parallel**
 
 - Agree the graph tools, the starting ontology and the event format.
 - Tom T builds GraphKit on `Ladybug` and runs the spikes: search on iOS,
-  sending to your own account, and the cost per message.
+  and named files per account on the memes server.
 
 **Gate: the graph plan is agreed.** Then:
 
@@ -313,10 +328,9 @@ The old plan's parts, still wanted, now behind the seams above:
 
 ## Open questions
 
-1. Can the core send a message to your own account, and at what cost?
-2. The exact event format, agreed with Tom T.
-3. How Tom T plans to store and sync the graph in the official apps.
-4. Do LadybugDB's search extensions work on iOS?
-5. Do MAP properties work through the Swift wrapper?
-6. One pinned swift-ladybug commit and one build recipe for both apps.
-7. Which vendors allow linked accounts in a third-party app.
+1. Can the memes server hold several named files per account?
+2. The exact event format and the fetch and push rules, agreed with Tom T.
+3. Do LadybugDB's search extensions work on iOS?
+4. Do MAP properties work through the Swift wrapper?
+5. One pinned swift-ladybug commit and one build recipe for both apps.
+6. Which vendors allow linked accounts in a third-party app.

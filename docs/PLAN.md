@@ -19,7 +19,7 @@ same capabilities, not the same screens.
 Peel is also the client for the Sphinx agent. The agent runs inside Peel
 (Mac now, iPhone next, an always-on server later) and walks a LadybugDB graph
 that is the same on every device and in the official Sphinx apps, synced as an
-encrypted change log over Sphinx messages (decided 2026-10-10). The engine must
+encrypted change log on the memes server (decided 2026-10-10). The engine must
 therefore stay free of UI types, so the same code can later run headless. The
 engine stays Swift for now (decided 2026-10-07). The design is in
 [agent-architecture.md](agent-architecture.md) and the engine rules in
@@ -233,7 +233,7 @@ too much, too early. The design is in
 - **The agent runs on the client** (Peel on the Mac, then iPhone), with an
   always-on server later running the same code.
 - **One graph per user,** the same data on every device and in the official
-  Sphinx apps, synced as an encrypted change log over Sphinx messages. Tom T
+  Sphinx apps, synced as an encrypted change log on the memes server. Tom T
   is adding LadybugDB to the official apps (`tt/feature/graph-db`); the
   graph tools, the starting ontology and the event format are agreed with
   him before either app writes graph data.

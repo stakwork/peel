@@ -538,8 +538,9 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
 - Still drawn by hand, for later batches: icon buttons (batch 3), the
   call header's split Join and its chevron (batch 3), and the small text
   actions inside rows (a join request's Approve and Decline, a pinned
-  message's Unpin, a payment row's Retry and Cancel), which are muted or
-  `accent` 11–12 pt text with a mini spinner (batch 12, `ListRow`).
+  message's Unpin, a failed message's Retry and Cancel), which are muted or
+  `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
+  `.text` style that draws them (batch 12, `ListRow`).
 
 ## Forms (shadcn's conventions)
 

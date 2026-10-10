@@ -139,7 +139,8 @@ extension ButtonStyle where Self == PeelButton {
 }
 
 extension EnvironmentValues {
-    /// Set by `PeelButton`'s filled variants (primary and destructive):
+    /// Set by any button drawn on a fill (`PeelButton`'s primary and
+    /// destructive, or a hand-drawn one such as the audio play button):
     /// marks in the label (the copy check, the spinner) take the button's
     /// own text colour, not their usual one.
     @Entry var filledButton = false

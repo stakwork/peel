@@ -149,44 +149,50 @@ extension Journeys {
         /// (each device's gate knows only its own waiting payment). Bob comes
         /// online and the server can move the sats only once; when it redeems
         /// both at once, both messages reach him. Review F2: Bob's history
-        /// has one; any other reads not received, and Payments counts one. Review journey 2 (F4): on
-        /// a third device restored afterwards, the failed one reads failed
-        /// from the server's record of its tag, not sent.
+        /// has one; the other reads Not received, and Payments counts one.
+        /// Taken one after the other, the second is refused before it is
+        /// delivered and F2 goes unchecked, so the setup is tried again (up
+        /// to `twoDeviceTries`) and a run that never gets both is a known
+        /// issue. Review journey 2 (F4): on a third device restored
+        /// afterwards, the failed one reads failed from the server's record
+        /// of its tag, not sent.
         @Test func twoDevicesPayAnOfflineContact() async throws {
-            let (alice, bob) = try await Self.pair()
-            let a0 = try #require(try await alice.settledBalance())
-            await bob.engine.disconnect()
-            let sats = a0 * 3 / 4
-            try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
-            #expect(try await alice.balance(settlingAt: a0 - 1) == a0 - 1)
-
-            let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
-            try await eventually("the restore to finish", timeout: .seconds(60)) { await !second.engine.isSyncingHistory }
-            try await second.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
-            try await bob.engine.connect()
-
-            // One of the two went through and one failed, whichever the server took first.
-            // The first device hears both statuses (each by its tag).
-            let sent = try await eventually("both sends to be settled") { () -> [Message]? in
-                let rows = try alice.messages(in: bob.pubkey).filter { $0.type == MessageType.directPayment && $0.fromMe }
-                return rows.count == 2 && Set(rows.map(\.delivery)) == [.delivered, .failed] ? rows : nil
+            var run = try await Self.payFromTwoDevices()
+            for _ in 1..<Self.twoDeviceTries where run.bobPayments.count < 2 {
+                await run.close()
+                run = try await Self.payFromTwoDevices()
             }
-            let failedTag = try #require(sent.first { $0.delivery == .failed }?.tag)
-            let paidTag = try #require(sent.first { $0.delivery == .delivered }?.tag)
+            let (alice, bob) = (run.alice, run.bob)
+            let msat = Int64(run.sats * 1000)
+            let payments = { try Self.payments(to: bob, from: alice) }
 
-            // When the server redeems both at once, both messages reach Bob
-            // (review F2); taken one after the other, the second is refused
-            // before it is delivered. Either way his history settles them:
-            // one arrived, and a second message, if any, did not.
-            let payments = { try bob.messages(in: alice.pubkey).filter { $0.type == MessageType.directPayment } }
-            try await eventually("Bob's history to settle the payments") {
-                try await bob.engine.refreshPaymentHistory()
-                let arrived = try payments().map(\.arrived)
-                return arrived.count <= 2 && arrived.filter { $0 == true }.count == 1 && !arrived.contains(nil)
+            if run.bobPayments.count == 2 {
+                // Both reached Bob: his history has one, the other is Not received.
+                try await eventually("Bob's history to settle both payments") {
+                    try await bob.engine.refreshPaymentHistory()
+                    return try !payments().map(\.arrived).contains(nil)
+                }
+                let got = try payments()
+                #expect(got.map(\.arrived) == [true, false])
+                let items = try await bob.storage.pool.read { db in try Storage.paymentItems(limit: 50, db) }
+                let unpaid = items.first { $0.message?.uuid == got.last?.uuid }
+                #expect(unpaid?.status == .failed)
+                #expect(unpaid?.error == PaymentItem.notArrived)
+            } else {
+                withKnownIssue("the mixer took the two redemptions one after the other in every try") {
+                    Issue.record(
+                        "Bob got one payment message in \(Self.twoDeviceTries) tries, so Not received (review F2) went unchecked"
+                    )
+                }
+                try await eventually("Bob's history to confirm the payment") {
+                    try await bob.engine.refreshPaymentHistory()
+                    return try payments().map(\.arrived) == [true]
+                }
             }
-            #expect(try Self.received(by: bob, from: alice) == [Int64(sats * 1000)])
+            #expect(try Self.received(by: bob, from: alice) == [msat])
 
             // A third device, restored now: the failed send is failed, the other sent.
+            let (failedTag, paidTag) = (run.failedTag, run.paidTag)
             let third = try await Person.restore("alice", mnemonic: alice.mnemonic)
             try await eventually("the restore to finish", timeout: .seconds(60)) { await !third.engine.isSyncingHistory }
             try await eventually("the restored sends to take the server's word") {
@@ -201,9 +207,77 @@ extension Journeys {
             #expect(items.filter { $0.kind == .payment && !$0.incoming && $0.status == .failed }.count == 1)
 
             await third.close()
-            await second.close()
-            await alice.close()
-            await bob.close()
+            await run.close()
+        }
+
+        /// The payment messages `payee` holds from `payer`, oldest first.
+        static func payments(to payee: Person, from payer: Person) throws -> [Message] {
+            try payee.messages(in: payer.pubkey).filter { $0.type == MessageType.directPayment }
+        }
+
+        /// How many times `twoDevicesPayAnOfflineContact` sets up the race
+        /// before settling for one message at Bob.
+        static let twoDeviceTries = 5
+
+        /// One try of the two-device race, settled on both sides.
+        struct TwoDeviceRun {
+            let alice, second, bob: Person
+            let sats: UInt64
+            let failedTag, paidTag: String
+            /// Bob's payment messages from Alice, final once the run is made.
+            let bobPayments: [Message]
+
+            func close() async {
+                await second.close()
+                await alice.close()
+                await bob.close()
+            }
+        }
+
+        /// Alice's first device and a restored second one each pay offline
+        /// Bob three quarters of her balance; Bob comes online.
+        static func payFromTwoDevices() async throws -> TwoDeviceRun {
+            let (alice, bob) = try await Self.pair()
+            let a0 = try #require(try await alice.settledBalance())
+            await bob.engine.disconnect()
+            let sats = a0 * 3 / 4
+            let msat = sats * 1000
+            try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: msat, confirmedMsat: msat)
+            #expect(try await alice.balance(settlingAt: a0 - 1) == a0 - 1)
+
+            let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !second.engine.isSyncingHistory }
+            try await second.engine.sendPayment(to: try bob.pubkey, amountMsat: msat, confirmedMsat: msat)
+            try await bob.engine.connect()
+
+            // One of the two went through and one failed, whichever the server took first.
+            // The first device hears both statuses (each by its tag).
+            let sent = try await eventually("both sends to be settled") { () -> [Message]? in
+                let rows = try alice.messages(in: bob.pubkey).filter { $0.type == MessageType.directPayment && $0.fromMe }
+                return rows.count == 2 && Set(rows.map(\.delivery)) == [.delivered, .failed] ? rows : nil
+            }
+
+            // The mixer fails the second send one of two ways: refused for
+            // the balance before it stores the onion (so it never reaches
+            // Bob, and Alice's history keeps the refusal), or delivered, Bob
+            // settling it, and then not paid. Wait for one or the other, so
+            // a late second message cannot reach Bob after the count is taken.
+            let bobPayments = try await eventually("the second send to reach Bob or be refused") { () -> [Message]? in
+                let got = try Self.payments(to: bob, from: alice)
+                if got.count == 2 { return got }
+                try await alice.engine.refreshPaymentHistory()
+                let refused = try await alice.storage.pool.read { db in
+                    try PaymentRecord.filter(Column("incoming") == false && Column("amountMsat") == Int64(msat))
+                        .fetchAll(db).contains(where: \.failed)
+                }
+                return refused && got.count == 1 ? got : nil
+            }
+            return TwoDeviceRun(
+                alice: alice, second: second, bob: bob, sats: sats,
+                failedTag: try #require(sent.first { $0.delivery == .failed }?.tag),
+                paidTag: try #require(sent.first { $0.delivery == .delivered }?.tag),
+                bobPayments: bobPayments
+            )
         }
 
         /// The local stack's mixer runs `NO_LIGHTNING`, so it never answers

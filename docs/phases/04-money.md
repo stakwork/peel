@@ -1619,3 +1619,15 @@ pending send the history settled is settled.
   stored after its row was fetched never confirmed. Left: the paid
   attachment's key and the mixer's key collision, above.
 
+- **The two-device journey reaches Not received** (2026-10-10, tests
+  only). The independent review found `twoDevicesPayAnOfflineContact`
+  passing on one message at Bob, which leaves F2 unchecked. The mixer
+  fails the second send one of two ways: refused for the balance before
+  it stores the onion (it never reaches Bob; Alice's history keeps the
+  refusal), or delivered, settled by Bob, and then not paid. The journey
+  now waits for one of the two before counting Bob's messages, tries the
+  setup up to five times for two, then asserts `[arrived true, false]`,
+  "Not received" on the second and Payments counting one; five tries
+  with one message each is a known issue (`withKnownIssue`), not a pass.
+  On the local stack about 6 of 23 tries got both messages (6 of 8 runs
+  reached Not received, 2 ended in the known issue).

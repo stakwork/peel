@@ -153,7 +153,11 @@ extension Journeys {
             await bob.engine.disconnect()
 
             let sats = a0 * 3 / 4
+            // The ping goes once the server has taken the async pay (review
+            // F9): its answer came, the wait did not run out.
+            let sent = ContinuousClock.now
             try await alice.engine.sendPayment(to: try bob.pubkey, amountMsat: sats * 1000, confirmedMsat: sats * 1000)
+            #expect(ContinuousClock.now - sent < Engine.asyncPaySettle / 2)
             // Only the ping has left: the payment itself waits for Bob.
             #expect(try await alice.balance(settlingAt: a0 - 1) == a0 - 1)
             #expect(try alice.storage.waitingMsat() == sats * 1000)

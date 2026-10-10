@@ -110,7 +110,7 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// How long a pending payment of ours counts as waiting for its
     /// recipient (`Storage.waitingMsat`): a week.
-    static let waitingLimit: TimeInterval = 7 * 24 * 60 * 60
+    public static let waitingLimit: TimeInterval = 7 * 24 * 60 * 60
 
     /// One of our text messages or attachments that failed, or that the
     /// server has not confirmed within the timeout, and so may be sent again

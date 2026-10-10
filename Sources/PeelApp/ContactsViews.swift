@@ -382,7 +382,7 @@ struct InviteForm: View {
                         FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
                     }
                 }
-                note("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest.")
+                note("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest. Only this Mac keeps the invite, so only here can it be cancelled.")
                     .padding(.top, 10)
             } footer: {
                 HStack(alignment: .top) {

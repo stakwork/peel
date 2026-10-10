@@ -35,6 +35,9 @@ public struct Invoice: Sendable, Equatable {
         hopHints = parsed.hopHints ?? []
     }
 
+    /// BOLT 11's expiry for an invoice that names none, in seconds.
+    static let defaultExpiry: TimeInterval = 3600
+
     public func isExpired(now: Date = .now) -> Bool {
         expiresAt.map { $0 <= now } ?? false
     }

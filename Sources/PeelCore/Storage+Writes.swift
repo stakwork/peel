@@ -663,6 +663,25 @@ extension Storage {
         }
     }
 
+    /// Whether an invoice made here is open and not yet expired; one with
+    /// no expiry lasts BOLT 11's default (`Invoice.defaultExpiry`) from when
+    /// it was made, so this check ends. Unlike
+    /// `openInvoices(among:)`, which settles history rows and so keeps
+    /// expired ones (a payment may have come in time), this asks whether a
+    /// payment may still come.
+    func hasOpenInvoice(now: Date = .now) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM invoice WHERE incoming = 1 AND status = 'OPEN'
+                        AND COALESCE(expiresAt, createdAt + ?) > ?)
+                    """,
+                arguments: [Int64(Invoice.defaultExpiry * 1000), now.millisecondsSince1970]
+            ) ?? false
+        }
+    }
+
     /// The version of `Message.hasNoWords` that `markNoWords` checks stored
     /// messages by; raise it when that rule changes.
     static let noWordsVersion = "1"

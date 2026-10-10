@@ -199,7 +199,8 @@ struct PaymentDetailPane: View {
     }
 
     private var pendingStatus: String {
-        item.isToContact ? "Waiting for \(item.chatName ?? "them") to come online" : "Pending: not confirmed by the server yet"
+        guard item.isToContact else { return "Pending: not confirmed by the server yet" }
+        return "Waiting for \(item.chatName ?? "them") to come online. \(WaitingForServer.waitsForPerson(item.chatName))"
     }
 
     private var facts: [KeyValues.Row] {

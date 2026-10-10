@@ -125,6 +125,9 @@ public actor Engine {
         /// An invite being cancelled: the server answers with the balance
         /// alone, so one at a time (`cancelInvite`).
         var cancellingInvite = false
+        /// The tags of async pays a send is waiting for the server to take
+        /// (`waitForAsyncPay`), true once it has answered with one.
+        var asyncPays: [String: Bool] = [:]
     }
     var money = MoneyWork()
 
@@ -271,7 +274,7 @@ public actor Engine {
             self.transport = transport
             listener = Task { [weak self] in
                 for await message in transport.inbound {
-                    await self?.receive(message)
+                    await Engine.$handlingInbound.withValue(true) { await self?.receive(message) }
                 }
                 await self?.connectionClosed(transport)
             }
@@ -527,7 +530,8 @@ public actor Engine {
         var discoveredTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
-        /// The balance went up, or someone's payment came: the server's
+        /// The balance went up (or changed at all with an invoice open,
+        /// `balanceCallsForReconcile`), or someone's payment came: the server's
         /// history may now settle an invoice made here or confirm the sats.
         var reconcile = false
     }
@@ -566,6 +570,17 @@ public actor Engine {
         default:
             return [:]
         }
+    }
+
+    /// Whether a new balance calls for the server's history: sats came in,
+    /// maybe for an invoice made here or a payment; or, with an invoice
+    /// open, any change, since a payment in and one out between two
+    /// notices can leave it no higher (payments review F11).
+    static func balanceCallsForReconcile(
+        _ balance: UInt64, stored: UInt64, invoiceOpen: () throws -> Bool
+    ) rethrows -> Bool {
+        guard balance != stored else { return false }
+        return try balance > stored || invoiceOpen()
     }
 
     /// History rows that pay an invoice made here and still open: incoming,
@@ -614,11 +629,16 @@ public actor Engine {
 
         if let balance = result.newBalance {
             commit.settings[.balanceMsat] = String(balance)
-            // Sats came in: maybe for an invoice made here, or a payment.
-            followUps.reconcile = balance > (try storage.balanceMsat() ?? 0)
+            followUps.reconcile = try Self.balanceCallsForReconcile(
+                balance, stored: storage.balanceMsat() ?? 0, invoiceOpen: { try storage.hasOpenInvoice() }
+            )
         }
         if let info = result.myContactInfo {
             commit.settings[.contactInfo] = info
+        }
+        // The server holds an async pay a send is waiting on (`waitForAsyncPay`).
+        if let tag = result.asyncpayTag, money.asyncPays[tag] != nil {
+            money.asyncPays[tag] = true
         }
         if let outgoing {
             commit.messages.append((outgoing, trustSender: false, replaces: nil))
@@ -878,8 +898,12 @@ public actor Engine {
     /// What `complete` publishes, in order: `now`, then `later` once the
     /// register of a new child key (a key exchange or a tribe join) has had
     /// time to land, because `later` may be addressed to that key, such as this
-    /// account's own contact record (type 33). Without a new key, `later` is empty.
-    static func publishPlan(_ result: RunReturn) -> (now: [Publish], later: [Publish]) {
+    /// account's own contact record (type 33). Without a new key, `later` is
+    /// empty. Then `afterPay`, once the server has taken the async pay
+    /// (`waitForAsyncPay`), which ends whichever of the two holds it: the
+    /// ping in it would wake the recipient to redeem a payment the server
+    /// may not hold yet. Without an async pay, `afterPay` is empty.
+    static func publishPlan(_ result: RunReturn) -> (now: [Publish], later: [Publish], afterPay: [Publish]) {
         var now: [Publish] = []
         if let topic = result.settleTopic, let payload = result.settlePayload {
             now.append((topic, payload))
@@ -887,17 +911,47 @@ public actor Engine {
         if let topic = result.registerTopic, let payload = result.registerPayload {
             now.append((topic, payload))
         }
-        var rest: [Publish] = []
-        if let topic = result.asyncpayTopic, let payload = result.asyncpayPayload {
-            rest.append((topic, payload))
+        let topics: [Publish] = result.topics.enumerated().map { index, topic in
+            (topic, index < result.payloads.count ? result.payloads[index] : Data())
         }
-        for (index, topic) in result.topics.enumerated() {
-            rest.append((topic, index < result.payloads.count ? result.payloads[index] : Data()))
+        let rest: [Publish], afterPay: [Publish]
+        if let topic = result.asyncpayTopic, let payload = result.asyncpayPayload {
+            (rest, afterPay) = ([(topic, payload)], topics)
+        } else {
+            (rest, afterPay) = (topics, [])
         }
         if result.registerTopic != nil, result.newChildIdx != nil {
-            return (now, rest)
+            return (now, rest, afterPay)
         }
-        return (now + rest, [])
+        return (now + rest, [], afterPay)
+    }
+
+    /// Set for the task that handles one inbound message, and whatever it
+    /// awaits: the next inbound message, a server's answer among them,
+    /// comes only once it is done (`publish`).
+    @TaskLocal static var handlingInbound = false
+
+    /// Background work of the engine's own (the history check, the tribes
+    /// refresh, a reconnect's resends): a task started while an inbound
+    /// message is handled would inherit `handlingInbound`, and a send in it
+    /// would skip the wait for its async pay.
+    static func background(_ work: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+        Task { await $handlingInbound.withValue(false) { await work() } }
+    }
+
+    /// How long a send waits for the server to take its async pay before
+    /// publishing the rest all the same, as the official apps do.
+    static let asyncPaySettle: Duration = .seconds(10)
+
+    /// Waits until the server has answered the async pay of one of `tags`
+    /// (`asyncpayTag`, which `commit` notes in `money.asyncPays` for the
+    /// tags `publish` listed there before it went), or `asyncPaySettle`.
+    /// A wait that runs out, or is cancelled, returns: the state is
+    /// committed and the payment may be held, so the rest still goes.
+    private func waitForAsyncPay(_ tags: Set<String>) async {
+        _ = try? await poll(timeout: Self.asyncPaySettle, failure: .notConnected) {
+            tags.contains { money.asyncPays[$0] == true } ? () : nil
+        }
     }
 
     /// Publishes in order on the current transport, read at call time so a
@@ -966,7 +1020,14 @@ public actor Engine {
     }
 
     private func publish(_ result: RunReturn, published: inout Int) async throws {
-        let (now, later) = Self.publishPlan(result)
+        let (now, later, afterPay) = Self.publishPlan(result)
+        // Listed before the async pay goes, so an answer that comes first
+        // counts. Any of the result's tags, as the official apps match it.
+        // Never while handling what the server sent (a key exchange's
+        // answer): the answer would wait behind it in the inbound queue.
+        let paying = !Self.handlingInbound && !afterPay.isEmpty ? Set(result.msgs.compactMap(\.tag)) : []
+        for tag in paying { money.asyncPays[tag] = false }
+        defer { for tag in paying { money.asyncPays[tag] = nil } }
         if !result.subscriptionTopics.isEmpty {
             guard let transport else { throw Failure.notConnected }
             try await transport.subscribe(result.subscriptionTopics)
@@ -976,6 +1037,10 @@ public actor Engine {
             // See `publishPlan`. A cancelled wait still publishes: the state is committed.
             try? await Task.sleep(for: Self.registerSettle)
             try await publish(later, published: &published)
+        }
+        if !afterPay.isEmpty {
+            if !paying.isEmpty { await waitForAsyncPay(paying) }
+            try await publish(afterPay, published: &published)
         }
     }
 
@@ -1143,7 +1208,7 @@ public actor Engine {
         // its own `cameOnline` to come.
         guard let connection, transport === connection else { return }
         resendTask?.cancel()
-        resendTask = Task { [weak self] in await self?.resendRecent(on: connection) }
+        resendTask = Self.background { [weak self] in await self?.resendRecent(on: connection) }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out

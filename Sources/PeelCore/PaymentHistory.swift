@@ -172,6 +172,27 @@ extension Storage {
             .values(in: pool)
     }
 
+    /// Whether a payment request of ours (type 2) carries this invoice: one
+    /// made on another device comes back from history, its invoice record
+    /// does not (payments review F11). Only one that is ours by its tag:
+    /// the core sets a tag only when the message's encrypted tag opens with
+    /// this account's own key (`dec_tag`), as every send of ours carries
+    /// (`create_sphinx_msg`), while a message it takes for ours by its date
+    /// alone (`dec_ts_matches`, which any sender can arrange) has none.
+    /// `invoiceProblem` asks this only of an invoice our own server made.
+    func isOurRequest(paymentHash: String) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM message
+                        WHERE fromMe = 1 AND tag IS NOT NULL AND type = \(MessageType.invoice) AND paymentHash = ?)
+                    """,
+                arguments: [paymentHash]
+            ) ?? false
+        }
+    }
+
     public func paidState(paymentHash: String) throws -> InvoicePaidState? {
         try pool.read { db in
             if try Self.invoice(paymentHash, incoming: true, db) != nil { return .own }

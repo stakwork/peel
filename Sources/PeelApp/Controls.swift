@@ -93,26 +93,6 @@ struct PeelDropdown<Value: Hashable>: View {
     }
 }
 
-/// A text link inside a pane or note: Show in Finder, Make a new one.
-struct LinkButton: View {
-    let title: String
-    let font: Font
-    let action: () -> Void
-
-    init(_ title: String, font: Font = Theme.font(13), action: @escaping () -> Void) {
-        self.title = title
-        self.font = font
-        self.action = action
-    }
-
-    var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(font)
-            .foregroundStyle(Theme.link)
-    }
-}
-
 extension View {
     /// A keyboard shortcut with no button to show: `action` runs on
     /// `shortcut` while this view is on screen and `enabled` holds.

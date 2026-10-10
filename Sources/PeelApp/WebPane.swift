@@ -814,8 +814,8 @@ private struct LoadProblem: View {
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
             if let retry {
-                Button("Try Again", action: retry)
-                    .buttonStyle(GhostButtonStyle())
+                Button("Try again", action: retry)
+                    .buttonStyle(.peel(.outline, size: .sm))
             }
         }
         .padding(24)
@@ -848,7 +848,7 @@ private struct DownloadBar: View {
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
                 Button("Show in Finder") { model.showInFinder(file) }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
             }
         case .failed(let name, let reason):
             NoticeBar(text: "Could not download \(name): \(reason)", dismiss: dismiss)

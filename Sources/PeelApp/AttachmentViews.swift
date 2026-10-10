@@ -412,7 +412,7 @@ struct SavedNote: View {
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .help(file.lastPathComponent)
-            LinkButton("Show in Finder", font: Theme.font(12, .medium)) { model.showInFinder(file) }
+            Button("Show in Finder") { model.showInFinder(file) }.buttonStyle(.peel(.link, size: .sm))
         }
     }
 }

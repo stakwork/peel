@@ -4,7 +4,7 @@ import SwiftUI
 /// alone. See docs/design/README.md, "Buttons".
 ///
 ///     Button("Save") { … }.buttonStyle(.peel(.primary))
-///     Button("Join") { … }.buttonStyle(.peel(.outline, size: .sm))
+///     Button("Open") { … }.buttonStyle(.peel(.outline, size: .sm))
 ///     Button("Show in Finder") { … }.buttonStyle(.peel(.link))
 ///
 /// Every variant has a hover, a pressed and a disabled (half opacity) state;
@@ -139,8 +139,7 @@ extension ButtonStyle where Self == PeelButton {
 }
 
 extension EnvironmentValues {
-    /// Set by the filled button styles (`PeelButton`'s primary and
-    /// destructive, `GhostButtonStyle(prominent:)`, `PrimaryButtonStyle`):
+    /// Set by `PeelButton`'s filled variants (primary and destructive):
     /// marks in the label (the copy check, the spinner) take the button's
     /// own text colour, not their usual one.
     @Entry var filledButton = false

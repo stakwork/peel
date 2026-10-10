@@ -54,7 +54,7 @@ struct CallCard: View {
                 if notSent {
                     // Never sent again: its room would be stale. Start a new one.
                     Button("Discard") { Task { await model.discard(message) } }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(.peel(.outline, size: .sm))
                         .help("Remove this call, which was never sent")
                 } else if leaving == nil {
                     button(onIt)
@@ -114,7 +114,7 @@ struct CallCard: View {
     @ViewBuilder private func button(_ onIt: Bool) -> some View {
         if onIt {
             Button("Open") { openWindow(id: CallWindow.id) }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(.peel(.outline, size: .sm))
                 .help("Bring the call window forward")
         } else {
             let joining = model.joiningRoom == link.room
@@ -123,7 +123,7 @@ struct CallCard: View {
             } label: {
                 Text("Join").buttonProgress(joining)
             }
-            .buttonStyle(GhostButtonStyle(prominent: true))
+            .buttonStyle(.peel(.primary, size: .sm))
             .disabled(model.joiningRoom != nil && !joining)
             .help("Join with your microphone and camera off")
         }
@@ -360,9 +360,9 @@ struct CallSwitchConfirm: View {
         let commit = joining ? "Leave and join" : "Leave and start"
         let buttons = HStack(spacing: 8) {
             Button("Cancel", action: cancel)
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(.peel(.outline, size: .sm))
             Button(action: confirm) { Text(commit).buttonProgress(working) }
-                .buttonStyle(GhostButtonStyle(prominent: true))
+                .buttonStyle(.peel(.primary, size: .sm))
                 .disabled(working)
         }
         Group {
@@ -433,7 +433,7 @@ struct OnCallBar: View {
                     Label("Return to call", systemImage: "arrow.up.forward.square")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(.peel(.outline, size: .sm))
                 .help("Bring the call window forward")
             }
         }

@@ -145,7 +145,7 @@ private struct WaitingStatus: View {
                     title: "This invoice has expired",
                     detail: "It ran out at \(invoice.expires.map(Formatting.expiry) ?? "") unpaid."
                 ) {
-                    LinkButton("Make a new one", action: renew)
+                    Button("Make a new one", action: renew).buttonStyle(.peel(.link))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 7) {

@@ -215,9 +215,7 @@ struct AddContactForm: View {
                         Task { await read { try await CodeSource.codes(inFile: file) } }
                     }
                 }
-                .buttonStyle(.plain)
-                .font(Theme.font(12, .medium))
-                .foregroundStyle(Theme.link)
+                .buttonStyle(.peel(.link, size: .sm))
                 .disabled(reading || attempt.working)
             }
             Spacer(minLength: 0)

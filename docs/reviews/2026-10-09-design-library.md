@@ -667,3 +667,42 @@ library outside forms.
     were never rendered in the app, because the offscreen app is never
     active. A temporary gallery forced them through the real drawing
     code instead.
+- **Batch 2, the older buttons onto `PeelButton` (2026-10-10).**
+  `ButtonStyles.swift` is deleted: `GhostButtonStyle`, `PrimaryButtonStyle`
+  and `SecondaryButtonStyle` are gone, and `LinkButton` left `Controls`.
+  Their call sites and the hand-styled text buttons in the batch's files
+  use `.peel(...)`: `GhostButtonStyle()` is `.outline` `.sm` (17 sites),
+  `prominent` is `.primary` `.sm` (5), `PrimaryButtonStyle` `.primary`
+  `.lg` (4), `SecondaryButtonStyle` `.outline` `.lg` with a full-width
+  label (1), `LinkButton` and the hand-styled links `.link` at the size
+  of their text (11), the Payments header's `HeaderAction` `.outline`
+  `.sm`, `.secondary` while open, and onboarding's Back `.ghost` `.lg`.
+  The web pane's "Try Again" is "Try again".
+  - Not 1:1, the closest chosen: the old outline buttons (chat cards,
+    bars, headers) were 13 regular, radius 6, a `divider` border, no fill
+    and no hover; they are now 12 medium, radius 7, `inputBorder` on
+    `fieldFill`, with hover, and about 3 pt narrower; the filled ones were 13 medium
+    and are 12 medium. Onboarding's buttons
+    were 14 bold (primary) and 14 regular (secondary); both are 14 medium,
+    and Restore gains the outline's fill. Back was 14 regular
+    `secondaryText` with no box; it is `.ghost`: `text` colour, medium, 16
+    pt in from the edge, with a hover fill. Paste twelve words and
+    Reconnect now were `accent`; they are `link` blue, as every other text
+    action. Show in Finder, Try again, Reconnect now and the scan zone's
+    Paste and Choose picture… were medium; `.link` is regular. The
+    Payments header buttons were 13 regular and 26 tall; they are 12
+    medium and 28, and the open one loses its border (`PeelButton` has
+    no selected state). A squeezed label now truncates on one line, as
+    every `PeelButton` does, where the old styles wrapped it (the image
+    viewer's Download broke as "Downl / oad" in a narrow gallery).
+  - Left by hand: the call header's split Join and chevron (batch 3, with
+    the icon buttons), and the small text actions inside rows (Approve
+    and Decline, Unpin, a payment row's Retry and Cancel; muted or
+    `accent` 11–12 pt with a mini spinner), which have no variant yet
+    (batch 12).
+  - Renders: the welcome screen on a new development profile, and a
+    temporary gallery (not committed) of every moved call site, drawn
+    before on `origin/main` and after, in light and dark. The screens
+    themselves need a chat with cards, a call, Payments or the web pane,
+    which the loopback stack was not run for. Hover and pressed were not
+    rendered (the offscreen app is never active).

@@ -186,6 +186,13 @@ struct MediaToken: Equatable {
         return nil
     }
 
+    /// A muid that can become part of a URL path and of a media token:
+    /// ASCII letters, digits and `-_=`, as the memes server issues them.
+    static func isSafeMUID(_ muid: String) -> Bool {
+        !muid.isEmpty && muid.utf8.count <= 256
+            && muid.unicodeScalars.allSatisfy { $0.isASCII && (CharacterSet.alphanumerics.contains($0) || "-_=".unicodeScalars.contains($0)) }
+    }
+
     static func base64URLDecode(_ text: String) -> Data? {
         var standard = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         standard += String(repeating: "=", count: (4 - standard.count % 4) % 4)

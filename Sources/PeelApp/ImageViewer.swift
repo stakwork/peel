@@ -11,6 +11,8 @@ struct ImageViewer: View {
     let state: ImageViewerState
 
     @State private var image: CGImage?
+    /// Why the image is not drawn, once it did not decode (`AttachmentFormat.notShown`).
+    @State private var notShown: String?
     @State private var keys = KeyMonitor()
     /// The main window's presenter, whose window alone gives the viewer its keys.
     @Environment(\.menuPresenter) private var presenter
@@ -38,7 +40,7 @@ struct ImageViewer: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        } else if let reason = handle.failureReason {
+                        } else if let reason = notShown ?? handle.failureReason {
                             Text(reason)
                                 .font(Theme.font(13))
                                 .foregroundStyle(Theme.secondaryText)
@@ -88,6 +90,7 @@ struct ImageViewer: View {
         .foregroundStyle(.white)
         .task(id: current.id) {
             image = nil
+            notShown = nil
             // A video stepped away from pauses, as closing the viewer does.
             playback.closeFullScreen()
             let message = current
@@ -104,6 +107,7 @@ struct ImageViewer: View {
                 // A slow decode that lands after a step belongs to the image left.
                 guard !Task.isCancelled else { return }
                 image = decoded
+                if decoded == nil { notShown = await AttachmentFormat.notShown(file) }
             }
         }
         .onAppear {

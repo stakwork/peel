@@ -8,15 +8,49 @@ import UniformTypeIdentifiers
 /// Pictures decoded at the size they are used, upright: attachments, photos,
 /// thumbnails. One set of ImageIO options for all of them.
 public enum ImageDecoding {
-    /// The first image of `source`, at most `maxPixels` on its long side.
+    /// The first image of `source`, at most `maxPixels` on its long side;
+    /// nil when it is not a picture or `isTooLarge`.
     public static func thumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
-        CGImageSourceCreateThumbnailAtIndex(source, 0, options(maxPixels))
+        guard !isTooLarge(source) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options(maxPixels))
     }
 
     /// The picture in a file, read without keeping the full-size image.
     public static func thumbnail(_ file: URL, maxPixels: Int) -> CGImage? {
+        source(file).flatMap { thumbnail($0, maxPixels: maxPixels) }
+    }
+
+    /// The most source pixels decoded for a still in a format ImageIO
+    /// scales while it decodes (JPEG, HEIC): a 200 MP phone photo or a
+    /// long panorama costs about what its smaller decode does.
+    public static let scaledFormatPixels = 500_000_000
+
+    /// Whether the picture says it holds more source pixels than are
+    /// decoded for its format: `scaledFormatPixels` for JPEG and HEIC,
+    /// `animationPixels` for the rest (PNG, GIF, TIFF, BMP and others, which
+    /// ImageIO reads in full whatever size they are drawn at, so a few
+    /// compressed megabytes could claim a picture it then decodes at full
+    /// size). A picture that does not say is not held to either.
+    public static func isTooLarge(_ source: CGImageSource) -> Bool {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        guard let width = properties?[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties?[kCGImagePropertyPixelHeight] as? Int else { return false }
+        return isTooLarge(width: width, height: height, type: CGImageSourceGetType(source).flatMap { UTType($0 as String) })
+    }
+
+    /// The rule `isTooLarge` applies to what a picture's header says.
+    static func isTooLarge(width: Int, height: Int, type: UTType?) -> Bool {
+        let (area, overflow) = width.multipliedReportingOverflow(by: height)
+        let scaled = type.map { $0.conforms(to: .jpeg) || $0.conforms(to: .heic) || $0.conforms(to: .heif) } ?? false
+        return overflow || area > (scaled ? scaledFormatPixels : animationPixels)
+    }
+
+    public static func isTooLarge(_ file: URL) -> Bool {
+        source(file).map(isTooLarge) ?? false
+    }
+
+    private static func source(_ file: URL) -> CGImageSource? {
         CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
-            .flatMap { thumbnail($0, maxPixels: maxPixels) }
     }
 
     private static func options(_ maxPixels: Int) -> CFDictionary {
@@ -35,6 +69,7 @@ public enum ImageDecoding {
     /// The most source pixels (width × height × frames) decoded for one
     /// animation. ImageIO reads every frame at its full size whatever size
     /// it is drawn at, so this caps the work, as the budget caps the memory.
+    /// A still image (`thumbnail`) in such a format is held to the same.
     public static let animationPixels = 100_000_000
 
     /// `source`'s frames at most `maxPixels` on their long side (smaller
@@ -158,6 +193,7 @@ enum ProfilePhoto {
     static func jpeg(from file: URL, limit: Int) throws -> Data {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= limit else { throw TooLarge(limit: limit) }
+        guard !ImageDecoding.isTooLarge(file) else { throw PeelError("\(file.lastPathComponent) is too large") }
         guard let image = ImageDecoding.thumbnail(file, maxPixels: maxPixels) else {
             throw PeelError("\(file.lastPathComponent) is not a picture")
         }

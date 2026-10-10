@@ -148,8 +148,7 @@ extension Engine {
                 let muid = try await withMemes(memes) { token in
                     try await memes.upload(sealed, as: outgoing, token: token, progress: progress)
                 }
-                // A year, as the official apps give their tokens.
-                let expiry = UInt32(clamping: Int(Date().timeIntervalSince1970) + 365 * 24 * 3600)
+                let expiry = Self.mediaTokenExpiry()
                 let price = BodyFields.decode(body)?.price.flatMap { UInt64($0) }
                 let (time, coreState) = (clock.next(), try StateCodec.encode(state))
                 let token = try price.map {
@@ -243,6 +242,65 @@ extension Engine {
         return DownloadedAttachment(
             file: stored.file, kind: stored.kind, fileName: fileName, size: stored.size, cached: cached != nil
         )
+    }
+
+    // MARK: - Payment templates
+
+    /// The pictures a payment can carry, as this account's memes server
+    /// lists them; fetched once a session (a failed fetch, again next time).
+    public func paymentTemplates() async throws -> [PaymentTemplate] {
+        let memes = try memesServer()
+        if let kept = templateList, kept.host == memes.host { return kept.templates }
+        let templates = try await withMemes(memes) { try await memes.templates(token: $0) }
+        templateList = (memes.host, templates)
+        return templates
+    }
+
+    /// The largest template picture fetched.
+    static let templateLimit = 5_000_000
+
+    /// A template's picture, from this account's memes server only, checked
+    /// to be an image and kept in the media cache; from there when it is.
+    public func templateImage(muid: String) async throws -> URL {
+        guard MediaToken.isSafeMUID(muid) else { throw Failure.noPaymentTemplate }
+        if let cached = media.lookup(media.template(muid: muid)) { return cached }
+        let memes = try memesServer()
+        let data: Data
+        do {
+            data = try await withMemes(memes) { try await memes.template(muid, token: $0, limit: Self.templateLimit) }
+        } catch MemesServer.Failure.refused(_, 404) {
+            throw Failure.noPaymentTemplate
+        }
+        return try await Task.detached { [media] in
+            guard AttachmentKind.verified(data, declared: .image) == .image else { throw Failure.noPaymentTemplate }
+            return try media.store(data, at: media.template(muid: muid), limit: Self.mediaCacheLimit)
+        }.value
+    }
+
+    /// The picture a direct payment carries, sent or received; refused when
+    /// its media token names a host other than this account's memes server.
+    public func templateImage(messageID: Int64) async throws -> URL {
+        guard let template = try storage.message(id: messageID)?.paymentTemplate else { throw Failure.noPaymentTemplate }
+        // Before the cache too: another host's muid never gets this server's picture.
+        guard template.host == (try memesServer()).host else { throw Failure.untrustedMediaHost(template.host) }
+        return try await templateImage(muid: template.muid)
+    }
+
+    /// The media token a payment carries for a template, as the Mac app's
+    /// `loadMediaToken`: for the recipient, on this account's memes server,
+    /// for a year, with no meta.
+    func templateToken(muid: String, to pubkey: String) throws -> String {
+        guard MediaToken.isSafeMUID(muid) else { throw Failure.noPaymentTemplate }
+        let memes = try memesServer()
+        return try Sphinxrs.makeMediaToken(
+            seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state), host: memes.host, muid: muid,
+            to: pubkey, expiry: Self.mediaTokenExpiry()
+        )
+    }
+
+    /// A year from now, as the official apps give their media tokens.
+    static func mediaTokenExpiry(now: Date = .now) -> UInt32 {
+        UInt32(clamping: Int(now.timeIntervalSince1970) + 365 * 24 * 3600)
     }
 
     // MARK: - Paid attachments

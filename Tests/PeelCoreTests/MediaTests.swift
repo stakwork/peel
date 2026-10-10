@@ -1,6 +1,56 @@
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import PeelCore
+
+/// How many source pixels a still is decoded from (`ImageDecoding.isTooLarge`).
+/// ImageIO reports no size for a header that claims more than its bytes
+/// hold, so the rule is tested on the sizes, and the reading on real pictures.
+struct SourcePixelTests {
+    /// A 20 × 10 picture in `type`, as ImageIO writes it.
+    static func picture(_ type: UTType) throws -> CGImageSource {
+        let context = try #require(CGContext(
+            data: nil, width: 20, height: 10, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        let image = try #require(context.makeImage())
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return try #require(CGImageSourceCreateWithData(data, nil))
+    }
+
+    @Test func photosFromPhoneCamerasAreDecoded() {
+        // Samsung's 108 MP and 200 MP, a medium-format 102 MP, a long panorama.
+        #expect(!ImageDecoding.isTooLarge(width: 12_000, height: 9_000, type: .jpeg))
+        #expect(!ImageDecoding.isTooLarge(width: 16_320, height: 12_240, type: .heic))
+        #expect(!ImageDecoding.isTooLarge(width: 11_648, height: 8_736, type: .jpeg))
+        #expect(!ImageDecoding.isTooLarge(width: 60_000, height: 6_000, type: .jpeg))
+        // Past the scaled formats' limit, even a JPEG is not.
+        #expect(ImageDecoding.isTooLarge(width: 30_000, height: 20_000, type: .jpeg))
+    }
+
+    @Test func formatsDecodedInFullHaveTheStrictLimit() {
+        // 144 MP, which a template or someone's attachment of a few megabytes could claim.
+        for type in [UTType.png, .gif, .tiff, .bmp] {
+            #expect(ImageDecoding.isTooLarge(width: 12_000, height: 12_000, type: type))
+            #expect(!ImageDecoding.isTooLarge(width: 10_000, height: 10_000, type: type))
+        }
+        #expect(ImageDecoding.isTooLarge(width: 12_000, height: 12_000, type: nil))
+        #expect(ImageDecoding.isTooLarge(width: .max, height: 2, type: .jpeg))
+    }
+
+    @Test func aPicturesOwnSizeAndFormatAreRead() throws {
+        for type in [UTType.png, .jpeg] {
+            let source = try Self.picture(type)
+            #expect(CGImageSourceGetType(source) as String? == type.identifier)
+            #expect(!ImageDecoding.isTooLarge(source))
+            #expect(ImageDecoding.thumbnail(source, maxPixels: 64) != nil)
+        }
+    }
+}
 
 /// A 1×1 PNG.
 private let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!

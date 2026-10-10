@@ -9,10 +9,12 @@
       endpoints the official apps use: GET /ask, POST /verify (checks the
       Lightning signed-message signature against the given pubkey), POST
       /file (multipart, bearer), GET /file/<media token> (bearer, host and
-      expiry checked), GET /media/<muid>. Uploads are kept in <data dir>/files
+      expiry checked), GET /media/<muid>, GET /templates and GET
+      /template/<muid> (bearer; three solid-colour payment templates).
+      Uploads are kept in <data dir>/files
       as they arrived. Never logs tokens or keys.
 """
-import asyncio, base64, hashlib, json, os, secrets, sys, time
+import asyncio, base64, hashlib, json, os, secrets, struct, sys, time, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -69,6 +71,20 @@ def memes(port, data_dir):
     def stored(muid):
         return os.path.join(files, hashlib.sha256(muid.encode()).hexdigest())
 
+    def png(width, height, rgb):
+        """A solid-colour PNG, written by hand (no imaging library needed)."""
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        rows = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+        header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+    # Payment templates, as GET /templates lists them: muids the server
+    # issues (URL-safe base64 of 32 bytes), each with its picture.
+    templates = {}
+    for i, (width, height, rgb) in enumerate([(240, 240, (247, 147, 26)), (320, 200, (97, 140, 255)), (200, 300, (80, 200, 120))]):
+        templates[base64.urlsafe_b64encode(bytes([i + 1]) * 32).decode()] = (width, height, png(width, height, rgb))
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -114,6 +130,17 @@ def memes(port, data_dir):
                     "Content-Type": meta["mime"],
                     "Content-Disposition": f"attachment; filename={meta['filename']}",
                 })
+            if url.path == "/templates":
+                if not self.bearer():
+                    return self.json({"error": "unauthorized"}, 401)
+                return self.json([{"muid": m, "width": w, "height": h} for m, (w, h, _) in templates.items()])
+            if url.path.startswith("/template/"):
+                template = templates.get(url.path[len("/template/"):])
+                if not self.bearer():
+                    return self.json({"error": "unauthorized"}, 401)
+                if not template:
+                    return self.json({"error": "not found"}, 404)
+                return self.reply(200, template[2], {"Content-Type": "image/png"})
             if url.path.startswith("/media/"):
                 path = stored(url.path[len("/media/"):])
                 if not self.bearer() or not os.path.exists(path):

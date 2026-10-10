@@ -132,6 +132,8 @@ public actor Engine {
     /// the memes server's bearer token (memory only).
     let media: MediaStore
     var memesToken: (host: String, token: MemesServer.Token)?
+    /// The memes server's payment templates, fetched once a session (`paymentTemplates`).
+    var templateList: (host: String, templates: [PaymentTemplate])?
     /// The call server's ticket endpoint and presence feed; see `callConnection`.
     var calls: CallServer?
     /// Largest attachment sent or downloaded, and the most the cache keeps.

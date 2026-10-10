@@ -9,13 +9,13 @@ import AppKit
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
 /// `{"select": "a chat's name"}` (sets the destination a click on its
-/// sidebar row sets),
-/// `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
+/// sidebar row sets), `{"open": "send-sats"}` (what a button with no
+/// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`.
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
-        var select, key, type, snapshot: String?
+        var select, open, key, type, snapshot: String?
         var mods: [String]?
         var wait: Double?
     }
@@ -86,6 +86,8 @@ final class OffscreenDriver {
             try await Task.sleep(for: .seconds(min(seconds, 60)))
         } else if let name = step.select {
             try select(name)
+        } else if let name = step.open {
+            try open(name)
         } else if let key = step.key {
             try post(key, modifiers: try modifiers(step.mods ?? []))
         } else if let text = step.type {
@@ -105,6 +107,23 @@ final class OffscreenDriver {
         }
         model.destination = .chat(chat)
         Offscreen.log("drive: selected \(chat.prefix(12))")
+    }
+
+    /// What a click on a button with no shortcut opens: `send-sats`, the
+    /// open chat's Send sats panel (its composer's bolt); `account`, the
+    /// Account screen (the menu's Account…).
+    private func open(_ name: String) throws {
+        guard let model = model() else { throw Failure(description: "no account open") }
+        switch name {
+        case "send-sats":
+            guard case .chat(let chat) = model.destination else { throw Failure(description: "no chat open") }
+            model.sendingSats = .chat(chat)
+        case "account":
+            // What Account… (⌘,) sets; a menu's key equivalent does not reach an app never active.
+            model.destination = .account
+        default:
+            throw Failure(description: "nothing to open named \(name)")
+        }
     }
 
     // MARK: Keys
@@ -130,10 +149,11 @@ final class OffscreenDriver {
         }
     }
 
-    /// Keys go where they would with Peel in front: its key window (a menu
-    /// or panel it has open), else the main window, made key within Peel.
+    /// Keys go where they would with Peel in front: its key window, else a
+    /// menu or panel it has open, else the main window, made key within Peel.
     private func post(_ key: String, modifiers: NSEvent.ModifierFlags) throws {
-        if NSApp.keyWindow == nil { main?.makeKey() }
+        // An open panel that takes keys has them, as after the click that opened it.
+        if NSApp.keyWindow == nil { (NSApp.windows.first { $0.isVisible && !$0.canBecomeMain && $0.canBecomeKey } ?? main)?.makeKey() }
         guard let window = NSApp.keyWindow ?? main else { throw Failure(description: "no window") }
         var modifiers = modifiers
         let characters: String
@@ -169,7 +189,8 @@ final class OffscreenDriver {
         guard !name.isEmpty, !name.contains("/"), !name.hasPrefix(".") else {
             throw Failure(description: "a snapshot's name is a plain file name")
         }
-        let windows = NSApp.orderedWindows.filter(\.isVisible).sorted { $0.canBecomeMain && !$1.canBecomeMain }
+        // `NSApp.windows`, not `orderedWindows`, which leaves out panels (`FloatingWindow`).
+        let windows = NSApp.windows.filter(\.isVisible).sorted { $0.canBecomeMain && !$1.canBecomeMain }
         for (index, window) in windows.enumerated() {
             guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: bitmap)

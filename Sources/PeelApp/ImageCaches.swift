@@ -120,6 +120,27 @@ final class ImageCache {
         }
     }
 
+    /// A payment template's picture, at most `maxPixels` on its long side,
+    /// from the file `fetch` gives (the engine's, from the account's memes
+    /// server). Keyed by the host a payment named it on (`host`; nil for the
+    /// picker's, this server's own) as well as its muid, so a payment naming
+    /// another host never draws this server's picture. One the engine refuses (another host's, or no image) or the
+    /// server does not have is not asked for again this session; a fetch
+    /// that fails otherwise (offline) is tried again next time.
+    func image(template muid: String, host: String?, maxPixels: Int, fetch: @escaping @Sendable () async throws -> URL) async -> CGImage? {
+        await load(Self.key(template: muid, host: host, maxPixels), priority: .utility, remembersMissing: true) {
+            do {
+                return ImageDecoding.thumbnail(try await fetch(), maxPixels: maxPixels)
+            } catch is Engine.Failure {
+                return nil
+            }
+        }
+    }
+
+    func cached(template muid: String, host: String?, maxPixels: Int) -> CGImage? {
+        object(Self.key(template: muid, host: host, maxPixels))
+    }
+
     private func object<T: AnyObject>(_ key: NSString) -> T? {
         cache.object(forKey: key) as? T
     }
@@ -149,6 +170,9 @@ final class ImageCache {
     private static func key(animation file: URL, _ maxPixels: Int) -> NSString { "frames|\(maxPixels)|\(file.path)" as NSString }
     private static func key(giphy url: URL) -> NSString { "giphy|\(url.absoluteString)" as NSString }
     private static func key(photo url: URL) -> NSString { "photo|\(url.absoluteString)" as NSString }
+    private static func key(template muid: String, host: String?, _ maxPixels: Int) -> NSString {
+        "template|\(maxPixels)|\(host.map { "named:\($0)" } ?? "own")|\(muid)" as NSString
+    }
 }
 
 /// What `ImageCache` keeps: an image or an animation, with its bytes as its cost.

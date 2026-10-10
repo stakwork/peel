@@ -132,6 +132,8 @@ struct SendSatsPanel: View {
     @State private var mode = Mode.send
     @State private var amount = ""
     @State private var note = ""
+    /// The payment template's muid, nil for none.
+    @State private var template: String?
     @State private var attempt = PaymentAttempt()
     @State private var requesting = false
     @State private var requestProblem: String?
@@ -145,6 +147,9 @@ struct SendSatsPanel: View {
                 FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
                 FormItem(label: mode == .send ? "Note" : "What it's for") {
                     FormTextField(label: mode == .send ? "Note" : "What it's for", prompt: "Optional", text: $note)
+                }
+                if mode == .send {
+                    TemplatePicker(selection: $template)
                 }
             }
             Group {
@@ -166,7 +171,9 @@ struct SendSatsPanel: View {
                         .disabled(attempt.working)
                     PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
                         guard let amountMsat else { return .refused("Enter an amount.") }
-                        return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, confirmedMsat: confirmed)
+                        return await model.sendPayment(
+                            to: chat, amountMsat: amountMsat, note: note, template: template, confirmedMsat: confirmed
+                        )
                     }, sent: done)
                 }
             case .request:
@@ -194,12 +201,163 @@ struct SendSatsPanel: View {
                 }
             }
         }
-        // A new note is a new payment: ask again over the threshold.
+        // A new note or picture is a new payment: ask again over the threshold.
         .onChange(of: note) {
             attempt.armed = nil
             attempt.problem = nil
         }
+        .onChange(of: template) {
+            attempt.armed = nil
+            attempt.problem = nil
+        }
         .onChange(of: mode) { requestProblem = nil }
+    }
+}
+
+/// The picture a payment carries, as the official apps' templates: None
+/// first and chosen at the start, then the memes server's pictures in a
+/// row that scrolls. A click picks one; with the row focused (Tab), the
+/// left and right arrows step through them.
+struct TemplatePicker: View {
+    @Environment(AppModel.self) private var model
+    @Binding var selection: String?
+
+    private enum Loading { case loading, loaded([PaymentTemplate]), failed(String) }
+    @State private var loading = Loading.loading
+    @FocusState private var focused: Bool
+
+    static let tile: CGFloat = 48
+
+    var body: some View {
+        FormItem(label: "Picture", helper: helper) {
+            switch loading {
+            case .loaded(let templates) where !templates.isEmpty:
+                row([nil] + templates.map(\.muid))
+            case .loading:
+                ProgressView().controlSize(.small).frame(height: Self.tile)
+            case .loaded, .failed:
+                EmptyView()
+            }
+        }
+        .task {
+            do {
+                loading = .loaded(try await model.paymentTemplates())
+            } catch {
+                loading = .failed(PeelError.readable(error))
+            }
+        }
+    }
+
+    private var helper: String? {
+        switch loading {
+        case .loading: nil
+        case .loaded(let templates): templates.isEmpty ? "This account's memes server offers no pictures." : nil
+        case .failed(let reason): "Pictures could not be loaded: \(reason)"
+        }
+    }
+
+    private func row(_ choices: [String?]) -> some View {
+        ScrollViewReader { scroller in
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(choices, id: \.self) { muid in
+                        Button { selection = muid } label: { tile(muid) }
+                            .buttonStyle(.plain)
+                            .id(muid)
+                            .accessibilityLabel(muid == nil ? "No picture" : "Picture")
+                            .accessibilityAddTraits(selection == muid ? .isSelected : [])
+                    }
+                }
+                .padding(5)
+                .padding(.bottom, 6)
+            }
+            .focusable()
+            .focused($focused)
+            .focusEffectDisabled()
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.control + 5, style: .continuous)
+                    .strokeBorder(Theme.accent.opacity(focused ? 0.5 : 0), lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+            .onKeyPress(.leftArrow) { step(-1, in: choices) }
+            .onKeyPress(.rightArrow) { step(1, in: choices) }
+            .onChange(of: selection) { scroller.scrollTo(selection, anchor: .center) }
+        }
+    }
+
+    private func step(_ by: Int, in choices: [String?]) -> KeyPress.Result {
+        let index = choices.firstIndex(of: selection) ?? 0
+        selection = choices[min(max(index + by, 0), choices.count - 1)]
+        return .handled
+    }
+
+    private func tile(_ muid: String?) -> some View {
+        let chosen = selection == muid
+        return Group {
+            if let muid {
+                TemplateImage(muid: muid, side: Self.tile)
+            } else {
+                Text("None")
+                    .font(Theme.font(11, .medium))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        }
+        .frame(width: Self.tile, height: Self.tile)
+        .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .strokeBorder(chosen ? Theme.accent : Theme.formEdge, lineWidth: chosen ? 2 : 1)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// A payment template's picture, aspect fit in a square of `side`: by its
+/// muid (the picker), or the one a payment in the chat carries.
+struct TemplateImage: View {
+    @Environment(AppModel.self) private var model
+    var muid: String?
+    var message: Message?
+    let side: CGFloat
+
+    @State private var loaded: CGImage?
+    @State private var failed = false
+
+    /// The muid, and for a payment's picture the host its token names.
+    private var named: (host: String?, muid: String)? {
+        if let muid { return (nil, muid) }
+        return message?.paymentTemplate.map { ($0.host, $0.muid) }
+    }
+    private var key: String? { named.map { "\($0.host ?? "")|\($0.muid)" } }
+    private var pixels: Int { Int(side * 2) }
+
+    var body: some View {
+        Group {
+            if let image = loaded ?? named.flatMap({ ImageCache.shared.cached(template: $0.muid, host: $0.host, maxPixels: pixels) }) {
+                Image(decorative: image, scale: 1).resizable().scaledToFit()
+            } else if failed {
+                Image(systemName: "photo")
+                    .font(.system(size: side > 60 ? 18 : 13))
+                    .foregroundStyle(Theme.secondaryText)
+                    .help("Picture not available")
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .frame(width: side, height: side)
+        .task(id: key) {
+            guard let named else { return }
+            if loaded != nil || failed { (loaded, failed) = (nil, false) }
+            let image = if let message {
+                await model.templateImage(of: message, maxPixels: pixels)
+            } else {
+                await model.templateImage(muid: named.muid, maxPixels: pixels)
+            }
+            loaded = image
+            failed = image == nil
+        }
+        .accessibilityLabel("Payment picture")
     }
 }
 

@@ -80,8 +80,8 @@ state is kept with the account (`Setting.sidebarLayout`, through
 `Engine.sidebarLayout`), so it goes when the account is forgotten. The
 search finds every chat, untrimmed, in closed sections too; while it is
 on, the headers show no chevron, so a click cannot change the saved
-layout. Unread's title lines up with the others (the chevron's room is
-kept). VoiceOver hears the headers as headings and "Show all 14 tribes" /
+layout. A header without a chevron (Unread, and every header while
+searching) sits flush with the rows' icons; no room is kept for one. VoiceOver hears the headers as headings and "Show all 14 tribes" /
 "Show fewer tribes". The sections are `ChatSections` in PeelCore. No
 drag-and-drop ordering yet (later).
 

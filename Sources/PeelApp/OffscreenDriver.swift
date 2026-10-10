@@ -111,7 +111,7 @@ final class OffscreenDriver {
 
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
-    /// Account screen (the menu's Account…).
+    /// Account screen (the menu's Account…); `payments`, the Payments screen.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -121,6 +121,9 @@ final class OffscreenDriver {
         case "account":
             // What Account… (⌘,) sets; a menu's key equivalent does not reach an app never active.
             model.destination = .account
+        case "payments":
+            // What the sidebar's Payments row sets.
+            model.destination = .payments
         default:
             throw Failure(description: "nothing to open named \(name)")
         }

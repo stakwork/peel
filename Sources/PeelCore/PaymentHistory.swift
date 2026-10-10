@@ -172,6 +172,24 @@ extension Storage {
             .values(in: pool)
     }
 
+    /// Whether a payment request of ours (type 2) carries this invoice: one
+    /// made on another device comes back from history, its invoice record
+    /// does not (payments review F11). A message the core only takes for
+    /// ours could claim any invoice, so `invoiceProblem` asks this only of
+    /// an invoice our own server made.
+    func isOurRequest(paymentHash: String) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM message
+                        WHERE fromMe = 1 AND type = \(MessageType.invoice) AND paymentHash = ?)
+                    """,
+                arguments: [paymentHash]
+            ) ?? false
+        }
+    }
+
     public func paidState(paymentHash: String) throws -> InvoicePaidState? {
         try pool.read { db in
             if try Self.invoice(paymentHash, incoming: true, db) != nil { return .own }

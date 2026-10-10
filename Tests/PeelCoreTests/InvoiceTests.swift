@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Sphinxrs
 import Testing
 @testable import PeelCore
 
@@ -265,6 +266,68 @@ struct InvoiceTests {
         )]
         _ = try storage.apply(commit)
         #expect(try storage.paidState(paymentHash: coffeeHash) == .own)
+    }
+
+    /// On another device the invoice table is empty, but our request came
+    /// back from history: its invoice is ours, never paid from here.
+    /// Theirs is not (payments review F11).
+    /// Only for an invoice our own server made: a message the core merely
+    /// takes for ours cannot stop paying anyone else's.
+    @Test func ourRequestFromHistoryMarksItsInvoiceOurs() throws {
+        let seed = try Sphinxrs.mnemonicToSeed(
+            mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
+        )
+        let bolt11 = try #require(try Sphinxrs.makeInvoice(
+            seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
+            amtMsat: 10_000, description: "test"
+        ).invoice)
+        let invoice = try Invoice(bolt11)
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("100000000", for: .balanceMsat)
+        func ourRequest(_ n: Int, fromMe: Bool) -> Message {
+            .fixture(
+                uuid: uuid(n), type: MessageType.invoice, chat: dm, fromMe: fromMe,
+                body: #"{"invoice":"\#(bolt11)"}"#, paymentHash: invoice.paymentHash, amountMsat: 10_000
+            )
+        }
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(ourRequest(1, fromMe: false), false, nil)]))
+        try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+        _ = try storage.apply(Storage.Commit(messages: [(ourRequest(2, fromMe: true), false, nil)]))
+        #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
+        // Another server's invoice is paid whatever our messages claim.
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+    }
+
+    /// Any balance change while an invoice made here is open, unexpired,
+    /// asks the history; otherwise only a rise does (payments review F11).
+    @Test func anOpenInvoiceIsCheckedOnAnyBalanceChange() throws {
+        let storage = try profile.storage()
+        #expect(try !storage.hasOpenInvoice())
+        let expired = InvoiceRecord(
+            paymentHash: coffeeHash, incoming: true, bolt11: coffee, amountMsat: 1, memo: "",
+            payee: coffeePayee, createdAt: 1, expiresAt: 1_000, status: .open
+        )
+        var commit = Storage.Commit()
+        commit.invoices = [expired]
+        _ = try storage.apply(commit)
+        #expect(try !storage.hasOpenInvoice())
+        var open = expired
+        open.paymentHash = hash(2)
+        open.expiresAt = Date.now.addingTimeInterval(3600).millisecondsSince1970
+        commit.invoices = [open]
+        _ = try storage.apply(commit)
+        #expect(try storage.hasOpenInvoice())
+        _ = try storage.apply(Storage.Commit(settling: [(hash(2), 1)]))
+        _ = try storage.apply(Storage.Commit(settled: [(hash(2), 42)]))
+        #expect(try !storage.hasOpenInvoice())
+
+        #expect(Engine.balanceCallsForReconcile(2, stored: 1, invoiceOpen: { false }))
+        #expect(!Engine.balanceCallsForReconcile(1, stored: 2, invoiceOpen: { false }))
+        #expect(Engine.balanceCallsForReconcile(1, stored: 2, invoiceOpen: { true }))
+        #expect(!Engine.balanceCallsForReconcile(2, stored: 2, invoiceOpen: { true }))
     }
 
     @Test func anInvoiceMadeHereIsPaidOnlyOnceTheServerSettles() throws {

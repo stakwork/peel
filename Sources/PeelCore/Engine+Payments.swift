@@ -404,12 +404,18 @@ extension Engine {
     public nonisolated func invoiceProblem(_ invoice: Invoice) throws -> Failure? {
         guard invoice.amountMsat > 0 else { return .invoiceWithoutAmount }
         guard !invoice.isExpired() else { return .invoiceExpired }
-        if invoice.payee == (try ownKeys())?.pubkey { return .ownInvoice }
+        let keys = try ownKeys()
+        if invoice.payee == keys?.pubkey { return .ownInvoice }
         switch try storage.paidState(paymentHash: invoice.paymentHash) {
         case .own?: return .ownInvoice
         case .pending?: return .invoicePending
         case .paid?: return .invoiceAlreadyPaid
         case nil: break
+        }
+        // Our own request, made by our server on another device: paying it
+        // would move sats from us to us, or mark it paid with none moved.
+        if invoice.payee == keys?.server, try storage.isOurRequest(paymentHash: invoice.paymentHash) {
+            return .ownInvoice
         }
         guard let balance = try storage.spendableMsat() else { return .balanceUnknown }
         let (needed, overflow) = invoice.amountMsat.addingReportingOverflow(Self.feeReserveMsat(for: invoice.amountMsat))

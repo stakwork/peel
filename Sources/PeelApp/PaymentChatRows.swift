@@ -180,23 +180,35 @@ private struct BoostersPanel: View {
 /// past the usual wait; to a person (`person`, a direct message's chat)
 /// "Waiting for Bob to come online", since their server holds the sats
 /// until their app answers. It may have paid, so there is no Discard or
-/// Retry until the engine marks it failed.
+/// Retry until the engine marks it failed; the server has no cancel and
+/// no expiry for it, so it says so (`waitsForPerson`, payments review F5).
 struct WaitingForServer: View {
     @Environment(AppModel.self) private var model
     let since: Date
     let what: String
     var person: String?
 
+    /// What a payment of ours waiting for `name` (nil: unnamed) to come
+    /// online will do, here and in Payments' detail.
+    static func waitsForPerson(_ name: String?) -> String {
+        let when = name.map { "\($0) next opens" } ?? "they next open"
+        return "Unless the server fails it, it pays when \(when) Sphinx, however long that takes. It cannot be cancelled"
+    }
+
     var body: some View {
         TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
-                Text(person.map { "\(what) waiting for \(model.contactName($0) ?? "them") to come online" }
-                     ?? "\(what) waiting for the server…")
+                let words = person.map { person in
+                    let name = model.contactName(person)
+                    let days = Int(Message.waitingLimit / 86_400)
+                    return (label: "\(what) waiting for \(name ?? "them") to come online · cannot be cancelled",
+                            help: "\(Self.waitsForPerson(name)). Their server holds it until then; for \(days) days it is kept out of what you can spend.")
+                } ?? (label: "\(what) waiting for the server…",
+                      help: "It may already have paid, so it cannot be sent again until the server says it failed.")
+                Text(words.label)
                     .font(Theme.font(11, .medium))
                     .foregroundStyle(Theme.secondaryText)
-                    .help(person == nil
-                          ? "It may already have paid, so it cannot be sent again until the server says it failed."
-                          : "Their server holds it until their app comes online. Until then it still counts against your balance.")
+                    .help(words.help)
             }
         }
     }

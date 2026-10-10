@@ -17,7 +17,9 @@ notified (#51). Storage was at v13 then; it is at v21 now.
 - The payments correctness review (`../reviews/2026-10-09-payments-correctness.md`):
   F1, F3 (Peel's half), F6 and F7 fixed ("Payments review, first set");
   F2, F4 and F8 fixed, and stale pending rows settled ("Payments review,
-  reconciliation"); F5, F9, F10, F11 and F3's core half open.
+  reconciliation"); F5's words, F9 and three of F11's four edges fixed
+  ("Payments review, waiting words and the async pay"); F5's cancel, F10,
+  F11's tribe-text Retry (needs Tom) and F3's core half open.
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -1630,3 +1632,74 @@ pending send the history settled is settled.
   with one message each is a known issue (`withKnownIssue`), not a pass.
   On the local stack about 6 of 23 tries got both messages (6 of 8 runs
   reached Not received, 2 ended in the known issue).
+
+## Payments review, waiting words and the async pay (2026-10-10, branch `payments-f5-f9-f11`)
+
+F5 (the words only), F9 and F11 from
+`../reviews/2026-10-09-payments-correctness.md`. Done means: a payment to
+someone offline says it waits, may pay much later and cannot be
+cancelled; the ping goes only once the server holds the async pay; the
+small edges that need no decision are closed.
+
+- **Premises, checked in the code first.** F5: `recordedStatuses` never
+  fails a send the server records as PENDING, and the mixer's ASYNCPAY
+  table has no expiry and no cancel (`mixer/src/db/asyncpay.rs`). F9: the
+  core puts the async pay's tag on the result's msgs, the mixer answers
+  ASYNC_PAY with that tag on `res/<device>/asyncpay` (nothing on error),
+  and Peel published the async pay, ping and self copy back to back,
+  ignoring `asyncpayTag`; the TypeScript client and the Mac app wait for
+  the tag or 10 s. F11: invites live only in the local table; invoices
+  were reconciled only when the balance rose; on another device our own
+  server-made request has no invoice record and the payee is the server.
+- **F5.** The chat row: "Payment waiting for Bob to come online · cannot
+  be cancelled"; its help and Payments' detail: "Unless the server fails
+  it, it pays when Bob next opens Sphinx, however long that takes. It
+  cannot be cancelled", one owner (`WaitingForServer.waitsForPerson`); the
+  help adds the days it is kept out of what can be spent
+  (`Message.waitingLimit`). No cancel: that needs the mixer.
+- **F9.** `publishPlan` returns `afterPay`, everything after the async pay.
+  `publish` lists the result's tags in `MoneyWork.asyncPays` before the
+  pay goes, `commit` marks one answered by `asyncpayTag`, and
+  `waitForAsyncPay` holds `afterPay` until then or `asyncPaySettle` (10 s),
+  after which the rest goes all the same. Not while handling an inbound
+  message (`@TaskLocal handlingInbound`, set by the listener): the answer
+  would wait behind it in the same serial queue, so a key exchange's
+  answer still goes back to back.
+- **F11.** The invite form says only this Mac keeps the invite, so only
+  here can it be cancelled. Any balance change while an invoice made here
+  is open and unexpired reconciles (`Engine.balanceCallsForReconcile`,
+  `Storage.hasOpenInvoice`; no expiry counts as BOLT 11's hour,
+  `Invoice.defaultExpiry`). `invoiceProblem` refuses an invoice our own
+  server made when one of our requests (type 2) carries it
+  (`Storage.isOurRequest`), after `paidState`; a Receive invoice made on
+  the other device still cannot be told. Left, needs Tom: a tribe text's
+  Retry after 30 s pays the price again if the first went; every tribe
+  text carries sats, so treating it like a payment would take Retry away
+  from every tribe message.
+- **Verified.** Unit: the plan's split, tag marking, the reconcile rule
+  and open invoices, our request refusing only our server's invoice
+  (`PublishPlanTests`, `InvoiceTests`). Local stack: all 22 journeys pass;
+  with temporary logging every wait was ended by its tag in 9–28 ms, and
+  `paymentsToAnOfflineContact` now asserts the send returns well inside
+  10 s. Offscreen check on a new development profile funded by the stack's
+  bank, contact offline: the chat caption and Payments' "Waiting" and
+  "1,000 waiting" (a `payments` drive step added); the detail pane was not
+  reached by the drive.
+- **Reviews.** `/code-review`: the inbound rule was inferred from
+  `arrived == nil` (now the TaskLocal); the own-request check moved out of
+  `paidState` and limited to our server's invoices, since a message the
+  core only takes for ours could otherwise block paying any invoice and
+  hide a real pending or paid state; no-expiry invoices no longer open for
+  ever; wording ("when them opens", overclaiming). Not applied: the wait
+  does not end early on a dropped connection (at most 10 s, same outcome);
+  all the result's tags are matched, as the reference clients do.
+  `/simplify`: `ownKeys` read once, one Text chain, the week from the
+  constant, the expiry constant. Skipped: publishing `afterPay` in its own
+  task so the inbound path also waits (larger), and writing an invoice
+  record from our history requests (the forged-fromMe concern).
+  `/security-review`: no findings.
+- **Known gaps.** A connection that drops during the wait leaves the pay
+  held and the ping unsent: pending, F5's limbo, as before. A key
+  exchange's answer from `receive` still sends its async pay and ping back
+  to back. Each waiting payment's 1-sat ping shows in Payments as an
+  unexplained "Keysend, sent, not tied to a chat".

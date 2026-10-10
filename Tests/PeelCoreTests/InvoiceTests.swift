@@ -271,8 +271,8 @@ struct InvoiceTests {
     /// On another device the invoice table is empty, but our request came
     /// back from history: its invoice is ours, never paid from here.
     /// Theirs is not (payments review F11).
-    /// Only for an invoice our own server made: a message the core merely
-    /// takes for ours cannot stop paying anyone else's.
+    /// Only for an invoice our own server made, and only a request that is
+    /// ours by its tag: a forged "ours" cannot block paying an invoice.
     @Test func ourRequestFromHistoryMarksItsInvoiceOurs() throws {
         let seed = try Sphinxrs.mnemonicToSeed(
             mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
@@ -285,16 +285,21 @@ struct InvoiceTests {
         let storage = try profile.storage()
         let engine = try testEngine(storage)
         try storage.set("100000000", for: .balanceMsat)
-        func ourRequest(_ n: Int, fromMe: Bool) -> Message {
+        func ourRequest(_ n: Int, fromMe: Bool, tag: String? = nil) -> Message {
             .fixture(
                 uuid: uuid(n), type: MessageType.invoice, chat: dm, fromMe: fromMe,
-                body: #"{"invoice":"\#(bolt11)"}"#, paymentHash: invoice.paymentHash, amountMsat: 10_000
+                body: #"{"invoice":"\#(bolt11)"}"#, tag: tag, paymentHash: invoice.paymentHash, amountMsat: 10_000
             )
         }
         _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(ourRequest(1, fromMe: false), false, nil)]))
         try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
         #expect(try engine.invoiceProblem(invoice) == nil)
+        // Taken for ours by its date alone (`dec_ts_matches`), with no tag:
+        // a contact on our server could forge it, so it does not count.
         _ = try storage.apply(Storage.Commit(messages: [(ourRequest(2, fromMe: true), false, nil)]))
+        #expect(try engine.invoiceProblem(invoice) == nil)
+        // Ours by its tag, as every send of ours comes back from history.
+        _ = try storage.apply(Storage.Commit(messages: [(ourRequest(3, fromMe: true, tag: "aa"), false, nil)]))
         #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
         // Another server's invoice is paid whatever our messages claim.
         try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)

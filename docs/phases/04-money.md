@@ -1651,12 +1651,15 @@ small edges that need no decision are closed.
   the tag or 10 s. F11: invites live only in the local table; invoices
   were reconciled only when the balance rose; on another device our own
   server-made request has no invoice record and the payee is the server.
-- **F5.** The chat row: "Payment waiting for Bob to come online · cannot
-  be cancelled"; its help and Payments' detail: "Unless the server fails
-  it, it pays when Bob next opens Sphinx, however long that takes. It
-  cannot be cancelled", one owner (`WaitingForServer.waitsForPerson`); the
-  help adds the days it is kept out of what can be spent
-  (`Message.waitingLimit`). No cancel: that needs the mixer.
+- **F5.** The chat row: "Payment waiting for Bob to come online · can't
+  be cancelled from here"; its help and Payments' detail: "It should pay
+  when Bob next opens Sphinx, however long that takes. It can't be
+  cancelled from here", one owner (`WaitingForServer.waitsForPerson`).
+  Hedged on purpose: a ping that never left wakes nothing, and a send the
+  server never recorded fails later. The help adds that for 7 days
+  (`Message.waitingLimit`) it is kept out of what can be spent, and after
+  that may still go through if the balance covers it. No cancel: that
+  needs the mixer.
 - **F9.** `publishPlan` returns `afterPay`, everything after the async pay.
   `publish` lists the result's tags in `MoneyWork.asyncPays` before the
   pay goes, `commit` marks one answered by `asyncpayTag`, and
@@ -1664,14 +1667,21 @@ small edges that need no decision are closed.
   after which the rest goes all the same. Not while handling an inbound
   message (`@TaskLocal handlingInbound`, set by the listener): the answer
   would wait behind it in the same serial queue, so a key exchange's
-  answer still goes back to back.
+  answer still goes back to back. The engine's own background tasks
+  (the history check, the tribes refresh, a reconnect's resends) start
+  through `Engine.background`, which clears the flag, so a task started
+  while an inbound message is handled does not inherit it.
 - **F11.** The invite form says only this Mac keeps the invite, so only
   here can it be cancelled. Any balance change while an invoice made here
   is open and unexpired reconciles (`Engine.balanceCallsForReconcile`,
   `Storage.hasOpenInvoice`; no expiry counts as BOLT 11's hour,
   `Invoice.defaultExpiry`). `invoiceProblem` refuses an invoice our own
   server made when one of our requests (type 2) carries it
-  (`Storage.isOurRequest`), after `paidState`; a Receive invoice made on
+  (`Storage.isOurRequest`), after `paidState`. Only a request ours by its
+  tag counts: the core sets one only when the message's encrypted tag
+  opens with our own key (`dec_tag`), as every send of ours carries, and
+  none for one taken for ours by its date alone (`dec_ts_matches`), which
+  a contact on our server could forge. A Receive invoice made on
   the other device still cannot be told. Left, needs Tom: a tribe text's
   Retry after 30 s pays the price again if the first went; every tribe
   text carries sats, so treating it like a payment would take Retry away
@@ -1703,3 +1713,11 @@ small edges that need no decision are closed.
   exchange's answer from `receive` still sends its async pay and ping back
   to back. Each waiting payment's 1-sat ping shows in Payments as an
   unexplained "Keysend, sent, not tied to a chat".
+- **Independent review** (merge after fixes), applied: the F5 words
+  hedged (above); the 7-day help says what happens after; the background
+  tasks clear `handlingInbound`; the own-request check takes only a
+  request ours by its tag (security S1, a forged request from a contact on
+  our server blocked paying their invoice with "your own invoice");
+  the review doc's rows synced. Tracked, not built: re-sending the ping
+  for our pending async pays on the next connect, for a ping that never
+  left.

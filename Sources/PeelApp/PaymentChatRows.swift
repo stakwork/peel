@@ -180,8 +180,9 @@ private struct BoostersPanel: View {
 /// past the usual wait; to a person (`person`, a direct message's chat)
 /// "Waiting for Bob to come online", since their server holds the sats
 /// until their app answers. It may have paid, so there is no Discard or
-/// Retry until the engine marks it failed; the server has no cancel and
-/// no expiry for it, so it says so (`waitsForPerson`, payments review F5).
+/// Retry until the engine marks it failed; Peel has no way to cancel it
+/// and the server no expiry for it, so it says so (`waitsForPerson`,
+/// payments review F5).
 struct WaitingForServer: View {
     @Environment(AppModel.self) private var model
     let since: Date
@@ -190,9 +191,12 @@ struct WaitingForServer: View {
 
     /// What a payment of ours waiting for `name` (nil: unnamed) to come
     /// online will do, here and in Payments' detail.
+    /// Hedged: a ping that never left (the connection went, or the app
+    /// quit, during the wait for the server) means nothing wakes the
+    /// payment, and one the server never recorded fails later.
     static func waitsForPerson(_ name: String?) -> String {
         let when = name.map { "\($0) next opens" } ?? "they next open"
-        return "Unless the server fails it, it pays when \(when) Sphinx, however long that takes. It cannot be cancelled"
+        return "It should pay when \(when) Sphinx, however long that takes. It can't be cancelled from here"
     }
 
     var body: some View {
@@ -201,8 +205,8 @@ struct WaitingForServer: View {
                 let words = person.map { person in
                     let name = model.contactName(person)
                     let days = Int(Message.waitingLimit / 86_400)
-                    return (label: "\(what) waiting for \(name ?? "them") to come online · cannot be cancelled",
-                            help: "\(Self.waitsForPerson(name)). Their server holds it until then; for \(days) days it is kept out of what you can spend.")
+                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled from here",
+                            help: "\(Self.waitsForPerson(name)). Their server holds it until then. For \(days) days it is kept out of what you can spend; after that the sats count as spendable again, but it may still go through if your balance covers it.")
                 } ?? (label: "\(what) waiting for the server…",
                       help: "It may already have paid, so it cannot be sent again until the server says it failed.")
                 Text(words.label)

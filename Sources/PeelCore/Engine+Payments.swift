@@ -339,7 +339,7 @@ extension Engine {
         guard !closed else { return }
         money.needsReconcile = true
         guard money.reconcile == nil else { return }
-        money.reconcile = Task { [weak self] in await self?.reconcilePayments() }
+        money.reconcile = Self.background { [weak self] in await self?.reconcilePayments() }
     }
 
     private func reconcilePayments() async {

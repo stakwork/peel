@@ -931,6 +931,14 @@ public actor Engine {
     /// comes only once it is done (`publish`).
     @TaskLocal static var handlingInbound = false
 
+    /// Background work of the engine's own (the history check, the tribes
+    /// refresh, a reconnect's resends): a task started while an inbound
+    /// message is handled would inherit `handlingInbound`, and a send in it
+    /// would skip the wait for its async pay.
+    static func background(_ work: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+        Task { await $handlingInbound.withValue(false) { await work() } }
+    }
+
     /// How long a send waits for the server to take its async pay before
     /// publishing the rest all the same, as the official apps do.
     static let asyncPaySettle: Duration = .seconds(10)
@@ -1200,7 +1208,7 @@ public actor Engine {
         // its own `cameOnline` to come.
         guard let connection, transport === connection else { return }
         resendTask?.cancel()
-        resendTask = Task { [weak self] in await self?.resendRecent(on: connection) }
+        resendTask = Self.background { [weak self] in await self?.resendRecent(on: connection) }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out

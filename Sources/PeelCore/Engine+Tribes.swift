@@ -498,7 +498,7 @@ extension Engine {
 
     private func startTribeRefresh() {
         guard !closed, tribeWork.refresh == nil else { return }
-        tribeWork.refresh = Task { [weak self] in
+        tribeWork.refresh = Self.background { [weak self] in
             await self?.recordConfiguredTribeHost()
             await self?.refreshTribes()
         }

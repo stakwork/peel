@@ -117,28 +117,55 @@ struct AuditMarkupTests {
 
     /// A message can be long: the core joins up to 65,535 fragments into one.
     /// Each of these took seconds to tens of seconds at 64 KB before the audit.
-    @Test(arguments: [
-        ("mentions", String(repeating: "@a ", count: 21_000)),
-        ("unclosed fences", String(repeating: "```x\n", count: 12_800)),
-        ("links holding backticks", String(repeating: "https://a.co/` ", count: 4_300)),
-        ("mentions, code and links", String(repeating: "@a `b` https://c.co ", count: 3_200)),
-        ("backticks", String(repeating: "`", count: 64_000)),
-        ("item markers", String(repeating: "- a\n", count: 16_000)),
-        ("emphasis marks", String(repeating: "*a _b ~~c ", count: 6_400)),
-        ("unclosed emphasis", String(repeating: "**a ", count: 16_000)),
-        ("nested emphasis", String(repeating: "*_", count: 16_000) + "a" + String(repeating: "_*", count: 16_000)),
-        ("named links", String(repeating: "[a](https://a.co) ", count: 3_500)),
-        ("links closing emphasis", String(repeating: "https://a.co/* ", count: 4_300)),
-        ("quotes", String(repeating: "> a\n", count: 16_000)),
-        ("headings and numbers", String(repeating: "# a\n1. b\n", count: 6_400)),
-    ])
-    func longAdversarialTextParsesInLinearTime(name: String, text: String) {
-        #expect(finishes(within: .seconds(3)) {
-            _ = MessageMarkup.spans(in: text)
-            _ = MessageMarkup.inlines(text)
-            _ = MessageMarkup.blocks(text)
-            _ = MessageMarkup.plainText(text)
-        }, "\(name)")
+    /// Each input is built whole (`text(1)`) and at a quarter of its length
+    /// (`text(4)`).
+    static let adversarial: [(String, @Sendable (_ divisor: Int) -> String)] = [
+        ("mentions", { String(repeating: "@a ", count: 21_000 / $0) }),
+        ("unclosed fences", { String(repeating: "```x\n", count: 12_800 / $0) }),
+        ("links holding backticks", { String(repeating: "https://a.co/` ", count: 4_300 / $0) }),
+        ("mentions, code and links", { String(repeating: "@a `b` https://c.co ", count: 3_200 / $0) }),
+        ("backticks", { String(repeating: "`", count: 64_000 / $0) }),
+        ("item markers", { String(repeating: "- a\n", count: 16_000 / $0) }),
+        ("emphasis marks", { String(repeating: "*a _b ~~c ", count: 6_400 / $0) }),
+        ("unclosed emphasis", { String(repeating: "**a ", count: 16_000 / $0) }),
+        ("nested emphasis", { String(repeating: "*_", count: 16_000 / $0) + "a" + String(repeating: "_*", count: 16_000 / $0) }),
+        ("named links", { String(repeating: "[a](https://a.co) ", count: 3_500 / $0) }),
+        ("links closing emphasis", { String(repeating: "https://a.co/* ", count: 4_300 / $0) }),
+        ("quotes", { String(repeating: "> a\n", count: 16_000 / $0) }),
+        ("headings and numbers", { String(repeating: "# a\n1. b\n", count: 6_400 / $0) }),
+    ]
+
+    /// Parsing four times the text must take about four times as long, not
+    /// sixteen (quadratic). Both sizes are timed in the same run, alternately,
+    /// keeping the fastest of three, so a slow or busy machine slows both
+    /// alike and the ratio measures the parser, not the machine. A machine
+    /// busy at background priority can still slow one size more than the
+    /// other, so a high ratio is measured again, up to three times: a
+    /// quadratic parse is high every time. The cases run one at a time so they
+    /// do not load the machine for each other. The floor keeps a quarter-size
+    /// parse too quick to time from turning noise into a ratio.
+    @Test(.serialized, arguments: adversarial)
+    func longAdversarialTextParsesInLinearTime(name: String, text: @Sendable (Int) -> String) {
+        let (quarter, whole) = (text(4), text(1))
+        func parse(_ input: String) -> Duration {
+            ContinuousClock().measure {
+                _ = MessageMarkup.spans(in: input)
+                _ = MessageMarkup.inlines(input)
+                _ = MessageMarkup.blocks(input)
+                _ = MessageMarkup.plainText(input)
+            }
+        }
+        func ratio() -> Double {
+            var (small, large) = (parse(quarter), parse(whole))
+            for _ in 0..<2 {
+                small = min(small, parse(quarter))
+                large = min(large, parse(whole))
+            }
+            return large / max(small, .milliseconds(5))
+        }
+        var ratios = [ratio()]
+        while ratios.last! >= 8, ratios.count < 3 { ratios.append(ratio()) }
+        #expect(ratios.last! < 8, "\(name): the whole took \(ratios.map { String(format: "%.1f", $0) }) times a quarter")
     }
 
     @Test func unclosedFencesStayText() {

@@ -154,31 +154,31 @@ struct ImageViewer: View {
                     close()
                     model.startReply(to: message, from: model.composer(for: message))
                 } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
             }
             if isVideo {
                 let handle = model.attachment(current.id ?? 0)
                 if let saved = handle.savedTo {
                     Button { model.showInFinder(saved) } label: { Label("Show in Finder", systemImage: "folder") }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(.peel(.outline, size: .sm))
                         .help("Saved to Downloads as \(saved.lastPathComponent)")
                 } else {
                     let message = current
                     Button { Task { await model.saveToDownloads(message) } } label: {
                         Label("Download", systemImage: "arrow.down.to.line")
                     }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
                     .help("Save to Downloads")
                 }
             } else {
                 CopyButton("Copy") { model.copyImage(current) }
                     // A fresh button per image, so one copied does not mark the next.
                     .id(current.id)
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
                     .disabled(image == nil)
             }
             Button { Task { await model.save(current) } } label: { Label("Save as…", systemImage: "square.and.arrow.down") }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(.peel(.outline, size: .sm))
             HoverIconButton(systemImage: "xmark", help: "Close (Escape)", action: close)
         }
     }

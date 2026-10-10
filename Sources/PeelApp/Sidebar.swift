@@ -608,9 +608,7 @@ struct ConnectionCard: View {
             }
             if case .offline = model.connection {
                 Button("Reconnect now") { Task { await model.reconnectNow() } }
-                    .buttonStyle(.plain)
-                    .font(Theme.font(12, .medium))
-                    .foregroundStyle(Theme.accent)
+                    .buttonStyle(.peel(.link, size: .sm))
             }
         }
         .padding(14)

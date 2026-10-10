@@ -390,10 +390,14 @@ struct NotificationOffer: View {
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Not now") { model.dismissNotificationOffer() }
-                .buttonStyle(GhostButtonStyle())
-            Button("Turn on notifications") { Task { await model.enableNotifications() } }
-                .buttonStyle(GhostButtonStyle(prominent: true))
+            // The text gives way, never the buttons: their labels keep one line.
+            Group {
+                Button("Not now") { model.dismissNotificationOffer() }
+                    .buttonStyle(.peel(.outline, size: .sm))
+                Button("Turn on notifications") { Task { await model.enableNotifications() } }
+                    .buttonStyle(.peel(.primary, size: .sm))
+            }
+            .fixedSize()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

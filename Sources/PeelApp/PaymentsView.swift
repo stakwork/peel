@@ -219,14 +219,13 @@ struct PaymentsView: View {
     }
 }
 
-/// The small bordered buttons in the Payments header; lit while their pane is open.
+/// The small buttons in the Payments header: outline, secondary (lit) while
+/// their pane is open.
 private struct HeaderAction: View {
     let title: String
     let systemImage: String
     let active: Bool
     let action: () -> Void
-
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -235,15 +234,7 @@ private struct HeaderAction: View {
                     .font(.system(size: 11, weight: .semibold))
                 Text(title)
             }
-            .font(Theme.font(13))
-            .foregroundStyle(Theme.text)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .background(active || hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(.peel(active ? .secondary : .outline, size: .sm))
     }
 }

@@ -420,16 +420,16 @@ copy (the Payments screen's invoice and payment hash included), never a bare
 - **A button:** `CopyButton("Copy invoice", text: invoice)`, or
   `CopyButton("Copy image") { model.copyImage(message) }` for anything else
   that copies (the closure returns whether it copied; no check when it did
-  not). It takes the surrounding button style (`GhostButtonStyle`);
+  not). It takes the surrounding button style (`.peel(...)`);
   `iconOnly: true` draws the small hover icon button instead, with the title
   as its tooltip. `systemImage` defaults to `doc.on.doc`. After the click
   the icon becomes a check and the title "Copied" (a spring of about
   180 ms, no overshoot, scale and fade; leaving in 140 ms), held 1.5 s; another
   click starts the wait again. Both labels are laid out at once, so the button
   never changes width. Reduce Motion keeps only the cross-fade. The check is
-  green on a bordered or plain button; on a filled one (`GhostButtonStyle(prominent:)`,
-  `PrimaryButtonStyle`) it takes the button's own text colour, since green
-  on the blue fill clashes (Tom, 2026-10-08). The filled styles say so
+  green on a bordered or plain button; on a filled one (`PeelButton`'s
+  primary and destructive) it takes the button's own text colour, since green
+  on the blue fill clashes (Tom, 2026-10-08). The filled variants say so
   through `\.filledButton`.
 - **A button that copies in two steps** (the twelve words, after their
   warning): `CopyLabel("Copy", copiedAt: date)` as the label, setting
@@ -487,7 +487,7 @@ shadcn's `Button`: one style with a variant and a size.
 
 ```swift
 Button("Save") { … }.buttonStyle(.peel(.primary))
-Button("Join") { … }.buttonStyle(.peel(.outline, size: .sm))
+Button("Open") { … }.buttonStyle(.peel(.outline, size: .sm))
 Button("Show in Finder") { … }.buttonStyle(.peel(.link))
 Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // armed
 ```
@@ -508,7 +508,7 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
 
 | Size | Height | Text | Padding | Where |
 |---|---|---|---|---|
-| `.sm` | 28 | 12 medium | 10 | chat cards, rows |
+| `.sm` | 28 | 12 medium | 10 | chat cards, bars, headers |
 | `.md` (default) | 32 | 13 medium | 12 | panels, forms, panes (the inputs' height) |
 | `.lg` | 40 | 14 medium | 16 | onboarding |
 
@@ -518,11 +518,10 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
   `hover`, link dimmer) and disabled (50% opacity, no hover). There is
   no focus styling yet: it comes in a later batch, checked with keyboard
   navigation on.
-- Text is medium weight at every size, except `.link`, which is regular,
-  as most of `LinkButton`'s callers are. The two medium-weight links,
-  a file card's Show in Finder (`AttachmentViews.swift:319`) and a link
-  card's Try again (`LinkCards.swift:110`), turn regular when batch 2
-  moves them onto `.link`.
+- Text is medium weight at every size, except `.link`, which is regular.
+  A text action is always `.link`, in `link` blue (never `accent`); its
+  size sets its text, `.sm` (12) beside a 12 pt line, `.md` (13) beside
+  13.
 - The radius is `Theme.Radius.control` for every variant and size.
 - `fill` replaces a primary's colour: `attention` for a money button
   waiting for its second click (`PayButton`).
@@ -531,9 +530,16 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
 - The spinner goes in the label (`buttonProgress`). A commit button stays
   on while it runs, keeping its fill under the spinner; its action ignores
   a second click.
-- Not on it yet (batch 2): `GhostButtonStyle`, `PrimaryButtonStyle`,
-  `SecondaryButtonStyle`, `LinkButton`, the Payments header's
-  `HeaderAction` and the hand-styled text buttons.
+- Where each lives: chat cards, bars and headers (a call card's Join,
+  the image viewer's Reply, Mark all read, the Payments header) are
+  `.sm`; panels and forms `.md`; onboarding `.lg`, its Back `.ghost`.
+  The Payments header's buttons are `.outline`, `.secondary` while their
+  pane is open.
+- Still drawn by hand, for later batches: icon buttons (batch 3), the
+  call header's split Join and its chevron (batch 3), and the small text
+  actions inside rows (a join request's Approve and Decline, a pinned
+  message's Unpin, a payment row's Retry and Cancel), which are muted or
+  `accent` 11–12 pt text with a mini spinner (batch 12, `ListRow`).
 
 ## Forms (shadcn's conventions)
 

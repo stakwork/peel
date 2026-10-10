@@ -53,10 +53,14 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
             }
             VStack(spacing: 10) {
-                Button("I have an invite") { path = .newAccount; go(.invite) }
-                    .buttonStyle(PrimaryButtonStyle(fullWidth: true))
-                Button("Restore from twelve words") { path = .restore; go(.enterWords) }
-                    .buttonStyle(SecondaryButtonStyle())
+                Button { path = .newAccount; go(.invite) } label: {
+                    Text("I have an invite").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.peel(.primary, size: .lg))
+                Button { path = .restore; go(.enterWords) } label: {
+                    Text("Restore from twelve words").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.peel(.outline, size: .lg))
             }
             Text("New to Sphinx? Ask someone already on it for an invite.")
                 .font(Theme.font(13))
@@ -145,7 +149,7 @@ struct OnboardingView: View {
                     shownWords = []
                     model.enterApp()
                 }
-                .buttonStyle(PrimaryButtonStyle())
+                .buttonStyle(.peel(.primary, size: .lg))
                 .disabled(!wroteDown)
             }
         }
@@ -216,12 +220,10 @@ struct OnboardingView: View {
     private func footer(next: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         HStack {
             Button("Back", action: back)
-                .buttonStyle(.plain)
-                .font(Theme.font(14))
-                .foregroundStyle(Theme.secondaryText)
+                .buttonStyle(.peel(.ghost, size: .lg))
             Spacer()
             Button(action: action) { Text(next).buttonProgress(working) }
-            .buttonStyle(PrimaryButtonStyle())
+            .buttonStyle(.peel(.primary, size: .lg))
             .disabled(!enabled)
             .keyboardShortcut(.defaultAction)
         }
@@ -256,7 +258,7 @@ struct RestoreProgressView: View {
             HStack {
                 Spacer()
                 Button("Open Peel") { model.enterApp() }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .buttonStyle(.peel(.primary, size: .lg))
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -427,10 +429,8 @@ struct WordEntryGrid: View {
                 }
             } label: {
                 Label("Paste twelve words", systemImage: "doc.on.clipboard")
-                    .font(Theme.font(13))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
+            .buttonStyle(.peel(.link))
             NumberedWordGrid(count: 12, focused: focus) { index in
                 TextField("", text: binding(for: index))
                     .focused($focus, equals: index)

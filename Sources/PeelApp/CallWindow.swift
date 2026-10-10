@@ -401,7 +401,7 @@ private struct CallControls: View {
             Text(text).foregroundStyle(Theme.secondaryText)
             if let action {
                 Text("·").foregroundStyle(Theme.secondaryText)
-                LinkButton(action, font: Theme.font(12), action: perform)
+                Button(action, action: perform).buttonStyle(.peel(.link, size: .sm))
             }
         }
         .font(Theme.font(12))

@@ -160,10 +160,8 @@ struct PaymentDetailPane: View {
                         Text(item.isTribe ? "Open in #\(item.chatName ?? "")" : "Open chat with \(item.chatName ?? "them")")
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     }
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.link)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.peel(.link))
             }
             KeyValues(rows: facts)
         }

@@ -279,7 +279,7 @@ struct VideoTile: View {
                     .help(handle.failureReason ?? "")
                 if case .held = status {
                     Button("Load") { Task { await model.download(message) } }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(.peel(.outline, size: .sm))
                 }
             } else if case .downloading = handle.state, let progress = handle.progress {
                 TransferBar(label: "Downloading", progress: progress).padding(.horizontal, 12)

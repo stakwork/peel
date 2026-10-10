@@ -128,7 +128,7 @@ struct ThreadsView: View {
             } trailing: {
                 if model.unreadThreads > 0 {
                     Button("Mark all read") { Task { await model.markAllThreadsRead() } }
-                        .buttonStyle(GhostButtonStyle())
+                        .buttonStyle(.peel(.outline, size: .sm))
                 }
             }
             if threads.isEmpty {

@@ -84,7 +84,7 @@ struct KeyValues: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         if let copy = row.copy {
-                            CopyButton("Copy", text: copy).buttonStyle(GhostButtonStyle())
+                            CopyButton("Copy", text: copy).buttonStyle(.peel(.outline, size: .sm))
                         }
                     }
                 }

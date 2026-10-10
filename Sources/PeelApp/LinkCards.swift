@@ -54,11 +54,11 @@ struct TribeLinkCard: View {
         } action: {
             if member {
                 Button("Open") { model.destination = .chat(link.pubkey) }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
                     .help("Open this tribe")
             } else if !deleted {
                 Button("Join") { joining = true }
-                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .buttonStyle(.peel(.primary, size: .sm))
                     .help(info == nil ? "Look up this tribe, then join" : "See the price, then join")
                     .peelPopover(isPresented: $joining) {
                         JoinTribeForm(link: link.text, info: info) { joining = false }
@@ -107,9 +107,8 @@ struct TribeLinkCard: View {
             Text([info.isPrivate == true ? "Private" : nil, "\(info.joinPrice.text) to join"]
                 .compactMap { $0 }.joined(separator: " · "))
         } else if read?.problem != nil {
-            LinkButton("Try again", font: Theme.font(12, .medium)) {
-                Task { await model.loadLinkedTribe(link, again: true) }
-            }
+            Button("Try again") { Task { await model.loadLinkedTribe(link, again: true) } }
+                .buttonStyle(.peel(.link, size: .sm))
         } else if read == .elsewhere {
             Text(Formatting.shortKey(link.pubkey))
         }
@@ -160,10 +159,10 @@ struct ContactLinkCard: View {
         } action: {
             if contact != nil, !isMe {
                 Button("Open chat") { model.destination = .chat(pubkey) }
-                    .buttonStyle(GhostButtonStyle())
+                    .buttonStyle(.peel(.outline, size: .sm))
             } else if !isMe {
                 Button("Add") { adding = true }
-                    .buttonStyle(GhostButtonStyle(prominent: true))
+                    .buttonStyle(.peel(.primary, size: .sm))
                     .help("Add as a contact")
                     .peelPopover(isPresented: $adding) {
                         AddContactForm(code: info) { adding = false }

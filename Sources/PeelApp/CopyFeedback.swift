@@ -25,9 +25,9 @@ enum CopyFeedback {
 
 /// A copy button: runs `copy`, then, if it copied, shows the check and
 /// "Copied" for `CopyFeedback.hold`; another click starts the wait again.
-/// The label variant takes the surrounding button style (`GhostButtonStyle`
-/// and so on); `iconOnly` draws the small hover icon button of the hover bar,
-/// with the title as its tooltip.
+/// The label variant takes the surrounding button style (`.peel(...)`);
+/// `iconOnly` draws the small hover icon button of the hover bar, with the
+/// title as its tooltip.
 ///
 ///     CopyButton("Copy hash", text: hash)
 ///     CopyButton("Copy invoice", text: invoice, iconOnly: true)

@@ -1,5 +1,7 @@
 # Phase 9b — The Inbox: a view of what your agent is keeping for you
 
+This file predates the 2026-10-10 replan (`../agent-architecture.md`); it is kept for its research.
+
 Status: planned. This is a late step of phase 9 (`09-agents.md`, Wave D),
 built after graph memory. Nothing is built. Tom raised the idea on
 2026-10-09 and turned it agent-first the same day. The design board

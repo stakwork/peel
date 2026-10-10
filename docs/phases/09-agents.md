@@ -1,438 +1,191 @@
-# Phase 9 — The personal agent: one agent contact, workers over ACP, graph memory
+# Phase 9 — The Sphinx agent, v1
 
-Status: planned. Refreshed 2026-10-08 to the one-agent-contact model in
-`../agent-architecture.md`, which is the source of truth for the design;
-this file is the build plan. It replaces PR #15's version of this file
-("an agent is a contact; the harness is a setting") and the older
-`09-local-tools.md`. The harnesses were tried on 2026-10-07,
-`../research/acp-harnesses.md`, cited below by section.
+## Status (2026-10-10)
 
-In the order set on 2026-10-08 (`../PLAN.md`), this phase comes after the
-cleanup, the polish pass and Markdown in messages, and before the rest of
-phase 10.
+**Planned, not built.** Tom decided the v1 scope on 2026-10-10. This file
+is the build plan; the design is in `../agent-architecture.md`.
 
-## What changed from PR #15
+The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
+over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
+git history: this file before this PR, at the base of PR #156. The ACP
+research it cited stays in `../research/acp-harnesses.md`.
+`09b-inbox.md` predates the replan and is kept for its research.
 
-- **One agent contact.** Tom has one agent. Claude Code, Codex, goose and
-  others are workers that the agent starts for a bound thread. They are not
-  contacts, have no Sphinx account and no "Add agent" flow each. The
-  harness registry stays, as the list of workers the host can start.
-- **The host is its own process.** `peel-agent serve` runs on the
-  always-on machine under `launchd`. PR #15's Wave B ran the host inside
-  the app from the owner's PIN; that is dropped. The app only sends and
-  reads messages, as `../agent-native.md` requires.
-- **Not every thread is a worker session.** A plain thread goes to the
-  agent's own loop (model plus tools). Only a bound thread goes to a
-  worker. PR #15 gave every thread a session and top-level DMs a "main
-  session".
-- **New work:** the agent loop, threads in DMs, the LadybugDB graph, Strut
-  jobs and mandates.
-- **No Buzz fork.** PR #15 added a line to `agent-native.md` naming a fork
-  of `buzz-acp` as the first candidate engine, which its own research
-  (section 8) argues against. The line is not carried over.
+PRs: 1 this file, 2 the data layer, 3 models and the turn loop, 4 tools
+and the Sphinx read tools, 5 the Agent chat, 6 the send tool. Each is
+described under "Build plan".
 
-## Idea
+## Scope of v1
 
-The agent is a Sphinx account on the agent host, a contact in Tom's list
-like a person, with the AGENT label. It owns the memory, the permissions
-and the budget. Tom talks to it by DM, in threads. In a plain thread it
-answers with its own model and tools, or starts a Strut job. In a bound
-thread it passes Tom's messages to a worker over the Agent Client Protocol
-and stands between the worker and Tom for every permission.
+v1 is the foundational agent: a chat in Peel that can talk to a model and
+act in Sphinx.
 
-Peel writes one ACP client for every worker. ACP is JSON-RPC over stdio,
-published by Zed in August 2025, community-governed with JetBrains as
-co-maintainer, with a public registry of more than forty agents. Block's
-Buzz (`block/buzz`, July 2026) connects agents the same way; the rules of
-its harness in `crates/buzz-acp` are the reference for the host loop, not
-its code, which is Nostr-typed and auto-approves permissions. Research 8.
+- **It runs inside Peel on the Mac.** The agent code is platform-neutral,
+  so Peel on iPhone and an always-on server can run it later.
+- **Connect a model.** Either a pasted API key (Anthropic, OpenAI,
+  OpenRouter) or a linked account. OpenRouter sign-in comes first. Claude
+  and ChatGPT subscriptions come only after each vendor's terms are
+  checked. Keys are kept in the Keychain, per device.
+- **The Agent chat.**
+  - A "Peel" row in Direct messages, with the Peel logo. Until a model is
+    connected the row shows "Set up" in link blue; after that, the AGENT
+    label, which also shows on its messages.
+  - Before setup, Peel introduces itself as the chat's first message, with
+    a card to connect a model.
+  - Replies stream in, as Markdown. Stop ends a reply.
+  - Tool activity shows as quiet rows that expand on click.
+  - One long conversation, like any DM. The model sees only the most
+    recent turns that fit a token budget; older messages stay on screen.
+    Clear conversation, in Account, starts over.
+  - Errors show inline, with Retry.
+  - Settings in an Agent section of the Account page.
+- **Sphinx tools,** with the official apps' names (below). Sends go out
+  directly, without asking. Every send shows as a row in the Agent chat,
+  linking to the message.
+- **Each tool declares its effect,** read or send, so a gate can be added
+  later without touching the tools.
 
-## Shape
+Out of v1: payments, approval gating, memory, the graph, sync, Hive tools,
+web search (optional, if it is cheap), iPhone, always-on, ACP workers,
+connectors, and reading the official apps' synced `ai_agent_config`.
 
-The diagram and the components are in `../agent-architecture.md`, "The
-shape". In this phase's terms:
+## Screens
 
-```
- Tom (Peel or official app) ──Sphinx DM, thread T──▶ peel-agent (host)
-                                                        │ gate
-                                   ┌────────────────────┴───────────────┐
-                                   │ T unbound                          │ T bound
-                                   ▼                                    ▼
-                         agent loop: model + tools            ACP session, granted folder
-                         graph · Strut jobs · MCP             claude-agent-acp · codex-acp ·
-                                                              goose acp · custom
-```
+Design board, 2026-10-10:
+https://claude.ai/artifact/Kj79C1MsMNQ1oLqRMSzSNf (option 1A chosen for
+before setup). The screens:
 
-- **Agent record.** The agent's Sphinx profile (from an invite until child
-  derivation lands), the owner pubkey, the model setting, worker grants.
-- **Worker registry.** Built-in definitions for Claude Code, Codex, goose
-  and buzz-agent, each with its adapter version pinned. A custom worker is
-  one JSON file: id, label, command, args, env, install hint. The host
-  probes PATH and reports a missing worker with its install hint.
-- **ACP client, in Swift.** Spawns the worker; `initialize` at protocol
-  version 1; `session/new` with the working directory and the MCP servers
-  the grant allows; `session/set_mode` and the model before the first
-  prompt; `session/prompt`; reads `session/update`; answers
-  `session/request_permission` through the gate; `session/cancel`;
-  `session/load` to resume.
-- **Host loop.** Buzz's rules: owner-only author gate; one prompt in
-  flight per thread with a queue behind it; an idle timeout and a maximum
-  turn length; replay of messages that arrived while the host was offline,
-  which the server queues anyway; respawn on crash. A thread binding maps a
-  thread uuid to one worker session.
-- **What Tom sees.** Replies in threads, in Markdown. In a bound thread:
-  progress lines, collapsed; ask cards with the options the worker offers
-  (for Claude Code allow once, allow for the session, reject); result
-  cards. The thread header shows the worker, folder, mode, running or idle,
-  Stop and Unbind.
+1. Before setup: Peel's first message introduces it, with a Connect card.
+2. Connect a model: a panel beside the button; the provider, the key or
+   sign-in, the model, and a test call.
+3. The chat: streamed replies, tool rows, send rows, inline errors, Stop.
+4. Account › Peel agent: name, provider, key (Replace, Remove), model,
+   Clear conversation.
+5. Edge cases: checking a key, a rejected key, OpenRouter sign-in, a
+   failed send, a stopped reply, offline, rate limit, a dead key.
 
-## Message shapes
+`../design/agents.md` was drawn for the old plan (one agent contact on a
+host, workers, ask cards) and will be replaced by the board.
 
-- A task is plain text in the DM. The agent replies in a thread rooted at
-  Tom's message; replies in that thread continue it.
-- Typed messages (`ask`, `answer`, `progress`, `result`, `bind`, `unbind`,
-  `status`, `mandate`, `revoke`) are versioned JSON in the message's
-  `metadata` field, a string the core carries (`sphinx/src/msg/mod.rs`).
-  The official Mac app already uses it: it sends a JSON object with a `tz`
-  key and, on receipt, parses the object and reads only `tz`, ignoring
-  other keys (`SphinxOnionManager+ChatExtension.swift`, checked 2026-10-07).
-  So `metadata` stays a JSON object, Peel's payload sits under one key,
-  `peel`, and the parser tolerates objects without it.
-- `content` holds the readable fallback, with numbered options for an ask,
-  so the official app shows it as text and a plain `1`, `2`, `3`, `yes` or
-  `no` still counts. An answer counts only when its signature recovers the
-  owner's pubkey and it names a pending ask. The message uuid is the
-  idempotency key.
-- Results are Markdown text; large outputs travel as encrypted attachments.
+## Sphinx tools
 
-## What it rests on
+The names match the official Mac app (`sphinx-mac-v2`,
+`Managers/AI Agent/AIAgentManager.swift`), so the agent behaves the same
+in both clients.
 
-- The core recovers each message's sender from its signature, so a task is
-  bound to exactly one account (verified during phase 2).
-- Messages already carry `threadUuid` in DMs, as the official Mac app sends
-  it (`03-chat.md`, "Conventions").
-- Replay protection already exists: the unique time on every core call and
-  the message uuid the store deduplicates on.
-- The engine's `checkPayment` already gates every send of sats.
+| Tool | Effect | Does |
+|---|---|---|
+| `get_contacts_and_tribes` | read | Contacts and tribes, with names and ids |
+| `read_recent_messages` | read | The last messages of one chat |
+| `read_unseen_messages` | read | Unseen messages, per chat |
+| `read_threads` | read | The threads of a chat, and one thread's messages |
+| `search_messages` | read | Search across chats, reusing Peel's chat search |
+| `send_sphinx_message` | send | Sends to a contact or tribe, in a thread or as a reply |
+| `mark_chat_as_seen` | send | Marks a chat as read |
 
-## The gate lives in the host, outside the model and outside the worker
+`read_threads` and `search_messages` are Peel's own; the official app has
+no tool by those names. Its `send_sphinx_message` takes a contact or tribe
+name and text; Peel adds optional thread and reply fields.
 
-This is remote execution of a machine by a chat identity, so the
-permission model is the design; the ACP client is the easy part.
+## Core primitives
 
-- Only the owner's messages reach the loop or a worker. Never "any
-  contact", and never Tom's root identity acting as the agent.
-- Grants per worker: folders and mode. The host puts every worker in its
-  conservative mode before the first prompt; Codex defaults to `agent`, so
-  it is set to `read-only`, research 3. Automatic approval is allowed only
-  inside a grant's rules (by default, reads in a granted folder), and the
-  host never passes "skip permissions".
-- Permission requests the rules do not cover reach Tom, in Peel or the
-  official app. "Allow for the session" never outlives the grant.
-- Payments pass `checkPayment` and then a mandate check: signed by Tom,
-  capped, with an expiry, revocable by message. No mandate, no payment
-  without an ask.
-- Every task, answer, payment and result is in the conversation and the
-  audit log.
-- Revoking a grant cancels its sessions and drops its queue.
+All in `AgentKit`. Record and Event are shared with Tom T's graph work in
+the official apps (branch `tt/feature/graph-db`, which adds swift-ladybug;
+his plan is a timestamped log of every write, synced as encrypted files on
+the memes server, like the preferences file). Their shapes must be agreed
+with him before PR 2 merges.
 
-## Decisions from the research
+- **Record:** `ref_id`, `type`, `name`, `body`, `props`, `created_by`,
+  `source`, `created_ms`, `updated_ms`, `deleted_ms`. Records are linked
+  to each other. Conversations, turns and tool calls are records.
+- **Event:** `v`, `event_id`, `op` (`add`, `update`, `link`, `unlink`,
+  `forget`), `ref_id`, `fields`, `ts` (a hybrid logical clock) and
+  `device`. There is one write path: append the event to the log, then
+  apply it.
+- **Store:** a protocol with `write(event)`, `read`, `search`, `walk` and
+  `ontology`. SQLite now, LadybugDB later.
+- **ModelProvider:** a protocol: messages and tools in, a stream of text
+  deltas, tool calls and usage out, cancellable. Two small clients of our
+  own (decided 2026-10-10): Anthropic Messages, and OpenAI-compatible Chat
+  Completions, which also covers OpenRouter. About 1,000 lines with
+  fixture tests. Not swift-ai-sdk, which the official apps use: about
+  100k lines from one author, frequent breaking releases, and 186
+  `@unchecked Sendable` escapes. Anthropic's ClaudeForFoundationModels
+  (`ClaudeAPI` target, Apache-2.0) is the reference design.
+- **Tool:** a name, an input schema, a handler and an effect.
+- **Turn loop:** one turn per message: build the context, call the model,
+  run its tool calls, write the reply.
+- **Context:** the system prompt and the most recent turns that fit a
+  token budget. Compaction comes later, as a Summary record.
 
-- Own ACP client over Foundation `Process`, Swift 6 strict concurrency: the
-  surface is small and the one maintained Swift 6 package brings five
-  dependencies and a daemon. Research 6.
-- Protocol version 1, pinned; 2 is a draft, all adapters answered 1. Research 5.
-- Adapters pinned in the command, `claude-agent-acp@0.87.0` and
-  `codex-acp@2.1.1` via `npx -y`; unpinned `npx` served a stale 0.49.0.
-  Research 1, 3.
-- Subscription logins for both workers, no API keys. Research 1, 3.
-- `session/set_mode read-only` before Codex's first prompt; for Claude the
-  model set explicitly and an own config home, or every turn carries Tom's
-  40k-token setup. Research 1, 3.
-- Host state in `agent.sqlite` beside `peel.sqlite` in the agent's profile
-  directory, owned by `PeelAgent` with its own migrator. It is not core
-  state and never shares a transaction with a core commit. The graph is a
-  separate LadybugDB file (`../agent-architecture.md`, decision 6).
-- Child accounts later, invites now: a child of a registered root
-  registers free with no invite at zero balance; a fresh root needs an
-  invite. Research 9.
-- No buzz-acp fork: its rules and defaults, not its code. Research 8.
+## Package layout
+
+| Target | Depends on | Holds |
+|---|---|---|
+| `AgentKit` | GRDB only; no PeelCore, AppKit or UIKit | The primitives above |
+| `PeelAgent` | AgentKit, PeelCore | The Sphinx tools and the wiring to the engine |
+| `PeelApp` | everything | The Agent chat and settings UI |
+
+Storage: `agent.sqlite`, one per account, beside `peel.sqlite`. API keys
+never go in it.
 
 ## Build plan
 
-One branch and one PR per task through the chain in `AGENTS.md`: `swift
-build`, the task's own check, `/code-review`, `/simplify`,
-`/security-review`, then this file. The security review looks hardest at
-tasks 2, 6, 7, 8 and 20: the process environment, no skip-permissions
-flag, the owner gate, the answer gate, the mandate check. No two sessions
-edit the same file. `$S` is the session scratchpad. Development profiles
-and the local test stack only; the agent never runs on `default`.
+Each PR goes through "How a change ships" in `../../AGENTS.md`.
 
-### Wave A: the agent host and workers
+1. **This phase file.** Done when Tom has agreed it.
+2. **AgentKit data layer.** Record, Event, the hybrid logical clock,
+   Store, and the SQLite event log. Done when unit tests cover write,
+   apply, read, search, walk, forget and rebuilding the tables from the
+   log, and the shapes are agreed with Tom T.
+3. **ModelProvider and the turn loop.** Driven from the `peel` CLI first.
+   Done when a CLI command holds a streamed conversation with a pasted
+   key, Stop works, and a bad key, a rate limit and no network each give
+   a plain error.
+4. **Tool registry and the Sphinx read tools.** Done when, from the CLI,
+   the agent answers "what's new?" and "find the message about X" on a
+   development profile, with every tool call recorded.
+5. **The Agent chat UI and setup,** after the design board is agreed.
+   Done when the journeys below, other than "do it for me", pass in the
+   app with `scripts/check-app.sh`.
+6. **The send tool.** `send_sphinx_message` and `mark_chat_as_seen`. Done
+   when "do it for me" passes on a development profile against the local
+   test server.
 
-Touches nothing that exists under `Sources/`, so it cannot conflict with
-work in the app.
+Later: compaction, then memory.
 
-1. **Targets.** `PeelAgent` library on `PeelCore` and GRDB, `peel-agent`
-   executable, `PeelAgentTests`, a placeholder file each. Files:
-   `Package.swift`, `Sources/PeelAgent/PeelAgent.swift`,
-   `Sources/peel-agent/AgentCommand.swift`,
-   `Tests/PeelAgentTests/PeelAgentTests.swift`. Merges first and alone.
-   Verify: `swift build && swift test --filter PeelAgentTests`. An hour.
-2. **ACP client.** Spawn, `initialize` at version 1, `newSession`,
-   `loadSession`, `setMode`, `setConfigOption`, `prompt` as a stream ending
-   in the stop reason, `cancel`, `answer`; `-32601` to `fs/*` and
-   `terminal/*`; `_meta` and `_`-prefixed notifications ignored; bounded line
-   length. Files under `Sources/PeelAgent/ACP/`: `JSONRPC.swift`,
-   `ACPTypes.swift`, `ACPConnection.swift`, `ACPClient.swift`. Needs 1.
-   Verify: task 4, then task 6's `run`. One to two days.
-3. **Fake worker.** `Tests/PeelAgentTests/Fixtures/fake-agent.py`, stdlib
-   only, a script per prompt word: `pong`, `ask` with Claude Code's three
-   options and a numeric id, `slow` until `cancel`, `fs` expecting `-32601`,
-   `junk` with `_meta` and `_` notifications, `crash` mid-turn. Needs
-   nothing. Verify: `python3 Tests/PeelAgentTests/Fixtures/fake-agent.py --self-test`.
-   Half a day.
-4. **Client tests.** `Tests/PeelAgentTests/ACPClientTests.swift` on the
-   fake worker: handshake, update order, permission round trip, cancel,
-   `-32601`, junk, an oversized line, a crash surfacing as an error with
-   the process reaped. `ACPHandshakeTests.swift` on `goose acp` when on
-   PATH, else skipped; research 4. Needs 2, 3. Verify: `swift test --filter
-   PeelAgentTests`. A day.
-5. **Worker registry and probe.** Built-ins claude, codex, goose: id,
-   label, command, args, env, install hint, modes conservative first,
-   config home policy. The probe checks PATH, the `node` version since the
-   Claude adapter wants 22 and this Mac has 20, and after task 2 an
-   `initialize` within 15 s. Files: `Sources/PeelAgent/Harness/Harness.swift`,
-   `HarnessRegistry.swift`, `HarnessProbe.swift`,
-   `Tests/PeelAgentTests/HarnessTests.swift`. Needs 1. Verify: the tests;
-   `peel-agent workers` prints found or the install hint. Half a day.
-6. **`peel-agent` executable.** Development profiles only, never
-   `default`. `workers`; `probe <worker>`; `run <worker> --cwd <dir>
-   [--mode m] [--model id] <prompt>` printing updates and reading an ask's
-   answer from stdin; `serve --profile <dev> --owner <pubkey> [--server
-   host:port]` running task 7, with workers and folders granted by
-   `grant <worker> --folder <dir> --mode <mode>`; `--command` points either
-   at the fake worker. Files: `Sources/peel-agent/AgentCommand.swift`,
-   `Arguments.swift`, its own parser. Needs 2 and 5 for `run`, 7 for
-   `serve`. Verify: `.build/debug/peel-agent run claude --cwd $S/cwd "Reply
-   with the single word pong."` prints pong; with "Create a file named
-   hello.txt containing hi" it shows the ask, `3` rejects, `ls $S/cwd`
-   stays empty. A day.
-7. **Host loop, router, state and gate.** One actor: `Account.load`,
-   consume `engine.events`; the gate (`chat` is the owner, `fromMe` is
-   false, type is text, uuid unseen); the router (a thread with a binding
-   goes to its worker session, anything else to the agent loop); one
-   prompt in flight per thread with a queue behind it; idle 1,500 s and max
-   turn 7,200 s as Buzz defaults them; respawn on crash with
-   `session/load`; replies through `sendText(_:to:replyTo:inThread:)`.
-   Tables: `agent`, `grant`, `binding` (thread uuid to worker, folder and
-   ACP session id), `ask`, `audit`. Queued messages arrive as `.message`
-   events on connect, so replay needs nothing extra. Asks are numbered
-   text answered `1`, `2` or `3` until task 8. Files under
-   `Sources/PeelAgent/Host/`: `AgentRecord.swift`, `AgentStore.swift`,
-   `Gate.swift`, `Router.swift`, `WorkerRunner.swift` with `ACPRunner` and
-   a `ScriptedRunner`, `AgentHost.swift`; `Tests/PeelAgentTests/HostTests.swift`.
-   Needs 1; 2 for `ACPRunner` only. Verify: the tests, then two
-   development profiles on the local stack, `init` each, `add` each other,
-   `peel-agent serve --profile agent1 --owner <alice>`, `peel --profile
-   alice send <agent1> pong`, `listen` prints the reply in a thread. Two days.
-8. **Typed message codec.** `ask`, `answer`, `progress`, `result`, `bind`,
-   `unbind`, `status`, `mandate`, `revoke` as versioned JSON under the
-   `peel` key of the `metadata` object, keeping any other keys such as
-   `tz`, the readable `content` for each, and a parser taking a plain `1`,
-   `2`, `3`, `yes` or `no` for the newest pending ask. Conventions live in
-   the engine, so this is the one new file outside `PeelAgent`:
-   `Sources/PeelCore/AgentMessage.swift`,
-   `Tests/PeelCoreTests/AgentMessageTests.swift`; nothing existing
-   changes. Needs nothing. Verify: `swift test --filter AgentMessageTests`.
-   Half a day.
-9. **Agent loop.** One turn per message in an unbound thread: the thread's
-   history from the host's store, a model call with a small tool list
-   (reply, read this chat, bind a thread by proposal card), the reply in
-   the thread. The model provider follows `../agent-architecture.md`,
-   decision 1; the key lives in the host's Keychain, never in a message.
-   Files under `Sources/PeelAgent/Loop/`: `AgentLoop.swift`,
-   `ModelClient.swift`, `Tools.swift`; `Tests/PeelAgentTests/LoopTests.swift`
-   on a scripted model. Needs 7. Verify: alice asks agent1 "what can you
-   do?" and gets a Markdown reply in a thread. Two days.
-10. **Running always on.** `peel-agent install --profile <dev>` writes a
-    `launchd` LaunchAgent plist and `uninstall` removes it; the agent's
-    words sit in the host's Keychain with no PIN (decision 9); the host
-    keeps the Mac awake while it runs (decision 12). Files:
-    `Sources/peel-agent/Install.swift`. Needs 6. Verify: reboot the Mac, send
-    `pong` from alice, get the reply without opening anything. Half a day.
+## User journeys
 
-### Wave B: the agent in Peel
+Each is done when it works in the app on a development profile.
 
-After Markdown in messages (phase 10 item 2) merges. Design against
-`../design/agents.md`, with `tom-ui` and `taste` loaded. Verify every task
-from `scripts/bundle-app.sh .build/Peel.app` launched with `-profile alice`
-on the local stack, never `run-app.sh`.
+- **Set up.** From the empty chat, connect a model. A test call verifies
+  it. A wrong key or a failed call says what went wrong in plain words.
+- **Ask anything.** A question gets a streamed Markdown reply. Stop ends
+  it and keeps what arrived.
+- **Catch me up.** "What did I miss?" summarises unseen messages per chat,
+  each with a link to the chat.
+- **Find something.** "Find the message about X" answers with links to the
+  messages.
+- **Do it for me.** "Tell Kate I'm late", "reply in that thread": the
+  message goes out, in the right thread or as a reply, and a send row
+  links to it.
+- **Things go wrong.** No key, a bad key, a rate limit and no network each
+  show an inline error with Retry; nothing is lost.
 
-11. **Threads in DMs.** The tribe thread rule in 1:1 chats: a thread of
-    two or more collapses into its thread row, and the thread panel opens
-    from it. The rows builder's `inTribe` rule in `MessageViews.swift` and
-    the thread handling in `AppModel+Chat.swift`. Peel already stores `threadUuid`
-    in DMs. Verify: a DM thread from the CLI collapses and opens in the
-    panel; the official app still shows the replies inline. A day.
-12. **The agent contact.** A `kind` on PeelCore's `contact` (person, your
-    agent, someone else's agent), the next migration number, agreed with
-    whoever holds migrations then; the rounded-square avatar and the AGENT
-    label; a status line from `status` messages. Files: `Storage+Migrations.swift`,
-    `Avatar.swift`, the conversation header. Verify: `StorageTests`; agent1
-    shows as the agent in alice's sidebar. A day.
-13. **Cards.** `sendText` gains an optional `metadata:` argument; ask,
-    result and progress views under `Sources/PeelApp/Agent/`; the bubble
-    renders a card when `AgentMessage` decodes one. Needs 8, 12. Verify: an
-    ask is a card in Peel and numbered text in `peel --profile alice
-    messages`; Reject in the card and `send <agent1> 3` both stop the
-    write. A day.
-14. **Bind a thread.** A thread action, "Hand to a worker", that sends
-    `bind` with the worker and folder from the agent's grants; the thread
-    header shows the worker, Stop and Unbind. The agent may propose a
-    binding with a card (decision 3). Needs 13. Verify: bind a DM thread to
-    the fake worker, then to Claude, and get `pong` back in it. A day.
-15. **Account › Agent.** The agent's account, worker grants (folders and
-    mode), mandates, activity from the audit log, and Remove, confirmed in
-    place. Every control sends a typed message and shows the host's answer.
-    Files: `Sources/PeelApp/Agent/AgentSettingsView.swift`, a row on
-    `AccountView.swift`. Needs 13. Verify: a grant changed in Peel applies
-    to the next session; revoke mid-turn stops the write. One to two days.
+## Where it runs
 
-### Wave C: graph memory and Strut
-
-16. **LadybugDB in the host.** Add the Swift binding to `Package.swift`
-    (a spike first: build, open, schema, one write and read, on macOS 15
-    and Swift 6); `GraphStore` as the only code that opens the file; the
-    schema from `../agent-architecture.md`, "Schema sketch", created by a
-    versioned migration. Files: `Sources/PeelAgent/Graph/`. Needs 1.
-    Verify: `GraphTests` on a temporary file; a second process opening the
-    file read-write is refused. Two days.
-17. **Records from events.** Job, Run and Artifact written by host code
-    when a bound session starts and ends, Claims only with Evidence; the
-    `graph_query` tool for the loop and as an MCP tool for workers. Needs
-    9, 16. Verify: after acceptance run 1, the graph holds one Job, its
-    Runs and an Artifact per changed file. A day.
-18. **Strut jobs.** The host starts Strut as a child process on localhost,
-    `start_job`, `continue_job` and `set_schedule` as loop tools, the
-    callback on a localhost port only the host listens on, results in the
-    job's thread. Needs a standalone Strut (`../agent-architecture.md`,
-    "What Strut and the company needs"). Verify: a job started from a DM
-    returns its result in the same thread while Peel is closed. Two days.
-19. **Glimmer.** Rebuild the Concept tables from Tom's seed files
-    (decision 7); `concept_open` and `concept_walk` as loop tools and MCP
-    tools for workers; a proposal card whose approval edits a seed file.
-    Needs 16. Verify: the rebuild matches the seed files; an approved
-    proposal shows up after the next rebuild and nothing writes a Concept
-    directly. A day.
-20. **Mandates.** `mandate` and `revoke` handled by the gate on top of
-    `checkPayment`; a payment outside every mandate sends an ask with the
-    amount. Needs 8, 15. Verify on the local stack: a payment inside the
-    cap goes, one over it asks, one after `revoke` asks. A day.
-
-### Wave D: the Inbox
-
-The agent's commitments to Tom, kept as Item nodes in the graph and shown
-in Peel as a read-mostly list. The design is in
-[09b-inbox.md](09b-inbox.md).
-
-21. **Items in the host.** The Item node and its edges in the graph
-    schema, by a versioned migration. The `inbox_add`, `inbox_update`,
-    `inbox_done`, `inbox_list` and `inbox_snooze` loop tools, and the
-    `item.*` messages in the codec. Inferred items are suggestions, and
-    upkeep (merge, stale, done in a chat) is an ask card. Needs 8, 9 and
-    16. Verify: "remind me about this tomorrow at 2" in a thread writes
-    one Item about the replied-to message, with `remind_ms` in Tom's
-    zone, and the host sends an `item.state`. Two days.
-22. **Peel's cache.** The `inboxItem` table and migration, applying
-    `item.state` and `item.snapshot`, `tick` and `snooze` sent as
-    `item.put` with `pending`, and `item.sync` on a new or restored
-    device. Needs 21. Verify on the local stack: two devices of the owner
-    converge after a tick on one; a tick made offline syncs on reconnect.
-    A day.
-23. **The Inbox view.** The sidebar row with its count, the list (Today,
-    Later, Suggested, Done folded), tick and snooze on hover, and the
-    item's thread opening in the right-hand panel. Needs 11 and 22.
-    Verify with click-through tests in both themes. A day.
-24. **Reminders per device.** Scheduling from the cache, the lock and quit
-    rewrite, the notification actions and the pending list from before
-    unlock. Needs 22. Verify: a reminder fires with Peel closed, says
-    nothing while locked, and a snooze on one device moves it on the
-    other. A day.
-
-### Later
-
-- **Inbox quick capture.** ⌃⌥Space in any app opens a one-line panel
-  that sends the line to the agent, or queues it while offline; Carbon
-  `RegisterEventHotKey`, no Accessibility permission
-  ([09b-inbox.md](09b-inbox.md), "Quick capture").
-- **Codex and goose.** `set_mode read-only` before Codex's first prompt,
-  `workspace-write` only by grant; goose once a provider is configured.
-- **Custom worker JSON** in `~/Library/Application Support/Peel/workers/`:
-  id, label, command, args as an array, env names allowlisted, install
-  hint, modes; never a shell.
-- **Heartbeat.** An optional prompt on an interval, only while idle and
-  only when a grant allows; Strut schedules may replace it.
-- **Child seed and free registration.** A hardened child seed from the
-  master, registration with the master's `root` and a new `idx`, no
-  invite, a keysend from master to child; research 9, agent-native spike 1.
-- **Connections:** calendar first; `../agent-architecture.md`,
-  "Connections".
-- **Temporary tribes** for long sessions, when a team use comes up.
-
-Sessions: Wave A splits as client (1 first and alone, then 2, 3, 4), host
-(7, 8, 9) and worker CLI (5, 6, 10), each owning its directories. Wave B is
-one app session. Wave C is one host session, with 18 waiting on Strut.
-Wave D is a host session (21) and then an app session (22 to 24).
-
-## Acceptance for the phase
-
-1. **Local stack, free.** Owner `alice`, agent `agent1` under `launchd`.
-   From Peel with `-profile alice`: "What can you do?" gets a Markdown
-   reply in a thread. A second thread bound to Claude on a scratch copy of
-   a small repo in `read-only`: "List the files and summarise the README"
-   shows collapsed progress then the answer; "Create hello.txt containing
-   hi" shows an ask card; Reject; the result says nothing was written and
-   `ls` agrees. A message from a third profile `carol` gets no answer and
-   one `audit` row saying why.
-2. **Production, throwaway only.** The agent is a new account from an
-   invite Tom makes in the official app, `peel --profile agent-claude
-   signup <invite>`; its owner is the throwaway. `peel-agent serve` on it,
-   one process. From the CLI: `peel --profile throwaway send <agent> "List
-   the files and summarise the README"` in a thread bound to Claude;
-   `listen` prints progress and the answer; `send <agent> "Create hello.txt
-   containing hi"`; `messages <agent>` prints the ask as `content`, the text
-   the official phone app would render; `send <agent> 3`; the result
-   arrives and `ls` shows no file. Record sats per turn from `whoami`
-   before and after, and the latency from send to first progress, here.
-   Tom's real account is never owner or allowlisted in this phase.
-
-The phase ships only when both runs pass with every gate item in place.
+v1 runs inside Peel, on the device: Mac now, iPhone later, with no server
+(decided 2026-10-10). An agent in Strut was considered: Strut is
+TypeScript, already uses Vercel's AI SDK, and the official Mac app bundles
+it. It was set aside for v1 because it cannot run on an iPhone, and a phone
+talking to Strut on a Mac fails while the Mac sleeps. Always-on and
+proactive work need a server either way; Strut or another runtime can be
+weighed again then. What keeps that move cheap: the tool names and
+schemas, the event log format and the provider interface are contracts,
+not Swift types other code depends on.
 
 ## Still open
 
-The design decisions are numbered in `../agent-architecture.md`, "Open
-decisions for Tom". Smaller questions for the build:
-
-- Which variable the Claude adapter honours for a separate config home,
-  `CLAUDE_CONFIG_DIR` or `HOME`; unverified in research 1, task 5's probe
-  settles it.
-- Cost per turn through the mixer in sats and latency, agent-native spike
-  3; measured in acceptance run 2.
-- Production `invite_price`, and whether the official apps add an invite
-  requirement of their own; `GET /info` answers the first.
-- The LadybugDB Swift binding's state on macOS 15 and Swift 6; task 16's
-  spike settles it.
-- How someone else's agent is recognised for the AGENT label; no
-  convention yet.
-- goose needs a provider before `session/new`; its `session/load` is
-  unverified.
-- The open design questions at the end of `../design/agents.md`.
-
-## Risk to keep in view
-
-A compromised owner key or a gate bug is remote execution on the host and
-spending from the agent's balance. The mitigations are the owner gate,
-narrow grants, conservative worker modes, mandates with caps, a person
-answering anything destructive, and a balance Tom tops up by hand; if
-those are not in place, the phase does not ship.
+- The Record and Event shapes, agreed with Tom T.
+- Which vendors allow a linked subscription in a third-party app.
+- Whether web search is worth adding in v1.

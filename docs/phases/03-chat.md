@@ -2434,3 +2434,95 @@ that did not help. Security: layout state only, no input, storage, network
 or logging.
 
 No unit test: the rule lives in `PeelApp`, which has no test target.
+
+## Hover cards and menus at their trigger (branch `fix/hover-card-anchor`, 2026-10-10)
+
+Tom's report: in a tribe, after tapping and hovering several boost chips,
+the boosts panel for Paul's message at the bottom of the timeline showed
+up near the top, beside an earlier message of Evan's. The content was
+right; the position was wrong.
+
+Done means: every menu, panel and hover card opened from a `.menuAnchor`
+(boost chips, a message's More, person cards, link cards' Join and Add,
+the header's ••• and its panels, the sidebar header, the call menus)
+opens beside its trigger wherever the list has scrolled and moves with
+the trigger while the list moves. Menus and cards close when their
+trigger leaves view; panels stay, pinned at the list's edge, and go only
+with their row. Right-click menus are unchanged (a point).
+
+What was found, on a new local dev profile with a seeded 90-message tribe
+and nine boosted messages (windows kept off every screen, in-process
+events only, snapshots drawn from Peel's own windows):
+
+- The frame `onGeometryChange` kept was never stale in what could be
+  driven: recorded and real frames (an AppKit probe behind each anchor)
+  matched for every visible anchor (29 to 33) after opening at the end,
+  at "New messages", after clip-view scrolls up and down, and when moving
+  straight between chips with panels of the same and different heights.
+  A trackpad scroll could not be driven: a wheel event handed to the
+  scroll view in-process does not scroll it.
+- A card or panel was placed once and never moved: with a person card
+  open, the list moved 60 pt and the card stayed, 56 pt away from its
+  name. Anything that moves the list under an open panel (a scroll, a
+  re-pin, a new message while following, a composer resize) leaves it
+  beside where the trigger was, which is what Tom saw.
+- A hover card took the trigger's frame when the pointer arrived and
+  showed 150 to 500 ms later there, wherever the trigger had gone since.
+
+Built: `MenuAnchor` holds the AppKit view `.menuAnchor` puts behind its
+view (no hits, draws nothing) and reads its frame on the screen when
+asked, so a menu, panel or card is placed from where the trigger is when
+it opens, not from a frame kept from an earlier layout. The presenter
+takes the anchor (`show(_:at:)`, `showPanel`, `hoverCard`); menus open in
+the anchor's own window (the host window before, which would misplace one
+opened from inside a panel; none is today). `FloatingWindow` takes screen
+rects only (the right-click catcher reports its click on the screen too)
+and follows the anchor: it watches the clip view of the trigger's scroll
+view (bounds for scrolling, frame for the list's height) and its
+document's frame (a row above growing, rows measured again), and moves
+with the trigger. Once the trigger is out of sight a menu is dismissed and
+a card hidden; a panel stays at the list's edge, and goes only with its
+row (`PopoverModifier`'s `onDisappear`). The observers go when the window
+closes, hides or is freed. A hover card checks the trigger is still
+visible when its delay ends. A message's hover bar stays while that row's
+menu is open, since its More is what the menu follows.
+
+Checked after, same profile and drive: the chip on message 88, then
+Paul's chip straight after (panel above it, no room below), and back;
+panel open while the list moved 40 pt (followed, still above the chip);
+200 more until the chip left (panel closed); the top chip after scrolling
+up, then the list moved down 100 (followed, 4 pt below the chip); a person
+card while the list moved 60 (followed, 4 pt below); a card whose list
+moved during its delay (shown at the name's new place); the header's •••
+Details panel and the sidebar's connection card (beside their buttons, as
+before). Not driven: a real trackpad scroll, the thread pane, link cards
+and the composer growing under an open panel.
+
+Independent review (before merge), applied: the message More menu closed
+as soon as the list moved (the hover bar went while any menu was open,
+taking the More button's anchor view with it); panels closed when their
+trigger left view; content moving without the clip view (a row above
+growing) was not watched; anchors went through SwiftUI's global
+coordinates and back; the observers could outlive their window.
+Rechecked hidden with `scripts/check-app.sh` (the hover bar shown by a
+temporary hook in place of the pointer, cleared once the menu was open):
+- More on message 86 stayed beside its button after the list moved 4 pt
+  and 40 more, and closed when the row left the list (500 more).
+- A person card closed when its name left the list.
+- A boost panel followed its chip 200, 400 and 500 pt up to under the
+  header. In this list the lazy stack tears a row down as soon as it
+  leaves the visible area (its anchor view leaves the window in the same
+  pass), so the panel went with the row, as on main, at 150 pt below and
+  520 pt above; the pinned edge did not show in any run. A form with typed
+  text in a row that leaves view still closes with it, as before.
+- No document frame change came while a panel was open in these runs;
+  every move was the clip view's.
+
+Reviews (inline). Code review: a trigger that moved before the new
+content reported its size placed the window at the old size (`size` now
+reset on present); a right-click menu now opens on that row with its
+hover bar showing (both menus share the row's source). Simplify: one
+coordinate space, the screen, for anchors, clicks and floating windows.
+Security: layout only, no input, storage, network or logging.
+
+No unit test: the rule lives in `PeelApp`, which has no test target.

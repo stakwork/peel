@@ -316,7 +316,7 @@ struct CallHeaderButton: View {
             .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor.rect, source: "call-\(chat)")
+        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor, source: "call-\(chat)")
     }
 
     private func start(audioOnly: Bool) {

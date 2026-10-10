@@ -352,7 +352,7 @@ private struct CallControls: View {
             .help("\(label) (⌘⇧\(key))")
             .accessibilityLabel(label)
             Theme.callChevronLine.frame(width: 1)
-            Button { showDevices(at: chevron.rect) } label: {
+            Button { showDevices(at: chevron) } label: {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.secondaryText)
@@ -407,7 +407,7 @@ private struct CallControls: View {
         .font(Theme.font(12))
     }
 
-    private func showDevices(at anchor: CGRect) {
+    private func showDevices(at anchor: MenuAnchor) {
         func section(_ title: String, _ devices: [CallSession.Device], chosen: String?, choose: @escaping (String) -> Void) -> [MenuEntry] {
             [.header(title)] + (devices.isEmpty
                 ? [.view(AnyView(Text("None found").font(Theme.font(13)).foregroundStyle(Theme.secondaryText).padding(.horizontal, 33).padding(.vertical, 4)))]

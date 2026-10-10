@@ -157,17 +157,46 @@ extension View {
         modifier(PopoverModifier(isPresented: isPresented, content: content))
     }
 
-    /// Keeps this view's frame in `anchor`, for the menu or panel it opens.
+    /// Marks this view as where the menu, panel or card it opens belongs.
     func menuAnchor(_ anchor: MenuAnchor) -> some View {
-        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { anchor.rect = $0 }
+        #if os(macOS)
+        background(AnchorView(anchor: anchor))
+        #else
+        self
+        #endif
     }
 }
 
-/// Where a view that opens a menu is, in the window. Not state: it moves
-/// with every scroll and only a click or hover reads it, so keeping it
-/// redraws nothing. Hold one in `@State` and pass it to `.menuAnchor`.
+/// Where a view that opens a menu, panel or card is: an AppKit view behind
+/// it, asked for its frame when the menu opens and as its list scrolls
+/// while it is open, never a frame kept from an earlier layout. Not state,
+/// so following it redraws nothing. Hold one in `@State` and pass it to
+/// `.menuAnchor`.
+@MainActor
 final class MenuAnchor {
-    var rect: CGRect = .zero
+    #if os(macOS)
+    fileprivate weak var view: NSView?
+
+    var window: NSWindow? { view?.window }
+
+    /// The view's frame now, on the screen.
+    var screenRect: CGRect {
+        guard let view, let window = view.window else { return .zero }
+        return window.convertToScreen(view.convert(view.bounds, to: nil))
+    }
+
+    /// Some of it shows: in a window, and not scrolled out of its list.
+    var isVisible: Bool {
+        guard let view, view.window != nil else { return false }
+        return !view.visibleRect.isEmpty
+    }
+
+    /// The scroll view it moves in, if any.
+    var scrollView: NSScrollView? { view?.enclosingScrollView }
+    #else
+    var window: NSWindowRef { nil }
+    var screenRect: CGRect { .zero }
+    #endif
 }
 
 private struct MenuHost: ViewModifier {
@@ -209,7 +238,7 @@ private struct ContextMenuModifier: ViewModifier {
         #if os(macOS)
         content.overlay {
             RightClickCatcher { point, window in
-                presenter?.show(entries(), at: CGRect(origin: point, size: .zero), in: window, source: source)
+                presenter?.show(entries(), at: point, in: window, source: source)
             }
         }
         #else
@@ -230,7 +259,7 @@ private struct HoverCardModifier<Card: View>: ViewModifier {
             .menuAnchor(anchor)
             .onHover { over in
                 let card = card
-                presenter?.hoverCard(source, over: over, at: anchor.rect) { AnyView(card()) }
+                presenter?.hoverCard(source, over: over, at: anchor) { AnyView(card()) }
             }
             .onDisappear { presenter?.triggerGone(source) }
     }
@@ -250,7 +279,7 @@ private struct PopoverModifier<Panel: View>: ViewModifier {
             .onChange(of: isPresented) { _, shown in
                 if shown {
                     let binding = $isPresented
-                    presenter?.showPanel(AnyView(content()), at: anchor.rect, id: id) { binding.wrappedValue = false }
+                    presenter?.showPanel(AnyView(content()), at: anchor, id: id) { binding.wrappedValue = false }
                 } else {
                     presenter?.dismissPanel(id: id)
                 }
@@ -319,13 +348,30 @@ private struct RightClickCatcher: NSViewRepresentable {
             event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
         }
 
-        /// The click in the window's top-left coordinates, as SwiftUI's global space.
+        /// The click on the screen.
         private func report(_ event: NSEvent) {
-            guard let content = window?.contentView else { return }
-            let point = content.convert(event.locationInWindow, from: nil)
-            action?(CGPoint(x: point.x, y: content.isFlipped ? point.y : content.bounds.height - point.y), window)
+            guard let window else { return }
+            action?(window.convertPoint(toScreen: event.locationInWindow), window)
         }
     }
+}
+
+/// The view behind a `.menuAnchor`, which its `MenuAnchor` asks where it is.
+private struct AnchorView: NSViewRepresentable {
+    let anchor: MenuAnchor
+
+    func makeNSView(context: Context) -> PassThroughView {
+        PassThroughView()
+    }
+
+    func updateNSView(_ view: PassThroughView, context: Context) {
+        anchor.view = view
+    }
+}
+
+/// Draws nothing and takes no clicks.
+private final class PassThroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Tells which window a view is in, once it is in one.

@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-09. This is the architecture and the phase index. Each phase
+Last updated 2026-10-10. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -139,7 +139,8 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 10 | 3. Markdown in messages | pulled forward from phase 10, because agent replies are Markdown | [phases/10-v1-extras.md](phases/10-v1-extras.md), item 2 |
 | — | 3b. Design library and duplication cleanup: one button style with variants and sizes, one panel shell with a placement rule, the composer's buttons inside the field, then cards, badges, rows, empty states and tokens; with the logic fixes it found (tribe prices shown as "Free", error wording, one owner for names, tribe pages and keys). Before the payments correctness fixes and the personal agent | in progress: 15 PRs, buttons and the panel first; batch 1 (`PeelButton`) built 2026-10-09 | [reviews/2026-10-09-design-library.md](reviews/2026-10-09-design-library.md) |
 | 9 | 4. The personal agent: one agent contact, the agent host, workers over ACP, then graph memory and Strut jobs, then the Inbox (Wave D) | planned; the plan was refreshed 2026-10-08 | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md); Inbox: [phases/09b-inbox.md](phases/09b-inbox.md) |
-| 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, preferences sync, self-hosted certificates | payment templates built (2026-10-10); the rest planned, findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, sync and certificates in 05 |
+| 11 | Preferences and their sync (before the iPhone): one `Preferences` layer owning every setting, the account-wide ones synced through the official apps' encrypted `/preferences` file | planned 2026-10-10: research and architecture; three PRs (plan, layer and migration, sync) | [phases/11-preferences-sync.md](phases/11-preferences-sync.md) |
+| 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, self-hosted certificates | payment templates built (2026-10-10); the rest planned, findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, certificates in 05 |
 | 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
 | — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Connections" |

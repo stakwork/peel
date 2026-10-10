@@ -71,6 +71,10 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// a history fetched after it came has been looked at. False means the
     /// message came but the sats never did (payments review F2).
     public var arrived: Bool?
+    /// For a send of ours sent again: when it was first sent (ms; v22).
+    public var firstSentAt: Int64?
+    /// When a reconnect sent it again by itself (ms; v22).
+    public var autoResentAt: Int64?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -127,6 +131,33 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
         case .delivered, .unsettled, nil: return false
         }
+    }
+
+    /// How old an undelivered message may be and still go again by itself
+    /// when the connection comes back.
+    public static let autoResendWindow: TimeInterval = 60 * 60
+
+    /// How long a send of ours may still be on its way with the server
+    /// holding no record of it: the mixer records a send only once it has
+    /// finished, which for a contact on another server can take a while.
+    /// A pending one younger than this is not sent again by itself.
+    public static let inFlightLimit: TimeInterval = 2 * 60
+
+    /// When this send of ours was first sent (a resend moves `timestamp`).
+    public var firstSent: Date { Date(millisecondsSince1970: firstSentAt ?? timestamp ?? 0) }
+
+    /// One of ours that a reconnect may send again by itself
+    /// (`Engine.resendRecent`), once: retryable, never sent again that way
+    /// before, first sent at most `autoResendWindow` ago, and of a kind that
+    /// moves no money: text, an attachment already uploaded and not for
+    /// sale, or a payment request. Nothing that carries sats, so never a
+    /// payment, a boost or a tribe message (which pays the tribe's price):
+    /// those may have paid, and wait for Retry.
+    public func isAutoResendable(now: Date = .now) -> Bool {
+        guard isRetryable(now: now), autoResentAt == nil, MessageType.resendable.contains(type), (msat ?? 0) == 0,
+              now.timeIntervalSince(firstSent) <= Self.autoResendWindow else { return false }
+        guard type == MessageType.attachment else { return true }
+        return uploadState == .done && attachmentPriceMsat == nil && BodyFields.decode(body)?.price == nil
     }
 
     /// One of ours that never went and may be dropped: a retryable send, or

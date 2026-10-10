@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Sphinxrs
 
 /// Drives one account against the Sphinx core.
@@ -31,6 +32,22 @@ public actor Engine {
     private(set) var closed = false
     /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
     private var cameOnlineHere = false
+    /// This connection's pings (`keepAlive`), and the system's network
+    /// changes while the engine keeps connected (`watchNetwork`).
+    private var keepAliveTask: Task<Void, Never>?
+    private var networkWatch: Task<Void, Never>?
+    /// The sends a reconnect makes again by itself (`resendRecent`).
+    private var resendTask: Task<Void, Never>?
+    /// The tags of the reconnect's candidates that `checkPendingSends` asked
+    /// the server about on this connection, and the tags its records named
+    /// (any status), nil until they come; see `resendRecent`.
+    private(set) var resendGate: ResendGate?
+    /// When this connection came up, and how many in a row went within
+    /// `shortLived` of coming up: such a drop backs off rather than
+    /// reconnecting at once (`connectionAnswers`).
+    private var connectedAt: ContinuousClock.Instant?
+    private var shortLivedDrops = 0
+    static let shortLived: Duration = .seconds(60)
 
     /// Payments waiting for us while we were offline: payment hash and tag → the
     /// ping time to acknowledge once the payment lands.
@@ -193,6 +210,7 @@ public actor Engine {
         if !restoring { recoverOwnPhoto() }
         self.allowUntrustedCertificate = allowUntrustedCertificate
         keepConnected = true
+        watchNetwork()
         guard connection != .connected, reconnectTask == nil else { return }
         reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 0) }
     }
@@ -208,6 +226,8 @@ public actor Engine {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
+        networkWatch?.cancel()
+        networkWatch = nil
         tribeWork.refresh?.cancel()
         tribeWork.refresh = nil
         money.reconcile?.cancel()
@@ -263,6 +283,8 @@ public actor Engine {
             )
             try await transport.subscribe([tribeTopic])
             setConnection(.connected)
+            connectedAt = .now
+            keepAliveTask = Task { [weak self] in await self?.keepAlive(transport) }
             // A returning account is already registered; a new one comes online
             // when the server's registration reply lands (see `complete`).
             if isRegistered {
@@ -338,7 +360,10 @@ public actor Engine {
             }
             do {
                 try await establish(inviteCode: nil)
-                break
+                // Dropped again while coming online (`connectionClosed`
+                // leaves the reconnect to this loop): go again, backing off.
+                if transport != nil { break }
+                attempt += 1
             } catch {
                 emit.yield(.connectionError(PeelError.readable(error)))
                 attempt += 1
@@ -348,28 +373,110 @@ public actor Engine {
         if !Task.isCancelled { reconnectTask = nil }
     }
 
-    private func connectionClosed(_ closed: Transport) async {
+    /// The connection went: the broker closed it, or (`retryAt: 0`, at once)
+    /// it stopped answering pings.
+    private func connectionClosed(_ closed: Transport, retryAt attempt: Int = 1) async {
         guard transport === closed else { return }
         transport = nil
-        stopHistoryWatchdog()
+        endConnectionWork()
         await closed.close()
         setConnection(.offline(retryIn: nil))
         if keepConnected, reconnectTask == nil {
-            reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 1) }
+            reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: attempt) }
+        }
+    }
+
+    /// How often the connection is pinged, the MQTT keep-alive, and how
+    /// long an answer may take before the connection counts as gone.
+    static let keepAliveInterval: Duration = .seconds(15)
+    static let pingTimeout: Duration = .seconds(5)
+
+    /// Whether the connection still answers: a ping, and one with no answer
+    /// within `pingTimeout` is closed and, if the engine keeps connected,
+    /// reconnected at once. Asked on the keep-alive's beat, on each network
+    /// change and before a Retry, so a dead connection never looks connected
+    /// for longer than that.
+    func connectionAnswers() async -> Bool {
+        guard let transport else { return false }
+        if await transport.answersPing(within: Self.pingTimeout) { return true }
+        // A link that keeps dying soon after it comes up backs off as a
+        // failed connect would; one that lived a while reconnects at once.
+        let lived = connectedAt.map { ContinuousClock.now - $0 } ?? .zero
+        shortLivedDrops = lived < Self.shortLived ? shortLivedDrops + 1 : 0
+        await connectionClosed(transport, retryAt: shortLivedDrops)
+        return false
+    }
+
+    /// The MQTT keep-alive for one connection, until it goes.
+    private func keepAlive(_ connection: Transport) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: Self.keepAliveInterval)
+            guard !Task.isCancelled, transport === connection, await connectionAnswers() else { return }
+        }
+    }
+
+    /// Follows the system's network (Wi-Fi to cellular, offline to online):
+    /// each change checks the connection at once rather than at the next
+    /// keep-alive, and one that comes online skips the reconnect's wait.
+    /// Only a change of status or of the interfaces counts (the monitor also
+    /// reports changes of cost and the like), once it has settled for
+    /// `networkSettle` (a switch comes as a burst); the first path it reports
+    /// is the one already in use.
+    private func watchNetwork() {
+        guard networkWatch == nil else { return }
+        networkWatch = Task { [weak self] in
+            var last: (NWPath.Status, [String])?
+            var settling: Task<Void, Never>?
+            for await path in NWPathMonitor() {
+                let now = (path.status, path.availableInterfaces.map(\.name))
+                let changed = last.map { $0 != now } ?? false
+                last = now
+                guard changed else { continue }
+                settling?.cancel()
+                let online = path.status == .satisfied
+                settling = Task { [weak self] in
+                    try? await Task.sleep(for: Self.networkSettle)
+                    guard !Task.isCancelled else { return }
+                    await self?.networkChanged(online: online)
+                }
+            }
+            settling?.cancel()
+        }
+    }
+
+    static let networkSettle: Duration = .seconds(1)
+
+    private func networkChanged(online: Bool) async {
+        guard keepConnected else { return }
+        if connection == .connected {
+            _ = await connectionAnswers()
+        } else if online {
+            reconnectNow()
         }
     }
 
     private func teardown() async {
-        cameOnlineHere = false
-        // A reply to this connection's status query can only come on it.
-        unrecordedPayments = []
-        stopHistoryWatchdog()
+        endConnectionWork()
         listener?.cancel()
         listener = nil
         if let transport {
             self.transport = nil
             await transport.close()
         }
+    }
+
+    /// What belongs to one connection and ends with it.
+    private func endConnectionWork() {
+        cameOnlineHere = false
+        // A reply to this connection's status query can only come on it.
+        unrecordedPayments = []
+        resendGate = nil
+        connectedAt = nil
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
+        resendTask?.cancel()
+        resendTask = nil
+        stopHistoryWatchdog()
     }
 
     /// A page asked for on a connection that has gone never comes; the run
@@ -637,7 +744,13 @@ public actor Engine {
         let applied = try storage.apply(commit)
         removeFiles(of: applied.purged)
         state = newState
-        if records != nil { unrecordedPayments = [] }
+        if let records {
+            unrecordedPayments = []
+            // Merged: a record once heard stays heard.
+            if let gate = resendGate {
+                resendGate?.recorded = (gate.recorded ?? []).union(records.compactMap(\.tag))
+            }
+        }
         if money.awaitingPayments, let page { money.paymentPage = page }
         if money.awaitingInvoice, let bolt11 = result.invoice { money.answeredInvoice = bolt11 }
         if let contacts {
@@ -994,6 +1107,7 @@ public actor Engine {
     /// the full restore an account brought back from its words still needs, or
     /// catch up from the newest message stored.
     private func cameOnline() async {
+        let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
         reconcileInBackground()
@@ -1023,6 +1137,11 @@ public actor Engine {
         }
         cameOnlineHere = true
         wakeWaiters()
+        // Only on the connection this ran for: one that went meanwhile has
+        // its own `cameOnline` to come.
+        guard let connection, transport === connection else { return }
+        resendTask?.cancel()
+        resendTask = Task { [weak self] in await self?.resendRecent(on: connection) }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out
@@ -1047,15 +1166,26 @@ public actor Engine {
     /// A payment the server has no record of this long after it was sent
     /// never reached it (the mixer records every send it handles, an async
     /// one as pending), so it is marked failed and may be sent again.
+    /// Also asks about every message a reconnect may send again by itself
+    /// (`autoResendCandidates`), failed ones too, as a send can fail here
+    /// after it left: `resendRecent` sends only those the records do not name.
     func checkPendingSends() async throws {
         let pending = try storage.pendingSendTags(
             textBefore: Date.now.addingTimeInterval(-Message.confirmationTimeout).millisecondsSince1970
         )
-        guard !pending.isEmpty else { return }
+        let candidates = Set(try autoResendCandidates().compactMap(\.tag))
+        var tags = pending.map(\.tag)
+        tags += candidates.subtracting(tags).sorted()
+        guard !tags.isEmpty else {
+            resendGate = ([], [])
+            return
+        }
         let cutoff = Date.now.addingTimeInterval(-Message.unrecordedPaymentTimeout).millisecondsSince1970
         unrecordedPayments = Set(pending.filter { $0.movesMoney && $0.createdAt < cutoff }.map(\.tag))
+        // Before the call: the reply can land while it is still publishing.
+        resendGate = (candidates, nil)
         try await run { time, state in
-            try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: pending.map(\.tag), pubkey: nil)
+            try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: tags, pubkey: nil)
         }
     }
 

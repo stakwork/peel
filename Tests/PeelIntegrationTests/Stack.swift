@@ -64,6 +64,20 @@ actor Stack {
         self.mode = mode
     }
 
+    enum TapAction: String {
+        /// Closes the tap's connections and refuses new ones.
+        case down
+        case up
+        /// Stops it in place: connections stay open and carry nothing.
+        case freeze
+        case thaw
+    }
+
+    /// The network between the clients on the wire tap and the broker.
+    func tap(_ action: TapAction) throws {
+        _ = try Self.runScript(["tap", try current().directory.path, action.rawValue])
+    }
+
     /// Everything the wire tap has carried so far, both ways.
     func wire() throws -> Data {
         try Data(contentsOf: try current().directory.appendingPathComponent("wire.bin"))

@@ -12,6 +12,12 @@
 #       Restarts the mixer, then the tribes server, keeping their databases.
 #       `fund` runs it with TESTING_ONLY_ADD_TO_SENDER=1 (senders are never
 #       debited, so accounts can be given sats); `real` without it.
+#   scripts/test-stack.sh tap <dir> down|up|freeze|thaw
+#       The network between a client on the wire tap and the broker: `down`
+#       stops the tap (its connections close, new ones are refused), `up`
+#       starts it again on the same port; `freeze` stops it in place
+#       (SIGSTOP: connections stay open and carry nothing, a dead network
+#       that still looks connected), `thaw` lets it go on.
 #   scripts/test-stack.sh stop <dir>
 #       Kills only the processes this script started for <dir>, then checks
 #       that their ports are free.
@@ -206,9 +212,39 @@ cmd_mixer() {
     echo "mixer: $mode"
 }
 
+cmd_tap() {
+    load_env "${1:-}"
+    local file=$DIR/tap.pid pid=""
+    if [ -f "$file" ] && ps -p "$(cat "$file")" -o command= 2>/dev/null | grep -q test-stack-helpers.py; then
+        pid=$(cat "$file")
+    fi
+    case "${2:-}" in
+        down)
+            [ -z "$pid" ] || kill -CONT "$pid"
+            kill_own tap test-stack-helpers.py
+            for _ in $(seq 1 50); do listening "$TAP_PORT" || break; sleep 0.2; done
+            ;;
+        up)
+            [ -z "$pid" ] || die "the tap is already running"
+            launch tap python3 "$HELPERS" tap "$TAP_PORT" "$BROKER_PORT" "$DIR/wire.bin"
+            wait_for_port "$TAP_PORT" tap
+            ;;
+        freeze | thaw)
+            [ -n "$pid" ] || die "the tap is not running"
+            if [ "$2" = freeze ]; then kill -STOP "$pid"; else kill -CONT "$pid"; fi
+            ;;
+        *) die "tap needs down, up, freeze or thaw" ;;
+    esac
+    echo "tap: $2"
+}
+
 cmd_stop() {
     load_env "${1:-}"
     if [ "${2:-}" != --from-watcher ]; then kill_own watch "test-stack.sh watch"; fi
+    # A frozen tap takes no signal but KILL until it runs again.
+    if [ -f "$DIR/tap.pid" ] && ps -p "$(cat "$DIR/tap.pid")" -o command= 2>/dev/null | grep -q test-stack-helpers.py; then
+        kill -CONT "$(cat "$DIR/tap.pid")"
+    fi
     kill_own mixer sphinx-mixer
     kill_own tribes sphinx-tribes
     kill_own memes test-stack-helpers.py
@@ -232,7 +268,8 @@ cmd_watch() {
 case "${1:-}" in
     start) shift; cmd_start "$@" ;;
     mixer) shift; cmd_mixer "$@" ;;
+    tap) shift; cmd_tap "$@" ;;
     stop) shift; cmd_stop "$@" ;;
     watch) shift; cmd_watch "$@" ;;
-    *) sed -n '2,26p' "$0"; exit 2 ;;
+    *) sed -n '2,32p' "$0"; exit 2 ;;
 esac

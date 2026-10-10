@@ -3,6 +3,7 @@ import MQTTNIO
 import NIOCore
 import NIOFoundationCompat
 import NIOTransportServices
+import Synchronization
 
 /// Where the account's broker lives.
 public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
@@ -63,6 +64,8 @@ struct Inbound: Sendable {
 /// reused: reconnecting means signing a fresh timestamp and making a new Transport.
 final class Transport: Sendable {
     private let client: MQTTClient
+    /// When the broker last sent anything; see `answersPing`.
+    private let lastHeard: LastHeard
 
     /// Messages from the broker, listened for from the moment the transport
     /// exists. The stream ends when the connection closes.
@@ -78,7 +81,15 @@ final class Transport: Sendable {
             identifier: clientID,
             eventLoopGroupProvider: .shared(NIOTSEventLoopGroup.singleton),
             configuration: MQTTClient.Configuration(
+                // The engine pings instead (`answersPing`): a failed ping of
+                // the client's own never closes the connection, so a dead
+                // one that still looks open is never noticed.
+                disablePing: true,
                 keepAliveInterval: .seconds(15),
+                // How long the broker may take to acknowledge a connect or a
+                // subscribe; without one a connect to a dead network hangs
+                // in "connecting" for good.
+                timeout: .seconds(20),
                 userName: username,
                 password: password,
                 useSSL: server.tls,
@@ -86,9 +97,12 @@ final class Transport: Sendable {
             )
         )
         self.client = client
+        let lastHeard = LastHeard()
+        self.lastHeard = lastHeard
         inbound = AsyncStream { continuation in
             client.addPublishListener(named: "peel") { result in
                 if case .success(let info) = result {
+                    lastHeard.now()
                     continuation.yield(Inbound(topic: info.topicName, payload: Data(buffer: info.payload)))
                 }
             }
@@ -114,6 +128,29 @@ final class Transport: Sendable {
         }
     }
 
+    /// Whether the broker answers a ping within `timeout`, or sent anything
+    /// else meanwhile (on a slow link the answer can queue behind a page of
+    /// history). A connection that does neither is dead whatever its socket
+    /// says (a network that went, a path that changed), and is the caller's
+    /// to close.
+    func answersPing(within timeout: Duration) async -> Bool {
+        let (answers, answered) = AsyncStream.makeStream(of: Bool.self)
+        let (client, lastHeard, asked) = (client, lastHeard, ContinuousClock.now)
+        // The client's ping ignores cancellation; it ends at the client's
+        // ACK timeout, or when the connection is closed.
+        Task { answered.yield((try? await client.ping()) != nil) }
+        let timer = Task {
+            try? await Task.sleep(for: timeout)
+            answered.yield(lastHeard.since(asked))
+        }
+        defer {
+            timer.cancel()
+            answered.finish()
+        }
+        for await alive in answers { return alive }
+        return false
+    }
+
     /// `notConnected` when the connection had already gone, so nothing was
     /// written (a send may then be marked failed). A write the closing
     /// connection cut short may have left, so it keeps its own error.
@@ -129,4 +166,13 @@ final class Transport: Sendable {
         try? await client.disconnect()
         try? await client.shutdown()
     }
+}
+
+/// When a connection last heard from the broker.
+private final class LastHeard: Sendable {
+    private let instant = Mutex(ContinuousClock.now)
+
+    func now() { instant.withLock { $0 = .now } }
+
+    func since(_ start: ContinuousClock.Instant) -> Bool { instant.withLock { $0 > start } }
 }

@@ -312,6 +312,26 @@ extension Storage {
         }
     }
 
+    /// Our messages of the resendable types still undelivered (pending or
+    /// failed), carrying no sats, outside any tribe, never sent again by a
+    /// reconnect, and first sent at or after `since` (ms), oldest first, at
+    /// most 100: what a reconnect may send again (`Engine.resendRecent`).
+    func undeliveredSends(since: Int64) throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message WHERE fromMe = 1 AND deleted = 0 AND status IN ('PENDING', 'FAILED')
+                        AND type IN (\(MessageType.sqlList(MessageType.resendable))) AND COALESCE(msat, 0) = 0
+                        AND autoResentAt IS NULL AND COALESCE(firstSentAt, timestamp) >= ?
+                        AND chat NOT IN (SELECT pubkey FROM tribe)
+                    ORDER BY COALESCE(firstSentAt, timestamp), id LIMIT 100
+                    """,
+                arguments: [since]
+            )
+        }
+    }
+
     /// Whether sats with this chat are still on their way: a payment, boost
     /// or purchase of ours, or an invoice of theirs we are paying, that the
     /// server has neither confirmed nor refused.

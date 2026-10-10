@@ -10,7 +10,8 @@ is a short plan. Update the status and the journal when you finish something.
 
 - `Sources/PeelCore/` — the client engine, no UI
   - `Engine.swift` — the actor that drives one account: its stored state and
-    init, the connection and reconnect loop, and the core contract (`run`,
+    init, the connection and reconnect loop (with the keep-alive's pings
+    and the network watch, `connectionAnswers`), and the core contract (`run`,
     `commit`, `complete`, `receive`, and `commitAndPublish` for every money
     send, whose `.none` alone may mark it failed): runs core calls, commits
     the state they return in one transaction, performs the subscribes and
@@ -34,7 +35,8 @@ is a short plan. Update the status and the journal when you finish something.
       (`addContact(code:)`), removing a contact (`deleteContact`: the
       server's copy, then `forgetContact` in `Engine.swift`), invites with
       sats (`makeInvite`, `cancelInvite`), new contacts seen
-    - `Engine+Messages.swift` — contacts, text, deletes, resends, discards,
+    - `Engine+Messages.swift` — contacts, text, deletes, resends (Retry, and
+      a reconnect's own of recent sends that move no money, `resendRecent`), discards,
       `deliver` (every message through the core), the `openTribe`,
       `isContact` and `knownTribe` lookups, read markers and mutes
     - `Engine+Payments.swift` — payments, boosts, confirmation thresholds,
@@ -238,7 +240,7 @@ is a short plan. Update the status and the journal when you finish something.
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
   `ReadMarkerTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
-  `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`,
+  `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
@@ -251,9 +253,11 @@ is a short plan. Update the status and the journal when you finish something.
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
-  `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`
+  `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
+  `ReconnectJourneys`
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
-  stack the integration journeys use, on random ports
+  stack the integration journeys use, on random ports; `tap` takes the
+  wire tap down, up, or freezes it (a dead connection that looks open)
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and

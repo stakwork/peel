@@ -128,7 +128,9 @@ extension Engine {
     /// the row's upload (so it runs only once at a time), reads the outbox,
     /// and leaves the cache to fill on the first download.
     @discardableResult
-    func uploadAndDeliver(_ message: Message, file: (plain: Data, sealed: Data)? = nil) async throws -> String? {
+    func uploadAndDeliver(
+        _ message: Message, file: (plain: Data, sealed: Data)? = nil, auto: Bool = false
+    ) async throws -> String? {
         guard let id = message.id, var body = message.body, let fields = AttachmentFields.decode(body),
               let key = fields.ownKey else { throw Failure.notRetryable }
         if message.uploadState != .done {
@@ -179,7 +181,7 @@ extension Engine {
                 return nil
             }
         }
-        return try await deliver(body: body, to: message.chat, type: MessageType.attachment, replacing: id)
+        return try await deliver(body: body, to: message.chat, type: MessageType.attachment, replacing: id, auto: auto)
     }
 
     /// Reports a transfer's progress as an event for that row.

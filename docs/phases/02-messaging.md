@@ -8,7 +8,9 @@ onboarding, the engine-driven restore, Tom's real account in the `default`
 profile; then long messages, read markers, mutes and mark unread, send
 failures, the composer, contacts the other side started surviving a
 restore, and `run-app.sh` quitting Peel first ("Still open in this phase",
-items 0 and 6–11, all done).
+items 0 and 6–11, all done). Item 12, sends across a dropped connection
+(resend on reconnect, a keep-alive that notices, network changes), is
+built on its branch.
 
 **Open:**
 - Signing up with a fresh invite in the app (proven only from the CLI): "Tasks, in order", item 3.
@@ -539,6 +541,128 @@ restore is the point of this phase; the Keychain is what makes it allowed.
      mid-write.
    - The deeper fix, the app handling a held profile lock (bring the running
      instance forward instead of showing onboarding), is a separate change.
+
+12. **Sends across a dropped connection.** Done 2026-10-10. Asked by Tom
+   on a train: "I came from disconnected to connected. It auto-retries my
+   msgs, right?" It did not, and Retry on a flaky link seemed to do
+   nothing. What was found:
+   - mqtt-nio's own keep-alive never notices a dead connection: its ping
+     waits for the answer with no timeout (`MQTTClient.Configuration.timeout`
+     was nil) and a failed ping does not close the channel. A connection
+     whose network had gone stayed "Connected" (green bolt) until the OS
+     gave up on the socket, minutes later. A connect to a dead network
+     likewise waited for its CONNACK for good.
+   - So Retry on such a connection published into the dead socket: the
+     write succeeded locally, the row went back to pending with no error,
+     and 30 s later offered Retry again. That is "Retry didn't work".
+   - Nothing resent on reconnect: a message sent offline failed at once
+     (`commitAndPublish` → `.none` → `notConnected`) and stayed failed.
+
+   Built:
+   - **Keep-alive that notices.** The client's own ping is off; the engine
+     pings every 15 s (`Engine.keepAliveInterval`, the same MQTT keep-alive
+     as before) and a ping with no answer, and nothing else heard, within
+     5 s (`pingTimeout`, `Transport.answersPing`) closes the connection and
+     reconnects at once (`connectionAnswers`). ACK waits (CONNACK, SUBACK)
+     time out after 20 s.
+   - **Network changes.** While the engine keeps connected (`start`), it
+     follows `NWPathMonitor`: each path change (Wi-Fi to 4G, offline to
+     online) pings at once if connected, or skips the reconnect's backoff
+     if offline and the path is usable. Event-driven; nothing polls at idle
+     beyond the keep-alive.
+   - **Retry checks the connection first.** On a connection, Retry pings
+     before anything else; one that no longer answers is refused as
+     `connectionDropped` ("the connection had stopped answering;
+     reconnecting now"), shown above the composer as before. Then
+     `resend`'s checks (the tribe price, `checkPayment`) run with nothing
+     waiting between them and the send's commit. With no connection the
+     checks still run, then `notConnected`. Nothing is committed when
+     refused.
+   - **Recent sends go again on reconnect** (`Engine.resendRecent`, after
+     `cameOnline`, only on the connection it ran for): oldest first, through
+     `resend`'s checks, each message of ours that is failed or unconfirmed
+     past 30 s, first sent at most an hour ago (`Message.autoResendWindow`,
+     from `firstSentAt`, v22, kept when a resend moves `timestamp`), never
+     in a tribe, and `Message.isAutoResendable`: text, an attachment
+     already uploaded and not for sale, or a payment request, carrying no
+     sats. Never a payment, boost, purchase, tribe join, paid attachment or
+     tribe message (it pays the tribe's price): those may have paid and
+     wait for Retry.
+   - **The double-send gate.** `checkPendingSends` asks the server
+     (`getTags`) about the tag of every candidate, failed ones too, since a
+     send can be marked failed here after it left (`.unknown`, "the
+     connection went after sending"). Only a row whose tag was asked about
+     and that the server's records do not name, whatever their status
+     (PENDING included), goes again; a failed row with no tag never left
+     and goes. With no reply within 10 s, or if coming online failed before
+     the question, nothing with a tag goes. The mixer records a send only
+     once it has finished, so a pending one goes only once first sent over
+     two minutes ago (`Message.inFlightLimit`): a text to a contact on
+     another server may still be in flight, unrecorded, past 30 s. Replies
+     merge into what was heard. The decision is one pure function
+     (`Engine.autoResends`), unit-tested, a PENDING record included, which
+     the local stack cannot produce.
+   - **Once, stored.** A reconnect's resend sets `autoResentAt` (v22) in the
+     same commit, so a message is sent again by itself at most once, across
+     relaunches; one that fails again stays failed with Retry, and nothing
+     new is shown beyond its row.
+   - **Backoff and settling.** A connection that fails its ping within 60 s
+     of coming up counts as another failed attempt (2, 4, 8 … 30 s) rather
+     than reconnecting at once; network changes act once the path has
+     settled for 1 s.
+
+   Verified: `AutoResendTests` (the rule, the first-send window, the
+   stored mark, the candidates query and its tribe exclusion);
+   `ReconnectJourneys` on the local stack, with the wire tap taken down
+   or frozen (`scripts/test-stack.sh tap`): a text sent while down is
+   delivered once with no action, a payment sent while down stays failed
+   and Bob's balance does not move, a two-hour-old failed text is not
+   resent and Retry after the reconnect sends it; a frozen tap is noticed
+   by the keep-alive within 15 + 5 s and Retry on it is refused as
+   `connectionDropped` within the ping timeout; a text the server got but
+   that is marked failed here is named by the server's records and not
+   sent again; a message the reconnect sent, failed again with no tag, is
+   not sent again after a relaunch. Idle: `peel listen` (keep-alive and
+   network watch running) on the local stack stayed at 0.0% CPU over a
+   minute, 0.01 s of CPU in all.
+
+   Not done, with reasons:
+   - A send still pending but under 30 s old when the connection comes
+     back is not resent: it may still be on its way; it offers Retry at 30 s.
+   - A failed tribe message is never resent by itself, though one that
+     failed with nothing published paid nothing: the row does not record
+     how far its publish got.
+   - A text the server records as PENDING is not mapped to `.unsettled`:
+     storage lets only a payment be unsettled, and the gate already holds
+     such a row back; it keeps Retry.
+   - A resent message moves to the bottom with the time of the resend, as
+     Retry always has. Keeping its place would mean keeping the old time
+     against the server's echo (which carries the resend's time, and is
+     what the recipient and other devices see); for Tom to decide.
+
+   Review (2026-10-10): `/code-review`, `/simplify` and `/security-review`
+   ran inline. Fixed: a connection that dropped while coming online left
+   the reconnect loop finished and the engine offline (the loop now goes
+   again); per-connection work (keep-alive, the resend sweep, the records
+   gate) now ends in `connectionClosed` too; path updates count only when
+   the status or the interfaces change, so cost or VPN flags never cut the
+   backoff short; the candidates query leaves out rows with sats before
+   its limit. An independent review then found the gate weaker than
+   claimed (an absent flag counted as an answer; failed rows were never
+   asked about; "once" lived in memory and the hour restarted with each
+   resend); fixed as above, with the ping before the checks, tribes left
+   out twice over, the sweep tied to its connection, and the backoff and
+   settling. Not applied:
+   - A failed send waits for the records too (up to 10 s, usually under
+     one): it may have left, and the sweep keeps oldest first.
+   - A network change while `connecting` waits for that attempt (now at
+     most the 20 s ACK timeout): cancelling a connect half-way would run
+     two at once.
+   - A ping whose answer is lost lingers until the client's 20 s timeout;
+     at most two overlap.
+   - On thaw a frozen tap (like a real link that comes back) may still
+     deliver the copy written into it, so that journey checks delivery,
+     not a single copy: the accepted Retry duplicate of item 8.
 
 ## Done criteria
 

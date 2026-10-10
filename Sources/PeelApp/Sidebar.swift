@@ -373,11 +373,12 @@ struct SidebarSection<Content: View>: View {
 
     private func header(open: Bool?) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .bold))
-                .rotationEffect(.degrees(open ?? true ? 0 : -90))
-                .opacity(open == nil ? 0 : 1)
-                .accessibilityHidden(true)
+            if let open {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(open ? 0 : -90))
+                    .accessibilityHidden(true)
+            }
             Text(title)
                 .font(Theme.font(13, .medium))
         }

@@ -1,10 +1,11 @@
 import SwiftUI
 import PeelCore
 
-/// A rounded field with the attach button (and in a direct message the
-/// send-sats bolt) before it and the round send arrow after it. Over the field: what it is replying to, and the files
-/// waiting to go. A chat and each open thread have their own
-/// (`ComposerID`); its draft, what it replies to and the files it holds
+/// One rounded field that holds everything: what it is replying to and the
+/// files waiting to go over the text, then a row under it with attach (and
+/// in a direct message the send-sats bolt) at the left and send at the
+/// right (shadcn's `InputGroup` with its addon at the block end). A chat
+/// and each open thread have their own (`ComposerID`); its draft, what it replies to and the files it holds
 /// live in the model, so the message menus can set them and a draft
 /// outlives the view (a thread covering its chat, another chat opened).
 struct Composer: View {
@@ -14,7 +15,7 @@ struct Composer: View {
     /// Who `@` offers, in a tribe; nil elsewhere. Asked each time an `@word`
     /// starts, so it is current without querying on every message.
     var loadMentionable: (@MainActor @Sendable () async -> [TribeMember])?
-    /// In a direct message: who the bolt beside the field sends sats to.
+    /// In a direct message: who the bolt in the field sends sats to.
     var paysTo: String?
 
     @State private var mentionable: [TribeMember] = []
@@ -87,71 +88,36 @@ struct Composer: View {
         #endif
     }
 
+    /// The composer's distance from the window's sides; the mention
+    /// suggestions line up with the field's edge at it.
+    private static let inset: CGFloat = 20
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            Button {
-                model.chooseFiles(for: composer)
-            } label: {
-                Image(systemName: "paperclip")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 32, height: 32)
-                    .overlay(Circle().strokeBorder(Theme.divider))
-                    .contentShape(Circle())
+        VStack(alignment: .leading, spacing: 0) {
+            if let target = model.replyTargets[composer] {
+                ReplyBar(message: target) { model.cancelReply(in: composer) }
             }
-            .buttonStyle(.plain)
-            .help("Attach files")
-            if let paysTo {
-                let sendingSats = Binding(
-                    get: { model.sendingSats == composer },
-                    set: { model.sendingSats = $0 ? composer : nil }
-                )
-                Button {
-                    sendingSats.wrappedValue = true
-                } label: {
-                    Image(systemName: "bolt")
-                        .font(.system(size: 14))
-                        .foregroundStyle(sendingSats.wrappedValue ? Theme.attention : Theme.secondaryText)
-                        .frame(width: 32, height: 32)
-                        .overlay(Circle().strokeBorder(Theme.divider))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Send or request sats")
-                .peelPopover(isPresented: sendingSats) {
-                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats.wrappedValue = false }
-                }
-                // The view stays when another chat opens in its place: the
-                // panel left behind is closed, not opened again on coming back.
-                .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
-            }
-            VStack(alignment: .leading, spacing: 0) {
-                if let target = model.replyTargets[composer] {
-                    ReplyBar(message: target) { model.cancelReply(in: composer) }
-                }
-                if !files.isEmpty {
-                    PendingFilesTray(composer: composer, files: files)
-                        .padding(.horizontal, 10)
-                }
-                field
+            if !files.isEmpty {
+                PendingFilesTray(composer: composer, files: files)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
             }
-            // Circular: one line is about 35 pt, under twice the radius.
-            .background(Theme.input, in: RoundedRectangle(cornerRadius: 18, style: .circular))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .circular).strokeBorder(Theme.divider))
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(canSend ? Theme.accent : Theme.secondaryText.opacity(0.5))
-            .disabled(!canSend)
-            // No Cmd-Return here: with a thread open two composers share the
-            // window, and Return in the field already sends from the right one.
-            .help("Send (Return). Shift-Return for a new line.")
+            field
+                .padding(.horizontal, 10)
+                .padding(.top, 5)
+            buttons
+                .padding(.horizontal, 6)
+                .padding(.bottom, 6)
         }
-        .padding(.horizontal, 20)
+        .background {
+            // A click anywhere in the field that no button or the text takes
+            // puts the cursor in the text.
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Theme.input)
+                .onTapGesture { model.composerFocus[composer, default: 0] += 1 }
+                .accessibilityHidden(true)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.divider))
+        .padding(.horizontal, Self.inset)
         .padding(.top, 6)
         .padding(.bottom, 16)
         .overlay(alignment: .topLeading) {
@@ -161,11 +127,52 @@ struct Composer: View {
                 // drawn above the composer and inside the window, never
                 // squeezed into the composer's height or below it.
                 MentionSuggestions(members: shown, highlighted: min(highlighted, shown.count - 1), choose: choose)
-                    .padding(.leading, 62)
+                    .padding(.leading, Self.inset)
                     .offset(y: -MentionSuggestions.height(for: shown.count))
             }
         }
         .zIndex(1)
+    }
+
+    /// The field's last row: attach (and in a direct message the bolt) at
+    /// the left, send at the right, under the text so its left edge stays.
+    private var buttons: some View {
+        HStack(spacing: 2) {
+            IconButton("paperclip", help: "Attach files") {
+                model.chooseFiles(for: composer)
+            }
+            if let paysTo {
+                let sendingSats = Binding(
+                    get: { model.sendingSats == composer },
+                    set: { model.sendingSats = $0 ? composer : nil }
+                )
+                IconButton("bolt", help: "Send or request sats", lit: sendingSats.wrappedValue) {
+                    sendingSats.wrappedValue = true
+                }
+                .accessibilityAddTraits(sendingSats.wrappedValue ? .isSelected : [])
+                .peelPopover(isPresented: sendingSats) {
+                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats.wrappedValue = false }
+                }
+                // The view stays when another chat opens in its place: the
+                // panel left behind is closed, not opened again on coming back.
+                .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
+            }
+            Spacer(minLength: 8)
+            Button(action: send) {
+                // As wide as `.sm` is tall, less its padding: a square.
+                // `IconButton` has no primary variant.
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
+            }
+            // Filled when there is something to send, a muted arrow otherwise.
+            .buttonStyle(.peel(canSend ? .primary : .ghost, size: .sm))
+            .disabled(!canSend)
+            // No Cmd-Return here: with a thread open two composers share the
+            // window, and Return in the field already sends from the right one.
+            .help("Send (Return). Shift-Return for a new line.")
+            .accessibilityLabel("Send")
+        }
     }
 }
 
@@ -180,6 +187,7 @@ private struct ReplyBar: View {
             Image(systemName: "arrowshape.turn.up.left")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.accent)
+                .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 1) {
                 let sender = model.sender(of: message)
                 (Text("Replying to ") + Text(message.fromMe ? "yourself" : sender.name).font(Theme.font(12, .bold))
@@ -190,6 +198,9 @@ private struct ReplyBar: View {
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
             }
+            // Its icon, words and fill pass a click to the field below,
+            // which puts the cursor in the text; only the ✕ takes one.
+            .allowsHitTesting(false)
             Spacer(minLength: 8)
             Button(action: cancel) {
                 Image(systemName: "xmark")
@@ -203,8 +214,12 @@ private struct ReplyBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Theme.quote, in: UnevenRoundedRectangle(topLeadingRadius: 18, topTrailingRadius: 18, style: .continuous))
-        .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 18, topTrailingRadius: 18, style: .continuous)
+                .fill(Theme.quote)
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .bottom) { Theme.divider.frame(height: 1).allowsHitTesting(false) }
     }
 }
 

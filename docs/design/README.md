@@ -211,10 +211,14 @@ and the arrows go on from it.
   replies" as a link (bold, with "N new", when unread) and "Last reply
   <sender> <time>". Clicking it opens the thread panel. DMs never collapse:
   replies show inline with their quote (Tom, 2026-10-07).
-- **Composer.** A rounded text field ("Message #Tribe" or "Message Name")
-  and a round send arrow beside it, not a "Send" button (Tom, 2026-10-07).
-  Attach, send sats and mention join it with their phases; no control appears
-  before it works. In a DM a round bolt beside the paperclip opens Send sats.
+- **Composer.** One rounded field ("Message #Tribe" or "Message Name")
+  that holds everything (Tom, 2026-10-10: "the send button should be
+  inside the input field"): the reply bar and the file tray at its top,
+  the text, then a row under the text with the paperclip (and in a DM the
+  bolt, which opens Send sats) at the left and a small send arrow at the
+  right, not a "Send" button (Tom, 2026-10-07). The arrow is filled when
+  there is something to send and muted otherwise. Attach, send sats and
+  mention joined it with their phases; no control appears before it works.
 
 ### Thread panel (360 pt)
 
@@ -480,6 +484,10 @@ Built so far:
 
 - **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
   (a form's cards), `panel` 12 (the popover).
+- **Composer** (batch 5). Its buttons sit inside the field: attach and
+  the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
+  `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
+  with nothing to send). Radius 18, `.continuous`.
 
 ### Buttons (`PeelButton`)
 
@@ -574,8 +582,10 @@ IconButton(help: title, action: copy) { CopyLabel(…) }        // any label
 - Stay apart: the call window's control bar (its own `segment` and
   `pill`), controls drawn over a picture or video (the viewer's arrows,
   a video's full-screen button, the audio card's play), the jump to newest
-  button, the composer's attach, bolt and send and the file tray's remove
-  and "+" (batch 5).
+  button, the composer's send (a `PeelButton` `.sm` square: `IconButton`
+  has no primary variant) and the file tray's remove and "+". The
+  composer's attach and bolt are ghost `IconButton`s, the bolt `lit`
+  while Send sats is open.
 
 ## Forms (shadcn's conventions)
 
@@ -751,7 +761,7 @@ The layout can be built before the features behind it, with empty states:
   bold with a blue count, muted ones dimmed with a crossed-out bell (Mute / Unmute in the row's context menu). Times
   show under the last message of a run and beside any bubble on hover.
 - Conversation: header with the name and short key, day dividers, bubbles,
-  the composer with the round send arrow. A banner at the bottom on
+  the composer with the send arrow (inside the field since 2026-10-10). A banner at the bottom on
   development profiles says the twelve words are in a plain file.
 
 Verified on the throwaway profile: messages both ways render, the layout holds

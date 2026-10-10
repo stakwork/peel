@@ -27,8 +27,9 @@ act in Sphinx.
   and ChatGPT subscriptions come only after each vendor's terms are
   checked. Keys are kept in the Keychain, per device.
 - **The Agent chat.**
-  - A "Peel" row in Direct messages, with the Peel logo and the AGENT
-    label; the label also shows on its messages.
+  - A "Peel" row in Direct messages, with the Peel logo. Until a model is
+    connected the row shows "Set up" in link blue; after that, the AGENT
+    label, which also shows on its messages.
   - Before setup, Peel introduces itself as the chat's first message, with
     a card to connect a model.
   - Replies stream in, as Markdown. Stop ends a reply.

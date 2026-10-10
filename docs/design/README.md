@@ -43,20 +43,64 @@ Top to bottom:
 2. **Search.** One field over every conversation.
 3. **Threads.** Threads you started or replied to that have new replies, with
    an unread count.
-4. **Mentions.** Messages that mention you, across tribes.
+4. **Mentions.** Messages that mention you, across tribes. Its count
+   takes in muted tribes' mentions too, so it agrees with the rows' gold
+   counts; the Dock badge still leaves muted chats out.
 5. **Payments.** Payment history: received, sent, boosts, invoices. The
    receive screen from the v1 scope lives here. Sats received while it is
    not open show as "+350" (the sum, in the green of received amounts) in
    the row's badge slot until it opens; the new rows then light once.
-6. **Tribes.** One row per tribe, led by the tribe's image or its initial on
-   its own colour, both on a rounded square (people are round). Unread
-   tribes are bold. Ends with "Join a tribe". The section collapses.
-7. **Direct messages.** One row per contact, unread ones bold with a count.
-   Ends with "Add contact". The section collapses.
+6. **Unread** (Tom, 2026-10-09: with 14 tribes and many DMs, a "1" on a
+   DM below the fold was missed). Every chat with something unread, direct
+   messages first, then tribes that mention you, then the other tribes,
+   each newest first. A chat moves up into it while unread and leaves its
+   own section. Muted chats stay out unless they mention you (then they
+   count only those mentions, as a tribe set to mentions only does). The
+   chat you open from it stays there until you open another, so it does
+   not jump as it is read. While Peel is in the background nothing is
+   marked read, so the open chat can move into Unread when a message
+   arrives and back out when you return to it. No chevron, and no section at all when nothing
+   is unread.
+7. **Tribes.** The five most recent by last activity, then "Show all 14
+   tribes" (every tribe, unread ones included; "Show fewer" once open).
+   One row per tribe, led by the tribe's image or its initial on its own
+   colour, both on a rounded square (people are round). Ends with "Join a
+   tribe". The section collapses.
+8. **Direct messages.** The five most recent, then "Show all 10 people".
+   Ends with pending invites, "Add contact" and "Invite someone". The
+   section collapses.
+
+Tribes come before direct messages: Tom lives in tribes. Unread rows are
+bold with a count, the count in the gold of a mention of you
+(`mentionYouFill`) when they mention you; read rows are in the secondary
+text colour. A direct message can show the gold count too, when a message
+in it names you. The chat you have open always shows, in a trimmed or a
+collapsed section alike. Each section's open or closed and shown-in-full
+state is kept with the account (`Setting.sidebarLayout`, through
+`Engine.sidebarLayout`), so it goes when the account is forgotten. The
+search finds every chat, untrimmed, in closed sections too; while it is
+on, the headers show no chevron, so a click cannot change the saved
+layout. Unread's title lines up with the others (the chevron's room is
+kept). VoiceOver hears the headers as headings and "Show all 14 tribes" /
+"Show fewer tribes". The sections are `ChatSections` in PeelCore. No
+drag-and-drop ordering yet (later).
+
+**Next unread:** Go › Next Unread Chat (⌥⇧↓) and Previous Unread Chat
+(⌥⇧↑) open the next chat in Unread, going round, from anywhere in the
+main window as ⌘F does (menu commands, guarded in the action by
+`AppModel.takesCommands`, which ⌘F shares): only while the main window is
+key, with no Peel menu or panel and no image viewer up, and not while
+Peel is locked or due to lock. A menu key equivalent comes before any
+view, so in every text field (the composer, the sidebar's search, a
+chat's search, the forms) they open the next unread chat instead of the
+text view's ⌥⇧↓ and ⌥⇧↑ (select to the paragraph's end or start), as in
+Slack.
 **Keys.** Clicking a row gives the sidebar the keyboard: Down and Up move a
-soft highlight (the hover fill) through Threads, Mentions, Payments, the
-tribes and the direct messages, skipping the "+" rows, invites and collapsed
-sections, and stopping at the ends; it scrolls into view and VoiceOver reads
+soft highlight (the hover fill) through Threads, Mentions, Payments, then
+the chats as shown (Unread, tribes, direct messages), skipping the section
+headers, the "+" and "Show all" rows (reached by a click only), invites
+and what a trimmed or collapsed section hides, and
+stopping at the ends; it scrolls into view and VoiceOver reads
 the row. Return opens the highlighted row as a click does, Escape clears it.
 A chat opened this way leaves the cursor in the sidebar; typing (or ⌘V)
 moves it to that chat's composer and the keys go there as typed, through
@@ -68,6 +112,8 @@ a pane's default button.
 S2; the app's icon still shows on the lock and welcome screens.)
 
 No tabs and no filter chips. Sorting inside each section: most recent first.
+A chat opened another way (⌥⇧↓, a jump, a notification) scrolls into view
+and the arrows go on from it.
 
 ### Conversation (flexible)
 

@@ -72,6 +72,14 @@ struct PeelApp: App {
                 Button("Find…") { model.find() }
                     .keyboardShortcut("f", modifiers: .command)
             }
+            // ⌥⇧↓ and ⌥⇧↑ from anywhere in the window, as ⌘F; guarded in
+            // `AppModel.takesCommands` for the same reason.
+            CommandMenu("Go") {
+                Button("Next Unread Chat") { model.openUnread(by: 1) }
+                    .keyboardShortcut(.downArrow, modifiers: [.option, .shift])
+                Button("Previous Unread Chat") { model.openUnread(by: -1) }
+                    .keyboardShortcut(.upArrow, modifiers: [.option, .shift])
+            }
             CommandGroup(after: .windowArrangement) {
                 if CallTest.config(for: model) != nil { CallTestMenuItem() }
             }

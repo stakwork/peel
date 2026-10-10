@@ -132,9 +132,10 @@ extension EnvironmentValues {
 
 extension View {
     /// Makes this window's root the place menus and panels open from, with
-    /// its environment.
-    func peelMenuHost() -> some View {
-        modifier(MenuHost())
+    /// its environment; `main` for the main window, whose presenter the
+    /// menu commands check (`AppModel.takesCommands`).
+    func peelMenuHost(main: Bool = false) -> some View {
+        modifier(MenuHost(main: main))
     }
 
     /// Opens a menu on right-click or Control-click. `source` marks the view
@@ -172,6 +173,7 @@ final class MenuAnchor {
 private struct MenuHost: ViewModifier {
     @Environment(AppModel.self) private var model
     @State private var presenter = MenuPresenter()
+    let main: Bool
 
     func body(content: Content) -> some View {
         content
@@ -185,6 +187,7 @@ private struct MenuHost: ViewModifier {
             #endif
             .onAppear {
                 let model = model, presenter = presenter
+                if main { model.mainPresenter = presenter }
                 presenter.environment = { view in
                     AnyView(
                         view.environment(model)

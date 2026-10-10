@@ -6,8 +6,6 @@ import PeelCore
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
-    @State private var showTribes = true
-    @State private var showDirect = true
     /// Keyboard: the row the arrows are on, nil at the selected one.
     @State private var highlighted: AppModel.Destination?
     @FocusState private var focused: Bool
@@ -44,24 +42,51 @@ struct Sidebar: View {
                             }
                             PaymentsLink(money: model.money)
                         }
-                        SidebarSection("Tribes", expanded: $showTribes) {
+                        if !sections.unread.isEmpty {
+                            SidebarSection("Unread") {
+                                ForEach(sections.unread) { conversation in
+                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                }
+                            }
+                        }
+                        // Searching shows every match: no chevron to say otherwise or
+                        // to change the saved layout.
+                        SidebarSection("Tribes", expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
                             ForEach(sections.tribes) { conversation in
                                 ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                             }
-                            SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
-                            SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                            if sections.tribesOpen {
+                                if let all = sections.allTribes {
+                                    SidebarShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
+                                }
+                                SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                                SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                            }
                         }
-                        SidebarSection("Direct messages", expanded: $showDirect) {
+                        SidebarSection("Direct messages",
+                                       expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
                             ForEach(sections.direct) { conversation in
                                 ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                             }
-                            ContactsSidebarRows()
+                            if sections.directOpen {
+                                if let all = sections.allDirect {
+                                    SidebarShowAll(what: Formatting.people(all), fewer: "people",
+                                                   all: $model.sidebarLayout.allDirect)
+                                }
+                                ContactsSidebarRows()
+                            }
                         }
                     }
                     .padding(.bottom, 12)
                 }
                 .scrollIndicators(.automatic)
                 .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
+                // Opened by Go › Next Unread Chat, a jump or a notification:
+                // in view, and the arrows go on from it.
+                .onChange(of: model.destination) {
+                    highlighted = nil
+                    if let destination = model.destination { proxy.scrollTo(destination) }
+                }
             }
             .focusable()
             .focusEffectDisabled()
@@ -108,11 +133,11 @@ struct Sidebar: View {
         }
     }
 
-    /// The rows the arrows move through, top to bottom: not the "+" rows
-    /// or invites, nor the rows of a collapsed section.
+    /// The rows the arrows move through, top to bottom, as shown: not the
+    /// "+" or "Show all" rows or invites.
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
-        let chats = (showTribes ? sections.tribes : []) + (showDirect ? sections.direct : [])
+        let chats = sections.unread + sections.tribes + sections.direct
         return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
             + chats.map { (.chat($0.chat), $0.name) }
     }
@@ -312,39 +337,55 @@ struct SearchField: View {
     }
 }
 
+/// A sidebar section: its title, with a chevron that opens and closes it
+/// when given `expanded` (its width kept without one, so titles line up),
+/// over its rows. The rows are the caller's: a closed section still shows
+/// the open chat (`ChatSections`).
 struct SidebarSection<Content: View>: View {
     let title: String
-    @Binding var expanded: Bool
+    let expanded: Binding<Bool>?
     @ViewBuilder let content: Content
 
-    init(_ title: String, expanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
+    init(_ title: String, expanded: Binding<Bool>? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
-        _expanded = expanded
+        self.expanded = expanded
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Button {
-                expanded.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .rotationEffect(.degrees(expanded ? 0 : -90))
-                    Text(title)
-                        .font(Theme.font(13, .medium))
+            if let expanded {
+                Button {
+                    expanded.wrappedValue.toggle()
+                } label: {
+                    header(open: expanded.wrappedValue)
                 }
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 4)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityValue(expanded.wrappedValue ? "Expanded" : "Collapsed")
+            } else {
+                header(open: nil)
+                    .accessibilityAddTraits(.isHeader)
             }
-            .buttonStyle(.plain)
-            if expanded {
-                content
-            }
+            content
         }
+    }
+
+    private func header(open: Bool?) -> some View {
+        HStack(spacing: 6) {
+            if let open {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(open ? 0 : -90))
+                    .accessibilityHidden(true)
+            }
+            Text(title)
+                .font(Theme.font(13, .medium))
+        }
+        .foregroundStyle(Theme.secondaryText)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 4)
+        .contentShape(Rectangle())
     }
 }
 
@@ -392,9 +433,10 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
 }
 
 /// A direct message or a tribe in the sidebar: bold with a count when unread,
-/// dimmed with a crossed-out bell when muted. A tribe set to mentions only
-/// counts only the messages that mention you, with an @ beside it. The
-/// notification level is set from its context menu.
+/// the count gold when they mention you; dimmed with a crossed-out bell when
+/// muted. A tribe set to mentions only (an @ beside it), or muted, counts
+/// only the messages that mention you. The notification level is set from
+/// its context menu.
 struct ConversationLink: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -404,9 +446,11 @@ struct ConversationLink: View {
 
     var body: some View {
         let level = state?.mute ?? .all
-        let unread = state?.shownUnread ?? 0
+        let unread = state?.sidebarCount ?? 0
         let onCall = model.liveCallCount(in: conversation.chat)
-        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0, dimmed: level == .muted) {
+        // A muted chat that mentions you is in Unread at full strength.
+        SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
+                    dimmed: level == .muted && unread == 0) {
             ConversationIcon(conversation: conversation, size: 18)
         } accessory: {
             if onCall > 0 {
@@ -418,7 +462,13 @@ struct ConversationLink: View {
                     .accessibilityLabel("Call in progress, \(people)")
             }
             if unread > 0 {
-                UnreadBadge(count: unread)
+                if state?.mentions ?? 0 > 0 {
+                    UnreadBadge(text: UnreadBadge.text(unread), foreground: Theme.mentionYouText, fill: Theme.mentionYouFill)
+                        .help("Mentions you")
+                        .accessibilityLabel("\(unread) unread, mentions you")
+                } else {
+                    UnreadBadge(count: unread)
+                }
             } else if state?.isNew == true {
                 NewContactBadge()
             } else if level == .muted {
@@ -589,16 +639,48 @@ struct SidebarActionLink<Form: View>: View {
         Button {
             showing = true
         } label: {
-            HStack(spacing: 9) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12))
-                    .frame(width: 18)
-                Text(title)
-            }
+            SidebarActionLabel(title: title, systemImage: "plus")
         }
         .buttonStyle(SidebarRowStyle(selected: false))
         .peelPopover(isPresented: $showing) {
             form { showing = false }
+        }
+    }
+}
+
+/// "Show all 14 tribes" under a section trimmed to its recent chats, then
+/// "Show fewer" ("Show fewer tribes" to VoiceOver); which one is kept with
+/// the account (`AppModel.sidebarLayout`).
+struct SidebarShowAll: View {
+    /// "14 tribes", "10 people".
+    let what: String
+    /// "tribes", "people".
+    let fewer: String
+    @Binding var all: Bool
+
+    var body: some View {
+        Button {
+            all.toggle()
+        } label: {
+            SidebarActionLabel(title: all ? "Show fewer" : "Show all \(what)",
+                               systemImage: all ? "chevron.up" : "chevron.down")
+        }
+        .buttonStyle(SidebarRowStyle(selected: false))
+        .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")
+    }
+}
+
+/// The icon and title of a sidebar row that acts rather than opens.
+private struct SidebarActionLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12))
+                .frame(width: 18)
+            Text(title)
         }
     }
 }

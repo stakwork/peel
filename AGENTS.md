@@ -550,7 +550,11 @@ optional here: a bug in this code can lose money or leak a key.
    the server sees. Never a real account. For UI, drive the real path at least
    once (the actual key press, in the app beside the features it sits next
    to) with `scripts/check-app.sh`, not only a hook that calls the code
-   directly.
+   directly. Anything with a timer, animation, observation or scroll
+   watcher also gets an idle check: leave the app on the screen it touches
+   for a minute and confirm its CPU stays near 0% (`ps -o %cpu= -p <pid>`,
+   `sample <pid> 10` on your own process). A `TimelineView` whose schedule
+   goes back in time redrew every frame and cost 25-30% CPU at idle (#137).
 4. **Review.** `/code-review` for correctness, `/simplify` for reuse,
    simplicity, efficiency and altitude (it applies its fixes), then
    `/security-review`. Fix what they find. Findings deliberately not applied go

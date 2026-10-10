@@ -116,7 +116,11 @@ is a short plan. Update the status and the journal when you finish something.
     its card) and `InviteRecord` (invites made here; the core keeps none)
   - `QRImage.swift` — QR codes in a picture (Vision), size- and
     pixel-limited
-  - `Files.swift` — `ImageDecoding`, `ProfilePhoto`, `TooLarge` (bytes over
+  - `Giphy.swift` — a received GIF from Giphy (`giphy::` and base64 JSON,
+    as `GiphyHelper` reads it), Giphy's media hosts (the only ones fetched
+    for one) and the fetch
+  - `Files.swift` — `ImageDecoding` (with `animation`: every frame of a GIF
+    and its delay, as `AnimationFrames`), `ProfilePhoto`, `TooLarge` (bytes over
     a limit, local or downloaded) and `UserFiles` (files saved for the
     person, quarantined; `saveToDownloads` off the caller's actor)
   - `IncomingFiles.swift` — attachments that arrive by drag or paste: which
@@ -169,7 +173,8 @@ is a short plan. Update the status and the journal when you finish something.
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
-  (`ImageCache`, bounded: attachments, and photos apart; `MediaInfoCache`), `Styles` (the `…Boxed` helpers), `Clipboard`,
+  (`ImageCache`, bounded: attachments, and photos apart, and `animations`: GIFs' frames and sizes, Giphy's bytes; `MediaInfoCache`),
+  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers), `Clipboard`,
   `Formatting`, `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
@@ -238,7 +243,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`,
-  `ServerAddressTests`, `WebTests`, `WebPageTests`; the audits'
+  `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the

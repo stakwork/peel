@@ -27,11 +27,15 @@ act in Sphinx.
   and ChatGPT subscriptions come only after each vendor's terms are
   checked. Keys are kept in the Keychain, per device.
 - **The Agent chat.**
-  - A "Sphinx Agent" row in Direct messages.
-  - An explainer and the setup as the chat's empty state.
+  - A "Peel" row in Direct messages, with the Peel logo and the AGENT
+    label; the label also shows on its messages.
+  - Before setup, Peel introduces itself as the chat's first message, with
+    a card to connect a model.
   - Replies stream in, as Markdown. Stop ends a reply.
   - Tool activity shows as quiet rows that expand on click.
-  - New conversation adds a divider; it is one timeline.
+  - One long conversation, like any DM. The model sees only the most
+    recent turns that fit a token budget; older messages stay on screen.
+    Clear conversation, in Account, starts over.
   - Errors show inline, with Retry.
   - Settings in an Agent section of the Account page.
 - **Sphinx tools,** with the official apps' names (below). Sends go out
@@ -46,14 +50,18 @@ connectors, and reading the official apps' synced `ai_agent_config`.
 
 ## Screens
 
-The UI is being designed on a design board now. This section will link to
-it once agreed. The screens:
+Design board, 2026-10-10:
+https://claude.ai/artifact/Kj79C1MsMNQ1oLqRMSzSNf (option 1A chosen for
+before setup). The screens:
 
-1. The empty state: what the agent is, and the setup.
-2. Connect a model: the provider, the key or sign-in, and a test call.
-3. The chat: streamed replies, tool rows, send rows, the New conversation
-   divider, inline errors.
-4. Account › Agent: the connected model, change or remove it.
+1. Before setup: Peel's first message introduces it, with a Connect card.
+2. Connect a model: a panel beside the button; the provider, the key or
+   sign-in, the model, and a test call.
+3. The chat: streamed replies, tool rows, send rows, inline errors, Stop.
+4. Account › Peel agent: name, provider, key (Replace, Remove), model,
+   Clear conversation.
+5. Edge cases: checking a key, a rejected key, OpenRouter sign-in, a
+   failed send, a stopped reply, offline, rate limit, a dead key.
 
 `../design/agents.md` was drawn for the old plan (one agent contact on a
 host, workers, ask cards) and will be replaced by the board.
@@ -95,13 +103,19 @@ with him before PR 2 merges.
   apply it.
 - **Store:** a protocol with `write(event)`, `read`, `search`, `walk` and
   `ontology`. SQLite now, LadybugDB later.
-- **ModelProvider:** a protocol. The first implementation wraps
-  swift-ai-sdk, which the official apps use, behind our interface.
+- **ModelProvider:** a protocol: messages and tools in, a stream of text
+  deltas, tool calls and usage out, cancellable. Two small clients of our
+  own (decided 2026-10-10): Anthropic Messages, and OpenAI-compatible Chat
+  Completions, which also covers OpenRouter. About 1,000 lines with
+  fixture tests. Not swift-ai-sdk, which the official apps use: about
+  100k lines from one author, frequent breaking releases, and 186
+  `@unchecked Sendable` escapes. Anthropic's ClaudeForFoundationModels
+  (`ClaudeAPI` target, Apache-2.0) is the reference design.
 - **Tool:** a name, an input schema, a handler and an effect.
 - **Turn loop:** one turn per message: build the context, call the model,
   run its tool calls, write the reply.
-- **Context:** the system prompt and the recent turns. Compaction comes
-  later, as a Summary record.
+- **Context:** the system prompt and the most recent turns that fit a
+  token budget. Compaction comes later, as a Summary record.
 
 ## Package layout
 
@@ -154,10 +168,20 @@ Each is done when it works in the app on a development profile.
 - **Do it for me.** "Tell Kate I'm late", "reply in that thread": the
   message goes out, in the right thread or as a reply, and a send row
   links to it.
-- **New conversation.** Adds a divider; the agent no longer sees the turns
-  above it.
 - **Things go wrong.** No key, a bad key, a rate limit and no network each
   show an inline error with Retry; nothing is lost.
+
+## Where it runs
+
+v1 runs inside Peel, on the device: Mac now, iPhone later, with no server
+(decided 2026-10-10). An agent in Strut was considered: Strut is
+TypeScript, already uses Vercel's AI SDK, and the official Mac app bundles
+it. It was set aside for v1 because it cannot run on an iPhone, and a phone
+talking to Strut on a Mac fails while the Mac sleeps. Always-on and
+proactive work need a server either way; Strut or another runtime can be
+weighed again then. What keeps that move cheap: the tool names and
+schemas, the event log format and the provider interface are contracts,
+not Swift types other code depends on.
 
 ## Still open
 

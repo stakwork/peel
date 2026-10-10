@@ -16,7 +16,8 @@ high='Engine\+Payments|Engine\+Account|Invoice|PaymentHistory|Sats\.swift|MoneyA
 # Everything else that runs: engine, storage, app code, scripts.
 medium='^Sources/|^scripts/|^Package'
 
-reasons_high=$(printf '%s\n' "$files" | grep -E "$high" || true)
+# Only shipped code can be high: a test or doc named after a risky file is not.
+reasons_high=$(printf '%s\n' "$files" | grep -E '^(Sources|scripts)/' | grep -E "$high" || true)
 reasons_medium=$(printf '%s\n' "$files" | grep -E "$medium" || true)
 lines=$(git diff --shortstat "$base"...HEAD | awk '{print $4 + $6}')
 

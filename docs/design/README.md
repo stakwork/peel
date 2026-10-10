@@ -80,8 +80,8 @@ state is kept with the account (`Setting.sidebarLayout`, through
 `Engine.sidebarLayout`), so it goes when the account is forgotten. The
 search finds every chat, untrimmed, in closed sections too; while it is
 on, the headers show no chevron, so a click cannot change the saved
-layout. Unread's title lines up with the others (the chevron's room is
-kept). VoiceOver hears the headers as headings and "Show all 14 tribes" /
+layout. A header without a chevron (Unread, and every header while
+searching) sits flush with the rows' icons; no room is kept for one. VoiceOver hears the headers as headings and "Show all 14 tribes" /
 "Show fewer tribes". The sections are `ChatSections` in PeelCore. No
 drag-and-drop ordering yet (later).
 
@@ -538,8 +538,9 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
 - Still drawn by hand, for later batches: icon buttons (batch 3), the
   call header's split Join and its chevron (batch 3), and the small text
   actions inside rows (a join request's Approve and Decline, a pinned
-  message's Unpin, a payment row's Retry and Cancel), which are muted or
-  `accent` 11–12 pt text with a mini spinner (batch 12, `ListRow`).
+  message's Unpin, a failed message's Retry and Cancel), which are muted or
+  `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
+  `.text` style that draws them (batch 12, `ListRow`).
 
 ## Forms (shadcn's conventions)
 

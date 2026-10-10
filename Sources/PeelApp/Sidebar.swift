@@ -338,8 +338,8 @@ struct SearchField: View {
 }
 
 /// A sidebar section: its title, with a chevron that opens and closes it
-/// when given `expanded` (its width kept without one, so titles line up),
-/// over its rows. The rows are the caller's: a closed section still shows
+/// when given `expanded` (without one, the title sits flush with the rows'
+/// icons), over its rows. The rows are the caller's: a closed section still shows
 /// the open chat (`ChatSections`).
 struct SidebarSection<Content: View>: View {
     let title: String

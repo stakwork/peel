@@ -16,11 +16,12 @@ protocol, the JSON shape of each message type, and the side services. Everything
 else is designed from first principles. "Parity" with the official app means the
 same capabilities, not the same screens.
 
-Peel is also the client for Tom's personal Sphinx agent: one agent contact, a
-Sphinx account of its own on an always-on host, with graph memory in LadybugDB,
-jobs run by Strut, and coding workers such as Claude Code behind it over ACP.
-The engine must therefore run headless and serve both the app and the agent
-host. The engine stays Swift for now (decided 2026-10-07). The design is in
+Peel is also the client for the Sphinx agent. The agent runs inside Peel
+(Mac now, iPhone next, an always-on server later) and walks a LadybugDB graph
+that is the same on every device and in the official Sphinx apps, synced as an
+encrypted change log on the memes server (decided 2026-10-10). The engine must
+therefore stay free of UI types, so the same code can later run headless. The
+engine stays Swift for now (decided 2026-10-07). The design is in
 [agent-architecture.md](agent-architecture.md) and the engine rules in
 [agent-native.md](agent-native.md); read both before changing the
 architecture.
@@ -138,12 +139,12 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | 2. Polish | done 2026-10-09 (forms #85, #99, #105; header #95). A pass over the app: the form and popover redesign (which takes in first-review row 9, styles and confirm controls; step 1 #85, step 2 #99 rolls the forms out and retires the old boxes and confirms; on 2026-10-09 shadcn's form pattern replaces direction A's row fields, and a click outside a field ends editing), and the tribe header as Call plus a More menu | [design/README.md](design/README.md), "Forms" |
 | 10 | 3. Markdown in messages | pulled forward from phase 10, because agent replies are Markdown | [phases/10-v1-extras.md](phases/10-v1-extras.md), item 2 |
 | — | 3b. Design library and duplication cleanup: one button style with variants and sizes, one panel shell with a placement rule, the composer's buttons inside the field, then cards, badges, rows, empty states and tokens; with the logic fixes it found (tribe prices shown as "Free", error wording, one owner for names, tribe pages and keys). Before the payments correctness fixes and the personal agent | in progress: 15 PRs, buttons and the panel first; batch 1 (`PeelButton`) built 2026-10-09 | [reviews/2026-10-09-design-library.md](reviews/2026-10-09-design-library.md) |
-| 9 | 4. The personal agent: one agent contact, the agent host, workers over ACP, then graph memory and Strut jobs, then the Inbox (Wave D) | planned; the plan was refreshed 2026-10-08 | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md); Inbox: [phases/09b-inbox.md](phases/09b-inbox.md) |
+| 9 | 4. The Sphinx agent: AgentKit first (models, the Agent chat, Sphinx tools, compaction), then the graph shared with the official apps and synced as a change log, once agreed with Tom T; always-on, ACP, Strut and the Inbox later | replanned 2026-10-10; phase 9 and 09b predate it and are kept for their research | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md); Inbox: [phases/09b-inbox.md](phases/09b-inbox.md) |
 | 11 | Preferences and their sync (before the iPhone): one `Preferences` layer owning every setting, the account-wide ones synced through the official apps' encrypted `/preferences` file | planned 2026-10-10: research and architecture; three PRs (plan, layer and migration, sync) | [phases/11-preferences-sync.md](phases/11-preferences-sync.md) |
 | 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, self-hosted certificates | payment templates built (2026-10-10); the rest planned, findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, certificates in 05 |
 | 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
-| — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Connections" |
+| — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Later" |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 What is left for parity with the official Mac app, and what to do before
@@ -221,6 +222,24 @@ From the parity sweep ([reviews/2026-10-09-parity-sweep.md](reviews/2026-10-09-p
 - **When:** it is phase 9's Wave D, after graph memory
   ([phases/09b-inbox.md](phases/09b-inbox.md)).
 - **Quick capture** (⌃⌥Space) comes later.
+
+## Decided 2026-10-10 (Tom): the agent replanned
+
+This replaces the agent parts of "Decided 2026-10-08 (night, Tom)" below.
+The always-on agent host with its own account, Strut and ACP workers was
+too much, too early. The design is in
+[agent-architecture.md](agent-architecture.md).
+
+- **The agent runs on the client** (Peel on the Mac, then iPhone), with an
+  always-on server later running the same code.
+- **One graph per user,** the same data on every device and in the official
+  Sphinx apps, synced as an encrypted change log on the memes server. Tom T
+  is adding LadybugDB to the official apps (`tt/feature/graph-db`); the
+  graph tools, the starting ontology and the event format are agreed with
+  him before either app writes graph data.
+- **Order:** AgentKit first (models, the Agent chat, Sphinx tools,
+  compaction), storing its records in SQLite shaped as graph nodes; then the
+  graph in Peel, then sync, then iPhone and always-on.
 
 ## Decided 2026-10-08 (night, Tom)
 

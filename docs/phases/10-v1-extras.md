@@ -228,9 +228,85 @@ and the cells and checks in the message views.
   repo has only `Config.template.swift` with a placeholder. Peel needs its
   own Giphy key, kept out of the repo in the same way.
 
-**Today in Peel:** a received GIF shows as `giphy::` and a base64 string.
-Reading the format is needed even before the picker exists.
+**Reading, built (2026-10-09).** Done means: a received (or restored)
+`giphy::` message shows its GIF playing in the row with its caption under
+it, at its own shape from the first frame (no jump when it loads);
+previews, quotes, pins and notifications read "GIF" or "GIF: caption";
+GIF attachments play too. The picker is still to come.
 
-**Open:** whether a received GIF loads automatically. Each load is a
-request to Giphy's CDN, which the photo fetch rules from #42 (public https,
-ephemeral session) would cover. Also open: whether to offer stickers.
+- `PeelCore/Giphy.swift` reads the content as `GiphyHelper` does: the
+  `giphy::` prefix, strict base64 of UTF-8 JSON, `url` with every
+  `giphy.gif` replaced by `200.gif`, `aspect_ratio` as a string or a
+  number (1 when missing, not a number or not positive), `text` as the
+  caption ("" when missing). Anything that does not decode stays text.
+  `Message.giphy`, `shownText` (the caption, so Copy, link cards and the
+  row's text use it) and `preview` know it; `hasNoWords` stays false for a
+  GIF without a caption, so its stored rule (and `noWordsVersion`) is
+  unchanged.
+- **Fetching.** Only https on the default port to Giphy's media hosts, as
+  the URLs its API hands the apps name them: `media.giphy.com`,
+  `media0.giphy.com` to `media4.giphy.com` and `i.giphy.com`, compared
+  exactly (`Giphy.hosts`). Any other host named by a message (or a redirect)
+  is never fetched; the row says "GIF not available". The fetch is
+  `Web.get` on its own ephemeral session (no cookies, no URL cache) whose
+  redirects stay on those hosts, limited to 8 MB, retried later on no answer
+  or a 429/5xx as photos are. The decoded GIF is kept in
+  `ImageCache.animations` and its bytes (32 MB in all) beside it, so frames
+  evicted are decoded again without asking Giphy again; memory only, like
+  photos. A host that answered with no GIF is not asked again this session.
+- **Privacy.** A received GIF loads as soon as its row shows, as in the
+  official apps, so Giphy learns this Mac's IP address and when the chat
+  was read. Nothing else goes with the request (no cookie, no key, no
+  `random_id`). A setting to load GIFs only on a click is a possible
+  follow-up.
+- **Animation.** `ImageDecoding.animation` decodes every frame at the size
+  drawn, with each frame's delay (GIF, APNG or WebP; under 11 ms plays at
+  100 ms, as browsers do). Limits: at most 400 frames and 100 million
+  source pixels in all (ImageIO reads each frame at full size, so this caps
+  the CPU; a 2048² GIF of 400 frames took 12.7 s in review), else the first
+  frame alone, as a still, and the same when the first frame's size is
+  unknown; at most 48 MB decoded, else decoded smaller. Decodes run one at
+  a time on a queue of their own. A tile is sized by the picture's own size
+  (`AnimationFrames.size`, kept per file after eviction), so a GIF draws as
+  large as its still did and its row keeps its shape while it decodes again.
+  `AnimatedPicture` hands the frames to Core Animation as one keyframe
+  animation of a layer's contents, so the render server should play them
+  without Peel's process waking per frame or SwiftUI redrawing the list.
+  That is the design's reasoning: it was not measured with a GIF playing
+  on a screen (see Checked). The layer pauses where it is when its view
+  leaves the window, is scrolled out of sight, the window is covered or
+  minimised, or Peel is not the frontmost app, and resumes from the same
+  frame. **For Tom to confirm:** pausing whenever Peel is not frontmost
+  (Slack keeps playing in a visible background window). With Reduce Motion
+  it shows the first frame with a "GIF" play button (`PeelButton`, outside
+  the tile's own viewer button). Attachments play when declared a GIF
+  (`isGif` in the Mac app; Peel sends any animated picture as
+  `image/gif`); the viewer still shows the first frame.
+- **Not done:** search does not find a GIF by its caption (the FTS index
+  holds the raw content; a migration would fix it), and an @mention in a
+  caption is not matched (the scan reads the raw content).
+- **Review, not applied:** decoding the GIF once in the engine when it is
+  stored (so search, mentions and the CLI's `messages` read the caption
+  too) rather than in `Message`'s readers; it needs a column and a
+  migration, so it waits for the picker. Applied: frames in their own
+  `ImageCache.animations`, one decode per GIF attachment, a Giphy fetch
+  that failed for no answer tried again (5 s, 30 s) while its row shows,
+  the mentions list showing the caption.
+- **Checked** offscreen (`scripts/check-app.sh`) on a new development
+  profile: a still image and an animated GIF in one run (a grid), and a
+  Giphy message whose URL is off Giphy's hosts (so nothing is fetched):
+  its 3:2 tile is reserved with "GIF not available" over the caption. Idle
+  for a minute with the GIF on screen (paused: the check app is never
+  active), the process used 0.17 s of CPU in 60 s (`ps` 0.0 to 0.3%), and
+  `sample <pid> 10` showed the main thread waiting in `_DPSNextEvent`. Not
+  verified: the CPU of a playing GIF (an offscreen app is never active, so
+  it never plays), a real Giphy GIF loading (no production fetch in a
+  check), and Reduce Motion's button and its click (a system setting; the
+  check has no click step).
+- **Independent review (2026-10-10), applied:** the source-pixel cap and
+  the one-at-a-time decode queue; tiles sized by the source size, kept
+  after eviction; Giphy's bytes kept to decode again without a second
+  fetch; the play button moved outside the tile's viewer button; labels
+  "GIF", "Play GIF" and "Pause GIF"; hosts matched percent-encoded.
+
+**Open:** whether to offer stickers.

@@ -161,8 +161,9 @@ public enum Web {
 
     /// `GET url`: its body if the answer is 200 and at most `limit` bytes.
     /// Only where `isAllowed`. Throws `Failure.refused` with the status
-    /// otherwise, and `TooLarge` over the limit.
-    static func get(_ url: URL, limit: Int, what: String) async throws -> Data {
+    /// otherwise, and `TooLarge` over the limit. A caller with stricter
+    /// redirects passes its own `session`.
+    static func get(_ url: URL, limit: Int, what: String, session: URLSession = session) async throws -> Data {
         guard isAllowed(url) else { throw PeelError("\(url.host ?? "the host") is not on the internet") }
         return try await Transfer(limit: limit, what: what, progress: nil).run(session.dataTask(with: url)).0
     }
@@ -183,8 +184,15 @@ public enum Web {
     /// again later (no answer, or the server busy or failing).
     public static func photo(at url: URL) async throws -> Data? {
         guard isPublic(url) else { return nil }
+        return try await retryLater { try await get(url, limit: 2_000_000, what: "the photo") }
+    }
+
+    /// `fetch`'s bytes; nil when the server said no or sent too much;
+    /// throws when it is worth asking again later (no answer, or the server
+    /// busy or failing).
+    static func retryLater(_ fetch: () async throws -> Data) async throws -> Data? {
         do {
-            return try await get(url, limit: 2_000_000, what: "the photo")
+            return try await fetch()
         } catch Failure.refused(_, let status) where status == 429 || status >= 500 {
             throw URLError(.badServerResponse)
         } catch is Failure, is TooLarge {

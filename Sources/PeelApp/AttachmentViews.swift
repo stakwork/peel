@@ -127,6 +127,7 @@ struct ImageTile: View {
     let size: CGFloat?
 
     @State private var loaded: CGImage?
+    @State private var loadedFrames: AnimationFrames?
 
     static let maxSide: CGFloat = 320
 
@@ -137,8 +138,21 @@ struct ImageTile: View {
     /// The image, from the cache straight away when a row scrolls back, so it
     /// is laid out once at its own shape.
     private var image: CGImage? {
-        loaded ?? ImageCache.shared.cached(model.attachment(message.id ?? 0).file, maxPixels: pixels)
+        let file = model.attachment(message.id ?? 0).file
+        return loaded ?? ImageCache.shared.cached(file, maxPixels: pixels) ?? decodedFrames?.frames.first
     }
+
+    /// A GIF's frames once decoded: the first is its image.
+    private var decodedFrames: AnimationFrames? {
+        loadedFrames ?? ImageCache.animations.cached(animation: model.attachment(message.id ?? 0).file, maxPixels: pixels)
+    }
+
+    /// A GIF's frames, when it has more than one.
+    private var frames: AnimationFrames? { decodedFrames.flatMap { $0.isAnimated ? $0 : nil } }
+
+    /// Declared a GIF, as the Mac app tells one (`isGif`); Peel sends any
+    /// animated picture as one.
+    private var isGIF: Bool { message.mediaType?.lowercased().contains("gif") == true }
 
     var body: some View {
         let handle = model.attachment(message.id ?? 0)
@@ -153,9 +167,13 @@ struct ImageTile: View {
             }
             .buttonStyle(.plain)
             .disabled(image == nil)
+            .gifPlayback(animated: frames != nil)
             .autoDownload(message)
             .task(id: handle.file) {
-                if let file = handle.file { loaded = await ImageCache.shared.image(file, maxPixels: pixels) }
+                guard let file = handle.file else { return }
+                // A GIF decodes once, every frame; anything else its first.
+                if isGIF { loadedFrames = await ImageCache.animations.animation(file, maxPixels: pixels) }
+                if loadedFrames == nil { loaded = await ImageCache.shared.image(file, maxPixels: pixels) }
             }
         }
     }
@@ -164,7 +182,9 @@ struct ImageTile: View {
     /// column is (a thread panel, a narrow window): never past its edge.
     private func picture(_ handle: AttachmentHandle) -> some View {
         Group {
-            if let image {
+            if let frames {
+                AnimatedPicture(animation: frames)
+            } else if let image {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 Theme.quote.overlay {
@@ -180,14 +200,76 @@ struct ImageTile: View {
         }
         .attachmentTile(fitted: displaySize, message: message, handle: handle)
         .help(handle.failureReason ?? "")
-        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Image")
+        .accessibilityLabel(isGIF ? "GIF" : message.content?.trimmed.nilIfEmpty ?? "Image")
     }
 
+    /// A GIF by its own size (its frames may be decoded smaller, or evicted
+    /// and decoding again), anything else by its image.
     private var displaySize: CGSize {
         if let size { return CGSize(width: size, height: size) }
-        return AttachmentFormat.fitted(
-            width: CGFloat(image?.width ?? 0), height: CGFloat(image?.height ?? 0), maxSide: Self.maxSide
-        )
+        let own = decodedFrames?.size ?? ImageCache.animations.size(of: model.attachment(message.id ?? 0).file)
+            ?? CGSize(width: image?.width ?? 0, height: image?.height ?? 0)
+        return AttachmentFormat.fitted(width: own.width, height: own.height, maxSide: Self.maxSide)
+    }
+}
+
+/// A GIF from Giphy, loaded from Giphy's CDN as it shows (`Giphy.data`),
+/// at the shape the message gives it, so the row keeps its size when the
+/// GIF arrives.
+struct GiphyTile: View {
+    let giphy: Giphy
+
+    @State private var loaded: AnimationFrames?
+    @State private var failed = false
+
+    /// The 200 px variant is never scaled up to this.
+    static let maxPixels = Int(ImageTile.maxSide * 2)
+
+    var body: some View {
+        let animation = loaded ?? giphy.url.flatMap { ImageCache.animations.cached(giphy: $0) }
+        Group {
+            if let animation {
+                AnimatedPicture(animation: animation)
+            } else {
+                Theme.quote.overlay {
+                    if failed || giphy.url == nil {
+                        Label("GIF not available", systemImage: "photo")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+        }
+        .attachmentTile(fitted: size)
+        // The caption is the row's text.
+        .accessibilityLabel("GIF")
+        .accessibilityAddTraits(.isImage)
+        .gifPlayback(animated: animation?.isAnimated == true)
+        .task(id: giphy.url) {
+            guard let url = giphy.url, animation == nil else { return }
+            loaded = await Self.load(url)
+            failed = loaded == nil
+        }
+    }
+
+    /// No answer, or Giphy busy: asked again while the row shows, then given up.
+    private static func load(_ url: URL) async -> AnimationFrames? {
+        let cache = ImageCache.animations
+        for wait in [0, 5, 30] {
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return nil }
+            if let frames = await cache.animation(giphy: url) { return frames }
+            if cache.isMissing(giphy: url) { return nil }
+        }
+        return nil
+    }
+
+    /// 240 pt wide, or 320 tall when it is taller than wide; a shape past
+    /// 4:1 either way is drawn at 4:1.
+    private var size: CGSize {
+        let ratio = min(max(giphy.aspectRatio, 0.25), 4)
+        return AttachmentFormat.fitted(width: 480, height: 480 / ratio, maxSide: ImageTile.maxSide)
     }
 }
 
@@ -332,15 +414,20 @@ extension View {
     /// large as `size` but narrower when the column is (a thread panel, a
     /// narrow window), never past its edge; ours with its upload over it.
     func attachmentTile(fitted size: CGSize, message: Message, handle: AttachmentHandle) -> some View {
+        overlay(alignment: .bottom) {
+            if message.fromMe, message.uploadState == .pending {
+                TransferBar(label: "Uploading", progress: handle.progress).padding(8)
+            }
+        }
+        .attachmentTile(fitted: size)
+    }
+
+    /// A tile filled by this view at `size`'s shape, as above.
+    func attachmentTile(fitted size: CGSize) -> some View {
         Color.clear
             .aspectRatio(size.width / size.height, contentMode: .fit)
             .frame(maxWidth: size.width)
             .overlay { self }
-            .overlay(alignment: .bottom) {
-                if message.fromMe, message.uploadState == .pending {
-                    TransferBar(label: "Uploading", progress: handle.progress).padding(8)
-                }
-            }
             .attachmentTile()
     }
 

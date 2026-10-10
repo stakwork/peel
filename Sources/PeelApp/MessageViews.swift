@@ -76,6 +76,8 @@ struct ChatRow: Identifiable, Equatable {
     /// The first tribe or contact link in the text: drawn as a card under
     /// the text, which shows without it (`MessageLink.card`).
     var card: MessageLink.Card?
+    /// A GIF from Giphy: drawn above its caption, the row's text.
+    var giphy: Giphy?
     var sender: Sender
     /// In a tribe, someone else's alias as sent; nil in a direct message.
     var member: String? { inTribe && !sender.isMe ? sender.alias : nil }
@@ -193,6 +195,7 @@ struct ChatRow: Identifiable, Equatable {
             rows[index].call = callServer.flatMap { CallLink(in: rows[index].message, server: $0) }
             if rows[index].call == nil, !rows[index].message.deleted {
                 rows[index].card = MessageLink.card(in: rows[index].message.shownText)
+                rows[index].giphy = rows[index].message.giphy
             }
             rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
             rows[index].purchase = rows[index].message.id.flatMap { purchases[$0] }
@@ -1023,6 +1026,9 @@ struct MessageContent: View {
                 if let quote = row.quote {
                     QuoteView(quote: quote)
                         .rowMenu(row.id, menu)
+                }
+                if let giphy = row.giphy {
+                    GiphyTile(giphy: giphy).rowMenu(row.id, menu)
                 }
                 if message.attachmentKind != nil {
                     if row.images.count > 1 {

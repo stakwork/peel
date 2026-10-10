@@ -344,7 +344,7 @@ struct PinnedMessageBar: View {
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
-                .help(message.content ?? "")
+                .help(message.shownText)
             Spacer(minLength: 8)
             if tribe.canManage {
                 Button("Unpin") { Task { await model.pin(nil, in: tribe.pubkey) } }
@@ -362,7 +362,7 @@ struct PinnedMessageBar: View {
         .onTapGesture { model.focus(on: message) }
         .peelMenu {
             var entries: [MenuEntry] = []
-            if let text = message.content?.trimmed.nilIfEmpty {
+            if let text = message.shownText.nilIfEmpty {
                 entries.append(.copyText(text))
             }
             if tribe.canManage {
@@ -486,7 +486,7 @@ private struct MentionRow: View {
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
                     }
-                    Text(LinkText.attributed(message.content ?? "", myAliases: model.mentionAliases(in: message.chat)))
+                    Text(LinkText.attributed(message.shownText, myAliases: model.mentionAliases(in: message.chat)))
                         .font(Theme.font(14))
                         .foregroundStyle(Theme.text)
                         .lineLimit(4)
@@ -502,7 +502,7 @@ private struct MentionRow: View {
             var entries: [MenuEntry] = [.button("Open in #\(tribeName ?? "tribe")", systemImage: "number") {
                 model.focus(on: message)
             }]
-            if let text = message.content?.trimmed.nilIfEmpty {
+            if let text = message.shownText.nilIfEmpty {
                 entries.append(.copyText(text))
             }
             return entries

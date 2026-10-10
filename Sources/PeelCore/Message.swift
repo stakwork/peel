@@ -180,11 +180,25 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// thread too would give the thread two rows.
     public var standsForThread: Bool { threadUUID != nil && isContent }
 
-    /// The words a row shows, trimmed: the content, or for a call message
-    /// the link it carries (all a call Peel cannot join shows, as plain text).
+    /// A GIF from Giphy (`giphy::` text), shown as the GIF and its caption.
+    public var giphy: Giphy? {
+        type == MessageType.text && !deleted ? Giphy(content: content) : nil
+    }
+
+    /// The words a row shows, trimmed: the content, for a GIF its caption,
+    /// or for a call message the link it carries (all a call Peel cannot
+    /// join shows, as plain text).
     public var shownText: String { Self.shownText(type: type, content: content) }
 
     private static func shownText(type: Int, content: String?) -> String {
+        if type == MessageType.text, let giphy = Giphy(content: content) {
+            return giphy.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return words(type: type, content: content)
+    }
+
+    /// `shownText` of anything but a GIF.
+    private static func words(type: Int, content: String?) -> String {
         let text = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard type == MessageType.call else { return text }
         return CallLink.linkText(in: text) ?? text
@@ -201,8 +215,9 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// `Storage.noWordsVersion` when it changes, and check that
     /// `Storage.markNoWords` still reads every row it could mark.
     static func hasNoWords(type: Int, content: String?) -> Bool {
-        guard type == MessageType.text || type == MessageType.call else { return false }
-        return shownText(type: type, content: content).unicodeScalars
+        // A GIF without a caption still shows its GIF (its content was never blank).
+        guard type == MessageType.text || type == MessageType.call, Giphy(content: content) == nil else { return false }
+        return words(type: type, content: content).unicodeScalars
             .allSatisfy { $0.properties.isWhitespace || $0.properties.generalCategory == .format }
     }
 
@@ -249,9 +264,14 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 
     /// One line for a quote, a list or a pin: the text without its markup,
-    /// or for an attachment with no caption what it is ("Image", "File: notes.pdf").
+    /// for a GIF "GIF" and its caption, or for an attachment with no
+    /// caption what it is ("Image", "File: notes.pdf").
     public var preview: String {
         if deleted { return "Message deleted" }
+        if let giphy {
+            let caption = MessageMarkup.plainText(giphy.text)
+            return caption.isEmpty ? "GIF" : "GIF: \(caption)"
+        }
         if type == MessageType.call, let link = content.flatMap(CallLink.linkText(in:)) {
             return CallLink.mode(ofLink: link) ?? MessageMarkup.plainText(link)
         }

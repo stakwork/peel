@@ -11,7 +11,7 @@ struct AccountView: View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
             ScrollView {
-                // Settings, not a form: rows of what is set on cards
+                // Settings, not a form: facts of what is set on cards
                 // (`SettingsSection`); a text field, when one opens, is a
                 // `FormItem`.
                 VStack(alignment: .leading, spacing: 18) {
@@ -19,18 +19,18 @@ struct AccountView: View {
                     ContactInfoSection()
                     SettingsSection("Account") {
                         NameRow()
-                        SettingsRow("Balance") {
+                        Fact("Balance") {
                             Text(model.balanceText ?? "Known once connected")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }
-                        SettingsRow("Confirm payments") {
+                        Fact("Confirm payments") {
                             PaymentConfirmationRow()
                         }
-                        SettingsRow("Boost amount") {
+                        Fact("Boost amount") {
                             BoostAmountRow()
                         }
-                        SettingsRow("Server") {
+                        Fact("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")
                                     .textSelection(.enabled)
@@ -169,7 +169,7 @@ private struct NameRow: View {
                 .padding([.horizontal, .bottom], settingsRowPadding)
             }
         } else {
-            SettingsRow("Name") {
+            Fact("Name") {
                 Text(model.myAlias ?? "")
             } trailing: {
                 Button("Edit") {
@@ -209,7 +209,7 @@ private struct ChangePINRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsRow("PIN") {
+            Fact("PIN") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Six digits")
                     if let note, step == .closed {
@@ -291,7 +291,7 @@ private struct PINTimeoutRow: View {
     private static let choices = [0, 1, 4, 12, 24]
 
     var body: some View {
-        SettingsRow("Ask for the PIN") {
+        Fact("Ask for the PIN") {
             VStack(alignment: .leading, spacing: 2) {
                 PeelDropdown(
                     selection: model.pinTimeoutHours,
@@ -349,7 +349,7 @@ private struct WordsRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsRow("Twelve words") {
+            Fact("Twelve words") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
                     Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
@@ -496,7 +496,7 @@ private struct TimeZoneSection: View {
 
     var body: some View {
         SettingsSection("Time zone") {
-            SettingsRow("Time zone") {
+            Fact("Time zone") {
                 VStack(alignment: .leading, spacing: 4) {
                     Button { picking = true } label: {
                         HStack(spacing: 8) {
@@ -524,7 +524,7 @@ private struct TimeZoneSection: View {
                     note(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.")
                 }
             }
-            SettingsRow("Shared in") {
+            Fact("Shared in") {
                 VStack(alignment: .leading, spacing: 2) {
                     switch shared {
                     case nil: EmptyView()
@@ -640,37 +640,29 @@ private struct ZonePicker: View {
     }
 }
 
+/// A zone: ticked when it is the one chosen.
 private struct ZoneRow: View {
     let title: String
     let detail: String
     let checked: Bool
     let action: () -> Void
 
-    @State private var hovering = false
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12))
-                    .opacity(checked ? 1 : 0)
-                    .frame(width: 16)
-                Text(title)
-                    .lineLimit(1)
-                Spacer(minLength: 12)
-                Text(detail)
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
-            .font(Theme.font(13))
-            .monospacedDigit()
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(hovering ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
-            .contentShape(Rectangle())
+        ListRow(action: action) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 12))
+                .opacity(checked ? 1 : 0)
+                .frame(width: 16)
+        } title: {
+            Text(title).lineLimit(1)
+        } trailing: {
+            Text(detail)
+                .font(Theme.font(13))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(1)
+                .fixedSize()
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }
@@ -682,7 +674,7 @@ private struct NotificationsRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SettingsRow("Notifications") {
+        Fact("Notifications") {
             VStack(alignment: .leading, spacing: 2) {
                 Text(state)
                 Text(note)
@@ -727,7 +719,7 @@ private struct NotificationTextRow: View {
     @State private var problem: String?
 
     var body: some View {
-        SettingsRow("Message text") {
+        Fact("Message text") {
             VStack(alignment: .leading, spacing: 2) {
                 PeelDropdown(
                     selection: model.notifier.showsText,
@@ -758,7 +750,7 @@ private struct WebsiteDataRow: View {
     @State private var cleared = false
 
     var body: some View {
-        SettingsRow("Website data") {
+        Fact("Website data") {
             Text(cleared ? "Cleared." : "Sign-ins, cookies and storage of pages opened in Peel, kept for this account only.")
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
@@ -773,11 +765,10 @@ private struct WebsiteDataRow: View {
 
 // MARK: - Building blocks
 
-private let settingsLabelWidth: CGFloat = 150
 private let settingsRowPadding: CGFloat = 12
-private let settingsRowSpacing: CGFloat = 12
 
-/// A titled group of Account rows on a raised card, a hairline between rows.
+/// A titled group of Account rows: a `FactList` with the page's wider
+/// label column.
 private struct SettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
@@ -791,51 +782,8 @@ private struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 5) {
             SectionHeader(title)
                 .padding(.horizontal, 4)
-            Card {
-                Group(subviews: content) { rows in
-                    VStack(spacing: 0) {
-                        ForEach(rows) { row in
-                            if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
-                            row
-                        }
-                    }
-                }
-            }
+            FactList(labelWidth: 150) { content }
         }
         .padding(.top, 12)
-    }
-}
-
-/// A row of an Account section: the label column (`FormLabel`), the value
-/// beside it, and an optional action on the right. The page is wider than
-/// a popover, so its value reads left, by its notes.
-private struct SettingsRow<Value: View, Trailing: View>: View {
-    let label: String
-    @ViewBuilder let value: Value
-    @ViewBuilder let trailing: Trailing
-
-    init(_ label: String, @ViewBuilder value: () -> Value, @ViewBuilder trailing: () -> Trailing) {
-        self.label = label
-        self.value = value()
-        self.trailing = trailing()
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: settingsRowSpacing) {
-            FormLabel(label)
-                .frame(width: settingsLabelWidth, alignment: .leading)
-            value
-                .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
-        }
-        .padding(.horizontal, settingsRowPadding)
-        .padding(.vertical, 9)
-        .frame(minHeight: 44)
-    }
-}
-
-extension SettingsRow where Trailing == EmptyView {
-    init(_ label: String, @ViewBuilder value: () -> Value) {
-        self.init(label, value: value, trailing: { EmptyView() })
     }
 }

@@ -113,11 +113,10 @@ struct ReceivePane: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
-        Theme.divider.frame(height: 1)
-        KeyValues(rows: [
-            .init(key: "Received", value: (invoice.paid ?? .now).formatted(.dateTime.hour().minute().second())),
-            .init(key: "Invoice for", value: Sats.format(msat: invoice.amountMsat)),
-        ])
+        FactList {
+            Fact("Received", text: (invoice.paid ?? .now).formatted(.dateTime.hour().minute().second()))
+            Fact("Invoice for", text: Sats.format(msat: invoice.amountMsat))
+        }
         HStack(spacing: 8) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
                 .buttonStyle(.peel(.outline))

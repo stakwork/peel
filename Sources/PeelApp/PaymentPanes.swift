@@ -49,51 +49,6 @@ struct BigAmount: View {
     }
 }
 
-/// Facts in two columns: the name on the left, the value (with an icon, or
-/// a Copy button) on the right.
-struct KeyValues: View {
-    struct Row: Identifiable {
-        let key: String
-        let value: String
-        var symbol: String?
-        var tint: Color?
-        var monospaced = false
-        /// Text a Copy button beside the value puts on the clipboard.
-        var copy: String?
-        var id: String { key }
-    }
-
-    let rows: [Row]
-
-    var body: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 10) {
-            ForEach(rows) { row in
-                GridRow {
-                    Text(row.key)
-                        .foregroundStyle(Theme.secondaryText)
-                        .gridColumnAlignment(.leading)
-                    HStack(spacing: 6) {
-                        if let symbol = row.symbol {
-                            Image(systemName: symbol)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(row.tint ?? Theme.secondaryText)
-                        }
-                        Text(row.value)
-                            .font(row.monospaced ? .system(size: 12, design: .monospaced) : Theme.font(13))
-                            .monospacedDigit()
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let copy = row.copy {
-                            CopyButton("Copy", text: copy).buttonStyle(.peel(.outline, size: .sm))
-                        }
-                    }
-                }
-            }
-        }
-        .font(Theme.font(13))
-    }
-}
-
 extension TimelineSchedule where Self == ExplicitTimelineSchedule<[Date]> {
     /// Draws now and again at `date`. `.now` comes first because, before
     /// its first entry, a timeline draws with that entry's date: a lone

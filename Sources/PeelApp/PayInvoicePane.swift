@@ -76,7 +76,7 @@ struct PayInvoicePane: View {
         return VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 14) {
                 BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 30)
-                KeyValues(rows: facts(invoice, expired: expired))
+                facts(invoice, expired: expired)
             }
             .padding(.top, 16)
             .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
@@ -125,21 +125,23 @@ struct PayInvoicePane: View {
         }
     }
 
-    private func facts(_ invoice: Invoice, expired: Bool) -> [KeyValues.Row] {
-        var rows: [KeyValues.Row] = []
+    private func facts(_ invoice: Invoice, expired: Bool) -> some View {
         let key = Formatting.shortKey(invoice.payee)
-        rows.append(.init(key: "To", value: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact"))
-        if !invoice.memo.isEmpty { rows.append(.init(key: "Memo", value: invoice.memo)) }
-        if let expires = invoice.expiresAt {
-            let at = Formatting.expiry(expires)
-            rows.append(expired
-                ? .init(key: "Expires", value: "Expired at \(at)", tint: Theme.attention)
-                : .init(key: "Expires", value: "\(expires.formatted(.relative(presentation: .named))), at \(at)"))
+        return FactList {
+            Fact("To", text: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact")
+            if !invoice.memo.isEmpty { Fact("Memo", text: invoice.memo) }
+            if let expires = invoice.expiresAt {
+                let at = Formatting.expiry(expires)
+                if expired {
+                    Fact("Expires", text: "Expired at \(at)", tint: Theme.attention)
+                } else {
+                    Fact("Expires", text: "\(expires.formatted(.relative(presentation: .named))), at \(at)")
+                }
+            }
+            if payment == nil || payment?.status == .failed {
+                Fact("Fee", text: "Any routing fee is added on top and shown once paid.")
+            }
         }
-        if payment == nil || payment?.status == .failed {
-            rows.append(.init(key: "Fee", value: "Any routing fee is added on top and shown once paid."))
-        }
-        return rows
     }
 
     /// Why this invoice cannot be paid from here: the engine's own rules,

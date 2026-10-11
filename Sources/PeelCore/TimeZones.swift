@@ -69,23 +69,6 @@ public enum TimeZoneOffset {
     }
 }
 
-/// Whether this account shares its time zone in one chat, in the shape of
-/// the official apps' preferences item `timezone` (key the chat's pubkey,
-/// value `timezone_enabled` and `timezone_identifier`), so sync can slot in.
-public struct ChatTimeZone: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
-    public static let databaseTableName = "chatTimeZone"
-    /// The contact's or tribe's pubkey (the item's `identifier`).
-    public var chat: String
-    /// Share in this chat (`timezone_enabled`). A chat with no row shares,
-    /// as in the official apps; turning it off writes `false`.
-    public var enabled: Bool
-    /// A zone for this chat only, set on another device
-    /// (`timezone_identifier`); nil means the account's zone.
-    public var identifier: String?
-    /// Seconds since 1970 (the item's `date`), for last-writer-wins.
-    public var updatedAt: Int64
-}
-
 /// Someone's local time, from the offset on their latest message.
 public struct LocalTime: Sendable, Equatable {
     /// Their zone: a fixed offset, or the named zone if they sent a name.
@@ -104,21 +87,10 @@ extension Message {
 }
 
 extension Storage {
-    public func chatTimeZone(_ chat: String) throws -> ChatTimeZone? {
-        try pool.read { db in try ChatTimeZone.fetchOne(db, key: chat) }
-    }
-
-    /// Turns sharing on or off in `chat`, keeping a zone set for it elsewhere.
-    func setTimeZoneSharing(_ enabled: Bool, in chat: String, at date: Date) throws {
-        try pool.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO chatTimeZone (chat, enabled, identifier, updatedAt) VALUES (?, ?, NULL, ?)
-                    ON CONFLICT(chat) DO UPDATE SET enabled = excluded.enabled, updatedAt = excluded.updatedAt
-                    """,
-                arguments: [chat, enabled, Int64(date.timeIntervalSince1970)]
-            )
-        }
+    /// The time zone item set for `chat`, here or on another device; nil
+    /// where none is, which means sharing, as in the official apps.
+    public func chatTimeZone(_ chat: String) throws -> TimeZoneSharing? {
+        try preference(.timeZoneSharing, for: chat)
     }
 
     /// The newest offset someone sent in `chat` from `since` (milliseconds)
@@ -195,7 +167,7 @@ extension Engine {
     /// The zone chosen for this account, an IANA name; nil means automatic
     /// (this Mac's).
     public func chosenTimeZone() throws -> String? {
-        try storage.value(for: .timeZone).flatMap(\.nilIfEmpty)
+        try storage.preference(.timeZone).flatMap(\.nilIfEmpty)
     }
 
     /// Chooses this account's zone, an IANA name (or a fixed `GMT±H`), or
@@ -204,7 +176,7 @@ extension Engine {
         if let identifier, TimeZoneOffset.zone(identifier) == nil {
             throw Failure.unknownTimeZone(identifier)
         }
-        try storage.set(identifier ?? "", for: .timeZone)
+        try set(.timeZone, identifier ?? "")
     }
 
     /// The zone this account's offset comes from in `chat`: the one set for
@@ -233,8 +205,8 @@ extension Engine {
 
     /// Turns sharing this account's offset on or off in a direct message or
     /// a private tribe. Turning it off stops sending; what was sent stays
-    /// with them. Either way the chat's row records the choice and when, as
-    /// the preferences file's item would (`enabled` false, `updatedAt` now).
+    /// with them. Either way the chat's `timezone` preference records the
+    /// choice, keeping a zone set for the chat on another device.
     public func setTimeZoneSharing(_ enabled: Bool, in chat: String) throws {
         guard chat.isPubkey else { throw Failure.notAChat }
         if enabled {
@@ -244,7 +216,8 @@ extension Engine {
                 guard isContact(chat) else { throw Failure.notAChat }
             }
         }
-        try storage.setTimeZoneSharing(enabled, in: chat, at: .now)
+        let zone = try storage.chatTimeZone(chat)?.identifier
+        try set(.timeZoneSharing, TimeZoneSharing(enabled: enabled, identifier: zone), for: chat)
     }
 
     /// Someone's local time: a contact's, or with `member` a tribe member's

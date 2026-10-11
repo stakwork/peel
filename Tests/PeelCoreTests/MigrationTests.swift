@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 import Testing
 @testable import PeelCore
@@ -258,5 +259,179 @@ struct MigrationTests {
         #expect(MessageType.boost == 29)
         #expect(Tribe.Status.active.rawValue == 0)
         #expect(Message.Delivery.pending.rawValue == "PENDING")
+        // v24's keys.
+        #expect(Preference<UInt64>.boostAmountMsat.key == "tip_amount")
+        #expect(Preference<UInt64>.paymentConfirmationMsat.key == "peel.payment_confirmation_msat")
+        #expect(Preference<String>.timeZone.key == "peel.time_zone")
+        #expect(Preference<TimeZoneSharing>.timeZoneSharing.key == "timezone")
+        #expect(Preference<Int>.pinTimeoutHours.key == "device.pin_timeout_hours")
+        #expect(Preference<Bool>.notificationText.key == "device.notification_text")
+        #expect(Preference<UInt64>.boostConfirmedMsat.key == "device.boost_confirmed_msat")
+        #expect(Preference<UInt64>.preferencesSince.key == "device.preferences_since")
+    }
+
+    /// v24 moves every user setting of a v22 database into `preference`,
+    /// in the preferences file's encodings: what came from before sync dated
+    /// 0 (so the file wins), the per-chat time zone rows with their dates.
+    /// Garbage is left behind rather than failing the migration, and the
+    /// account's other settings stay where they were.
+    @Test func settingsMoveIntoPreferences() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v22")
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO setting (key, value) VALUES
+                    ('boostAmountMsat', '250000'), ('paymentConfirmationMsat', '0'), ('timeZone', 'Europe/London'),
+                    ('pinTimeoutHours', '4'), ('notificationText', '0'), ('alias', 'Tom'), ('callServer', 'x.example'),
+                    ('sidebarLayout', '{}');
+                INSERT INTO chatTimeZone (chat, enabled, identifier, updatedAt) VALUES
+                    ('02aa', 0, NULL, 1760000000), ('02bb', 1, 'Asia/Bangkok', 1760000100);
+                """)
+        }
+        try queue.close()
+
+        let before = UInt64(Date.now.timeIntervalSince1970)
+        let storage = try profile.storage()
+        let since = try #require(try storage.preference(.preferencesSince))
+        #expect(since >= before && since <= UInt64(Date.now.timeIntervalSince1970) + 1)
+        let moved = try storage.preferenceRows().filter { $0.key != "device.preferences_since" }
+            .map { "\($0.key) \($0.identifier) \($0.value) \(Int($0.updatedAt))" }
+        #expect(moved == [
+            #"device.boost_confirmed_msat 0 "250000" 0"#,
+            #"device.notification_text 0 "false" 0"#,
+            #"device.pin_timeout_hours 0 "4" 0"#,
+            #"peel.payment_confirmation_msat 0 "0" 0"#,
+            #"peel.time_zone 0 "Europe/London" 0"#,
+            #"timezone 02aa {"timezone_enabled":"false","timezone_identifier":""} 1760000000"#,
+            #"timezone 02bb {"timezone_enabled":"true","timezone_identifier":"Asia/Bangkok"} 1760000100"#,
+            #"tip_amount 0 "250" 0"#,
+        ])
+        #expect(try storage.preference(.boostAmountMsat) == 250_000)
+        #expect(try storage.preference(.paymentConfirmationMsat) == 0)
+        #expect(try storage.preference(.timeZone) == "Europe/London")
+        #expect(try storage.preference(.pinTimeoutHours) == 4)
+        #expect(try storage.preference(.notificationText) == false)
+        #expect(try storage.chatTimeZone("02aa") == TimeZoneSharing(enabled: false, identifier: nil))
+        #expect(try storage.chatTimeZone("02bb") == TimeZoneSharing(enabled: true, identifier: "Asia/Bangkok"))
+        let left = try rows(profile, "SELECT key FROM setting ORDER BY key").map { $0["key"] as String }
+        #expect(left.filter { $0 != Setting.noWordsScan.rawValue } == ["alias", "callServer", "sidebarLayout"])
+        #expect(try rows(profile, "SELECT name FROM sqlite_master WHERE name = 'chatTimeZone'").isEmpty)
+    }
+
+    /// A boost amount under a sat (which no input of Peel's could make)
+    /// becomes one sat, the nearest the file can hold, not the default.
+    @Test func aBoostAmountUnderASatBecomesOne() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v22")
+        try queue.write { db in try db.execute(sql: "INSERT INTO setting (key, value) VALUES ('boostAmountMsat', '500')") }
+        try queue.close()
+        let storage = try profile.storage()
+        #expect(try storage.preference(.boostAmountMsat) == 1000)
+        #expect(try storage.preference(.boostConfirmedMsat) == 1000)
+    }
+
+    /// Values earlier builds could not have meant are not carried over:
+    /// the engine read them as unset, and so does the layer.
+    @Test func unreadableSettingsAreLeftBehind() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v22")
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO setting (key, value) VALUES
+                    ('boostAmountMsat', '0'), ('paymentConfirmationMsat', 'lots'), ('timeZone', ''),
+                    ('pinTimeoutHours', '-1'), ('notificationText', '1');
+                """)
+        }
+        try queue.close()
+        let storage = try profile.storage()
+        #expect(try storage.preferenceRows().map(\.key) == ["device.notification_text", "device.preferences_since"])
+        #expect(try storage.preference(.notificationText) == true)
+        #expect(try storage.preference(.boostAmountMsat) == nil)
+    }
+
+    /// v24 does not depend on v23 (#158's indexes): a database may have
+    /// recorded a v23 from a build before #158 landed. With an unrelated
+    /// v23 already recorded, v24 still runs and moves the settings, and
+    /// that v23's index is left alone.
+    @Test func runsAfterAnUnrelatedV23() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v22")
+        var other = DatabaseMigrator()
+        other.registerMigration("v23") { db in
+            try db.execute(sql: "CREATE INDEX other_v23 ON setting (value)")
+        }
+        try other.migrate(queue)
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO setting (key, value) VALUES ('boostAmountMsat', '7000'), ('pinTimeoutHours', '2');
+                INSERT INTO chatTimeZone (chat, enabled, identifier, updatedAt) VALUES ('02aa', 0, NULL, 1760000000);
+                """)
+        }
+        try queue.close()
+
+        let storage = try profile.storage()
+        #expect(try storage.preference(.boostAmountMsat) == 7000)
+        #expect(try storage.preference(.pinTimeoutHours) == 2)
+        #expect(try storage.chatTimeZone("02aa") == TimeZoneSharing(enabled: false, identifier: nil))
+        let applied = try rows(profile, "SELECT identifier FROM grdb_migrations").map { $0["identifier"] as String }
+        #expect(applied.contains("v23") && applied.contains("v24"))
+        #expect(try !rows(profile, "SELECT name FROM sqlite_master WHERE name = 'other_v23'").isEmpty)
+    }
+
+    /// A development build registered this migration as "v23" (before #158
+    /// took the name): `preference` exists with rows, `chatTimeZone` is gone
+    /// and #158's v23 indexes were skipped. v24 keeps the rows and puts the
+    /// indexes back, so the profile opens and the sidebar's query (which
+    /// names `message_preview`) runs.
+    @Test func runsAfterAnEarlierBuildsV23() async throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v22")
+        var earlier = DatabaseMigrator()
+        earlier.registerMigration("v23") { db in try Self.earlierPreferences(db) }
+        try earlier.migrate(queue)
+        try queue.close()
+
+        let storage = try profile.storage()
+        #expect(try storage.preference(.boostAmountMsat) == 5000)
+        #expect(try storage.preferenceRows().first { $0.key == "tip_amount" }?.updatedAt == 1_760_000_000)
+        #expect(try storage.chatTimeZone("02aa") == TimeZoneSharing(enabled: true, identifier: nil))
+        #expect(try storage.preference(.preferencesSince) != nil)
+        let indexes = try rows(profile, "SELECT name FROM sqlite_master WHERE type = 'index'").map { $0["name"] as String }
+        #expect(indexes.contains("message_preview") && !indexes.contains("message_serverIndex"))
+        #expect(try #require(try await first(storage.conversations())).isEmpty)
+    }
+
+    /// An earlier build registered it as "v22", so the real v22 (resend
+    /// dates) never ran there: v24 adds its two columns.
+    @Test func runsAfterAnEarlierBuildsV22() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v21")
+        var earlier = DatabaseMigrator()
+        earlier.registerMigration("v22") { db in try Self.earlierPreferences(db) }
+        try earlier.migrate(queue)
+        try queue.close()
+
+        let storage = try profile.storage()
+        #expect(try storage.preference(.boostAmountMsat) == 5000)
+        // That build wrote no confirmation: the amount it kept was set here.
+        #expect(try storage.preference(.boostConfirmedMsat) == 5000)
+        let columns = try rows(profile, "SELECT name FROM pragma_table_info('message')").map { $0["name"] as String }
+        #expect(columns.contains("firstSentAt") && columns.contains("autoResentAt"))
+        #expect(try rows(profile, "SELECT name FROM sqlite_master WHERE name = 'chatTimeZone'").isEmpty)
+    }
+
+    /// What the earlier builds' preferences migration left: the table with
+    /// a row and a chat's switch, `chatTimeZone` gone.
+    private static func earlierPreferences(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE preference (
+                key TEXT NOT NULL, identifier TEXT NOT NULL, value TEXT NOT NULL,
+                updatedAt REAL NOT NULL DEFAULT 0, PRIMARY KEY (key, identifier)
+            );
+            INSERT INTO preference (key, identifier, value, updatedAt) VALUES
+                ('tip_amount', '0', '"5"', 1760000000),
+                ('timezone', '02aa', '{"timezone_enabled":"true","timezone_identifier":""}', 1760000000);
+            DROP TABLE chatTimeZone;
+            """)
     }
 }

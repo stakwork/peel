@@ -11,11 +11,11 @@ extension Engine {
     public static let defaultPaymentConfirmationMsat: UInt64 = 100_000
 
     public func paymentConfirmationMsat() throws -> UInt64 {
-        try storage.value(for: .paymentConfirmationMsat).flatMap { UInt64($0) } ?? Self.defaultPaymentConfirmationMsat
+        try storage.preference(.paymentConfirmationMsat) ?? Self.defaultPaymentConfirmationMsat
     }
 
     public func setPaymentConfirmation(msat: UInt64) throws {
-        try storage.set(String(msat), for: .paymentConfirmationMsat)
+        try set(.paymentConfirmationMsat, msat)
     }
 
     /// The balance the server last reported, in msat; nil until it has.
@@ -58,35 +58,55 @@ extension Engine {
     /// and escrow, sent at once with no confirmation of any kind; the
     /// threshold, "Always confirm" included, is for a boost with an amount
     /// (`boost`, the CLI's), payments and invoices. The boost amount itself
-    /// was approved when it was saved (`setBoostAmount`). Only the balance is
-    /// checked. A message is boosted once this way (Tom, 2026-10-07): with
-    /// any boost of ours on it, failed ones included (those offer Retry), a
-    /// tap is ignored and returns nil, which also covers a double click.
+    /// was approved when it was saved here (`setBoostAmount`). One that came
+    /// from another device (the preferences file) and is over the threshold
+    /// is not: until it is confirmed on this device (`confirmedMsat`, which
+    /// then counts for later taps too), the tap throws `needsConfirmation`.
+    /// Otherwise only the balance is checked. A message is boosted once this
+    /// way (Tom, 2026-10-07): with any boost of ours on it, failed ones
+    /// included (those offer Retry), a tap is ignored and returns nil, which
+    /// also covers a double click.
     @discardableResult
-    public func quickBoost(messageID: Int64) async throws -> String? {
+    public func quickBoost(messageID: Int64, confirmedMsat: UInt64? = nil) async throws -> String? {
         if let message = try storage.message(id: messageID), let uuid = message.uuid,
            try storage.lastOwnBoost(on: uuid, in: message.chat) != nil {
             return nil
         }
-        return try await boost(messageID: messageID, amountMsat: try boostAmountMsat(), confirmation: .unasked)
+        let stored = try storage.preference(.boostAmountMsat)
+        let amount = stored ?? Self.defaultBoostAmountMsat
+        let confirming = stored != nil && confirmedMsat == amount
+        if stored != nil, !confirming, Self.needsConfirmation(
+            amount, confirmedMsat: try storage.preference(.boostConfirmedMsat), thresholdMsat: try paymentConfirmationMsat()
+        ) {
+            throw Failure.needsConfirmation(amountMsat: amount)
+        }
+        let tag = try await boost(messageID: messageID, amountMsat: amount, confirmation: .unasked)
+        // Confirmed for later taps only once this one has gone; the boost
+        // has gone even if that is not recorded (the next tap asks again).
+        if confirming { try? set(.boostConfirmedMsat, amount) }
+        return tag
     }
 
     /// The official apps' default tip, 100 sats ("Default tip amount").
     public static let defaultBoostAmountMsat: UInt64 = 100_000
 
     public func boostAmountMsat() throws -> UInt64 {
-        try storage.value(for: .boostAmountMsat).flatMap { UInt64($0) }.flatMap { $0 > 0 ? $0 : nil }
-            ?? Self.defaultBoostAmountMsat
+        try storage.preference(.boostAmountMsat) ?? Self.defaultBoostAmountMsat
     }
 
     /// Every later one-tap boost sends this amount unasked, so one over the
-    /// confirmation threshold must be confirmed (`confirmedMsat`) like a payment.
+    /// confirmation threshold must be confirmed (`confirmedMsat`) like a
+    /// payment. Whole sats, as the official apps keep it (`tip_amount`). It
+    /// is recorded as confirmed on this device; one set on another device
+    /// is held to a confirmation here by `quickBoost`.
     public func setBoostAmount(msat: UInt64, confirmedMsat: UInt64? = nil) throws {
         guard msat > 0 else { throw Failure.invalidAmount }
+        guard msat % 1000 == 0 else { throw Failure.partSat }
         if Self.needsConfirmation(msat, confirmedMsat: confirmedMsat, thresholdMsat: try paymentConfirmationMsat()) {
             throw Failure.needsConfirmation(amountMsat: msat)
         }
-        try storage.set(String(msat), for: .boostAmountMsat)
+        try set(.boostConfirmedMsat, msat)
+        try set(.boostAmountMsat, msat)
     }
 
     /// Whether `amountMsat` must be confirmed first: over the threshold (0

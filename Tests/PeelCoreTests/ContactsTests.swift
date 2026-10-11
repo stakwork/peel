@@ -431,7 +431,9 @@ struct ContactDeleteTests {
             messages: messages.map { ($0, true, nil) }, mutes: [keyG: 2, key2G: 1, key3G: 1],
             payments: [PaymentRecord(rhash: "r1", ts: 1, amountMsat: 1_000, incoming: false, remote: false)]
         ))
-        for chat in [keyG, key2G, key3G] { try storage.setTimeZoneSharing(false, in: chat, at: .now) }
+        for chat in [keyG, key2G, key3G] {
+            try storage.setPreference(.timeZoneSharing, TimeZoneSharing(enabled: false, identifier: nil), for: chat)
+        }
         try storage.pool.write { db in
             try db.execute(
                 sql: """
@@ -453,10 +455,12 @@ struct ContactDeleteTests {
     @Test func storageRemovesTheChatAndNothingElse() throws {
         let storage = try storage()
         #expect(try storage.deleteContact(keyG).map(\.uuid) == [uuid(3)])
-        for (table, column) in [("message", "chat"), ("chatState", "chat"), ("chatTimeZone", "chat"), ("contact", "pubkey")] {
+        for (table, column) in [("message", "chat"), ("chatState", "chat"), ("contact", "pubkey")] {
             #expect(try count(table, column, is: keyG, storage) == 0, "\(table)")
             #expect(try count(table, column, is: key2G, storage) == 1, "\(table)")
         }
+        // The time zone switch is the account's preference, kept for a contact added again.
+        #expect(try storage.chatTimeZone(keyG)?.enabled == false)
         #expect(try count("message", is: key3G, storage) == 1)
         #expect(try count("chatState", is: key3G, storage) == 1)
         let state = try storage.loadCoreState()

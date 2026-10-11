@@ -56,6 +56,39 @@ extension Invocation {
             let engine = try await load()
             print("photo: \(try await engine.uploadPhoto(URL(fileURLWithPath: path)))")
 
+        case "prefs":
+            let storage = try readOnlyStorage()
+            for row in try storage.preferenceRows() {
+                let chat = row.identifier == Preferences.accountWide ? "" : "  \(row.identifier.prefix(12))"
+                let when = row.updatedAt > 0
+                    ? Date(timeIntervalSince1970: row.updatedAt).formatted(.iso8601) : "from before sync"
+                print("\(row.key)\(chat)  \(row.value)  \(when)  \(row.followsAccount ? "account" : "this device")")
+            }
+
+        case "pref":
+            guard let name = arguments.next() else { throw PeelError("pref needs a name: \(Self.prefNames)") }
+            let value = arguments.next()
+            let engine = try await load()
+            switch name {
+            case "confirm-over":
+                if let value { try await engine.setPaymentConfirmation(msat: value == "0" ? 0 : try satsArgument(value)) }
+                print("confirm payments over: \(Sats.format(msat: try await engine.paymentConfirmationMsat()))")
+            case "time-zone":
+                if let value { try await engine.setTimeZone(value == "auto" ? nil : value) }
+                print("time zone: \(try await engine.chosenTimeZone() ?? "auto (this Mac's)")")
+            case "pin-timeout":
+                if let value {
+                    guard let hours = Int(value), hours >= 0 else { throw PeelError("pin-timeout takes hours, 0 for only at launch") }
+                    try await engine.setPINTimeout(hours: hours)
+                }
+                print("PIN timeout: \(try await engine.pinTimeoutHours().map { "\($0) hours" } ?? "not set")")
+            case "notification-text":
+                if let value { try await engine.setNotificationShowsText(yesNo(value)) }
+                print("notification text: \(try await engine.notificationShowsText() ? "yes" : "no")")
+            default:
+                throw PeelError("unknown preference \(name); one of: \(Self.prefNames)")
+            }
+
         case "contacts":
             let storage = try readOnlyStorage()
             for contact in try Engine.contacts(in: storage) {
@@ -67,4 +100,7 @@ extension Invocation {
         }
         return true
     }
+
+    static let prefNames = "confirm-over <sats, 0 for every payment>, time-zone <IANA name|auto>, "
+        + "pin-timeout <hours, 0 for only at launch>, notification-text <yes|no>"
 }

@@ -49,6 +49,8 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
+    - `Engine+Preferences.swift` — `set`, every change to a user setting
+      through `Preferences`
     - `Engine+History.swift` — restore and catch-up: asks for the pages
       `HistoryCursor` names, the stall watchdog, recovering the account's
       own photo
@@ -143,7 +145,13 @@ is a short plan. Update the status and the journal when you finish something.
     line that previews show
   - `TimeZones.swift` — time zones: the offset in a message's `metadata`
     (sent unless the chat's switch is off, never to a public tribe; read
-    with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
+    with Peel's own parser), the per-chat switch (a `timezone`
+    preference), `localTime(of:)`
+  - `Preferences.swift` — the one owner of every user setting: the
+    registry (`Preference`: the preferences file's key, account or device
+    scope, the official encoding), `JSONValue`, the official reader's
+    rewrite rules (`isOfficialFixedPoint`), the `preference` table's
+    reads and dated writes (phase 11)
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`;
     in debug builds `init(publishing:)`, the tests' broker that answers
     pings and takes or refuses each write
@@ -256,7 +264,7 @@ is a short plan. Update the status and the journal when you finish something.
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
-  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`,
+  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`,
   `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)

@@ -153,21 +153,21 @@ extension Engine {
     /// Hours after which an app asks for the PIN again; 0 means only at
     /// launch, nil that this account has never set it.
     public func pinTimeoutHours() throws -> Int? {
-        try storage.value(for: .pinTimeoutHours).flatMap { Int($0) }
+        try storage.preference(.pinTimeoutHours)
     }
 
     public func setPINTimeout(hours: Int) throws {
-        try storage.set(String(max(0, hours)), for: .pinTimeoutHours)
+        try set(.pinTimeoutHours, hours)
     }
 
     /// Whether an app's notifications may show what a message says; on
     /// unless turned off.
     public func notificationShowsText() throws -> Bool {
-        try storage.value(for: .notificationText) != "0"
+        try storage.preference(.notificationText) ?? true
     }
 
     public func setNotificationShowsText(_ shows: Bool) throws {
-        try storage.set(shows ? "1" : "0", for: .notificationText)
+        try set(.notificationText, shows)
     }
 
     /// Which sidebar sections are open and shown in full; the defaults

@@ -129,6 +129,8 @@ extension Engine {
         case noPaymentTemplate
         case uploadInProgress
         case invalidAmount
+        /// A boost amount is whole sats, as the official apps keep it.
+        case partSat
         case balanceUnknown
         case insufficientBalance
         /// Over the confirmation threshold (an invite, always): show the
@@ -219,6 +221,7 @@ extension Engine {
             case .serverTimedOut: "the server did not answer in time"
             case .noInvoiceFromServer: "the server made no invoice (its Lightning node may be down); try again later"
             case .invalidAmount: "the amount must be more than nothing"
+            case .partSat: "a boost amount is a whole number of sats"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
             case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) needs confirming first"

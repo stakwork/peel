@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import PeelCore
 
@@ -27,7 +28,7 @@ struct AuditMoneyTests {
         settings[.balanceMsat] = balanceMsat.map(String.init)
         settings[.server] = server
         _ = try storage.apply(Storage.Commit(
-            state: coreContact(seller, contactKey: key3G), settings: settings, contacts: [(seller, true)],
+            state: registeredState.merging(coreContact(seller, contactKey: key3G)) { $1 }, settings: settings, contacts: [(seller, true)],
             messages: messages.map { ($0, false, nil) }
         ))
         return (try testEngine(storage), storage)
@@ -112,6 +113,53 @@ struct AuditMoneyTests {
         await #expect(throws: Engine.Failure.alreadyBought) {
             try await engine.buyAttachment(messageID: id, confirmedMsat: 50_000)
         }
+    }
+
+    /// The seller's side (bug hunt N3): a purchase stored but never
+    /// answered, because Peel stopped or the answer failed, is answered by
+    /// the next connection, once; one that brought too little never is.
+    @Test func aPurchaseOwedItsKeyIsAnsweredOnceByTheNextConnection() async throws {
+        let paid = mediaToken(amt: "50"), dear = mediaToken(amt: "200")
+        // The core sends a key only as 32 bytes of hex.
+        let key = String(repeating: "42", count: 32)
+        func ours(_ n: Int, _ token: String) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.attachment, chat: seller, fromMe: true,
+                     body: #"{"content":"","mediaToken":"\#(token)","mediaKeyForSelf":"\#(key)"}"#, content: "",
+                     timestamp: Int64(n) * 1_000)
+        }
+        func bought(_ n: Int, _ token: String, msat: Int64) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.purchase, chat: seller,
+                     body: #"{"content":"","mediaToken":"\#(token)"}"#, msat: msat, timestamp: Int64(n) * 1_000)
+        }
+        let (engine, _) = try engine(messages: [
+            ours(1, paid), ours(2, dear), bought(3, paid, msat: 50_000), bought(4, dear, msat: 100_000),
+        ])
+        func answers() throws -> [(status: String?, key: String?, token: String?)] {
+            try rows(profile, "SELECT status, body FROM message WHERE type = \(MessageType.purchaseAccept) ORDER BY id")
+                .map { row in
+                    let fields = AttachmentFields.decode(row["body"])
+                    return (row["status"], fields?.mediaKey, fields?.mediaToken)
+                }
+        }
+
+        // A connection that goes as it answers: the answer fails.
+        let gone = goneTransport()
+        await engine.useTransportForTesting(gone)
+        await engine.answerOwedPurchases(on: gone)
+        #expect(try answers().map(\.status) == [Message.Delivery.failed.rawValue])
+        await engine.disconnect()
+
+        // The next one answers it again, with the key; the one that
+        // brought too little is never answered.
+        let taking = Transport(publishing: { _, _ in })
+        await engine.useTransportForTesting(taking)
+        await engine.answerOwedPurchases(on: taking)
+        await engine.answerOwedPurchases(on: taking)
+        let after = try answers()
+        #expect(after.map(\.status) == [Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue])
+        #expect(after.allSatisfy { $0.token == paid })
+        #expect(after.last?.key == key)
+        await engine.disconnect()
     }
 
     // MARK: Tribe prices

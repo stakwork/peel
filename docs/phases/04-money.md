@@ -1721,3 +1721,24 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+## A paid attachment's key owed after a stop (bug hunt N3, 2026-10-11)
+
+- **Problem.** The seller answered a purchase only as a follow-up of the
+  commit that stored it. A Peel that stopped in between, or whose answer
+  failed, never answered: the buyer read "Processing" for ever and could
+  not buy again. A failed type 8 also counted as answered.
+- **Fix.** Each connection, after a reconnect's resends, answers every
+  purchase in a direct message still owed its key
+  (`Engine.answerOwedPurchases` over `Storage.receivedPurchases`), through
+  `answerPurchase` and its rules (the price less min(3 sats, a tenth);
+  tribes are not answered here; skipped while a restore is filling in
+  history). A failed answer no longer counts (`Storage.isAnswered`). An
+  underpaid purchase stays unanswered and is reported only as it arrives.
+  The arrival and the sweep answer one purchase once (`sendsInFlight`).
+- **Tests.** `AuditMoneyTests.aPurchaseOwedItsKeyIsAnsweredOnceByTheNextConnection`;
+  the payments review's journey 4,
+  `Journeys.Attachments.aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops`.
+- **Left.** An answer whose publish was cut short by the app stopping
+  stays pending and counts as answered; the server's records (`getTags`)
+  settle it only if it left.

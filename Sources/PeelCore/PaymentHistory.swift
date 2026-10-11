@@ -442,12 +442,28 @@ extension Storage {
 
     /// Whether a purchase of ours has had its answer from here, or another
     /// device: a key sent for that token after it, or a refund after it.
+    /// One that failed never reached the buyer, so answers nothing.
     func isAnswered(purchase: Message, token: String) throws -> Bool {
         try pool.read { db in
             try Self.purchaseMessages(token: token, chat: purchase.chat, db).contains {
-                $0.fromMe && ($0.type == MessageType.purchaseAccept
+                $0.fromMe && $0.delivery != .failed && ($0.type == MessageType.purchaseAccept
                     || ($0.type == MessageType.purchaseDeny && $0.date >= purchase.date))
             }
+        }
+    }
+
+    /// Purchases others made in direct messages, oldest first: what
+    /// `Engine.answerOwedPurchases` looks over.
+    func receivedPurchases() throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message WHERE fromMe = 0 AND deleted = 0 AND type = \(MessageType.purchase)
+                        AND chat NOT IN (SELECT pubkey FROM tribe)
+                    ORDER BY timestamp, id
+                    """
+            )
         }
     }
 

@@ -142,7 +142,9 @@ and the arrows go on from it.
   sit in the row. Hovering lights the row and shows Reply, Boost (others'
   messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
   centred line ("carol joined"). Someone who sent no name is "Someone"
-  everywhere (rows, quotes, notifications), with "?" as their initials.
+  everywhere (rows, quotes, notes, mentions, notifications), with "?" as
+  their initials: one owner, `Sender` (`People.sender(of:inTribe:)`, and
+  `Sender(member:)` for a tribe member named by their own message).
   Payments and payment requests share the rows' chrome (`rowChrome`) and
   run header; cards in a chat are `cardBoxed`.
 - **Link cards:** the first tribe or contact link in a message gets a 320 pt
@@ -846,8 +848,9 @@ messages that mention you. Details in `../phases/03-chat.md`.
 
 **The header's right side (H1, Tom, 2026-10-08).** Two buttons: Call
 (with its live "Join · N") and More (•••). A tribe's More holds, in
-order: Second brain and Tribe app (each only when the tribe has one,
-opening in the web pane, marked ↗); Members, Details (⌘I, also from
+order: Tribe app and Second brain (each only when the tribe has one,
+opening in the web pane, marked ↗; `Tribe.pages`, the one list and order
+the details' buttons use too); Members, Details (⌘I, also from
 anywhere in the chat), Copy tribe link and Notifications; then Edit
 tribe… (owners) and Leave tribe (or Remove from Peel for a tribe you can
 no longer post in), confirmed by a second click in the menu. A DM's More
@@ -855,7 +858,11 @@ is Details and Notifications. Notifications is a submenu opened in the
 menu's place (‹ back, Left or Escape) with the sidebar's levels, the
 current one beside it ("All"). Members, Details and Edit open below
 More. The members panel keeps its own Copy link (top right, an icon) and
-Leave (its footer).
+Leave (its footer). Every Leave (the menus, the members panel, the
+details, the status bar's Remove from Peel) is offered by `Tribe.exit`,
+worded by `Tribe.Exit` ("Leave tribe", then "Leave #tribe"; "Remove from
+Peel", then "Remove #tribe") and run by `AppModel.leave`, whose failure
+shows as the chat's notice.
 
 **Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
 More's Details is "Tribe details" (⌘I); a click on the tribe's name or
@@ -868,7 +875,8 @@ pane, the link's QR with Copy link and Copy QR image, "How you appear in
 #tribe" (a name whose helper shows the alias members will read, and a
 `PictureField`; Save and Revert appear once something changed), and the
 time zone switch. Its footer: Members, and Edit tribe… for the owner, on
-the left; Leave tribe on the right for a member, confirmed in place. Tags in the edit form are the same chips,
+the left; Leave tribe (or Remove from Peel) on the right for a member,
+confirmed in place. Tags in the edit form are the same chips,
 toggled, the selected ones in `selection` with a tick.
 
 The rejected native-sidebar variant and the first Slack-skin build are kept in

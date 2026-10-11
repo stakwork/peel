@@ -19,6 +19,14 @@ struct EngineFailureTests {
         await #expect(throws: Engine.Failure.notAMemberKey) { try await engine.kickMember("ann", from: key2G) }
     }
 
+    @Test func aTribeThatIsGoneIsRemovedWithoutSending() async throws {
+        // A deleted tribe of our own: removed from Peel, offline, nothing sent.
+        let engine = try engine(tribes: [Tribe(pubkey: key2G, isOwner: true, status: .deleted)])
+        try await engine.leaveTribe(key2G)
+        #expect(await engine.tribes[key2G]?.left == true)
+        await #expect(throws: Engine.Failure.notInTribe) { try await engine.leaveTribe(key2G) }
+    }
+
     @Test func settingRefusalsAreTyped() async throws {
         let engine = try engine()
         await #expect(throws: Engine.Failure.emptyName) { try await engine.setAlias("  ") }

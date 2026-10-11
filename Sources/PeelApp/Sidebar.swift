@@ -541,20 +541,48 @@ enum ConversationMenu {
     }
 
     /// Leave, or Remove from Peel for a tribe this account can no longer
-    /// post in; each confirmed by a second click.
+    /// post in (`Tribe.exit`); confirmed by a second click. The owner of a
+    /// live tribe gets neither: they can only delete it (under Edit tribe).
     static func leave(_ conversation: Conversation, _ tribe: Tribe, model: AppModel) -> [MenuEntry] {
+        guard let exit = tribe.exit else { return [] }
         let chat = conversation.chat
-        if tribe.status != .active {
-            return [.destructive("Remove from Peel", systemImage: "trash", confirm: "Remove #\(conversation.name)") {
-                Task { await model.leave(chat) }
-            }]
-        }
-        // The owner cannot leave, only delete the tribe (under Edit tribe).
-        guard !tribe.isOwner else { return [] }
-        return [.destructive("Leave tribe", systemImage: "rectangle.portrait.and.arrow.right",
-                             confirm: "Leave #\(conversation.name)") {
+        return [.destructive(exit.title, systemImage: exit.systemImage, confirm: exit.confirm(conversation.name)) {
             Task { await model.leave(chat) }
         }]
+    }
+}
+
+/// Leave and Remove from Peel as every place that offers them words them:
+/// the menu, the members panel, the details and the status bar.
+extension Tribe.Exit {
+    var title: String {
+        switch self {
+        case .leave: "Leave tribe"
+        case .remove: "Remove from Peel"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .leave: "rectangle.portrait.and.arrow.right"
+        case .remove: "trash"
+        }
+    }
+
+    /// The second click's words.
+    func confirm(_ tribeName: String) -> String {
+        switch self {
+        case .leave: "Leave #\(tribeName)"
+        case .remove: "Remove #\(tribeName)"
+        }
+    }
+
+    /// What could not be done, after "Could not".
+    var failure: String {
+        switch self {
+        case .leave: "leave the tribe"
+        case .remove: "remove the tribe"
+        }
     }
 }
 

@@ -105,7 +105,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `Tribe.swift` — tribe records, tribe links, the tribes server's
     registry, and `TribePrice`: what a member pays to join or per message
     (the amount the engine sends, and why it is more than the owner's
-    price), the only price shown to someone who will pay it
+    price), the only price shown to someone who will pay it; `Tribe.exit`
+    (leave, remove from Peel, or neither) and `Tribe.pages` (its app and
+    second brain, in their one order)
   - `NotificationPolicy.swift` — what notifies (messages, payment
     requests, announced calls, join requests to owned tribes) and the one
     "quiet here" rule (the chat in view, its mute level) that messages,
@@ -255,8 +257,8 @@ is a short plan. Update the status and the journal when you finish something.
   and for a contact their key, its QR code and Remove);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
   own data store, its toolbar and address field, the routing of http and
-  https links, Browser and a tribe's second brain and app as More menu
-  items);
+  https links, Browser and a tribe's pages as More menu items, and
+  `WebPane.open(_ page:)`, the one way a tribe's page opens);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit

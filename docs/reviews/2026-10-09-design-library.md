@@ -1086,3 +1086,82 @@ library outside forms.
   - Tests: nothing new in `PeelCoreTests`. The order is a few guards on
     AppKit events in `PeelApp`, which has no test target; the drive above
     covers it. `swift test`: 591 passed (one known issue, IPv6 hosts, as on `main`).
+- **Batch 8, one owner each: a sender's name, a tribe's pages, Leave
+  (2026-10-11).** Each duplication of section 3 was read before it was
+  folded.
+  - A sender's name: the eight `message.senderAlias ?? Sender.unnamed`
+    sites were real (now in `MembershipNote`, `JoinRequestNote`,
+    `PinnedMessageBar`, the mentions list's `MentionRow`, and three in
+    `Notifier`), all naming a tribe member by their message. `Sender`
+    owns them: `Sender(member:)` (`MessageViews.swift`) is the decode
+    `People.sender(of:inTribe:)` already did for a tribe, now its own
+    initialiser; the membership and join-request notes take the row's
+    `sender` (its `label` gives "You" for yours), the pinned bar asks
+    `model.sender(of:)`, the mentions list, the notifications and a
+    money arrival's `Receipt.member` use `Sender(member:)`. Words are
+    unchanged in a tribe; a note in a direct message (rare: a join or
+    leave type there) now names the contact as its rows do. Left as they
+    are: `Notifier.names`' `Sender.unnamed`, which names a chat when
+    nothing is stored, and `PaymentItem.title`'s, which names a payment's
+    chat and is not reached by any kind that has one (a payment's
+    `counterpart` is the member, from `PaymentHistory`).
+  - A tribe's pages: the bug's root was two lists, each with its own
+    order (the More menu's `WebMenuEntries`: Second brain, then Tribe
+    app; the details' `pages`: Tribe app, then Second brain), and two
+    ways to open one (the window's link router, `model.web.open`). One
+    list now: `Tribe.pages` in `PeelCore`, the app first as the official
+    apps prefer it (the Mac app opens `appURL` before `secondBrainUrl`),
+    each a `TribePage`; `TribePage.title` and `systemImage` beside
+    `WebMenuEntries`, and `WebPane.open(_ page:)`, the one way both open
+    one. A page from the menu no longer falls to the system browser with
+    ⌘ held, as the details' buttons never did.
+  - Leave: three rules for who may go (the menu: Remove from Peel for a
+    tribe you cannot post in, nothing for the owner, else Leave; the
+    members panel: anyone but the owner, so "Leave tribe" for a request
+    still waiting; the details: only a member who can post), three
+    confirm wordings, and two ways to run it (`model.leave`, which words
+    its failure as the chat's notice, and `leaveTribe` with the failure in
+    the panel). Now `Tribe.exit` in `PeelCore` (leave, remove, or nil for
+    the owner of a live tribe and a tribe already left) is the rule, and
+    `Engine.leaveTribe` uses it too; `Tribe.Exit` words it once
+    (`Sidebar.swift`: "Leave tribe", then "Leave #tribe"; "Remove from
+    Peel", then "Remove #tribe"; "Could not leave the tribe" or "… remove
+    the tribe"); every Leave (the sidebar's and the header's menus, the
+    members panel, the details, the status bar) runs `AppModel.leave`
+    (it absorbed `AppModel.leaveTribe`), and a panel closes after it so
+    a failure shows in the chat's notice. Changes: the panels' confirm
+    reads "Leave #tribe" (was "Leave", with "Leave #tribe?" before it in
+    the members panel); the members panel and details offer Remove from
+    Peel for a tribe you can no longer post in (the details offered
+    nothing, the members panel "Leave tribe"); the status bar's confirm
+    is "Remove #tribe" (was "Remove #tribe from Peel?" and "Remove").
+  - Renders, before (`origin/main`) and after, offscreen on new
+    development profiles on the loopback stack: b8-alice owns "Pages
+    Club", created with an app and a second brain address (a temporary,
+    uncommitted CLI change put `app_url` and `second_brain_url` in the
+    create); b8-bob (the app, funded by `fund-dev.sh`) joined it and has
+    alice as a contact. Temporary driver steps (not committed) opened the
+    header's More menu and the members panel and put every inline
+    confirm in its asking state, and logged what `Notifier` would post.
+    The More menu went from Second brain, Tribe app to Tribe app, Second
+    brain, now the details' order; the members panel's and details'
+    Leave confirm became "Leave #Pages Club"; the menu's Leave confirm
+    ("Leave #Pages Club", "Click again") is unchanged. Sender names in
+    the tribe ("alice", "bob", "You joined"), the DM, the Payments rows
+    ("alice", "bank") and the notifications ("alice" in "#Pages Club",
+    "alice", "From alice: notified") are the same before and after. Not
+    driven: the sidebar row's menu (it shares `ConversationMenu.leave`
+    with More), the status bar's Remove, a failing leave, a tribe
+    payment row from a member (the boost did not go through on the
+    stack), a page opening in the pane.
+  - Review (independent agent: correctness, simplify, security). No
+    bugs; `Engine.leaveTribe`'s behaviour checked unchanged. Applied: one
+    decode per notification; the failure words in `Tribe.Exit`;
+    `Receipt.member`'s comment. Not applied: reading `Tribe.pages`
+    through `WebPage.address` (stored addresses already went through it,
+    and `WebPane.open` checks again).
+  - Tests: `TribeTests` (`exit` for each status, owner and left),
+    `WebPageTests` (`pages`: none, one, both in order),
+    `EngineFailureTests` (a deleted tribe of your own is removed, offline,
+    sending nothing). `swift test`: 594 passed (one known issue, IPv6
+    hosts, as on `main`).

@@ -188,7 +188,6 @@ struct NoticeBar: View {
 /// More, the details from a click on the tribe's name or icon too.
 struct TribeHeader: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
     let conversation: Conversation
     let tribe: Tribe?
 
@@ -245,7 +244,7 @@ struct TribeHeader: View {
             edit.append(.button("Edit tribe…", systemImage: "slider.horizontal.3") { panel = .edit })
         }
         return .sections(
-            WebMenuEntries.entries(for: tribe, pane: model.web, open: openURL),
+            WebMenuEntries.entries(for: tribe, pane: model.web),
             [.button("Members", systemImage: "person.2") { panel = .members },
              details]
                 + (tribe.map(ConversationMenu.link) ?? [])
@@ -295,9 +294,6 @@ struct TribeMembersPanel: View {
     @State private var members: TribeMembers?
     @State private var problem: String?
 
-    /// The owner cannot leave, only delete the tribe (under Edit tribe).
-    private var canLeave: Bool { tribe?.isOwner != true }
-
     var body: some View {
         Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
             if members?.complete == false {
@@ -312,11 +308,13 @@ struct TribeMembersPanel: View {
                 CopyButton("Copy link", text: link, systemImage: "link", iconOnly: true)
             }
         } footer: {
-            if canLeave || problem != nil {
+            let exit = tribe?.exit
+            if exit != nil || problem != nil {
                 FormFooter(problem: problem) {
-                    if canLeave {
-                        InlineConfirm(trigger: "Leave tribe", prompt: "Leave #\(conversation.name)?", confirm: "Leave") {
-                            await leave()
+                    if let exit {
+                        InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
+                            await model.leave(conversation.chat)
+                            done()
                         }
                     }
                 }
@@ -426,15 +424,6 @@ struct TribeMembersPanel: View {
             problem = PeelError.problem(error, couldNot: "remove the member")
         }
     }
-
-    private func leave() async {
-        do {
-            try await model.leaveTribe(conversation.chat)
-            done()
-        } catch {
-            problem = PeelError.problem(error, couldNot: "leave the tribe")
-        }
-    }
 }
 
 struct MemberRow<Actions: View>: View {
@@ -472,15 +461,17 @@ extension MemberRow where Actions == EmptyView {
 /// messages of a tribe, worded as the Mac app words them.
 struct MembershipNote: View {
     let message: Message
+    /// The row's sender (`People.sender(of:inTribe:)`).
+    let sender: Sender
 
     private var text: String {
-        let who = message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed
+        let who = sender.label
         switch message.type {
         case MessageType.groupLeave: return "\(who) left"
         case MessageType.groupKick: return "The owner removed you from this tribe"
         case MessageType.memberRequest: return "You asked to join"
         // The tribe names the approved member as the sender.
-        case MessageType.memberApprove: return "\(message.senderAlias ?? Sender.unnamed) was approved"
+        case MessageType.memberApprove: return "\(Sender(member: message).name) was approved"
         case MessageType.memberReject:
             return message.fromMe ? "You declined a request to join" : "The owner declined your request to join"
         case MessageType.tribeDelete: return "The owner deleted this tribe"

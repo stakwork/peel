@@ -140,7 +140,6 @@ struct PersonCard: View {
 /// the chat's details, below More, also from a click on the name or icon.
 struct DirectHeader: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
     let conversation: Conversation
 
     @State private var local: LocalTime?
@@ -159,7 +158,7 @@ struct DirectHeader: View {
                     CallHeaderButton(chat: conversation.chat)
                     HeaderMoreButton(chat: conversation.chat, showsDetails: $showingInfo) { details in
                         .sections(
-                            WebMenuEntries.entries(for: nil, pane: model.web, open: openURL),
+                            WebMenuEntries.entries(for: nil, pane: model.web),
                             [details, ConversationMenu.notifications(for: conversation, model: model)]
                         )
                     } details: {

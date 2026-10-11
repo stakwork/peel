@@ -811,12 +811,6 @@ final class AppModel {
         }
     }
 
-    func leaveTribe(_ pubkey: String) async throws {
-        guard let engine else { return }
-        try await engine.leaveTribe(pubkey)
-        if selectedChat == pubkey { destination = nil }
-    }
-
     func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
         let members = try await signedIn().tribeMembers(pubkey)
         knownMembers[pubkey] = members

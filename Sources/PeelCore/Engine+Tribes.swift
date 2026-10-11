@@ -95,13 +95,11 @@ extension Engine {
     /// owner cannot leave, only delete the tribe, as in the official apps.
     public func leaveTribe(_ pubkey: String) async throws {
         guard let joined = tribes[pubkey], !joined.left else { throw Failure.notInTribe }
-        if joined.isOwner, joined.status == .active {
-            throw Failure.ownerCannotLeave
-        }
+        guard let exit = joined.exit else { throw Failure.ownerCannotLeave }
         var tribe = joined
         tribe.left = true
         try record(tribe)
-        guard joined.status == .active else { return }
+        guard exit == .leave else { return }
         do {
             try await sendToTribe(joined, type: MessageType.groupLeave)
         } catch {

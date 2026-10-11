@@ -93,7 +93,10 @@ is a short plan. Update the status and the journal when you finish something.
   - `Sats.swift` — amounts as people see and type them (display and input
     only; money is kept in msat): `format` drops the rest of a sat as the
     official apps do, `exact` keeps it for a tribe's prices
-  - `PeelError.swift` — `PeelError`, a failure worded for the person
+  - `PeelError.swift` — `PeelError`, a failure worded for the person:
+    `readable` (an error's words, mid-sentence) and `problem` (the one
+    way the app shows a failure, as a sentence, after "Could not …"
+    when needed; tested)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's
     registry, and `TribePrice`: what a member pays to join or per message
     (the amount the engine sends, and why it is more than the owner's
@@ -275,7 +278,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
-  `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
+  `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the

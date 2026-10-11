@@ -59,7 +59,7 @@ struct PayInvoicePane: View {
             do {
                 for try await record in updates { payment = record }
             } catch {
-                attempt.problem = PeelError.readable(error)
+                attempt.problem = PeelError.problem(error, couldNot: "check the payment")
             }
         }
     }

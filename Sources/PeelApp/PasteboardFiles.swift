@@ -129,13 +129,13 @@ enum PasteboardFiles {
                         try IncomingFiles.write(data, type: type, index: index, date: date)
                     }.value)
                 } catch {
-                    refused.append(PeelError.readable(error))
+                    refused.append(PeelError.problem(error))
                 }
             case .promised(let stream):
                 for await result in stream {
                     switch result {
                     case .success(let file): files.append(file)
-                    case .failure(let error): refused.append(PeelError.readable(error))
+                    case .failure(let error): refused.append(PeelError.problem(error))
                     }
                 }
             }

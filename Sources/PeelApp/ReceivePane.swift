@@ -33,7 +33,7 @@ struct ReceivePane: View {
                     if let record { invoice = record }
                 }
             } catch {
-                problem = PeelError.readable(error)
+                problem = PeelError.problem(error, couldNot: "check the invoice")
             }
         }
     }
@@ -70,7 +70,7 @@ struct ReceivePane: View {
             invoice = try await model.createInvoice(amountMsat: msat, memo: memo)
             problem = nil
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error)
         }
     }
 

@@ -52,7 +52,7 @@ extension AppModel {
                 refreshCallWatches()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load recent calls") }
         }
     }
 
@@ -156,7 +156,7 @@ extension AppModel {
             call = CallSession(ticket: ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
             return true
         } catch {
-            callFailures[link.room] = PeelError.readable(error).capitalizedFirst
+            callFailures[link.room] = PeelError.problem(error)
             return false
         }
     }
@@ -172,7 +172,7 @@ extension AppModel {
             let link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
             return await joinCall(link, in: chat, camera: !audioOnly)
         } catch {
-            conversationNotices[chat] = "Could not start the call: \(PeelError.readable(error))"
+            conversationNotices[chat] = PeelError.problem(error, couldNot: "start the call")
             return false
         }
     }

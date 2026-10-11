@@ -191,7 +191,7 @@ struct SendSatsPanel: View {
                                 try await model.requestPayment(from: chat, amountMsat: amountMsat, memo: note)
                                 done()
                             } catch {
-                                requestProblem = PeelError.readable(error)
+                                requestProblem = PeelError.problem(error)
                             }
                         }
                     } label: { Text("Request").buttonProgress(requesting) }
@@ -243,7 +243,7 @@ struct TemplatePicker: View {
             do {
                 loading = .loaded(try await model.paymentTemplates())
             } catch {
-                loading = .failed(PeelError.readable(error))
+                loading = .failed(PeelError.problem(error, couldNot: "load the pictures"))
             }
         }
     }
@@ -252,7 +252,7 @@ struct TemplatePicker: View {
         switch loading {
         case .loading: nil
         case .loaded(let templates): templates.isEmpty ? "This account's memes server offers no pictures." : nil
-        case .failed(let reason): "Pictures could not be loaded: \(reason)"
+        case .failed(let problem): problem
         }
     }
 
@@ -466,7 +466,7 @@ struct PaymentConfirmationRow: View {
                         try await model.setPaymentConfirmation(msat: msat)
                         problem = nil
                     } catch {
-                        problem = PeelError.readable(error)
+                        problem = PeelError.problem(error, couldNot: "change the setting")
                     }
                 }
             }

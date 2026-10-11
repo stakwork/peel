@@ -206,7 +206,7 @@ struct TribeDetailsPanel: View {
                         try await model.leaveTribe(tribe.pubkey)
                         done()
                     } catch {
-                        problem = "Could not leave: \(PeelError.readable(error))"
+                        problem = PeelError.problem(error, couldNot: "leave the tribe")
                     }
                 }
             }
@@ -220,7 +220,7 @@ struct TribeDetailsPanel: View {
             details = try await model.tribeDetails(tribe.pubkey)
             problem = nil
         } catch {
-            problem = "The tribes server did not answer: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "load details from the tribes server")
         }
     }
 }
@@ -339,7 +339,7 @@ private struct TribeIdentitySection: View {
         do {
             try await model.setTribeIdentity(tribe.pubkey, alias: alias, photoURL: photoURL)
         } catch {
-            problem = "Could not save: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "save how you appear")
         }
     }
 }

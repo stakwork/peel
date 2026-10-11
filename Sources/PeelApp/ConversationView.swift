@@ -398,7 +398,7 @@ struct TribeMembersPanel: View {
         do {
             members = try await model.tribeMembers(conversation.chat)
         } catch {
-            problem = "Could not load members: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "load the members")
         }
     }
 
@@ -410,7 +410,7 @@ struct TribeMembersPanel: View {
                 in: conversation.chat, .member(pubkey: pubkey, alias: member.alias), approve: approve
             )
         } catch {
-            problem = "Could not \(approve ? "approve" : "decline"): \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: approve ? "approve" : "decline")
             return false
         }
         await load()
@@ -423,7 +423,7 @@ struct TribeMembersPanel: View {
             try await model.kick(pubkey, from: conversation.chat)
             await load()
         } catch {
-            problem = "Could not remove: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "remove the member")
         }
     }
 
@@ -432,7 +432,7 @@ struct TribeMembersPanel: View {
             try await model.leaveTribe(conversation.chat)
             done()
         } catch {
-            problem = "Could not leave: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "leave the tribe")
         }
     }
 }

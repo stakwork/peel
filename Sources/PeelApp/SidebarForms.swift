@@ -101,7 +101,7 @@ struct JoinTribeForm: View {
             info = found
             problem = nil
         } catch {
-            if link == looked { problem = PeelError.readable(error) }
+            if link == looked { problem = PeelError.problem(error) }
         }
     }
 

@@ -235,7 +235,7 @@ struct ChatInfoPanel: View {
         do {
             try await model.deleteContact(conversation.chat)
         } catch {
-            removeProblem = Formatting.sentence(error)
+            removeProblem = PeelError.problem(error)
         }
     }
 
@@ -321,7 +321,7 @@ struct ChatTimeZoneSection: View {
             try await model.signedIn().setTimeZoneSharing(on, in: conversation.chat)
         } catch {
             sharing = was
-            problem = "Could not change it: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "change time zone sharing")
         }
     }
 }

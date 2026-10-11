@@ -64,7 +64,7 @@ struct PaymentsView: View {
                     lightArrived()
                 }
             } catch {
-                problem = PeelError.readable(error)
+                problem = PeelError.problem(error, couldNot: "load payments")
             }
         }
         // Connecting brings the balance a moment later, so changes within
@@ -142,7 +142,7 @@ struct PaymentsView: View {
             let count = try await model.fetchOlderPayments()
             hasMore = count >= page
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: "load older payments")
         }
     }
 

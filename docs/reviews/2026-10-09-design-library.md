@@ -335,7 +335,7 @@ uses). Their sizes are not: 16, 18, 20, 22, 24, 28, 30, 32, 34, 36, 48,
 | A sender's name | `Sender` and `model.sender(of:)`; 8 sites write `message.senderAlias ?? Sender.unnamed` (`ConversationView.swift:518`, `:524`, `Notifier.swift:202`, `:263`, `:273`, `:293`, `TribeViews.swift:307`, `:334`) | `Sender` (first review row 6, still open) | 8 |
 | A tribe's pages (app, second brain) | `WebMenuEntries` (`WebPane.swift:501-517`: Second brain first, opened through `openURL`) and `TribeDetails.swift:162-182` (Tribe app first, `model.web.open`) | One list in `WebMenuEntries`, used by both | 8 |
 | Leave a tribe | The menu calls `model.leave` (`AppModel+Chat.swift:173`), which words its own failure; the members panel (`ConversationView.swift:471-478`) and the details (`TribeDetails.swift:212-219`) call `leaveTribe` and word theirs; three confirm wordings | `model.leave` and one confirm wording | 8 (wording), 4b (place) |
-| Error lines | `PeelError.readable` at 62 sites: bare at about 30, after "Could not …: " at 22, capitalised by hand once (`AppModel+Calls.swift:159`); `Formatting.sentence` at 8 more; "Couldn't open" once (`WebPane.swift:809`) | One `Formatting.problem` | 7 |
+| Error lines | `PeelError.readable` at 62 sites: bare at about 30, after "Could not …: " at 22, capitalised by hand once (`AppModel+Calls.swift:159`); `Formatting.sentence` at 8 more; "Couldn't open" once (`WebPane.swift:809`) | One `Formatting.problem` (built as `PeelError.problem`, batch 7) | 7 |
 | Plurals | `Formatting.replies`, `people`; inline at `PaymentChatRows.swift:123`, `ChatSearch.swift:36`, `CallViews.swift:410`, `AccountView.swift:532`, `TribeDetails.swift:159`, `:246`, `MessageViews.swift:584`, `PaidAttachmentViews.swift:152` | `Formatting` | 14 |
 | Dates | `Formatting` owns times and relative dates; inline at `TribeDetails.swift:103`, `TimeZoneViews.swift:203`, `ContactsViews.swift:526`, `PayInvoicePane.swift:156`, `:161`, `ReceivePane.swift:118` | `Formatting` | 14 |
 | Escape | `MenuPresenter.swift:302`, `:309`, `ChatSearch.swift:250`, `ImageViewer.swift:115`, `Sidebar.swift:164`, `CallWindow.swift:74`, `WebPane.swift:669`, `PaymentsView.swift:92`, the composer (`ComposerField.swift:166`) | One written order, named key codes | 9 |
@@ -614,7 +614,8 @@ listed above.
    `SidebarForms.swift:104`, `TribeViews.swift:217`, `:449`), the
    window's notices (`AppModel.swift:1078-1187`, nine of them, and
    `AppModel+Calls.swift:55`), and money refusals shown under a Pay
-   button (`AppModel+Payments.swift:50`, `:81`). Batch 7.
+   button (`AppModel+Payments.swift:50`, `:81`). Batch 7. Fixed in 7
+   (rendered before and after).
 4. **Header icons have no hover state** (`HeaderButton`,
    `ConversationView.swift:268-290`), while every other icon button
    lights up. Batch 3.
@@ -917,3 +918,61 @@ library outside forms.
   - Not checked: the pointer (hover, the click in the field's empty
     part), since the offscreen app is never active and has no mouse
     step; the thread composer; light mode.
+- **Batch 7, problem lines (2026-10-11).** One helper,
+  `PeelError.problem(_:couldNot:)`, in `PeelCore/PeelError.swift` beside
+  `readable` rather than `Formatting` (so `PeelCoreTests` can test it,
+  and `PeelApp` has no test target). It makes the error's words a
+  sentence (a capital unless the first word is a name: "photo.jpg",
+  "SQLite", "iCloud"; a full stop unless one is there) and, given an
+  action, puts "Could not <action>." first: "Could not leave the tribe.
+  The server could not be reached." It takes an error or words already in
+  hand, and a sentence passes through unchanged, so a reason worded where
+  it fails can be shown where it lands. Two sentences rather than "Could
+  not …: reason" so no reason has its case changed (a lowercased file
+  name or host would be wrong). `Formatting.sentence` and
+  `capitalizedFirst` are gone; every `PeelError.readable` and
+  `Formatting.sentence` in `PeelApp` (the 62 and 8 of section 3, in the
+  20 files) uses it, and so do the four places the app shows the
+  engine's own words (a chat's notice, the window's notice, the
+  connection error, a restore's failure), which were fragments too
+  ("Not delivered: not connected to the server" now ends in a full
+  stop). The web pane's "Couldn't open" is "Could not open".
+  - Wording: an action is named where the words alone would not say what
+    failed (the window's notices now name what could not load: "Could
+    not load the chats." and the rest); a refusal under the button or
+    field that caused it stands alone ("The balance is not enough for
+    that."). Vague actions became specific: "Could not change it" is
+    "Could not change the time zone" or "… time zone sharing", "Could
+    not leave" is "Could not leave the tribe", "Could not remove" is "…
+    the member" or "… the tribe", "Could not delete" "… the tribe",
+    "Could not save" "… the file" or "… how you appear". Several files
+    refused at once read one sentence pair each ("Could not send a.png.
+    a.png is too large."), where they were joined with semicolons.
+  - Tests: `PeelErrorTests` (capitals, names at the start, full stops
+    and closing brackets, "Could not", empty words, idempotence).
+  - Review (independent agent: correctness, simplify, security),
+    applied: a web download's failure keeps `localizedDescription` (its
+    WebKit errors would reach `readable`'s `"\(error)"` fallback, an
+    NSError dump that can carry the failing URL); a trailing comma,
+    colon or semicolon becomes the full stop, and a full stop inside a
+    closing quote counts. Not applied: `readable`'s `"\(error)"`
+    fallback for other domains (a risk before this batch, now on more
+    sites; worth its own change in `PeelCore`); the engine's notices
+    are still worded as fragments and made sentences in the app (moving
+    them is engine work outside this batch); "Could not send photo.jpg.
+    photo.jpg is too large." names the file twice, since a network
+    reason would not name it at all; a leading "ß" capitalises as "SS";
+    empty words give an empty line, as before.
+  - Renders: new development profiles b7-alice (a tribe of its own) and
+    b7-carol (funded by `scripts/fund-dev.sh`, so a DM with "bank") on
+    the loopback stack with its wire tap down, before (`origin/main`) and
+    after, offscreen: a tribe and a DM after a send that could not go
+    (the chat's notice), Payments and Account. The notice gains its full
+    stop; the rest is unchanged. Not rendered: a "Could not …" line from
+    the app itself. Offline, a send or payment is stored and marked
+    "Not delivered" or "Not sent" rather than refused, so none of the
+    app's own problem lines shows, and the panels and forms that have
+    them have no driver step or need a failing server the stack does
+    not give. The helper's tests cover their wording instead. The first
+    after run's typing did not reach the composer (the drive's timing);
+    the second did.

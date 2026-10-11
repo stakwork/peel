@@ -272,7 +272,7 @@ final class AppModel {
                 profile = try Profile(name: "default", kind: .app)
             }
         } catch {
-            notice = PeelError.readable(error)
+            notice = PeelError.problem(error)
         }
         notifier.model = self
         money.arrived = { [weak self] receipts in
@@ -361,7 +361,7 @@ final class AppModel {
             try await open(profile, pin: "")
             enterApp()
         } catch {
-            notice = PeelError.readable(error)
+            notice = PeelError.problem(error, couldNot: "open the account")
             phase = .onboarding
         }
     }
@@ -395,7 +395,7 @@ final class AppModel {
         } catch {
             phase = .loading
             await start()
-            notice = "Could not forget the account: \(PeelError.readable(error))"
+            notice = PeelError.problem(error, couldNot: "forget the account")
             throw error
         }
     }
@@ -698,7 +698,7 @@ final class AppModel {
             try await action(engine)
             return true
         } catch {
-            conversationNotices[chat] = "Could not \(what): \(PeelError.readable(error))"
+            conversationNotices[chat] = PeelError.problem(error, couldNot: what)
             return false
         }
     }
@@ -727,7 +727,7 @@ final class AppModel {
             do {
                 try await engine.markRead(chat)
             } catch {
-                conversationNotices[chat] = "Could not mark as read: \(PeelError.readable(error))"
+                conversationNotices[chat] = PeelError.problem(error, couldNot: "mark as read")
             }
         }
     }
@@ -796,7 +796,7 @@ final class AppModel {
         } catch Engine.Failure.tribeDeleted {
             read = .deleted
         } catch {
-            read = .failed(Formatting.sentence(error))
+            read = .failed(PeelError.problem(error))
         }
         // Not for an account switched to meanwhile.
         if self.engine === engine { linkedTribes[link] = read }
@@ -1074,9 +1074,9 @@ final class AppModel {
                     reconnectAt = nil
                 }
             case .conversationError(let chat, let message):
-                conversationNotices[chat] = message
+                conversationNotices[chat] = PeelError.problem(message)
             case .connectionError(let message):
-                connectionError = message
+                connectionError = PeelError.problem(message)
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
                 // Your key keys your colour.
@@ -1084,7 +1084,7 @@ final class AppModel {
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
-                notice = message
+                notice = PeelError.problem(message)
             case .history(let phase, let reached, let end):
                 switch phase {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
@@ -1102,7 +1102,7 @@ final class AppModel {
                 echoedAliases = echoed
                 refreshMentionAliases()
             case .historyFailed(let reason):
-                restoreProgress.outcome = .failed(reason)
+                restoreProgress.outcome = .failed(PeelError.problem(reason))
                 notifier.historyEnded()
             case .transfer(let id, _, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
@@ -1145,7 +1145,7 @@ final class AppModel {
                 }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the chats") }
         }
     }
 
@@ -1158,7 +1158,7 @@ final class AppModel {
                 markSelectedChatRead()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load unread counts") }
         }
     }
 
@@ -1173,7 +1173,7 @@ final class AppModel {
                 if selectedChat.map(me(in:)) != before { rebuildRows() }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load tribes") }
         }
     }
 
@@ -1183,7 +1183,7 @@ final class AppModel {
                 waitingMsat = msat
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load waiting payments") }
         }
     }
 
@@ -1194,7 +1194,7 @@ final class AppModel {
                 pendingInvites = list.filter(\.isPending)
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load invites") }
         }
     }
 
@@ -1216,7 +1216,7 @@ final class AppModel {
                     rebuildChatRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load this chat's messages") }
             }
         }
         pinTask = Task {
@@ -1225,7 +1225,7 @@ final class AppModel {
                     pinnedMessage = pinned
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the pinned message") }
             }
         }
     }
@@ -1243,7 +1243,7 @@ final class AppModel {
                     rebuildThreadRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the thread") }
             }
         }
     }
@@ -1254,7 +1254,7 @@ final class AppModel {
                 threads = rows
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load threads") }
         }
     }
 }

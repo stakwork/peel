@@ -171,7 +171,7 @@ struct TribeSettingsForm: View {
             tags = settings.tags
             original = settings
         } catch {
-            problem = "Could not load the tribe: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "load the tribe")
         }
     }
 
@@ -186,7 +186,7 @@ struct TribeSettingsForm: View {
             do {
                 return try Sats.parse(text, unit: unit, of: field.rawValue)
             } catch {
-                throw FieldProblem(field: field, text: Formatting.sentence(error))
+                throw FieldProblem(field: field, text: PeelError.problem(error))
             }
         }
         return TribeSettings(
@@ -216,12 +216,12 @@ struct TribeSettingsForm: View {
             fieldProblem = error
         } catch let failure as Engine.Failure {
             if let field = Field(failure) {
-                fieldProblem = FieldProblem(field: field, text: Formatting.sentence(failure))
+                fieldProblem = FieldProblem(field: field, text: PeelError.problem(failure))
             } else {
-                problem = PeelError.readable(failure)
+                problem = PeelError.problem(failure, couldNot: editing == nil ? "create the tribe" : "save the tribe")
             }
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: editing == nil ? "create the tribe" : "save the tribe")
         }
     }
 
@@ -233,7 +233,7 @@ struct TribeSettingsForm: View {
             try await model.deleteTribe(editing.pubkey)
             done()
         } catch {
-            problem = "Could not delete: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "delete the tribe")
         }
     }
 }
@@ -408,7 +408,7 @@ struct TribeStatusBar: View {
                 do {
                     try await model.leaveTribe(tribe.pubkey)
                 } catch {
-                    problem = "Could not remove: \(PeelError.readable(error))"
+                    problem = PeelError.problem(error, couldNot: "remove the tribe")
                 }
             }
         }
@@ -453,7 +453,7 @@ struct MentionsView: View {
                 guard let updates = model.mentionUpdates() else { return }
                 for try await rows in updates { mentions = rows }
             } catch {
-                problem = PeelError.readable(error)
+                problem = PeelError.problem(error, couldNot: "load mentions")
             }
         }
     }

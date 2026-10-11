@@ -133,6 +133,29 @@ The one change to PeelCore is a test seam,
 `Profile.init(developmentAt:)` (internal): a development profile in any
 directory.
 
+### Funding a development profile
+
+The only allowed way to give a development profile sats, for the CLI or
+`scripts/check-app.sh`. Editing a balance, setting or anything else in a
+profile's database is forbidden.
+
+```sh
+scripts/test-stack.sh start                       # prints PEEL_STACK_DIR and PEEL_BROKER
+.build/debug/peel --profile <dev> --server <PEEL_BROKER> --tribe-host <PEEL_TRIBES> \
+  --memes-host <PEEL_MEMES> init
+SPHINX_BIN_DIR=<cargo target>/debug scripts/fund-dev.sh <PEEL_STACK_DIR> <dev> 1000
+```
+
+The script refuses `default` and `throwaway`, a stack whose broker is not
+on 127.0.0.1 (or is on 1883 or 8000), and a profile whose server is not
+that stack's broker or wire tap. It keeps the profile online with `peel
+listen` while `FundDev` (`Tests/PeelIntegrationTests/FundDev.swift`, run
+only by the script) makes a bank as `Bank` does, adds the profile by its
+contact info and pays it; the test process never opens the profile. The
+script then waits for `peel whoami` to show the sats. The profile ends
+with the sats plus 1 (the key exchange), a contact named "bank", and the
+mixer under real accounting. Each run makes a new bank (about a minute).
+
 ### Journeys and results (four full runs, the last after #80 to #90)
 
 | Journey | Test | Result |

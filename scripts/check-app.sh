@@ -18,7 +18,7 @@ APP="$ROOT/.build/PeelCheck.app"
 # A little over OffscreenDriver.deadline, after which the app is stopped.
 DEADLINE=330
 
-taskpolicy -b "$ROOT/scripts/bundle-app.sh" "$APP" > /dev/null
+"$ROOT/scripts/bundle-app.sh" "$APP" > /dev/null
 # Its own bundle ID, so its preferences, window frames and saved state never
 # mix with the Peel in daily use, and no Dock icon even while it launches. No
 # Keychain (development profiles keep their words in a file), so no

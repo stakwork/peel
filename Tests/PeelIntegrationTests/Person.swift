@@ -93,9 +93,12 @@ struct Person: Sendable {
     }
 
     func isReadyContact(_ other: Person) throws -> Bool {
-        let key = try other.pubkey
-        return try engine.storage.pool.read { db in
-            try Bool.fetchOne(db, sql: "SELECT ready FROM contact WHERE pubkey = ?", arguments: [key]) ?? false
+        try isReadyContact(pubkey: try other.pubkey)
+    }
+
+    func isReadyContact(pubkey: String) throws -> Bool {
+        try engine.storage.pool.read { db in
+            try Bool.fetchOne(db, sql: "SELECT ready FROM contact WHERE pubkey = ?", arguments: [pubkey]) ?? false
         }
     }
 

@@ -34,7 +34,7 @@ struct PaymentsView: View {
             VStack(spacing: 0) {
                 DetailHeader(title: "Payments", subtitle: "Amounts in sats" + (model.waitingText.map { " · \($0)" } ?? ""),
                              leading: { EmptyView() }) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.sm) {
                         HeaderAction(title: "Receive", systemImage: "arrow.down.left", active: pane == .receive) {
                             pane = pane == .receive ? nil : .receive
                         }
@@ -157,7 +157,7 @@ struct PaymentsView: View {
                     ForEach(PaymentSection.allCases, id: \.self) { section in
                         if let rows = sections[section] {
                             SectionHeader(section.rawValue)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, Theme.Space.md)
                                 .padding(.top, 18)
                                 .padding(.bottom, 6)
                             ForEach(rows) { item in
@@ -170,18 +170,17 @@ struct PaymentsView: View {
                         }
                     }
                     if loadingOlder || (problem != nil && hasMore) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: Theme.Space.sm) {
                             if loadingOlder { ProgressView().controlSize(.small) }
                             Text(loadingOlder ? "Loading older payments" : problem ?? "")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
-                        .padding(12)
+                        .padding(Theme.Space.md)
                     }
                 }
                 .frame(maxWidth: 720, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 16)
+                .padding(.horizontal, Theme.Space.sm)
+                .padding(.bottom, Theme.Space.lg)
             }
             .overlay(alignment: .bottom) {
                 // More below: the list fades out rather than stopping at an edge.

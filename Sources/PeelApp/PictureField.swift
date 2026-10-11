@@ -36,7 +36,7 @@ struct PictureField<Label: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
+            HStack(spacing: Theme.Space.md) {
                 picture
                     .overlay {
                         if working {

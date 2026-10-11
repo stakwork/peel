@@ -7,13 +7,6 @@ import PeelCore
 // timestamp on every message, and nothing at all when it is not known.
 
 extension Formatting {
-    /// A time of day in `zone`, in the user's format.
-    static func time(_ date: Date, in zone: TimeZone) -> String {
-        var style = Date.FormatStyle.dateTime.hour().minute()
-        style.timeZone = zone
-        return date.formatted(style)
-    }
-
     /// "6 h ahead", "6 h 30 min behind", "30 min ahead"; nil when the same.
     static func offset(_ seconds: Int) -> String? {
         let minutes = abs(seconds) / 60
@@ -91,15 +84,15 @@ struct PersonCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Avatar(name: person.name, url: person.photoURL, size: 48, hue: person.hue)
+            HStack(spacing: Theme.Space.md) {
+                Avatar(name: person.name, url: person.photoURL, size: Theme.AvatarSize.xl, hue: person.hue)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(person.name)
                         .font(Theme.font(15, .bold))
                         .lineLimit(1)
                     if person.alias == nil {
                         Text(Formatting.shortKey(person.chat))
-                            .font(.system(size: 11.5, design: .monospaced))
+                            .font(Theme.code(12))
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }
@@ -117,10 +110,9 @@ struct PersonCard: View {
                             let time = Text(Formatting.time(context.date, in: local.zone)).bold()
                             let offset = Formatting.offset(model.difference(local.zone, at: context.date))
                             Text("\(time) local time · \(offset ?? "same as yours")")
-                                .font(Theme.font(13.5))
+                                .font(Theme.font(13))
                             Text("\(local.sent) · sent \(Formatting.relative(local.seen, now: context.date))")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
                         .monospacedDigit()
                     }
@@ -151,9 +143,9 @@ struct DirectHeader: View {
                 title: conversation.name, subtitle: model.localTimeLine(local, at: context.date),
                 onTitle: { showingInfo = true }
             ) {
-                ConversationIcon(conversation: conversation, size: 32)
+                ConversationIcon(conversation: conversation, size: Theme.AvatarSize.lg)
             } trailing: {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.xs) {
                     SearchHeaderButton(chat: conversation.chat)
                     CallHeaderButton(chat: conversation.chat)
                     HeaderMoreButton(chat: conversation.chat, showsDetails: $showingInfo) { details in
@@ -195,10 +187,10 @@ struct ChatInfoPanel: View {
     var body: some View {
         Panel("Details", close: done) {
             PanelHero(name: conversation.name) {
-                ConversationIcon(conversation: conversation, size: 56)
+                ConversationIcon(conversation: conversation, size: Theme.AvatarSize.xl)
             } lines: {
                 if let since {
-                    Text("Contact since \(since.formatted(.dateTime.day().month(.wide).year()))")
+                    Text("Contact since \(Formatting.date(since))")
                 }
                 TimelineView(.everyMinute) { context in
                     if let line = model.localTimeLine(local, at: context.date) {
@@ -206,7 +198,7 @@ struct ChatInfoPanel: View {
                     }
                 }
             }
-            .padding(.top, 12)
+            .padding(.top, Theme.Space.md)
             ContactKeyCard(pubkey: conversation.chat)
                 .padding(.top, 14)
             ChatTimeZoneSection(conversation: conversation, tribe: nil)
@@ -262,19 +254,19 @@ struct ChatTimeZoneSection: View {
     private var target: String { conversation.title }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
             SectionHeader("Time zone")
             if isPublicTribe {
                 Text("Your time zone is never sent in public tribes.")
                     .font(Theme.font(13))
-                note("You still see the local time of members who share theirs.")
+                Text("You still see the local time of members who share theirs.").monospacedDigit().muted()
             } else if let sharing {
                 FormSwitchRow(
                     label: "Share my time zone with \(target)", detail: sharingNote(sharing),
                     isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })
                 )
                 if let chatZone {
-                    note("Uses \(chatZone), set on another device.")
+                    Text("Uses \(chatZone), set on another device.").monospacedDigit().muted()
                 }
                 if let problem {
                     ProblemText(problem)
@@ -283,14 +275,6 @@ struct ChatTimeZoneSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task(id: conversation.chat) { await load() }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.font(12))
-            .monospacedDigit()
-            .foregroundStyle(Theme.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func sharingNote(_ on: Bool) -> String {
@@ -332,10 +316,10 @@ private struct ContactKeyCard: View {
 
     var body: some View {
         Card {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
+                HStack(alignment: .top, spacing: Theme.Space.md) {
                     QRCodeTile(text: pubkey, label: "QR code of their public key", size: 92, inset: 6)
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         SectionHeader("Public key")
                         Text(pubkey)
                             .font(.system(size: 11, design: .monospaced))
@@ -344,13 +328,13 @@ private struct ContactKeyCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.sm) {
                     CopyButton("Copy key", text: pubkey)
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
                 }
                 .buttonStyle(.peel(.outline))
             }
-            .padding(12)
+            .padding(Theme.Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

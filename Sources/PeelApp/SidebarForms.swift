@@ -37,7 +37,7 @@ struct JoinTribeForm: View {
             if let info {
                 Card {
                     HStack(alignment: .top, spacing: 10) {
-                        TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
+                        TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: Theme.AvatarSize.lg)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(info.name)
                                 .font(Theme.font(14, .semibold))
@@ -48,13 +48,12 @@ struct JoinTribeForm: View {
                                     .lineLimit(3)
                             }
                             Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
-                                .font(Theme.font(12))
                                 .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, Theme.Space.md)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

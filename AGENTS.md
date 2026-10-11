@@ -212,8 +212,8 @@ is a short plan. Update the status and the journal when you finish something.
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
   (`ImageCache`, bounded: attachments, and photos apart, and `animations`: GIFs' frames and sizes, Giphy's bytes; `MediaInfoCache`),
-  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers), `Clipboard`,
-  `Formatting`, `ConversationView` (with the tribe header and
+  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
+  `Formatting` (counts and their nouns, times and dates), `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
@@ -225,7 +225,7 @@ is a short plan. Update the status and the journal when you finish something.
   view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor` with the written Escape order and `KeyCode`, the named key codes, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
-  `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
+  `.hiddenShortcut`, `SettingDropdown`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
@@ -234,7 +234,7 @@ is a short plan. Update the status and the journal when you finish something.
   keep on top and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
-  `UI/`, the component library over `Theme` (`docs/design/README.md`,
+  `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
   "Component library"): `PeelButton`, shadcn's button (variants primary,
   secondary, outline, ghost, destructive, link; sizes sm, md, lg;
   `.buttonStyle(.peel(...))`; every text button but the small ones inside

@@ -194,7 +194,7 @@ final class Notifier {
                 single = shown.filter { $0.type == MessageType.call }
                 let (name, place) = names(chat, sender: others.last?.senderAlias)
                 post(center, id: "summary-\(chat)", chat: chat, message: others.first?.id, locked: locked,
-                     title: place ?? name, subtitle: nil, body: "\(others.count) new messages")
+                     title: place ?? name, subtitle: nil, body: Formatting.count(others.count, "new message"))
             }
             for message in single {
                 let member = Sender(member: message)
@@ -384,7 +384,7 @@ struct NotificationOffer: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             Image(systemName: "bell")
                 .foregroundStyle(Theme.secondaryText)
             Text("Peel can show a notification when a message arrives while you're in another app or another chat.")
@@ -400,7 +400,7 @@ struct NotificationOffer: View {
             }
             .fixedSize()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Theme.Space.lg)
         .padding(.vertical, 10)
         .background(Theme.panel)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }

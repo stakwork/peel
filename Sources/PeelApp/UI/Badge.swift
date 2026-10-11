@@ -169,7 +169,7 @@ struct ChipText: View {
     let on: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xs) {
             if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
             Text(title).lineLimit(1).truncationMode(.tail)
         }

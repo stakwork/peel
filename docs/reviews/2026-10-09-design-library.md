@@ -413,6 +413,9 @@ text style replaces the 58 hand-set captions:
 `text-muted-foreground text-sm`). Avatars take a size scale: 16, 20, 24,
 32, 48, 64.
 
+Done (batch 14, 2026-10-12): as sketched, plus `Theme.AvatarSize`
+(`xs` 16 to `xxl` 64), `menuShadow` and `veilTones`; see Progress.
+
 ### `PeelButton` (batches 1–2)
 
 ```swift
@@ -1427,3 +1430,104 @@ library outside forms.
     loopback port (with Try again) and refusing an ftp address (without).
     Not rendered: Payments while offline ("…once Peel is connected.") or
     with a problem, Mentions with a problem, light mode.
+- **Batch 14, the tokens sweep (2026-10-12).** `Theme.Space` (`xs` 4,
+  `sm` 8, `md` 12, `lg` 16, `xl` 20) on every padding and stack gap that
+  was one of those numbers (227 sites, no value changed; off-grid values
+  stay as numbers). `Theme.Radius` on every corner: no literal radius is
+  left in `PeelApp`. `Theme.AvatarSize` (16, 20, 24, 32, 48, 64) on every
+  avatar but the call window's tiles. `Theme.font` sizes lose 12.5 and
+  13.5 (12.5 → 12, 13.5 → 13, an invoice's memo in a chat → 14, a key in
+  the hover card 11.5 mono → `Theme.code(12)`). `View.muted()` in
+  `Styles` (12 pt `secondaryText`, wrapping) replaces 64 hand-set muted
+  lines and the three `note(_:)` helpers; one-line muted text with its
+  own `lineLimit` keeps the modifiers by hand. `SettingDropdown`
+  (`Controls`) replaces the three dropdown rows that saved a setting and
+  showed its help or problem (section 1's `SettingRow` row). Counts go
+  through `Formatting.count` (chats, matches, "N new messages", boosts,
+  members, payments, "bought N times"; `replies` and `people` call it),
+  dates and times through `Formatting.time` (moved from `TimeZoneViews`,
+  with a zone and seconds), `date`, `dateAndTime` (also behind `expiry`)
+  and `moment`. `menuBoxed` takes any shape; `menuShadow` and
+  `veilTones` moved into `Theme`. File and audio cards are `Card(.inset)`.
+  - Every visual difference, before (`origin/main`) → after:
+    - Corners: menus 8 or 10 → 12 (`panel`), their rows 5 → 7, the
+      mention suggestions' box 8 → 9 and rows 5 → 7; row fills 6 → 7
+      (the sidebar's rows and highlight ring, `ListRow`, a thread
+      summary's hover, the sidebar's account button, `dropdownBoxed`);
+      the hover card 10 → 12; quotes 8 → 9, code blocks 6 → 9, the file
+      and audio card 14 → 9 with a new `divider` hairline, a picture
+      grid's tiles and the tray's 8 or 10 → 9, the image viewer's 8 → 9;
+      Payments' quoted message 10 → 9; the QR code's tile 8 → 9; the call
+      window's control bar 10 → 9 (tiles 12 and tags 6 → 7). The
+      "Copied" pill (16 on a 31 pt pill) is a circular capsule and the
+      jump button (18 on 36) a circle: the same shapes.
+    - Avatars: the sidebar's chat and invite icons 18 → 20, and the
+      sidebar's icon column 18 → 20 wide (every row's text 2 pt further
+      right, each chat row 2 pt taller); your photo in the sidebar 30 →
+      32; the Account's photo 88 → 64 (everything under it 24 pt higher);
+      details panels' hero 56 → 48; the hover card 48 (unchanged); tribe
+      details' owner and you 18 → 20; boosters 22 → 24; Mentions 28 → 32;
+      a payment's detail 36 → 32; Join a tribe's and an invite's previews
+      36 and 28 → 32; the account menu's identity 34 → 32; link cards 44
+      → 48; a picture field in a form (a tribe's image, your photo in a
+      tribe) 40 → 48.
+    - Type: Payments' row subtitles, a payment's headline, call card
+      lines, link card details, Receive's expiry and the call window's
+      tags 12.5 → 12; Receive's "Waiting for payment", a payment's note
+      and quoted message, the call switch, the call window's pills and
+      the hover card's local time 13.5 → 13; an invoice's memo in a chat
+      13.5 → 14. Muted lines with no `fixedSize` before (a few notes and
+      captions) now wrap rather than truncate when squeezed; none was
+      seen squeezed.
+    - Words: "Contact since 12 October 2026" → "12 Oct 2026"; a payment's
+      "When" and "You already paid … On …" gain the year; an invite's
+      "Made …" and an expired invoice's "It ran out …" drop the year
+      when it is this one ("12 Oct, 00:14", was "12 Oct 2026 at 00:14");
+      Mentions' time is the same day-and-time form, with the year only
+      when not this one; counts group thousands ("1,200 replies"); the
+      image viewer's and message rows' times are unchanged.
+  - Renders: new development profiles b14-app (the app) and b14-bob on
+    the loopback stack, both funded by `scripts/fund-dev.sh`; seeded from
+    Bob's CLI: a DM (messages both ways, 350 sats, a file, a code block, a
+    reply) and his tribe Token Club (app joined; a thread of two, a boost,
+    a mention). The same drive before (`origin/main`) and after, offscreen,
+    with temporary driver hooks (not committed) for Threads, Mentions, a
+    thread, the members panel, Tribe details, Receive and Pay: the
+    sidebar, the DM with its details and Send sats, the tribe with Tribe
+    details and Members, a thread, Threads, Mentions, Account, Payments,
+    Receive, Pay an invoice, and onboarding's welcome on a new profile.
+    Pixel diff: identical: the welcome screen, Send sats, Members, and the
+    chat column of the DM and the tribe before the file seed; differing
+    only as listed above (and in relative times like "9 min ago").
+    Idle: the tribe open for a minute, 0.0% CPU. Not rendered: menus (no
+    mouse step), the hover card, the "Copied" pill, the jump button, a
+    picture grid, the call window and call cards, a paid attachment's
+    veil, light mode, Mentions' rows (the seeded mention did not match).
+  - Review (an independent agent on the diff; the skills ran against
+    another checkout). Applied: `veilTones` was copied, not moved; the
+    sidebar's icon column stayed 18 wide around 20 pt icons; Mentions lost
+    the time on older rows (now `dateAndTime`); Receive's "Received" grew
+    to a full date (now `time` with seconds); the README's type list and
+    muted wording; doubled blank lines. Not applied: the ternaries the
+    script skipped (`multiline ? 8 : 0` and the like) and `Spacer`
+    minimums, left as numbers; the one-line muted lines with a
+    `lineLimit`. Security: none (styling and wording only).
+  - Left for later, and why:
+    - The small text actions in rows (Approve and Decline, a member's
+      Remove, Unpin, a failed message's Retry, Cancel and Discard,
+      `InlineConfirm`'s `.text`): a variant needs Tom's call on colour
+      (muted, or `link` blue as every other text action, where Retry is
+      `accent` today) and hover, and Retry sits in the message list.
+    - Focus styling for `PeelButton` and `IconButton`, and folding
+      `IconButton`'s chrome into `PeelButton`: needs keyboard navigation
+      checked in an active app, which the offscreen check cannot do.
+    - `ThreadCard` and `QuotedMessage` stay hand-drawn boxes on the
+      tokens: one has a hover fill and the other is a quote, not a card.
+    - The call window's tile avatars (96, 52, by height) stay off the
+      scale: its own board (C3).
+    - The 20 or so ad-hoc opacities of tokens, and the off-grid spacing
+      (2, 6, 10, 14 and others): changing them moves layouts everywhere,
+      a taste pass rather than a sweep.
+  - Tests: nothing new (`PeelApp` has no test target). `swift test`: 618
+    passed in the main run, 107 in the other three (one known issue, IPv6
+    hosts, as on `main`).

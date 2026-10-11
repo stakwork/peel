@@ -15,7 +15,7 @@ struct BoostLine: View {
     var showsChip = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             if showsChip, boosts.count > 0 {
                 BoostChip(boosts: boosts, chat: chat, inTribe: inTribe)
             }
@@ -51,7 +51,7 @@ private struct BoostChip: View {
     static let shownBoosters = 3
     /// A booster without a photo shows their initial on their colour, as
     /// everywhere else.
-    private static let avatarSize: CGFloat = 16
+    private static let avatarSize = Theme.AvatarSize.xs
     private static let overlap: CGFloat = 5
 
     /// One per person, first boost first: by alias, as the Mac app keeps
@@ -69,7 +69,7 @@ private struct BoostChip: View {
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
         Chip(.inset, lit: mine, action: { showing = true }) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
@@ -113,7 +113,7 @@ private struct BoostChip: View {
 private extension BoostSummary {
     /// "1,210 sats from 3 boosts".
     var summaryLine: String {
-        "\(Sats.format(msat: totalMsat)) from \(count == 1 ? "1 boost" : "\(count) boosts")"
+        "\(Sats.format(msat: totalMsat)) from \(Formatting.count(count, "boost"))"
     }
 }
 
@@ -128,22 +128,21 @@ private struct BoostersPanel: View {
     var body: some View {
         Panel("Boosts", compact: true, close: done) {
             Text(boosts.summaryLine)
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
                         ListRow {
-                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: 22, hue: avatar.hue)
+                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Theme.AvatarSize.md, hue: avatar.hue)
                         } title: {
                             Text(avatar.label)
                                 .foregroundStyle(avatar.hue.name)
                                 .lineLimit(1)
                         } trailing: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: Theme.Space.sm) {
                                 if boost.pendingSince != nil || boost.unsettled {
                                     Text(boost.unsettled ? "not settled" : "sending")
                                         .font(Theme.font(12))
@@ -280,7 +279,7 @@ struct PaymentRow: View {
             .opacity(message.isSending() ? 0.6 : 1)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 6)
         .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
@@ -334,7 +333,7 @@ struct PaymentRequestRow: View {
         HStack(alignment: .top, spacing: MessageRow.gutterSpacing) {
             Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: MessageRow.avatarSize,
                    hue: row.sender.hue)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 RunHeader(row: row)
                 card
                 if message.fromMe, message.delivery == .failed {
@@ -343,7 +342,7 @@ struct PaymentRequestRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 6)
         .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
@@ -367,12 +366,11 @@ struct PaymentRequestRow: View {
                             .foregroundStyle(Theme.text)
                     }
                 }
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
                 if let invoice {
                     BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 22, unitSize: 14, spacing: 5)
                     if !invoice.memo.isEmpty {
-                        Text(invoice.memo).font(Theme.font(13.5)).fixedSize(horizontal: false, vertical: true)
+                        Text(invoice.memo).font(Theme.font(14)).fixedSize(horizontal: false, vertical: true)
                     }
                     if !message.fromMe, request?.paysRequester == false {
                         Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
@@ -388,7 +386,7 @@ struct PaymentRequestRow: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, Theme.Space.md)
             .frame(width: 320, alignment: .leading)
         }
         .padding(.top, 2)
@@ -405,41 +403,36 @@ struct PaymentRequestRow: View {
         case .paid(let at):
             Text(message.fromMe ? "Paid\(at.map { " · \(Formatting.when($0))" } ?? "")"
                  : "You paid\(at.map { " · \(Formatting.when($0))" } ?? "")")
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         case .paying:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
                 Text("Paying; it stays pending until the server confirms.")
             }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
+            .muted()
         case .open, .failed:
             UntilExpiry(invoice: invoice) { expired in
                 if expired {
                     Text("Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 } else if message.fromMe {
                     Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         if case .failed(let reason) = request?.state {
                             Text("Not paid\(reason.map { ": \($0)" } ?? ""). Nothing was sent.")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
                         PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                             await model.payRequest(message, invoice: invoice, confirmedMsat: confirmed)
                         }, sent: {}, isDefault: false, namesAmount: false)
                         if let problem = attempt.problem { ProblemText(problem) }
                     }
-                    .padding(.top, 4)
+                    .padding(.top, Theme.Space.xs)
                 }
             }
         }

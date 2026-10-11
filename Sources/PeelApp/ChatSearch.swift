@@ -33,7 +33,7 @@ final class ChatSearch {
         guard query != nil, !searching || !matches.isEmpty else { return nil }
         if matches.isEmpty { return "No matches" }
         let total = matches.count >= Self.limit ? "\(Self.limit.formatted())+" : matches.count.formatted()
-        guard let current else { return matches.count == 1 ? "1 match" : "\(total) matches" }
+        guard let current else { return Formatting.count(matches.count, "match", "matches", shown: total) }
         return "\(current + 1) of \(total)"
     }
 
@@ -186,7 +186,7 @@ struct ChatSearchBar: View {
     }
 
     private var bar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
@@ -206,7 +206,7 @@ struct ChatSearchBar: View {
                         .fixedSize()
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Theme.Space.md)
             .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .modifier(FieldChrome(focused: focused, hovering: hovering))
             .contentShape(Rectangle())
@@ -220,8 +220,8 @@ struct ChatSearchBar: View {
                 IconButton("xmark", help: "Close search (Esc)") { model.closeSearch() }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Space.xl)
+        .padding(.vertical, Theme.Space.sm)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
     }
 
@@ -280,8 +280,8 @@ private struct SearchResults: View {
                         .id(index)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.xs)
             }
             .frame(maxHeight: SearchResultRow.height * 5.5 + 8)
             .fixedSize(horizontal: false, vertical: true)
@@ -309,9 +309,9 @@ private struct SearchResultRow: View {
 
     var body: some View {
         ListRow(selected: selected, minHeight: Self.height, action: action) {
-            Avatar(name: sender.avatarName, url: sender.photoURL, size: 20, hue: sender.hue)
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.sm, hue: sender.hue)
         } title: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Text(sender.label)
                     .font(Theme.font(13, .semibold))
                     .foregroundStyle(sender.hue.name)
@@ -321,7 +321,7 @@ private struct SearchResultRow: View {
                     .lineLimit(1)
             }
         } trailing: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 if message.threadUUID != nil {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .font(.system(size: 11))

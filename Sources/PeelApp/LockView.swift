@@ -12,7 +12,7 @@ struct LockView: View {
         OnboardingPage {
             VStack(spacing: 24) {
                 AppIcon(size: 72)
-                VStack(spacing: 8) {
+                VStack(spacing: Theme.Space.sm) {
                     Text("Enter your PIN")
                         .font(Theme.font(24, .bold))
                     Text(problem ?? "It unlocks your account on this Mac.")
@@ -68,7 +68,7 @@ struct ForgetAccountControl: View {
     @State private var problem: String?
 
     var body: some View {
-        VStack(alignment: section ? .leading : .center, spacing: 8) {
+        VStack(alignment: section ? .leading : .center, spacing: Theme.Space.sm) {
             if section {
                 FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
             } else {

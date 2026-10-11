@@ -35,8 +35,7 @@ struct AccountView: View {
                                 Text(model.myServer ?? "None")
                                     .textSelection(.enabled)
                                 Text(model.connection.label)
-                                    .font(Theme.font(12))
-                                    .foregroundStyle(Theme.secondaryText)
+                                    .muted()
                             }
                         }
                     }
@@ -82,11 +81,11 @@ private struct IdentitySection: View {
 
     var body: some View {
         PictureField(
-            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 88, hue: model.myHue),
+            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.xxl, hue: model.myHue),
             upload: { try await model.uploadPhoto($0) },
             remove: model.myPhotoURL == nil ? nil : .confirmed("Remove photo") { try await model.removePhoto() }
         ) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(model.me.name)
                     .font(Theme.font(24, .bold))
                     .lineLimit(1)
@@ -97,7 +96,7 @@ private struct IdentitySection: View {
                         .help(key)
                 }
             }
-            .padding(.leading, 8)
+            .padding(.leading, Theme.Space.sm)
             Spacer(minLength: 12)
         }
     }
@@ -109,9 +108,9 @@ private struct ContactInfoSection: View {
 
     var body: some View {
         Card {
-            HStack(alignment: .center, spacing: 20) {
+            HStack(alignment: .center, spacing: Theme.Space.xl) {
                 QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Your contact info")
                         .font(Theme.font(15, .bold))
                     Text(model.myContactInfo == nil
@@ -124,12 +123,12 @@ private struct ContactInfoSection: View {
                         CopyButton("Copy contact info", text: info)
                             .buttonStyle(.peel(.outline))
                             .id(info)
-                            .padding(.top, 4)
+                            .padding(.top, Theme.Space.xs)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(16)
+            .padding(Theme.Space.lg)
         }
     }
 }
@@ -214,8 +213,7 @@ private struct ChangePINRow: View {
                     Text("Six digits")
                     if let note, step == .closed {
                         Text(note)
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                     }
                 }
             } trailing: {
@@ -229,7 +227,7 @@ private struct ChangePINRow: View {
                 }
             }
             if step != .closed {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
                     Text(prompt)
                         .font(Theme.font(13))
                         .foregroundStyle(note == nil ? Theme.secondaryText : Theme.text)
@@ -246,7 +244,7 @@ private struct ChangePINRow: View {
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
                 .padding(.horizontal, settingsRowPadding)
-                .padding(.bottom, 8)
+                .padding(.bottom, Theme.Space.sm)
             }
         }
     }
@@ -286,32 +284,16 @@ private struct ChangePINRow: View {
 
 private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
-    @State private var problem: String?
 
     private static let choices = [0, 1, 4, 12, 24]
 
     var body: some View {
         Fact("Ask for the PIN") {
-            VStack(alignment: .leading, spacing: 2) {
-                PeelDropdown(
-                    selection: model.pinTimeoutHours,
-                    options: presets(Self.choices, including: model.pinTimeoutHours)
-                        .map { ($0, Self.label($0)) }
-                ) { hours in
-                    Task {
-                        do {
-                            try await model.setPINTimeout(hours: hours)
-                            problem = nil
-                        } catch {
-                            problem = PeelError.problem(error, couldNot: "change the setting")
-                        }
-                    }
-                }
-                .fixedSize()
-                Text(problem ?? "After this long without use, Peel asks again.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+            SettingDropdown(
+                selection: model.pinTimeoutHours,
+                options: presets(Self.choices, including: model.pinTimeoutHours).map { ($0, Self.label($0)) },
+                help: "After this long without use, Peel asks again."
+            ) { try await model.setPINTimeout(hours: $0) }
         }
     }
 
@@ -353,8 +335,7 @@ private struct WordsRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
                     Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
             } trailing: {
                 if words.isEmpty, !askingPIN {
@@ -366,7 +347,7 @@ private struct WordsRow: View {
                 }
             }
             if askingPIN {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
                     Text(problem ?? "Enter your PIN to show your twelve words.")
                         .font(Theme.font(13))
                         .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
@@ -376,7 +357,7 @@ private struct WordsRow: View {
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
                 .padding(.horizontal, settingsRowPadding)
-                .padding(.bottom, 8)
+                .padding(.bottom, Theme.Space.sm)
             } else if !words.isEmpty {
                 shown
             } else if let problem {
@@ -403,7 +384,7 @@ private struct WordsRow: View {
                 Spacer(minLength: 0)
             }
             .privacySensitive()
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Button(visible ? "Mask" : "Reveal") { visible.toggle() }
                     .buttonStyle(.peel(.outline))
                 // Not a loss, so the second click is the commit button, not red.
@@ -419,15 +400,13 @@ private struct WordsRow: View {
                 }
                 if !confirmingCopy, copiedAt != nil {
                     Text("Cleared from the clipboard in a minute")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text("Hides in \(max(0, Int(hideAt.timeIntervalSince(context.date).rounded(.up)))) s")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
             }
         }
@@ -497,9 +476,9 @@ private struct TimeZoneSection: View {
     var body: some View {
         SettingsSection("Time zone") {
             Fact("Time zone") {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Button { picking = true } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: Theme.Space.sm) {
                             Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
                                 .lineLimit(1)
                             Text(TimeZoneOffset.format(zone))
@@ -521,7 +500,7 @@ private struct TimeZoneSection: View {
                             Task { await choose(identifier) }
                         }
                     }
-                    note(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.")
+                    Text(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.").muted()
                 }
             }
             Fact("Shared in") {
@@ -530,22 +509,15 @@ private struct TimeZoneSection: View {
                     case nil: EmptyView()
                     case 0: Text("No chats")
                     case let count?:
-                        Text("\(count == 1 ? "1 chat" : "\(count) chats") \(Text("· as \(TimeZoneOffset.format(zone))").foregroundStyle(Theme.secondaryText))")
+                        Text("\(Formatting.count(count, "chat")) \(Text("· as \(TimeZoneOffset.format(zone))").foregroundStyle(Theme.secondaryText))")
                             .monospacedDigit()
                     }
-                    note("Every direct message and private tribe, unless you turn it off in that chat's details. Never in public tribes. Each message carries the offset of the moment it is sent, so it follows summer time. You see other people's local time either way.")
+                    Text("Every direct message and private tribe, unless you turn it off in that chat's details. Never in public tribes. Each message carries the offset of the moment it is sent, so it follows summer time. You see other people's local time either way.").muted()
                 }
             }
         }
         .task { chosen = try? await model.engine?.chosenTimeZone() }
         .task(id: model.conversations.count) { await countShared() }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func choose(_ identifier: String?) async {
@@ -609,9 +581,9 @@ private struct ZonePicker: View {
                     if query.isEmpty {
                         ZoneRow(title: "Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
                                 checked: chosen == nil) { choose(nil) }
-                        Theme.divider.frame(height: 1).padding(.vertical, 4)
+                        Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs)
                         SectionHeader("All time zones")
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, Theme.Space.sm)
                             .padding(.vertical, 2)
                     }
                     ForEach(matches) { zone in
@@ -675,8 +647,7 @@ private struct NotificationsRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(state)
                 Text(note)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
         } trailing: {
             switch model.notifier.permission {
@@ -713,29 +684,14 @@ private struct NotificationsRow: View {
 
 private struct NotificationTextRow: View {
     @Environment(AppModel.self) private var model
-    @State private var problem: String?
 
     var body: some View {
         Fact("Message text") {
-            VStack(alignment: .leading, spacing: 2) {
-                PeelDropdown(
-                    selection: model.notifier.showsText,
-                    options: [(true, "Show message text"), (false, "Say only \"New message\"")]
-                ) { shows in
-                    Task {
-                        do {
-                            try await model.setNotificationShowsText(shows)
-                            problem = nil
-                        } catch {
-                            problem = PeelError.problem(error, couldNot: "change the setting")
-                        }
-                    }
-                }
-                .fixedSize()
-                Text(problem ?? "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+            SettingDropdown(
+                selection: model.notifier.showsText,
+                options: [(true, "Show message text"), (false, "Say only \"New message\"")],
+                help: "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither."
+            ) { try await model.setNotificationShowsText($0) }
         }
     }
 }
@@ -749,8 +705,7 @@ private struct WebsiteDataRow: View {
     var body: some View {
         Fact("Website data") {
             Text(cleared ? "Cleared." : "Sign-ins, cookies and storage of pages opened in Peel, kept for this account only.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         } trailing: {
             InlineConfirm(trigger: "Clear…", prompt: "Sign out of every site?", confirm: "Clear") {
                 await model.web.clearWebsiteData()
@@ -778,9 +733,9 @@ private struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             SectionHeader(title)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, Theme.Space.xs)
             FactList(labelWidth: 150) { content }
         }
-        .padding(.top, 12)
+        .padding(.top, Theme.Space.md)
     }
 }

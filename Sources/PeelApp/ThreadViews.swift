@@ -54,7 +54,7 @@ struct ThreadSummaryLine: View {
                 model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ParticipantAvatars(participants: summary.participants, chat: summary.chat, inTribe: inTribe)
                 Text(Formatting.replies(summary.count))
                     .font(Theme.font(13, summary.unread > 0 ? .bold : .medium))
@@ -77,8 +77,8 @@ struct ThreadSummaryLine: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(hovering ? Theme.divider : .clear))
+            .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(hovering ? Theme.divider : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct ParticipantAvatars: View {
     let participants: [ThreadParticipant]
     let chat: String
     let inTribe: Bool
-    var size: CGFloat = 20
+    var size = Theme.AvatarSize.sm
 
     var body: some View {
         HStack(spacing: -5) {
@@ -136,13 +136,13 @@ struct ThreadsView: View {
             } else {
                 let conversations = Dictionary(model.conversations.map { ($0.chat, $0) }, uniquingKeysWith: { $1 })
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: Theme.Space.sm) {
                         ForEach(threads) { thread in
                             ThreadCard(summary: thread, conversation: conversations[thread.chat])
                         }
                     }
                     .frame(maxWidth: 780)
-                    .padding(20)
+                    .padding(Theme.Space.xl)
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -165,25 +165,23 @@ private struct ThreadCard: View {
         Button {
             withAnimation(.easeOut(duration: 0.2)) { model.openThread(summary) }
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 Circle()
                     .fill(unread ? Theme.accent : .clear)
                     .frame(width: 7, height: 7)
                     .padding(.top, 15)
-                Avatar(name: author.avatarName, url: author.photoURL, size: 32, hue: author.hue)
+                Avatar(name: author.avatarName, url: author.photoURL, size: Theme.AvatarSize.lg, hue: author.hue)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(isTribe ? "#\(conversation?.name ?? "")" : conversation?.name ?? "")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                         Spacer()
                         if let lastDate = summary.lastDate {
                             TimelineView(.everyMinute) { context in
                                 Text(Formatting.relative(lastDate, now: context.date))
                             }
-                            .font(Theme.font(12))
                             .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                         }
                     }
                     (Text(author.label + " ").font(Theme.font(14, .bold)).foregroundColor(author.hue.name)
@@ -202,7 +200,7 @@ private struct ThreadCard: View {
                         if let latest = summary.latest {
                             let sender = model.sender(of: latest)
                             Text("·").foregroundStyle(Theme.secondaryText)
-                            Avatar(name: sender.avatarName, url: sender.photoURL, size: 16, hue: sender.hue)
+                            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
                             (Text(sender.label + ": ")
                                 .font(Theme.font(13, .medium))
                                 .foregroundColor(sender.hue.name)
@@ -214,9 +212,9 @@ private struct ThreadCard: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(hovering ? Theme.hover : Theme.panel, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.divider))
+            .padding(.vertical, Theme.Space.md)
+            .background(hovering ? Theme.hover : Theme.panel, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(Theme.divider))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

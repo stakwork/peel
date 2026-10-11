@@ -25,8 +25,8 @@ struct CallCard: View {
         let onIt = model.isOnCall(link.room)
         let notSent = message.notSent
         Card(.inset) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                HStack(spacing: Theme.Space.md) {
                     VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 7) {
                             Image(systemName: link.audioOnly ? "phone" : "video")
@@ -73,14 +73,12 @@ struct CallCard: View {
                 }
                 if let failure = model.callFailures[link.room] {
                     Text(failure)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, Theme.Space.md)
             .frame(width: Self.width, alignment: .leading)
         }
         .padding(.vertical, 2)
@@ -95,17 +93,17 @@ struct CallCard: View {
 
     private func line(_ text: String) -> some View {
         Text(text)
-            .font(Theme.font(12.5))
+            .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(minHeight: Self.lineHeight)
     }
 
     private func who(_ people: [CallParticipant], _ text: String) -> some View {
         HStack(spacing: 7) {
-            if !people.isEmpty { CallPeopleStack(people: people, size: 24, border: Theme.quote) }
+            if !people.isEmpty { CallPeopleStack(people: people, size: Theme.AvatarSize.md, border: Theme.quote) }
             OnlineDot()
             Text(text)
-                .font(Theme.font(12.5))
+                .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
         }
@@ -225,7 +223,7 @@ struct CallHeaderButton: View {
     @ViewBuilder private var content: some View {
         let recent = model.recentCalls
         let live = recent.first { model.presence(of: $0.room).isLive }
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             if let pending {
                 let joining: Bool = if case .join = pending.action { true } else { false }
                 CallSwitchConfirm(
@@ -358,7 +356,7 @@ struct CallSwitchConfirm: View {
         let text = Text("Leave the call in ") + Text(other).fontWeight(.semibold)
             + Text(joining ? " and join?" : " and start a new one?")
         let commit = joining ? "Leave and join" : "Leave and start"
-        let buttons = HStack(spacing: 8) {
+        let buttons = HStack(spacing: Theme.Space.sm) {
             Button("Cancel", action: cancel)
                 .buttonStyle(.peel(.outline, size: .sm))
             Button(action: confirm) { Text(commit).buttonProgress(working) }
@@ -378,7 +376,7 @@ struct CallSwitchConfirm: View {
                 }
             }
         }
-        .font(Theme.font(13.5))
+        .font(Theme.font(13))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Switch calls")
     }
@@ -407,9 +405,9 @@ struct OnCallBar: View {
                     CallStatusText(call: call, size: 12)
                 }
                 HStack(spacing: 7) {
-                    CallPeopleStack(people: people, size: 20, border: Theme.quote)
+                    CallPeopleStack(people: people, size: Theme.AvatarSize.sm, border: Theme.quote)
                     Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
-                        .font(Theme.font(12.5))
+                        .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
@@ -432,7 +430,7 @@ struct OnCallBar: View {
                 }
             }
             .padding(.vertical, 10)
-            .padding(.leading, 12)
+            .padding(.leading, Theme.Space.md)
             .padding(.trailing, 10)
         }
         .accessibilityElement(children: .contain)

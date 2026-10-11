@@ -16,7 +16,7 @@ struct PaneFrame<Content: View>: View {
                 VStack(alignment: .leading, spacing: 18) {
                     content
                 }
-                .padding(20)
+                .padding(Theme.Space.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // In the scroll view as well: a click there never reaches a gesture outside it.
                 .endsEditingOnClick()

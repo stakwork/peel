@@ -260,7 +260,7 @@ final class MenuPresenter {
         guard let host = hostWindow, anchor.isVisible else { return }
         cardSource = source
         let card = content
-            .menuBoxed(cornerRadius: 10)
+            .menuBoxed(cornerRadius: Theme.Radius.panel)
             .onHover { [weak self] over in
                 self?.cardTimer?.cancel()
                 if !over { self?.hideCardSoon() }
@@ -395,12 +395,12 @@ private struct MenuPanel: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let back = open.back {
                     MenuBackRow(title: back.title) { presenter.goBack() }
-                    Theme.divider.frame(height: 1).padding(.vertical, 4).padding(.horizontal, 6)
+                    Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs).padding(.horizontal, 6)
                 }
                 ForEach(Array(open.entries.enumerated()), id: \.offset) { index, entry in
                     switch entry {
                     case .divider:
-                        Theme.divider.frame(height: 1).padding(.vertical, 4).padding(.horizontal, 6)
+                        Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs).padding(.horizontal, 6)
                     case .view(let view):
                         view
                     case .header(let title):
@@ -408,7 +408,7 @@ private struct MenuPanel: View {
                             .font(Theme.font(11, .medium))
                             .foregroundStyle(Theme.secondaryText)
                             .padding(.horizontal, 10)
-                            .padding(.top, 4)
+                            .padding(.top, Theme.Space.xs)
                             .padding(.bottom, 2)
                     case .item(let item):
                         MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index)
@@ -420,7 +420,7 @@ private struct MenuPanel: View {
             .padding(5)
             .frame(minWidth: max(220, open.minWidth), alignment: .leading)
             .fixedSize()
-            .menuBoxed()
+            .menuBoxed(cornerRadius: Theme.Radius.panel)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
         }
@@ -451,14 +451,13 @@ private struct MenuRow: View {
             Spacer(minLength: 16)
             if confirming {
                 Text("Click again")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             } else if let shortcut = item.shortcut {
                 Text(shortcut.label)
                     .font(Theme.font(12))
                     .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
             } else if item.detail != nil || item.detailSystemImage != nil || item.submenu != nil {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.xs) {
                     if let detail = item.detail { Text(detail).font(Theme.font(12)) }
                     if let image = item.detailSystemImage ?? (item.submenu != nil ? "chevron.right" : nil) {
                         Image(systemName: image).font(.system(size: 9, weight: .semibold))
@@ -468,9 +467,9 @@ private struct MenuRow: View {
             }
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.sm)
         .frame(height: 28)
-        .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -495,9 +494,9 @@ private struct MenuBackRow: View {
             Spacer(minLength: 16)
         }
         .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.sm)
         .frame(height: 28)
-        .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(perform: action)

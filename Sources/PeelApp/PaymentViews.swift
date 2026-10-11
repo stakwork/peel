@@ -98,9 +98,8 @@ struct BalanceLine: View {
 
     var body: some View {
         Text(model.balanceText.map { "Balance \($0)" } ?? "Balance known once connected")
-            .font(Theme.font(12))
             .monospacedDigit()
-            .foregroundStyle(Theme.secondaryText)
+            .muted()
     }
 }
 
@@ -142,7 +141,7 @@ struct SendSatsPanel: View {
         let amountMsat = Sats.msat(amount)
         Panel(mode == .send ? "Send sats to \(name)" : "Request sats from \(name)", close: done) {
             SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
-                .padding(.top, 8)
+                .padding(.top, Theme.Space.sm)
             FormSection {
                 FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
                 FormItem(label: mode == .send ? "Note" : "What it's for") {
@@ -157,8 +156,7 @@ struct SendSatsPanel: View {
                     BalanceLine()
                 } else {
                     Text("\(name) gets an invoice in this chat, payable for an hour.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
             }
             .padding(.top, 10)
@@ -378,15 +376,15 @@ struct SegmentedChoice<Value: Hashable>: View {
                         .foregroundStyle(selection == value ? Theme.selectionText : Theme.secondaryText)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 3)
-                        .background(selection == value ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        .background(selection == value ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control - 2))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(2)
-        .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.formEdge))
+        .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.formEdge))
     }
 }
 
@@ -412,7 +410,7 @@ struct BoostAmountRow: View {
     var body: some View {
         let current = model.boostAmountMsat
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: Theme.Space.sm) {
                 PeelDropdown(
                     selection: custom == nil ? current : Self.other,
                     options: presets(Self.choices, including: current).map { ($0, Sats.format(msat: $0)) }
@@ -439,8 +437,7 @@ struct BoostAmountRow: View {
                 }
             }
             Text(attempt.problem ?? "Boost sends this at once, plus a tribe's price.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         }
     }
 }
@@ -448,32 +445,17 @@ struct BoostAmountRow: View {
 /// The threshold over which a payment or boost takes a second click.
 struct PaymentConfirmationRow: View {
     @Environment(AppModel.self) private var model
-    @State private var problem: String?
 
     /// "Always confirm" (0), then over 100, 1,000 and 10,000 sats.
     private static let choices: [UInt64] = [0, 100, 1_000, 10_000].map { $0 * Sats.msatPerSat }
 
     var body: some View {
         let current = model.paymentConfirmationMsat
-        VStack(alignment: .leading, spacing: 2) {
-            PeelDropdown(
-                selection: current,
-                options: presets(Self.choices, including: current)
-                    .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") }
-            ) { msat in
-                Task {
-                    do {
-                        try await model.setPaymentConfirmation(msat: msat)
-                        problem = nil
-                    } catch {
-                        problem = PeelError.problem(error, couldNot: "change the setting")
-                    }
-                }
-            }
-            .fixedSize()
-            Text(problem ?? "A boost or payment above this takes a second click that shows the amount.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-        }
+        SettingDropdown(
+            selection: current,
+            options: presets(Self.choices, including: current)
+                .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") },
+            help: "A boost or payment above this takes a second click that shows the amount."
+        ) { try await model.setPaymentConfirmation(msat: $0) }
     }
 }

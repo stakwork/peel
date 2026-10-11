@@ -18,8 +18,8 @@ struct MainView: View {
                 Detail()
                 if let notice = model.notice {
                     Callout(detail: notice, icon: .problem, dismiss: { model.notice = nil })
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, Theme.Space.xl)
+                        .padding(.vertical, Theme.Space.sm)
                         .background(Theme.background)
                 }
                 if model.usesFileSecrets {
@@ -229,7 +229,7 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
             Spacer()
             trailing
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .frame(height: 60)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
     }

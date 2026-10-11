@@ -70,7 +70,7 @@ struct TribeSettingsForm: View {
                     .disabled(working == .save)
                 }
             } else if problem == nil {
-                TribeServerProgress().padding(.vertical, 12)
+                TribeServerProgress().padding(.vertical, Theme.Space.md)
             }
         } footer: {
             FormFooter(problem: problem) {
@@ -105,7 +105,7 @@ struct TribeSettingsForm: View {
                 PictureField(
                     picture: TribeIcon(
                         name: name.trimmed.nilIfEmpty ?? "?", url: photoURL.nilIfEmpty,
-                        pubkey: editing?.pubkey ?? "", size: 40
+                        pubkey: editing?.pubkey ?? "", size: Theme.AvatarSize.xl
                     ).avatar,
                     upload: { photoURL = try await model.uploadPicture($0) },
                     remove: photoURL.isEmpty ? nil : .now { photoURL = "" },
@@ -121,11 +121,11 @@ struct TribeSettingsForm: View {
         FormSection("Pricing") {
             // Two to a line. Under a price, what members actually pay when it is more.
             let typed = try? settings()
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 amountItem("Price to join", helper: membersPay(typed?.joinPrice), text: $priceToJoin, unit: "sats", field: .priceToJoin)
                 amountItem("Price per message", helper: membersPay(typed?.messagePrice), text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
             }
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 amountItem("Escrow per message", helper: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
                 amountItem("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
             }
@@ -244,8 +244,7 @@ struct TribeServerProgress: View {
         HStack {
             ProgressView().controlSize(.small)
             Text("Asking the tribes server…")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         }
     }
 }
@@ -299,7 +298,7 @@ struct JoinRequestNote: View {
     let canAnswer: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Text("\(sender.name) wants to join")
             if let approved {
                 Text(approved ? "· Approved" : "· Declined")
@@ -323,7 +322,7 @@ struct PinnedMessageBar: View {
     let tribe: Tribe
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Image(systemName: "pin.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
@@ -342,7 +341,7 @@ struct PinnedMessageBar: View {
                     .foregroundStyle(Theme.secondaryText)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 7)
         .background(Theme.panel)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
@@ -390,9 +389,9 @@ struct TribeStatusBar: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.top, 6)
-        .padding(.bottom, 16)
+        .padding(.bottom, Theme.Space.lg)
     }
 }
 
@@ -416,7 +415,7 @@ struct MentionsView: View {
                             MentionRow(message: message, tribeName: names[message.chat])
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, Theme.Space.md)
                     .padding(.vertical, 10)
                 }
             }
@@ -440,17 +439,16 @@ private struct MentionRow: View {
     var body: some View {
         let sender = Sender(member: message)
         ListRow(size: .md, alignment: .top, action: { model.focus(on: message) }) {
-            Avatar(name: sender.avatarName, url: sender.photoURL, size: 28, hue: sender.hue)
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.lg, hue: sender.hue)
         } title: {
             HStack(spacing: 6) {
                 Text(sender.name)
                     .font(Theme.font(13, .medium))
                     .foregroundStyle(sender.hue.name)
                 Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                 Spacer(minLength: 8)
-                Text(message.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                Text(Formatting.dateAndTime(message.date))
                     .font(Theme.font(11))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)

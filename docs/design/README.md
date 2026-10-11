@@ -474,16 +474,51 @@ checked under its field) stays where it is.
 The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
-inventories what is still drawn by hand and plans the rest in batches;
-only the tokens sweep is left. Its
-batch plan comes before the payments fixes and the personal agent. Until
-a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
-`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+inventories what was drawn by hand and planned the library in batches,
+all fifteen now done (the tokens sweep, batch 14, last); its Progress
+lists what was left for later. New UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
+`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `FormKit`, `Controls`, `CopyButton`) and the tokens below, and adds no new variant.
 
 Built so far:
 
-- **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
-  (every `Card` and `Callout`), `panel` 12 (the popover).
+- **Tokens** (batches 1 and 14, in `Theme.swift`). No layout number is
+  written where a token says it:
+  - `Theme.Radius`: `control` 7 (buttons, fields, a row's hover or
+    selected fill, a menu's rows, the call window's name tags), `card` 9
+    (every `Card` and `Callout`, file and audio cards, quotes and code
+    blocks, pictures, a QR code's white tile, the call window's control
+    bar), `panel` 12 (the popover, a menu, a hover card, a call tile).
+    Chips, badges, the "Copied" pill and the jump button are capsules or
+    circles. A box inside another takes the outer radius less the inset
+    (the segmented choice's 5 inside its 7: `control - 2`).
+  - `Theme.Space`: `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 20, for padding
+    and the gaps in stacks. Values off the grid (1–3, 5–7, 9, 10, 14, 18)
+    stay as numbers where a layout was tuned by eye.
+  - `Theme.AvatarSize`: `xs` 16 (inline, a thread's latest reply, the
+    boost chip's faces), `sm` 20 (the sidebar's chats, search results,
+    the composer's mentions, a fact's owner; the sidebar's icon column is
+    this wide), `md` 24 (a panel's list:
+    members, boosters; a call card's faces), `lg` 32 (beside a message, a
+    header, Payments, Mentions, the Join and Add previews), `xl` 48 (the
+    top of a details panel, a link card, a picture field in a form), `xxl`
+    64 (your photo on the Account page). The call window's tiles size their
+    own.
+  - Type: the sizes are 10, 11, 12, 13, 14, 15, 16, 17 (a message's
+    second heading), 20, 24 and 28 (no half points). `Text(…).muted()`
+    (`Styles.swift`) is the muted line: 12 pt `secondaryText`, wrapping,
+    for a note, a caption and the help under a control. A muted line held
+    to one line (a row's detail, a preview) sets its own `lineLimit` and
+    keeps the font and colour by hand.
+  - Shadows: `popoverShadow` under a panel, `menuShadow` (black 25%)
+    under a menu, a suggestion list and the jump button.
+  - Words: counts go through `Formatting.count` ("1 member", "5
+    replies", "99+ new messages"), times and dates through
+    `Formatting.time` ("14:32"), `date` ("2 Oct 2026"), `dateAndTime`
+    ("2 Oct, 14:32", the year when not this one), `moment` ("Monday 5 October 2026 at
+    14:32:05", a payment's facts), `relative`, `when` and `expiry`.
+  - `SettingDropdown` (`Controls.swift`): a setting chosen from a
+    dropdown and saved at once, its help muted under it or what went
+    wrong (the PIN timeout, notification text, payment confirmation).
 - **Panel** (batches 4a and 4b). `Panel("Members", compact:, close:) { body } actions: { … } footer: { … }`
   in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every
   popover: a 15 pt bold title, the panel's own actions and an
@@ -523,7 +558,8 @@ Built so far:
   key, previews in Add contact, an invite and Join a tribe, the Account's
   sections and contact info, onboarding's restore rows. `.inset` is
   `quote` with a `divider` hairline, for cards in a chat: the call card,
-  link cards, a payment request, the sidebar's on-a-call bar.
+  link cards, a payment request, a file or audio card, the sidebar's
+  on-a-call bar.
   `menuBoxed` stays for menus, suggestion lists and the hover bar.
 - **Callouts** (batch 10). `Callout` in `UI/Card.swift`, shadcn's
   `Alert`: an icon, the words, actions, and an optional dismiss, in a box
@@ -711,7 +747,8 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
   Unpin, a failed message's Retry and Cancel), which are muted or
   `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
   `.text` style that draws them. `ListRow` holds them in its end slot as
-  they are; a text-action variant waits for the tokens sweep (batch 14).
+  they are; a text-action variant was left by the tokens sweep for
+  Tom's call (muted or `link` blue, and its hover).
 
 ### Icon buttons (`IconButton`)
 

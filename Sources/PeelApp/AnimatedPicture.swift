@@ -49,7 +49,7 @@ private struct GIFPlayback: ViewModifier {
                     .buttonStyle(.peel(.outline, size: .sm))
                     .help(started ? "Pause" : "Play")
                     .accessibilityLabel(started ? "Pause GIF" : "Play GIF")
-                    .padding(8)
+                    .padding(Theme.Space.sm)
                 }
             }
     }

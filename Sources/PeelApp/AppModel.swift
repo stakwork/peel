@@ -417,21 +417,25 @@ final class AppModel {
 
     private func rebuildChatRows() {
         guard let chat = selectedChat else { return chatRows = [] }
-        chatRows = withSenderZones(ChatRow.rows(
+        let rows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
             callServer: callServer, newAfter: newMessagesAfter(in: chat)
         ), in: chat)
+        // Setting the same rows still redraws the list and diffs every row.
+        // Recent calls age with the clock, so they are looked at again anyway.
+        if rows != chatRows { chatRows = rows } else { refreshRecentCalls() }
     }
 
     private func rebuildThreadRows() {
         guard let open = openThread, let thread else { return threadRows = [] }
-        threadRows = withSenderZones(ChatRow.rows(
+        let rows = withSenderZones(ChatRow.rows(
             thread.messages, parents: thread.parents, boosts: thread.boosts, purchases: thread.purchases,
             inTribe: isTribe(open.chat), people: people(in: open.chat), callServer: callServer,
             threadRoot: open.uuid, original: thread.original,
             newAfter: newMessagesAfter(in: open.chat)
         ), in: open.chat)
+        if rows != threadRows { threadRows = rows }
     }
 
     private func newMessagesAfter(in chat: String) -> Int64? {
@@ -1117,10 +1121,13 @@ final class AppModel {
     private func observeConversations(_ storage: Storage) async {
         do {
             for try await rows in storage.conversations() where !Task.isCancelled {
+                // Rows carry the contact's name and photo, and whether it is a
+                // tribe; not its preview, which every new message moves (the
+                // timeline's own emission rebuilds for those).
                 let open = { (rows: [Conversation]) in rows.first { $0.chat == self.selectedChat } }
-                let changed = open(conversations) != open(rows)
+                let (old, new) = (open(conversations), open(rows))
+                let changed = old?.alias != new?.alias || old?.photoURL != new?.photoURL || old?.isTribe != new?.isTribe
                 conversations = rows
-                // Rows carry the contact's name and photo, and whether it is a tribe.
                 if changed { rebuildRows() }
                 if destination == nil, let first = rows.first {
                     destination = .chat(first.chat)

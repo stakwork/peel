@@ -132,6 +132,11 @@ public enum MessageLink: Sendable, Equatable {
     /// `[label](link)` counts) and without the brackets, quotes and
     /// punctuation around it. Copying and quoting keep the whole text.
     public static func card(in text: String) -> Card? {
+        // Every candidate below has a "sphinx.chat://" or a "_": most text has
+        // neither, and is passed over without looking at each word.
+        // ("://" rather than the scheme itself: a case-blind search per message
+        // costs more than the words it saves.)
+        guard text.utf8.contains(UInt8(ascii: "_")) || text.contains("://") else { return nil }
         // Ranges into the text as `MessageMarkup` reads it.
         let text = text.contains("\r\n") ? text.replacingOccurrences(of: "\r\n", with: "\n") : text
         var code: [Range<String.Index>]?

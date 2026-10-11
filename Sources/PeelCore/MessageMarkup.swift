@@ -68,10 +68,13 @@ public enum MessageMarkup {
         var quote: [Substring] = []
         func joined(_ lines: inout [Substring]) -> String? {
             // Blank lines beside a block are the gap the blocks already have.
-            while lines.last?.allSatisfy(\.isWhitespace) == true { lines.removeLast() }
-            while lines.first?.allSatisfy(\.isWhitespace) == true { lines.removeFirst() }
             defer { lines = [] }
-            return lines.isEmpty ? nil : lines.joined(separator: "\n")
+            // Found from both ends, not removed one at a time: removeFirst on
+            // thousands of blank lines is quadratic.
+            let blank = { (line: Substring) in line.allSatisfy(\.isWhitespace) }
+            guard let start = lines.firstIndex(where: { !blank($0) }),
+                  let end = lines.lastIndex(where: { !blank($0) }) else { return nil }
+            return lines[start...end].joined(separator: "\n")
         }
         func flush() {
             if let text = joined(&quote) { blocks.append(.quote(text)) }

@@ -55,5 +55,10 @@ let package = Package(
             name: "PeelIntegrationTests",
             dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
         ),
+        // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
+        .testTarget(
+            name: "PeelBenchmarks",
+            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
     ]
 )

@@ -366,6 +366,20 @@ extension Storage {
                 t.add(column: "autoResentAt", .integer)
             }
         }
+        migrator.registerMigration("v23") { db in
+            // v21's index repeats v1's `message_on_serverIndex`: every insert
+            // kept both.
+            try db.execute(sql: "DROP INDEX message_serverIndex")
+            // A conversation's preview (`conversationsSQL`), its newest message
+            // that has one, without stepping over the joins, boosts and deletes
+            // after it. The terms are the query's own, as SQLite needs to use it:
+            // 0, 6 is MessageType.content; 5 directPayment, 32 call. The rowid
+            // every entry carries orders ties by id.
+            try db.execute(sql: """
+                CREATE INDEX message_preview ON message (chat, timestamp)
+                WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 32) AND deleted = 0))
+                """)
+        }
         return migrator
     }
 }

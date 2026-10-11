@@ -261,10 +261,13 @@ is a short plan. Update the status and the journal when you finish something.
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
-- `Sources/AgentKit/` — the agent's records, GRDB only (no PeelCore, builds
-  for macOS and iOS; the plan is `docs/agent-architecture.md`)
-  - `JSONValue.swift` — any JSON value (props and event fields) and
-    `StableJSON`, the one encoding AgentKit writes (keys sorted)
+- `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
+  and iOS; the plan is `docs/agent-architecture.md`, the phase
+  `docs/phases/09-agents.md`)
+  - `JSONValue.swift` — any JSON value (props, event fields, tool schemas
+    and arguments, the model clients' bodies) and `StableJSON`, the one
+    encoding AgentKit writes (keys sorted); `JSONValue+Access.swift` — its
+    literals, `init(parsing:)`, `jsonString` and accessors
   - `HLC.swift` — the hybrid logical clock: `tick` for a local event,
     `receive` for a remote one
   - `Event.swift` — `Event`, the only write: its JSON (the contract with
@@ -277,6 +280,17 @@ is a short plan. Update the status and the journal when you finish something.
   - `SQLiteAgentStore+Reads.swift` — `read`, `search` (FTS5 over name and
     body), `walk` (depth at most 2), `ontology`
   - `SQLiteAgentStore+Migrations.swift` — its own schema, append-only
+  - `Model/` — the model clients: `ModelProvider` (a `ModelRequest` in, a
+    stream of `ModelEvent`s out, cancelled with its task), `ModelMessage`
+    and its content blocks, `ModelError` (the failures worded plainly,
+    keys scrubbed from provider messages), `AnthropicProvider` (Messages),
+    `OpenAICompatibleProvider` (Chat Completions: OpenAI, OpenRouter),
+    `ModelHTTP` (the one shared session, no cookies, cache or redirects;
+    https only; `Secret`, a key that prints as "[key]"; the streamed body) and `ServerSentEvents` (the SSE parser)
+  - `Loop/` — `Tool` (with its read or send effect) and `ToolRegistry`,
+    `ContextWindow` (the recent turns that fit a budget, tokens estimated
+    at three UTF-8 bytes each) and `AgentLoop` (one turn: stream, run tools,
+    repeat; Stop is cancelling its task)
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -284,6 +298,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Commands+Account.swift`, `Commands+Contacts.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
+  - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
+    the terminal (no profile; the key from `PEEL_AGENT_API_KEY` only)
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -300,9 +316,12 @@ is a short plan. Update the status and the journal when you finish something.
   `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
-- `Tests/AgentKitTests/` — `AgentStoreTests`: the event format, the clock,
-  apply order, idempotency, per-field last write wins, forget and unlink,
-  rebuild, search, walk and ontology
+- `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
+  the clock, apply order, idempotency, per-field last write wins, forget
+  and unlink, rebuild, search, walk and ontology); recorded streams in
+  `Fixtures/` through both decoders, HTTP statuses to `ModelError`, the
+  request bodies over an in-process `URLProtocol` stub, and the loop with
+  a scripted `FakeProvider`
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats

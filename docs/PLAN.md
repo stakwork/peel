@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-10. This is the architecture and the phase index. Each phase
+Last updated 2026-10-11. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -149,6 +149,10 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 
 What is left for parity with the official Mac app, and what to do before
 the agent: [reviews/2026-10-09-parity-sweep.md](reviews/2026-10-09-parity-sweep.md) (2026-10-09).
+
+How we find the bugs we have not seen yet, before the team relies on
+Peel: [finding-bugs.md](finding-bugs.md) (2026-10-11, proposed). What its
+first pass found: [reviews/2026-10-11-bug-hunt.md](reviews/2026-10-11-bug-hunt.md).
 
 ### Refactor plan status
 

@@ -54,8 +54,8 @@ extension Storage {
     /// Threads of two or more messages with their original stored, each with
     /// its original's columns plus `threadCount`, `threadLast` and
     /// `threadUnread`; messages with no words are left out. `filter`
-    /// narrows the thread messages `t`.
-    private static func threadsSQL(where filter: String) -> String {
+    /// narrows the thread messages `t`, `having` the threads.
+    private static func threadsSQL(where filter: String, having: String?) -> String {
         """
         SELECT o.*, g.threadCount, g.threadLast, g.threadUnread, g.latestID
         FROM (
@@ -70,7 +70,8 @@ extension Storage {
             GROUP BY t.chat, t.threadUUID
             -- A tribe thread is one from two messages (what collapses); with a
             -- contact, from the first reply (Tom, 2026-10-07).
-            HAVING COUNT(*) >= 2 OR NOT EXISTS (SELECT 1 FROM tribe WHERE tribe.pubkey = t.chat)
+            HAVING (COUNT(*) >= 2 OR NOT EXISTS (SELECT 1 FROM tribe WHERE tribe.pubkey = t.chat))
+                \(having.map { "AND \($0)" } ?? "")
         ) g
         JOIN message o ON o.uuid = g.threadUUID AND o.chat = g.chat
         """
@@ -162,14 +163,15 @@ extension Storage {
             .trackingConstantRegion { db in
                 try Self.threadSummaries(
                     db,
-                    // Only threads with a message of ours are grouped at all:
-                    // a reply (`message_thread`) or the original (by uuid).
-                    where: """
-                        t.chat IN (SELECT chat FROM (\(Self.chatsSQL))) AND (
-                            EXISTS (SELECT 1 FROM message x
-                                    WHERE x.chat = t.chat AND x.threadUUID = t.threadUUID AND x.fromMe = 1)
-                            OR EXISTS (SELECT 1 FROM message x WHERE x.uuid = t.threadUUID AND x.fromMe = 1)
-                        )
+                    where: "t.chat IN (SELECT chat FROM (\(Self.chatsSQL)))",
+                    // Only threads with a message of ours: a reply or the
+                    // original (by uuid). Checked once a thread, and on
+                    // `message_thread`, which the planner passes over for
+                    // `message_unread` (every message of ours in the chat).
+                    having: """
+                        (EXISTS (SELECT 1 FROM message x INDEXED BY message_thread
+                                 WHERE x.chat = t.chat AND x.threadUUID = t.threadUUID AND x.fromMe = 1)
+                         OR EXISTS (SELECT 1 FROM message x WHERE x.uuid = t.threadUUID AND x.fromMe = 1))
                         """,
                     also: "ORDER BY g.threadLast DESC, o.id DESC LIMIT 200"
                 )
@@ -185,7 +187,7 @@ extension Storage {
             try Int64.fetchOne(
                 db,
                 sql: """
-                    SELECT MAX(timestamp) FROM message
+                    SELECT MAX(timestamp) FROM message INDEXED BY message_reply
                     WHERE chat = ? AND replyUUID = ? AND fromMe = 1 AND type = \(MessageType.boost)
                     """,
                 arguments: [chat, uuid]
@@ -219,7 +221,9 @@ extension Storage {
         guard !uuids.isEmpty else { return [:] }
         let parents = try Message.fetchAll(
             db,
-            sql: "SELECT * FROM message WHERE chat = ? AND uuid IN (\(databaseQuestionMarks(count: uuids.count)))",
+            // `+chat`: by uuid, not by walking the whole chat, as the planner
+            // otherwise does for a page of uuids.
+            sql: "SELECT * FROM message WHERE +chat = ? AND uuid IN (\(databaseQuestionMarks(count: uuids.count)))",
             arguments: StatementArguments([chat] + Array(uuids))
         )
         return Dictionary(parents.compactMap { parent in parent.uuid.map { ($0, parent) } }, uniquingKeysWith: { $1 })
@@ -232,9 +236,9 @@ extension Storage {
         let boosts = try Message.fetchAll(
             db,
             sql: """
-                SELECT * FROM message
+                SELECT * FROM message INDEXED BY message_reply
                 WHERE chat = ? AND replyUUID IN (\(databaseQuestionMarks(count: uuids.count)))
-                    AND type = \(MessageType.boost) AND deleted = 0
+                    AND replyUUID IS NOT NULL AND type = \(MessageType.boost) AND deleted = 0
                 ORDER BY timestamp, id
                 """,
             arguments: StatementArguments([chat] + Array(uuids))
@@ -264,9 +268,12 @@ extension Storage {
     }
 
     private static func threadSummaries(
-        _ db: Database, where filter: String, arguments: StatementArguments = [], also tail: String = ""
+        _ db: Database, where filter: String, having: String? = nil, arguments: StatementArguments = [],
+        also tail: String = ""
     ) throws -> [ThreadSummary] {
-        let rows = try Row.fetchAll(db, sql: threadsSQL(where: filter) + "\n" + tail, arguments: arguments)
+        let rows = try Row.fetchAll(
+            db, sql: threadsSQL(where: filter, having: having) + "\n" + tail, arguments: arguments
+        )
         guard !rows.isEmpty else { return [] }
         let latestIDs: [Int64] = rows.compactMap { $0["latestID"] }
         let latest = Dictionary(

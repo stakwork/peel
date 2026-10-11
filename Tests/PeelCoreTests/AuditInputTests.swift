@@ -133,6 +133,8 @@ struct AuditMarkupTests {
         ("links closing emphasis", { String(repeating: "https://a.co/* ", count: 4_300 / $0) }),
         ("quotes", { String(repeating: "> a\n", count: 16_000 / $0) }),
         ("headings and numbers", { String(repeating: "# a\n1. b\n", count: 6_400 / $0) }),
+        ("leading blank lines", { String(repeating: "\n", count: 64_000 / $0) + "a" }),
+        ("blank quote lines", { String(repeating: ">\n", count: 32_000 / $0) + "> a" }),
     ]
 
     /// Parsing four times the text must take about four times as long, not

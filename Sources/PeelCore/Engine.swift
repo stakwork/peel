@@ -1142,6 +1142,9 @@ public actor Engine {
         // Answering a ping needs our own route hint. Until registered, let it go:
         // the server re-sends pending pings when we ask for them on coming online.
         if kind == "ping", !isRegistered { return }
+        // The server's health, every 15 s: the core only reads it back and
+        // Peel shows none, so it costs a core call and a write for nothing.
+        if kind == "health" { return }
 
         // The child index in a live message's topic names the contact whose key
         // decrypted it; index 0 is the account key used for key exchange.

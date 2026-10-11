@@ -44,7 +44,9 @@ extension Storage {
         chunk: Int = 500
     ) throws {
         if chats?.isEmpty == true { return }
-        let only = chats.map { "AND chat IN (\(databaseQuestionMarks(count: $0.count)))" } ?? ""
+        // `+chat`: walked by id, each chunk picks up where the last stopped. On
+        // an index of chat the planner sorts every match again for each chunk.
+        let only = chats.map { "AND +chat IN (\(databaseQuestionMarks(count: $0.count)))" } ?? ""
         let plain: Set = [sent]
         let aliasesByChat = Dictionary(uniqueKeysWithValues: Set(echoed.keys).union(own.keys).map { chat in
             (chat, ownTribeAliases(sent: own[chat] ?? sent, echoed: echoed[chat] ?? []))
@@ -54,7 +56,7 @@ extension Storage {
                 db, sql: """
                     SELECT id, chat, content, mentionsMe FROM message
                     WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
-                      AND type IN (\(MessageType.contentSQL)) AND chat IN (\(Self.tribeChats)) \(only)
+                      AND type IN (\(MessageType.contentSQL)) AND +chat IN (\(Self.tribeChats)) \(only)
                     ORDER BY id LIMIT ?
                     """,
                 arguments: [after] + StatementArguments(Array(chats ?? [])) + [chunk]
@@ -127,12 +129,15 @@ extension Storage {
 
     /// The newest text, attachment, direct payment or call (a payment or a
     /// call only while not deleted; none with no words) gives each
-    /// conversation its place in the sidebar.
+    /// conversation its place in the sidebar. `message_preview` (v23) holds
+    /// only those, so the joins and boosts after one are not stepped over;
+    /// its terms are this query's, and it must keep them.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
-            SELECT id FROM message WHERE chat = c.chat AND noWords = 0 AND (type IN (\(MessageType.contentSQL))
+            SELECT id FROM message INDEXED BY message_preview
+            WHERE chat = c.chat AND noWords = 0 AND (type IN (\(MessageType.contentSQL))
                 OR (type IN (\(MessageType.directPayment), \(MessageType.call)) AND deleted = 0))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
@@ -238,7 +243,7 @@ extension Storage {
     private static func waiting(_ db: Database) throws -> UInt64 {
         let since = Date.now.addingTimeInterval(-Message.waitingLimit).millisecondsSince1970
         let msat = try Int64.fetchOne(db, sql: """
-            SELECT IFNULL(SUM(amountMsat), 0) FROM message
+            SELECT IFNULL(SUM(amountMsat), 0) FROM message INDEXED BY message_pending
             WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL AND deleted = 0 AND timestamp >= ?
                 AND type IN (\(MessageType.sqlList(MessageType.moneySends))) AND chat NOT IN (\(tribeChats))
             """, arguments: [since])

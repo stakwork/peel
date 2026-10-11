@@ -438,6 +438,17 @@ or 8000); opt-in, see `docs/testing.md`:
 PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
 ```
 
+`Tests/PeelBenchmarks` times the hot paths on a synthetic account (50
+chats, 100k messages): the reads every write re-runs, markup, per-row
+fields, commits. Opt-in; `-O` rather than `-c release`, which drops the
+`#if DEBUG` hooks the other test targets need. Medians land in
+`PEEL_BENCH_OUT` (default `.build/bench/latest.json`); compare a run
+before and after a change:
+
+```sh
+PEEL_BENCH=1 PEEL_BENCH_OUT=.build/bench/before.json swift test -Xswiftc -O --filter PeelBenchmarks
+```
+
 ### Local LiveKit server
 
 For the development test room (`Sources/PeelApp/CallTestRoom.swift`;

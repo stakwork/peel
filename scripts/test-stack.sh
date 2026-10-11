@@ -12,12 +12,14 @@
 #       Restarts the mixer, then the tribes server, keeping their databases.
 #       `fund` runs it with TESTING_ONLY_ADD_TO_SENDER=1 (senders are never
 #       debited, so accounts can be given sats); `real` without it.
-#   scripts/test-stack.sh tap <dir> down|up|freeze|thaw
+#   scripts/test-stack.sh tap <dir> down|up|freeze|thaw|deafen|hear
 #       The network between a client on the wire tap and the broker: `down`
 #       stops the tap (its connections close, new ones are refused), `up`
 #       starts it again on the same port; `freeze` stops it in place
 #       (SIGSTOP: connections stay open and carry nothing, a dead network
-#       that still looks connected), `thaw` lets it go on.
+#       that still looks connected), `thaw` lets it go on; after `deafen`
+#       a connection that sends a register hears nothing more from the
+#       broker (a reply lost on the way back), until `hear` for new ones.
 #   scripts/test-stack.sh stop <dir>
 #       Kills only the processes this script started for <dir>, then checks
 #       that their ports are free.
@@ -233,7 +235,9 @@ cmd_tap() {
             [ -n "$pid" ] || die "the tap is not running"
             if [ "$2" = freeze ]; then kill -STOP "$pid"; else kill -CONT "$pid"; fi
             ;;
-        *) die "tap needs down, up, freeze or thaw" ;;
+        deafen) touch "$DIR/tap.deafen" ;;
+        hear) rm -f "$DIR/tap.deafen" ;;
+        *) die "tap needs down, up, freeze, thaw, deafen or hear" ;;
     esac
     echo "tap: $2"
 }

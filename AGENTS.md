@@ -294,7 +294,8 @@ is a short plan. Update the status and the journal when you finish something.
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
-  wire tap down, up, or freezes it (a dead connection that looks open)
+  wire tap down, up, or freezes it (a dead connection that looks open),
+  or deafens it (the broker's replies lost after a register)
 - `scripts/fund-dev.sh` — the only allowed way to give a development profile
   sats: a real payment from the bank on a local stack ("Checking the app")
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
@@ -466,8 +467,9 @@ names it, new contacts, the invite and add refusals, the price to join
 held to the balance and the threshold); money when the connection goes
 (`ConnectionDropTests`: a send that never left fails and may go again, one
 cut short or dropped after a write stays pending, two Retries at once pay
-once, and only a payment over half an hour old that the server never
-recorded fails); refusals as typed
+once, only a payment over half an hour old that the server never
+recorded fails, and a signup cut short after its register keeps its
+words and registers again with the invite); refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the

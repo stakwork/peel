@@ -44,12 +44,14 @@ struct Person: Sendable {
         return Person(name: name, profile: profile, engine: engine, mnemonic: mnemonic)
     }
 
-    /// A new account from someone's invite, as the onboarding signs up.
-    static func signup(_ name: String, invite link: String) async throws -> Person {
+    /// A new account from someone's invite, as the onboarding signs up;
+    /// `throughTap` as for `create`.
+    static func signup(_ name: String, invite link: String, throughTap: Bool = false) async throws -> Person {
         let stack = try await Stack.shared.current()
         let profile = Profile(developmentAt: directory(name))
         let created = try await Account.signup(
-            profile, invite: try Engine.parseInvite(link), alias: name, pin: "", server: try address(stack.broker),
+            profile, invite: try Engine.parseInvite(link), alias: name, pin: "",
+            server: try address(throughTap ? stack.tap : stack.broker),
             tribeHost: stack.tribes, memesHost: stack.memes
         )
         return Person(name: name, profile: profile, engine: created.engine, mnemonic: created.mnemonic)

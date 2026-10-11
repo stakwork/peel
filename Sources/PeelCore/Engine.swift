@@ -32,6 +32,10 @@ public actor Engine {
     private(set) var closed = false
     /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
     private var cameOnlineHere = false
+    /// A register naming an invite may have reached the server, which
+    /// redeems the invite as it registers the account, before it answers:
+    /// the account may exist and hold the invite's sats (`Account.signup`).
+    private(set) var inviteMayBeRedeemed = false
     /// This connection's pings (`keepAlive`), and the system's network
     /// changes while the engine keeps connected (`watchNetwork`).
     private var keepAliveTask: Task<Void, Never>?
@@ -197,12 +201,15 @@ public actor Engine {
     // MARK: - Connection
 
     /// Connects once and returns when the account is online. Pass the invite code
-    /// only when creating the account. A dropped connection stays dropped.
+    /// only when creating the account; it is kept until the server confirms
+    /// the registration, and every connect until then registers with it.
+    /// A dropped connection stays dropped.
     public func connect(inviteCode: String? = nil, allowUntrustedCertificate: Bool = false) async throws {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
         self.allowUntrustedCertificate = allowUntrustedCertificate
+        if let inviteCode, !isRegistered { try storage.set(inviteCode, for: .inviteCode) }
         try await establish(inviteCode: inviteCode)
         try await waitUntilRegistered()
     }
@@ -254,6 +261,10 @@ public actor Engine {
 
     private func establish(inviteCode: String?) async throws {
         guard let server else { throw Failure.noServer }
+        // A signup whose registration was never confirmed registers with
+        // its invite again: the server answers `already_registered` if the
+        // first register landed, and needs the invite if it did not.
+        let inviteCode = try inviteCode ?? (isRegistered ? nil : storage.value(for: .inviteCode)?.nilIfEmpty)
         await teardown()
         setConnection(.connecting)
         do {
@@ -261,7 +272,7 @@ public actor Engine {
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
             let loginTime = clock.next()
             let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Transport(
+            let transport = Self.newTransport(
                 server: server, clientID: xpub, username: loginTime, password: signature,
                 allowUntrustedCertificate: allowUntrustedCertificate
             )
@@ -280,10 +291,18 @@ public actor Engine {
                 }
                 await self?.connectionClosed(transport)
             }
-            try await run { time, state in
-                try Sphinxrs.initialSetup(
-                    seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
-                )
+            let redeemedBefore = inviteMayBeRedeemed
+            if inviteCode != nil { inviteMayBeRedeemed = true }
+            do {
+                try await run { time, state in
+                    try Sphinxrs.initialSetup(
+                        seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
+                    )
+                }
+            } catch Failure.notConnected {
+                // Nothing left (`complete`): the register never went.
+                inviteMayBeRedeemed = redeemedBefore
+                throw Failure.notConnected
             }
             let tribeTopic = try Sphinxrs.getTribeManagementTopic(
                 seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state)
@@ -302,6 +321,20 @@ public actor Engine {
             setConnection(.offline(retryIn: nil))
             throw error
         }
+    }
+
+    /// The connection `establish` opens: in the tests, the one
+    /// `connectingForTesting` names.
+    private static func newTransport(
+        server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool
+    ) -> Transport {
+        #if DEBUG
+        if let connectingForTesting { return connectingForTesting }
+        #endif
+        return Transport(
+            server: server, clientID: clientID, username: username, password: password,
+            allowUntrustedCertificate: allowUntrustedCertificate
+        )
     }
 
     /// Registered, and `cameOnline` has asked for what it needs (history
@@ -497,6 +530,10 @@ public actor Engine {
     /// Tests only: a transport that never connected stands for one whose
     /// connection has just gone (its publishes throw `notConnected`).
     func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+
+    /// Tests only: the connection every connect in this task makes, such
+    /// as `Transport(publishing:)`, in place of one to the server.
+    @TaskLocal static var connectingForTesting: Transport?
     #endif
 
     private func setConnection(_ state: ConnectionState) {
@@ -619,6 +656,7 @@ public actor Engine {
         commit.state = updates
         commit.deleteState = result.stateToDelete
         followUps.justRegistered = !isRegistered && Self.isRegistered(newState)
+        if followUps.justRegistered { commit.settings[.inviteCode] = "" }
         let changedContacts = Set(updates.keys.compactMap { $0.hasPrefix("c/") ? String($0.dropFirst(2)) : nil })
         let removedContacts = result.stateToDelete.compactMap { $0.hasPrefix("c/") ? String($0.dropFirst(2)) : nil }
         var contacts: [Contact]?

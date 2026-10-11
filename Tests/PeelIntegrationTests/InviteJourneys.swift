@@ -40,6 +40,33 @@ extension Journeys {
             await dana.close()
         }
 
+        /// Dana signs up with Alice's invite through the wire tap, and the
+        /// server's reply to her register is lost. The server has redeemed
+        /// the invite, so her words stay; her next connect registers again
+        /// and finds the account, with the invite's sats.
+        @Test func aSignupWhoseReplyIsLostKeepsTheWords() async throws {
+            let alice = try await Person.create("alice")
+            try await Bank.shared.give(5_000, to: alice)
+            let invite = try await alice.engine.makeInvite(
+                amountMsat: 1_000_000, nickname: "dana", confirmedMsat: 1_000_000
+            )
+
+            try await Stack.shared.tap(.deafen)
+            let signedUp = await Result { try await Person.signup("dana", invite: invite.link, throughTap: true) }
+            try await Stack.shared.tap(.hear)
+            let dana = try signedUp.get()
+            #expect(await !dana.engine.isRegistered)
+            #expect(try dana.profile.loadMnemonic(pin: "") == dana.mnemonic)
+
+            try await dana.engine.connect()
+            #expect(await dana.engine.isRegistered)
+            let danas = try await dana.balance(settlingAt: 1_000)
+            #expect(danas == 1_000, "Dana holds \(danas ?? 0) sats from a 1,000-sat invite")
+
+            await alice.close()
+            await dana.close()
+        }
+
         /// Alice cancels an invite and gets its sats back; nobody can sign
         /// up with it afterwards and take them.
         @Test func cancelRefunds() async throws {

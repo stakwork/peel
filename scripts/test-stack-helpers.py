@@ -3,7 +3,8 @@
   python3 test-stack-helpers.py tap <port> <broker port> <file>
       A TCP proxy in front of the broker that appends every byte it carries,
       both ways, to <file>: what a client puts on the wire, for tests to
-      search for plain text.
+      search for plain text. While tap.deafen exists beside <file>, a
+      connection that sends a register gets nothing more from the broker.
   python3 test-stack-helpers.py memes <port> <data dir>
       A stand-in for the memes server (stakwork/sphinx-meme) with the
       endpoints the official apps use: GET /ask, POST /verify (checks the
@@ -23,13 +24,19 @@ from urllib.parse import urlparse, parse_qs
 
 def tap(port, broker_port, path):
     out = open(path, "ab", buffering=0)
+    # While this file exists, a connection that sends a register hears
+    # nothing more from the broker (`test-stack.sh tap <dir> deafen`).
+    deafen = os.path.join(os.path.dirname(path), "tap.deafen")
 
-    async def pipe(reader, writer):
+    async def pipe(reader, writer, deaf, upstream):
         try:
             while data := await reader.read(65536):
                 out.write(data)
-                writer.write(data)
-                await writer.drain()
+                if upstream and b"/register" in data and os.path.exists(deafen):
+                    deaf[0] = True
+                if upstream or not deaf[0]:
+                    writer.write(data)
+                    await writer.drain()
         except (ConnectionError, asyncio.CancelledError):
             pass
         finally:
@@ -41,7 +48,10 @@ def tap(port, broker_port, path):
         except OSError:
             client_writer.close()
             return
-        await asyncio.gather(pipe(client_reader, broker_writer), pipe(broker_reader, client_writer))
+        deaf = [False]
+        await asyncio.gather(
+            pipe(client_reader, broker_writer, deaf, True), pipe(broker_reader, client_writer, deaf, False)
+        )
 
     async def main():
         server = await asyncio.start_server(handle, "127.0.0.1", port)

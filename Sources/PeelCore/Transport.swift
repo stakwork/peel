@@ -81,9 +81,10 @@ final class Transport: Sendable {
     }
 
     #if DEBUG
-    /// Tests only: stands in for a connected broker that answers pings,
-    /// with publishes going to `write` in place of it and throwing what it
-    /// throws, mapped as a real write's are, so a test can cut a send short.
+    /// Tests only: stands in for a connected broker that answers pings and
+    /// takes every connect and subscribe, with publishes going to `write`
+    /// in place of it and throwing what it throws, mapped as a real
+    /// write's are, so a test can cut a send short.
     convenience init(publishing write: @escaping @Sendable (String, Data) async throws -> Void) {
         self.init(
             server: ServerAddress("mqtt://127.0.0.1:1")!, clientID: "test", username: "test", password: "test",
@@ -138,10 +139,12 @@ final class Transport: Sendable {
     }
 
     func connect() async throws {
+        if testWrite != nil { return }
         try await client.connect(cleanSession: true)
     }
 
     func subscribe(_ topics: [String]) async throws {
+        if testWrite != nil { return }
         try await whileConnected {
             _ = try await client.subscribe(to: topics.map { MQTTSubscribeInfo(topicFilter: $0, qos: .atMostOnce) })
         }

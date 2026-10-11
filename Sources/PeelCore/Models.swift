@@ -35,6 +35,11 @@ public enum Setting: String, Sendable {
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout
+    /// The invite code a new account signed up with, until the server
+    /// confirms the registration; "" after. A register the server never got
+    /// needs it again, since the server redeems the invite as it registers
+    /// the account. Never logged.
+    case inviteCode
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

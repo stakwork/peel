@@ -30,7 +30,8 @@ private let cutShort = PeelError("the write was cut short")
 /// What money and history do when the connection goes: a payment or an
 /// invite whose publish never left is failed at once and may be made again;
 /// one that may have left stays pending, never offered again, until the
-/// server says; and a history run waits for the next connection instead of failing.
+/// server says; a signup whose register may have left keeps its words; and
+/// a history run waits for the next connection instead of failing.
 struct ConnectionDropTests {
     let profile = TempProfile()
 
@@ -288,6 +289,57 @@ struct ConnectionDropTests {
         try await withEngine(balanceMsat: nil) { engine, _ throws in
             await #expect(throws: Engine.Failure.contactNeedsSats) { try await engine.addContact(code: "\(keyG)_\(key3G)_9") }
         }
+    }
+
+    /// A signup whose connection went after its register keeps the words:
+    /// the server redeems the invite as it registers the account, before it
+    /// answers, so the account may hold the invite's sats (bug hunt N2).
+    /// The next connect registers with the invite again, for a server that
+    /// never got the first; once one is confirmed, no connect names it.
+    @Test func aSignupCutShortAfterItsRegisterKeepsTheWords() async throws {
+        let account = Profile(developmentAt: profile.url)
+        let code = String(repeating: "ab", count: 32)
+        let invite = Engine.Invite(code: code, server: nil, inviterContactInfo: nil, inviterAlias: nil)
+        let (cut, signupWrites) = cutTransport(accepting: 1, then: cutShort)
+        let created = try? await Engine.$connectingForTesting.withValue(cut) {
+            try await Account.signup(
+                account, invite: invite, alias: "Dana", pin: "", server: ServerAddress("mqtt://127.0.0.1:1")
+            )
+        }
+        #expect(signupWrites.topics.withLock(\.first)?.hasSuffix("/register/\(code)") == true)
+        #expect(account.hasAccount)
+        #expect(try account.loadMnemonic(pin: "") == created?.mnemonic)
+        let engine = try #require(created?.engine)
+        #expect(await !engine.isRegistered)
+
+        /// The server's answer to a register: the account, registered.
+        func registeredReply() -> RunReturn {
+            var reply = coreResult()
+            reply.stateMp = StateCodec.encode(registeredState)
+            reply.myContactInfo = "\(keyG)_\(key3G)_1"
+            return reply
+        }
+        /// The register a connect makes, answered once it has gone if `answered`.
+        func register(answered: Bool) async throws -> String? {
+            let writes = Writes()
+            let open = Transport(publishing: { topic, _ in writes.topics.withLock { $0.append(topic) } })
+            try await Engine.$connectingForTesting.withValue(open) {
+                let connecting = Task { try await engine.connect() }
+                for _ in 0..<200 where writes.count == 0 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                if answered {
+                    let followUps = try await engine.commit(registeredReply(), time: "1", expectedSender: nil)
+                    try await engine.complete(registeredReply(), followUps)
+                }
+                try await connecting.value
+            }
+            await engine.disconnect()
+            return writes.topics.withLock { $0.first { $0.contains("/register") } }
+        }
+        #expect(try await register(answered: true)?.hasSuffix("/register/\(code)") == true)
+        #expect(await engine.isRegistered)
+        #expect(try await register(answered: false)?.hasSuffix("/register") == true)
     }
 
     /// A page asked for on a connection that went never comes: the run is

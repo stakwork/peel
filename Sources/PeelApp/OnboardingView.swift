@@ -138,6 +138,13 @@ struct OnboardingView: View {
                         .font(Theme.font(15))
                     Spacer(minLength: 0)
                 }
+                if model.myContactInfo == nil {
+                    // Signed up, the server's answer not yet in: the engine registers again as it reconnects.
+                    Text("Your account is saved with these words. Peel is still waiting for the server to confirm it, and keeps trying.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Toggle("I've written them down somewhere safe, on paper", isOn: $wroteDown)
                     .toggleStyle(.checkbox)
                     .font(Theme.font(14))

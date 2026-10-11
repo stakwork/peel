@@ -66,6 +66,15 @@ Status on 2026-10-07: done; the Mac app is in its first daily-use trial.
   key from the client side, so a contact could file a history message under
   another known contact's name. The clean fix is one field in the core's batch
   result (`key_idx`); until then history never renames contacts.
+- (2026-10-11, bug hunt N2) The mixer redeems an invite and credits the
+  new account before it answers the register, and a register it already
+  knows is answered `already_registered`. So a signup whose reply is lost
+  or late no longer deletes the profile: only when no register can have
+  gone (`Engine.inviteMayBeRedeemed`). The invite code is kept
+  (`Setting.inviteCode`) until the registration is confirmed, and every
+  connect until then registers with it. Such an account opens on the
+  words step with a waiting line; its inviter is not added as a contact
+  (the add happens only after a registration confirmed during signup).
 
 ## In progress
 

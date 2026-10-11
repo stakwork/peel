@@ -512,7 +512,10 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   same transaction as the state. The server echoes sent messages to all of the
   account's devices.
 - The core recovers a message's sender from its signature, so a sender can
-  only ever name themself. For a live message the child index in the topic
+  only ever name themself. "Ours" is weaker: the core also takes a message
+  for ours by its date or a replayed tag, either of which a contact can
+  arrange, so `Engine.message(from:)` drops one signed by the person whose
+  chat it is. For a live message the child index in the topic
   names the contact as well and `Engine` requires the two to agree. History
   (`batch`) messages are accepted only from contacts the core knows. Contact
   records (type 33) are honoured by the core only when signed by this account.

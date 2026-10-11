@@ -179,6 +179,9 @@ extension Storage {
     /// this account's own key (`dec_tag`), as every send of ours carries
     /// (`create_sphinx_msg`), while a message it takes for ours by its date
     /// alone (`dec_ts_matches`, which any sender can arrange) has none.
+    /// The tag travels to the recipient, who can replay it: the engine drops
+    /// a copy signed by the person whose chat it is (`Engine.message(from:)`),
+    /// and no request goes to a tribe, so none there counts.
     /// `invoiceProblem` asks this only of an invoice our own server made.
     func isOurRequest(paymentHash: String) throws -> Bool {
         try pool.read { db in
@@ -186,7 +189,8 @@ extension Storage {
                 db,
                 sql: """
                     SELECT EXISTS (SELECT 1 FROM message
-                        WHERE fromMe = 1 AND tag IS NOT NULL AND type = \(MessageType.invoice) AND paymentHash = ?)
+                        WHERE fromMe = 1 AND tag IS NOT NULL AND type = \(MessageType.invoice) AND paymentHash = ?
+                            AND chat NOT IN (\(Self.tribeChats)))
                     """,
                 arguments: [paymentHash]
             ) ?? false

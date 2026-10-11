@@ -1077,7 +1077,7 @@ public actor Engine {
     /// the topic names the contact as well and the two must agree. Contact
     /// records (type 33) are honoured by the core only when signed by this
     /// account. Messages from senders the core does not know are dropped.
-    private static func message(
+    static func message(
         from msg: Msg, expectedSender: String?, state: [String: Data]
     ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
         guard let type = msg.type else { return nil }
@@ -1087,6 +1087,11 @@ public actor Engine {
         var trustSender = false
         if fromMe {
             guard let to = msg.sentTo else { return nil }
+            // The core recovers the signer: a copy of ours is signed by our
+            // key, one a tribe forwards by the tribe. Signed by the person
+            // whose chat it is, it is theirs, made to pass for ours (our tag
+            // replayed, or the date they share with us: `dec_ts_matches`).
+            if claimed == to, isPerson(to, in: state) == true { return nil }
             chat = to
         } else if let expectedSender {
             chat = expectedSender

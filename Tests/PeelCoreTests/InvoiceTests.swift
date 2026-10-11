@@ -308,21 +308,14 @@ struct InvoiceTests {
     /// Only for an invoice our own server made, and only a request that is
     /// ours by its tag: a forged "ours" cannot block paying an invoice.
     @Test func ourRequestFromHistoryMarksItsInvoiceOurs() throws {
-        let seed = try Sphinxrs.mnemonicToSeed(
-            mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
-        )
-        let bolt11 = try #require(try Sphinxrs.makeInvoice(
-            seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
-            amtMsat: 10_000, description: "test"
-        ).invoice)
-        let invoice = try Invoice(bolt11)
+        let invoice = try madeInvoice()
         let storage = try profile.storage()
         let engine = try testEngine(storage)
         try storage.set("100000000", for: .balanceMsat)
         func ourRequest(_ n: Int, fromMe: Bool, tag: String? = nil) -> Message {
             .fixture(
                 uuid: uuid(n), type: MessageType.invoice, chat: dm, fromMe: fromMe,
-                body: #"{"invoice":"\#(bolt11)"}"#, tag: tag, paymentHash: invoice.paymentHash, amountMsat: 10_000
+                body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: tag, paymentHash: invoice.paymentHash, amountMsat: 10_000
             )
         }
         _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(ourRequest(1, fromMe: false), false, nil)]))
@@ -337,6 +330,41 @@ struct InvoiceTests {
         #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
         // Another server's invoice is paid whatever our messages claim.
         try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+    }
+
+    /// A contact who had a request from us holds its encrypted tag and its
+    /// uuid, and shares a secret with us for the date: enough for the core
+    /// to take their message for ours, filed in their chat. They signed it,
+    /// so it is dropped, and cannot give our request their neighbour's
+    /// invoice. Ours, signed by our key, and a tribe's forward, signed by
+    /// the tribe, still come in.
+    @Test func ourCopySignedByTheChatsPersonIsDropped() throws {
+        let state = coreContact(key2G, contactKey: key3G).merging(coreContact(strangerKey, contactKey: nil)) { a, _ in a }
+        func copy(signedBy signer: String, to chat: String, tag: String? = "aa") -> Msg {
+            Msg(message: #"{"invoice":"\#(coffee)"}"#, type: UInt8(MessageType.invoice), uuid: uuid(1), tag: tag, index: "7",
+                sender: sender(signer), msat: nil, timestamp: 1_000, sentTo: chat, fromMe: true, paymentHash: nil, error: nil)
+        }
+        #expect(Engine.message(from: copy(signedBy: key2G, to: key2G), expectedSender: key2G, state: state) == nil)
+        #expect(Engine.message(from: copy(signedBy: key2G, to: key2G, tag: nil), expectedSender: key2G, state: state) == nil)
+        let ours = try #require(Engine.message(from: copy(signedBy: keyG, to: key2G), expectedSender: key2G, state: state))
+        #expect(ours.message.chat == key2G && ours.message.fromMe && ours.message.paymentHash == coffeeHash)
+        let forwarded = try #require(Engine.message(from: copy(signedBy: strangerKey, to: strangerKey), expectedSender: strangerKey, state: state))
+        #expect(forwarded.message.chat == strangerKey && forwarded.message.fromMe)
+    }
+
+    /// No request of ours goes to a tribe (`requestToTribe`), so a tagged one
+    /// there, a member's replay of our tag, never makes an invoice ours.
+    @Test func aRequestInATribeIsNeverOurs() throws {
+        let invoice = try madeInvoice()
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("100000000", for: .balanceMsat)
+        try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(
+            uuid: uuid(1), type: MessageType.invoice, chat: strangerKey, fromMe: true,
+            body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: "aa", paymentHash: invoice.paymentHash
+        ), false, nil)], tribes: [Tribe(pubkey: strangerKey)]))
         #expect(try engine.invoiceProblem(invoice) == nil)
     }
 

@@ -1721,3 +1721,41 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+### A forged "ours" copy of a request (2026-10-11)
+
+Found by the independent review of #154 (Low). A contact who had a request
+from us knows its uuid. The core takes a message for ours by its date
+alone (`dec_ts_matches`: a secret the sender shares with us). It also
+takes it for ours by a replayed encrypted tag, which travels with every
+message and opens with our key whoever sends it, and nothing binds it to
+the uuid or the content. Such a copy was filed in the contact's chat as
+fromMe and, with our request's uuid, the upsert gave our row its hash: a
+co-server neighbour's invoice then read as our own (`isOurRequest`) and
+was refused as `.ownInvoice`, and our request lost its hash. With a fresh
+uuid and the replayed tag it needed no overwrite at all.
+
+- **Done.** `Engine.message(from:)` drops a message the core calls ours
+  when the person whose chat it is signed it (the core recovers the signer
+  from the signature). Ours are signed by our key; a tribe's forward by the
+  tribe, whose chat it is, and a tribe has no contact key; our contact
+  records (type 33) come as not ours. `isOurRequest` also leaves tribe
+  chats out: no request goes to a tribe (`requestToTribe`), so a member's
+  replay of our tag there never counts. The upsert is unchanged.
+- **First try, replaced.** An upsert rule that an untagged copy leaves a
+  tagged row alone. `/security-review` showed the replayed tag passes it,
+  and a fresh uuid needs no upsert, so the rule moved to the signer.
+- **Verified.** Unit: `ourCopySignedByTheChatsPersonIsDropped` (with and
+  without a tag; ours and a tribe's forward still come in) and
+  `aRequestInATribeIsNeverOurs`, both failing without the fix; full
+  `swift test`. Integration journeys: see the PR.
+- **Reviews.** `/code-review`: the per-column guard became one rule, then
+  moved (above); the forged-first race on the upsert no longer applies,
+  since no forged copy reaches storage. `/simplify`: one `madeInvoice`
+  fixture in `TestSupport` for `InvoiceTests` and `ConnectionDropTests`.
+  Skipped: caching the test seed. `/security-review`: the tag replay
+  (above).
+- **Known gaps.** Inside a tribe the tribes server signs every forward, so
+  a member who replays our tag gets a fromMe row there. Only requests
+  were hardened (tribe chats left out); other fromMe readers in tribes
+  (payments listed as ours, threads you are in) still trust the tag.

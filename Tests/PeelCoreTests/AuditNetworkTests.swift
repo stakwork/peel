@@ -111,7 +111,10 @@ struct AuditCallTests {
     private let room = "sphinx.call.0123456789abcdef0123456789abcdef"
 
     /// T2.3: the media server allowlist is exact hosts only, never a
-    /// wildcard or a suffix that would admit any LiveKit tenant.
+    /// wildcard or a suffix that would admit any LiveKit tenant. A tripwire:
+    /// the list is empty until the production call server's answer is
+    /// recorded, so this checks nothing until then; that any other host is
+    /// refused is `CallTicketCheckTests.refusesAnyOtherMediaServer`.
     @Test func mediaHostsAreExactHosts() {
         for (callServer, hosts) in CallServer.mediaHosts {
             #expect(TribeLink.isPlainHost(callServer))

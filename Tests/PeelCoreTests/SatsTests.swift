@@ -30,10 +30,12 @@ struct SatsTests {
         for msat: Int64 in [0, 1_000, 3_000, 21_000, 1_210_000, -5_000] {
             #expect(Sats.exact(msat: msat) == Sats.format(msat: msat))
         }
-        #expect(Sats.exact(msat: 500) == "0.5 sats")
-        #expect(Sats.exact(msat: 3_500) == "3.5 sats")
-        #expect(Sats.exact(msat: 1) == "0.001 sats")
-        #expect(Sats.exact(msat: 1_210_250) == "1,210.25 sats")
+        // Separated and grouped as the locale does.
+        let point = Locale.current.decimalSeparator ?? "."
+        #expect(Sats.exact(msat: 500) == "0\(point)5 sats")
+        #expect(Sats.exact(msat: 3_500) == "3\(point)5 sats")
+        #expect(Sats.exact(msat: 1) == "0\(point)001 sats")
+        #expect(Sats.exact(msat: 1_210_250) == "\(1_210.formatted())\(point)25 sats")
     }
 
     @Test func signedAmountsUseATrueMinus() {
@@ -60,20 +62,6 @@ struct SatsTests {
         #expect(throws: PeelError.self) { try Sats.parse("1.2.3", unit: 1000, of: "price") }
         #expect(throws: PeelError.self) { try Sats.parse("1e3", unit: 1000, of: "price") }
         #expect(throws: PeelError.self) { try Sats.parse("99999999999999999", unit: 1000, of: "price") }
-    }
-
-    /// Every amount field and CLI amount: whole sats above zero, commas and
-    /// surrounding spaces allowed, nothing that would overflow in msat.
-    @Test func typedSatsAreWholeAndAboveZero() {
-        #expect(Sats.msat("21") == 21_000)
-        #expect(Sats.msat("1,000") == 1_000_000)
-        #expect(Sats.msat("  500 ") == 500_000)
-        #expect(Sats.msat("18446744073709551") == 18_446_744_073_709_551_000)
-        #expect(Sats.msat("18446744073709552") == nil)
-        #expect(Sats.msat(String(UInt64.max)) == nil)
-        for refused in ["", " ", "0", "0,000", "-5", "1.5", "1e3", "abc", "1 000", "\t5\n"] {
-            #expect(Sats.msat(refused) == nil, "\(refused)")
-        }
     }
 
     /// What a form shows for a stored amount, read back by `parse` as the same amount.

@@ -44,7 +44,13 @@ struct ChatSectionsTests {
         #expect(names(sections.direct) == ["p2", "p3", "p4", "p5", "p7"])
     }
 
+    /// Every message counts, only mentions, or nothing (the Dock badge);
+    /// the sidebar still counts a muted chat's mentions.
     @Test func sidebarCountsMentionsOfAMutedChat() {
+        #expect(ChatReadState(chat: "t", unread: 9, mentions: 2, muteLevel: MuteLevel.all.rawValue).shownUnread == 9)
+        let mentionsOnly = ChatReadState(chat: "t", unread: 9, mentions: 2, muteLevel: MuteLevel.mentionsOnly.rawValue)
+        #expect(mentionsOnly.shownUnread == 2)
+        #expect(mentionsOnly.sidebarCount == 2)
         let muted = ChatReadState(chat: "t", unread: 9, mentions: 2, muteLevel: MuteLevel.muted.rawValue)
         #expect(muted.shownUnread == 0)
         #expect(muted.sidebarCount == 2)

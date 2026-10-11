@@ -186,13 +186,18 @@ struct AuditMoneyTests {
         #expect(Engine.needsConfirmation(1, confirmedMsat: nil, thresholdMsat: 0))
     }
 
-    /// What a person types for sats: whole, above zero, ASCII, and small
-    /// enough to count in msat.
+    /// What a person types for sats, in every amount field and the CLI:
+    /// whole, above zero, ASCII, commas and surrounding spaces allowed, and
+    /// small enough to count in msat.
     @Test func typedSatsAreWholeASCIIAndCountable() {
         #expect(Sats.msat("1") == 1_000)
         #expect(Sats.msat(" 2,500 ") == 2_500_000)
+        #expect(Sats.msat("1,000") == 1_000_000)
         #expect(Sats.msat(String(UInt64.max / 1000)) == UInt64.max / 1000 * 1000)
-        for text in ["0", "-1", "", "1.5", "1e3", "0x10", "１２", "٣", String(UInt64.max / 1000 + 1), String(UInt64.max)] {
+        for text in [
+            "0", "0,000", "-1", "", " ", "1.5", "1e3", "0x10", "abc", "1 000", "\t5\n", "１２", "٣",
+            String(UInt64.max / 1000 + 1), String(UInt64.max),
+        ] {
             #expect(Sats.msat(text) == nil, "\(text)")
         }
     }

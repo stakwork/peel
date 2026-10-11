@@ -249,7 +249,10 @@ struct InvoiceTests {
     @Test func aPaymentInTheHistoryFromAnotherDeviceCountsAsPaid() throws {
         let storage = try profile.storage()
         var commit = Storage.Commit()
-        commit.payments = PaymentRecord.decode(#"[{"amt_msat":1,"rhash":"\#(coffeeHash)","ts":5}]"#)
+        commit.payments = PaymentRecord.decode(#"""
+            [{"amt_msat":1,"rhash":"\#(coffeeHash)","ts":5},
+             {"amt_msat":1,"rhash":"\#(hash(4))","ts":6,"error":"no route"}]
+            """#)
         _ = try storage.apply(commit)
         #expect(try storage.paidState(paymentHash: coffeeHash) == .paid(at: Date(millisecondsSince1970: 5)))
         // A failed attempt in the history is not a payment.

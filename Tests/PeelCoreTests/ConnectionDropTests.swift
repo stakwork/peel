@@ -72,11 +72,15 @@ struct ConnectionDropTests {
         }
     }
 
+    /// Stored as sending, then failed when its publish never left; the
+    /// same refusal before anything is stored would leave no row.
     @Test func anInviteThatNeverLeftFails() async throws {
         try await withEngine { engine, storage throws in
             await #expect(throws: Engine.Failure.notConnected) {
                 try await engine.makeInvite(amountMsat: 10_000, confirmedMsat: 10_000)
             }
+            let invite = try #require(try rows(profile, "SELECT status FROM invite").first)
+            #expect(invite["status"] as String? == InviteRecord.Status.failed.rawValue)
             #expect(try storage.listPendingInvites().isEmpty)
         }
     }

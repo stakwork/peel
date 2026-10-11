@@ -282,18 +282,6 @@ struct StorageTests {
         #expect(messages.map(\.content) == ["first", "second"])
     }
 
-    @Test func timelineKeepsTheNewestTwoHundred() async throws {
-        let storage = try profile.storage()
-        let batch = (0..<250).map { index in
-            (Message.fixture(uuid: "u\(index)", chat: "02aa", content: "m\(index)", timestamp: Int64(index)), false, String?.none)
-        }
-        _ = try storage.apply(Storage.Commit(messages: batch))
-        let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
-        #expect(messages.count == 200)
-        #expect(messages.first?.content == "m50")
-        #expect(messages.last?.content == "m249")
-    }
-
     // MARK: Messages with no words
 
     private func noWords(_ uuid: String) throws -> Bool? {

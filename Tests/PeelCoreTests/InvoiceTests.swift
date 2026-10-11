@@ -271,6 +271,37 @@ struct InvoiceTests {
         #expect(try storage.paidState(paymentHash: coffeeHash) == .own)
     }
 
+    /// What else stops paying an invoice: a balance that covers its amount
+    /// but not the fee reserve (10 sats at least), this account's own key
+    /// as the payee, and a payment of it in the history from another device.
+    @Test func anInvoiceShortOfItsFeeOwnOrPaidIsNotPaid() throws {
+        let seed = try Sphinxrs.mnemonicToSeed(
+            mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
+        )
+        let bolt11 = try #require(try Sphinxrs.makeInvoice(
+            seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
+            amtMsat: 10_000, description: "test"
+        ).invoice)
+        let invoice = try Invoice(bolt11)
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+
+        try storage.set("19999", for: .balanceMsat)
+        #expect(try engine.invoiceProblem(invoice) == .insufficientBalance)
+        try storage.set("20000", for: .balanceMsat)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+
+        try storage.set("\(invoice.payee)_\(key3G)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+
+        var commit = Storage.Commit()
+        commit.payments = PaymentRecord.decode(#"[{"amt_msat":10000,"rhash":"\#(invoice.paymentHash)","ts":5}]"#)
+        _ = try storage.apply(commit)
+        #expect(try engine.invoiceProblem(invoice) == .invoiceAlreadyPaid)
+    }
+
     /// On another device the invoice table is empty, but our request came
     /// back from history: its invoice is ours, never paid from here.
     /// Theirs is not (payments review F11).
@@ -410,12 +441,9 @@ struct InvoiceTests {
         #expect(try storage.openInvoices(among: [coffeeHash, hash(2)]) == [coffeeHash])
         #expect(try storage.openInvoices(among: []) == [])
 
-        // As `Engine.commit` turns a history page into settles.
-        let page = PaymentRecord.decode(#"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#)
-        let paid = Engine.invoicePayments(in: page, open: try storage.openInvoices(among: page.map(\.rhash)))
-        _ = try storage.apply(Storage.Commit(
-            payments: page, settling: paid.map { ($0.rhash, $0.amountMsat) }, settled: paid.map { ($0.rhash, $0.ts) }
-        ))
+        // The server's history page, through `Engine.commit`.
+        let page = #"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#
+        _ = try await testEngine(storage).commit(coreResult(payments: page), time: "1", expectedSender: nil)
         let record = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: true))
         #expect(record.status == .paid && record.paidAt == 42 && record.paidMsat == 250_000_000)
         #expect(try storage.openInvoices(among: [coffeeHash]).isEmpty)

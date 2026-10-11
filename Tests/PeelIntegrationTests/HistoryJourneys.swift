@@ -65,5 +65,64 @@ extension Journeys {
             await alice.close()
             await bob.close()
         }
+
+        /// Alice's link goes while Bob writes, so his messages wait in her
+        /// history. Her catch-up has begun when a live one from Bob lands
+        /// above those still to fetch, and she quits. Her next launch
+        /// fetches the rest: no server index is missing.
+        @Test func aCatchUpCutShortByAQuitLeavesNoGap() async throws {
+            let alice = try await Person.create("alice", throughTap: true)
+            let bob = try await Person.create("bob")
+            try await Bank.shared.give(1_000, to: alice)
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await eventually("Alice and Bob to be contacts") {
+                try alice.isReadyContact(bob) && bob.isReadyContact(alice)
+            }
+            await alice.engine.start()
+            let (aliceKey, bobKey) = (try alice.pubkey, try bob.pubkey)
+
+            try await Stack.shared.tap(.down)
+            try await eventually("Alice to see the connection go") { await alice.engine.connection != .connected }
+            let tag = UUID().uuidString.prefix(6)
+            let missed = (1...400).map { "while away \($0) \(tag)" }
+            for text in missed {
+                try await bob.engine.sendText(text, to: aliceKey)
+            }
+            let away = Set(missed)
+            func fetched() throws -> Int { try alice.messages(in: bobKey).filter { away.contains($0.content ?? "") }.count }
+            try await Stack.shared.tap(.up)
+            try await eventually("Alice's catch-up to begin", timeout: .seconds(60)) { try fetched() > 0 }
+            let live = "while catching up \(tag)"
+            try await bob.engine.sendText(live, to: aliceKey)
+            try await eventually("Alice to receive it live") {
+                try alice.messages(in: bobKey).contains { $0.content == live }
+            }
+            // The gap this guards against: a live row above messages not yet fetched.
+            let cutShort = try fetched() < missed.count
+            await alice.engine.close()
+
+            let relaunched = Person(
+                name: alice.name, profile: alice.profile,
+                engine: try Engine(mnemonic: alice.mnemonic, storage: alice.storage), mnemonic: alice.mnemonic
+            )
+            try await relaunched.engine.connect()
+            try await eventually("the catch-up to finish", timeout: .seconds(60)) {
+                await !relaunched.engine.isSyncingHistory
+            }
+            let rows = try relaunched.messages(in: bobKey)
+            let stored = Set(rows.compactMap(\.content))
+            let lost = missed.filter { !stored.contains($0) }
+            #expect(lost.isEmpty, "\(lost.count) of Bob's messages never came (cut short: \(cutShort))")
+            #expect(stored.contains(live))
+            // Nothing else reached Alice from the first of them to the live one.
+            let indices = rows.filter { away.contains($0.content ?? "") || $0.content == live }
+                .compactMap(\.serverIndex).sorted()
+            if let first = indices.first, let last = indices.last {
+                #expect(indices.count == Int(last - first) + 1, "server indices \(first)...\(last) have gaps")
+            }
+
+            await relaunched.close()
+            await bob.close()
+        }
     }
 }

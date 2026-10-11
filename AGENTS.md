@@ -58,7 +58,9 @@ is a short plan. Update the status and the journal when you finish something.
       `HistoryCursor` names, the stall watchdog, recovering the account's
       own photo
     - `HistoryCursor.swift` — the history machine without the network: the
-      run in flight, the queue, a restore's plan, paging and stalls (tested)
+      run in flight, the queue, a restore's plan, paging and stalls, and
+      the index fetched through with no gap (`through`, kept as
+      `Setting.historyIndex`) every catch-up starts after (tested)
   - `Account.swift` — load, signup, create and restore: the one place that
     decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB for one profile: init, the profile lock,
@@ -174,7 +176,8 @@ is a short plan. Update the status and the journal when you finish something.
     pings and takes or refuses each write
   - `StateCodec.swift` — the MessagePack shape the core uses for its state,
     and the amounts beside the onions of a history page
-    (`paymentAmounts`, what really arrived)
+    (`paymentAmounts`, what really arrived) and their indices
+    (`messageIndices`, unreadable ones too)
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
     claims, unchecked) and `.hex` for bytes

@@ -198,9 +198,9 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    the same chunk id and merges into its row. Nothing to build. Caveats:
    every fragment carries the send's full amount, so in a tribe a long
    message pays the price once per fragment (as the official apps do) and a
-   payment must never be split (phase 4 refuses such notes); a history page
-   made only of fragments of an unfinished message would end catch-up early
-   (needs 100 fragments in a row, not seen).
+   payment must never be split (phase 4 refuses such notes). A history page
+   made only of fragments of an unfinished message no longer ends catch-up
+   early: the cursor moves by the indices the server sent (item 13).
 7. **Read markers and mutes.** Done 2026-10-07 (branch
    `phase2/status-and-composer`). The engine asks for `getReads` and
    `getMutes` each time it comes online; the replies land in a new
@@ -663,6 +663,30 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    - On thaw a frozen tap (like a real link that comes back) may still
      deliver the copy written into it, so that journey checks delivery,
      not a single copy: the accepted Retry duplicate of item 8.
+
+13. **History gaps** (bug hunt N4, 2026-10-11, branch `fix/history-gaps`).
+   A catch-up asked for everything above the newest stored message, and
+   the cursor lived only in memory. A live message stored during a
+   catch-up raised that index, so a quit, a 30 s stall or a page the core
+   could not read left the messages below it unfetched for good. Pages
+   carry no request ID either, so the same page twice (a reconnect asks for
+   the page in flight again) ended the run, and a restore with it.
+   - The index fetched through with no gap is kept in the `setting` table
+     (`Setting.historyIndex`, `HistoryCursor.through`), written in the
+     same transaction as the page that moves it. Only a messages run that
+     started just after it moves it (a restore's contacts pages skip
+     messages); a live message never does. Every catch-up starts after it.
+     A profile from before starts from its newest stored message, as then,
+     and keeps that as its index.
+   - The cursor moves by the indices in the page's own payload
+     (`StateCodec.messageIndices`), the ones the core could not read
+     included, so a page it refuses moves the run on rather than ending it.
+   - A page behind the cursor (a duplicate or a stale reply) is ignored and
+     the watchdog keeps waiting for the page asked for. An empty page still
+     ends the run.
+   - Cost: a catch-up now fetches again what came live since the last one
+     (upserted by uuid; notifications dedupe by uuid, and the first sync
+     after launch notifies nothing).
 
 ## Done criteria
 

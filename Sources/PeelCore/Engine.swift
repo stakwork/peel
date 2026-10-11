@@ -191,6 +191,7 @@ public actor Engine {
         try storage.failInterruptedUploads()
         let stored = try storage.highestMessageID() ?? 0
         money.judgedThrough = stored
+        history.through = try storage.value(for: .historyIndex).flatMap { UInt64($0) }
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
     }
 
@@ -510,16 +511,18 @@ public actor Engine {
     /// Runs one core call against the current state. The returned state is
     /// committed before this function first suspends, so no other call can ever
     /// run against stale state. For what the server sent (`receive`), a
-    /// payment counts for no more than `arrived` says came (`cappedToArrived`).
+    /// payment counts for no more than `arrived` says came (`cappedToArrived`),
+    /// and a page of history moves the cursor by `pageIndices`, every index
+    /// the server sent (`StateCodec.messageIndices`).
     @discardableResult
     func run(
-        expectedSender: String? = nil, arrived: [String: UInt64]? = nil,
+        expectedSender: String? = nil, arrived: [String: UInt64]? = nil, pageIndices: [UInt64]? = nil,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         var result = try call(time, StateCodec.encode(state))
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
-        let followUps = try commit(result, time: time, expectedSender: expectedSender)
+        let followUps = try commit(result, time: time, expectedSender: expectedSender, pageIndices: pageIndices)
         try await complete(result, followUps)
         return result
     }
@@ -536,6 +539,8 @@ public actor Engine {
         /// `balanceCallsForReconcile`), or someone's payment came: the server's
         /// history may now settle an invoice made here or confirm the sats.
         var reconcile = false
+        /// What follows a page of history, the cursor already moved (`HistoryCursor.advance`).
+        var historyPage: (progress: HistoryCursor.Progress?, step: HistoryCursor.Step)?
     }
 
     /// What received payments brought, as Peel takes it: never more than the
@@ -597,7 +602,7 @@ public actor Engine {
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
-        invites: [InviteRecord] = []
+        invites: [InviteRecord] = [], pageIndices: [UInt64]? = nil
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -764,10 +769,22 @@ public actor Engine {
             }
         }
 
+        // A page of history moves the cursor, and the index fetched through
+        // is written with the page (only history pages carry a total).
+        var cursor = history
+        if result.msgsTotal != nil {
+            let indices = pageIndices ?? result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
+            followUps.historyPage = cursor.advance(indices: indices, total: result.msgsTotal)
+            if let through = cursor.through, through != history.through {
+                commit.settings[.historyIndex] = String(through)
+            }
+        }
+
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let applied = try storage.apply(commit)
         removeFiles(of: applied.purged)
         state = newState
+        history = cursor
         if let records {
             unrecordedPayments = []
             // Merged: a record once heard stays heard.
@@ -1067,9 +1084,8 @@ public actor Engine {
         if let counts = followUps.restorePlan {
             try await startRestore(counts)
         }
-        // Only batch responses carry a total.
-        if result.msgsTotal != nil {
-            try await advanceHistory(with: result)
+        if let page = followUps.historyPage {
+            try await advanceHistory(page)
         }
     }
 
@@ -1137,7 +1153,7 @@ public actor Engine {
         return (message, trustSender, fields)
     }
 
-    private func receive(_ inbound: Inbound) async {
+    func receive(_ inbound: Inbound) async {
         let parts = inbound.topic.split(separator: "/", omittingEmptySubsequences: false)
         let kind = parts.count > 5 ? String(parts[5]) : inbound.topic
 
@@ -1156,7 +1172,8 @@ public actor Engine {
         }
         do {
             let arrived = Self.arrivedMsat(kind: kind, topic: parts, payload: inbound.payload)
-            try await run(expectedSender: expectedSender, arrived: arrived) { time, state in
+            let pageIndices = kind == "batch" ? StateCodec.messageIndices(inBatch: inbound.payload) : nil
+            try await run(expectedSender: expectedSender, arrived: arrived, pageIndices: pageIndices) { time, state in
                 try Sphinxrs.handle(
                     topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
                     state: state, myAlias: alias, myImg: photoURL

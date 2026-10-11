@@ -29,6 +29,10 @@ struct HistoryCursor: Equatable {
 
     private(set) var active: Run?
     private(set) var queued: [Run] = []
+    /// The highest server index history has been fetched through with no
+    /// gap (`Setting.historyIndex`): a catch-up starts after it. Only a
+    /// messages run that started there moves it, never a live message.
+    var through: UInt64?
     /// `getMsgsCounts` was asked for a restore and not yet answered.
     var awaitingCounts = false
 
@@ -61,15 +65,21 @@ struct HistoryCursor: Equatable {
         return first
     }
 
-    /// Takes a page: the server indices of its messages, and the total
-    /// only history pages carry. Each page moves the run past its highest
-    /// index; a page that moves it nowhere ends the run, so an unreadable
-    /// message cannot cause an endless loop. Nil with no run in flight.
+    /// Takes a page: the server indices of its messages (every one the
+    /// server sent, read or not), and the total only history pages carry.
+    /// Each page moves the run past its highest index; an empty page ends
+    /// it. A page behind the cursor is a duplicate or a stale reply (pages
+    /// carry no request ID) and is ignored. Nil with no run in flight, or
+    /// for a page ignored.
     mutating func advance(indices: [UInt64], total: UInt64?) -> (progress: Progress?, step: Step)? {
         guard var run = active else { return nil }
         run.end = run.end ?? total
-        guard let reached = indices.max(), reached >= run.next, reached < UInt64(Int64.max) else {
+        guard let reached = indices.max(), reached < UInt64(Int64.max) else {
             return (nil, finish())
+        }
+        guard reached >= run.next else { return nil }
+        if run.phase == .messages, run.next <= through.map({ $0 + 1 }) ?? 0 {
+            through = max(through ?? reached, reached)
         }
         run.next = reached + 1
         let progress = Progress(phase: run.phase, reached: reached, end: run.end)

@@ -5,11 +5,22 @@ extension Engine {
     /// True while a restore or catch-up is still asking the server for history.
     public var isSyncingHistory: Bool { history.isSyncing }
 
-    /// Asks the server for messages newer than the newest one stored locally.
+    /// Asks the server for every message after the last one history was
+    /// fetched through with no gap (`HistoryCursor.through`), whatever came
+    /// live since: a catch-up cut short, by a quit, a stall or a page the
+    /// core could not read, leaves nothing behind.
     public func syncMessages() async throws {
-        // Messages dropped from left tribes are not stored but still count.
-        let highest = max(try storage.highestServerIndex() ?? -1, droppedIndex)
-        let next = highest < 0 ? 0 : UInt64(highest) + 1
+        if history.through == nil {
+            // A profile from before the index was kept starts from the
+            // newest message stored, as it did then (messages dropped from
+            // left tribes are not stored but still count).
+            let highest = max(try storage.highestServerIndex() ?? -1, droppedIndex)
+            if highest >= 0 {
+                try storage.set(String(highest), for: .historyIndex)
+                history.through = UInt64(highest)
+            }
+        }
+        let next = history.through.map { $0 + 1 } ?? 0
         if let run = history.start([HistoryCursor.Run(phase: .messages, next: next, end: nil)]) {
             try await request(run)
         }
@@ -56,11 +67,11 @@ extension Engine {
         }
     }
 
-    /// History comes a page at a time; the cursor says what follows each
-    /// (`HistoryCursor.advance`).
-    func advanceHistory(with result: RunReturn) async throws {
-        let indices = result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
-        guard let page = history.advance(indices: indices, total: result.msgsTotal) else { return }
+    /// History comes a page at a time; the cursor, moved when the page was
+    /// committed (`HistoryCursor.advance`), says what follows each. A page
+    /// it ignored never gets here, and leaves the watchdog waiting for the
+    /// one asked for.
+    func advanceHistory(_ page: (progress: HistoryCursor.Progress?, step: HistoryCursor.Step)) async throws {
         if let progress = page.progress {
             emit.yield(.history(phase: progress.phase, reached: progress.reached, end: progress.end))
         }

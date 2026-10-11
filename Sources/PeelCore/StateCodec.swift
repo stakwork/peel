@@ -63,19 +63,48 @@ enum StateCodec {
     /// amount the sender wrote in the onion instead. Messages without a
     /// payment are left out; nil when the page cannot be read.
     static func paymentAmounts(inBatch data: Data) -> [String: UInt64]? {
-        // ping/onion.rs: a 1366-byte onion, then id, ts, key index and amount (8 bytes each), then the hash.
-        let onion = 1366, paymentLength = 1430
+        guard let items = onions(inBatch: data) else { return nil }
+        var amounts: [String: UInt64] = [:]
+        for bytes in items where bytes.count == paymentLength {
+            amounts[String(number(in: bytes, at: paymentOnion))] = number(in: bytes, at: paymentOnion + 24)
+        }
+        return amounts
+    }
+
+    /// The server index of every message on a page of history, those the
+    /// core cannot read included (it leaves them out of its reply); nil
+    /// when the page cannot be read as the core reads it.
+    static func messageIndices(inBatch data: Data) -> [UInt64]? {
+        guard let items = onions(inBatch: data) else { return nil }
+        var indices: [UInt64] = []
+        for bytes in items {
+            switch bytes.count {
+            case paymentLength: indices.append(number(in: bytes, at: paymentOnion))
+            case messageLength: indices.append(number(in: bytes, at: messageLength - 24))
+            default: return nil
+            }
+        }
+        return indices
+    }
+
+    // ping/onion.rs: a message is a 1401-byte onion, then id, ts and key
+    // index (8 bytes each); a payment a 1366-byte onion, then id, ts, key
+    // index and amount, then the hash.
+    private static let messageLength = 1425, paymentOnion = 1366, paymentLength = 1430
+
+    private static func onions(inBatch data: Data) -> [[UInt8]]? {
         var reader = Reader(data: data)
         guard let count = try? reader.length(of: .array, "array") else { return nil }
-        var amounts: [String: UInt64] = [:]
+        var items: [[UInt8]] = []
         for _ in 0..<count {
             guard let length = try? reader.length(of: .bin, "onion"), let item = try? reader.take(length) else { return nil }
-            guard length == paymentLength else { continue }
-            let bytes = [UInt8](item)
-            let number = { (at: Int) in bytes[at..<at + 8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) } }
-            amounts[String(number(onion))] = number(onion + 24)
+            items.append([UInt8](item))
         }
-        return reader.isAtEnd ? amounts : nil
+        return reader.isAtEnd ? items : nil
+    }
+
+    private static func number(in bytes: [UInt8], at offset: Int) -> UInt64 {
+        bytes[offset..<offset + 8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
     }
 
     private static func write(_ length: Int, as family: Family, to out: inout Data) {

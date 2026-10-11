@@ -174,6 +174,7 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Invite: make (exactly its amount), redeem by signup, seen used | `Invites.makeAndRedeem` | pass |
 | Invite: cancel refunds exactly; a signup with it afterwards gets nothing | `Invites.cancelRefunds` | pass |
 | Restore history on a second device: contact, DMs both ways, payment, tribe and post, balance | `History` | pass; once, a key exchange timed out (finding 3) |
+| 400 messages while the tap is down; the catch-up cut short by a quit after a live message landed above them; the next launch fetches the rest, no server index missing (bug hunt N4) | `History.aCatchUpCutShortByAQuitLeavesNoGap` | pass (2026-10-11); before the fix 101 never came |
 
 Findings:
 

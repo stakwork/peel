@@ -21,8 +21,13 @@ public enum Setting: String, Sendable {
     /// The memes server attachments go to, as `host[:port]`; `memes.sphinx.chat` when unset.
     case memesHost
     /// The highest server index of a message dropped unstored (from a left
-    /// tribe), so catching up does not fetch it again.
+    /// tribe): where a profile with no `historyIndex` yet starts catching up,
+    /// with the newest stored message.
     case droppedIndex
+    /// The highest server index history has been fetched through with no
+    /// gap (`HistoryCursor.through`); a catch-up starts after it. Written
+    /// with the page that moves it; a live message never does.
+    case historyIndex
     /// The aliases stored tribe messages were last checked for mentions of
     /// this account (`MentionScan`); a change checks them again.
     case mentionScan

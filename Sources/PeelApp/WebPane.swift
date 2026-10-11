@@ -587,8 +587,14 @@ struct WebPaneView: View {
                     WebViewHost(webView: webView)
                 }
                 if let problem = pane.problem {
-                    LoadProblem(host: problem.url?.host, problem: problem.message,
-                                retry: problem.url == nil ? nil : { pane.retry() })
+                    EmptyState(problem.message, title: "Could not open \(problem.url?.host ?? "that address")") {
+                        // An address Peel would not open has nothing to try again.
+                        if problem.url != nil {
+                            Button("Try again") { pane.retry() }
+                                .buttonStyle(.peel(.outline, size: .sm))
+                        }
+                    }
+                    .background(Theme.background)
                 }
             }
             if let download = pane.download {
@@ -805,31 +811,6 @@ private struct MoreMenu: View {
                 }
             }]
         )
-    }
-}
-
-private struct LoadProblem: View {
-    let host: String?
-    let problem: String
-    let retry: (() -> Void)?
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("Could not open \(host ?? "that address")")
-                .font(Theme.font(15, .semibold))
-            Text(problem)
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
-            if let retry {
-                Button("Try again", action: retry)
-                    .buttonStyle(.peel(.outline, size: .sm))
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
     }
 }
 

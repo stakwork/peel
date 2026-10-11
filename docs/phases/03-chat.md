@@ -619,7 +619,7 @@ aliases unique within a tribe).
 `/simplify` (reuse, simplification, efficiency, altitude), applied: one
 `InlineConfirm` for the five confirm-in-place controls (leave, delete,
 remove member, remove from Peel); `TribeServerProgress`, `panelBoxed()`,
-one `SectionLabel`; `MentionsView` reuses `EmptyPlace` and observes only
+one `SectionLabel`; `MentionsView` reuses `EmptyPlace` (since design batch 13, `EmptyState`) and observes only
 while open; `Tribe.canManage`; `String.isPubkey` shared with `TribeLink` and
 the CLI; `changeOwnedTribe` for update and delete, and `poll` takes an async
 check; one `seenInTribe` query behind the members list and mention

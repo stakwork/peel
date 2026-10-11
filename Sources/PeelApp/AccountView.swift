@@ -618,10 +618,7 @@ private struct ZonePicker: View {
                         ZoneRow(title: zone.label, detail: zone.offset, checked: zone.id == chosen) { choose(zone.id) }
                     }
                     if matches.isEmpty {
-                        Text("No time zone matches.")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                            .padding(8)
+                        EmptyState("No time zone matches.", size: .sm)
                     }
                 }
             }

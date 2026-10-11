@@ -115,14 +115,19 @@ private struct BoostChip: View {
         .onHover { hovering = $0 }
         .help(help)
         .peelPopover(isPresented: $showing) {
-            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe)
+            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe) { showing = false }
         }
     }
 
     private var help: String {
-        let count = boosts.count == 1 ? "1 boost" : "\(boosts.count) boosts"
-        return "\(Sats.format(msat: boosts.totalMsat)) from \(count)"
-            + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
+        boosts.summaryLine + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
+    }
+}
+
+private extension BoostSummary {
+    /// "1,210 sats from 3 boosts".
+    var summaryLine: String {
+        "\(Sats.format(msat: totalMsat)) from \(count == 1 ? "1 boost" : "\(count) boosts")"
     }
 }
 
@@ -132,17 +137,14 @@ private struct BoostersPanel: View {
     let boosts: BoostSummary
     let chat: String
     let inTribe: Bool
+    let done: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Boosts")
-                    .font(Theme.font(14, .bold))
-                Spacer()
-                Text(Sats.format(msat: boosts.totalMsat))
-                    .font(Theme.font(13, .semibold))
-                    .monospacedDigit()
-            }
+        Panel("Boosts", compact: true, close: done) {
+            Text(boosts.summaryLine)
+                .font(Theme.font(12))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
@@ -171,8 +173,6 @@ private struct BoostersPanel: View {
             .frame(maxHeight: 240)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .frame(width: 260)
     }
 }
 

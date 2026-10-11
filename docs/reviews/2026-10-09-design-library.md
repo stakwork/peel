@@ -599,8 +599,8 @@ listed above.
 ## 5. Bugs, not style
 
 1. **Copy link is the system button** in the members panel
-   (`ConversationView.swift:350`): no style is set. Batch 4b. (Not
-   rendered.)
+   (`ConversationView.swift:350`): no style is set. Batch 4b. Fixed in
+   4b (rendered before and after).
 2. **"Per message: Free" for a 3-sat message, and "Price to join: Free"
    for 1 sat** (`TribeDetails.swift:115-116`). Batch 6.
 3. **Lowercase fragments as sentences.** `PeelError.readable` returns
@@ -806,6 +806,69 @@ library outside forms.
     runs in both builds (the composer held the keyboard; the cause was
     not looked into). The title click's path (`panel = .details`)
     opened it each time. Worth a look with batch 9 (keys).
+- **Batch 4b, the five panels onto `Panel` (2026-10-11).** The members
+  panel, a contact's Details, Boosts, Connection and the Account's Time
+  zone picker are `Panel`s, so every popover is one box. `Panel` gained
+  the `actions` slot (top right, before the close button) and inits with
+  no actions, or none and no footer; a footer whose condition is false
+  takes no room. `PanelHero` (picture, name, muted lines) is the top of
+  both details panels. `DrawsOwnPanelBox` and the presenter's `PanelBox`
+  are gone. `TribeHeader`'s `private enum Panel` is `HeaderPanel`.
+  - The bug: the members panel's Copy link (not Tribe details' footer, as
+    the brief said: that footer never had one) was the system button,
+    confirmed in the before render. It is now an icon `CopyButton` top
+    right. Tribe details keeps Copy link and Copy QR image in its share
+    card, beside the QR code, rather than a second Copy link top right;
+    a contact's Copy key and Copy QR stay in their key card likewise.
+  - The placement rule, applied: Tribe details' Edit tribe… moves left,
+    beside Members; Leave tribe stays right. Remove contact… leaves the
+    body for the footer's right, an outline button (red only once
+    confirming, as Leave tribe), its explanation above Cancel and Remove.
+    Reconnect now is the Connection footer's outline button. Edit tribe's
+    Delete stays the last card of its body, since Save holds the footer.
+  - Every visual difference, before (`origin/main`) to after: all five
+    gain the panel box (radius 12 not 8, `sidebar` fill not `menu`,
+    `formEdge` hairline, `popoverShadow`), a 15 pt bold title and a ✕.
+    Widths: members 300 to 320, Boosts 260 to 320, Connection 260 to 320,
+    Details 300 to 372, Time zone 320 (unchanged). Members: Copy link from
+    the system button bottom left to an icon top right; no divider over
+    the footer; the owner's panel has no footer (it had a divider and Copy
+    link); a problem shows in the footer's left. Details: titled
+    "Details"; the hero is left-aligned with a 56 pt picture (was centred,
+    64), the name may wrap to two lines; the switch is `FormSwitchRow`
+    (Peel's switch in a card, its note inside the card at 11 pt, was the
+    system switch with a 12 pt note under it). Boosts: title 15 bold (was
+    14), the total moves from top right (13 semibold) to a muted line
+    under the title, "63 sats from 3 boosts". Connection: titled
+    "Connection"; the state is 13 regular (was 14 medium) and 4 pt
+    further from the error line; Reconnect now is an outline `.md` button
+    at the footer's right (was a `.link` under the error). Time zone:
+    titled, the field 10 pt below the title and 12 pt above the list (8
+    before), the field inset 18 (was 8); the rows keep their old place
+    against the field. A title's minimum gap to the buttons beside it is
+    16 pt (about 24 before), which a long title in Edit #… may use. Main windows: unchanged (the renders differ only in a
+    time-stamped error notice).
+  - Renders: new development profiles b4b-alice and b4b-bob on the
+    loopback stack, funded by the Bank (a temporary test, not committed),
+    a DM, a tribe each owns and has joined, and Bob's boosts on Alice's
+    post (forwarded boosts failed on the stack with a CLTV error, so the
+    Boosts panel is drawn from Bob's side, his own). Before and after,
+    offscreen, the same drive file: Connection, Details, Boosts, Members
+    as owner and member, Tribe details as owner and member, Time zone.
+    Tribe details as a member matches pixel for pixel; as owner only the
+    footer differs. Remove contact's confirm drawn once after. A
+    temporary driver step and hooks (not committed) opened the panels.
+  - Idle: Connection open for a minute, 0.0 to 0.2% CPU.
+  - Not rendered: Connection offline (countdown and Reconnect now), the
+    members panel's problem line, Leave's confirm, Light mode. Hover and
+    clicks were not driven (the offscreen app is never active).
+  - Independent review, not applied: a click on the zone picker's list
+    outside a row (the divider, the heading, "No time zone matches.") now
+    ends editing in its search field, through `Panel`'s
+    `endsEditingOnClick` (a row click is unaffected); a tribe header
+    with no stored tribe can open an empty, now boxless, popover; the
+    members footer can crowd when a problem shows while Leave asks; Remove
+    contact leaves the panel to close with its chat, as before.
 - **Batch 5, the composer (2026-10-10).** Attach, the bolt (a direct
   message's Send or request sats) and send are inside the one rounded
   field, on a row under the text: attach and the bolt at the left, send at

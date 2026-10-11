@@ -120,11 +120,11 @@ final class MenuPresenter {
         #endif
     }
 
-    /// Shows a panel (a form or a card) below `anchor`, in place of any other
-    /// panel. `closed` runs when it goes away by a click elsewhere or Escape.
-    /// It moves with its trigger and, unlike a menu or a card, stays at the
-    /// list's edge while the trigger is out of sight; it goes only with the
-    /// trigger's row (`PopoverModifier`).
+    /// Shows a panel (a `Panel`, which draws its own box) below `anchor`, in
+    /// place of any other panel. `closed` runs when it goes away by a click
+    /// elsewhere or Escape. It moves with its trigger and, unlike a menu or a
+    /// card, stays at the list's edge while the trigger is out of sight; it
+    /// goes only with the trigger's row (`PopoverModifier`).
     func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, closed: @escaping @MainActor () -> Void) {
         #if os(macOS)
         // A trigger inside the open panel (none today) would name it; the host otherwise.
@@ -133,7 +133,7 @@ final class MenuPresenter {
         if panelID != id { closePanel() }
         panelID = id
         panelClosed = closed
-        panelWindow.present(environment(AnyView(PanelBox(content: content))), anchor: anchor.screenRect, from: host,
+        panelWindow.present(environment(content), anchor: anchor.screenRect, from: host,
                             following: anchor)
         startMonitoring()
         #endif
@@ -495,24 +495,5 @@ private struct MenuBackRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Back to the menu")
         .accessibilityAddTraits(.isButton)
-    }
-}
-
-/// A panel in the menu box, unless it is a `Panel`, which draws its own
-/// (`DrawsOwnPanelBox`).
-/// The box goes behind the content, so finding out never rebuilds the panel.
-private struct PanelBox: View {
-    private static let radius: CGFloat = 8
-    let content: AnyView
-    @State private var ownBox = false
-
-    var body: some View {
-        content
-            .onPreferenceChange(DrawsOwnPanelBox.self) { ownBox = $0 }
-            .background { if !ownBox { Color.clear.menuBoxed(cornerRadius: Self.radius) } }
-            // The border again over the content, where `content.menuBoxed()` drew it.
-            .overlay {
-                if !ownBox { RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Theme.divider) }
-            }
     }
 }

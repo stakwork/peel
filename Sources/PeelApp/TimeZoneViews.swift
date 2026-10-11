@@ -163,7 +163,7 @@ struct DirectHeader: View {
                             [details, ConversationMenu.notifications(for: conversation, model: model)]
                         )
                     } details: {
-                        ChatInfoPanel(conversation: conversation)
+                        ChatInfoPanel(conversation: conversation) { showingInfo = false }
                     }
                 }
             }
@@ -185,6 +185,7 @@ struct DirectHeader: View {
 struct ChatInfoPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
+    let done: () -> Void
 
     /// Their local time.
     @State private var local: LocalTime?
@@ -193,40 +194,31 @@ struct ChatInfoPanel: View {
     @State private var removeProblem: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(spacing: 6) {
-                ConversationIcon(conversation: conversation, size: 64)
-                Text(conversation.name)
-                    .font(Theme.font(16, .bold))
-                    .lineLimit(1)
+        Panel("Details", close: done) {
+            PanelHero(name: conversation.name) {
+                ConversationIcon(conversation: conversation, size: 56)
+            } lines: {
                 if let since {
                     Text("Contact since \(since.formatted(.dateTime.day().month(.wide).year()))")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
                 }
                 TimelineView(.everyMinute) { context in
                     if let line = model.localTimeLine(local, at: context.date) {
-                        Text(line)
-                            .font(Theme.font(12))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
+                        Text(line).monospacedDigit()
                     }
                 }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
             ContactKeyCard(pubkey: conversation.chat)
+                .padding(.top, 14)
             ChatTimeZoneSection(conversation: conversation, tribe: nil)
-            VStack(alignment: .leading, spacing: 8) {
-                FormDestructiveSection(
-                    trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove"
+                .padding(.top, 18)
+        } footer: {
+            FormFooter(problem: removeProblem) {
+                InlineConfirm(
+                    trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove", alignment: .trailing
                 ) { await remove() }
-                if let removeProblem {
-                    ProblemText(removeProblem)
-                }
             }
         }
-        .padding(16)
-        .frame(width: 300)
         .task(id: conversation.chat) { await load() }
     }
 
@@ -278,15 +270,10 @@ struct ChatTimeZoneSection: View {
                     .font(Theme.font(13))
                 note("You still see the local time of members who share theirs.")
             } else if let sharing {
-                Toggle(isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })) {
-                    Text("Share my time zone with \(target)")
-                        .font(Theme.font(13))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .tint(Theme.accent)
-                note(sharingNote(sharing))
+                FormSwitchRow(
+                    label: "Share my time zone with \(target)", detail: sharingNote(sharing),
+                    isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })
+                )
                 if let chatZone {
                     note("Uses \(chatZone), set on another device.")
                 }

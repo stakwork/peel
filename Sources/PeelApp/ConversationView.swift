@@ -192,9 +192,10 @@ struct TribeHeader: View {
     let conversation: Conversation
     let tribe: Tribe?
 
-    @State private var panel: Panel?
+    @State private var panel: HeaderPanel?
 
-    private enum Panel: Equatable { case members, details, edit }
+    /// Which of the tribe's panels is open below More.
+    private enum HeaderPanel: Equatable { case members, details, edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -253,7 +254,7 @@ struct TribeHeader: View {
         )
     }
 
-    private func shows(_ which: Panel) -> Binding<Bool> {
+    private func shows(_ which: HeaderPanel) -> Binding<Bool> {
         Binding { panel == which } set: { shown in
             if shown { panel = which } else if panel == which { panel = nil }
         }
@@ -294,37 +295,33 @@ struct TribeMembersPanel: View {
     @State private var members: TribeMembers?
     @State private var problem: String?
 
+    /// The owner cannot leave, only delete the tribe (under Edit tribe).
+    private var canLeave: Bool { tribe?.isOwner != true }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(members?.complete == false ? "Seen in #\(conversation.name)" : "Members")
-                    .font(Theme.font(15, .bold))
-                if members?.complete == false {
-                    Text("Only the tribe's owner gets the full member list.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+        Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
+            if members?.complete == false {
+                Text("Only the tribe's owner gets the full member list.")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             memberList
-            Theme.divider.frame(height: 1)
-            HStack(spacing: 8) {
-                if let link = tribe?.link {
-                    CopyButton("Copy link", text: link, systemImage: "link")
-                }
-                Spacer()
-                // The owner cannot leave, only delete the tribe (under Edit tribe).
-                if tribe?.isOwner != true {
-                    InlineConfirm(trigger: "Leave tribe", prompt: "Leave #\(conversation.name)?", confirm: "Leave") {
-                        await leave()
+        } actions: {
+            if let link = tribe?.link {
+                CopyButton("Copy link", text: link, systemImage: "link", iconOnly: true)
+            }
+        } footer: {
+            if canLeave || problem != nil {
+                FormFooter(problem: problem) {
+                    if canLeave {
+                        InlineConfirm(trigger: "Leave tribe", prompt: "Leave #\(conversation.name)?", confirm: "Leave") {
+                            await leave()
+                        }
                     }
                 }
             }
-            if let problem {
-                ProblemText(problem)
-            }
         }
-        .padding(16)
-        .frame(width: 300)
         .task(id: conversation.chat) { await load() }
     }
 

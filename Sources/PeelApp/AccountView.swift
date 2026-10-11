@@ -515,7 +515,7 @@ private struct TimeZoneSection: View {
                     .onHover { hovering = $0 }
                     .fixedSize()
                     .peelPopover(isPresented: $picking) {
-                        ZonePicker(chosen: chosen) { identifier in
+                        ZonePicker(chosen: chosen, close: { picking = false }) { identifier in
                             picking = false
                             Task { await choose(identifier) }
                         }
@@ -572,6 +572,7 @@ private struct TimeZoneSection: View {
 /// or an offset.
 private struct ZonePicker: View {
     let chosen: String?
+    let close: () -> Void
     let choose: (String?) -> Void
 
     struct Zone: Identifiable {
@@ -596,13 +597,12 @@ private struct ZonePicker: View {
     var body: some View {
         let query = query.trimmed.lowercased()
         let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
-        VStack(alignment: .leading, spacing: 4) {
+        Panel("Time zone", compact: true, close: close) {
             FormTextField(
                 label: "Search time zones", prompt: "Search cities or GMT+…", text: $query,
                 systemImage: "magnifyingglass", focusOnAppear: true
             )
             .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
-            .padding(.bottom, 4)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if query.isEmpty {
@@ -625,9 +625,9 @@ private struct ZonePicker: View {
                 }
             }
             .frame(height: 300)
+            // The rows' own inset lines their text up with the field's.
+            .padding(.horizontal, -8)
         }
-        .padding(8)
-        .frame(width: 320)
         .onAppear {
             zones = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
                 TimeZone(identifier: id).map { zone in

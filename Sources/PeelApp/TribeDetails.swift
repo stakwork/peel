@@ -71,16 +71,10 @@ struct TribeDetailsPanel: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+            PanelHero(name: tribe.displayName) {
                 TribeIcon(name: tribe.displayName, url: tribe.photoURL, pubkey: tribe.pubkey, size: 56)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(tribe.displayName)
-                        .font(Theme.font(16, .bold))
-                        .lineLimit(2)
-                    Text(subtitle)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+            } lines: {
+                Text(subtitle)
             }
             if let summary = (info?.summary ?? tribe.summary)?.trimmed.nilIfEmpty {
                 Text(summary)
@@ -196,15 +190,17 @@ struct TribeDetailsPanel: View {
         .padding(.top, 14)
     }
 
+    /// Where to go on the left; Leave, the one destructive action, on the right.
     private var footer: some View {
         HStack(spacing: 8) {
             Button("Members", action: members)
                 .buttonStyle(.peel(.outline))
-            Spacer()
             if tribe.canManage {
                 Button("Edit tribe…", action: edit)
                     .buttonStyle(.peel(.outline))
-            } else if tribe.canPost {
+            }
+            Spacer()
+            if !tribe.canManage, tribe.canPost {
                 InlineConfirm(trigger: "Leave tribe", confirm: "Leave") {
                     do {
                         try await model.leaveTribe(tribe.pubkey)

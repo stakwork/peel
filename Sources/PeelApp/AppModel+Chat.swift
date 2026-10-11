@@ -174,7 +174,7 @@ extension AppModel {
         do {
             try await leaveTribe(pubkey)
         } catch {
-            conversationNotices[pubkey] = "Could not leave: \(PeelError.readable(error))"
+            conversationNotices[pubkey] = PeelError.problem(error, couldNot: "leave the tribe")
         }
     }
 
@@ -235,7 +235,7 @@ extension AppModel {
                 sent(in: chat)
                 return true
             } catch {
-                conversationNotices[chat] = "Could not send: \(PeelError.readable(error))"
+                conversationNotices[chat] = PeelError.problem(error, couldNot: "send")
                 replyTargets[composer] = reply
                 return false
             }
@@ -259,11 +259,11 @@ extension AppModel {
                 }
                 sent(in: chat)
             case .failure(let error):
-                refused.append((file, "\(file.lastPathComponent): \(PeelError.readable(error))"))
+                refused.append((file, PeelError.problem(error, couldNot: "send \(file.lastPathComponent)")))
             }
         }
         if !refused.isEmpty {
-            conversationNotices[chat] = "Could not send " + refused.map(\.reason).joined(separator: "; ")
+            conversationNotices[chat] = refused.map(\.reason).joined(separator: " ")
             // What did not go waits in the composer again, with the reply it was for.
             pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
             // With their price: a refused paid file must never go again free.
@@ -303,7 +303,7 @@ extension AppModel {
             }
             addFiles(files, to: composer)
             if !refused.isEmpty {
-                conversationNotices[composer.chat] = "Could not attach: " + refused.joined(separator: "; ")
+                conversationNotices[composer.chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
             }
         }
     }
@@ -367,7 +367,7 @@ extension AppModel {
             } catch Engine.Failure.largeAttachment(let size) {
                 handle.state = .held(size)
             } catch {
-                handle.state = .failed(PeelError.readable(error))
+                handle.state = .failed(PeelError.problem(error, couldNot: "download"))
             }
             handle.progress = nil
             handle.download = nil
@@ -385,7 +385,7 @@ extension AppModel {
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
-            conversationNotices[message.chat] = "Could not save: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save the file")
         }
     }
 
@@ -398,7 +398,7 @@ extension AppModel {
         do {
             attachment(id).savedTo = try await UserFiles.saveToDownloads(file, named: fileName(of: message) ?? file.lastPathComponent)
         } catch {
-            conversationNotices[message.chat] = "Could not save to Downloads: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save to Downloads")
         }
     }
 
@@ -425,7 +425,7 @@ extension AppModel {
         do {
             try await web.openDocument(file, named: fileName(of: message) ?? "Page")
         } catch {
-            conversationNotices[message.chat] = "Could not open: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "open the page")
         }
     }
 

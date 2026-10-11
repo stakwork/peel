@@ -507,6 +507,17 @@ Built so far:
     the two widths: 372 for the forms, Tribe details and a contact's
     Details; 320 for Join a tribe, Members, Boosts, Connection and the
     Account's Time zone.
+- **Problem lines** (batch 7). Every failure the app shows goes through
+  `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
+  as a sentence (a capital, unless the first word is a name such as a
+  file name or host, and a full stop), after "Could not <action>." when
+  the words alone would not say what failed: "Could not leave the
+  tribe. The server could not be reached." A refusal under the button
+  that caused it stands alone: "The balance is not enough for that." It
+  takes words already in hand too (a reason a view was given, the
+  engine's notices), and a sentence passes through unchanged. The colour
+  is `secondaryText` or `attention`, never red. Never show
+  `PeelError.readable` bare, and never write "Could not …: " by hand.
 - **Composer** (batch 5). Its buttons sit inside the field: attach and
   the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
   `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled

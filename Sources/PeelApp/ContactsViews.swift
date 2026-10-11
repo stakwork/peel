@@ -184,7 +184,7 @@ struct AddContactForm: View {
                     codeProblem = nil
                 } catch {
                     code = nil
-                    codeProblem = Formatting.sentence(error)
+                    codeProblem = PeelError.problem(error)
                 }
             }
         scanZone
@@ -229,7 +229,7 @@ struct AddContactForm: View {
     }
 
     private var tribeProblem: String? {
-        if case .tribe = code { Formatting.sentence(Engine.Failure.tribeLinkNotContact) } else { nil }
+        if case .tribe = code { PeelError.problem(Engine.Failure.tribeLinkNotContact) } else { nil }
     }
 
     /// Puts the first code that names someone into the field; else says
@@ -247,7 +247,7 @@ struct AddContactForm: View {
             scannedText = chosen
             text = chosen
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error)
         }
     }
 }
@@ -498,7 +498,7 @@ private struct InviteDetail: View {
                             try await model.forgetInvite(invite.code)
                             done()
                         } catch {
-                            problem = Formatting.sentence(error)
+                            problem = PeelError.problem(error)
                         }
                     }
                 }
@@ -513,7 +513,7 @@ private struct InviteDetail: View {
                         try await model.cancelInvite(invite.code)
                         done()
                     } catch {
-                        problem = Formatting.sentence(error)
+                        problem = PeelError.problem(error)
                     }
                 }
                 .disabled(invite.status == .sending)

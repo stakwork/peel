@@ -189,7 +189,7 @@ private struct NameRow: View {
             try await model.setName(draft)
             editing = false
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: "save your name")
         }
     }
 }
@@ -278,7 +278,7 @@ private struct ChangePINRow: View {
         } catch SecretStoreFailure.wrongPIN {
             reset(to: .old, note: "That was not your current PIN. Enter it again.")
         } catch {
-            reset(to: .new, note: "Could not change the PIN: \(PeelError.readable(error)). Choose the new PIN again.")
+            reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
         }
     }
 }
@@ -302,7 +302,7 @@ private struct PINTimeoutRow: View {
                             try await model.setPINTimeout(hours: hours)
                             problem = nil
                         } catch {
-                            problem = PeelError.readable(error)
+                            problem = PeelError.problem(error, couldNot: "change the setting")
                         }
                     }
                 }
@@ -553,7 +553,7 @@ private struct TimeZoneSection: View {
             chosen = identifier
             problem = nil
         } catch {
-            problem = "Could not change it: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "change the time zone")
         }
     }
 
@@ -737,7 +737,7 @@ private struct NotificationTextRow: View {
                             try await model.setNotificationShowsText(shows)
                             problem = nil
                         } catch {
-                            problem = PeelError.readable(error)
+                            problem = PeelError.problem(error, couldNot: "change the setting")
                         }
                     }
                 }

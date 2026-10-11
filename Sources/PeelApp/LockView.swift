@@ -51,7 +51,7 @@ struct LockView: View {
 extension PIN {
     /// What to show when a PIN was not accepted.
     static func problem(_ error: any Error) -> String {
-        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.readable(error)
+        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
     }
 }
 
@@ -85,6 +85,6 @@ struct ForgetAccountControl: View {
 
     private func forget() async {
         problem = nil
-        do { try await model.forgetAccount() } catch { problem = PeelError.readable(error) }
+        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: "forget the account") }
     }
 }

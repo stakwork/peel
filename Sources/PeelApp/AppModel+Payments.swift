@@ -30,7 +30,7 @@ extension AppModel {
         let asking = boostToConfirm.flatMap { $0.messageID == id && conversationNotices[message.chat] == $0.notice ? $0 : nil }
         let confirmed = asking?.msat
         switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id, confirmedMsat: confirmed) }) {
-        case .refused(let reason): conversationNotices[message.chat] = "Could not boost: \(reason)"
+        case .refused(let reason): conversationNotices[message.chat] = PeelError.problem(reason, couldNot: "boost")
         case .sent:
             boostToConfirm = nil
             sent(in: message.chat)
@@ -60,7 +60,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.readable(error))
+            return .refused(PeelError.problem(error))
         }
     }
 
@@ -120,7 +120,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.readable(error))
+            return .refused(PeelError.problem(error))
         }
     }
 

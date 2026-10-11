@@ -446,13 +446,13 @@ extension WebPane: WKDownloadDelegate {
             do {
                 self.download = .saved(try await UserFiles.saveToDownloads(file, named: name))
             } catch {
-                self.download = .failed(name, reason: PeelError.readable(error))
+                self.download = .failed(name, reason: PeelError.problem(error))
             }
         }
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        take(download) { _, name in self.download = .failed(name, reason: error.localizedDescription) }
+        take(download) { _, name in self.download = .failed(name, reason: PeelError.problem(error.localizedDescription)) }
     }
 
     /// The download's entry, removed; its private copy goes once `body` is
@@ -796,7 +796,7 @@ private struct LoadProblem: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Text("Couldn't open \(host ?? "that address")")
+            Text("Could not open \(host ?? "that address")")
                 .font(Theme.font(15, .semibold))
             Text(problem)
                 .font(Theme.font(13))
@@ -841,7 +841,7 @@ private struct DownloadBar: View {
                     .buttonStyle(.peel(.outline, size: .sm))
             }
         case .failed(let name, let reason):
-            NoticeBar(text: "Could not download \(name): \(reason)", dismiss: dismiss)
+            NoticeBar(text: PeelError.problem(reason, couldNot: "download \(name)"), dismiss: dismiss)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Theme.panel)

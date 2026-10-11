@@ -70,8 +70,33 @@ final class Transport: Sendable {
     /// Messages from the broker, listened for from the moment the transport
     /// exists. The stream ends when the connection closes.
     let inbound: AsyncStream<Inbound>
+    /// Takes the place of the client's write; set only by the tests' `init(publishing:)`.
+    private let testWrite: (@Sendable (String, Data) async throws -> Void)?
 
-    init(server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool) {
+    convenience init(server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool) {
+        self.init(
+            server: server, clientID: clientID, username: username, password: password,
+            allowUntrustedCertificate: allowUntrustedCertificate, testWrite: nil
+        )
+    }
+
+    #if DEBUG
+    /// Tests only: stands in for a connected broker that answers pings,
+    /// with publishes going to `write` in place of it and throwing what it
+    /// throws, mapped as a real write's are, so a test can cut a send short.
+    convenience init(publishing write: @escaping @Sendable (String, Data) async throws -> Void) {
+        self.init(
+            server: ServerAddress("mqtt://127.0.0.1:1")!, clientID: "test", username: "test", password: "test",
+            allowUntrustedCertificate: false, testWrite: write
+        )
+    }
+    #endif
+
+    private init(
+        server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool,
+        testWrite: (@Sendable (String, Data) async throws -> Void)?
+    ) {
+        self.testWrite = testWrite
         let tls: MQTTClient.TLSConfigurationType? = server.tls
             ? .ts(TSTLSConfiguration(certificateVerification: allowUntrustedCertificate ? .none : .fullVerification))
             : nil
@@ -124,6 +149,7 @@ final class Transport: Sendable {
 
     func publish(_ topic: String, _ payload: Data) async throws {
         try await whileConnected {
+            if let testWrite { return try await testWrite(topic, payload) }
             try await client.publish(to: topic, payload: ByteBuffer(data: payload), qos: .atMostOnce)
         }
     }
@@ -134,6 +160,7 @@ final class Transport: Sendable {
     /// says (a network that went, a path that changed), and is the caller's
     /// to close.
     func answersPing(within timeout: Duration) async -> Bool {
+        if testWrite != nil { return true }
         let (answers, answered) = AsyncStream.makeStream(of: Bool.self)
         let (client, lastHeard, asked) = (client, lastHeard, ContinuousClock.now)
         // The client's ping ignores cancellation; it ends at the client's

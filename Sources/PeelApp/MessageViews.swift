@@ -422,14 +422,21 @@ struct MessageList: View {
                 }
                 guard new.atBottom != old.atBottom || new.far != old.far else { return }
                 // Scrolled back to the bottom by hand after "Mark unread":
-                // reading resumes. Not when a new message scrolls it there.
-                if new.atBottom, !old.atBottom, userScrolling { reachedBottom() }
+                // reading resumes. Not when a new message scrolls it there,
+                // nor at the bottom of a jump's window, short of the newest.
+                if new.atBottom, !old.atBottom, userScrolling, reachesNewest { reachedBottom() }
                 // Counted from the first time it leaves the bottom until it is
                 // back there, through resizes that cross the one-screen line.
                 if new.atBottom {
-                    following = true
-                    seenUpTo = nil
-                    if composer.thread == nil, !old.atBottom { model.chatListAtBottom() }
+                    // A window's bottom is not the chat's: what it takes in
+                    // below comes in under you, not followed to its end.
+                    if reachesNewest {
+                        following = true
+                        seenUpTo = nil
+                    }
+                    if composer.thread == nil, !old.atBottom, reachesNewest || userScrolling {
+                        model.chatListAtBottom()
+                    }
                 } else {
                     // Scrolled away by hand: no longer following, and
                     // everything there had been seen.
@@ -452,11 +459,12 @@ struct MessageList: View {
             // while following. Scrolled up, you stay where you are and the
             // jump button counts them.
             .onChange(of: rows.last?.id) { _, _ in
+                guard reachesNewest else { return }
                 if following || rows.last?.shown.last?.fromMe == true { scrollToNewest(proxy) }
             }
             .overlay(alignment: .bottomTrailing) {
                 let count = newSinceScrolledUp
-                if farFromBottom || count > 0 {
+                if farFromBottom || count > 0 || !reachesNewest {
                     JumpToNewestButton(count: count, composer: composer) { jumpToNewest(proxy) }
                         .padding(.trailing, 20)
                         .padding(.bottom, 12)
@@ -468,6 +476,10 @@ struct MessageList: View {
 
     /// The row "New messages" sits above.
     private var divider: ChatRow? { rows.first(where: \.startsNew) }
+
+    /// Whether this list ends at the newest message: a thread's always, the
+    /// chat's unless a jump's window stops short of it.
+    private var reachesNewest: Bool { composer.thread != nil || model.timelineReachesNewest }
 
     /// To "New messages" at the top, twice: the rows around it have only
     /// estimated heights until the first scroll draws them. Not once you
@@ -505,7 +517,9 @@ struct MessageList: View {
     /// To the newest message; like scrolling there by hand, it ends a
     /// "Mark unread" hold and reads the chat.
     private func jumpToNewest(_ proxy: ScrollViewProxy) {
-        scrollToNewest(proxy, duration: 0.3)
+        // A jump's window ends short of the newest: the newest replace it,
+        // and the list opens again at its bottom.
+        if reachesNewest { scrollToNewest(proxy, duration: 0.3) } else { model.showNewest() }
         reachedBottom()
     }
 

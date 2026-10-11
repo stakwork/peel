@@ -112,6 +112,39 @@ struct Benchmarks {
         try Bench.measure("read.tribeSenders.tribe40k", runs: 5) { _ = try storage.tribeSenders(big) }
     }
 
+    /// A jump to an old message (a search match, a notification, a quote):
+    /// everything after it, as the timeline grows today, or a window from
+    /// just before it. Each re-runs on every write while the chat is open.
+    @Test func timelineJump() async throws {
+        let storage = try Seed.large()
+        let big = Seed.tribes[0]
+        for (label, n) in [("9k", 31_000), ("oldest", 0)] {
+            let target = try #require(try storage.message(uuid: Seed.uuid(n), in: big))
+            let limit = try storage.timelineLimit(reaching: target)
+            do {
+                try await Bench.measureAsync("jump.\(label).everythingAfter", runs: 5) {
+                    _ = try await first(storage.timeline(in: big, limit: limit))
+                }
+            } catch {
+                print("BENCH jump.\(label).everythingAfter failed: \(error)")
+            }
+            let start = try #require(try storage.timelineStart(reaching: target))
+            try await Bench.measureAsync("jump.\(label).window250") {
+                _ = try await first(storage.timeline(in: big, from: start, limit: 250))
+            }
+            // The window is the same rows as that stretch of the whole timeline.
+            let window = try #require(try await first(storage.timeline(in: big, from: start, limit: 250)))
+            #expect(window.messages.contains { $0.uuid == target.uuid })
+            if let whole = try? await first(storage.timeline(in: big, limit: limit)) {
+                let stretch = whole.messages.drop { ($0.timestamp!, $0.id!) < (start.timestamp, start.id) }.prefix(250)
+                #expect(window.messages == Array(stretch))
+                #expect(window.threads == whole.threads.filter { uuid, _ in
+                    window.messages.contains { $0.threadUUID == uuid }
+                })
+            }
+        }
+    }
+
     @Test func conversationsAfterTrailingJoins() async throws {
         let profile = BenchProfile()
         let storage = try profile.storage()

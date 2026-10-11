@@ -119,6 +119,13 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     public var isUnread: Bool { sidebarCount > 0 || isNew }
 }
 
+/// Where a timeline that does not end at the newest message starts: a
+/// message's time and row id (`Storage.timelineStart(reaching:)`).
+public struct TimelineStart: Sendable, Equatable {
+    public var timestamp: Int64
+    public var id: Int64
+}
+
 /// What a chat's main conversation shows.
 public struct Timeline: Sendable, Equatable {
     /// The newest 200 messages shown, oldest first. In a tribe, a thread of

@@ -57,7 +57,7 @@ final class AppModel {
                 // A jump into this chat (`focus(on:)`) set both just before.
                 if focus?.message.chat != selectedChat {
                     focus = nil
-                    timelineLimit = nil
+                    timelineWindow = nil
                 }
                 observeMessages()
                 if openThread?.chat != selectedChat { openThread = nil }
@@ -214,9 +214,17 @@ final class AppModel {
     /// A message to scroll to and light up once its list shows it (the
     /// chat's, or with `inThread` its thread panel's); see `focus(on:)`.
     var focus: FocusTarget?
-    /// The open chat's timeline reaches back to this message (older than
-    /// the newest 200), for `focus`.
-    private var timelineLimit: Int?
+    /// For `focus` on a message older than the newest 200: the open chat's
+    /// timeline is a window from just before it, not its newest messages,
+    /// so each change re-reads that window rather than everything since.
+    /// Reaching the window's bottom takes it further (`chatListAtBottom`).
+    private var timelineWindow: (start: TimelineStart, limit: Int)?
+    /// Whether the open chat's list ends at its newest message: false while
+    /// a window short of it is open.
+    var timelineReachesNewest: Bool {
+        guard let timelineWindow else { return true }
+        return timeline.messages.count < timelineWindow.limit
+    }
     /// Unread mentions, muted chats too, for the sidebar's Mentions row:
     /// they agree with the rows' gold counts (`sidebarCount`).
     var unreadMentions: Int {
@@ -620,8 +628,8 @@ final class AppModel {
     }
 
     /// Opens a message's chat (with `inThread`, its thread panel) scrolled to
-    /// it, lit for a moment. One older than the newest 200 is loaded with
-    /// everything after it; one deleted since opens the chat with a notice.
+    /// it, lit for a moment. One older than the newest 200 opens a window
+    /// from just before it; one deleted since opens the chat with a notice.
     /// Takes precedence over "New messages".
     func focus(on message: Message, inThread: Bool = false) {
         let chat = message.chat
@@ -642,9 +650,10 @@ final class AppModel {
         }
         let opening = selectedChat != chat
         if !inThread, opening || !timelineShows(current),
-           let limit = try? storage.timelineLimit(reaching: current), limit > Storage.pageSize {
+           let limit = try? storage.timelineLimit(reaching: current), limit > Storage.pageSize,
+           let start = try? storage.timelineStart(reaching: current) {
             // Before `focus`, so the list now showing never sees it.
-            timelineLimit = max(limit, timelineLimit ?? 0)
+            timelineWindow = (start, Storage.pageSize)
             if !opening { observeMessages() }
         }
         focus = FocusTarget(message: current, inThread: inThread)
@@ -660,11 +669,21 @@ final class AppModel {
             || message.threadUUID.map { timeline.threads[$0] != nil } ?? false
     }
 
-    /// The chat's list is back at its bottom: a timeline grown for a jump
-    /// goes back to the newest 200, so later changes re-read only those.
+    /// The chat's list is at its bottom: a window short of the newest takes
+    /// the next 200 below, keeping what is drawn; one that reaches it goes
+    /// back to the newest 200, so later changes re-read only those.
     func chatListAtBottom() {
-        guard timelineLimit != nil else { return }
-        timelineLimit = nil
+        guard var window = timelineWindow else { return }
+        if timelineReachesNewest { return showNewest() }
+        window.limit += Storage.pageSize
+        timelineWindow = window
+        observeMessages(keepingRows: true)
+    }
+
+    /// The open chat's newest messages, leaving a window for a jump.
+    func showNewest() {
+        guard timelineWindow != nil else { return }
+        timelineWindow = nil
         observeMessages()
     }
 
@@ -768,6 +787,8 @@ final class AppModel {
     /// messages" has done its job.
     func sent(in chat: String) {
         if keepsUnread == chat { keepsUnread = nil }
+        // What you sent is at the newest, which a jump's window may stop short of.
+        if chat == selectedChat { showNewest() }
         // The sent message's row rebuilds the rest without it.
         if newMessages?.chat == chat { newMessages = (chat, nil) }
     }
@@ -1189,17 +1210,22 @@ final class AppModel {
 
     /// Follows the open chat's messages and, for a tribe, its pinned message,
     /// which a pin, an edit or a delete can change.
-    private func observeMessages() {
+    /// `keepingRows`: the same chat's window grew, so what is drawn stays
+    /// until the longer one comes.
+    private func observeMessages(keepingRows: Bool = false) {
         messagesTask?.cancel()
-        pinTask?.cancel()
-        timeline = .empty
-        chatRows = []
-        pinnedMessage = nil
+        if !keepingRows {
+            pinTask?.cancel()
+            timeline = .empty
+            chatRows = []
+            pinnedMessage = nil
+        }
         guard let storage = engine?.storage, let chat = selectedChat else { return }
+        let window = timelineWindow
         messagesTask = Task {
             do {
                 for try await timeline in storage.timeline(
-                    in: chat, limit: timelineLimit ?? Storage.pageSize
+                    in: chat, from: window?.start, limit: window?.limit ?? Storage.pageSize
                 ) where !Task.isCancelled {
                     self.timeline = timeline
                     rebuildChatRows()
@@ -1208,6 +1234,8 @@ final class AppModel {
                 if !Task.isCancelled { notice = PeelError.readable(error) }
             }
         }
+        // The same chat's pin, still followed.
+        guard !keepingRows else { return }
         pinTask = Task {
             do {
                 for try await pinned in storage.pinnedMessage(in: chat) where !Task.isCancelled {

@@ -263,7 +263,7 @@ struct ChatTimeZoneSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionLabel("Time zone")
+            SectionHeader("Time zone")
             if isPublicTribe {
                 Text("Your time zone is never sent in public tribes.")
                     .font(Theme.font(13))
@@ -331,26 +331,27 @@ private struct ContactKeyCard: View {
     let pubkey: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                QRCodeTile(text: pubkey, label: "QR code of their public key", size: 92, inset: 6)
-                VStack(alignment: .leading, spacing: 4) {
-                    SectionLabel("Public key")
-                    Text(pubkey)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Theme.text)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    QRCodeTile(text: pubkey, label: "QR code of their public key", size: 92, inset: 6)
+                    VStack(alignment: .leading, spacing: 4) {
+                        SectionHeader("Public key")
+                        Text(pubkey)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.text)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                HStack(spacing: 8) {
+                    CopyButton("Copy key", text: pubkey)
+                    CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
+                }
+                .buttonStyle(.peel(.outline))
             }
-            HStack(spacing: 8) {
-                CopyButton("Copy key", text: pubkey)
-                CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
-            }
-            .buttonStyle(.peel(.outline))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .formCard()
     }
 }

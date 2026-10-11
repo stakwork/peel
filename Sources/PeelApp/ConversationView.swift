@@ -136,7 +136,7 @@ struct ChatFooter: View {
 
     var body: some View {
         if showsNotice, let notice = model.conversationNotices[conversation.chat] {
-            NoticeBar(text: notice) { model.dismissNotice(in: conversation.chat) }
+            Callout(detail: notice, icon: .problem, dismiss: { model.dismissNotice(in: conversation.chat) })
                 .padding(.horizontal, 20)
                 .padding(.top, 6)
         }
@@ -152,34 +152,6 @@ struct ChatFooter: View {
         }
     }
 }
-
-/// An error to show until dismissed: one that belongs to a conversation,
-/// such as a send the server refused, or the engine's own across the main
-/// window. Quiet, not red: nothing was destroyed.
-struct NoticeBar: View {
-    let text: String
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(Theme.attention)
-            Text(text)
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .textSelection(.enabled)
-                .lineLimit(3)
-            Spacer(minLength: 8)
-            IconButton("xmark", help: "Dismiss", size: .sm, action: dismiss)
-                // Its hover square reaches into the bar's padding, so the bar keeps its height.
-                .padding(.vertical, -6)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .panelBoxed()
-    }
-}
-
 
 /// A tribe's name, what it is about and what a message costs, then Call
 /// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
@@ -333,7 +305,7 @@ struct TribeMembersPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     // Requests to join a private tribe come first, as in the Mac app.
                     if !pending.isEmpty {
-                        SectionLabel("Waiting for approval")
+                        SectionHeader("Waiting for approval")
                         ForEach(pending) { member in
                             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member), note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
@@ -352,7 +324,7 @@ struct TribeMembersPanel: View {
                                 )
                             }
                         }
-                        SectionLabel("Members")
+                        SectionHeader("Members")
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {

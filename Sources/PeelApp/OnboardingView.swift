@@ -239,16 +239,17 @@ struct RestoreProgressView: View {
         StepBody(title: "Restoring your account",
                  detail: "A busy account takes a few minutes. You can start using Peel now; older history keeps arriving in the background.",
                  width: 460) {
-            VStack(spacing: 0) {
-                RestoreRow(title: "Account", detail: model.connection.label,
-                           state: model.connection == .connected ? .done : .active)
-                RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
-                           state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
-                           state: .from(started: progress.messages != nil, done: progress.finished),
-                           fraction: progress.messages?.fraction)
+            Card {
+                VStack(spacing: 0) {
+                    RestoreRow(title: "Account", detail: model.connection.label,
+                               state: model.connection == .connected ? .done : .active)
+                    RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
+                               state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
+                    RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
+                               state: .from(started: progress.messages != nil, done: progress.finished),
+                               fraction: progress.messages?.fraction)
+                }
             }
-            .formCard()
             if case .failed(let failure) = progress.outcome {
                 Text(failure)
                     .font(Theme.font(13))

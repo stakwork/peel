@@ -21,17 +21,6 @@ extension View {
                 #endif
             }
     }
-
-    /// A raised card with a hairline: a switch row, a form's previews (a
-    /// tribe, a contact), the Account screen's sections and boxes.
-    func formCard() -> some View {
-        background {
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.menu)
-                .shadow(color: Theme.sectionShadow, radius: 1, y: 1)
-        }
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.formEdge))
-    }
 }
 
 /// A group of fields under a heading ("Basics", "Pricing"), stacked.
@@ -46,11 +35,7 @@ struct FormSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let title {
-                Text(title)
-                    .font(Theme.font(12, .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+            if let title { SectionHeader(title) }
             content
         }
         .padding(.top, 16)
@@ -232,11 +217,12 @@ struct FormSwitchRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
-            .toggleStyle(FormSwitchStyle())
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .formCard()
+        Card {
+            Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
+                .toggleStyle(FormSwitchStyle())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+        }
     }
 }
 
@@ -281,9 +267,10 @@ struct FormDestructiveSection: View {
     let action: () async -> Void
 
     var body: some View {
-        InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
-            .formCard()
-            .padding(.top, 16)
+        Card {
+            InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
+        }
+        .padding(.top, 16)
     }
 }
 

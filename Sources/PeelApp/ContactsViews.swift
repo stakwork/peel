@@ -260,25 +260,26 @@ private struct CodePreview: View {
     let pubkey: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            Avatar(
-                name: code.inviterName ?? "", url: nil, size: 28,
-                hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(code.inviterName ?? Formatting.shortKey(pubkey))
-                    .font(Theme.font(13, .medium))
-                    .foregroundStyle(Theme.text)
-                Text(detail)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+        Card {
+            HStack(spacing: 10) {
+                Avatar(
+                    name: code.inviterName ?? "", url: nil, size: 28,
+                    hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(code.inviterName ?? Formatting.shortKey(pubkey))
+                        .font(Theme.font(13, .medium))
+                        .foregroundStyle(Theme.text)
+                    Text(detail)
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .formCard()
     }
 
     private var detail: String {
@@ -440,28 +441,29 @@ private struct InviteDetail: View {
     }
 
     @ViewBuilder private func content(_ invite: InviteRecord) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Sats.format(msat: invite.amountMsat))
-                    .font(Theme.font(15, .semibold))
-                    .monospacedDigit()
-                Text(Self.statusLine(invite))
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let message = invite.message {
-                    Text(message)
+        Card {
+            HStack(alignment: .top, spacing: 14) {
+                QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Sats.format(msat: invite.amountMsat))
+                        .font(Theme.font(15, .semibold))
+                        .monospacedDigit()
+                    Text(Self.statusLine(invite))
                         .font(Theme.font(12))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(4)
-                        .padding(.top, 4)
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let message = invite.message {
+                        Text(message)
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(4)
+                            .padding(.top, 4)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(12)
         }
-        .padding(12)
-        .formCard()
         .padding(.top, 12)
         if invite.status == .ready {
             VStack(alignment: .leading, spacing: 10) {

@@ -238,19 +238,6 @@ struct TribeSettingsForm: View {
     }
 }
 
-/// A small secondary label: a heading inside a popover list, or a field's name.
-struct SectionLabel: View {
-    let text: String
-
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.font(12, .medium))
-            .foregroundStyle(Theme.secondaryText)
-    }
-}
-
 /// While a tribes server is asked.
 struct TribeServerProgress: View {
     var body: some View {
@@ -396,23 +383,13 @@ struct TribeStatusBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            if tribe.status == .pending {
-                ProgressView().controlSize(.small)
-            }
-            Text(text)
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-            Spacer(minLength: 8)
+        Callout(detail: text, icon: tribe.status == .pending ? .progress : nil) {
             if let exit = tribe.exit {
                 InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
                     await model.leave(tribe.pubkey)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .panelBoxed()
         .padding(.horizontal, 20)
         .padding(.top, 6)
         .padding(.bottom, 16)

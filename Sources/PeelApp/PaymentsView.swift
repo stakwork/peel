@@ -159,9 +159,7 @@ struct PaymentsView: View {
                     let sections = Dictionary(grouping: items) { PaymentSection($0.date) }
                     ForEach(PaymentSection.allCases, id: \.self) { section in
                         if let rows = sections[section] {
-                            Text(section.rawValue)
-                                .font(Theme.font(12, .semibold))
-                                .foregroundStyle(Theme.secondaryText)
+                            SectionHeader(section.rawValue)
                                 .padding(.horizontal, 12)
                                 .padding(.top, 18)
                                 .padding(.bottom, 6)

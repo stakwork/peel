@@ -24,64 +24,65 @@ struct CallCard: View {
         let presence = model.presence(of: link.room)
         let onIt = model.isOnCall(link.room)
         let notSent = message.notSent
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Image(systemName: link.audioOnly ? "phone" : "video")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.secondaryText)
-                        Text(link.audioOnly ? "Audio call" : "Video call")
-                            .font(Theme.font(14, .semibold))
-                    }
-                    if notSent {
-                        line("Not sent")
-                    } else if onIt {
-                        who(presence.people ?? [], "You're on this call")
-                    } else {
-                        switch presence {
-                        case .live(let people) where !people.isEmpty:
-                            who(people, "\(people.count) on the call")
-                        case .live: line("No one on the call")
-                        case .ended: line("Call ended")
-                        case .unknown:
-                            // So the card does not grow under the reader when it does.
-                            if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            Image(systemName: link.audioOnly ? "phone" : "video")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.secondaryText)
+                            Text(link.audioOnly ? "Audio call" : "Video call")
+                                .font(Theme.font(14, .semibold))
+                        }
+                        if notSent {
+                            line("Not sent")
+                        } else if onIt {
+                            who(presence.people ?? [], "You're on this call")
+                        } else {
+                            switch presence {
+                            case .live(let people) where !people.isEmpty:
+                                who(people, "\(people.count) on the call")
+                            case .live: line("No one on the call")
+                            case .ended: line("Call ended")
+                            case .unknown:
+                                // So the card does not grow under the reader when it does.
+                                if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
+                            }
                         }
                     }
+                    Spacer(minLength: 0)
+                    if notSent {
+                        // Never sent again: its room would be stale. Start a new one.
+                        Button("Discard") { Task { await model.discard(message) } }
+                            .buttonStyle(.peel(.outline, size: .sm))
+                            .help("Remove this call, which was never sent")
+                    } else if leaving == nil {
+                        button(onIt)
+                    }
                 }
-                Spacer(minLength: 0)
-                if notSent {
-                    // Never sent again: its room would be stale. Start a new one.
-                    Button("Discard") { Task { await model.discard(message) } }
-                        .buttonStyle(.peel(.outline, size: .sm))
-                        .help("Remove this call, which was never sent")
-                } else if leaving == nil {
-                    button(onIt)
+                if let leaving {
+                    VStack(spacing: 0) {
+                        Theme.divider.frame(height: 1).padding(.bottom, 10)
+                        CallSwitchConfirm(
+                            other: leaving, joining: true, working: model.joiningRoom == link.room,
+                            cancel: { self.leaving = nil }, confirm: join
+                        )
+                    }
+                    .padding(.top, 2)
+                }
+                if let failure = model.callFailures[link.room] {
+                    Text(failure)
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let leaving {
-                VStack(spacing: 0) {
-                    Theme.divider.frame(height: 1).padding(.bottom, 10)
-                    CallSwitchConfirm(
-                        other: leaving, joining: true, working: model.joiningRoom == link.room,
-                        cancel: { self.leaving = nil }, confirm: join
-                    )
-                }
-                .padding(.top, 2)
-            }
-            if let failure = model.callFailures[link.room] {
-                Text(failure)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(width: Self.width, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: Self.width, alignment: .leading)
-        .cardBoxed()
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
@@ -394,45 +395,46 @@ struct OnCallBar: View {
 
     var body: some View {
         let people = call.people
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
-                OnlineDot(color: call.state == .connected ? Theme.confirmed : Theme.secondaryText)
-                ChatTitle(title: call.title)
-                    .font(Theme.font(13, .bold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                CallStatusText(call: call, size: 12)
-            }
-            HStack(spacing: 7) {
-                CallPeopleStack(people: people, size: 20, border: Theme.quote)
-                Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
-                    .font(Theme.font(12.5))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
-            .frame(minHeight: 20)
-            HStack(spacing: 6) {
-                let label = call.micOn ? "Mute" : "Unmute"
-                IconButton(help: "\(label) (⌘⇧A)", variant: .outline, action: call.toggleMicrophone) {
-                    Image(systemName: call.micOn ? "mic" : "mic.slash")
-                        .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 7) {
+                    OnlineDot(color: call.state == .connected ? Theme.confirmed : Theme.secondaryText)
+                    ChatTitle(title: call.title)
+                        .font(Theme.font(13, .bold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    CallStatusText(call: call, size: 12)
                 }
-                .disabled(call.micAccess == .refused)
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-                Button { openWindow(id: CallWindow.id) } label: {
-                    Label("Return to call", systemImage: "arrow.up.forward.square")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 7) {
+                    CallPeopleStack(people: people, size: 20, border: Theme.quote)
+                    Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
+                        .font(Theme.font(12.5))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.peel(.outline, size: .sm))
-                .help("Bring the call window forward")
+                .frame(minHeight: 20)
+                HStack(spacing: 6) {
+                    let label = call.micOn ? "Mute" : "Unmute"
+                    IconButton(help: "\(label) (⌘⇧A)", variant: .outline, action: call.toggleMicrophone) {
+                        Image(systemName: call.micOn ? "mic" : "mic.slash")
+                            .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
+                    }
+                    .disabled(call.micAccess == .refused)
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    Button { openWindow(id: CallWindow.id) } label: {
+                        Label("Return to call", systemImage: "arrow.up.forward.square")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.peel(.outline, size: .sm))
+                    .help("Bring the call window forward")
+                }
             }
+            .padding(.vertical, 10)
+            .padding(.leading, 12)
+            .padding(.trailing, 10)
         }
-        .padding(.vertical, 10)
-        .padding(.leading, 12)
-        .padding(.trailing, 10)
-        .cardBoxed()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("On a call in \(call.title)")
     }

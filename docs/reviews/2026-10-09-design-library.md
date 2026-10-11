@@ -1165,3 +1165,51 @@ library outside forms.
     `EngineFailureTests` (a deleted tribe of your own is removed, offline,
     sending nothing). `swift test`: 594 passed (one known issue, IPv6
     hosts, as on `main`).
+- **Batch 10, `SectionHeader`, `Card` and `Callout` (2026-10-11).**
+  `UI/Section.swift` (`SectionHeader`, 12 semibold, secondary) and
+  `UI/Card.swift` (`Card`, `.raised` and `.inset`; `Callout`, `.neutral`
+  and `.attention`, icons `.problem`, `.progress` and `.symbol`).
+  `formCard`, `cardBoxed`, `panelBoxed`, `SectionLabel`, `NoticeBar` and
+  `AttentionNote` are gone; `menuBoxed` stays. `SectionHeader`'s
+  `trailing:` slot (section 4) is not built: nothing uses it yet.
+  - Changes, before → after: the link and call cards' corners (and the
+    payment request's, the sidebar's on-a-call bar's) 10 → 9; section
+    headers are 12 semibold (`SectionLabel` was 12 medium), and the
+    Account's headers 11 → 12; the tribe status bar's words 13 → 12, its
+    padding 14 → 12 across and the spinner's gap 10 → 8, on the first
+    line's baseline, three lines at most; a chat's and the window's
+    notice 4 pt taller (10 of padding, was 8), radius 8 → 9, monospaced
+    digits; an `AttentionNote` (Not enough sats, an expired invoice, a
+    payment that cannot be made) draws its icon at 13 (was 14) on the
+    first line's baseline (was the top), 8 from the words (was 10),
+    padding 12 by 10 (was 12), its words 12 (was 13), now selectable.
+    Every `Callout`'s words are selectable with monospaced digits. The web
+    pane's download is a boxed callout in its strip; under way and saved
+    keep one line, now both cut in the middle (Downloading was cut at the
+    end), its ✕ the small one.
+  - Review (independent agent), applied: the payment request's `Card`
+    had been opened inside its header row, so the amount, memo and footer
+    laid out in that row; the whole card is now in `Card(.inset)`, its
+    padding and width inside, as the call and link cards are. `Callout`
+    takes `oneLine` for the download's file names, a note's words wrap
+    in full (a long payment error in Pay an invoice or Receive is no
+    longer cut at three lines; a bar keeps three), and `.problem` draws
+    through the same symbol as `.symbol`.
+  - Renders, before (`origin/main`) and after, offscreen on development
+    profile b10-alice on the loopback stack, with temporary driver hooks
+    (not committed) for the link card's join form, the members panel,
+    Edit tribe, an invite, the sidebar forms and the zone picker: only
+    the differences above. The payment request (no Lightning on the
+    stack) through a temporary gallery (not committed) of six states:
+    open and expired, paid, yours waiting, paying someone else, partly
+    paid, unreadable; only the corners differ. The callouts (a long
+    note, a long bar, both download bars with a long file name) through
+    the same gallery, after only. Not rendered: the sidebar's on-a-call
+    bar, the restore progress card in onboarding, the window's notice, a
+    real download in the web pane.
+  - Deferred, still hand-drawn boxes: the file card in `AttachmentViews`,
+    `ThreadCard`, `QuotedMessage`, `ConnectionCard` (batch 14 or their
+    own).
+  - Tests: nothing new (`PeelApp` has no test target). `swift test`: 618
+    passed in the main run, 107 in the other three (one known issue, IPv6
+    hosts, as on `main`).

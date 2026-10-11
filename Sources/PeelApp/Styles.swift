@@ -3,19 +3,6 @@ import SwiftUI
 // Fields are `FormKit`'s (`FormTextField`, `FormNumberField`, `FieldChrome`).
 
 extension View {
-    /// The quiet panel box behind notices, bars and suggestion lists.
-    func panelBoxed() -> some View {
-        background(Theme.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.divider))
-    }
-
-    /// The card box in a chat: the call card, the sidebar's on-a-call bar
-    /// and a payment request.
-    func cardBoxed() -> some View {
-        background(Theme.quote, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
-    }
-
     /// The raised box of menus, suggestion lists and the hover bar.
     /// `.circular` for a box whose radius is half its height or more: the
     /// continuous stroke draws square stubs there.

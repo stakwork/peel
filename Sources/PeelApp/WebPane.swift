@@ -833,48 +833,30 @@ private struct LoadProblem: View {
     }
 }
 
-/// A download under way or saved; a failure is the usual `NoticeBar`.
+/// A download under way, saved or failed: a callout in a strip along the
+/// pane's foot.
 private struct DownloadBar: View {
     @Environment(AppModel.self) private var model
     let download: WebPane.Download
     let dismiss: () -> Void
 
     var body: some View {
-        switch download {
-        case .saving(let name):
-            bar {
-                ProgressView().controlSize(.small)
-                Text("Downloading \(name)…")
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+        Group {
+            switch download {
+            case .saving(let name):
+                Callout(detail: "Downloading \(name)…", icon: .progress, oneLine: true, dismiss: dismiss)
+            case .saved(let file):
+                Callout(
+                    detail: "Saved \(file.lastPathComponent) to Downloads",
+                    icon: .symbol("arrow.down.circle", Theme.confirmed), oneLine: true, dismiss: dismiss
+                ) {
+                    Button("Show in Finder") { model.showInFinder(file) }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                }
+            case .failed(let name, let reason):
+                Callout(detail: PeelError.problem(reason, couldNot: "download \(name)"), icon: .problem, dismiss: dismiss)
             }
-        case .saved(let file):
-            bar {
-                Image(systemName: "arrow.down.circle")
-                    .foregroundStyle(Theme.confirmed)
-                Text("Saved \(file.lastPathComponent) to Downloads")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 8)
-                Button("Show in Finder") { model.showInFinder(file) }
-                    .buttonStyle(.peel(.outline, size: .sm))
-            }
-        case .failed(let name, let reason):
-            NoticeBar(text: PeelError.problem(reason, couldNot: "download \(name)"), dismiss: dismiss)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Theme.panel)
-                .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
         }
-    }
-
-    private func bar(@ViewBuilder _ content: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            content()
-            Spacer(minLength: 8)
-            IconButton("xmark", help: "Dismiss", action: dismiss)
-        }
-        .font(Theme.font(12))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Theme.panel)

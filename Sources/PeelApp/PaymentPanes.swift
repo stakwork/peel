@@ -94,40 +94,6 @@ struct KeyValues: View {
     }
 }
 
-/// An amber note: something blocks the next step. Never red: nothing was lost.
-struct AttentionNote<Actions: View>: View {
-    let title: String
-    let detail: String
-    @ViewBuilder var actions: Actions
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.attention)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(Theme.font(13, .semibold))
-                Text(detail)
-                    .font(Theme.font(13))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                actions
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Theme.attention.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.attention.opacity(0.28)))
-    }
-}
-
-extension AttentionNote where Actions == EmptyView {
-    init(title: String, detail: String) {
-        self.init(title: title, detail: detail, actions: { EmptyView() })
-    }
-}
-
 extension TimelineSchedule where Self == ExplicitTimelineSchedule<[Date]> {
     /// Draws now and again at `date`. `.now` comes first because, before
     /// its first entry, a timeline draws with that entry's date: a lone

@@ -146,7 +146,7 @@ and the arrows go on from it.
   their initials: one owner, `Sender` (`People.sender(of:inTribe:)`, and
   `Sender(member:)` for a tribe member named by their own message).
   Payments and payment requests share the rows' chrome (`rowChrome`) and
-  run header; cards in a chat are `cardBoxed`.
+  run header; cards in a chat are `Card(.inset)`.
 - **Link cards:** the first tribe or contact link in a message gets a 320 pt
   card under the text, at one height whatever is known yet (lines
   reserved; soft bars while loading). A tribe: its image, name, two lines
@@ -475,16 +475,15 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-`SectionHeader`, `Card`,
-`Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
+`Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
 batch plan comes before the payments fixes and the personal agent. Until
-a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`, `FormKit`,
-`Controls`, `CopyButton`) and adds no new variant.
+a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
+`SectionHeader`, `Card`, `Callout`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
 
 - **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
-  (a form's cards), `panel` 12 (the popover).
+  (every `Card` and `Callout`), `panel` 12 (the popover).
 - **Panel** (batches 4a and 4b). `Panel("Members", compact:, close:) { body } actions: { … } footer: { … }`
   in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every
   popover: a 15 pt bold title, the panel's own actions and an
@@ -509,6 +508,44 @@ Built so far:
     the two widths: 372 for the forms, Tribe details and a contact's
     Details; 320 for Join a tribe, Members, Boosts, Connection and the
     Account's Time zone.
+- **Section headers** (batch 10). `SectionHeader("Members")` in
+  `UI/Section.swift`: 12 pt semibold in `secondaryText`, placed by its
+  caller. Every heading over a group is one: a form's sections
+  (`FormSection`), the Account's (`SettingsSection`), the Payments list's
+  days, a panel's lists (Waiting for approval, Members, All time zones)
+  and a label over a card's value (Public key). The sidebar's sections
+  keep their own, 13 medium and collapsible.
+- **Cards** (batch 10). `Card { … }` and `Card(.inset) { … }` in
+  `UI/Card.swift`, shadcn's `Card`, at radius `Theme.Radius.card` 9;
+  the content brings its own padding. `.raised` (the default) is `menu`
+  with a `formEdge` hairline and `sectionShadow` in light: a switch row,
+  `FormDestructiveSection`, the tribe's facts and share card, a contact's
+  key, previews in Add contact, an invite and Join a tribe, the Account's
+  sections and contact info, onboarding's restore rows. `.inset` is
+  `quote` with a `divider` hairline, for cards in a chat: the call card,
+  link cards, a payment request, the sidebar's on-a-call bar.
+  `menuBoxed` stays for menus, suggestion lists and the hover bar.
+- **Callouts** (batch 10). `Callout` in `UI/Card.swift`, shadcn's
+  `Alert`: an icon, the words, actions, and an optional dismiss, in a box
+  at radius 9 with 12 by 10 of padding. The words are 12 pt
+  `secondaryText` with monospaced digits, selectable: a bar's take three
+  lines at most, or one with `oneLine` (cut in the middle, so a file name
+  keeps its extension), and a note's wrap in full; a title above them
+  is 13 semibold. With a title it is a note, its actions (a link) under
+  the words; without one it is a bar, its actions and its ✕ (a `.sm`
+  `IconButton`) at the end. Tones: `.neutral` (`panel`, `divider`; the
+  icon carries any colour) and `.attention` (`attention` at 7% under a
+  28% hairline, `.problem`'s icon by default: something blocks the next
+  step, never red). Icons: `.problem` (amber `exclamationmark.circle`),
+  `.progress` (the small spinner), `.symbol(name, colour)`.
+  - A chat's notice and the window's: `Callout(detail:, icon: .problem, dismiss:)`.
+  - A tribe you cannot post in: the words, the spinner while waiting,
+    and Leave or Remove from Peel at the end.
+  - Not enough sats and an expired invoice: `.attention` with a title
+    and a link.
+  - The web pane's download (under way, saved with Show in Finder, or
+    failed): a bar in the strip along the pane's foot, under way and
+    saved on one line.
 - **Problem lines** (batch 7). Every failure the app shows goes through
   `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
   as a sentence (a capital, unless the first word is a name such as a
@@ -718,7 +755,7 @@ The surfaces are the existing tokens:
 ### Components
 
 - **The popover is a `Panel`** (see Component library): the title and close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
-- **`FormSection("Basics") { items }`.** A 12 pt semibold heading in the secondary colour, then its items 12 pt apart. It has no card.
+- **`FormSection("Basics") { items }`.** Its heading is a `SectionHeader`, then its items 12 pt apart. It has no card.
 - **`FormItem(label:helper:problem:) { field }`.**
   - The label is 13 pt medium. The field sits 6 pt under it, and the 12 pt help under that is in the secondary colour.
   - `problem` takes the help's place in `attention`.
@@ -740,7 +777,7 @@ The surfaces are the existing tokens:
   - when disabled, at 50% opacity.
   It is also the chrome of the PIN's and the twelve words' cells.
 - **`FormSwitchRow(label:detail:isOn:)` and `FormSwitchStyle`.**
-  - The row is a card (`formCard`), with the label and its description on the left and the switch on the right.
+  - The row is a `Card`, with the label and its description on the left and the switch on the right.
   - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
   - The knob moves with a short spring (0.22 s).
   - VoiceOver reads it as a toggle.

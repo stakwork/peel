@@ -99,18 +99,19 @@ struct TribeDetailsPanel: View {
     }
 
     @ViewBuilder private var facts: some View {
-        VStack(spacing: 0) {
-            DetailRow("Owner") { owner }
-            switch memberList {
-            case nil: DetailRow("Members") { known(nil) }
-            case .success(let members): DetailRow("Members") { Text(members.countLabel) }
-            case .failure: EmptyView()
+        Card {
+            VStack(spacing: 0) {
+                DetailRow("Owner") { owner }
+                switch memberList {
+                case nil: DetailRow("Members") { known(nil) }
+                case .success(let members): DetailRow("Members") { Text(members.countLabel) }
+                case .failure: EmptyView()
+                }
+                DetailRow("To join") { known(info?.joinPrice.described) }
+                DetailRow("Each message") { Text(tribe.messagePrice.described) }
+                DetailRow("Escrow", last: true) { Text(escrow) }
             }
-            DetailRow("To join") { known(info?.joinPrice.described) }
-            DetailRow("Each message") { Text(tribe.messagePrice.described) }
-            DetailRow("Escrow", last: true) { Text(escrow) }
         }
-        .formCard()
         .padding(.top, 14)
         if let problem {
             ProblemText(problem).padding(.top, 6)
@@ -168,21 +169,22 @@ struct TribeDetailsPanel: View {
     }
 
     private func share(_ link: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Anyone with the link or the code can join.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                CopyButton("Copy link", text: link, systemImage: "link")
-                CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
+        Card {
+            HStack(alignment: .top, spacing: 14) {
+                QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Anyone with the link or the code can join.")
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    CopyButton("Copy link", text: link, systemImage: "link")
+                    CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
+                }
+                .buttonStyle(.peel(.outline))
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.peel(.outline))
-            Spacer(minLength: 0)
+            .padding(12)
         }
-        .padding(12)
-        .formCard()
         .padding(.top, 14)
     }
 

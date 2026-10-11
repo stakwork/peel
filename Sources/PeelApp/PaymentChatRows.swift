@@ -362,42 +362,43 @@ struct PaymentRequestRow: View {
 
     @ViewBuilder private var card: some View {
         let invoice = request?.invoice
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt")
-                    .font(.system(size: 11))
-                Text("\(row.sender.label) requested")
-                Spacer(minLength: 8)
-                if case .paid = request?.state {
-                    Label("Paid", systemImage: "checkmark")
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(Theme.text)
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt")
+                        .font(.system(size: 11))
+                    Text("\(row.sender.label) requested")
+                    Spacer(minLength: 8)
+                    if case .paid = request?.state {
+                        Label("Paid", systemImage: "checkmark")
+                            .font(Theme.font(12, .semibold))
+                            .foregroundStyle(Theme.text)
+                    }
+                }
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+                if let invoice {
+                    BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 22, unitSize: 14, spacing: 5)
+                    if !invoice.memo.isEmpty {
+                        Text(invoice.memo).font(Theme.font(13.5)).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !message.fromMe, request?.paysRequester == false {
+                        Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.attention)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    footer(invoice)
+                } else {
+                    Text("This request's invoice cannot be read, so it cannot be paid.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
                 }
             }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
-            if let invoice {
-                BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 22, unitSize: 14, spacing: 5)
-                if !invoice.memo.isEmpty {
-                    Text(invoice.memo).font(Theme.font(13.5)).fixedSize(horizontal: false, vertical: true)
-                }
-                if !message.fromMe, request?.paysRequester == false {
-                    Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.attention)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                footer(invoice)
-            } else {
-                Text("This request's invoice cannot be read, so it cannot be paid.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(width: 320, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: 320, alignment: .leading)
-        .cardBoxed()
         .padding(.top, 2)
     }
 

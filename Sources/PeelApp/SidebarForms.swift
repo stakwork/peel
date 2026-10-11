@@ -22,7 +22,7 @@ struct JoinTribeForm: View {
 
     var body: some View {
         // The compact form (one field): the link, then the tribe.
-        FormPopover(title: "Join a tribe", compact: true, close: done) {
+        Panel("Join a tribe", compact: true, close: done) {
             FormItem(label: "Tribe link") {
                 FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
             }

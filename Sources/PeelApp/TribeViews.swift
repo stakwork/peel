@@ -58,7 +58,7 @@ struct TribeSettingsForm: View {
 
     var body: some View {
         // Its own buttons do not close it while a save or delete runs.
-        FormPopover(title: editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
+        Panel(editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
             if loaded {
                 fields
                 if let editing {

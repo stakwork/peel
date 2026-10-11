@@ -473,17 +473,26 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-`Panel` (with the placement rule for its actions), the
-composer with its buttons inside the field, `SectionHeader`, `Card`,
+the hand-drawn panels onto `Panel` with the placement rule for its
+actions, `SectionHeader`, `Card`,
 `Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
 batch plan comes before the payments fixes and the personal agent. Until
-a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `FormKit`,
+a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`, `FormKit`,
 `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
 
 - **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
   (a form's cards), `panel` 12 (the popover).
+- **Panel** (batch 4a). `Panel("Tribe details", compact:, close:) { body } footer: { … }`
+  in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every form's
+  panel: a 15 pt bold title and an `IconButton` close, the body, the
+  footer. 372 wide, or 320 with `compact` (one or two fields, no
+  sections). Radius `panel` 12 on `sidebar`, a `formEdge` hairline,
+  `popoverShadow` on the box only (so the labels cast none). A click
+  outside a field ends editing. It draws its own box, and the
+  `DrawsOwnPanelBox` preference tells the presenter to leave out the
+  menu box it gives a hand-drawn panel.
 - **Composer** (batch 5). Its buttons sit inside the field: attach and
   the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
   `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
@@ -663,12 +672,7 @@ The surfaces are the existing tokens:
 
 ### Components
 
-- **`FormPopover(title:compact:close:content:footer:)`.**
-  - The full form is 372 wide with a corner radius of 12. It has a 15 pt bold title, a close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
-  - It draws its own box. The `DrawsOwnPanelBox` preference tells the presenter (`MenuPresenter.showPanel`) to leave out the menu box it gives other panels.
-  - The shadow sits on the box only, so the labels cast none. It fits inside the 14 pt margin that `FloatingWindow` leaves.
-  - `compact: true` (320 wide) is for Join, with no sections.
-  - A click anywhere on it outside a field ends editing.
+- **The popover is a `Panel`** (see Component library): the title and close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
 - **`FormSection("Basics") { items }`.** A 12 pt semibold heading in the secondary colour, then its items 12 pt apart. It has no card.
 - **`FormItem(label:helper:problem:) { field }`.**
   - The label is 13 pt medium. The field sits 6 pt under it, and the 12 pt help under that is in the secondary colour.
@@ -811,7 +815,7 @@ More. The members panel keeps its own Copy link and Leave.
 
 **Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
 More's Details is "Tribe details" (⌘I); a click on the tribe's name or
-icon opens the same panel in the same place, below More (a DM's name opens its details there too). It is a `FormPopover`, scrolling
+icon opens the same panel in the same place, below More (a DM's name opens its details there too). It is a `Panel`, scrolling
 under a fade above its footer: the image, name, public or private and
 "Created 9 Oct 2026", the description, the tags as chips, a card of facts
 (owner, members as "2 members" for the owner or "3 seen" for a member, price to join, per message, escrow; a dash until the

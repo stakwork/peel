@@ -498,7 +498,8 @@ private struct MenuBackRow: View {
     }
 }
 
-/// A panel in the menu box, unless it draws its own (`DrawsOwnPanelBox`).
+/// A panel in the menu box, unless it is a `Panel`, which draws its own
+/// (`DrawsOwnPanelBox`).
 /// The box goes behind the content, so finding out never rebuilds the panel.
 private struct PanelBox: View {
     private static let radius: CGFloat = 8

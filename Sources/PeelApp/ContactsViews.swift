@@ -125,7 +125,7 @@ struct AddContactForm: View {
     }
 
     var body: some View {
-        FormPopover(title: "Add contact", close: done) {
+        Panel("Add contact", close: done) {
             if let sentTo {
                 Text("Sent to \(sentTo). They show under Direct messages once their app answers.")
                     .font(Theme.font(13))
@@ -368,7 +368,7 @@ struct InviteForm: View {
         if let made {
             InviteDetail(code: made.code, done: done)
         } else {
-            FormPopover(title: "Invite someone", close: done) {
+            Panel("Invite someone", close: done) {
                 note("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.")
                     .padding(.top, 6)
                 FormSection {
@@ -428,7 +428,7 @@ private struct InviteDetail: View {
     private var invite: InviteRecord? { model.invites[code] }
 
     var body: some View {
-        FormPopover(title: invite?.nickname ?? "Invite", close: done) {
+        Panel(invite?.nickname ?? "Invite", close: done) {
             if let invite {
                 content(invite)
             } else {

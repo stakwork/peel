@@ -3,57 +3,8 @@ import SwiftUI
 // Peel's form system: shadcn's conventions in SwiftUI (Tom, 2026-10-09),
 // replacing direction A's label-left, value-right rows for text. Each field
 // is a `FormItem`, its label above a bordered input that reads left; switches
-// keep their label on the left. See docs/design/README.md, "Forms".
-
-/// A form in a popover: the title with a close button, the sections, then
-/// the footer (`FormFooter`). `compact` is for a form of one or two fields,
-/// such as Join a tribe: narrower, with no sections.
-struct FormPopover<Content: View, Footer: View>: View {
-    let title: String
-    var compact = false
-    let close: () -> Void
-    @ViewBuilder let content: Content
-    @ViewBuilder let footer: Footer
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(title).font(Theme.font(15, .bold))
-                Spacer(minLength: 8)
-                IconButton("xmark", help: "Close", action: close)
-            }
-            .padding(.leading, 18)
-            .padding(.trailing, 10)
-            .padding(.top, 10)
-            VStack(alignment: .leading, spacing: compact ? 12 : 0) {
-                content
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, compact ? 10 : 2)
-            .padding(.bottom, 4)
-            footer
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-        }
-        .frame(width: compact ? 320 : 372)
-        // The shadow on the box alone: on the whole view every label would cast one.
-        .background {
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .fill(Theme.sidebar)
-                .shadow(color: Theme.popoverShadow, radius: 10, y: 4)
-        }
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous).strokeBorder(Theme.formEdge))
-        .endsEditingOnClick()
-        .preference(key: DrawsOwnPanelBox.self, value: true)
-    }
-}
-
-/// Set by a panel that draws its own box (`FormPopover`), so the presenter
-/// leaves out the menu box it gives every other panel.
-struct DrawsOwnPanelBox: PreferenceKey {
-    static let defaultValue = false
-    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
-}
+// keep their label on the left. A form in a popover is a `Panel` (UI/Panel.swift).
+// See docs/design/README.md, "Forms".
 
 extension View {
     /// A click on the form anywhere but a field or a control ends editing:

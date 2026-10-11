@@ -215,7 +215,10 @@ is a short plan. Update the status and the journal when you finish something.
   `IconButton`, shadcn's icon button (ghost or outline, 28 or 24 square,
   `lit`, `working`; every icon button but the call window's control bar,
   controls over media and the composer's);
-  `FormKit` (the form system, shadcn's conventions: `FormPopover`, `FormSection`,
+  `Panel`, shadcn's card in a popover (title, close, body, footer; 372 or
+  320 `compact`; draws its own box, so the presenter adds none; every
+  form's panel);
+  `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
   `endsEditingOnClick` and `InlineConfirm`, the one in-place confirm, over
@@ -560,7 +563,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `IconButton`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `Panel`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

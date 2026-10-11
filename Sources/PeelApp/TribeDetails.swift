@@ -25,7 +25,7 @@ struct TribeDetailsPanel: View {
     private var info: TribeInfo? { details?.info }
 
     var body: some View {
-        FormPopover(title: "Tribe details", close: done) {
+        Panel("Tribe details", close: done) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     hero

@@ -140,7 +140,7 @@ struct SendSatsPanel: View {
 
     var body: some View {
         let amountMsat = Sats.msat(amount)
-        FormPopover(title: mode == .send ? "Send sats to \(name)" : "Request sats from \(name)", close: done) {
+        Panel(mode == .send ? "Send sats to \(name)" : "Request sats from \(name)", close: done) {
             SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
                 .padding(.top, 8)
             FormSection {

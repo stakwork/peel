@@ -186,7 +186,8 @@ struct TimeZoneSharingTests {
         for chat in [person, privateTribe] {
             let row = try #require(try storage.chatTimeZone(chat))
             #expect(!row.enabled && row.identifier == nil)
-            #expect(row.updatedAt >= before && row.updatedAt <= Int64(Date.now.timeIntervalSince1970))
+            let date = try #require(try storage.preferenceRow("timezone", chat)).updatedAt
+            #expect(date >= Double(before) && date <= Date.now.timeIntervalSince1970)
             #expect(try await !engine.timeZoneSharing(in: chat))
             #expect(try await engine.sharedOffset(in: chat, type: MessageType.text) == nil)
             #expect(try await engine.offsetShared(in: chat) == nil)
@@ -211,10 +212,8 @@ struct TimeZoneSharingTests {
         #expect(try await sent(to: stranger, engine) == nil)
         await #expect(throws: Engine.Failure.publicTribeTimeZone) { try await engine.setTimeZoneSharing(true, in: publicTribe) }
         await #expect(throws: Engine.Failure.notAChat) { try await engine.setTimeZoneSharing(true, in: stranger) }
-        try await storage.pool.write { db in
-            for chat in [publicTribe, stranger] {
-                try ChatTimeZone(chat: chat, enabled: true, identifier: nil, updatedAt: 1).insert(db)
-            }
+        for chat in [publicTribe, stranger] {
+            try storage.setPreference(.timeZoneSharing, TimeZoneSharing(enabled: true, identifier: nil), for: chat)
         }
         #expect(try await engine.timeZoneSharing(in: publicTribe))
         #expect(try await sent(to: publicTribe, engine) == nil)
@@ -239,9 +238,7 @@ struct TimeZoneSharingTests {
     @Test func aChatsOwnZoneWins() async throws {
         let (engine, storage) = try engine()
         try await engine.setTimeZone("Europe/London")
-        try await storage.pool.write { db in
-            try ChatTimeZone(chat: person, enabled: true, identifier: "Asia/Bangkok", updatedAt: 1).insert(db)
-        }
+        try storage.setPreference(.timeZoneSharing, TimeZoneSharing(enabled: true, identifier: "Asia/Bangkok"), for: person)
         #expect(try await engine.sharedOffset(in: person, type: MessageType.text) == "GMT+7")
         try await engine.setTimeZoneSharing(false, in: person)
         #expect(try storage.chatTimeZone(person)?.identifier == "Asia/Bangkok")

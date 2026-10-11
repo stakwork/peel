@@ -15,6 +15,11 @@ struct PeelCommand {
           whoami                      this account's contact info, balance, name and photo
           rename <name>               the name others see on messages sent from now on
           upload-photo <picture>      upload a picture to the memes server and make it this account's photo
+          prefs                       every preference stored: its key, chat, value as the preferences file
+                                      holds it, when it was chosen, and whether it follows the account
+          pref <name> [value]         read or set one: \(Invocation.prefNames)
+                                      (the boost amount is boost-amount, a chat's time zone switch
+                                      share-timezone)
           contacts                    contacts known to the core
           add <code|picture> [name]   start a key exchange with someone: their contact info, a
                                       sphinx.chat share_contact link, an invite (adds its inviter), or a
@@ -80,7 +85,8 @@ struct PeelCommand {
           boost <id> [sats]           boost someone else's message (row id from messages); in a tribe the
                                       tribe's price per message and escrow are added; without an
                                       amount, the one-tap boost with the account's boost amount,
-                                      sent with no confirmation, as in the official apps
+                                      sent with no confirmation, as in the official apps (one set on
+                                      another device and over the threshold takes --yes once)
           pay <pubkey> <sats>         send sats to a contact in their chat (--text <note>)
                                       (both refuse more than the balance, and over the confirmation
                                       threshold without --yes)
@@ -227,12 +233,13 @@ struct Invocation {
 
 /// A payment over the confirmation threshold: with `--yes`, sent again for
 /// the amount the engine names (and printed); without, the refusal stands.
-func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throws {
+@discardableResult
+func confirming<T>(_ yes: Bool, _ send: (UInt64?) async throws -> T) async throws -> T {
     do {
-        try await send(nil)
+        return try await send(nil)
     } catch Engine.Failure.needsConfirmation(let msat) where yes {
         print("confirmed \(Sats.format(msat: msat)) (\(msat) msat)")
-        try await send(msat)
+        return try await send(msat)
     }
 }
 

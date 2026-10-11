@@ -14,7 +14,7 @@ extension Invocation {
                 try await confirming(confirmed) {
                     try await session.engine.boost(messageID: id, amountMsat: msat, confirmedMsat: $0)
                 }
-            } else if try await session.engine.quickBoost(messageID: id) == nil {
+            } else if try await confirming(confirmed, { try await session.engine.quickBoost(messageID: id, confirmedMsat: $0) }) == nil {
                 print("already boosted; one-tap boosts a message once")
             }
             try await session.finish(after: wait)

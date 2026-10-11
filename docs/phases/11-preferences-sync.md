@@ -151,6 +151,7 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Theme | none (Peel is always dark) | none | Nothing to sync |
 | Tribes, memes and call servers | `setting` | none | Account configuration, not preferences: stay in `setting` |
 | Pane widths, the notification offer | `UserDefaults` | none | Window state of this Mac: stay where they are |
+| Sidebar sections open and shown in full (`sidebarLayout`, #141) | `setting`, JSON | none | Window state of this Mac, as the pane widths: stays in `setting` |
 | Name and photo | `setting` | none (travel on messages; restore recovers the photo) | Not preferences: unchanged |
 
 Official keys Peel does not use (`private_photo`, `feed_status`,
@@ -181,7 +182,7 @@ writes. Every user setting is a `Preference<Value>` with:
   takes only a stricter one (decision 7), and a looser one waits until it
   is chosen on this device.
 
-Storage (`preference` table, migration v23):
+Storage (`preference` table, migration v24):
 
 | column | meaning |
 |---|---|
@@ -224,7 +225,7 @@ an upload has succeeded, this device records it
 as the server being unavailable: no change, no upload. A device that has
 never seen one starts from an empty list, **bootstrapping**: it uploads
 only rows chosen on it since the preferences layer arrived (dated after
-`device.preferences_since`, which v23 records), never values from before.
+`device.preferences_since`, which v24 records), never values from before.
 So a storage error on the server can at worst make a new device write the
 few things chosen on it since, and never makes a device that has synced
 overwrite the real file.
@@ -286,9 +287,9 @@ neither read nor written. The file's contents are never logged and never
 stored by Peel; only registry keys reach the database, so `ai_agent_config`
 and its API key stay in memory for the length of one sync.
 
-### Migration (v23) and Tom's real data
+### Migration (v24) and Tom's real data
 
-v23 creates `preference`, copies the old values in, and removes them from
+v24 creates `preference`, copies the old values in, and removes them from
 `setting` and drops `chatTimeZone`, in one transaction:
 
 | from | to | `updatedAt` |
@@ -302,7 +303,20 @@ v23 creates `preference`, copies the old values in, and removes them from
 | `chatTimeZone` rows | `timezone`, the chat, `{"timezone_enabled", "timezone_identifier"}` | the row's `updatedAt` |
 | (the time it runs) | `device.preferences_since` | 0 |
 
-v23 follows v21 (#140) and v22 (#149, message resend dates), and assumes both.
+v24 needs v21 (#140) and v22 (#149, message resend dates) and nothing
+else. v23 is #158's indexes; a database may have recorded a v23 from a
+build made before #158 landed (Tom may have run one), so v24 neither
+needs nor assumes it, and runs the same after any v23 or none (tested
+with an unrelated v23 already recorded).
+
+Development builds of this work registered the same migration as "v22"
+(f43d2c8, a4f5a79) or "v23" (78c4e09), so a development profile may
+already hold `preference` and no `chatTimeZone`. v24 tolerates that (the
+table only if missing, every copy `INSERT OR IGNORE`, `chatTimeZone`
+only if it is there) and puts back what those names skipped: the real
+v22's two message columns, and #158's v23 indexes (`message_preview`,
+which the sidebar's query names, and the duplicate index it drops).
+Tested for both names.
 
 **What Tom's first sync does.** Settings from before sync are dated 0, so
 wherever the file has their key, the file wins: what he set in the
@@ -311,7 +325,7 @@ only if it is stricter, decision 7). Where the file lacks an official key,
 the value from before stays on this Mac and does not go up. The first
 sync **uploads** in exactly these cases, and only once the file has
 decrypted (a "not found" on his first sync uploads nothing from before
-v23):
+v24):
 
 - a per-chat time zone row (the only old values with real dates, from
   when he flipped a switch in Peel since 2026-10-08) that is newer than
@@ -413,3 +427,26 @@ change to storage or sync:
   (F1), the boost held to a confirmation here (F2), the threshold taken
   only when stricter (F5), compare-and-set applies (F4), the last
   duplicate, the dry run, and these docs corrected (F3, F6, F7).
+- 2026-10-10, PR b (the layer): `Preferences.swift` (registry, codecs,
+  apply policies), the migration (v24), the engine's setters on `set`, CLI `prefs` and
+  `pref`. A boost amount is now whole sats (`Failure.partSat`), as the
+  file keeps it; one over the threshold that this device did not confirm
+  makes the one-tap boost ask (the app's second click; CLI `--yes`).
+  Forgetting a contact keeps its time zone item (decision 6). Checked on
+  a copy of a real v20 development database (1,746 messages, 16
+  settings, two time zone rows): 7 preference rows, 11 settings left,
+  every other table's count the same, `integrity_check` ok (before the
+  review added the two device rows).
+- 2026-10-10, PR b rebased onto main after #141, #142 and #153: the
+  sidebar's layout (#141) stays in `setting` as window state (v24 leaves
+  it, tested); payment templates (#150) and auto-resend (#149) add no
+  user setting. Review fixes: the second Boost click confirms only while
+  its notice is still shown, the one-tap boost reads its amount once and
+  a boost that went is not reported failed if recording its confirmation
+  fails; the CLI's `confirming` returns its result. Not applied: deriving
+  the scope from the `device.` prefix (kept explicit, tested to agree);
+  folding the boost confirmation into the apply policy (decision 3 holds
+  it at the boost instead, so a synced amount is still shown and used);
+  one transaction for the boost amount and its confirmation (the engine
+  is an actor and the confirmation is written first, so the worst case is
+  a confirmation for an amount the person did confirm).

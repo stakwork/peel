@@ -804,9 +804,11 @@ extension Storage {
 
     /// Removes a contact and their chat in one transaction: the core's
     /// `c/` entry, every message in the chat, the contact row, the read
-    /// marker and mute level, and the time zone switch. The money tables
-    /// (payments, invoices, pings, invites) stay: they are history, and
-    /// what is still settling keeps its record. Returns the removed
+    /// marker and mute level. The money tables (payments, invoices, pings,
+    /// invites) stay: they are history, and what is still settling keeps
+    /// its record. The time zone switch stays too: it is the account's
+    /// preference, on its other devices and in the preferences file, and
+    /// comes back if the contact is added again. Returns the removed
     /// attachments, so their files can go too.
     func deleteContact(_ pubkey: String) throws -> [Message] {
         try pool.write { db in
@@ -814,7 +816,7 @@ extension Storage {
                 db, sql: "SELECT * FROM message WHERE chat = ? AND type = ?", arguments: [pubkey, MessageType.attachment]
             )
             try CoreStateRow.deleteAll(db, keys: ["c/\(pubkey)"])
-            for table in ["message", "chatState", "chatTimeZone"] {
+            for table in ["message", "chatState"] {
                 try db.execute(sql: "DELETE FROM \(table) WHERE chat = ?", arguments: [pubkey])
             }
             try db.execute(sql: "DELETE FROM contact WHERE pubkey = ?", arguments: [pubkey])

@@ -1281,6 +1281,10 @@ shares nothing and an agent. The late-hours hint is dropped.
 
 ### Stored per chat, in the file's shape
 
+Since v24 (phase 11, `../phases/11-preferences-sync.md`) the row below is
+the chat's `timezone` preference, the file's item itself; the meanings
+are unchanged.
+
 So that sync can slot in without changing what anything means, Peel keeps
 one row per chat with exactly the fields of the official apps' `timezone`
 item (`DataSyncModels.swift:55-59`, `TimezoneSetting` at 435-459):

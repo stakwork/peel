@@ -192,6 +192,10 @@ final class AppModel {
     @ObservationIgnored var moneyInFlight: Set<String> = []
     /// What the one-tap Boost tips (the engine's boost amount).
     var boostAmountMsat = Engine.defaultBoostAmountMsat
+    /// A one-tap boost amount from another device the last Boost asked to
+    /// confirm (`quickBoost`), and the notice that asked: the next Boost of
+    /// that message sends it while the notice is still shown.
+    @ObservationIgnored var boostToConfirm: (messageID: Int64, msat: UInt64, notice: String)?
     /// Run headers' looked-up sender zones (nil: none), by chat, then
     /// alias and moment; see `withSenderZones`.
     @ObservationIgnored var senderZoneCache: [String: [String: TimeZone?]] = [:]
@@ -255,9 +259,9 @@ final class AppModel {
     @ObservationIgnored private var lastActiveAt: Date?
 
     /// Hours without use after which the app asks for the PIN again, in
-    /// front or not; 0 means only at launch. Kept with the account; an account that
-    /// has never set it here takes the `pinTimeoutHours` default earlier
-    /// builds read, which is left in place.
+    /// front or not; 0 means only at launch. A preference of this device
+    /// (the PIN is this device's); one never set here takes the
+    /// `pinTimeoutHours` default earlier builds read, which is left in place.
     private(set) var pinTimeoutHours = 0
 
     init() {
@@ -1012,6 +1016,7 @@ final class AppModel {
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        boostToConfirm = nil
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
         senderZoneCache = [:]

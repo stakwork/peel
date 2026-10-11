@@ -80,8 +80,13 @@ One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
 `Storage+Migrations.swift` (`v1` on, append-only). Eleven tables:
 
 - `coreState`: opaque key/value owned by the core.
-- `setting`: the account's own values (server, name, photo, balance,
-  clock, tribes and memes hosts, payment thresholds and more).
+- `setting`: the account's own state and configuration (server, name,
+  photo, balance, clock, tribes, memes and call servers and more).
+- `preference`: every user setting (`Preferences.swift`), each row the
+  official preferences file's item for its key and identifier, with its
+  date (phase 11): the boost amount, the confirmation threshold, time
+  zones (the account's, and the switch per chat), and this device's PIN
+  timeout and notification text.
 - `message`: upsert on uuid; raw sender and body JSON kept alongside
   extracted columns (replies and threads, attachments, mentions, amounts,
   deleted).
@@ -94,7 +99,6 @@ One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
 - `payment`: the server's payment history (`fetch_payments`).
 - `invoice`: invoices made or paid here.
 - `paymentPing`: the 1-sat pings that belong to an asynchronous payment.
-- `chatTimeZone`: whether this account shares its time zone in each chat.
 - `invite`: invites made here with sats (the core keeps none), by code.
 
 The money tables' records are in `Invoice.swift` and their joined history in

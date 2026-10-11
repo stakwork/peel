@@ -204,6 +204,29 @@ extension Storage {
             .values(in: pool)
     }
 
+    /// The newest `limit` messages of a chat past its read marker that count
+    /// as unread (`countsAsUnreadSQL`, as `readStates` counts them), oldest
+    /// first; with `mentionsOnly`, those that mention this account (what a
+    /// muted chat counts).
+    public func unreadMessages(in chat: String, mentionsOnly: Bool = false, limit: Int) throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM (
+                        SELECT m.* FROM message m
+                        -- The marker as a constant, so the indexes seek past it.
+                        WHERE m.chat = ?1 AND \(Self.countsAsUnreadSQL)
+                            AND m.serverIndex > COALESCE((SELECT lastRead FROM chatState WHERE chat = ?1), -1)
+                            \(mentionsOnly ? "AND m.mentionsMe = 1" : "")
+                        ORDER BY m.timestamp DESC, m.id DESC LIMIT ?2
+                    ) ORDER BY timestamp, id
+                    """,
+                arguments: [chat, limit]
+            )
+        }
+    }
+
     /// Read markers moved here and not yet sent to the server.
     func pendingReads() throws -> [String: Int64] {
         try pool.read { db in

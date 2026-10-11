@@ -42,7 +42,9 @@ let package = Package(
         // (docs/agent-architecture.md, docs/phases/09-agents.md);
         // GRDB only, so it builds for macOS and iOS without the core.
         .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
-        .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit"]),
+        // The Sphinx tools over the engine's storage; no AppKit or UIKit.
+        .target(name: "PeelAgent", dependencies: ["AgentKit", "PeelCore"]),
+        .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
         // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
         .executableTarget(
             name: "PeelApp",
@@ -52,7 +54,8 @@ let package = Package(
         ),
         .testTarget(
             name: "PeelCoreTests",
-            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+            // PeelAgent's tests live here too, to share the storage fixtures.
+            dependencies: ["PeelCore", "PeelAgent", "AgentKit", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .testTarget(
             name: "AgentKitTests",

@@ -74,10 +74,12 @@ is a short plan. Update the status and the journal when you finish something.
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
-    states, tribes and their senders, mentions, payments, the shared SQL
+    states and the unread messages behind them, tribes and their senders,
+    mentions, payments, the shared SQL
     (`tribeChats`, `chatsSQL`, `countsAsUnreadSQL`)
   - `Storage+Threads.swift` — replies and threads: `timeline(in:)` (tribe
-    threads collapsed), `thread(_:in:)`, `threads()`, parents, boosts and
+    threads collapsed), `thread(_:in:)`, `threads()`, `threads(in:limit:)`
+    (one chat's, whoever wrote), parents, boosts and
     thread summaries
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
@@ -291,6 +293,20 @@ is a short plan. Update the status and the journal when you finish something.
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
     at three UTF-8 bytes each) and `AgentLoop` (one turn: stream, run tools,
     repeat; Stop is cancelling its task)
+- `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
+  and PeelCore; no AppKit or UIKit)
+  - `SphinxTools.swift` — the read tools under the official Mac app's names
+    (`get_contacts_and_tribes`, `read_recent_messages`,
+    `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
+    each through the reads the app's views use; the system prompt that
+    goes with them
+  - `ChatDirectory.swift` — a chat by the name the model gives: chat id,
+    exact, normalised, without spaces, part of a name, then typos;
+    ambiguous rather than a guess
+  - `ChatData.swift` — a tool's result: header, the chats' data between
+    markers that say other people wrote it, one cleaned line per message in
+    the official format (`[sender] date (uuid=… thread=… reply=…): text`)
+    under a heading with the chat id, capped and cut by whole lines
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -299,7 +315,8 @@ is a short plan. Update the status and the journal when you finish something.
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
   - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
-    the terminal (no profile; the key from `PEEL_AGENT_API_KEY` only)
+    the terminal (the key from `PEEL_AGENT_API_KEY` only); with
+    `--profile`, the Sphinx read tools over that profile, read-only
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -313,7 +330,10 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
-  `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
+  `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
+  `SphinxToolsTests` (PeelAgent's, here for the storage fixtures: name
+  resolution, each tool on a seeded profile, caps, unseen grouping, message
+  text that tries to end the data block); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,

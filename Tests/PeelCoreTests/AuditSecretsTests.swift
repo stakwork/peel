@@ -112,8 +112,10 @@ struct AuditSecretsTests {
     /// error shown, printed or reported never carries the account.
     @Test(arguments: [
         Array(abandon.dropLast()) + ["peelauditword"],
-        Array(repeating: "abandon", count: 12),
+        Array(repeating: "abandon", count: 12),  // bad checksum
         Array(abandon.dropLast()),
+        Array(repeating: "abandon", count: 5),
+        [],
     ])
     func refusedWordsAreNeverRepeated(words: [String]) {
         let text = words.joined(separator: " ")

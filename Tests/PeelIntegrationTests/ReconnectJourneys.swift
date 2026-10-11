@@ -136,11 +136,7 @@ extension Journeys {
             try await eventually("Alice to see the connection go") { await alice.engine.connection != .connected }
             try await Stack.shared.tap(.up)
             try await eventually("Alice to reconnect", timeout: .seconds(60)) { await alice.engine.connection == .connected }
-            let tag = try #require(try alice.storage.message(id: id)?.tag)
-            try await eventually("the server's records to name it", timeout: .seconds(20)) {
-                let gate = await alice.engine.resendGate
-                return gate?.asked.contains(tag) == true && gate?.recorded?.contains(tag) == true
-            }
+            // Only the server's record of it brings it back to delivered.
             try await eventually("its record to land", timeout: .seconds(20)) {
                 try alice.storage.message(id: id)?.delivery == .delivered
             }

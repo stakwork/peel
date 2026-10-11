@@ -69,6 +69,7 @@ struct MessageTests {
 
     @Test func millisecondDates() {
         let date = Date(millisecondsSince1970: 1_700_000_000_123)
+        #expect(date == Date(timeIntervalSince1970: 1_700_000_000.123))
         #expect(date.millisecondsSince1970 == 1_700_000_000_123)
         #expect(Message.fixture(timestamp: nil).date == Date(timeIntervalSince1970: 0))
     }

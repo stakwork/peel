@@ -14,16 +14,6 @@ struct MnemonicTests {
         #expect(try Engine.validate(mnemonic: messy) == abandon.joined(separator: " "))
     }
 
-    @Test(arguments: [
-        "",
-        Array(repeating: "abandon", count: 12).joined(separator: " "),  // bad checksum
-        (Array(repeating: "abandon", count: 11) + ["notaword"]).joined(separator: " "),
-        Array(repeating: "abandon", count: 5).joined(separator: " "),
-    ])
-    func validateRejectsBadMnemonics(mnemonic: String) {
-        #expect(throws: (any Error).self) { try Engine.validate(mnemonic: mnemonic) }
-    }
-
     @Test func generatedMnemonicIsTwelveValidWords() throws {
         let mnemonic = try Engine.generateMnemonic()
         #expect(Engine.words(in: mnemonic).count == 12)
@@ -96,10 +86,5 @@ struct EngineOfflineTests {
         let storage = try profile.storage()
         _ = try testEngine(storage)
         #expect(try storage.value(for: .deviceID) == deviceID)
-    }
-
-    @Test func rejectsInvalidMnemonic() throws {
-        let storage = try profile.storage()
-        #expect(throws: (any Error).self) { try Engine(mnemonic: "not words", storage: storage) }
     }
 }

@@ -90,18 +90,6 @@ struct MediaCryptoTests {
         #expect(String(decoding: plain, as: UTF8.self) == "peel attachment vector")
     }
 
-    @Test func wrongKeyIsRefused() throws {
-        let sealed = try MediaCrypto.encrypt(Data("secret".utf8), key: MediaCrypto.newKey())
-        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: MediaCrypto.newKey()) }
-    }
-
-    @Test func tamperingIsRefused() throws {
-        let key = MediaCrypto.newKey()
-        var sealed = try MediaCrypto.encrypt(Data(repeating: 7, count: 64), key: key)
-        sealed[40] ^= 1
-        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: key) }
-    }
-
     @Test(arguments: [Data(), Data([3, 1]), Data([2, 1] + [UInt8](repeating: 0, count: 100))])
     func malformedIsRefused(sealed: Data) {
         #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: "00") }
@@ -147,10 +135,12 @@ struct MediaTokenTests {
 }
 
 struct AttachmentKindTests {
+    /// The Mac app sends `video/mov`, which UTType does not know: it is a video all the same.
     @Test(arguments: [
         ("image/jpg", AttachmentKind.image), ("image/gif", .image), ("", .image), ("video/mov", .video),
-        ("audio/wav", .audio), ("audio/mpeg", .audio), ("application/pdf", .pdf), ("sphinx/text", .text),
-        ("application/zip", .file),
+        ("video/quicktime", .video), ("video/mp4", .video), ("video", .video), ("audio/wav", .audio),
+        ("audio/mpeg", .audio), ("audio/x-m4a", .audio), ("application/pdf", .pdf), ("sphinx/text", .text),
+        ("application/zip", .file), ("application/octet-stream", .file),
     ])
     func kindFromMediaType(type: String, kind: AttachmentKind) {
         #expect(AttachmentKind(mediaType: type) == kind)
@@ -183,17 +173,6 @@ struct AttachmentKindTests {
         #expect(OutgoingFile(name: "notes.zip", data: Data([1])).mediaType == "application/zip")
         #expect(OutgoingFile(name: "README", data: Data([1])).mediaType == "application/octet-stream")
         #expect(OutgoingFile(fileName: "audio.wav", mediaType: "audio/wav").field == "audio")
-    }
-
-    @Test(arguments: [
-        ("attachment; filename=report.pdf", "report.pdf"),
-        ("attachment; filename=\"a b.txt\"; size=3", "a b.txt"),
-        ("attachment; filename=../../etc/passwd", "passwd"),
-        ("attachment; filename=.hidden", "hidden"),
-        ("inline", nil),
-    ])
-    func fileNamesFromTheServerAreMadeSafe(header: String, name: String?) {
-        #expect(MemesServer.fileName(fromDisposition: header) == name)
     }
 
     @Test func memesHostsAreHTTPSExceptHere() throws {
@@ -319,12 +298,6 @@ struct AttachmentStorageTests {
         #expect(states["02aa"]?.unread == 2)
         let conversations = try #require(try await first(storage.conversations()))
         #expect(conversations.first?.lastTimestamp == 2_000)
-    }
-
-    @Test func migrationAddsTheAttachmentColumns() throws {
-        _ = try profile.storage()
-        let columns = try rows(profile, "PRAGMA table_info(message)").map { $0["name"] as String }
-        #expect(Set(["mediaType", "fileName", "fileSize", "upload"]).isSubset(of: Set(columns)))
     }
 }
 

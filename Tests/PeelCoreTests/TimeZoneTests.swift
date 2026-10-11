@@ -53,17 +53,6 @@ struct TimeZoneOffsetTests {
         #expect(london.secondsFromGMT(for: date("2026-07-01T12:00:00Z")) == 3600)
     }
 
-    /// Abbreviations would come out as a city with summer time; nothing else
-    /// reaches `TimeZone(identifier:)` unless the system lists it.
-    @Test(arguments: [
-        "EST", "BST", "CET", "GMT+15", "GMT+14:30", "GMT+5:60", "GMT+5:3", "GMT+", "GMT1", "GMT+1 ", " GMT+1",
-        "GMT+1:30:00", "GMT++1", "GMT+١", "gmt+1", "", "Foo/Bar", "../../etc/passwd", "/etc/localtime","Europe/London/x",
-        "Europe/" + String(repeating: "x", count: 80),
-    ])
-    func refusesAnythingElse(text: String) {
-        #expect(TimeZoneOffset.zone(text) == nil)
-    }
-
     @Test func storesTheTZFromAMessagesMetadataString() throws {
         #expect(try storedTZ(#"{"content":"hi","metadata":"{\"tz\":\"GMT+1\"}"}"#) == "GMT+1")
         #expect(try storedTZ(#"{"metadata":"{\"tz\":\"Europe/London\",\"x\":1}"}"#) == "Europe/London")

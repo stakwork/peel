@@ -215,10 +215,15 @@ struct AuditLinkLabelTests {
 }
 
 struct AuditCodeTests {
+    /// Fullwidth hex (`０２…`, `ａ`) is refused at the key, not later with a
+    /// vaguer error; ASCII hex in either case is a key, and only at full length.
     @Test func fullWidthHexIsNoKey() {
         let fullWidth = String(keyG.map { $0 == "0" ? "\u{FF10}" : $0 })
         #expect(keyG.isPubkey)
+        #expect(keyG.uppercased().isPubkey)
         #expect(!fullWidth.isPubkey)
+        #expect(!(keyG.dropLast() + "\u{FF41}").isPubkey)
+        #expect(!String(keyG.dropLast()).isPubkey)
         #expect(ContactCode.contactInfo("\(fullWidth)_\(key2G)_123") == nil)
         #expect(TribeLink("sphinx.chat://?action=tribeV2&pubkey=\(fullWidth)&host=tribes.sphinx.chat") == nil)
     }
@@ -243,7 +248,7 @@ struct AuditCodeTests {
         })
     }
 
-    @Test func randomCodesThrowAndNeverTrap() {
+    @Test func randomCodesNeverTrap() {
         let pieces = ["sphinx.chat://", "?", "&", "=", "action", "i", "share_contact", "tribeV2", "pubKey", "pubkey", "host",
                       keyG, key2G, "_", "123", "d=", "%", "%00", "\u{FF10}", "\n", " ", "/", ":", "@", "#"]
         for text in randomStrings(pieces, count: 3000, length: 12, seed: 3) {
@@ -279,9 +284,14 @@ struct AuditCallLinkTests {
 }
 
 struct AuditTimeZoneTests {
-    @Test(arguments: ["GMT+", "GMT+:30", "GMT+1:", "GMT+1:5", "GMT+15", "GMT+14:01", "GMT++1", "GMT+\u{FF11}", "UTC-99",
-                      "../../etc/passwd", "/etc/localtime", "Europe/../London", "Europe/London\u{0000}", "",
-                      String(repeating: "A/", count: 40)])
+    /// Abbreviations would come out as a city with summer time; nothing else
+    /// reaches `TimeZone(identifier:)` unless the system lists it.
+    @Test(arguments: [
+        "EST", "BST", "CET", "gmt+1", "GMT1", "GMT+", "GMT+:30", "GMT+1:", "GMT+1:5", "GMT+5:3", "GMT+5:60",
+        "GMT+15", "GMT+14:01", "GMT+14:30", "GMT+1:30:00", "GMT++1", "GMT+1 ", " GMT+1", "GMT+\u{FF11}", "GMT+١",
+        "UTC-99", "", "Foo/Bar", "../../etc/passwd", "/etc/localtime", "Europe/../London", "Europe/London/x",
+        "Europe/London\u{0000}", "Europe/" + String(repeating: "x", count: 80), String(repeating: "A/", count: 40),
+    ])
     func malformedOffsetsAreNoZone(text: String) {
         #expect(TimeZoneOffset.zone(text) == nil)
     }
@@ -316,6 +326,9 @@ struct AuditMediaTests {
     }
 
     @Test(arguments: [
+        ("attachment; filename=report.pdf", "report.pdf"),
+        ("attachment; filename=\"a b.txt\"; size=3", "a b.txt"),
+        ("attachment; filename=../../etc/passwd", "passwd"),
         ("attachment; filename=\"../../.ssh/authorized_keys\"", "authorized_keys"),
         ("attachment; filename=..\\..\\evil.exe", "evil.exe"),
         ("attachment; filename=\".zshrc\"", "zshrc"),
@@ -323,6 +336,7 @@ struct AuditMediaTests {
         ("attachment; filename=\"a:b\"", "ab"),
         ("attachment; filename=\"/\"", nil),
         ("attachment", nil),
+        ("inline", nil),
     ] as [(String, String?)])
     func aServersFileNameIsOneSafeName(header: String, name: String?) {
         #expect(MemesServer.fileName(fromDisposition: header) == name)
@@ -359,9 +373,9 @@ struct AuditMediaTests {
         for index in sealed.indices {
             var flipped = sealed
             flipped[index] ^= 0x01
-            #expect(throws: (any Error).self) { try MediaCrypto.decrypt(flipped, key: key) }
+            #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(flipped, key: key) }
         }
-        #expect(throws: (any Error).self) { try MediaCrypto.decrypt(sealed, key: MediaCrypto.newKey()) }
+        #expect(throws: MediaCrypto.Failure.self) { try MediaCrypto.decrypt(sealed, key: MediaCrypto.newKey()) }
         #expect(throws: (any Error).self) { try MediaCrypto.decrypt(sealed, key: "") }
         #expect(try MediaCrypto.decrypt(sealed, key: key) == Data("hello".utf8))
     }

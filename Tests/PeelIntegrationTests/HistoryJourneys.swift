@@ -40,7 +40,7 @@ extension Journeys {
             try await eventually("Bob to see Alice's post") {
                 try bob.messages(in: tribe.pubkey).contains { $0.content == post }
             }
-            let balance = try await alice.settledBalance()
+            let balance = try #require(try await alice.settledBalance())
 
             let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
             try await eventually("the restore to finish", timeout: .seconds(60)) {
@@ -58,7 +58,7 @@ extension Journeys {
             let restoredTribe = try second.storage.tribes().first { $0.pubkey == tribe.pubkey }
             #expect(restoredTribe != nil && restoredTribe?.left == false && restoredTribe?.status == .active)
             #expect(try second.messages(in: tribe.pubkey).contains { $0.content == post && $0.fromMe })
-            let seen1 = try await second.balance(settlingAt: balance ?? 0)
+            let seen1 = try await second.balance(settlingAt: balance)
             #expect(seen1 == balance)
 
             await second.close()

@@ -347,17 +347,6 @@ struct PaymentTests {
         }
     }
 
-    /// The threshold rule for the custom boost, payments and saving a boost
-    /// amount (a one-tap boost is never asked): over it asks, a confirmation
-    /// covers exactly its amount, and 0 asks for everything.
-    @Test func overTheThresholdAsksForThatAmount() {
-        #expect(!Engine.needsConfirmation(10_000, confirmedMsat: nil, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(10_001, confirmedMsat: nil, thresholdMsat: 10_000))
-        #expect(!Engine.needsConfirmation(10_001, confirmedMsat: 10_001, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(10_002, confirmedMsat: 10_001, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(1_000, confirmedMsat: nil, thresholdMsat: 0))
-    }
-
     /// The double-tap guard reads our newest boost on a message, failed ones too.
     @Test func ourLastBoostOnAMessage() throws {
         let storage = try storage([

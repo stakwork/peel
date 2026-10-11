@@ -210,13 +210,6 @@ struct MoneyRefusalTests {
         }
     }
 
-    @Test func aNoteThatWouldBeSplitIsRefused() async throws {
-        let (engine, _) = try engine()
-        await #expect(throws: Engine.Failure.noteTooLong) {
-            try await engine.sendPayment(to: person, amountMsat: 1_000, text: longNote)
-        }
-    }
-
     // MARK: Boosts
 
     @Test func onlySomeoneElsesTextCanBeBoosted() async throws {

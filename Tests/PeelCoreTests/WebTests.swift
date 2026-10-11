@@ -68,6 +68,7 @@ struct WebTests {
     /// under 1 MB read as such.
     @Test func failuresNameNoServerTheyDidNotComeFrom() {
         #expect(Web.Failure.refused("the config", 503).description == "the server refused the config (HTTP 503)")
+        #expect(CallServer.Failure.refused(503).description == "the call server refused the call ticket (HTTP 503)")
         #expect(TooLarge(limit: 64_000).description == "the file is larger than 64 KB")
         #expect(TooLarge(limit: 100_000_000).description == "the file is larger than 100 MB")
     }

@@ -5,7 +5,8 @@
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
 plan, #157) and PR 2 (the AgentKit data layer). PR 3 (model clients and
-the turn loop, driven by `peel agent`) is in review.
+the turn loop, driven by `peel agent`) and PR 4 (the Sphinx read tools,
+in the new `PeelAgent` target) are in review.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -221,6 +222,74 @@ Later: compaction, then memory.
   tests cover CRLF split across reads).
 - Next: PR 4, the Sphinx read tools on this loop, with every tool call
   recorded in the AgentKit store.
+
+**PR 4, the Sphinx read tools (2026-10-11).**
+- Done: the `PeelAgent` target (AgentKit and PeelCore, no AppKit or
+  UIKit) with five `.read` tools over one profile's `Storage`:
+  `get_contacts_and_tribes`, `read_recent_messages(chat, limit)`,
+  `read_unseen_messages(chat?)` (no chat: every chat the sidebar counts as
+  unread, grouped per chat, a muted one only for its mentions),
+  `read_threads(tribe, thread_uuid?, limit)` and `search_messages(query,
+  chat?, limit)` over Peel's chat search. They read through what the app's
+  views read (`conversations`, `readStates`, `timeline`, `thread`,
+  `searchMessages`) plus two storage reads beside them that reuse the
+  existing SQL: `unreadMessages(in:)` (`countsAsUnreadSQL`) and
+  `threads(in:limit:)` (`threadSummaries`). Names resolve as the official
+  app resolves them (chat id, exact, normalised, without spaces, part of a
+  name, typos), with ambiguity answered by listing the candidates and
+  their chat ids. Lines use the official format, under a heading with the
+  chat id, so each message carries its chat id and uuid for a later View
+  link. `peel --profile <name> agent` (or `peel agent --profile <name>`)
+  gives the model these tools, read-only; only the summary line of each
+  result is printed. Checked by hand against a local stub of the
+  Messages API on development profiles: unseen, search and an unknown
+  tribe.
+- Untrusted input: other people's words go to the model between marker
+  lines that say they are information, never instructions; each message,
+  name, uuid and chat id is cleaned to one line (control characters as
+  spaces; direction controls, zero-width characters and Unicode tags
+  dropped; no run of three "<" left) and capped (text at 400 characters,
+  names at 60); every message line starts with a fixed `[sender] date (`
+  prefix, so nothing in a message can start a line, end the block or pose
+  as another line. Someone named "Me" reads as "Me (not the user)". A
+  result is capped at 12,000 characters, cut by whole lines and saying so;
+  with no chat named, unseen messages are shared out across the chats
+  shown (30 lines in all). The system prompt says that names anywhere in
+  a result, and everything between the markers, were written by other
+  people. The tools read messages, contacts and tribes only: no setting,
+  key or the seed.
+- Reviews: /code-review found the `peel agent --profile` order refused, a
+  run of five "<" rebuilding the marker, muted chats listed whole, search
+  dropping left tribes after its limit, a single chat's count off by one,
+  a long thread cut losing its root and a capped reply count; all fixed.
+  /simplify: one resolve path that throws, one `agent` dispatch, the
+  unread read seeking past the marker (a constant subquery rather than a
+  join), the timeline read at the size asked for. /security-review: chat
+  names outside the markers (the system prompt now covers names anywhere)
+  and invisible characters that could split a marker; fixed. Independent
+  review (risk raised to high for untrusted input): "what did I miss?"
+  could lose whole chats to the cut, anyone could appear as "Me", a chat
+  on mentions only was called muted, a reply's uuid read as a thread, a
+  mistyped profile left an empty folder, chat ids uncleaned, Unicode tags
+  kept; all fixed.
+- Not applied, with reasons: membership-note wording shared with the
+  app's `MembershipNote` (it lives in PeelApp, which another PR owns; the
+  agent's own wording is short and plain); a one-shot (non-observing)
+  read API in Storage for the tools (each tool call is one read, and the
+  CLI's read-only commands use the same `first` of an observation); a
+  separate PeelAgentTests target (it would need the storage fixtures
+  moved into a shared module); renaming PeelCore's `JSONValue` (outside
+  this change); a per-tool cut note and a limit for
+  `get_contacts_and_tribes` (a list over 12,000 characters is about 150
+  chats); local time zones in lines (dates are UTC, and the prompt says
+  so; `current_time` gives the zone).
+- Learned: PeelCore has its own `JSONValue` (preferences), so code that
+  imports both modules names AgentKit's. A read-only `Storage` on a
+  profile last opened by an older build fails with SQLite error 1, as the
+  read-only CLI commands do; open it once with a current build.
+- Not done here: recording each tool call in the AgentKit store. It
+  belongs with the Agent chat's conversation records (PR 5); the CLI
+  keeps no conversation.
 
 ## User journeys
 

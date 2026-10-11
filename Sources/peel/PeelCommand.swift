@@ -112,8 +112,10 @@ struct PeelCommand {
                                       room, identity, expiry and whether a token came (never the token)
           call-who <id|link>          who is on a call, from the call server's presence feed, for --wait seconds
 
-          agent                       talk with a model in the terminal, with one built-in tool (current_time);
-                                      takes no --profile. The key comes from PEEL_AGENT_API_KEY only.
+          agent                       talk with a model in the terminal, with one built-in tool (current_time),
+                                      and with --profile the Sphinx read tools over that profile's chats
+                                      (read-only: contacts and tribes, recent and unseen messages, threads,
+                                      search). The key comes from PEEL_AGENT_API_KEY only.
                                       --provider anthropic|openai|openrouter (default anthropic), --model <id>
                                       (needed but for anthropic), --base-url <url>, --max-steps <n>.
                                       Ctrl-C stops a reply, Ctrl-D quits
@@ -152,16 +154,25 @@ struct PeelCommand {
     }
 
     static func run() async throws {
-        // The agent opens no account, so it needs no profile.
-        if CommandLine.arguments.dropFirst().first == "agent" {
-            return try await AgentCommand.run(Arguments(CommandLine.arguments.dropFirst(2)))
-        }
         var arguments = Arguments(CommandLine.arguments.dropFirst())
         // The app's own profile holds the real account; the CLI only ever opens
         // development profiles, and never one called "default" so the two cannot be confused.
-        guard let name = arguments.option("--profile"), name.lowercased() != "default" else {
-            throw PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
+        let name = arguments.option("--profile")
+        let reserved = PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
+        if name?.lowercased() == "default" { throw reserved }
+        // The agent needs no profile; with one it reads its chats, read-only.
+        if arguments.first == "agent" {
+            _ = arguments.next()
+            let storage = try name.map { name in
+                let directory = try Profile(name: name, kind: .development).directory
+                guard FileManager.default.fileExists(atPath: directory.appendingPathComponent("peel.sqlite").path) else {
+                    throw PeelError("no development profile named \(name)")
+                }
+                return try Storage(directory: directory, readOnly: true)
+            }
+            return try await AgentCommand.run(arguments, storage: storage)
         }
+        guard let name else { throw reserved }
         var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
         guard let command = invocation.arguments.next() else {
             print(usage)
@@ -274,6 +285,8 @@ struct Arguments {
     init(_ items: some Sequence<String>) { self.items = Array(items) }
 
     var isEmpty: Bool { items.isEmpty }
+
+    var first: String? { items.first }
 
     mutating func next() -> String? {
         items.isEmpty ? nil : items.removeFirst()

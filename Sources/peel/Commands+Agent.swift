@@ -1,11 +1,14 @@
 import AgentKit
 import Foundation
+import PeelAgent
 import PeelCore
 import Synchronization
 
 /// `peel agent`: a streamed conversation with a model in the terminal, with
-/// one built-in tool (`current_time`). It opens no profile. The API key
-/// comes from the environment only; it is never written anywhere or printed.
+/// one built-in tool (`current_time`) and, given a profile's storage, the
+/// Sphinx read tools over it (`SphinxTools`). The API key comes from the
+/// environment only; it is never written anywhere or printed. Nothing a
+/// tool reads is printed beyond the one-line summary of its result.
 enum AgentCommand {
     static let keyVariable = "PEEL_AGENT_API_KEY"
 
@@ -14,7 +17,7 @@ enum AgentCommand {
         Use a tool when it would give a better answer than guessing.
         """
 
-    static func run(_ arguments: Arguments) async throws {
+    static func run(_ arguments: Arguments, storage: Storage? = nil) async throws {
         var arguments = arguments
         let providerName = arguments.option("--provider") ?? "anthropic"
         let modelOption = arguments.option("--model")
@@ -48,7 +51,10 @@ enum AgentCommand {
         }
         guard let model else { throw PeelError("--provider \(providerName) needs --model <id>") }
 
-        var loop = AgentLoop(provider: provider, tools: ToolRegistry([.currentTime]), model: model, systemPrompt: systemPrompt)
+        let sphinx = storage.map(SphinxTools.init(storage:))
+        var loop = AgentLoop(
+            provider: provider, tools: ToolRegistry([.currentTime] + (sphinx?.tools ?? [])), model: model,
+            systemPrompt: sphinx == nil ? systemPrompt : systemPrompt + " " + SphinxTools.systemPrompt)
         if let maxSteps { loop.maxSteps = maxSteps }
         try await converse(with: loop, describing: "\(providerName), \(model)")
     }

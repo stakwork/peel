@@ -180,6 +180,17 @@ extension Storage {
             .values(in: pool)
     }
 
+    /// Every thread in one chat, whoever wrote in it, newest activity first,
+    /// at most `limit`: the threads `threads()` would list there without
+    /// its "this account wrote in it" filter.
+    public func threads(in chat: String, limit: Int) throws -> [ThreadSummary] {
+        try pool.read { db in
+            try Self.threadSummaries(
+                db, where: "t.chat = ?", arguments: [chat, limit], also: "ORDER BY g.threadLast DESC, o.id DESC LIMIT ?"
+            )
+        }
+    }
+
     /// When this account last boosted the message `uuid` in `chat`, if it
     /// has (failed boosts too: a tap that failed is still a tap).
     func lastOwnBoost(on uuid: String, in chat: String) throws -> Date? {

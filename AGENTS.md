@@ -284,10 +284,13 @@ is a short plan. Update the status and the journal when you finish something.
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
-  `ReconnectJourneys`, `PreferencesJourneys`
+  `ReconnectJourneys`, `PreferencesJourneys`; `FundDev` (the bank's half of
+  `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
   wire tap down, up, or freezes it (a dead connection that looks open)
+- `scripts/fund-dev.sh` — the only allowed way to give a development profile
+  sats: a real payment from the bank on a local stack ("Checking the app")
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
 - `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
@@ -373,6 +376,15 @@ quitting before any window opens.
   no mouse step: posted clicks do not reach SwiftUI's buttons in an app
   that is never active, so reach a control by its shortcut or add a
   named step like `select`.
+- A new development profile on the local stack starts with 0 sats, and
+  adding a contact needs 6. **The only allowed way to fund one** is
+  `scripts/fund-dev.sh <stack dir> <dev profile> <sats>`: the
+  integration tests' bank adds the profile as a contact (named "bank")
+  and pays it, a real payment on that stack (`docs/testing.md`, "Funding a
+  development profile"). It refuses `default`, `throwaway`, and any server
+  that is not the named stack's loopback broker. Never write a balance,
+  setting or any other value into a profile's database, and never write a
+  throwaway test that calls `Bank` to do this instead.
 
 ## Signing and the weekly re-sign
 

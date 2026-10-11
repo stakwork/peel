@@ -4,6 +4,12 @@ Status: planned. Runs after the feature phases (1 to 7, 9 and 10) and after
 Tom has used the app on his real account for a while. Nothing goes to the team before it
 passes. Added 2026-10-07.
 
+The bug hunt does not wait for the freeze: it is planned in
+[../finding-bugs.md](../finding-bugs.md) (2026-10-11), and items 6 to 8
+below draw on it. Its stage 1 (three to five people from the team who opt
+in, with small balances) runs inside this phase; nobody else gets a build
+until it passes.
+
 ## Why a separate phase
 
 The shipping chain in `AGENTS.md` reviews one diff at a time. It cannot see

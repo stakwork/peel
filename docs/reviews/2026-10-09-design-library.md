@@ -292,6 +292,8 @@ ones: "No time zone matches." (`AccountView.swift:619-624`) and
 the web pane's failed page with Try Again (`WebPane.swift:802-824`; its
 sibling in a link card says "Try again", `LinkCards.swift:110`).
 
+(Batch 13: all five are on `EmptyState`; see Progress.)
+
 ### Inline confirms
 
 `InlineConfirm` is the one owner, with 11 uses, and it holds. One copy
@@ -598,6 +600,10 @@ EmptyState("Could not load the page.", systemImage: "wifi.slash") {
 
 shadcn's `Empty`. Replaces `EmptyPlace` and the four other empty states
 listed above.
+
+(Batch 13: built without `systemImage:`, as no site uses an icon; the
+web pane keeps its words, "Could not open <host>" over the problem, as
+`title:` and the message. See Progress.)
 
 ## 5. Bugs, not style
 
@@ -1377,3 +1383,47 @@ library outside forms.
     details, the invite, the zone picker) are pixel-identical to the
     first after renders; the owner's tribe details differ only in the
     member count.
+- **Batch 13, `EmptyState` (2026-10-11).** `UI/EmptyState.swift`,
+  shadcn's `Empty`: `EmptyState(message, title:, size:) { actions }`,
+  the words centred and selectable in the room they are given, an
+  optional 15 pt semibold title above and actions below, 10 apart. Sizes:
+  `.md` (14 pt alone, 13 under a title, 24 of padding) and `.sm` (12 pt,
+  8 of padding, a list in a panel). `EmptyPlace` (MainView) and the web
+  pane's `LoadProblem` are gone. On it: the start screen ("Pick a
+  conversation." and "Pick a conversation, or add a contact.", under the
+  "Peel" header, through `Detail.start`), Threads, Mentions (its header
+  now always drawn above the list or the empty state, rather than the
+  whole screen swapped), Payments, the Account's "No time zone matches."
+  (`.sm`) and the web pane's failed page (title "Could not open <host>"
+  or "that address", Try again `.peel(.outline, size: .sm)` only when
+  there is an address to try). No words changed. Left out of the doc's
+  sketch: `systemImage:` (no site has an icon; it comes with the first
+  one).
+  - Every visual difference, before (`origin/main`) → after:
+    - The zone picker's "No time zone matches." is centred across the
+      list (was leading, lined up with the rows' text); same size,
+      colour and padding.
+    - Every message is selectable (only the web pane's was) and centred
+      if it wraps (only the web pane's was); the web pane's title also
+      centres when a long host wraps (was leading). The screens' messages
+      gain 24 of padding, which only matters where one would wrap.
+    - Rendered, nothing moves: the text sits at the same pixel bounds
+      in every snapshot. Single-line text drawn with
+      `multilineTextAlignment` or `textSelection` now set is
+      antialiased slightly differently (edge pixels up to 69–127 of 255
+      apart in the pixel diff, no whole-pixel shift); the web pane's
+      message, which had both before, is identical.
+  - Review (an independent agent; `/code-review`, `/simplify` and
+    `/security-review` passes): no code must-fix. Applied: this entry,
+    the section 4 note, AGENTS.md's wording and indent, the README's
+    lead-in, the message size as a `switch`. Security: none (the host in
+    the title is plain text, as before).
+  - Renders: new development profile b13-empty on the loopback stack (no
+    sats, nothing seeded), the same drive file before and after,
+    offscreen, with temporary driver hooks (not committed) for Threads,
+    Mentions, an unknown chat, the start screen, the zone picker and the
+    web pane: start, no chat, Threads, Mentions, Payments (connected),
+    the zone picker searching "zzqq", the web pane failing on a closed
+    loopback port (with Try again) and refusing an ftp address (without).
+    Not rendered: Payments while offline ("…once Peel is connected.") or
+    with a problem, Mentions with a problem, light mode.

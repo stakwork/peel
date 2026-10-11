@@ -404,22 +404,20 @@ struct MentionsView: View {
     @State private var problem: String?
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            DetailHeader(title: "Mentions")
             if mentions.isEmpty {
-                EmptyPlace(title: "Mentions", message: problem ?? "Messages that mention you show up here.")
+                EmptyState(problem ?? "Messages that mention you show up here.")
             } else {
                 let names = Dictionary(model.conversations.map { ($0.chat, $0.name) }, uniquingKeysWith: { $1 })
-                VStack(spacing: 0) {
-                    DetailHeader(title: "Mentions")
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(mentions) { message in
-                                MentionRow(message: message, tribeName: names[message.chat])
-                            }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(mentions) { message in
+                            MentionRow(message: message, tribeName: names[message.chat])
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                 }
             }
         }

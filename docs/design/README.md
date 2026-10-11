@@ -474,11 +474,11 @@ checked under its field) stays where it is.
 The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
-inventories what is still drawn by hand and plans the rest in batches:
-`EmptyState`, then the tokens sweep. Its
+inventories what is still drawn by hand and plans the rest in batches;
+only the tokens sweep is left. Its
 batch plan comes before the payments fixes and the personal agent. Until
 a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
-`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
 
@@ -603,6 +603,18 @@ Built so far:
   details, a payment, Pay an invoice, a paid invoice in Receive and
   every Account section (`SettingsSection` is a `SectionHeader` over a
   `FactList`).
+- **Empty states** (batch 13). `EmptyState("Threads you start or reply
+  to show up here.")` in `UI/EmptyState.swift`, shadcn's `Empty`: what a
+  screen, pane or list shows when it has nothing (or could not load it),
+  centred in the room it is given. The words are `secondaryText`,
+  centred and selectable (they may be a problem worth copying): 14 pt
+  alone, or 13 under a `title` (15 semibold); actions go below, 10
+  apart (the web pane's Try again, `.peel(.outline, size: .sm)`); 24 of
+  padding. `.sm` is a list in a panel: 12 pt, 8 of padding (the
+  Account's "No time zone matches."). The start screen ("Pick a
+  conversation…", under the "Peel" header), Threads, Mentions, Payments
+  and the web pane's failed page use it; a screen keeps its own
+  `DetailHeader` above it.
 - **Problem lines** (batch 7). Every failure the app shows goes through
   `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
   as a sentence (a capital, unless the first word is a name such as a

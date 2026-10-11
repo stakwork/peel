@@ -148,11 +148,8 @@ struct PaymentsView: View {
 
     @ViewBuilder private var list: some View {
         if items.isEmpty {
-            Text(problem ?? (model.connection == .connected ? "Payments you send and receive show up here."
+            EmptyState(problem ?? (model.connection == .connected ? "Payments you send and receive show up here."
                 : "Payments show up here once Peel is connected."))
-                .font(Theme.font(14))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {

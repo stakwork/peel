@@ -132,10 +132,7 @@ struct ThreadsView: View {
                 }
             }
             if threads.isEmpty {
-                Text("Threads you start or reply to show up here.")
-                    .font(Theme.font(14))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyState("Threads you start or reply to show up here.")
             } else {
                 let conversations = Dictionary(model.conversations.map { ($0.chat, $0) }, uniquingKeysWith: { $1 })
                 ScrollView {

@@ -180,7 +180,7 @@ struct Detail: View {
                 if let conversation = model.selectedConversation {
                     ConversationView(conversation: conversation)
                 } else {
-                    EmptyPlace(title: "Peel", message: "Pick a conversation.")
+                    start("Pick a conversation.")
                 }
             case .threads:
                 ThreadsView()
@@ -191,11 +191,19 @@ struct Detail: View {
             case .account:
                 AccountView()
             case nil:
-                EmptyPlace(title: "Peel", message: "Pick a conversation, or add a contact.")
+                start("Pick a conversation, or add a contact.")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background.ignoresSafeArea())
+    }
+
+    /// No chat open: the app's name over what to do.
+    private func start(_ message: String) -> some View {
+        VStack(spacing: 0) {
+            DetailHeader(title: "Peel")
+            EmptyState(message)
+        }
     }
 }
 
@@ -258,17 +266,3 @@ extension DetailHeader where Trailing == EmptyView {
     }
 }
 
-struct EmptyPlace: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 0) {
-            DetailHeader(title: title)
-            Text(message)
-                .font(Theme.font(14))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}

@@ -818,6 +818,8 @@ struct MessageRow: View, Equatable {
                 }
                 if retryable {
                     UndeliveredActions(message: message)
+                } else if message.delivery == .pending, message.mayHavePaid {
+                    WaitingForServer(since: message.date, what: message.type == MessageType.call ? "Call" : "Message")
                 }
             }
             .frame(maxWidth: Self.textWidth, alignment: .leading)

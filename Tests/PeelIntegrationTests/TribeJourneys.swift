@@ -6,8 +6,9 @@ extension Journeys {
     @Suite struct Tribes {
         /// Alice creates a free tribe and a paid one. Bob joins the free one
         /// (1 sat, as the official apps pay), Carol and Bob the paid one at
-        /// its price. Carol posts there and pays the price per message; Bob
-        /// boosts her post, paying the tip plus the price, all of it to her.
+        /// its price. Carol posts there and pays the price per message, once
+        /// for a text and once for a file, whose row the tribe's copy finds;
+        /// Bob boosts her post, paying the tip plus the price, all of it to her.
         @Test func createJoinFreeAndPaidPostAndBoost() async throws {
             let alice = try await Person.create("alice")
             let bob = try await Person.create("bob")
@@ -52,7 +53,23 @@ extension Journeys {
                 }
             }
 
-            // A boost of 20 sats on it, plus the tribe's 10.
+            // A file pays the price too, once, and its row takes the send.
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("ridge-\(tag).pdf")
+            try Data("%PDF-1.4\n% ridge \(tag)\n%%EOF\n".utf8).write(to: file)
+            defer { try? FileManager.default.removeItem(at: file) }
+            let caption = "the ridge at dawn \(tag)"
+            let fileID = try await carol.engine.sendAttachment(file, text: caption, to: paid.pubkey)
+            try await eventually("Carol's file to come back from the tribe") {
+                try carol.storage.message(id: fileID)?.delivery == .delivered
+            }
+            #expect(try carol.messages(in: paid.pubkey).filter { $0.type == MessageType.attachment }.count == 1)
+            let seenFile = try await carol.balance(settlingAt: c0 - 70)
+            #expect(seenFile == c0 - 70)
+            try await eventually("Alice to see Carol's file") {
+                try alice.messages(in: paid.pubkey).contains { $0.type == MessageType.attachment && $0.content == caption }
+            }
+
+            // A boost of 20 sats on her post, plus the tribe's 10.
             let a1 = try #require(try await alice.settledBalance())
             let b1 = try #require(try await bob.settledBalance())
             let c1 = try #require(try await carol.settledBalance())

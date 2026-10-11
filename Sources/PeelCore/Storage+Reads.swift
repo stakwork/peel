@@ -295,6 +295,10 @@ extension Storage {
         return balance > waiting ? balance - waiting : 0
     }
 
+    /// `Message.mayHavePaid` for a row of ours: it left (a tag) with sats.
+    static let mayHavePaidSQL =
+        "(tag IS NOT NULL AND (type IN (\(MessageType.sqlList(MessageType.moneySends))) OR COALESCE(msat, 0) > 0))"
+
     /// A send tracked by tag that the server has not confirmed or refused.
     struct PendingSend: Hashable {
         var tag: String
@@ -324,10 +328,9 @@ extension Storage {
                 db,
                 sql: """
                     SELECT * FROM (
-                        SELECT tag, COALESCE(timestamp, 0) AS createdAt,
-                            type IN (\(moneySends)) OR COALESCE(msat, 0) > 0 AS movesMoney
+                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, \(Self.mayHavePaidSQL) AS movesMoney
                         FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
-                            AND (type IN (\(moneySends)) OR COALESCE(msat, 0) > 0 OR timestamp < ?)
+                            AND (\(Self.mayHavePaidSQL) OR timestamp < ?)
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, COALESCE(timestamp, 0), 0

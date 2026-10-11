@@ -18,8 +18,9 @@ notified (#51). Storage was at v13 then; it is at v21 now.
   F1, F3 (Peel's half), F6 and F7 fixed ("Payments review, first set");
   F2, F4 and F8 fixed, and stale pending rows settled ("Payments review,
   reconciliation"); F5's words, F9 and three of F11's four edges fixed
-  ("Payments review, waiting words and the async pay"); F5's cancel, F10,
-  F11's tribe-text Retry (needs Tom) and F3's core half open.
+  ("Payments review, waiting words and the async pay"); F5's cancel, F10
+  and F3's core half open. F11's tribe-text Retry fixed ("Tribe messages
+  held like payments"), its trade-offs for Tom's sign-off.
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -1721,3 +1722,96 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+## Tribe messages held like payments (2026-10-11, branch `fix/tribe-text-retry`)
+
+Bug hunt N7 (`../reviews/2026-10-11-bug-hunt.md`) and the payments
+review's last F11 edge. Every tribe message carries the tribe's price (at
+least 3 sats; the core refuses one without), yet a tribe text whose
+publish was cut short (`.unknown`) was marked failed, and any text still
+unconfirmed after 30 s offered Retry: both roads paid and posted again
+if the first had gone. Tom (2026-10-11): fix it, so a message that may
+have paid gets no quick Retry. Done means: nothing that may have paid is
+sent again while the server may have it, and nothing is left pending with
+no way out.
+
+- **The rule.** `Message.mayHavePaid`, with its SQL twin
+  `Storage.mayHavePaidSQL`: ours, with a tag (written before anything is
+  published, so one without never left), carrying sats (`msat`, or a
+  money type). `isRetryable` gives a pending row that may have paid no
+  Retry or Discard; the resend take-over in `Storage.apply` holds the same
+  rule; `pendingSendTags` asks about it as money, so one the server never
+  recorded fails after 30 minutes. `deliver` keeps a `.unknown` send
+  pending when it carried sats (`sats > 0`, was `amountMsat != nil`):
+  payments, and every tribe send, text, files, deletes and calls. A
+  direct message's text carries none and still fails at once.
+- **A tribe file's first send.** `sendAttachment` writes its draft with
+  the price before the upload, and `uploadAndDeliver` sends it through the
+  take-over, which admits a draft (no tag: it never left). The branch's
+  first version refused it, so every tribe file was published and paid
+  while its row kept no tag (shown twice, one copy faint for good); the
+  review caught it. A take-over the rule refuses now throws, so the commit
+  and the publish are abandoned (it used to be skipped while the send went
+  out untracked), and a Retry racing the first send loses there.
+- **Nothing stuck.** A draft refused before it left (tribe not joined yet,
+  a core error, Peel quit after the upload) has no tag, so past the usual
+  wait it offers Retry and Discard, as before.
+- **The words.** A held message past 30 s says "Message waiting for the
+  server…" (a call "Call waiting…"; `WaitingForServer`, the payments'
+  owner of that line) instead of a silent faint row. The notice for a send
+  cut short says "the message may have gone" for a message
+  (`mayHaveGone(_:what:)`). The CLI's `resend` help says what carried sats
+  goes again only once failed.
+- **Tests.** `ConnectionDropTests`: a priced tribe text cut short stays
+  pending and is not retried; one unconfirmed past the wait is refused by
+  Retry with nothing sent; one the server never recorded fails after 30
+  minutes; a tribe file's first send takes over its draft; one that never
+  left may go again; a send whose row went meanwhile publishes nothing.
+  Journey: `Tribes` sends a paid file (one row, the tribe's copy finds it,
+  10 sats once).
+- **Verified.** The regression tests fail on the code before the fix:
+  the three tribe-text tests and the race test on `main` (`9e96d95`),
+  and the file, never-left and race tests on the branch's first version.
+  Offline suite: 623 passed (the known IPv6 issue). Journeys `Tribes`
+  and `Reconnects` on the local stack: 6 passed. Offscreen check on a
+  new development profile on the local stack, deleted afterwards: a tribe
+  with one delivered message and one held two minutes, faint, "Message
+  waiting for the server…", no Retry or Discard.
+- **Reviews.** `/code-review` (15 findings), `/simplify` (four
+  angles), `/security-review` (no findings) and an independent review.
+  Applied: the first-send take-over of a tribe file (above); the
+  take-over throwing when refused; tag-less drafts not stuck; the
+  waiting line and its owner; one named rule (`mayHavePaid` and its SQL
+  twin) for `isRetryable`, the take-over, `pendingSendTags` and the row;
+  "message" in the cut-short notice; the CLI help; doc comments that said
+  the rule twice; tests (one that waited on a record that changed
+  nothing, a direct message fixture posing as a tribe's, a shared
+  recording transport and `pending` fixture); these docs and the review
+  doc's F11 row.
+- **Not applied, with reasons.**
+  - Release only on a reconnect: a held message the server never
+    recorded fails only when a reconnect at least 30 minutes after it
+    was sent asks (`checkPendingSends` runs on connect). Payments wait
+    the same way; a timed re-check while connected would change every
+    money send, so it is left for its own change.
+  - Calls and deletes are held too: a tribe call or delete cut short
+    stays pending (a call no longer reads "Not sent" at once). Neither is
+    ever retried, so holding costs only that; it is honest, since either
+    may have gone. The rule stays "the send carried sats".
+  - A tribe message whose server status is PENDING (the tribes server
+    down while the mixer is up) stays held until the tribe's copy comes
+    back; it never becomes "not settled" as a payment would (only money
+    types do). The waiting line says what is happening.
+  - Payments' list shows a cut-short tribe text that did reach the
+    server as pending until the reconnect's records settle it; tribe
+    messages carry no payment hash, so the history cannot settle them.
+  - A typed refusal for "held, may have paid" (the CLI and agents get
+    `notRetryable`, as for a pending payment): a new `Failure` case,
+    for payments too, left for its own change.
+  - Shared attachment fixtures across suites, and a helper for the
+    journeys' test files: separate test-support cleanups.
+- **For Tom.** A tribe message unconfirmed after 30 s no longer offers
+  Retry or Discard; it reads "Message waiting for the server…" until the
+  server confirms it, the tribe's copy comes back, or a later reconnect
+  finds no record (then it fails, with Retry). The trade-offs above (the
+  reconnect-only release; calls and deletes held) are his to sign off.

@@ -201,9 +201,12 @@ extension Storage {
             for (chat, level) in commit.mutes {
                 try Self.setMute(db, chat: chat, level: level)
             }
-            // The rule of `Message.isRetryable`, held here too: text again once
-            // failed or unconfirmed, a payment or boost, or a message that paid
-            // a tribe's price, only once it failed.
+            // The rule of `Message.isRetryable`, held here too: a row that
+            // failed, or one unconfirmed that cannot have paid (it carried no
+            // sats, or never left, as an attachment's draft before its first
+            // send); a payment or boost only once it failed. A row the rule
+            // refuses throws, so the whole commit, and with it the publish,
+            // is abandoned.
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,
@@ -215,7 +218,7 @@ extension Storage {
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
                             AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
                             AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))
-                                AND COALESCE(msat, 0) = 0))
+                                AND NOT \(Self.mayHavePaidSQL)))
                         RETURNING *
                         """,
                     arguments: [
@@ -225,7 +228,8 @@ extension Storage {
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]
                 )
-                if let row { applied.stored.append(row) }
+                guard let row else { throw PeelError("that message is no longer waiting to be sent") }
+                applied.stored.append(row)
             }
             return applied
         }

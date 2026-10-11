@@ -27,6 +27,23 @@ private func cutTransport(accepting accepted: Int, then error: any Error & Senda
 /// A write the closing connection cut short: it may have left.
 private let cutShort = PeelError("the write was cut short")
 
+/// A connection that takes every write, and the writes it took.
+private func recordingTransport() -> (Transport, Writes) {
+    cutTransport(accepting: .max, then: cutShort)
+}
+
+/// One of ours still pending, numbered for its uuid and its tag ("t1"),
+/// sent `minutesAgo`: a payment of 1 sat, or what a tribe message paid
+/// (`msat`).
+private func pending(_ n: Int, type: Int, minutesAgo: Int64, chat: String = keyG, msat: Int64? = nil) -> Message {
+    .fixture(
+        uuid: uuid(n), type: type, chat: chat, fromMe: true, body: #"{"content":""}"#, content: "",
+        msat: msat ?? (type == MessageType.directPayment ? 1_000 : nil),
+        timestamp: Date.now.millisecondsSince1970 - minutesAgo * 60_000, tag: "t\(n)",
+        status: Message.Delivery.pending.rawValue
+    )
+}
+
 /// What money and history do when the connection goes: a payment or an
 /// invite whose publish never left is failed at once and may be made again;
 /// one that may have left stays pending, never offered again, until the
@@ -179,26 +196,15 @@ struct ConnectionDropTests {
     /// it is older than `unrecordedPaymentTimeout`: a recent one may not be
     /// recorded yet, and failing it would pay twice.
     @Test func onlyAnOldPaymentTheServerNeverRecordedFails() async throws {
-        let now = Date.now.millisecondsSince1970
-        func pending(_ n: Int, type: Int, minutesAgo: Int64) -> Message {
-            .fixture(
-                uuid: uuid(n), type: type, chat: keyG, fromMe: true, body: #"{"content":""}"#, content: "",
-                msat: type == MessageType.directPayment ? 1_000 : nil, timestamp: now - minutesAgo * 60_000,
-                tag: "t\(n)", status: Message.Delivery.pending.rawValue
-            )
-        }
-        let writes = Writes()
-        let transport = Transport(publishing: { topic, _ in writes.topics.withLock { $0.append(topic) } })
-        try await withEngine(contact: keyG, transport: transport) { engine, storage throws in
-            // The fifth paid a tribe's price.
-            var tribeText = pending(5, type: MessageType.text, minutesAgo: 31)
-            tribeText.msat = 3_000
+        let (transport, writes) = recordingTransport()
+        try await withEngine(contact: keyG, tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
             _ = try storage.apply(Storage.Commit(messages: [
                 (pending(1, type: MessageType.directPayment, minutesAgo: 31), false, nil),
                 (pending(2, type: MessageType.directPayment, minutesAgo: 5), false, nil),
                 (pending(3, type: MessageType.text, minutesAgo: 31), false, nil),
                 (pending(4, type: MessageType.directPayment, minutesAgo: 31), false, nil),
-                (tribeText, false, nil),
+                // The fifth paid a tribe's price.
+                (pending(5, type: MessageType.text, minutesAgo: 31, chat: key2G, msat: 3_000), false, nil),
             ]))
             try await engine.checkPendingSends()
             #expect(writes.count == 1)
@@ -233,32 +239,87 @@ struct ConnectionDropTests {
         }
     }
 
-    /// A tribe text past the confirmation timeout that the server holds a
-    /// record of (not yet COMPLETE or FAILED) may have paid and posted:
-    /// Retry refuses it and sends nothing.
-    @Test func aPricedTribeTextTheServerRecordedIsNotSentAgain() async throws {
-        let sent = Message.fixture(
-            uuid: uuid(1), chat: key2G, fromMe: true, body: #"{"content":"hello all"}"#, content: "hello all",
-            msat: 3_000, timestamp: Date.now.millisecondsSince1970 - 60_000, tag: "t1",
-            status: Message.Delivery.pending.rawValue
-        )
-        let writes = Writes()
-        let transport = Transport(publishing: { topic, _ in writes.topics.withLock { $0.append(topic) } })
+    /// A tribe text unconfirmed past the usual wait may have paid and
+    /// posted: Retry refuses it and sends nothing.
+    @Test func aPricedTribeTextUnconfirmedPastTheWaitIsNotSentAgain() async throws {
+        let (transport, writes) = recordingTransport()
         try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            let sent = pending(1, type: MessageType.text, minutesAgo: 1, chat: key2G, msat: 3_000)
             _ = try storage.apply(Storage.Commit(messages: [(sent, false, nil)]))
             let id = try #require(try storage.message(uuid: uuid(1), in: key2G)?.id)
-            try await engine.checkPendingSends()
-            #expect(writes.count == 1)
-            _ = try await engine.commit(
-                coreResult(tags: #"[{"tag":"t1","status":"PENDING"}]"#), time: "1", expectedSender: nil
-            )
             await #expect(throws: Engine.Failure.notRetryable) { try await engine.resend(messageID: id) }
-            #expect(writes.count == 1)
+            #expect(writes.count == 0)
             #expect(try storage.message(id: id)?.tag == "t1")
         }
     }
 
-    /// Only money waits: a text cut short is failed at once, for Retry.
+    /// An attachment of ours to a tribe, uploaded and waiting for its first
+    /// send as `sendAttachment` leaves it: pending, no uuid or tag yet, and
+    /// already carrying the tribe's price; or, with `sent`, that send taken.
+    /// Stored; returns the row and its id.
+    private func uploadedDraft(
+        in storage: Storage, sent: (uuid: String, tag: String)? = nil
+    ) throws -> (row: Message, id: Int64) {
+        var draft = Message.fixture(
+            uuid: sent?.uuid, type: MessageType.attachment, chat: key2G, fromMe: true,
+            body: #"{"content":"","mediaKey":"k","mediaToken":"t"}"#, content: "", msat: 3_000,
+            timestamp: Date.now.millisecondsSince1970 - 60_000, tag: sent?.tag,
+            status: Message.Delivery.pending.rawValue
+        )
+        draft.mediaType = "image/jpeg"
+        draft.upload = Message.Upload.done.rawValue
+        let row = try #require(try storage.apply(Storage.Commit(messages: [(draft, false, nil)])).stored.first)
+        return (row, try #require(row.id))
+    }
+
+    /// A tribe attachment's first send takes over its draft, which already
+    /// carries the price, so the server's status and the tribe's copy find it.
+    @Test func aTribeAttachmentsFirstSendTakesOverItsDraft() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            let (draft, id) = try uploadedDraft(in: storage)
+            let tag = try #require(try await engine.uploadAndDeliver(draft))
+            let row = try #require(try storage.message(id: id))
+            #expect(row.tag == tag)
+            #expect(row.uuid != nil)
+            #expect(row.delivery == .pending)
+        }
+    }
+
+    /// A tribe attachment whose first send is refused before it leaves
+    /// (here the owner has not let this account in yet) has no tag: it
+    /// never paid, so past the usual wait it may go again or be discarded,
+    /// rather than wait for a server that never had it.
+    @Test func aTribeAttachmentThatNeverLeftMayGoAgain() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(tribe: Tribe(pubkey: key2G, status: .pending), transport: transport) { engine, storage throws in
+            let (draft, id) = try uploadedDraft(in: storage)
+            await #expect(throws: Engine.Failure.awaitingApproval) { try await engine.uploadAndDeliver(draft) }
+            let row = try #require(try storage.message(id: id))
+            #expect(row.tag == nil)
+            #expect(row.isRetryable())
+            #expect(writes.count == 0)
+        }
+    }
+
+    /// A send takes over only a row that may still go: one that went
+    /// meanwhile (here a tribe attachment already sent and unconfirmed, as
+    /// a Retry finds it once its upload is done) is refused before anything
+    /// is published, so the losing Retry pays nothing.
+    @Test func aSendWhoseRowWentMeanwhileIsNotPublished() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            let (sent, id) = try uploadedDraft(in: storage, sent: (uuid(1), "t1"))
+            await #expect(throws: PeelError.self) { try await engine.uploadAndDeliver(sent) }
+            #expect(writes.count == 0)
+            let row = try #require(try storage.message(id: id))
+            #expect(row.tag == "t1")
+            #expect(row.delivery == .pending)
+        }
+    }
+
+    /// Only what carried sats waits: a direct message's text cut short is
+    /// failed at once, for Retry.
     @Test func aTextCutShortFails() async throws {
         let (transport, _) = cutTransport(accepting: 0, then: cutShort)
         try await withEngine(contact: keyG, transport: transport) { engine, storage throws in

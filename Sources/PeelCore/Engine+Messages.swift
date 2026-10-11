@@ -108,10 +108,10 @@ extension Engine {
     /// echo then matches that row rather than adding a second one. A tribe
     /// message pays the tribe's current price, as a first send would, but
     /// never more than the price it was first sent at: a raise since then
-    /// shows in the tribe's header, and the message must be sent anew. Like
-    /// a payment, it goes again only once it failed (`isRetryable`): an
-    /// unconfirmed one may have paid and posted.
-    /// A payment or boost goes again only once it failed (`isRetryable`), for
+    /// shows in the tribe's header, and the message must be sent anew.
+    /// Anything that carried sats (a payment, a boost, or a tribe message,
+    /// which paid the price) goes again only once it failed (`isRetryable`):
+    /// an unconfirmed one may have paid. A payment or boost goes again for
     /// the same amount, within the balance and, like a new one, confirmed
     /// when over the threshold; a boost in a tribe only if that amount still
     /// covers the tribe's price, and only while its message can be boosted.
@@ -309,7 +309,8 @@ extension Engine {
         case .none:
             failure = Failure.notConnected
         case .unknown(let error) where sats > 0:
-            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error)))
+            let what = amountMsat == nil ? "message" : "payment"
+            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error, what: what)))
             return sent?.tag
         case .unknown(let error):
             failure = error

@@ -36,15 +36,17 @@ struct ConnectionDropTests {
 
     /// Runs `body` on a registered engine with a balance, on `transport`
     /// (by default `goneTransport()`), and disconnects after, which shuts
-    /// the transport's client down.
+    /// the transport's client down. A `tribe` is joined, at its price.
     private func withEngine(
-        balanceMsat: UInt64? = 1_000_000, contact: String? = nil, transport: Transport = goneTransport(),
-        _ body: (Engine, Storage) async throws -> Void
+        balanceMsat: UInt64? = 1_000_000, contact: String? = nil, tribe: Tribe? = nil,
+        transport: Transport = goneTransport(), _ body: (Engine, Storage) async throws -> Void
     ) async throws {
         let storage = try profile.storage()
         var settings: [Setting: String] = [.server: "mqtt://127.0.0.1:1"]
         settings[.balanceMsat] = balanceMsat.map(String.init)
+        if let tribe { try storage.save([tribe]) }
         let state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
+            .merging(tribe.map { coreContact($0.pubkey, contactKey: nil) } ?? [:]) { $1 }
         _ = try storage.apply(Storage.Commit(
             state: state, settings: settings, contacts: contact.map { [($0, true)] }
         ))
@@ -188,11 +190,15 @@ struct ConnectionDropTests {
         let writes = Writes()
         let transport = Transport(publishing: { topic, _ in writes.topics.withLock { $0.append(topic) } })
         try await withEngine(contact: keyG, transport: transport) { engine, storage throws in
+            // The fifth paid a tribe's price.
+            var tribeText = pending(5, type: MessageType.text, minutesAgo: 31)
+            tribeText.msat = 3_000
             _ = try storage.apply(Storage.Commit(messages: [
                 (pending(1, type: MessageType.directPayment, minutesAgo: 31), false, nil),
                 (pending(2, type: MessageType.directPayment, minutesAgo: 5), false, nil),
                 (pending(3, type: MessageType.text, minutesAgo: 31), false, nil),
                 (pending(4, type: MessageType.directPayment, minutesAgo: 31), false, nil),
+                (tribeText, false, nil),
             ]))
             try await engine.checkPendingSends()
             #expect(writes.count == 1)
@@ -206,6 +212,49 @@ struct ConnectionDropTests {
             #expect(try delivery(2) == Message.Delivery.pending.rawValue)
             #expect(try delivery(3) == Message.Delivery.pending.rawValue)
             #expect(try delivery(4) == Message.Delivery.delivered.rawValue)
+            #expect(try delivery(5) == Message.Delivery.failed.rawValue)
+        }
+    }
+
+    /// A tribe text pays the tribe's price (at least 3 sats), so one cut
+    /// short waits like a payment: pending, never offered for Retry, and
+    /// asked about as money until the server says.
+    @Test func aPricedTribeTextCutShortStaysPendingAndIsNotRetried() async throws {
+        let (transport, writes) = cutTransport(accepting: 0, then: cutShort)
+        try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            let tag = try #require(try await engine.sendText("hello all", to: key2G))
+            #expect(writes.count >= 1)
+            let row = try #require(try rows(profile, "SELECT id FROM message WHERE tag = '\(tag)'").first)
+            let stored = try #require(try storage.message(id: row["id"]))
+            #expect(stored.msat == 3_000)
+            #expect(stored.delivery == .pending)
+            #expect(!stored.isRetryable(now: .now.addingTimeInterval(3600)))
+            #expect(try storage.pendingSendTags(textBefore: 0).contains { $0.tag == tag && $0.movesMoney })
+        }
+    }
+
+    /// A tribe text past the confirmation timeout that the server holds a
+    /// record of (not yet COMPLETE or FAILED) may have paid and posted:
+    /// Retry refuses it and sends nothing.
+    @Test func aPricedTribeTextTheServerRecordedIsNotSentAgain() async throws {
+        let sent = Message.fixture(
+            uuid: uuid(1), chat: key2G, fromMe: true, body: #"{"content":"hello all"}"#, content: "hello all",
+            msat: 3_000, timestamp: Date.now.millisecondsSince1970 - 60_000, tag: "t1",
+            status: Message.Delivery.pending.rawValue
+        )
+        let writes = Writes()
+        let transport = Transport(publishing: { topic, _ in writes.topics.withLock { $0.append(topic) } })
+        try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            _ = try storage.apply(Storage.Commit(messages: [(sent, false, nil)]))
+            let id = try #require(try storage.message(uuid: uuid(1), in: key2G)?.id)
+            try await engine.checkPendingSends()
+            #expect(writes.count == 1)
+            _ = try await engine.commit(
+                coreResult(tags: #"[{"tag":"t1","status":"PENDING"}]"#), time: "1", expectedSender: nil
+            )
+            await #expect(throws: Engine.Failure.notRetryable) { try await engine.resend(messageID: id) }
+            #expect(writes.count == 1)
+            #expect(try storage.message(id: id)?.tag == "t1")
         }
     }
 

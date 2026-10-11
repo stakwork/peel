@@ -121,14 +121,15 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// another device carries none, and Retry would pay the amount its body
     /// declares to its chat, which a message the core only takes for ours
     /// (`Engine.cappedToArrived`) could have chosen. A payment request moves
-    /// no money, so it goes again like text.
+    /// no money, so it goes again like text. Text or an attachment that paid
+    /// a tribe's price (`msat`) is held like a payment: only once failed.
     public func isRetryable(now: Date = .now) -> Bool {
         guard fromMe, !deleted else { return false }
         if MessageType.payments.contains(type) { return delivery == .failed && msat != nil }
         guard MessageType.resendable.contains(type), uploadState != .pending else { return false }
         switch delivery {
         case .failed: return true
-        case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
+        case .pending: return (msat ?? 0) == 0 && now.timeIntervalSince(date) > Self.confirmationTimeout
         case .delivered, .unsettled, nil: return false
         }
     }

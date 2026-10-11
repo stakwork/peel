@@ -202,7 +202,8 @@ extension Storage {
                 try Self.setMute(db, chat: chat, level: level)
             }
             // The rule of `Message.isRetryable`, held here too: text again once
-            // failed or unconfirmed, a payment or boost only once it failed.
+            // failed or unconfirmed, a payment or boost, or a message that paid
+            // a tribe's price, only once it failed.
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,
@@ -213,7 +214,8 @@ extension Storage {
                             autoResentAt = COALESCE(?, autoResentAt)
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
                             AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
-                            AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))))
+                            AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))
+                                AND COALESCE(msat, 0) = 0))
                         RETURNING *
                         """,
                     arguments: [

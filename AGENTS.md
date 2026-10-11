@@ -538,9 +538,10 @@ invite statuses by tag, an invite marked used by the key exchange that
 names it, new contacts, the invite and add refusals, the price to join
 held to the balance and the threshold); money when the connection goes
 (`ConnectionDropTests`: a send that never left fails and may go again, one
-cut short or dropped after a write stays pending, two Retries at once pay
-once, and only a payment over half an hour old that the server never
-recorded fails); refusals as typed
+cut short or dropped after a write stays pending, a tribe text (which pays
+the tribe's price) waits like a payment and is never sent again while the
+server may have it, two Retries at once pay once, and only a payment over
+half an hour old that the server never recorded fails); refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the

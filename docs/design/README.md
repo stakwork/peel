@@ -473,8 +473,7 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-the hand-drawn panels onto `Panel` with the placement rule for its
-actions, `SectionHeader`, `Card`,
+`SectionHeader`, `Card`,
 `Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
 batch plan comes before the payments fixes and the personal agent. Until
 a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`, `FormKit`,
@@ -484,15 +483,30 @@ Built so far:
 
 - **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
   (a form's cards), `panel` 12 (the popover).
-- **Panel** (batch 4a). `Panel("Tribe details", compact:, close:) { body } footer: { … }`
-  in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every form's
-  panel: a 15 pt bold title and an `IconButton` close, the body, the
-  footer. 372 wide, or 320 with `compact` (one or two fields, no
-  sections). Radius `panel` 12 on `sidebar`, a `formEdge` hairline,
-  `popoverShadow` on the box only (so the labels cast none). A click
-  outside a field ends editing. It draws its own box, and the
-  `DrawsOwnPanelBox` preference tells the presenter to leave out the
-  menu box it gives a hand-drawn panel.
+- **Panel** (batches 4a and 4b). `Panel("Members", compact:, close:) { body } actions: { … } footer: { … }`
+  in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every
+  popover: a 15 pt bold title, the panel's own actions and an
+  `IconButton` close, the body, the footer. The actions may be left out,
+  or the actions and the footer; a footer whose condition is false takes
+  no room. 372 wide, or 320 with `compact` (a short form with no
+  sections, or a short list). Radius `panel` 12 on `sidebar`, a
+  `formEdge` hairline, `popoverShadow` on the box only (so the labels
+  cast none). A click outside a field ends editing. It is the only box a
+  popover has: the presenter adds none. `PanelHero` is the top of a
+  details panel (the picture, the name in 16 bold, muted lines), shared
+  by a contact's and a tribe's details. The placement rule:
+  - A panel's own utility actions (the members panel's Copy link) go top
+    right, beside the title, as icon buttons. Copy buttons that belong to
+    a card in the body (a QR code's Copy link, Copy key) stay with it.
+  - Navigation (Members, Edit tribe…) goes bottom left.
+  - The commit (Save, Send, Join, Reconnect now) or the destructive
+    action (Leave tribe, Remove contact…) goes bottom right, one of them,
+    never both. A form with a commit keeps its destructive action as the
+    last card of its body (Delete tribe).
+  - Every panel has a title and a close button, the same box, and one of
+    the two widths: 372 for the forms, Tribe details and a contact's
+    Details; 320 for Join a tribe, Members, Boosts, Connection and the
+    Account's Time zone.
 - **Composer** (batch 5). Its buttons sit inside the field: attach and
   the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
   `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
@@ -811,7 +825,8 @@ no longer post in), confirmed by a second click in the menu. A DM's More
 is Details and Notifications. Notifications is a submenu opened in the
 menu's place (‹ back, Left or Escape) with the sidebar's levels, the
 current one beside it ("All"). Members, Details and Edit open below
-More. The members panel keeps its own Copy link and Leave.
+More. The members panel keeps its own Copy link (top right, an icon) and
+Leave (its footer).
 
 **Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
 More's Details is "Tribe details" (⌘I); a click on the tribe's name or
@@ -823,8 +838,8 @@ registry answers), Tribe app and Second brain as buttons into the web
 pane, the link's QR with Copy link and Copy QR image, "How you appear in
 #tribe" (a name whose helper shows the alias members will read, and a
 `PictureField`; Save and Revert appear once something changed), and the
-time zone switch. Its footer: Members, then Edit tribe… for the owner or
-Leave tribe, confirmed in place. Tags in the edit form are the same chips,
+time zone switch. Its footer: Members, and Edit tribe… for the owner, on
+the left; Leave tribe on the right for a member, confirmed in place. Tags in the edit form are the same chips,
 toggled, the selected ones in `selection` with a tick.
 
 The rejected native-sidebar variant and the first Slack-skin build are kept in
@@ -1057,6 +1072,11 @@ Built 2026-10-08 (`ContactsViews.swift`); details in
   unread badge's shape) in their row until their chat is read; a
   notification says "Added you as a contact". There is no request to
   accept: the core accepts at once, as in the official apps.
+- **A contact's details** (More › Details, ⌘I, or a click on the name),
+  a `Panel` like Tribe details: the picture, name, "Contact since" and
+  their local time (`PanelHero`), their key with its QR, Copy key and Copy
+  QR, the time zone switch, and Remove contact… in the footer, confirmed
+  in place with what it deletes.
 
 ## Time zones
 

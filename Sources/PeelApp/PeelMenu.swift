@@ -151,7 +151,7 @@ extension View {
         modifier(HoverCardModifier(source: source, card: card))
     }
 
-    /// Peel's popover: `content` in a Peel panel below this view while
+    /// Peel's popover: `content`, a `Panel`, below this view while
     /// `isPresented` is true; a click elsewhere or Escape sets it false.
     func peelPopover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
         modifier(PopoverModifier(isPresented: isPresented, content: content))

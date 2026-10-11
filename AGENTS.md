@@ -232,9 +232,9 @@ is a short plan. Update the status and the journal when you finish something.
   `IconButton`, shadcn's icon button (ghost or outline, 28 or 24 square,
   `lit`, `working`; every icon button but the call window's control bar,
   controls over media and the composer's);
-  `Panel`, shadcn's card in a popover (title, close, body, footer; 372 or
-  320 `compact`; draws its own box, so the presenter adds none; every
-  form's panel);
+  `Panel`, shadcn's card in a popover (title, actions top right, close,
+  body, footer; 372 or 320 `compact`; the only box a popover has; every
+  popover), and `PanelHero`, the top of a details panel;
   `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,

@@ -575,18 +575,23 @@ struct ConnectionBolt: View {
                 .receivedGlow(model.money)
         }
         .peelPopover(isPresented: $showing) {
-            ConnectionCard()
+            ConnectionCard { showing = false }
         }
     }
 }
 
 struct ConnectionCard: View {
     @Environment(AppModel.self) private var model
+    let done: () -> Void
+
+    private var offline: Bool {
+        if case .offline = model.connection { true } else { false }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Panel("Connection", compact: true, close: done) {
             // Ticks only while counting down to a retry.
-            if case .offline = model.connection, let at = model.reconnectAt {
+            if offline, let at = model.reconnectAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     label(Self.countdown(to: at, now: context.date))
                 }
@@ -600,18 +605,19 @@ struct ConnectionCard: View {
                     .textSelection(.enabled)
                     .lineLimit(4)
             }
-            if case .offline = model.connection {
-                Button("Reconnect now") { Task { await model.reconnectNow() } }
-                    .buttonStyle(.peel(.link, size: .sm))
+        } footer: {
+            if offline {
+                FormFooter(problem: nil) {
+                    Button("Reconnect now") { Task { await model.reconnectNow() } }
+                        .buttonStyle(.peel(.outline))
+                }
             }
         }
-        .padding(14)
-        .frame(width: 260, alignment: .leading)
     }
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(Theme.font(14, .medium))
+            .font(Theme.font(13))
             .monospacedDigit()
     }
 

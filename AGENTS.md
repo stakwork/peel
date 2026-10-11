@@ -70,6 +70,9 @@ is a short plan. Update the status and the journal when you finish something.
     messages, then tribes that mention you, then other tribes), the five
     most recent tribes and direct messages with "Show all", the open chat
     always shown, the search, and the next unread chat (tested)
+  - `ListBottom.swift` — a message list against its bottom, for its jump
+    button's "N new messages": what counts as seen at the bottom and when
+    the list leaves it, crossings judged against the last one taken (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states, tribes and their senders, mentions, payments, the shared SQL
     (`tribeChats`, `chatsSQL`, `countsAsUnreadSQL`)
@@ -271,7 +274,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `ChatSectionsTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,

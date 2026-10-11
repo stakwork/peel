@@ -2593,3 +2593,42 @@ only in offscreen mode.
 No unit test: the rule lives in `PeelApp`, which has no test target.
 Extracting the scroll bookkeeping into PeelCore to test one line would
 move the high-risk state machine for no proof of the view's ordering.
+
+### Arrivals that move the list off its bottom (follow-up, 2026-10-11)
+
+From the independent review of the change above. After opening from a
+notification or a search, the list sits at its bottom with `following`
+false. If "New messages" was marked afterwards (`dividerUnread`), an
+arrival that pushed the list off the bottom made the pill count every
+unread row since the divider, including rows that were on screen. If it
+was not marked, the arrival itself went uncounted.
+
+The bookkeeping now lives in `ListBottom` (PeelCore, tested):
+- At the bottom, once the list is still after opening and not scrolling,
+  everything down to the newest message has been in view: `seenAtBottom`.
+  It is noted on every such report, when a scroll phase ends (no report
+  comes while nothing moves), when the list has opened, and when a jump to
+  a message ends.
+- When the list leaves the bottom by itself (not by hand, and not on its
+  way back down while following), only what came after `seenAtBottom`
+  counts. By hand, or while following, the count is as before.
+- Crossings are judged against the last one taken, not against a report's
+  `old`, so `following = true`, the timeline-limit reset and read-on-reach
+  fire even when reports were coalesced. The re-pin's "was at the bottom"
+  test uses the same state.
+
+Not taken from the review's suggestion: clearing `dividerUnread` on an
+at-bottom report. Inserting the divider after "Mark unread" changes the
+list's height, and the report that follows would have dropped the hold.
+It was not needed: a leave by hand already clears it, and a leave by
+itself now counts from `seenAtBottom`.
+
+Checked offscreen (`scripts/check-app.sh`) on new development profiles:
+- After a notification click, a long message arrived and moved the list
+  off its bottom. The pill said "1 new message", counting only the arrival
+  and not the unread message above it that was on screen.
+- After a sidebar select at "New messages", the same arrival counted 1.
+  Main's code would have counted 2 (the divider's row, which was on
+  screen, and the arrival). That is read from the code, not observed: in
+  the run on main the arrival did not move the list off its bottom.
+- Next Unread: no pill. Idle on the chat for a minute: 0.0% CPU.

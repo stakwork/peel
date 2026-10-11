@@ -80,6 +80,8 @@ struct Session {
             "invoice paid \(invoice.paymentHash) (\(invoice.status.rawValue), \(Sats.format(msat: invoice.paidMsat ?? 0)))"
         case .contactAdded(let message):
             "new contact: \(message.senderAlias ?? "someone") (\(message.chat)) added this account"
+        case .preferencesChanged:
+            "preferences changed on another device"
         }
     }
 }

@@ -23,3 +23,17 @@ extension Sequence<UInt8> {
     /// Lowercase hex, two characters a byte.
     var hex: String { map { String(format: "%02x", $0) }.joined() }
 }
+
+extension Data {
+    /// The bytes `hex` spells, two characters a byte; nil for anything else.
+    init?(hex: String) {
+        let digits = Array(hex.utf8)
+        guard digits.count.isMultiple(of: 2), hex.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
+        var bytes = Data(capacity: digits.count / 2)
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            guard let byte = UInt8(String(decoding: digits[index...index + 1], as: UTF8.self), radix: 16) else { return nil }
+            bytes.append(byte)
+        }
+        self = bytes
+    }
+}

@@ -50,7 +50,10 @@ is a short plan. Update the status and the journal when you finish something.
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
     - `Engine+Preferences.swift` — `set`, every change to a user setting
-      through `Preferences`
+      through `Preferences`; the sync with the official apps' encrypted
+      `/preferences` file (`syncPreferences`, one at a time; on connect, 2 s
+      after a change, `refreshPreferences` when the app comes to the
+      front), `.preferencesChanged`
     - `Engine+History.swift` — restore and catch-up: asks for the pages
       `HistoryCursor` names, the stall watchdog, recovering the account's
       own photo
@@ -152,6 +155,10 @@ is a short plan. Update the status and the journal when you finish something.
     scope, the official encoding), `JSONValue`, the official reader's
     rewrite rules (`isOfficialFixedPoint`), the `preference` table's
     reads and dated writes (phase 11)
+  - `PreferencesFile.swift` — the preferences file without the network:
+    read as the official apps read it (refused whole if they could not),
+    the merge per item by date, everything else copied through untouched,
+    and the conditional apply
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`;
     in debug builds `init(publishing:)`, the tests' broker that answers
     pings and takes or refuses each write
@@ -267,7 +274,7 @@ is a short plan. Update the status and the journal when you finish something.
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
-  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`,
+  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
   `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
@@ -277,7 +284,7 @@ is a short plan. Update the status and the journal when you finish something.
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
-  `ReconnectJourneys`
+  `ReconnectJourneys`, `PreferencesJourneys`
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
   wire tap down, up, or freezes it (a dead connection that looks open)

@@ -1117,6 +1117,12 @@ final class AppModel {
                 money.received(Receipt(invoice))
             case .contactAdded(let message):
                 notifier.contactAdded(message)
+            case .preferencesChanged:
+                // The time zones are read where they are shown.
+                let settings = await engine.settings()
+                guard self.engine === engine else { break }
+                paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
+                boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
             case .sendStatus:
                 break
             }

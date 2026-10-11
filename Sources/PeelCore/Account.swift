@@ -117,6 +117,10 @@ public enum Account {
         if let tribeHost { try await engine.setTribeHost(tribeHost) }
         if let memesHost { try await engine.setMemesHost(memesHost) }
         try profile.secrets.save(mnemonic: mnemonic, pin: pin)
+        // Made here, so its preferences file may start here (phase 11,
+        // decision 8); written last, so a signup that failed part-way and is
+        // then restored into the same profile never keeps it.
+        try storage.setPreference(.mayStartPreferences, !needsRestore)
         return engine
     }
 }

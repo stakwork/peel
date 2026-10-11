@@ -74,12 +74,15 @@ public enum Web {
         private let limit: Int
         private let what: String
         private let progress: Progress?
+        /// The statuses whose body is the answer; any other is a refusal.
+        private let accepted: Set<Int>
         private let state = Mutex(State())
 
-        init(limit: Int, what: String, progress: Progress?) {
+        init(limit: Int, what: String, progress: Progress?, accepting accepted: Set<Int> = [200]) {
             self.limit = limit
             self.what = what
             self.progress = progress
+            self.accepted = accepted
         }
 
         func run(_ task: URLSessionTask) async throws -> (Data, HTTPURLResponse) {
@@ -115,7 +118,7 @@ public enum Web {
             completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
         ) {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let failure: (any Error)? = status != 200 ? Failure.refused(what, status)
+            let failure: (any Error)? = !accepted.contains(status) ? Failure.refused(what, status)
                 : response.expectedContentLength > Int64(limit)
                     ? TooLarge(limit: limit, size: response.expectedContentLength) : nil
             state.withLock { state in

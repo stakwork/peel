@@ -137,6 +137,7 @@ public actor Engine {
     var memesToken: (host: String, token: MemesServer.Token)?
     /// The memes server's payment templates, fetched once a session (`paymentTemplates`).
     var templateList: (host: String, templates: [PaymentTemplate])?
+    var preferencesWork = PreferencesWork()
     /// The call server's ticket endpoint and presence feed; see `callConnection`.
     var calls: CallServer?
     /// Largest attachment sent or downloaded, and the most the cache keeps.
@@ -245,6 +246,7 @@ public actor Engine {
     /// go of this engine. For an account being closed: it does not connect again.
     public func close() async {
         closed = true
+        preferencesWork.scheduled?.cancel()
         await disconnect()
         await calls?.close()
         emit.finish()
@@ -1181,6 +1183,9 @@ public actor Engine {
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
         reconcileInBackground()
+        // The account's preferences, a restore's included: applied as soon
+        // as it is online, and anything changed here offline goes up.
+        schedulePreferencesSync(after: .zero)
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)

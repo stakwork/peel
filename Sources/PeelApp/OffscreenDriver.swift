@@ -29,6 +29,8 @@ final class OffscreenDriver {
 
     private let output: URL
     private let model: @MainActor () -> AppModel?
+    /// See `offerKeyEquivalents`.
+    private var keyEquivalents: Any?
 
     private init(output: URL, model: @escaping @MainActor () -> AppModel?) {
         self.output = output
@@ -160,9 +162,10 @@ final class OffscreenDriver {
     /// real one for these keys; any other character is sent with code 0.
     private static let keyCodes = Array("asdfhgzxcv\u{0}bqweryt123465=97-80]ou[ip\u{0}lj'k;\\,/nm.\u{0} `")
     private static let named: [String: (code: UInt16, character: Int)] = [
-        "return": (36, 0x0D), "tab": (48, 0x09), "space": (49, 0x20), "delete": (51, 0x7F), "escape": (53, 0x1B),
-        "left": (123, NSLeftArrowFunctionKey), "right": (124, NSRightArrowFunctionKey),
-        "down": (125, NSDownArrowFunctionKey), "up": (126, NSUpArrowFunctionKey),
+        "return": (KeyCode.return, 0x0D), "tab": (KeyCode.tab, 0x09), "space": (KeyCode.space, 0x20),
+        "delete": (KeyCode.delete, 0x7F), "escape": (KeyCode.escape, 0x1B),
+        "left": (KeyCode.left, NSLeftArrowFunctionKey), "right": (KeyCode.right, NSRightArrowFunctionKey),
+        "down": (KeyCode.down, NSDownArrowFunctionKey), "up": (KeyCode.up, NSUpArrowFunctionKey),
     ]
 
     private func modifiers(_ names: [String]) throws -> NSEvent.ModifierFlags {
@@ -204,7 +207,24 @@ final class OffscreenDriver {
                 charactersIgnoringModifiers: modifiers.contains(.shift) ? characters : characters.lowercased(),
                 isARepeat: false, keyCode: code
             ) else { throw Failure(description: "cannot make key \(key)") }
+            if type == .keyDown { offerKeyEquivalents() }
             NSApp.postEvent(event, atStart: false)
+        }
+    }
+
+    /// AppKit offers a key with ⌘ to the key window's views
+    /// (`performKeyEquivalent`) before the menu bar and the view with the
+    /// keyboard. Offscreen, Peel is never active, so no window is key and
+    /// that pass never runs: a shortcut on a view (`.hiddenShortcut`, such
+    /// as ⌘I) then reached only the focused view's `keyDown`, and a text
+    /// field or the composer took it as nothing. So the driver offers it,
+    /// as the key window would have, after Peel's own key monitors: they
+    /// run in the order they started, so this one starts again for each key.
+    private func offerKeyEquivalents() {
+        if let keyEquivalents { NSEvent.removeMonitor(keyEquivalents) }
+        keyEquivalents = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.contains(.command), let window = event.window else { return event }
+            return MainActor.assumeIsolated { !window.isKeyWindow && window.performKeyEquivalent(with: event) } ? nil : event
         }
     }
 

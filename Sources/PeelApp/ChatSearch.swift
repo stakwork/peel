@@ -150,6 +150,7 @@ struct SearchHeaderButton: View {
 /// match (the first when none is); Escape closes.
 struct ChatSearchBar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
     @Bindable var search: ChatSearch
     let placeholder: String
 
@@ -232,20 +233,22 @@ struct ChatSearchBar: View {
     }
 
     #if os(macOS)
-    /// The field's keys, while it has the cursor; not while an input method
-    /// is composing, whose Return and arrows are its own.
+    /// The field's keys, while it has the cursor, in its own window, under
+    /// any menu, panel or the image viewer (`KeyMonitor`'s order); not while
+    /// an input method is composing, whose Return and arrows are its own.
     private func listen() {
-        keys.start { [model] event in
+        keys.start { [model, presenter] event in
+            guard presenter?.takesKeys(event) == true, model.viewer == nil else { return false }
             if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true { return false }
             let modifiers = event.modifierFlags.intersection([.command, .option, .control])
             guard modifiers.isEmpty else { return false }
             switch event.keyCode {
-            case 125: model.stepSearch(by: 1, show: false) // down
-            case 126: model.stepSearch(by: -1, show: false) // up
-            case 36, 76: // Return, Enter
+            case KeyCode.down: model.stepSearch(by: 1, show: false)
+            case KeyCode.up: model.stepSearch(by: -1, show: false)
+            case KeyCode.return, KeyCode.enter:
                 guard let search = model.search, !search.matches.isEmpty else { return false }
                 model.showSearchMatch(search.current ?? 0)
-            case 53: model.closeSearch() // Escape
+            case KeyCode.escape: model.closeSearch()
             default: return false
             }
             return true

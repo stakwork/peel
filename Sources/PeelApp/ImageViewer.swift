@@ -113,14 +113,15 @@ struct ImageViewer: View {
         .onAppear {
             let model = model, presenter = presenter
             keys.start { event in
-                // Escape and the arrows in the call window are not the viewer's.
-                guard let window = presenter?.hostWindow, event.window === window else { return false }
+                // Escape and the arrows in the call window are not the
+                // viewer's, nor under a menu or panel (`KeyMonitor`'s order).
+                guard presenter?.takesKeys(event) == true else { return false }
                 switch event.keyCode {
-                case 53: model.viewer = nil
-                case 123: model.stepViewer(-1)
-                case 124: model.stepViewer(1)
-                case 49:
-                    // Space: play or pause the video shown.
+                case KeyCode.escape: model.viewer = nil
+                case KeyCode.left: model.stepViewer(-1)
+                case KeyCode.right: model.stepViewer(1)
+                case KeyCode.space:
+                    // Play or pause the video shown.
                     return MediaPlayback.shared.toggleFullScreen()
                 default: return false
                 }

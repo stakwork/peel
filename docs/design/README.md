@@ -523,6 +523,23 @@ Built so far:
   `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
   with nothing to send). Radius `Theme.Radius.control` plus the buttons'
   6 pt inset (13), `.continuous`, so its corners and theirs are concentric.
+- **Keys** (batch 9). A key read before the views see it goes through a
+  `KeyMonitor` (`PeelMenu.swift`) and names its code with `KeyCode`
+  (`.escape`, `.return`, `.down`…), never a number. Escape has one
+  written order, in `KeyMonitor`'s doc comment: a menu (its confirm, then
+  its submenu, then the menu), a panel, the image viewer, the search bar
+  while its field has the cursor, the sidebar's highlight, then the view
+  with the keyboard (the composer's mention list, then its reply, then
+  its thread; the web
+  pane's address; the Payments pane; the call window's grid). Only the
+  first that is open takes it, and the arrows and Return follow the same
+  order. Monitors run in the order they started, not this one, so a new
+  one defers to those above it itself (`MenuPresenter.takesKeys`: its
+  own window, no menu or panel; `AppModel.viewer`). A ⌘ shortcut on a
+  view (`.hiddenShortcut`: ⌘I, ⌥⌘A) works with the cursor in any text
+  field, the composer included, as AppKit offers ⌘ keys to the window's
+  views first; a key without ⌘ (End, the call window's Escape) reaches
+  it only when the focused view does not take the key.
 
 ### Buttons (`PeelButton`)
 

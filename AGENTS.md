@@ -218,7 +218,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
-  view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor`, `RightClickCatcher`, `WindowReader`), with
+  view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor` with the written Escape order and `KeyCode`, the named key codes, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
   `UnreadBadge`, `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
@@ -376,7 +376,9 @@ quitting before any window opens.
   ```
 
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own
-  event queue, so key monitors and shortcuts see them as typed; `keyCode`
+  event queue, so key monitors and shortcuts see them as typed (a key
+  with ⌘ is offered to the window's views first, as AppKit does for a key
+  window, which an app never active has none of); `keyCode`
   is real only for the US-layout letters, digits, punctuation and named
   keys above (other characters are sent with code 0). There is
   no mouse step: posted clicks do not reach SwiftUI's buttons in an app

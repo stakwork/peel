@@ -256,7 +256,7 @@ and `ConnectionCard`.
 
 | Kind | Where |
 |---|---|
-| `UnreadBadge` (count, accent capsule) | `Controls.swift:134-163`; also "New" (`ContactsViews.swift:23-28`) and "+350" (`MoneyArrivals.swift:239-240`) |
+| `UnreadBadge` (count, accent capsule; now `Badge`, batch 11) | `Controls.swift:134-163`; also "New" (`ContactsViews.swift:23-28`) and "+350" (`MoneyArrivals.swift:239-240`) |
 | Tag chip (capsule, selectable) | `TribeDetails.swift:381-397` |
 | Boost chip (capsule, bolt, avatars) | `PaymentChatRows.swift:43-120` |
 | Day divider label (outline capsule) | `ConversationView.swift:547-555` |
@@ -1213,3 +1213,46 @@ library outside forms.
   - Tests: nothing new (`PeelApp` has no test target). `swift test`: 618
     passed in the main run, 107 in the other three (one known issue, IPv6
     hosts, as on `main`).
+- **Batch 11, `Badge` and `Chip` (2026-10-11).** `UI/Badge.swift`:
+  `Badge` (`.default`, `.mention`, `.success`, `.outline`; `Badge(count:)`
+  and `Badge.text`, the "99+" cap) and `Chip` (`ChipStyle` `.field` or
+  `.inset`, `lit`, an optional action; `Chip(_:selected:)` and `Chip(_:)`
+  for a tag). `UnreadBadge` (Controls) and `NewContactBadge`
+  (ContactsViews) are gone. On them: the sidebar's Threads and Mentions
+  counts, a chat row's count (blue; gold with `.mention` when it
+  mentions you, as before), "New", Payments' "+350" (`.success`, its pop
+  and roll unchanged), the day divider (`.outline`), a tribe's tags in
+  its details and the edit form (`TagChips`), and the boost chip (its
+  bolt, total and faces inside `Chip(.inset)`; the faces' ring takes
+  `ChipStyle`'s fill). The jump pill's "N new messages" uses
+  `Badge.text` (one line in `MessageViews`). The video's duration in
+  `MediaViews` stays as section 4 says, on the picture: not moved.
+  - Changes, before → after: the filled badges' ends (unread counts,
+    "New", gold, "+350") were the continuous capsule and are the circular
+    one the day divider and boost chip already used, so every capsule has
+    one shape: a few antialiased pixels at each end differ, nothing moves.
+    A tag in the edit form now firms its hairline under the pointer, as
+    the boost chip did (not rendered: hover never shows offscreen). A
+    tag's hairline is drawn over its label rather than behind it (the
+    label is inset 10, so they never meet).
+  - Review (independent agent), applied: `Chip` marked a lit boost
+    chip "selected" for VoiceOver (the old one had no trait); only the
+    tag toggle carries it now. `Badge` gave the day divider monospaced
+    digits, which would have widened a dated divider's ("Monday 5
+    October"); only the filled badges have them, as before. Also: the
+    doc comment no longer calls every chip a toggle, `Badge` says it is
+    for the app's own short words (never cut), and the inventory row
+    above points at `Badge`.
+  - Renders, before (`origin/main`) and after, offscreen on development
+    profile b11a on the loopback stack (Carol and Bob seeded from the CLI,
+    "+350" a real payment from Carol during the drive), with a temporary
+    ⇧⌘E hook for Edit tribe (not committed): sidebar with blue, gold,
+    "New" and "+350" badges, Badge Club with both boost chips (yours and
+    Carol's) and the day divider, tribe details' tags, the edit form's
+    selected and unselected tags. Pixel diff: the details and the edit
+    form identical; the chat's boost chips and day divider identical; the
+    sidebar's badges differ only at their ends (up to 44 of 255 on the
+    end pixels); the balance line and Carol's chat differ by the run's
+    data. Not rendered: the Threads count (no unread thread was seeded;
+    same `Badge(count:)` as Mentions), "99+", a boost chip with "+N", a
+    dated day divider (only "Today").

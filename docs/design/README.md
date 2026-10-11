@@ -475,10 +475,10 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-`Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
+`ListRow`, `FactList` and `EmptyState`. Its
 batch plan comes before the payments fixes and the personal agent. Until
 a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
-`SectionHeader`, `Card`, `Callout`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
 
@@ -546,6 +546,29 @@ Built so far:
   - The web pane's download (under way, saved with Show in Finder, or
     failed): a bar in the strip along the pane's foot, under way and
     saved on one line.
+- **Badges** (batch 11). `Badge("New")`, `Badge(count: 12)` in
+  `UI/Badge.swift`, shadcn's `Badge`: a word or count in a circular
+  capsule, 11 pt bold with monospaced digits, 6 by 1 of padding;
+  `Badge.text` caps a count at "99+" (the jump pill's "N new messages"
+  uses it too). Styles: `.default` (white on the accent: a sidebar row's
+  unread count, "New" on a contact who added you), `.mention` (gold,
+  `mentionYouText` on `mentionYouFill`: the row's chat mentions you;
+  blue never does), `.success` (Payments' "+350", `confirmed` on 16% of
+  it) and `.outline` (the day divider: 12 pt regular `secondaryText`
+  inside a `divider` hairline, 10 by 2, no fill). The video's duration
+  over its picture is not a badge and stays as it is.
+- **Chips** (batch 11). `Chip` in `UI/Badge.swift`, shadcn's `Toggle` in
+  a circular capsule: a fill and a hairline set by where it sits
+  (`ChipStyle`, as `Card`'s are) and whether it is lit. `.field`, in a
+  form or panel: `fieldFill` inside `inputBorder`, lit `selection` inside
+  the accent at 60%. `.inset`, in a chat: `quote` inside `divider`, lit
+  (yours) `boostMineFill` inside the accent at 25%. With an action it is
+  a plain button whose hairline firms to `secondaryText` at 40% under the
+  pointer. The label brings its own padding. `Chip("Bitcoin", selected:)`
+  is a tribe's tag (12 medium, 24 tall, a tick while on) in the edit
+  form, `Chip("Bitcoin")` the same shown in its details; a message's
+  boosts are `Chip(.inset, lit: mine, action:)` around the bolt, the
+  total and the faces.
 - **Problem lines** (batch 7). Every failure the app shows goes through
   `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
   as a sentence (a capital, unless the first word is a name such as a
@@ -1142,8 +1165,8 @@ Built 2026-10-08 (`ContactsViews.swift`); details in
 - **An invite:** the QR tile (the Account screen's, shared), nickname,
   amount, when it was made and its state, the private message; Copy invite,
   Copy QR, Share; Cancel invite confirmed in place.
-- **New contacts:** someone who added you shows "New" (accent capsule, the
-  unread badge's shape) in their row until their chat is read; a
+- **New contacts:** someone who added you shows "New" (`Badge("New")`, the
+  unread count's look) in their row until their chat is read; a
   notification says "Added you as a contact". There is no request to
   accept: the core accepts at once, as in the official apps.
 - **A contact's details** (More › Details, ⌘I, or a click on the name),

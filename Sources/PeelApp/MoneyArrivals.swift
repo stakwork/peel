@@ -238,8 +238,7 @@ struct PaymentsLink: View {
             Image(systemName: "bolt").font(.system(size: 13))
         } accessory: {
             if msat > 0 {
-                UnreadBadge(text: Sats.signed(msat: msat, incoming: true),
-                            foreground: Theme.confirmed, fill: Theme.confirmed.opacity(0.16))
+                Badge(Sats.signed(msat: msat, incoming: true), .success)
                     .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
                     .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
                     .accessibilityLabel("Received \(Sats.format(msat: msat)), not seen yet")

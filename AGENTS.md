@@ -225,7 +225,7 @@ is a short plan. Update the status and the journal when you finish something.
   view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor` with the written Escape order and `KeyCode`, the named key codes, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
-  `UnreadBadge`, `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
+  `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
@@ -249,6 +249,9 @@ is a short plan. Update the status and the journal when you finish something.
   sidebar's) and `Card` (`Card`, raised or inset, every card and the
   boxes in a chat; `Callout`, shadcn's alert: a chat's and the window's
   notices, a tribe you cannot post in, an amber note, a download);
+  `Badge` (`Badge`, a word or count in a capsule: unread counts, gold
+  when it mentions you, "New", Payments' "+350", the day divider; `Chip`,
+  a tag on and off, and a message's boosts);
   `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
@@ -674,7 +677,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

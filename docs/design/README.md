@@ -496,7 +496,8 @@ Built so far:
 - **Composer** (batch 5). Its buttons sit inside the field: attach and
   the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
   `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
-  with nothing to send). Radius 18, `.continuous`.
+  with nothing to send). Radius `Theme.Radius.control` plus the buttons'
+  6 pt inset (13), `.continuous`, so its corners and theirs are concentric.
 
 ### Buttons (`PeelButton`)
 

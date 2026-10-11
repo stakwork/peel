@@ -976,3 +976,25 @@ library outside forms.
     not give. The helper's tests cover their wording instead. The first
     after run's typing did not reach the composer (the drive's timing);
     the second did.
+- **Readable errors without the dump (2026-10-11).** Batch 7's review
+  left `readable`'s `"\(error)"` fallback, an NSError dump (its
+  userInfo, a failing URL) on every problem line. What can reach it:
+  GRDB (`DatabaseError`, now also `RowDecodingError` and
+  `PersistenceError`, which printed rows and keys), `URLError`,
+  `CocoaError`, POSIX, the connection's `NWError`, `MQTTError` and
+  `ChannelError` (the reconnect loop's `connectionError`), `DecodingError`
+  (a coding path), `CancellationError`, WebKit's NSErrors (a download),
+  the core's `SphinxError`, and Peel's own. The common ones are short
+  sentences ("the server's address could not be found", "not connected
+  to the internet", "the file was not found", "Peel is not allowed to
+  use the file", "a secure connection to the server could not be
+  made"); the rest give their localized description, or "something went
+  wrong (<domain> error <code>)" when that names the failing URL or its
+  host (a certificate error's does) or holds "://". Peel's own errors
+  and the core's keep their words. The web download's failure goes
+  through `problem(error)` again, now safe. The web pane's own page
+  error still shows `localizedDescription` beside the address, which
+  that pane shows anyway.
+  - Tests: `PeelErrorTests` (a URLError with a failing URL, an unmapped
+    NSError with a userInfo, the mapped cases as sentences, Peel's own
+    words).

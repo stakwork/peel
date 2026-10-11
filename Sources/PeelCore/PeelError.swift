@@ -1,5 +1,9 @@
 import Foundation
 import GRDB
+import MQTTNIO
+import Network
+import NIOCore
+import Sphinxrs
 
 /// A failure with a message meant for the person using Peel.
 public struct PeelError: Error, CustomStringConvertible, Sendable {
@@ -42,10 +46,12 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
     }
 
     /// An error in words for the person using Peel. Peel's own errors already
-    /// read that way; network and file errors from the system would print as
-    /// an NSError dump, and database errors as SQL, so they give a short
-    /// sentence instead. They are the middle of a sentence, lowercase and
-    /// with no full stop: the app shows them through `problem`.
+    /// read that way, and the core's keep their own words. The system's and
+    /// the libraries' would print as an NSError dump (its userInfo, a failing
+    /// URL), as SQL or as a decoder's coding path, so the common ones give a
+    /// short sentence and the rest their localized description, never one
+    /// that names an address. They are the middle of a sentence, lowercase
+    /// and with no full stop: the app shows them through `problem`.
     public static func readable(_ error: any Error) -> String {
         switch error {
         case let error as DatabaseError:
@@ -57,19 +63,97 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
                 return "the local database could not be opened or written"
             default: return "the local database failed (SQLite error \(error.resultCode.rawValue))"
             }
+        case is RowDecodingError, is PersistenceError: return "the local database failed"
         case let error as URLError:
             switch error.code {
-            case .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet, .networkConnectionLost,
-                 .dnsLookupFailed:
-                return "the server could not be reached"
+            case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff:
+                return "not connected to the internet"
+            case .cannotFindHost, .dnsLookupFailed: return "the server's address could not be found"
+            case .cannotConnectToHost: return "the server could not be reached"
+            case .networkConnectionLost: return "the connection was lost"
             case .timedOut: return "the server took too long to answer"
-            default: return error.localizedDescription
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+                 .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
+                 .clientCertificateRejected, .clientCertificateRequired:
+                return "a secure connection to the server could not be made"
+            case .badServerResponse, .cannotParseResponse, .cannotDecodeRawData, .cannotDecodeContentData,
+                 .zeroByteResource:
+                return "the server's answer could not be read"
+            case .badURL, .unsupportedURL, .appTransportSecurityRequiresSecureConnection:
+                return "the address is not one Peel can open"
+            case .cancelled: return "it was cancelled"
+            default: return described(error)
             }
-        case let error as CocoaError: return error.localizedDescription
+        case let error as CocoaError:
+            switch error.code {
+            case .fileNoSuchFile, .fileReadNoSuchFile: return "the file was not found"
+            case .fileReadNoPermission, .fileWriteNoPermission: return "Peel is not allowed to use the file"
+            case .fileWriteOutOfSpace: return "the disk is full"
+            case .fileWriteVolumeReadOnly: return "the disk is read-only"
+            case .fileWriteFileExists: return "a file with that name is already there"
+            case .fileReadCorruptFile: return "the file could not be read"
+            case .userCancelled: return "it was cancelled"
+            default: return described(error)
+            }
+        case let error as POSIXError: return words(error.code)
+        case let error as NWError:
+            switch error {
+            case .posix(let code): return words(code)
+            case .dns: return "the server's address could not be found"
+            case .tls: return "a secure connection to the server could not be made"
+            default: return "the connection to the server failed"
+            }
+        case let error as MQTTError:
+            switch error {
+            case .timeout: return "the server took too long to answer"
+            case .connectionError(.serverUnavailable): return "the server is not available"
+            case .connectionError: return "the server refused the connection"
+            case .noConnection, .serverClosedConnection, .serverDisconnection: return "the connection was lost"
+            default: return "the connection to the server failed"
+            }
+        case let error as ChannelError:
+            if case .connectTimeout = error { return "the server took too long to answer" }
+            return "the connection to the server failed"
+        case is DecodingError: return "the data could not be read"
+        case is CancellationError: return "it was cancelled"
+        // The core's own words, as they have always been shown.
+        case is SphinxError: return "\(error)"
         default:
-            let nsError = error as NSError
-            return nsError.domain == NSURLErrorDomain || nsError.domain == NSCocoaErrorDomain
-                ? nsError.localizedDescription : "\(error)"
+            // Peel's own errors are Swift types that describe themselves; an
+            // NSError's description is the dump.
+            if !(type(of: error) is NSError.Type), let own = error as? CustomStringConvertible {
+                return own.description
+            }
+            return described(error)
+        }
+    }
+
+    /// A system error's localized description, unless it names the address
+    /// that failed (a link someone sent, a server): then only its code.
+    static func described(_ error: any Error) -> String {
+        let nsError = error as NSError
+        let text = nsError.localizedDescription
+        let failing = [
+            (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.absoluteString,
+            nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String,
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        let hosts = failing.compactMap { URL(string: $0)?.host() }.filter { !$0.isEmpty }
+        let namesAddress = text.contains("://") || (failing + hosts).contains { text.contains($0) }
+        return namesAddress || text.isEmpty
+            ? "something went wrong (\(nsError.domain) error \(nsError.code))" : text
+    }
+
+    /// A POSIX error code in words.
+    static func words(_ code: POSIXErrorCode) -> String {
+        switch code {
+        case .ENOENT: return "the file was not found"
+        case .EACCES: return "Peel is not allowed to use the file"
+        case .ENOSPC: return "the disk is full"
+        case .ECONNREFUSED, .EHOSTUNREACH, .ENETUNREACH, .EHOSTDOWN, .ENETDOWN:
+            return "the server could not be reached"
+        case .ETIMEDOUT: return "the server took too long to answer"
+        case .ECONNRESET, .ECONNABORTED, .EPIPE, .ENOTCONN: return "the connection was lost"
+        default: return String(cString: strerror(code.rawValue))
         }
     }
 }

@@ -452,7 +452,7 @@ extension WebPane: WKDownloadDelegate {
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        take(download) { _, name in self.download = .failed(name, reason: PeelError.problem(error.localizedDescription)) }
+        take(download) { _, name in self.download = .failed(name, reason: PeelError.problem(error)) }
     }
 
     /// The download's entry, removed; its private copy goes once `body` is

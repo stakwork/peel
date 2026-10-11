@@ -255,6 +255,22 @@ is a short plan. Update the status and the journal when you finish something.
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
+- `Sources/AgentKit/` — the agent's records, GRDB only (no PeelCore, builds
+  for macOS and iOS; the plan is `docs/agent-architecture.md`)
+  - `JSONValue.swift` — any JSON value (props and event fields) and
+    `StableJSON`, the one encoding AgentKit writes (keys sorted)
+  - `HLC.swift` — the hybrid logical clock: `tick` for a local event,
+    `receive` for a remote one
+  - `Event.swift` — `Event`, the only write: its JSON (the contract with
+    the official apps, versioned by `v`) and what each op's fields mean
+  - `AgentStore.swift` — `Record`, `Link`, the read results, the
+    `AgentStore` protocol, and `add`/`update`/`link`/`unlink`/`forget`/
+    `restore`, which build the events so callers never do
+  - `SQLiteAgentStore.swift` — the event log and applying it: idempotent
+    by event_id, last write wins per field (`field_clock`), `rebuild`
+  - `SQLiteAgentStore+Reads.swift` — `read`, `search` (FTS5 over name and
+    body), `walk` (depth at most 2), `ontology`
+  - `SQLiteAgentStore+Migrations.swift` — its own schema, append-only
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -278,6 +294,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
+- `Tests/AgentKitTests/` — `AgentStoreTests`: the event format, the clock,
+  apply order, idempotency, per-field last write wins, forget and unlink,
+  rebuild, search, walk and ontology
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats

@@ -1,9 +1,10 @@
 # Phase 9 — The Sphinx agent, v1
 
-## Status (2026-10-10)
+## Status (2026-10-11)
 
-**Planned, not built.** Tom decided the v1 scope on 2026-10-10. This file
-is the build plan; the design is in `../agent-architecture.md`.
+**In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
+build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
+plan, #157) and PR 2 (the AgentKit data layer).
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -153,6 +154,22 @@ Each PR goes through "How a change ships" in `../../AGENTS.md`.
    test server.
 
 Later: compaction, then memory.
+
+## Journal
+
+**PR 2, the AgentKit data layer (2026-10-11).**
+- Done: `Record`, `Link`, `Event` (snake_case JSON, keys sorted, `v` 1),
+  `HLC`, the `AgentStore` protocol with writers that build the events, and
+  `SQLiteAgentStore`: an append-only event log, records and links applied
+  from it, `rebuild()`, FTS5 search, walk to depth 2, and `ontology()`.
+- Learned: last write wins per field needs a clock per field, kept in a
+  `field_clock` table (one row per ref_id and field, props per key);
+  `forget` and `unlink` are just `deleted_ms` under the same rule, and an
+  update can arrive before its add. The store owns the clock and seeds it
+  from the newest stamp in the log, so a clock set back while closed still
+  orders new events after old ones.
+- Next: share the Event and Record shapes with Tom T. For sync, cap how
+  far ahead a remote stamp may be, and authenticate events.
 
 ## User journeys
 

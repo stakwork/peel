@@ -99,10 +99,7 @@ struct Sidebar: View {
                 model.sidebarHasKeys = true
                 focused = true
             }
-            // Not beside the Account screen, whose words row says the same.
-            if model.remindsToCheckWords, model.destination != .account {
-                WordsReminder()
-            }
+            WordsReminder()
             if let call = model.call {
                 OnCallBar(call: call)
             }
@@ -663,38 +660,25 @@ struct ConnectionCard: View {
 }
 
 /// At the foot of the sidebar while the account holds sats and its twelve
-/// words were never checked (`AppModel.remindsToCheckWords`): opens the
-/// check on the Account screen. Quiet, as a state rather than an alarm.
+/// words were never checked (`AppModel.remindsToCheckWords`), except beside
+/// the Account screen, whose words row says the same: a neutral note whose
+/// link opens the check there. Quiet, as a state rather than an alarm. It
+/// reads the balance itself, so a change redraws only the note.
 struct WordsReminder: View {
     @Environment(AppModel.self) private var model
-    @State private var hovering = false
 
     var body: some View {
-        Button { model.checkWords() } label: {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: "key")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 18, height: 17)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Check your twelve words")
-                        .font(Theme.font(13, .bold))
-                    Text("Without them, this account and its sats can't be brought back.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
+        if model.remindsToCheckWords, model.destination != .account {
+            Callout(
+                .neutral, "Check your twelve words",
+                detail: "Without them, this account and its sats can't be brought back.",
+                icon: .symbol("key", Theme.secondaryText)
+            ) {
+                Button("Check words", action: model.checkWords)
+                    .buttonStyle(.peel(.link))
+                    .help("Type three of your words back on the Account screen")
             }
-            .padding(.vertical, 9)
-            .padding(.horizontal, 10)
-            .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .cardBoxed()
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help("Type three of your words back on the Account screen")
     }
 }
 

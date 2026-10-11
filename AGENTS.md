@@ -207,7 +207,7 @@ is a short plan. Update the status and the journal when you finish something.
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus,
-  `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
+  `ConversationMenu`, whose pieces the chat header's More shares, and `WordsReminder`, the note to check the twelve words), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
@@ -248,7 +248,8 @@ is a short plan. Update the status and the journal when you finish something.
   `Section` (`SectionHeader`, every heading over a group but the
   sidebar's) and `Card` (`Card`, raised or inset, every card and the
   boxes in a chat; `Callout`, shadcn's alert: a chat's and the window's
-  notices, a tribe you cannot post in, an amber note, a download);
+  notices, a tribe you cannot post in, an amber note, a download, the
+  words reminder);
   `Badge` (`Badge`, a word or count in a capsule: unread counts, gold
   when it mentions you, "New", Payments' "+350", the day divider; `Chip`,
   a tag on and off, and a message's boosts);
@@ -445,8 +446,6 @@ quitting before any window opens.
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "check-words"}                 // the words check on Account, as the sidebar's reminder opens it
-  {"open": "lock"}                        // the lock screen, as the PIN timeout locks
-  {"open": "forget"}                      // the lock screen's Forget confirm, as its trigger opens it
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}
@@ -522,7 +521,8 @@ malformed input; `Storage` commits (atomic state and settings), message upsert
 status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
 `timeline(in:)` first emission, and the profile lock; `Message` helpers;
 `ServerAddress` parsing; and the `Engine` helpers that need no server
-(mnemonics, invites, a fresh account); attachment encryption against an
+(mnemonics, invites, a fresh account, the words check: which
+accounts start checked, wrong words named by place, nothing kept on a mismatch); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); person colours (`PersonHue`: the key
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name

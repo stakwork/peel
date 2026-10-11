@@ -68,7 +68,7 @@ public struct Profile: Sendable {
     /// before the account is open (the lock screen's Forget); nil if none
     /// was recorded or there is no database to read.
     public func storedBalanceMsat() -> UInt64? {
-        guard FileManager.default.fileExists(atPath: directory.appendingPathComponent("peel.sqlite").path) else { return nil }
+        guard Storage.exists(in: directory) else { return nil }
         return try? Storage(directory: directory, readOnly: true).balanceMsat()
     }
 

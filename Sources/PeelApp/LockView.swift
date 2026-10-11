@@ -7,8 +7,9 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
-    /// What the account holds, for Forget (`AppModel.balanceBeforeForget`).
-    @State private var balanceMsat: UInt64?
+    /// Whether the account is known to hold sats, for Forget; never how
+    /// many (`AppModel.balanceBeforeForget`).
+    @State private var holdsSats = false
 
     var body: some View {
         OnboardingPage {
@@ -35,19 +36,19 @@ struct LockView: View {
                 .frame(maxWidth: 360)
             }
         }
-        .task { balanceMsat = await model.balanceBeforeForget() }
-        .onDisappear { model.confirmingForget = false }
+        .task { holdsSats = await (model.balanceBeforeForget() ?? 0) > 0 }
     }
 
-    /// What the account holds, then what is lost without the words: Forget
-    /// asks for no proof of them, so a lost PIN can start again.
+    /// Whether the account holds sats, then what is lost without the words:
+    /// Forget asks for no proof of them, so a lost PIN can start again. Never
+    /// how many sats: the PIN guards that, as a locked notification says
+    /// only "Sats received". Never "no sats" either: the balance stored
+    /// before the PIN may predate sats received since.
     private var forgetExplanation: String {
-        let holds = switch balanceMsat {
-        case nil: "Peel doesn't know how many sats this account holds."
-        case 0?: "This account holds no sats."
-        case let msat?: "This account holds \(Sats.format(msat: msat))."
-        }
-        return "\(holds) Without your twelve words, it and its sats cannot be brought back. Forgetting removes its words and messages from this Mac; with the words you can restore it here or on any device."
+        let lost = holdsSats
+            ? "This account holds sats. Without your twelve words, it and its sats cannot be brought back."
+            : "Without your twelve words, this account and any sats it holds cannot be brought back."
+        return "\(lost) Forgetting removes its words and messages from this Mac; with the words you can restore it here or on any device."
     }
 
     private func unlock() async {
@@ -83,14 +84,13 @@ struct ForgetAccountControl: View {
     @State private var problem: String?
 
     var body: some View {
-        @Bindable var model = model
         VStack(alignment: section ? .leading : .center, spacing: 8) {
             if section {
                 FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
             } else {
                 InlineConfirm(
                     trigger: trigger, explanation: explanation, confirm: "Forget account", style: .text, alignment: .center,
-                    confirming: $model.confirmingForget, action: forget
+                    action: forget
                 )
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)

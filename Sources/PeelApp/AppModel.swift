@@ -187,8 +187,6 @@ final class AppModel {
     /// The words check was asked for (the sidebar's reminder): the Account
     /// screen opens it, until it ends or the screen closes.
     var wordsCheckRequested = false
-    /// Forget's in-place confirm is open on the lock screen.
-    var confirmingForget = false
     /// The sidebar's reminder to check the words: while the account holds
     /// sats that would be lost with this Mac's copy of them.
     var remindsToCheckWords: Bool { !wordsConfirmed && (balanceMsat ?? 0) > 0 }
@@ -512,7 +510,6 @@ final class AppModel {
     func confirmWords(_ answers: [Int: String], of words: [String]) async throws {
         try await signedIn().confirmWords(answers, mnemonic: words.joined(separator: " "))
         wordsConfirmed = true
-        wordsCheckRequested = false
     }
 
     /// The sidebar's reminder: the Account screen, with the words check open.

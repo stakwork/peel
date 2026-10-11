@@ -26,6 +26,12 @@ extension Engine {
         words(in: mnemonic).joined(separator: " ")
     }
 
+    /// The seed the words make, as the engine holds it: one derivation for
+    /// opening an account and for checking words against it.
+    static func seed(of mnemonic: String) throws -> String {
+        try Sphinxrs.mnemonicToSeed(mnemonic: normalise(mnemonic: mnemonic))
+    }
+
     public static func parseInvite(_ text: String) throws -> Invite {
         let parsed = try Sphinxrs.parseInvite(inviteQr: text.trimmingCharacters(in: .whitespacesAndNewlines))
         return Invite(
@@ -57,12 +63,12 @@ extension Engine {
     // MARK: - The words written down
 
     /// How many of the twelve words a check asks back.
-    public static let wordsChecked = 3
+    private static let wordsChecked = 3
 
     /// Positions (0 to 11, in order) of the words a check asks back,
     /// chosen at random.
     public static func wordsToCheck() -> [Int] {
-        Array((0..<12).shuffled().prefix(wordsChecked)).sorted()
+        (0..<12).shuffled().prefix(wordsChecked).sorted()
     }
 
     /// Whether this account's words were checked, here or by restoring
@@ -78,9 +84,7 @@ extension Engine {
     /// `wrongWords` with the positions, never the words, and records nothing.
     public func confirmWords(_ answers: [Int: String], mnemonic: String) throws {
         let words = Self.words(in: mnemonic)
-        guard words.count == 12, (try? Sphinxrs.mnemonicToSeed(mnemonic: words.joined(separator: " "))) == seed else {
-            throw Failure.notThisAccountsWords
-        }
+        guard words.count == 12, (try? Self.seed(of: mnemonic)) == seed else { throw Failure.notThisAccountsWords }
         guard answers.count >= Self.wordsChecked, answers.keys.allSatisfy(words.indices.contains) else {
             throw PeelError("three of the twelve words are needed")
         }

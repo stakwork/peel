@@ -17,9 +17,9 @@ struct OnboardingView: View {
     @State private var pin = ""
     @State private var confirmation = ""
     @State private var shownWords: [String] = []
-    /// The places of the three words asked back, and what was typed.
-    @State private var checkPositions: [Int] = []
-    @State private var checkAnswers: [String] = []
+    /// The three words asked back after "I've written them down"; Back
+    /// keeps their places and what was typed.
+    @State private var check = WordCheck()
     @State private var working = false
     @State private var problem: String?
 
@@ -135,7 +135,7 @@ struct OnboardingView: View {
         StepBody(title: "Write down your twelve words",
                  detail: "They are your account. With them you can restore it on any device; anyone else who has them controls your messages and sats. Peel keeps them locked with your PIN on this Mac and never sends them anywhere.",
                  width: 520) {
-            NumberedWordGrid(count: shownWords.count) { index in
+            NumberedWordGrid(places: Array(shownWords.indices)) { index in
                 Text(shownWords[index])
                     .font(Theme.font(15))
                 Spacer(minLength: 0)
@@ -143,13 +143,7 @@ struct OnboardingView: View {
         } footer: {
             HStack {
                 Spacer()
-                Button("I've written them down") {
-                    if checkPositions.isEmpty {
-                        checkPositions = Engine.wordsToCheck()
-                        checkAnswers = checkPositions.map { _ in "" }
-                    }
-                    go(.checkWords)
-                }
+                Button("I've written them down") { go(.checkWords) }
                 .buttonStyle(.peel(.primary, size: .lg))
             }
         }
@@ -161,11 +155,9 @@ struct OnboardingView: View {
         StepBody(title: "Check what you wrote",
                  detail: "Type these three words from your paper. Peel opens once they match.",
                  width: 520) {
-            WordCheckGrid(positions: checkPositions, answers: $checkAnswers) { Task { await checkWords() } }
+            WordCheckGrid(check: $check) { Task { await checkWords() } }
         } footer: {
-            footer(next: "Open Peel", enabled: checkAnswers.allSatisfy { !$0.trimmed.isEmpty } && !working) {
-                Task { await checkWords() }
-            }
+            footer(next: "Open Peel", enabled: check.isFilled && !working) { Task { await checkWords() } }
         }
     }
 
@@ -240,16 +232,16 @@ struct OnboardingView: View {
     /// Records the words as written down and opens Peel, or says which
     /// places differ.
     private func checkWords() async {
-        guard !working, checkAnswers.allSatisfy({ !$0.trimmed.isEmpty }) else { return }
+        guard !working, check.isFilled else { return }
         working = true
         defer { working = false }
         do {
-            try await model.confirmWords(WordCheckGrid.answers(checkAnswers, at: checkPositions), of: shownWords)
+            try await model.confirmWords(check.byPosition, of: shownWords)
             shownWords = []
-            checkAnswers = []
+            check = WordCheck()
             model.enterApp()
         } catch {
-            problem = WordCheckGrid.problem(error)
+            problem = PeelError.problem(error)
         }
     }
 
@@ -427,19 +419,18 @@ struct StepBody<Fields: View, Footer: View>: View {
 
 /// Three columns of numbered boxes, for showing or typing the twelve words:
 /// the form's boxed fields, the one being typed in (`focused`) ringed.
-/// Each box is numbered with its word's place: `positions` (0 to 11) when
-/// only some are shown.
+/// Each box is numbered with its word's place in `places` (0 to 11): all
+/// twelve, or the three a check asks back.
 struct NumberedWordGrid<Cell: View>: View {
-    let count: Int
-    var positions: [Int]?
+    let places: [Int]
     var focused: Int?
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-            ForEach(0..<count, id: \.self) { index in
+            ForEach(places.indices, id: \.self) { index in
                 HStack(spacing: 10) {
-                    Text("\((positions?[index] ?? index) + 1)")
+                    Text("\(places[index] + 1)")
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -471,12 +462,10 @@ struct WordEntryGrid: View {
                 Label("Paste twelve words", systemImage: "doc.on.clipboard")
             }
             .buttonStyle(.peel(.link))
-            NumberedWordGrid(count: 12, focused: focus) { index in
+            NumberedWordGrid(places: Array(words.indices), focused: focus) { index in
                 TextField("", text: binding(for: index))
                     .focused($focus, equals: index)
-                    .textFieldStyle(.plain)
-                    .font(Theme.font(15))
-                    .autocorrectionDisabled()
+                    .wordBox()
             }
         }
     }
@@ -511,46 +500,54 @@ struct WordEntryGrid: View {
     }
 }
 
-/// Three of the twelve words typed back from paper, each box numbered with
-/// its word's place (`Engine.wordsToCheck`). Return moves to the next box,
-/// and from the last submits.
+extension View {
+    /// A word's box in `NumberedWordGrid` when it is typed into: plain,
+    /// 15 pt, never autocorrected.
+    func wordBox() -> some View {
+        textFieldStyle(.plain)
+            .font(Theme.font(15))
+            .autocorrectionDisabled()
+    }
+}
+
+/// Three of the twelve words asked back: their places, chosen at random
+/// (`Engine.wordsToCheck`), and what was typed for each. Always one answer
+/// per place: a box bound to its answer may still read it as its view
+/// closes, so a check is replaced by a new one, never emptied.
+struct WordCheck {
+    let positions = Engine.wordsToCheck()
+    var answers: [String]
+
+    init() {
+        answers = positions.map { _ in "" }
+    }
+
+    /// Every box has something in it.
+    var isFilled: Bool { answers.allSatisfy { !$0.trimmed.isEmpty } }
+
+    /// The answers by place, for `AppModel.confirmWords`.
+    var byPosition: [Int: String] { Dictionary(uniqueKeysWithValues: zip(positions, answers)) }
+}
+
+/// The boxes of a `WordCheck`, each numbered with its word's place. Return
+/// moves to the next box, and from the last submits.
 struct WordCheckGrid: View {
-    let positions: [Int]
-    @Binding var answers: [String]
+    @Binding var check: WordCheck
     let submit: () -> Void
     @FocusState private var focus: Int?
 
     var body: some View {
-        NumberedWordGrid(count: positions.count, positions: positions, focused: focus) { index in
-            TextField("", text: $answers[index])
+        NumberedWordGrid(places: check.positions, focused: focus) { index in
+            TextField("", text: $check.answers[index])
                 .focused($focus, equals: index)
-                .textFieldStyle(.plain)
-                .font(Theme.font(15))
-                .autocorrectionDisabled()
-                .onSubmit { if index + 1 < positions.count { focus = index + 1 } else { submit() } }
+                .wordBox()
+                .onSubmit { if index + 1 < check.positions.count { focus = index + 1 } else { submit() } }
         }
-        .task(id: positions) {
+        .task(id: check.positions) {
             // Focus asked for during the screen change is ignored; ask once it has settled.
             try? await Task.sleep(for: .milliseconds(150))
             focus = 0
         }
-    }
-
-    /// The answers by position, for `AppModel.confirmWords`.
-    static func answers(_ typed: [String], at positions: [Int]) -> [Int: String] {
-        Dictionary(uniqueKeysWithValues: zip(positions, typed))
-    }
-
-    /// What to show when the words typed back were not accepted: which
-    /// places differ, never a word.
-    static func problem(_ error: any Error) -> String {
-        guard case .wrongWords(let positions) = error as? Engine.Failure, let first = positions.first else {
-            return PeelError.readable(error)
-        }
-        let places = positions.map(String.init).formatted(.list(type: .and))
-        return positions.count == 1
-            ? "Word \(first) doesn't match. Check it against what you wrote down."
-            : "Words \(places) don't match. Check them against what you wrote down."
     }
 }
 

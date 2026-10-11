@@ -96,17 +96,15 @@ struct WordsConfirmationTests {
     let profile = TempProfile()
     let server = ServerAddress("127.0.0.1:1")!
 
-    @Test func newAccountStartsUnconfirmed() async throws {
-        let created = try await Account.create(Profile(developmentAt: profile.url), alias: "Ann", pin: "", server: server)
-        #expect(try await created.engine.wordsConfirmed() == false)
-    }
-
-    @Test func restoreCountsAsConfirmed() async throws {
-        let engine = try await Account.restore(
-            Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), alias: "Ann", pin: "",
-            server: server
-        )
-        #expect(try await engine.wordsConfirmed())
+    /// A restore typed all twelve words; a new account has had none typed back.
+    @Test(arguments: [false, true]) func onlyARestoreStartsConfirmed(restore: Bool) async throws {
+        let local = Profile(developmentAt: profile.url)
+        let engine = if restore {
+            try await Account.restore(local, mnemonic: abandon.joined(separator: " "), alias: "Ann", pin: "", server: server)
+        } else {
+            try await Account.create(local, alias: "Ann", pin: "", server: server).engine
+        }
+        #expect(try await engine.wordsConfirmed() == restore)
     }
 
     @Test func rightWordsConfirmAndAreKept() async throws {
@@ -125,15 +123,16 @@ struct WordsConfirmationTests {
     @Test func wrongWordsNameTheirPositionsAndConfirmNothing() async throws {
         let engine = try testEngine(try profile.storage())
         let words = abandon.joined(separator: " ")
+        // The account's own words, but not the ones at these places.
         await #expect(throws: Engine.Failure.wrongWords(positions: [6, 12])) {
-            try await engine.confirmWords([0: "abandon", 5: "ability", 11: "zoo"], mnemonic: words)
+            try await engine.confirmWords([0: "abandon", 5: "about", 11: "abandon"], mnemonic: words)
         }
         // Another account's words, typed back right, are not this one's.
         let others = try Engine.generateMnemonic()
         let answers = Dictionary(uniqueKeysWithValues: [1, 4, 9].map { ($0, Engine.words(in: others)[$0]) })
         await #expect(throws: Engine.Failure.notThisAccountsWords) { try await engine.confirmWords(answers, mnemonic: others) }
-        // One word is not the check.
-        await #expect(throws: (any Error).self) { try await engine.confirmWords([11: "about"], mnemonic: words) }
+        // One word, right as it is, is not the check.
+        await #expect(throws: PeelError.self) { try await engine.confirmWords([11: "about"], mnemonic: words) }
         #expect(try await engine.wordsConfirmed() == false)
         // What the person reads names positions, never a word.
         #expect("\(Engine.Failure.wrongWords(positions: [6, 12]))" == "words 6 and 12 do not match")

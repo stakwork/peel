@@ -245,6 +245,10 @@ is a short plan. Update the status and the journal when you finish something.
   `Panel`, shadcn's card in a popover (title, actions top right, close,
   body, footer; 372 or 320 `compact`; the only box a popover has; every
   popover), and `PanelHero`, the top of a details panel;
+  `Section` (`SectionHeader`, every heading over a group but the
+  sidebar's) and `Card` (`Card`, raised or inset, every card and the
+  boxes in a chat; `Callout`, shadcn's alert: a chat's and the window's
+  notices, a tribe you cannot post in, an amber note, a download);
   `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
@@ -670,7 +674,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `IconButton`, `Panel`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

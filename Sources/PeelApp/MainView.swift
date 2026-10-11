@@ -17,7 +17,7 @@ struct MainView: View {
             VStack(spacing: 0) {
                 Detail()
                 if let notice = model.notice {
-                    NoticeBar(text: notice) { model.notice = nil }
+                    Callout(detail: notice, icon: .problem, dismiss: { model.notice = nil })
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
                         .background(Theme.background)

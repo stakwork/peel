@@ -35,28 +35,29 @@ struct JoinTribeForm: View {
                 attempt.problem = nil
             }
             if let info {
-                HStack(alignment: .top, spacing: 10) {
-                    TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(info.name)
-                            .font(Theme.font(14, .semibold))
-                        if let summary = info.summary?.trimmed.nilIfEmpty {
-                            Text(summary)
+                Card {
+                    HStack(alignment: .top, spacing: 10) {
+                        TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(info.name)
+                                .font(Theme.font(14, .semibold))
+                            if let summary = info.summary?.trimmed.nilIfEmpty {
+                                Text(summary)
+                                    .font(Theme.font(12))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .lineLimit(3)
+                            }
+                            Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
                                 .font(Theme.font(12))
+                                .monospacedDigit()
                                 .foregroundStyle(Theme.secondaryText)
-                                .lineLimit(3)
                         }
-                        Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
-                            .font(Theme.font(12))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .formCard()
             }
         } footer: {
             FormFooter(problem: problem ?? attempt.problem) {

@@ -108,28 +108,29 @@ private struct ContactInfoSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(alignment: .center, spacing: 20) {
-            QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Your contact info")
-                    .font(Theme.font(15, .bold))
-                Text(model.myContactInfo == nil
-                     ? "Available once the server has registered this account."
-                     : "Someone scans this code or pastes your contact info to add you. It holds your public key and how to reach you, nothing secret.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let info = model.myContactInfo {
-                    CopyButton("Copy contact info", text: info)
-                        .buttonStyle(.peel(.outline))
-                        .id(info)
-                        .padding(.top, 4)
+        Card {
+            HStack(alignment: .center, spacing: 20) {
+                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your contact info")
+                        .font(Theme.font(15, .bold))
+                    Text(model.myContactInfo == nil
+                         ? "Available once the server has registered this account."
+                         : "Someone scans this code or pastes your contact info to add you. It holds your public key and how to reach you, nothing secret.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let info = model.myContactInfo {
+                        CopyButton("Copy contact info", text: info)
+                            .buttonStyle(.peel(.outline))
+                            .id(info)
+                            .padding(.top, 4)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(16)
         }
-        .padding(16)
-        .formCard()
     }
 }
 
@@ -609,7 +610,7 @@ private struct ZonePicker: View {
                         ZoneRow(title: "Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
                                 checked: chosen == nil) { choose(nil) }
                         Theme.divider.frame(height: 1).padding(.vertical, 4)
-                        SectionLabel("All time zones")
+                        SectionHeader("All time zones")
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
                     }
@@ -788,19 +789,18 @@ private struct SettingsSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(Theme.font(11, .semibold))
-                .foregroundStyle(Theme.secondaryText)
+            SectionHeader(title)
                 .padding(.horizontal, 4)
-            Group(subviews: content) { rows in
-                VStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
-                        row
+            Card {
+                Group(subviews: content) { rows in
+                    VStack(spacing: 0) {
+                        ForEach(rows) { row in
+                            if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
+                            row
+                        }
                     }
                 }
             }
-            .formCard()
         }
         .padding(.top, 12)
     }

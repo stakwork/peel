@@ -173,7 +173,7 @@ struct PayInvoicePane: View {
         default:
             (title, detail) = ("This invoice cannot be paid now", problem.description)
         }
-        return AttentionNote(title: title, detail: detail) {
+        return Callout(.attention, title, detail: detail) {
             if let link { Button(link.0, action: link.1).buttonStyle(.peel(.link)) }
         }
     }

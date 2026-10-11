@@ -141,8 +141,8 @@ private struct WaitingStatus: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = invoice.expires.map { $0.timeIntervalSince(context.date) } ?? .infinity
             if left <= 0 {
-                AttentionNote(
-                    title: "This invoice has expired",
+                Callout(
+                    .attention, "This invoice has expired",
                     detail: "It ran out at \(invoice.expires.map(Formatting.expiry) ?? "") unpaid."
                 ) {
                     Button("Make a new one", action: renew).buttonStyle(.peel(.link))

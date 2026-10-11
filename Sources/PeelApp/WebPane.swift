@@ -493,26 +493,45 @@ extension View {
 }
 
 /// The first items of a chat header's More menu: Browser, which shows the
-/// pane (its page, or an empty address field), then a tribe's second brain
-/// and web app, each only when the tribe has one (stored only when
-/// `WebPage.address` took it). `open` is the window's link router, as for a
-/// message link, so they open in the pane.
+/// pane (its page, or an empty address field), then the tribe's pages
+/// (`Tribe.pages`, in their one order), each opened in the pane.
 @MainActor
 enum WebMenuEntries {
-    static func entries(for tribe: Tribe?, pane: WebPane, open: OpenURLAction) -> [MenuEntry] {
+    static func entries(for tribe: Tribe?, pane: WebPane) -> [MenuEntry] {
         let browser = MenuEntry.button("Browser", systemImage: "globe") {
             withAnimation(.easeOut(duration: 0.2)) { pane.show() }
         }
-        let pages: [(String, String, String?)] = [
-            ("Second brain", "brain", tribe?.secondBrainURL), ("Tribe app", "square.grid.2x2", tribe?.appURL),
-        ]
-        return [browser] + pages.compactMap { title, image, address in
-            guard let url = address.flatMap(URL.init(string:)) else { return nil }
-            return .item(MenuItem(title: title, systemImage: image, detailSystemImage: "arrow.up.right") {
-                open(url)
+        return [browser] + (tribe?.pages ?? []).map { page in
+            .item(MenuItem(title: page.title, systemImage: page.systemImage, detailSystemImage: "arrow.up.right") {
+                pane.open(page)
                 return true
             })
         }
+    }
+}
+
+/// How a tribe's page is named and drawn, in the More menu and its details.
+extension TribePage {
+    var title: String {
+        switch kind {
+        case .app: "Tribe app"
+        case .secondBrain: "Second brain"
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case .app: "square.grid.2x2"
+        case .secondBrain: "brain"
+        }
+    }
+}
+
+extension WebPane {
+    /// Opens a tribe's page beside the chat: the one way the menu and the
+    /// details open one.
+    func open(_ page: TribePage) {
+        withAnimation(.easeOut(duration: 0.2)) { open(page.url) }
     }
 }
 

@@ -305,13 +305,15 @@ struct JoinRequestButtons: View {
 struct JoinRequestNote: View {
     @Environment(AppModel.self) private var model
     let message: Message
+    /// Who asks (the row's sender).
+    let sender: Sender
     /// Whether the owner approved, once answered.
     let approved: Bool?
     let canAnswer: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("\(message.senderAlias ?? Sender.unnamed) wants to join")
+            Text("\(sender.name) wants to join")
             if let approved {
                 Text(approved ? "· Approved" : "· Declined")
             } else if canAnswer {
@@ -338,7 +340,7 @@ struct PinnedMessageBar: View {
             Image(systemName: "pin.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
-            Text(message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed)
+            Text(model.sender(of: message).label)
                 .font(Theme.font(12, .medium))
             Text(message.preview)
                 .font(Theme.font(12))
@@ -377,13 +379,11 @@ struct PinnedMessageBar: View {
 
 /// In place of the composer when this account cannot post: waiting for
 /// approval, declined, removed, or the tribe deleted. Removing it from Peel
-/// is confirmed in place.
+/// is confirmed in place; a failure shows in the chat's notice above.
 struct TribeStatusBar: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let tribe: Tribe
-
-    @State private var problem: String?
 
     private var text: String {
         switch tribe.status {
@@ -400,15 +400,13 @@ struct TribeStatusBar: View {
             if tribe.status == .pending {
                 ProgressView().controlSize(.small)
             }
-            Text(problem ?? text)
+            Text(text)
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
             Spacer(minLength: 8)
-            InlineConfirm(trigger: "Remove from Peel", prompt: "Remove #\(conversation.name) from Peel?", confirm: "Remove") {
-                do {
-                    try await model.leaveTribe(tribe.pubkey)
-                } catch {
-                    problem = PeelError.problem(error, couldNot: "remove the tribe")
+            if let exit = tribe.exit {
+                InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
+                    await model.leave(tribe.pubkey)
                 }
             }
         }
@@ -465,18 +463,17 @@ private struct MentionRow: View {
     let tribeName: String?
 
     var body: some View {
-        let details = message.senderDetails, alias = details.alias
+        let sender = Sender(member: message)
         Button {
             model.focus(on: message)
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                let hue = model.hue(pubkey: message.chat, alias: alias, inTribe: true)
-                Avatar(name: alias ?? "?", url: details.photoURL, size: 28, hue: hue)
+                Avatar(name: sender.avatarName, url: sender.photoURL, size: 28, hue: sender.hue)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(alias ?? Sender.unnamed)
+                        Text(sender.name)
                             .font(Theme.font(13, .medium))
-                            .foregroundStyle(hue.name)
+                            .foregroundStyle(sender.hue.name)
                         Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
                             .font(Theme.font(12))
                             .foregroundStyle(Theme.secondaryText)

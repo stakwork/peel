@@ -12,7 +12,9 @@ struct Receipt: Sendable {
     let chat: String?
     let messageID: Int64?
     let paymentHash: String?
-    let senderAlias: String?
+    /// Who sent it, as the message names them (`Sender(member:)`; only its
+    /// name is read, the member's in a tribe); nil for an invoice.
+    let member: Sender?
     /// A payment's note or an invoice's memo.
     let note: String?
 
@@ -22,7 +24,7 @@ struct Receipt: Sendable {
         chat = message.chat
         messageID = message.id
         paymentHash = message.paymentHash
-        senderAlias = message.senderAlias
+        member = Sender(member: message)
         note = message.preview.nilIfEmpty
     }
 
@@ -34,7 +36,7 @@ struct Receipt: Sendable {
         chat = invoice.chat
         messageID = nil
         paymentHash = invoice.paymentHash
-        senderAlias = nil
+        member = nil
         note = invoice.memo.nilIfEmpty
     }
 

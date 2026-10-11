@@ -168,13 +168,17 @@ extension AppModel {
         openThread = nil
     }
 
-    /// Leaves a tribe, or removes one this account can no longer post in;
-    /// a failure shows in that chat.
+    /// Leaves a tribe, or removes one this account can no longer post in
+    /// (`Tribe.exit`): the one way the menu, the members panel, the details
+    /// and the status bar go. A failure shows in that chat.
     func leave(_ pubkey: String) async {
+        guard let engine else { return }
+        let exit = tribes[pubkey]?.exit
         do {
-            try await leaveTribe(pubkey)
+            try await engine.leaveTribe(pubkey)
+            if selectedChat == pubkey { destination = nil }
         } catch {
-            conversationNotices[pubkey] = PeelError.problem(error, couldNot: "leave the tribe")
+            conversationNotices[pubkey] = PeelError.problem(error, couldNot: (exit ?? .leave).failure)
         }
     }
 

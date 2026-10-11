@@ -30,7 +30,7 @@ struct TribeDetailsPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     hero
                     facts
-                    if tribe.appURL != nil || tribe.secondBrainURL != nil {
+                    if !tribe.pages.isEmpty {
                         pages
                     }
                     if let link = tribe.link {
@@ -149,26 +149,22 @@ struct TribeDetailsPanel: View {
         return "\(amount), back after \(hours) \(hours == "1" ? "hour" : "hours")"
     }
 
-    /// The tribe's app and second brain, opened in the web pane beside the chat.
+    /// The tribe's pages (`Tribe.pages`, in the More menu's order), opened
+    /// in the web pane beside the chat.
     private var pages: some View {
         HStack(spacing: 8) {
-            page("Tribe app", systemImage: "square.grid.2x2", address: tribe.appURL)
-            page("Second brain", systemImage: "brain", address: tribe.secondBrainURL)
+            ForEach(tribe.pages, id: \.kind) { page in
+                Button {
+                    done()
+                    model.web.open(page)
+                } label: {
+                    Label(page.title, systemImage: page.systemImage)
+                }
+                .buttonStyle(.peel(.outline))
+                .help("Opens beside the chat")
+            }
         }
         .padding(.top, 14)
-    }
-
-    @ViewBuilder private func page(_ title: String, systemImage: String, address: String?) -> some View {
-        if let url = address.flatMap(URL.init(string:)) {
-            Button {
-                done()
-                withAnimation(.easeOut(duration: 0.2)) { model.web.open(url) }
-            } label: {
-                Label(title, systemImage: systemImage)
-            }
-            .buttonStyle(.peel(.outline))
-            .help("Opens beside the chat")
-        }
     }
 
     private func share(_ link: String) -> some View {
@@ -200,14 +196,10 @@ struct TribeDetailsPanel: View {
                     .buttonStyle(.peel(.outline))
             }
             Spacer()
-            if !tribe.canManage, tribe.canPost {
-                InlineConfirm(trigger: "Leave tribe", confirm: "Leave") {
-                    do {
-                        try await model.leaveTribe(tribe.pubkey)
-                        done()
-                    } catch {
-                        problem = PeelError.problem(error, couldNot: "leave the tribe")
-                    }
+            if let exit = tribe.exit {
+                InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
+                    await model.leave(tribe.pubkey)
+                    done()
                 }
             }
         }

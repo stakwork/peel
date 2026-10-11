@@ -22,6 +22,17 @@ struct Sender: Equatable {
     var avatarName: String { alias ?? "?" }
 }
 
+extension Sender {
+    /// A tribe member as their message names them (decoded from it), for
+    /// whatever names someone else in a tribe: the rows, notes, mentions,
+    /// notifications. Never you: `People` names you.
+    init(member message: Message) {
+        let details = message.senderDetails
+        self.init(alias: details.alias, photoURL: details.photoURL,
+                  hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
+    }
+}
+
 /// What a reply quotes: the parent and its sender, or a note that it is not here.
 enum Quote: Equatable {
     case message(Message, Sender)
@@ -116,10 +127,7 @@ struct ChatRow: Identifiable, Equatable {
         /// member (decoded from the message), else the contact.
         func sender(of message: Message, inTribe: Bool) -> Sender {
             if message.fromMe { return me }
-            guard inTribe else { return contact }
-            let details = message.senderDetails
-            return Sender(alias: details.alias, photoURL: details.photoURL,
-                          hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
+            return inTribe ? Sender(member: message) : contact
         }
     }
 
@@ -347,10 +355,10 @@ struct MessageList: View {
                                 MessageRow(row: row, composer: composer, flashed: flashed == row.id)
                                     .equatable()
                             case .request:
-                                JoinRequestNote(message: row.message, approved: row.approved, canAnswer: canAnswer)
+                                JoinRequestNote(message: row.message, sender: row.sender, approved: row.approved, canAnswer: canAnswer)
                                     .padding(.horizontal, 20)
                             case .note:
-                                MembershipNote(message: row.message)
+                                MembershipNote(message: row.message, sender: row.sender)
                                     .padding(.horizontal, 20)
                             case .payment:
                                 PaymentRow(row: row, flashed: flashed == row.id)

@@ -4,6 +4,19 @@ import Testing
 @testable import PeelCore
 
 struct TribeTests {
+    @Test func howThisAccountCanGoFromATribe() {
+        #expect(Tribe(pubkey: key2G).exit == .leave)
+        // The owner of a live tribe can only delete it.
+        #expect(Tribe(pubkey: key2G, isOwner: true).exit == nil)
+        // Not let in, declined, removed or deleted: removed from Peel, the owner's too.
+        for status in [Tribe.Status.pending, .rejected, .removed, .deleted] {
+            #expect(Tribe(pubkey: key2G, status: status).exit == .remove)
+            #expect(Tribe(pubkey: key2G, isOwner: true, status: status).exit == .remove)
+        }
+        #expect(Tribe(pubkey: key2G, left: true).exit == nil)
+        #expect(Tribe(pubkey: key2G, left: true, status: .removed).exit == nil)
+    }
+
     @Test func mentionsMatchTheWholeAliasInAnyCase() {
         let me = ["Tom_Smith"]
         #expect(mentions("hi @Tom_Smith welcome", aliases: me))

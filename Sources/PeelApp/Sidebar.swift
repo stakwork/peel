@@ -156,9 +156,9 @@ struct Sidebar: View {
     /// menu, panel or viewer up: Down and Up move the highlight, Return
     /// opens it, Escape clears it. Typing goes to the open chat.
     private func handle(_ event: NSEvent, responder: NSResponder?) -> Bool {
-        guard model.phase == .ready, !model.isLockDue, let window = presenter?.hostWindow, event.window === window,
-              responder != nil, !(responder is NSText), window.firstResponder === responder,
-              presenter?.anythingOpen != true, model.viewer == nil, !event.modifierFlags.contains(.control)
+        guard model.phase == .ready, !model.isLockDue, let presenter, presenter.takesKeys(event), model.viewer == nil,
+              responder != nil, !(responder is NSText), event.window?.firstResponder === responder,
+              !event.modifierFlags.contains(.control)
         else { return false }
         // Typing ahead: the keys after the first go the same way, in order,
         // for the second a composer has to take the cursor.
@@ -172,21 +172,21 @@ struct Sidebar: View {
         let rows = rows
         let plain = event.modifierFlags.isDisjoint(with: [.command, .option, .shift])
         switch event.keyCode {
-        case 125 where plain, 126 where plain: // Down, Up
+        case KeyCode.down where plain, KeyCode.up where plain:
             let next = Self.step(rows.map(\.destination), from: highlighted ?? model.destination,
-                                 by: event.keyCode == 125 ? 1 : -1)
+                                 by: event.keyCode == KeyCode.down ? 1 : -1)
             highlighted = next
             if let title = rows.first(where: { $0.destination == next })?.title {
                 AccessibilityNotification.Announcement(title).post()
             }
-        case 36 where plain, 76 where plain:
-            // Return, Enter: taken even with nothing highlighted, so a
+        case KeyCode.return where plain, KeyCode.enter where plain:
+            // Taken even with nothing highlighted, so a
             // second press never reaches a pane's default button (Pay).
             if let highlighted, rows.contains(where: { $0.destination == highlighted }) {
                 model.destination = highlighted
                 self.highlighted = nil
             }
-        case 53 where plain: // Escape
+        case KeyCode.escape where plain:
             guard highlighted != nil else { return false }
             highlighted = nil
         default:

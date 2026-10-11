@@ -630,7 +630,9 @@ reading raw key codes, and eight places handle Escape. Each guards its own
 case today (the sidebar defers to an open menu or the viewer,
 `Sidebar.swift:136`; the viewer ignores the call window,
 `ImageViewer.swift:113`). Nothing written down says who wins when two
-want the same key, so the next one added can break it.
+want the same key, so the next one added can break it. Fixed in 9: the
+order is written in `KeyMonitor`'s doc comment, and it was already broken
+for the search bar under a menu or the viewer (see Progress).
 
 ## What is healthy
 
@@ -998,3 +1000,89 @@ library outside forms.
   - Tests: `PeelErrorTests` (a URLError with a failing URL, an unmapped
     NSError with a userInfo, the mapped cases as sentences, Peel's own
     words).
+- **Batch 9, keys (2026-10-11).** `KeyCode` (beside `KeyMonitor` in
+  `PeelMenu`) names every key code the monitors read: `MenuPresenter`,
+  `ChatSearch`, `ImageViewer`, `Sidebar` and the offscreen driver's key
+  table have no numbers left. `KeyMonitor`'s doc comment holds the one
+  Escape order: a menu (confirm, submenu, menu), a panel, the image
+  viewer, the search bar while its field has the cursor, the sidebar's
+  highlight, then the view with the keyboard (the composer's mention
+  list, reply, thread; the web pane's address; the Payments pane; the
+  call window's grid). Local monitors run in the order they started, and
+  the presenter's starts again with each menu or panel, so it is often
+  the last: each monitor below it now checks
+  `MenuPresenter.takesKeys(_:)` (its own window, no menu or panel up),
+  which the sidebar, the search bar and the viewer share, and the search
+  bar also defers to the viewer.
+  - Bugs the order fixed, seen in the before drive: with the search field
+    focused, Escape closed the search and left an open menu up (and Down
+    stepped the search, not the menu; seen in one of two before runs,
+    depending on which monitor started first), and Escape closed the
+    search and left the image viewer up (every run). The search bar's
+    monitor had no window check, so it could also take Return, the arrows
+    and Escape typed in a panel's field or the call window while its
+    field kept focus (found in review; not driven).
+  - The ⌘I bug from 4a: the cause was the offscreen driver, not the app.
+    AppKit offers a key with ⌘ to the key window's views
+    (`performKeyEquivalent`) before the menu bar and the focused view.
+    The offscreen app is never active, so no window is key and that pass
+    never ran: menu commands (⌘F, ⌥⇧↓) still worked through the menu bar,
+    but a shortcut on a view (`.hiddenShortcut`: ⌘I, ⌥⌘A, ⌥⌘V, ⌘↓)
+    reached only the focused view's `keyDown`. A text view (the composer,
+    a search field) takes ⌘I as `noop:`, so it did nothing; with no text
+    view focused (a fresh profile's first run, where nothing had the
+    cursor yet) `keyDown` reached SwiftUI, which ran it. Confirmed by
+    logging the composer's `keyDown` (⌘I arrived, `noop:`, no key
+    equivalent pass) and by calling the window's `performKeyEquivalent`
+    directly, which opened Tribe details over a focused composer. The
+    driver now offers each ⌘ key to its window's views when that window
+    is not key, from a monitor it starts again before each key so it
+    runs after Peel's own. The title click always worked because it sets
+    the state directly. In the daily app (active, key window) ⌘I goes
+    through AppKit's own pass; that could not be driven here.
+  - Other shortcuts failing with the composer focused: in the drive,
+    every ⌘ shortcut on a view (above), fixed by the same change. In the
+    app, none found: ⌘ shortcuts take AppKit's key-equivalent pass ahead
+    of the composer. End (jump to newest, an empty composer only) has no
+    ⌘ and was not driven.
+  - Before and after, every existing shortcut: menu commands ⌘, ⌘F ⌘N
+    ⌥⇧↓ ⌥⇧↑ unchanged; ⌘I (details, tribe and contact) unchanged in the
+    app, now driven from the composer and the search field; ⌥⌘A ⌥⌘V
+    (start a call), End and ⌘↓ (jump to newest), ⌘W (web pane), the
+    call window's ⌘⇧A ⌘⇧S ⌘⇧ letters and Escape, `.defaultAction` Return
+    in forms, the payment template picker's ← →, the web address field's
+    and Payments pane's Escape, the composer's Return, Shift- and
+    Option-Return, `@` keys and Escape unchanged; the menu's keys
+    (Escape, ← →, ↑ ↓, Return and Enter, item letters, typing closes) and
+    the sidebar's (↑ ↓, Return, Escape, type-ahead) unchanged; the
+    viewer's (Escape, ← →, Space) and the search bar's (↑ ↓, Return,
+    Escape) now defer to an open menu or panel, the search bar's to the
+    viewer too.
+  - Drive, before (`origin/main`) and after, offscreen on a new
+    development profile (b9-alice, funded by `fund-dev.sh`, a tribe of
+    its own with two messages and a picture), with the composer focused
+    and with nothing focused: Escape closing a menu, a panel (⌘I), the
+    search (⌘F, typing, ↓), a reply, the viewer (→); a reply under ⌘I's
+    panel under a menu, then Escape three times (menu, panel, reply); the
+    search under ⌘I's panel (panel, then search); the search under a
+    menu and under the viewer; ⌥⇧↓ to the next unread chat. After, all
+    as the order says; before, ⌘I did nothing from the composer or the
+    search field, and the two search cases above failed. Every other
+    snapshot matched pixel for pixel but for the search results' "n min
+    ago". A temporary driver step (not committed) opened the menu (the
+    sidebar row's), a reply, the viewer, and put the cursor in the
+    composer or nowhere. Not driven: the sidebar's keys (they need a
+    click on a row; Tab goes to its search field), a menu's confirm and
+    submenu, End, the call window and ⌥⌘A/⌥⌘V (they start a call), ⌘W
+    and the web pane, the Payments pane, a thread's composer.
+  - Review (independent agent: correctness, simplify, security), applied:
+    `MenuPresenter.takesKeys` as the one "my window, nothing open" rule
+    for the three monitors; the mention list in the composer's Escape;
+    the README's "⌘ shortcut on a view" (a key without ⌘ reaches a view
+    shortcut only when the focused view does not take it). Not applied:
+    removing the driver's last monitor when the run ends (the app quits
+    then). No security findings: the driver runs only in the check
+    bundle's offscreen mode.
+  - Tests: nothing new in `PeelCoreTests`. The order is a few guards on
+    AppKit events in `PeelApp`, which has no test target; the drive above
+    covers it. `swift test`: 591 passed (one known issue, IPv6 hosts, as on `main`).

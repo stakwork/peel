@@ -78,6 +78,15 @@ final class MenuPresenter {
         #endif
     }
 
+    #if os(macOS)
+    /// Whether a key monitor below the menus and panels may take `event`:
+    /// it is for this presenter's window and no menu or panel is up
+    /// (`KeyMonitor`'s Escape order).
+    func takesKeys(_ event: NSEvent) -> Bool {
+        event.window === hostWindow && !anythingOpen
+    }
+    #endif
+
     /// Opens a menu below a button (`anchor`), moving with it while its
     /// list moves and closing once it is out of sight, unless it has
     /// nothing in it.
@@ -324,27 +333,27 @@ final class MenuPresenter {
     private func handle(_ event: NSEvent) -> Bool {
         guard let open else {
             // A panel: Escape closes it; every other key is its own.
-            if event.keyCode == 53, panelID != nil {
+            if event.keyCode == KeyCode.escape, panelID != nil {
                 closePanel()
                 return true
             }
             return false
         }
         switch event.keyCode {
-        case 53: // Escape
+        case KeyCode.escape:
             if open.confirming != nil { cancelConfirmation() } else if open.back != nil { goBack() } else { dismiss() }
             return true
-        case 123: // Left: out of a submenu
+        case KeyCode.left: // out of a submenu
             goBack()
             return true
-        case 124: // Right: into one
+        case KeyCode.right: // into one
             if let index = open.highlighted, open.entries[index].item?.submenu != nil { choose(index) }
             return true
-        case 36, 76: // Return, Enter
+        case KeyCode.return, KeyCode.enter:
             if let index = open.confirming ?? open.highlighted { choose(index) }
             return true
-        case 125: move(1); return true
-        case 126: move(-1); return true
+        case KeyCode.down: move(1); return true
+        case KeyCode.up: move(-1); return true
         default:
             break
         }

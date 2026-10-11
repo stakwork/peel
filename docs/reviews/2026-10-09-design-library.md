@@ -771,6 +771,41 @@ library outside forms.
     call window and the sidebar call bar (they need media, a thread, a
     page or a call). Hover and pressed were not rendered in the app (the
     offscreen app is never active).
+- **Batch 4a, the `Panel` shell (2026-10-11).** Built as
+  `PeelApp/UI/Panel.swift`: `FormPopover` moved out of `FormKit` and
+  renamed, `Panel("Title", compact:, close:) { body } footer: { … }`
+  (the title unlabelled, as SwiftUI's own views take theirs). Its
+  drawing is unchanged, and `DrawsOwnPanelBox` moved with it. The seven
+  `FormPopover` users are on it: Add contact, Invite someone and an
+  invite (`ContactsViews`), Send or request sats (`PaymentViews`), Tribe
+  details (`TribeDetails`), Join a tribe (`SidebarForms`), Create and
+  Edit tribe (`TribeViews`). `MenuPresenter` changed only in `PanelBox`'s
+  comment.
+  - Left for 4b, which needs them: the `actions` slot (no panel in 4a
+    has a top-right action yet), and retiring `DrawsOwnPanelBox` and the
+    presenter's menu box, which the five hand-drawn panels still use
+    until they move onto `Panel`. `FormFooter` stays a separate piece: it
+    is also the footer of Receive, Pay an invoice and the Account's name,
+    none of them panels. The tribe header in `ConversationView` has a
+    `private enum Panel` (members, details, edit) that hides the struct
+    inside that type; 4b renames it when it puts a `Panel` there. 4b
+    also adds a `Panel` with no footer, for the panels that have none.
+    (The review asked for both now; left, since 4b owns those files.)
+  - Renders: a new development profile on the loopback stack (a contact
+    and a tribe of its own, an invite of 500 sats, funded by the Bank),
+    before (`origin/main`) and after, offscreen, the same drive file:
+    the main window, Send sats, Tribe details, Edit #Hive, Add contact,
+    Invite someone, the invite's detail, Create a tribe and Join a tribe.
+    All 19 snapshots (ten of the main window, nine of the panel's own
+    window) match pixel for pixel. A temporary driver step (not
+    committed) opened the panels with no shortcut. Not rendered: Add
+    contact's "Sent to" state, Request sats (its title is the call
+    site's only other string), an invite still loading.
+  - Seen while checking, not changed: ⌘I (Tribe details) opened the
+    panel on the first run of a fresh profile, then did nothing on later
+    runs in both builds (the composer held the keyboard; the cause was
+    not looked into). The title click's path (`panel = .details`)
+    opened it each time. Worth a look with batch 9 (keys).
 - **Batch 5, the composer (2026-10-10).** Attach, the bolt (a direct
   message's Send or request sats) and send are inside the one rounded
   field, on a row under the text: attach and the bolt at the left, send at

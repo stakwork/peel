@@ -170,13 +170,9 @@ struct NoticeBar: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
             Spacer(minLength: 8)
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-            }
-            .buttonStyle(.plain)
-            .help("Dismiss")
+            IconButton("xmark", help: "Dismiss", size: .sm, action: dismiss)
+                // Its hover square reaches into the bar's padding, so the bar keeps its height.
+                .padding(.vertical, -6)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -264,37 +260,11 @@ struct TribeHeader: View {
     }
 }
 
-/// An icon button in the conversation header; `lit` while what it opened is open.
-struct HeaderButton: View {
-    let systemImage: String
-    let help: String
-    /// Its action is running: the spinner takes the icon's place.
-    var working = false
-    var lit = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14))
-                .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
-                .buttonProgress(working)
-                .frame(width: 28, height: 28)
-                .background(lit ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
-}
-
 /// A chat header's More (•••): its menu below it, and the chat's details
 /// panel, which opens below it however it is asked for: the menu's Details
 /// (handed to `entries` to place), ⌘I from anywhere in the chat, or a click
 /// on the header's name or icon (the header sets `showsDetails`).
 struct HeaderMoreButton<Details: View>: View {
-    @Environment(\.menuPresenter) private var presenter
     let chat: String
     /// "Details" for a contact, "Tribe details" for a tribe.
     var detailsTitle = "Details"
@@ -303,19 +273,11 @@ struct HeaderMoreButton<Details: View>: View {
     let entries: @MainActor (_ details: MenuEntry) -> [MenuEntry]
     @ViewBuilder let details: () -> Details
 
-    @State private var anchor = MenuAnchor()
-
-    private var source: AnyHashable { "more-\(chat)" }
-
     var body: some View {
-        HeaderButton(systemImage: "ellipsis", help: "More", lit: presenter?.isOpen == true && presenter?.source == source) {
-            let open = $showsDetails
-            let details = MenuEntry.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) {
-                open.wrappedValue = true
-            }
-            presenter?.show(entries(details), at: anchor, source: source)
+        let open = $showsDetails
+        MenuButton(systemImage: "ellipsis", help: "More", source: "more-\(chat)") {
+            entries(.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) { open.wrappedValue = true })
         }
-        .menuAnchor(anchor)
         .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { showsDetails = true }
         .peelPopover(isPresented: $showsDetails, content: details)
     }

@@ -54,7 +54,7 @@ struct CopyButton: View {
 
     var body: some View {
         if iconOnly {
-            HoverIconButton(help: title, action: run) { label }
+            IconButton(help: title, action: run) { label }
         } else {
             Button(action: run) { label }
                 .accessibilityLabel(title)

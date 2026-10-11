@@ -197,7 +197,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
   view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor`, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
-  `MenuRow`), `Controls` (`MenuButton`, `HoverIconButton`, `PeelDropdown`,
+  `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
   `UnreadBadge`, `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   `CallViews` (the call card, the header's call button and presence
@@ -210,8 +210,11 @@ is a short plan. Update the status and the journal when you finish something.
   `UI/`, the component library over `Theme` (`docs/design/README.md`,
   "Component library"): `PeelButton`, shadcn's button (variants primary,
   secondary, outline, ghost, destructive, link; sizes sm, md, lg;
-  `.buttonStyle(.peel(...))`; every text button but the call header's split
-  Join and the small ones inside rows), with `buttonProgress`, the spinner inside a running button;
+  `.buttonStyle(.peel(...))`; every text button but the small ones inside
+  rows), with `buttonProgress`, the spinner inside a running button;
+  `IconButton`, shadcn's icon button (ghost or outline, 28 or 24 square,
+  `lit`, `working`; every icon button but the call window's control bar,
+  controls over media and the composer's);
   `FormKit` (the form system, shadcn's conventions: `FormPopover`, `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
@@ -557,7 +560,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

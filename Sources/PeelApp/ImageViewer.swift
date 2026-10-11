@@ -174,9 +174,9 @@ struct ImageViewer: View {
                     .disabled(image == nil)
             }
             Button { Task { await model.save(current) } } label: { Label("Save as…", systemImage: "square.and.arrow.down") }
-            HoverIconButton(systemImage: "xmark", help: "Close (Escape)", action: close)
+            IconButton("xmark", help: "Close (Escape)", action: close)
         }
-        // HoverIconButton keeps its own plain style.
+        // IconButton keeps its own style.
         .buttonStyle(.peel(.outline, size: .sm))
     }
 

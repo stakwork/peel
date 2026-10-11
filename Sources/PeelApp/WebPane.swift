@@ -595,19 +595,22 @@ private struct WebToolbar: View {
     var body: some View {
         let page = pane.page
         HStack(spacing: 2) {
-            ToolbarIcon(systemImage: "arrow.left", help: "Back", enabled: page.canGoBack) { pane.goBack() }
-            ToolbarIcon(systemImage: "arrow.right", help: "Forward", enabled: page.canGoForward) { pane.goForward() }
-            ToolbarIcon(
-                systemImage: page.isLoading ? "xmark" : "arrow.clockwise",
-                help: page.isLoading ? "Stop" : "Reload", enabled: pane.webView != nil
-            ) { pane.reloadOrStop() }
+            IconButton("arrow.left", help: "Back") { pane.goBack() }
+                .disabled(!page.canGoBack)
+            IconButton("arrow.right", help: "Forward") { pane.goForward() }
+                .disabled(!page.canGoForward)
+            IconButton(page.isLoading ? "xmark" : "arrow.clockwise", help: page.isLoading ? "Stop" : "Reload") {
+                pane.reloadOrStop()
+            }
+            .disabled(pane.webView == nil)
             AddressField(pane: pane)
                 .padding(.horizontal, 6)
-            ToolbarIcon(systemImage: "arrow.up.right.square", help: "Open in default browser", enabled: page.url != nil) {
+            IconButton("arrow.up.right.square", help: "Open in default browser") {
                 if let url = page.url { NSWorkspace.shared.open(url) }
             }
+            .disabled(page.url == nil)
             MoreMenu(pane: pane, url: page.url)
-            ToolbarIcon(systemImage: "xmark", help: "Close (⌘W)") {
+            IconButton("xmark", help: "Close (⌘W)") {
                 withAnimation(.easeIn(duration: 0.15)) { pane.close() }
             }
         }
@@ -786,19 +789,6 @@ private struct MoreMenu: View {
     }
 }
 
-private struct ToolbarIcon: View {
-    let systemImage: String
-    let help: String
-    var enabled = true
-    let action: () -> Void
-
-    var body: some View {
-        HoverIconButton(systemImage: systemImage, help: help, action: action)
-            .disabled(!enabled)
-            .opacity(enabled ? 1 : 0.35)
-    }
-}
-
 private struct LoadProblem: View {
     let host: String?
     let problem: String
@@ -863,7 +853,7 @@ private struct DownloadBar: View {
         HStack(spacing: 8) {
             content()
             Spacer(minLength: 8)
-            HoverIconButton(systemImage: "xmark", help: "Dismiss", action: dismiss)
+            IconButton("xmark", help: "Dismiss", action: dismiss)
         }
         .font(Theme.font(12))
         .padding(.horizontal, 12)

@@ -706,3 +706,68 @@ library outside forms.
     themselves need a chat with cards, a call, Payments or the web pane,
     which the loopback stack was not run for. Hover and pressed were not
     rendered (the offscreen app is never active).
+- **Batch 3, `IconButton` (2026-10-11).** Built as
+  `PeelApp/UI/IconButton.swift`. `HoverIconButton` (`Controls`) and
+  `HeaderButton` (`ConversationView`) are gone, and so is the web pane's
+  `ToolbarIcon` wrapper. Their call sites use `IconButton`: the chat
+  header's search, call and More, the search bar's newer, older and close,
+  the thread and Payments panes' close, `FormPopover`'s close, the image
+  viewer's close, the web pane's toolbar and download bar, a file card's
+  globe and download, the hover bar's Reply and Boost, `MenuButton` (so
+  every message and web More), `CopyButton`'s icon-only form and the call
+  window's keep-on-top pin. Moved from hand-drawn: the notice bar's
+  dismiss (`.sm`), the sidebar's connection bolt (`.sm`, lit while its
+  card is open) and the sidebar call bar's microphone (`.outline`). The
+  call header's split Join is one outline box (`fieldFill`,
+  `inputBorder`, radius `control`) holding a `.peel(.ghost, size: .sm)`
+  Join and a ghost `IconButton` chevron, with an `inputBorder` line between.
+  `HeaderMoreButton` is a `MenuButton` with its details popover and ⌘I.
+  - The bug: header icons now light under the pointer. Every icon button
+    that opens a menu is lit while it is open (`MenuButton` reads the
+    presenter's source, as `HeaderButton` did for More): a message's
+    More, the web pane's ⋮ and the header's call button and chevron gain
+    it.
+  - Not 1:1, the closest chosen: header icons were 14 pt and are 13, as
+    every other icon button was. The hover square is 28 × 28 at radius 7
+    (was 28 × 26 at radius 5 for the hover buttons, 28 × 28 at radius 6
+    for the header), so `FormPopover`'s title row and the hover bar are 2
+    pt taller. Disabled is 50% opacity everywhere (the search bar's arrows
+    were 40%, the web toolbar's 35%). The notice bar's dismiss was a bare
+    10 pt semibold cross; it is the 13 pt regular cross on a 24 square,
+    and the bar keeps its height to within a point. The split Join's text was 13 semibold
+    and is 12 medium, its border `divider` and now `inputBorder` on
+    `fieldFill`, its chevron cell 24 wide and now 28, and each half has a
+    hover. The microphone was 30 square with a `divider` border and no
+    fill; it is 28, the height of Return to call beside it, as an outline.
+    The bolt gains a hover fill. VoiceOver now reads the tooltip as the
+    label where the two differed: "Mute (⌘⇧A)" for "Mute", "Start a new
+    call" for "More call options".
+  - Review, applied: a disabled button never draws lit, and drops a hover
+    it may never hear end. Not applied: the split Join's halves draw their
+    hover on their own rounded shape, so it does not meet the divider
+    square (a group variant with inner corners squared waits for a second
+    split button); its outline box is drawn by hand from the same tokens
+    as `.outline`, for the same reason; VoiceOver's "Mute (⌘⇧A)" (one
+    label for tooltip and VoiceOver keeps `IconButton` simple, and the
+    header buttons already read their shortcuts). `/simplify`, applied:
+    one `MenuPresenter.isOpen(from:)` for "this button opened the open
+    menu" (`MenuButton`, the call header), `.md` reads `PeelButton`'s `.sm`
+    height. Not applied: folding `IconButton`'s chrome into `PeelButton` as
+    an icon size, so hover, pressed and disabled have one owner (it
+    changes `PeelButton`, which this batch leaves as batch 2 shipped it;
+    worth doing with the focus styling); a disabled `PeelButton` keeps a
+    stale hover as `IconButton` did before its fix, for the same reason.
+  - Stay apart, as section 4 says: the call window's control bar,
+    controls over a picture or video, the jump to newest button, and the
+    composer's attach, bolt, send, reply close and file tray (batch 5).
+  - Renders: a new development profile with a contact and a tribe seeded
+    as local rows (no server), before (`origin/main`) and after: the main
+    window, a contact's chat, the search bar, Send sats, a tribe's chat;
+    and a temporary gallery (not committed) of the icon buttons at rest,
+    lit, working and disabled, the notice bar and a live call's split
+    Join, in light and dark, with hover forced through the real drawing
+    code after. Not rendered at their sites: the hover bar, a file card,
+    the web pane, the image viewer, the thread and Payments panes, the
+    call window and the sidebar call bar (they need media, a thread, a
+    page or a call). Hover and pressed were not rendered in the app (the
+    offscreen app is never active).

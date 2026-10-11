@@ -137,7 +137,7 @@ struct SearchHeaderButton: View {
 
     var body: some View {
         let open = model.search?.chat == chat
-        HeaderButton(systemImage: "magnifyingglass", help: "Search in chat (⌘F)", lit: open) {
+        IconButton("magnifyingglass", help: "Search in chat (⌘F)", lit: open) {
             if open { model.closeSearch() } else { model.openSearch(in: chat) }
         }
     }
@@ -212,13 +212,11 @@ struct ChatSearchBar: View {
             .onTapGesture { focused = true }
             .onHover { hovering = $0 }
             HStack(spacing: 2) {
-                HeaderButton(systemImage: "chevron.up", help: "Newer match") { model.stepSearch(by: -1) }
+                IconButton("chevron.up", help: "Newer match") { model.stepSearch(by: -1) }
                     .disabled(!search.canStepNewer)
-                    .opacity(search.canStepNewer ? 1 : 0.4)
-                HeaderButton(systemImage: "chevron.down", help: "Older match") { model.stepSearch(by: 1) }
+                IconButton("chevron.down", help: "Older match") { model.stepSearch(by: 1) }
                     .disabled(!search.canStepOlder)
-                    .opacity(search.canStepOlder ? 1 : 0.4)
-                HeaderButton(systemImage: "xmark", help: "Close search (Esc)") { model.closeSearch() }
+                IconButton("xmark", help: "Close search (Esc)") { model.closeSearch() }
             }
         }
         .padding(.horizontal, 20)

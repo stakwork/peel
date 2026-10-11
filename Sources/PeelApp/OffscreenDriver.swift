@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import PeelCore
 
 /// Runs a check script against Peel's own windows, offscreen only
 /// (`Offscreen.drive`): events go into this app's own queue for its own
@@ -11,11 +12,12 @@ import AppKit
 /// `{"select": "a chat's name"}` (sets the destination a click on its
 /// sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
-/// `{"snapshot": "name"}`.
+/// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
+/// the notification for its newest message from someone else).
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
-        var select, open, key, type, snapshot: String?
+        var select, open, notification, key, type, snapshot: String?
         var mods: [String]?
         var wait: Double?
     }
@@ -88,6 +90,8 @@ final class OffscreenDriver {
             try select(name)
         } else if let name = step.open {
             try open(name)
+        } else if let name = step.notification {
+            try await notification(name)
         } else if let key = step.key {
             try post(key, modifiers: try modifiers(step.mods ?? []))
         } else if let text = step.type {
@@ -101,12 +105,33 @@ final class OffscreenDriver {
 
     /// The selection a click on the chat's sidebar row makes.
     private func select(_ name: String) throws {
+        let (model, chat) = try chat(named: name)
+        model.destination = .chat(chat)
+        Offscreen.log("drive: selected \(chat.prefix(12))")
+    }
+
+    /// The open account and the chat with this name, as its sidebar row shows it.
+    private func chat(named name: String) throws -> (AppModel, String) {
         guard let model = model() else { throw Failure(description: "no account open") }
         guard let chat = model.conversations.first(where: { $0.name == name })?.chat else {
             throw Failure(description: "no chat named \(name)")
         }
-        model.destination = .chat(chat)
-        Offscreen.log("drive: selected \(chat.prefix(12))")
+        return (model, chat)
+    }
+
+    /// A click on the notification for the newest message someone else sent
+    /// in the chat's timeline, as `Notifier` passes it on (offscreen, Peel
+    /// does not come to the front).
+    private func notification(_ name: String) async throws {
+        let (model, chat) = try chat(named: name)
+        guard let storage = model.engine?.storage else { throw Failure(description: "no account open") }
+        var newest: Message?
+        for try await timeline in storage.timeline(in: chat) {
+            newest = timeline.messages.last { !$0.fromMe }
+            break
+        }
+        model.openFromNotification(chat, messageID: newest?.id)
+        Offscreen.log("drive: notification for \(chat.prefix(12)), message \(newest?.id.map(String.init) ?? "none")")
     }
 
     /// What a click on a button with no shortcut opens: `send-sats`, the

@@ -2526,3 +2526,70 @@ coordinate space, the screen, for anchors, clicks and floating windows.
 Security: layout only, no input, storage, network or logging.
 
 No unit test: the rule lives in `PeelApp`, which has no test target.
+
+### The "1 new message" pill staying at the bottom (2026-10-11)
+
+Tom: a notification for #hive, opened the chat, the new message was the
+last row and fully in view, and the blue "1 new message" pill stayed.
+
+What drives the pill: `MessageList`'s `seenUpTo`, set when the list leaves
+the bottom (more than 24 pt from its end), and the count of unread messages
+after it. Only a crossing back into the bottom, seen as `old` not at the
+bottom and `new` at it, cleared it. Two ways that crossing never shows:
+- The re-pin's early return skips the crossing code. The line that put
+  `farFromBottom` back was added for this same skip, but it left `seenUpTo`
+  alone.
+- Reports are coalesced. In the offscreen runs, an action's `old` was not
+  always the previous action's `new` (for example `old` 1476 pt after a
+  report of 1505 pt). A return to the bottom can then arrive with `old`
+  already at the bottom.
+In both cases the list sits at the bottom with a stale `seenUpTo`, and the
+pill counts every later incoming message, visible ones included, until you
+scroll away and back.
+
+Fix: at the bottom, `seenUpTo` is cleared on every report, before the
+re-pin's early return, not only on a crossing. `following`, the
+`chatListAtBottom` reset and the read-on-reach stay on the crossing, as
+before. The scroll anchors (#134), "New messages" and opening at it are
+unchanged.
+
+Proven vs inferred:
+- Proven by `scripts/check-app.sh` logs: reports are coalesced; after
+  opening at "New messages" or at a notification's message, the list sits
+  at its bottom with `following` false. In one Next Unread run the pill
+  counted the new message while it was on screen ("1 new message", list
+  more than 24 pt from its end), and openAtDivider's second pass happened to take
+  it back.
+- Not reproduced: the pill staying. Offscreen, animated scrolls do not
+  finish (the phase stays `.animating`), and the local stack's tribes server
+  kept losing messages to the CLTV error, so the full sequence could not be
+  driven.
+- Inferred and not fixed: after opening at "New messages" or at a focused
+  message that is already at the bottom, `following` stays false. A row
+  that grows later (a link card, an image) or a new message can leave the
+  list short of its end with `dividerUnread` set, and the pill counts rows
+  in view. A first attempt set `following` once `openAtDivider` ended at the
+  end. It was dropped after review: a large backlog arriving would then
+  scroll past the unread rows, and the check depended on timing.
+
+Checked offscreen with `scripts/check-app.sh` on new development profiles
+funded by the stack's Bank: a notification click, a sidebar select and
+Next Unread (⌥⇧↓) into a chat with one new message, with Lounge open
+first. None showed a stuck pill before or after the fix. Idle on the chat
+for a minute: 0.0–0.2% CPU.
+
+Driving it: a `{"notification": "<chat>"}` drive step clicks the
+notification for the chat's newest message from someone else. Offscreen
+mode now refuses `NSApplication.activate` for every caller, so nothing
+brings the check app to the front.
+
+Reviews (inline). Code review: the `following` change was dropped (above).
+The activate guard moved from `openFromNotification` into `Offscreen.start`.
+The drive steps share the chat lookup. The step is documented in AGENTS.md.
+Simplify: the crossing's own `seenUpTo = nil` was redundant and is removed.
+Security: no new input, storage, network or logging. The drive step runs
+only in offscreen mode.
+
+No unit test: the rule lives in `PeelApp`, which has no test target.
+Extracting the scroll bookkeeping into PeelCore to test one line would
+move the high-risk state machine for no proof of the view's ordering.

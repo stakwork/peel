@@ -11,7 +11,8 @@ extension Engine {
     public static let priceToMeetMsat: UInt64 = 3_000
 
     /// Starts a key exchange with a contact given as `pubkey_lsp_scid`,
-    /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks.
+    /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks,
+    /// and only a new account's inviter (`addInviterIfPending`) is added unchecked.
     public func addContact(_ contactInfo: String, alias theirAlias: String? = nil, inviteCode: String? = nil) async throws {
         guard let parts = Self.contactInfoParts(contactInfo) else { throw Failure.invalidContactInfo }
         try await run { time, state in

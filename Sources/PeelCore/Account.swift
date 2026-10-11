@@ -29,9 +29,8 @@ public enum Account {
     /// redeems the invite as it registers the account, before it answers, so
     /// an answer lost or late may hide an account that holds the invite's
     /// sats. Such an account is returned unconfirmed and disconnected, its
-    /// words kept; its next connect registers again with the invite. Adding
-    /// the inviter as the first contact comes last, and only after a
-    /// registration confirmed here; if that fails the account still exists.
+    /// words kept; it registers again as it connects, and either way the
+    /// inviter is added once the account is online (`Setting.invite`).
     /// The tribes host comes from the public config when the invite names
     /// the server, unless that server is a loopback one (a local test stack,
     /// which the production config does not describe); if the config cannot
@@ -54,7 +53,8 @@ public enum Account {
         )
         let engine = created.engine
         do {
-            try await engine.connect(inviteCode: invite.code, allowUntrustedCertificate: allowUntrustedCertificate)
+            try await engine.storeInvite(invite)
+            try await engine.connect(allowUntrustedCertificate: allowUntrustedCertificate)
         } catch {
             let (registered, redeemed) = await (engine.isRegistered, engine.inviteMayBeRedeemed)
             guard registered || redeemed else {
@@ -62,10 +62,6 @@ public enum Account {
                 throw error
             }
             await engine.disconnect()
-            return created
-        }
-        if let inviter = invite.inviterContactInfo {
-            try await engine.addContact(inviter, alias: invite.inviterAlias, inviteCode: invite.code)
         }
         return created
     }

@@ -58,6 +58,40 @@ extension Engine {
 
     public var isRegistered: Bool { Self.isRegistered(state) }
 
+    /// The invite this account signed up with (`Setting.invite`).
+    func storedInvite() throws -> Invite? {
+        JSON.decode(Invite.self, from: try storage.value(for: .invite))
+    }
+
+    func storeInvite(_ invite: Invite) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(invite), as: UTF8.self), for: .invite)
+    }
+
+    /// Adds whoever sent the invite this account signed up with as its
+    /// first contact, as the official apps do, once the account is online
+    /// (`cameOnline`): in the background, paying `keyExchangeMsat` from the
+    /// invite's sats with no checks, with the invite's code so their app
+    /// sees it used. The invite is forgotten as the key exchange starts, so
+    /// it goes at most once; one that never left (`notConnected`) keeps it
+    /// for the next connection, and any other failure is reported.
+    @discardableResult
+    func addInviterIfPending() -> Task<Void, Never>? {
+        guard let invite = try? storedInvite() else { return nil }
+        do { try storage.set("", for: .invite) } catch { return nil }
+        guard let inviter = invite.inviterContactInfo else { return nil }
+        return Self.background { [weak self] in await self?.addInviter(inviter, of: invite) }
+    }
+
+    private func addInviter(_ inviter: String, of invite: Invite) async {
+        do {
+            try await addContact(inviter, alias: invite.inviterAlias, inviteCode: invite.code)
+        } catch Failure.notConnected {
+            try? storeInvite(invite)
+        } catch {
+            emit.yield(.coreError("adding your inviter as a contact: \(PeelError.readable(error))"))
+        }
+    }
+
     /// The name and photo this account sends with its messages.
     public var myAlias: String { alias }
     public var myPhotoURL: String? { photoURL.httpsOnly }

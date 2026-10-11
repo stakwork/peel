@@ -291,6 +291,26 @@ struct ConnectionDropTests {
         }
     }
 
+    /// A signup whose register never left (the connection had gone) leaves
+    /// nothing behind: the server never saw the invite, and the person can
+    /// sign up again.
+    @Test func aSignupWhoseRegisterNeverLeftLeavesNothing() async throws {
+        let account = Profile(developmentAt: profile.url)
+        let invite = Engine.Invite(
+            code: String(repeating: "ab", count: 32), server: nil, inviterContactInfo: nil, inviterAlias: nil
+        )
+        let (gone, writes) = cutTransport(accepting: 0, then: Engine.Failure.notConnected)
+        await #expect(throws: Engine.Failure.notConnected) {
+            try await Engine.$connectingForTesting.withValue(gone) {
+                try await Account.signup(
+                    account, invite: invite, alias: "Dana", pin: "", server: ServerAddress("mqtt://127.0.0.1:1")
+                )
+            }
+        }
+        #expect(writes.topics.withLock(\.first)?.contains("/register/") == true)
+        #expect(!account.hasAccount)
+    }
+
     /// A signup whose connection went after its register keeps the words:
     /// the server redeems the invite as it registers the account, before it
     /// answers, so the account may hold the invite's sats (bug hunt N2).
@@ -339,7 +359,26 @@ struct ConnectionDropTests {
         }
         #expect(try await register(answered: true)?.hasSuffix("/register/\(code)") == true)
         #expect(await engine.isRegistered)
+        #expect(try await engine.storedInvite() == nil)
         #expect(try await register(answered: false)?.hasSuffix("/register") == true)
+    }
+
+    /// A new account adds whoever invited it once it is online, at most
+    /// once: the invite is forgotten as the key exchange starts, and kept
+    /// for the next connection only when nothing of that exchange left.
+    @Test(arguments: [true, false]) func aNewAccountAddsItsInviterAtMostOnce(nothingLeft: Bool) async throws {
+        let transport = nothingLeft ? goneTransport() : cutTransport(accepting: 0, then: cutShort).0
+        try await withEngine(transport: transport) { engine, _ throws in
+            let invite = Engine.Invite(
+                code: String(repeating: "ab", count: 32), server: nil,
+                inviterContactInfo: "\(keyG)_\(key3G)_9", inviterAlias: "Alice"
+            )
+            try await engine.storeInvite(invite)
+            await engine.addInviterIfPending()?.value
+            // The key exchange began: the core holds the contact it is with.
+            #expect(await Engine.contact(keyG, in: engine.state) != nil)
+            #expect(try await engine.storedInvite() == (nothingLeft ? invite : nil))
+        }
     }
 
     /// A page asked for on a connection that went never comes: the run is

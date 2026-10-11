@@ -139,8 +139,9 @@ struct OnboardingView: View {
                     Spacer(minLength: 0)
                 }
                 if model.myContactInfo == nil {
-                    // Signed up, the server's answer not yet in: the engine registers again as it reconnects.
-                    Text("Your account is saved with these words. Peel is still waiting for the server to confirm it, and keeps trying.")
+                    // Signed up, the server's answer not yet in: the engine registers again as it
+                    // connects. A refused invite gets no answer at all, so the line names that too.
+                    Text("Your account is saved with these words. The server hasn't confirmed it yet, and Peel asks again each time it connects. If it never confirms, the invite may have been used or cancelled: ask whoever sent it.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

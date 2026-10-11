@@ -173,7 +173,7 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments` | pass |
 | Invite: make (exactly its amount), redeem by signup, seen used | `Invites.makeAndRedeem` | pass |
 | Invite: cancel refunds exactly; a signup with it afterwards gets nothing | `Invites.cancelRefunds` | pass |
-| Invite: a signup whose register reply is lost (tap deafened) keeps its words; the next connect registers with the invite's sats (bug hunt N2) | `Invites.aSignupWhoseReplyIsLostKeepsTheWords` | pass (2026-10-11); fails before the fix (the profile deleted) |
+| Invite: a signup whose register reply is lost (tap deafened) keeps its words; the next connect registers with the invite's sats and adds the inviter, who sees the invite used (bug hunt N2) | `Invites.aSignupWhoseReplyIsLostKeepsTheWords` | pass (2026-10-11); fails before the fix (signup throws, the profile deleted) |
 | Restore history on a second device: contact, DMs both ways, payment, tribe and post, balance | `History` | pass; once, a key exchange timed out (finding 3) |
 
 Findings:

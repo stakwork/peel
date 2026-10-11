@@ -167,7 +167,8 @@ is a short plan. Update the status and the journal when you finish something.
     and the conditional apply
   - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`;
     in debug builds `init(publishing:)`, the tests' broker that answers
-    pings and takes or refuses each write
+    pings, takes every connect and subscribe, and takes or refuses each
+    write (`Engine.connectingForTesting` puts it under a connect)
   - `StateCodec.swift` — the MessagePack shape the core uses for its state,
     and the amounts beside the onions of a history page
     (`paymentAmounts`, what really arrived)
@@ -468,8 +469,10 @@ held to the balance and the threshold); money when the connection goes
 (`ConnectionDropTests`: a send that never left fails and may go again, one
 cut short or dropped after a write stays pending, two Retries at once pay
 once, only a payment over half an hour old that the server never
-recorded fails, and a signup cut short after its register keeps its
-words and registers again with the invite); refusals as typed
+recorded fails, a signup cut short after its register keeps its words
+and registers again with the invite while one whose register never left
+leaves nothing, and a new account's inviter is added at most once);
+refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
 database, with the literals frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the

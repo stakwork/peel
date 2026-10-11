@@ -349,7 +349,7 @@ extension Engine {
     }
 
     /// What an invite code carries: where to connect and who sent it.
-    public struct Invite: Sendable, Equatable {
+    public struct Invite: Sendable, Equatable, Codable {
         public let code: String
         public let server: String?
         public let inviterContactInfo: String?

@@ -299,9 +299,13 @@ struct MessageList: View {
     /// "New messages" still marks what is unread below it: from opening at
     /// it (or its moving) until you reach the bottom or scroll away from it.
     @State private var dividerUnread = false
-    /// What counted as seen when the list left the bottom; what came after
-    /// it and counts as unread is the jump button's count.
-    @State private var seenUpTo: Int64?
+    /// Where the list stands against its bottom, and what counted as seen
+    /// when it left: what came after and counts as unread is the jump
+    /// button's count.
+    @State private var bottom = ListBottom()
+    /// Until the list has gone where it opens (the newest, "New messages"
+    /// or a message asked for), it has shown nothing yet.
+    @State private var opening = true
 
     /// The end of the list, under its padding. Scrolling to the last row
     /// stops at that padding, short of the scroll view's own bottom.
@@ -391,15 +395,25 @@ struct MessageList: View {
                     }
                     Task {
                         try? await Task.sleep(for: .milliseconds(100))
-                        if focusTarget != nil { takeFocus(proxy) } else { await openAtDivider(proxy) }
+                        if focusTarget != nil {
+                            // Settled once the scroll to it is over (`go(to:)`).
+                            opening = false
+                            takeFocus(proxy)
+                        } else {
+                            await openAtDivider(proxy)
+                            opened()
+                        }
                     }
-                } else if composer.thread == nil {
-                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                } else {
+                    if composer.thread == nil { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                    opened()
                 }
             }
             .onScrollPhaseChange { _, new in
                 phase = new
                 if new == .interacting { pinning = false }
+                // A scroll that ended at the bottom sends no report once still.
+                if new == .idle { settled() }
             }
             .onScrollGeometryChange(for: BottomDistance.self) { geometry in
                 let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
@@ -409,42 +423,47 @@ struct MessageList: View {
             } action: { old, new in
                 if atEnd != new.atEnd { atEnd = new.atEnd }
                 if pinning, new.atEnd { pinning = false }
+                var bottom = self.bottom
+                defer { update { $0 = bottom } }
                 // At the bottom the jump button goes and nothing below counts
                 // as new, whatever the last report said: a re-pin's early
                 // return below skips the crossing, and reports can be
                 // coalesced, so a return here can arrive with `old` already
                 // at the bottom.
-                if new.atBottom {
-                    if farFromBottom { farFromBottom = false }
-                    if seenUpTo != nil { seenUpTo = nil }
-                }
+                bottom.report(atBottom: new.atBottom, settled: !opening && phase == .idle, newest: newestIndex)
+                if new.atBottom, farFromBottom { farFromBottom = false }
                 // A row that changed height under a list following at its end
                 // (one that does not reserve its final size, such as a video
                 // sizing itself), or the list's own height changing there,
                 // moved the end; or a re-pin fell short: back to the end.
                 let resized = new.height != old.height || new.container != old.container
-                if (resized && old.atBottom) || pinning, !new.atEnd, following, phase == .idle {
+                if (resized && bottom.atBottom) || pinning, !new.atEnd, following, phase == .idle {
                     return repin(proxy)
                 }
-                guard new.atBottom != old.atBottom || new.far != old.far else { return }
-                // Scrolled back to the bottom by hand after "Mark unread":
-                // reading resumes. Not when a new message scrolls it there.
-                if new.atBottom, !old.atBottom, userScrolling { reachedBottom() }
-                // Counted from the first time it leaves the bottom until it is
-                // back there, through resizes that cross the one-screen line.
-                if new.atBottom {
+                // Judged against the last crossing taken, not `old`, which a
+                // coalesced report can have moved past.
+                switch bottom.cross(atBottom: new.atBottom) {
+                case .reached:
+                    // Scrolled back to the bottom by hand after "Mark unread":
+                    // reading resumes. Not when a new message scrolls it there.
+                    if userScrolling { reachedBottom() }
                     following = true
-                    if composer.thread == nil, !old.atBottom { model.chatListAtBottom() }
-                } else {
+                    if composer.thread == nil { model.chatListAtBottom() }
+                case .left:
                     // Scrolled away by hand: no longer following, and
                     // everything there had been seen.
                     if userScrolling {
                         following = false
                         dividerUnread = false
                     }
-                    if seenUpTo == nil { seenUpTo = seenWhenScrolledUp }
+                    // Counted from here until it is back at the bottom; moved
+                    // off it by itself (not by hand, not on its way back
+                    // down), only what came after the bottom last in view.
+                    bottom.left(byItself: !userScrolling && !following, otherwiseSeen: seenWhenScrolledUp)
+                case nil:
+                    break
                 }
-                if new.far != old.far {
+                if new.far != farFromBottom {
                     withAnimation(.easeOut(duration: 0.2)) { farFromBottom = new.far }
                 }
             }
@@ -492,19 +511,38 @@ struct MessageList: View {
     /// in the list.
     private var seenWhenScrolledUp: Int64 {
         if dividerUnread, let index = divider?.shown.first?.serverIndex { return index - 1 }
-        return rows.lazy.compactMap { $0.shown.last?.serverIndex }.max() ?? -1
+        return newestIndex ?? -1
+    }
+
+    /// The newest message in the list that the server has numbered.
+    private var newestIndex: Int64? {
+        rows.lazy.compactMap { $0.shown.last?.serverIndex }.max()
     }
 
     /// Messages below that count as unread (as "New messages" does) and came
     /// after what was seen; counted from the bottom up, stopping at it.
     private var newSinceScrolledUp: Int {
-        guard let seenUpTo else { return 0 }
-        var count = 0
-        for row in rows.reversed() {
-            guard let newest = row.shown.last?.serverIndex, newest > seenUpTo else { break }
-            count += row.shown.filter { $0.countsAsUnread(after: seenUpTo) }.count
-        }
-        return count
+        bottom.newBelow(newestFirst: rows.reversed().lazy.map(\.shown))
+    }
+
+    /// The list has gone where it opens.
+    private func opened() {
+        opening = false
+        settled()
+    }
+
+    /// Still at the bottom after opening or a scroll: everything there is in
+    /// view. A report would say so, but none comes while nothing moves.
+    private func settled() {
+        guard !opening, bottom.atBottom, phase == .idle else { return }
+        update { $0.report(atBottom: true, settled: true, newest: newestIndex) }
+    }
+
+    /// Written back only when it changed, so what moves nothing redraws nothing.
+    private func update(_ change: (inout ListBottom) -> Void) {
+        var bottom = self.bottom
+        change(&bottom)
+        if bottom != self.bottom { self.bottom = bottom }
     }
 
     /// To the newest message; like scrolling there by hand, it ends a
@@ -582,7 +620,13 @@ struct MessageList: View {
                 && (row.message.uuid == uuid || row.images.contains { $0.uuid == uuid } || row.summary?.original.uuid == uuid)
         }) {
             following = false
-            withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(row.id, anchor: .center) }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(row.id, anchor: .center)
+            } completion: {
+                // It may not have moved (a row already at the bottom), so no
+                // phase change says it is still.
+                settled()
+            }
             flashed = row.id
             Task {
                 // Lit, then fading out as it settles.

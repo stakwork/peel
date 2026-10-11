@@ -15,6 +15,9 @@ public actor Engine {
 
     let seed: String
     let network: String
+    /// This account's key (child index 0, hex), which signs every message we
+    /// send, signs in to the memes server and names our preferences file there.
+    let accountKey: String
     private let deviceID: String
     var alias: String
     var photoURL: String
@@ -176,6 +179,7 @@ public actor Engine {
         photoURL = try storage.value(for: .photoURL) ?? ""
         server = try storage.value(for: .server).flatMap(ServerAddress.init)
         clock = UniqueClock(last: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0)
+        accountKey = try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
@@ -688,7 +692,7 @@ public actor Engine {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState) else { continue }
+            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState, accountKey: accountKey) else { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
             if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
                let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
@@ -696,6 +700,10 @@ public actor Engine {
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
+            // Ours signed by the chat itself is a tribe's forward or forged. The
+            // core files any signer as a contact at the index it wrote to, so
+            // a contact without a contact key is no proof of a tribe.
+            if decoded.signedByChat, knownTribes[message.chat] == nil { continue }
             if let tribe = knownTribes[message.chat],
                let changed = Self.membership(
                    after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
@@ -1077,11 +1085,15 @@ public actor Engine {
     /// belongs to. The core recovers a message's sender from its signature, so a
     /// sender can only ever name themself; for a live message the child index in
     /// the topic names the contact as well and the two must agree. Contact
-    /// records (type 33) are honoured by the core only when signed by this
-    /// account. Messages from senders the core does not know are dropped.
+    /// records (type 33) come back with no `sentTo`, so never as ours.
+    /// Messages from senders the core does not know are dropped.
+    /// The core calls a message ours by a tag or a date a contact can
+    /// arrange, so a copy of ours is kept only when signed by this account
+    /// or by the chat it is filed under, which `commit` then requires to be
+    /// a tribe (docs/phases/04-money.md, "Who may write ours").
     private static func message(
-        from msg: Msg, expectedSender: String?, state: [String: Data]
-    ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
+        from msg: Msg, expectedSender: String?, state: [String: Data], accountKey: String
+    ) -> (message: Message, trustSender: Bool, signedByChat: Bool, fields: BodyFields?)? {
         guard let type = msg.type else { return nil }
         let fromMe = msg.fromMe ?? false
         let claimed = JSON.decode(SenderInfo.self, from: msg.sender)?.pubkey
@@ -1089,6 +1101,7 @@ public actor Engine {
         var trustSender = false
         if fromMe {
             guard let to = msg.sentTo else { return nil }
+            guard claimed == accountKey || claimed == to else { return nil }
             chat = to
         } else if let expectedSender {
             chat = expectedSender
@@ -1134,7 +1147,7 @@ public actor Engine {
         default:
             break
         }
-        return (message, trustSender, fields)
+        return (message, trustSender, fromMe && claimed != accountKey, fields)
     }
 
     private func receive(_ inbound: Inbound) async {

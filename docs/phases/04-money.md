@@ -1721,3 +1721,195 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+## Who may write "ours" (2026-10-11, branch `fix/forged-from-me`)
+
+The forged request (Payments review F11's S1, and the branch on the hash a
+request keeps) was one reader of a wider hole. Checked against the core
+(`sphinx` at `caa76a12`, and again at `bd9e140`, the core Peel links)
+and the tribes server before any code.
+
+**The premise holds.** The core sets `fromMe` when a message's
+`encrypted_tag` opens with our account key (`dec_tag`) or its
+`encrypted_date` opens with the secret the signer shares with our key and
+matches the date (`dec_ts_matches`), both in `bindings/handle_msg.rs` and
+`handle_batch.rs`. Every message we send carries the tag, sealed under our
+key alone and bound to nothing else (`create_sphinx_msg`), so the
+recipient holds it; and any contact can make the date secret. `sentTo`
+comes from the key index the onion reached (`add_sent_to`), not from the
+signer, and `parse_sphinx_msg` takes the uuid from the bytes unchecked.
+So a contact (with their own key or any throwaway) can get a message
+stored as ours in their chat, with our uuids or new ones; a member of a
+tribe can do the same through the tribe's forward. The one fact nobody
+can forge is the signer: `parse_sphinx_msg` recovers `sender.pubkey` from
+the signature.
+
+**Who really signs ours**, every path checked:
+
+| Path | Signer |
+|---|---|
+| Our DM send, its copy to self, the server's echo to our other devices, the same in history (`send`, `make_msg` sets child index 0) | our account key (index 0) |
+| Our key exchange (`make_keyx_msg`), tribe join (`make_tribe_join_msg`) | our account key |
+| Our tribe message forwarded back by the tribe, live and in history (`mutate_msg_to_forward`) | the tribe |
+| A purchase answer the tribes server makes for the seller, the owner's notices from `manager.rs` (the date path, `create_sphinx_msg_with_enc_ts`) | the tribe |
+| Our contact record (type 33) from another device | our key; the core returns it without `sentTo` (and `fromMe: false` when it overwrites), so it is never stored as ours |
+
+So "ours" can be genuine only when signed by our account key, or by the
+tribe whose chat it is. A copy the core calls ours with any other signer
+is forged; signed by the person whose chat it is, it is theirs. Signed by
+us is necessary, not enough: see the replay under Residual.
+
+**What a forged row did, reader by reader** (DM unless said):
+
+| Reader | Abuse |
+|---|---|
+| `PaymentHistory` (`moneyMessagesSQL`, `unlisted`) | A payment or boost of "ours" with any declared amount listed as sent; with a real hash of ours it could pair with our payment row. Balance untouched. |
+| `Storage.reconcile`, statuses by tag (`applyStatus`), `pendingSendTags` | A copy with our replayed tag or hash moves with our send: a status of ours, or a server record, makes it COMPLETE, PENDING or FAILED. |
+| `waiting()` / `spendableMsat` | A forged money send moved to PENDING holds its declared amount (any figure) back from what can be spent for a week: our payments refused. |
+| `undeliveredSends`, Retry | A forged text moved to PENDING or FAILED could be sent again by a reconnect as ours. |
+| `newestOwnPhotoURL` + `recoverOwnPhoto` | On a restore, the newest "ours" names our photo: a contact's forged copy sets our profile photo, which then goes out on every message. |
+| `Storage+Threads` (threads you are in), `boostedByMe`, `isOurRequest` | A reply or boost of "ours" puts a thread in the list, marks a message boosted, and (fixed separately) blocks paying an invoice. |
+| Timeline, notifications, unread | Their words shown as ours, never notified. |
+| Upsert by uuid | A copy with one of our uuids in the same chat fills in its index, time, sats and hash (the request branch's case). |
+| Tribes: `membership`, `echoedAliases`, the tribe readers above | Only through a tribe's forward: see the tag-replay branch. |
+
+**A second finding, in the core.** The core adds the signer of a message
+as a contact at the child index the onion reached, whoever that index
+belongs to: live for a message not ours at a non-zero index
+(`sync_incoming_contact`), in history for any signer but us (`save_them`),
+with the contact key only if the sender names one. So a contact can mint
+core contacts at their own index, with no contact key: shaped like a
+tribe (`isPerson` false). In history the minted contact is also what
+`add_sent_to` finds for the index (the page's new state is read last), so
+a forged "ours" there is filed under the minted key. "A core contact with
+no contact key" is therefore no proof of a tribe. To raise with the core
+(Peel cannot undo it: the state is the core's).
+
+**A third, in the core Peel links.** At `bd9e140` the live
+`ContactKeyRecord` arm has no `sent_by_me` check (`caa76a12` added one):
+anyone who can reach one of our keys can rewrite a contact's index, LSP
+and contact key through a type 33 record. AGENTS.md said otherwise; it
+is corrected. Not this branch's to fix (the signer rule still keeps such
+a row out of the chats), but it outranks it: tracked separately.
+
+**Rule.** One check where messages come in, so every reader is covered
+rather than each patched. A copy the core calls ours is kept only when
+**its signer is this account's key** (`Sphinxrs.pubkeyFromSeed(idx: 0)`,
+kept as `Engine.accountKey`), **or its signer is the chat it is filed in
+and that chat is a tribe Peel knows**, counting one this very message
+introduces (`discoveredTribe`, our own join forwarded back with the
+tribe's host). Anything else is dropped unstored, as a message from an
+unknown sender already is. `Engine.message(from:)` checks the signer
+before tribe discovery (so a copy signed by someone else cannot introduce
+a tribe either); `commit` checks the tribe after it. Checked against:
+
+- restore and history: our DM history is signed by us; our tribe history
+  by the tribe, and our join, oldest first, introduces it;
+- other devices: the server's echo is our own signed send (a copy we
+  signed is kept in any chat, known tribe or not);
+- tribe forwards and the tribes server's date-path notices: signed by the
+  tribe, filed in the tribe's chat;
+- type 33 records: `fromMe` false, not touched by the rule;
+- not-ours copies: unchanged (`trustSender` already needs the signer).
+
+**Residual, documented not built:**
+
+- Our own signed bytes, replayed. The signature covers the message but
+  not its uuid (read unchecked after it) nor whom it went to, and every
+  contact holds the bytes of what we sent them. So a contact can send one
+  back to us under another uuid (a second "sent" row with our real tag
+  and declared amount, or our uuid of another row in their chat, whose
+  index, time, sats and hash the upsert then fills in), or at another
+  contact's index (filed in that chat). It is signed by `accountKey`, so
+  this rule keeps it, as before. The rule of the tag-replay branch closes
+  it in DMs too: a copy whose tag we already hold under another uuid is a
+  replay. The core should check the uuid (`uuid == lightning_hash(msg)`
+  in `parse_sphinx_msg`); raise with the minted-contact finding.
+- A tribe's forward is signed by the tribe whoever wrote it, so a member
+  who replays our tag still gets an "ours" row in that tribe. That is the
+  tag-replay branch (`fix/tribe-fromme-replay`), not this one.
+- Tribe discovery itself: a minted, tribe-shaped contact that signs a
+  join with a host (as theirs, or as ours) is taken for a tribe, as it
+  was before this change; from then on its chat counts as a tribe here
+  too. Telling a real tribe needs the registry or the core.
+- A tribe joined live on another device. The join sends no contact
+  record to our other devices, so this device's core has no contact for
+  the tribe when our forwarded join arrives: no `sentTo`, dropped (as
+  before). Members' posts then make the core sync the tribe as a contact
+  without a key, and Peel files them under it with no tribe record (as
+  before; not yet a conversation). Our own posts from the other device,
+  signed by the tribe, are now dropped: before they were stored. They
+  stay missing once someone's join or approval (which carry the host)
+  introduces the tribe. A restore is unaffected (history syncs the tribe
+  from our join). Follow-up for Tom: accept a keyless chat as a tribe
+  once our own tribes host's registry knows it (`TribeInfo.fetch`; the
+  server makes tribe keys itself, so a throwaway cannot be registered),
+  which would also close the next item. No journey covers two devices
+  live in a tribe.
+- A contact we added who never confirmed has no contact key either, so
+  `discoveredTribe` takes their chat for a tribe when their own message
+  names a host; from then on their forged "ours" (by the date) is kept
+  there, and a role-0 join makes us its owner. As before this change;
+  the doc first named only minted contacts.
+- Our own tribe messages that a restore meets before anything introduces
+  the tribe are dropped. History comes oldest first and we join before we
+  post, so only a history cut short of our join loses them, or a tribes
+  server run without `HOST` (its joins then name no host). Before this
+  change they were stored, under a chat with no tribe record. Accepted:
+  a fallback on "no contact key" would let minted contacts back in.
+- Rows stored before this change stay (no cleanup migration: a migration
+  cannot know the account key, and the real account is days old).
+- A dropped copy does not move the history cursor, like any other drop;
+  a newest forged copy is fetched again and dropped again on catch-up.
+
+**Done looks like:** the rule in `Engine.message(from:)` and `commit`,
+with `accountKey`; unit tests through `commit` for our copy, a known
+tribe's forward, our join introducing a tribe, a copy signed by the
+chat's person, by another key in a DM and in a tribe, in a minted
+tribe-shaped contact, and someone else's message unchanged; full `swift
+test`; the message, tribe, payment and history journeys on the local
+stack.
+
+**Built.** `Engine.accountKey` (index 0, derived once in `init`; the memes
+sign-in and the preferences file's name use it too, in place of
+`memesPubkey`, which derived it again on each call). `message(from:)` drops a copy of ours signed by
+neither our key nor its chat, and returns `signedByChat`; `commit` drops
+one signed by its chat unless, after `discoveredTribe`, the chat is a
+known tribe. `OursTests` (in `EngineTests`) runs each case through
+`commit`, through `TestSupport`'s `coreResult` (now with messages and
+state changes).
+
+**Verified.** Unit: full `swift test` (the one known issue is older);
+without the rule the drop tests fail. Local stack: all 22 journeys
+pass, among them the restore in `HistoryJourneys`, which checks our own
+DM history comes back as ours (so `accountKey` matches the signer the
+core recovers) and our tribe post comes back as ours once our join
+introduces the tribe. After the rebase and review fixes, two more full
+runs on a machine running other sessions' stacks failed 4 journeys each,
+different ones each time, all on timeouts, registration or connect
+(attachments, invites, payments, history, tribes); every journey passed
+in at least one of the three runs. Rebased on the preferences sync
+(#145): 582 unit tests pass; 29 of 30 journeys pass, the preferences
+ones among them (they use `accountKey` now); the one failure,
+`twoDevicesPayAnOfflineContact`, timed out in its setup (the bank's key
+exchange) and passed in the third run.
+
+**Reviews.** `/code-review`: the signer was decoded twice (now a flag
+from `message(from:)`); our tribe messages before the tribe is known are
+dropped (accepted, under Residual, with the tribes server's `HOST`).
+Not applied: one check instead of two (the signer must be checked before
+discovery, the tribe after), a unit test of the key's format (the
+restore journey covers it). `/simplify`: the shared `coreResult` instead of
+a second `RunReturn` builder, the engine's own key in the tests and the memes sign-in, fewer
+comments. Not applied: narrowing `discoveredTribe` to `trustSender`
+(our own key's join may carry a host; out of scope), `ownKeys` in
+`Engine+Payments` (the request branch is changing it).
+Independent review (merge after fixes), applied: the live other-device
+tribe case and the unconfirmed contact (both under Residual), the type 33
+claim checked against `bd9e140`, the wording on which signers the core
+files, two more tests (our copy in a tribe-shaped chat Peel does not
+know is kept; a copy with no sender is dropped), the join test asserts
+the tribe it introduces. Not applied: a cleanup of rows stored before
+(Residual), the registry check (follow-up above).
+`/security-review`: one finding, older than this change and not closed
+by it, the replay of our own signed bytes (under Residual).

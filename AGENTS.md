@@ -527,10 +527,16 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   same transaction as the state. The server echoes sent messages to all of the
   account's devices.
 - The core recovers a message's sender from its signature, so a sender can
-  only ever name themself. For a live message the child index in the topic
+  only ever name themself. "Ours" is weaker: the core also takes a message
+  for ours by a replayed tag or a shared date, either of which a contact
+  can arrange, so `Engine` keeps one only when signed by our own key
+  (`accountKey`) or by a known tribe in its own chat. The core also files
+  a signer as a contact at the index it wrote to, so a core contact
+  without a contact key is no proof of a tribe. For a live message the child index in the topic
   names the contact as well and `Engine` requires the two to agree. History
   (`batch`) messages are accepted only from contacts the core knows. Contact
-  records (type 33) are honoured by the core only when signed by this account.
+  records (type 33) are honoured only when signed by this account in newer
+  cores; the one Peel links (`bd9e140`) honours a live one from anyone.
 - Names and photos are not core state; they arrive with messages and invites.
   A contact is a conversation only once the core holds their key (`ready`).
 

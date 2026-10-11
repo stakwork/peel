@@ -389,12 +389,6 @@ extension Engine {
         }
     }
 
-    /// The account's key as the memes server knows it (hex): what it signs
-    /// in with, and whose preferences file is uploaded.
-    func memesPubkey() throws -> String {
-        try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
-    }
-
     /// The bearer token: kept in memory until shortly before it expires. A
     /// new one is had by signing the server's challenge with the account key.
     private func memesSignIn(_ memes: MemesServer, refresh: Bool) async throws -> MemesServer.Token {
@@ -406,7 +400,7 @@ extension Engine {
         let signature = try Sphinxrs.signBase64(
             seed: seed, idx: 0, time: clock.next(), network: network, msg: MediaToken.base64URLEncode(bytes)
         )
-        let token = try await memes.verify(id: id, signature: signature, pubkey: try memesPubkey())
+        let token = try await memes.verify(id: id, signature: signature, pubkey: accountKey)
         memesToken = (memes.host, token)
         return token
     }

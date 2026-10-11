@@ -150,7 +150,7 @@ extension Engine {
         guard merge.changed else { return PreferencesSync(applied: applied, uploaded: false) }
         let sealed = try MediaCrypto.encrypt(Data(try merge.file.text.utf8), key: secret).base64EncodedString()
         guard sealed.utf8.count <= MemesServer.preferencesLimit else { throw TooLarge(limit: MemesServer.preferencesLimit) }
-        guard let key = Data(hex: try memesPubkey()) else { throw Failure.coreReturnedNothing("the account key") }
+        guard let key = Data(hex: accountKey) else { throw Failure.coreReturnedNothing("the account key") }
         let field = MediaToken.base64URLEncode(key).replacingOccurrences(of: "=", with: "")
         guard !closed else { throw CancellationError() }
         try await withMemes(memes) { try await memes.uploadPreferences(sealed, pubkey: field, token: $0) }

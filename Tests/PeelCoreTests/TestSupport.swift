@@ -92,22 +92,23 @@ func goneTransport() -> Transport {
     )
 }
 
-/// A core result with only the publish fields, a page of history and the server's records set.
+/// A core result with only the publish fields, a page of history, the
+/// server's records, the messages and the core's state changes set.
 func coreResult(
     settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
     asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
-    tags: String? = nil
+    tags: String? = nil, msgs: [Msg] = [], state: [String: Data] = [:]
 ) -> RunReturn {
     RunReturn(
-        msgs: [], msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [],
+        msgs: msgs, msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [],
         settleTopic: settle, settlePayload: settle.map { _ in Data([1]) },
         asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
         registerTopic: register, registerPayload: register.map { _ in Data() },
         topics: topics, payloads: topics.map { _ in Data([3]) },
-        stateMp: nil, stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
-        settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: nil,
-        tribeMembers: nil, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
-        lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,
-        paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
+        stateMp: state.isEmpty ? nil : StateCodec.encode(state), stateToDelete: [], newBalance: nil,
+        myContactInfo: nil, sentStatus: nil, settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag,
+        error: nil, newTribe: nil, tribeMembers: nil, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil,
+        initialTribe: nil, lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil,
+        payments: payments, paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
     )
 }

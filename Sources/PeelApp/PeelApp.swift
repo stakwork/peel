@@ -44,6 +44,7 @@ struct PeelApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
                     model.markSelectedChatRead()
+                    Task { await model.engine?.refreshPreferences() }
                     Task { await model.notifier.refreshPermission() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in

@@ -91,6 +91,11 @@ actor Stack {
             .map { try Data(contentsOf: $0) }
     }
 
+    /// Where the memes stub keeps an account's preferences file, as uploaded.
+    func preferencesFile(of pubkey: String) throws -> URL {
+        try current().directory.appendingPathComponent("memes/preferences/\(pubkey)")
+    }
+
     private static func parse(_ text: String) -> [String: String] {
         var settings: [String: String] = [:]
         for line in text.split(separator: "\n") {

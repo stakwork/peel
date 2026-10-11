@@ -2,7 +2,9 @@
 
 ## Status (2026-10-10)
 
-**Planned, not built.** One `Preferences` layer in PeelCore owns every
+**Built 2026-10-10, in review** (three stacked PRs; see the journal).
+Not verified: the official apps themselves against the local stack, and
+the hosted memes server itself. One `Preferences` layer in PeelCore owns every
 user setting; the account-wide ones follow the account between its
 devices through the official apps' encrypted preferences file on the
 memes server. Tom, 2026-10-09: "look at the preferences and how
@@ -77,7 +79,8 @@ End to end with the account's key; the memes server holds ciphertext.
 
 - `key`, `identifier`, `date` are strings. `date` is Unix seconds, written
   `"%.0f"` (`:41`); read with `TimeInterval(dateString)`, and a date that
-  does not parse counts as now (`:108-113`). `identifier` is `"0"` for an
+  does not parse counts as now (`:108-113`; Peel counts it as the oldest
+  instead, so a choice made here replaces it). `identifier` is `"0"` for an
   account-wide value.
 - `value` is a string, or an object of strings for the three object kinds.
   Reading tries, in order (`:134-199`): `FeedStatus` (seven string fields),
@@ -218,17 +221,27 @@ reader's rules. If the server is unavailable, the body does not decrypt,
 or any item would not read in the official apps: stop, change nothing,
 upload nothing.
 
-**"Not found"** (a 404 or a 200 with that answer) is trusted only on a
-device that has never seen the file. Once a file has decrypted here, or
-an upload has succeeded, this device records it
-(`device.preferences_file_seen`), and from then on "not found" is treated
-as the server being unavailable: no change, no upload. A device that has
-never seen one starts from an empty list, **bootstrapping**: it uploads
-only rows chosen on it since the preferences layer arrived (dated after
-`device.preferences_since`, which v24 records), never values from before.
-So a storage error on the server can at worst make a new device write the
-few things chosen on it since, and never makes a device that has synced
-overwrite the real file.
+**"Not found"** (a 404 or a 200 with that answer) is trusted only for an
+account signed up or created on this device by a build that has sync
+(`device.may_start_preferences`, written by `Account.open` at signup and
+never by a restore or the migration), and only until it has seen the
+file on this memes server. Every database from before sync never starts
+a file: an account made here back then may have been restored on a
+phone since, and its file is real. Once a file has decrypted here, or
+an upload has succeeded, this device records the server
+(`device.preferences_file_seen`, the memes host in lower case, so a new
+server is a new start), and from then on, as anywhere without the
+marker, "not found" is treated as the server failing
+(`Failure.preferencesMissing`): no change, no upload. A new account
+starts from an empty list,
+**bootstrapping**: it uploads only rows chosen on it since the
+preferences layer arrived (dated from `device.preferences_since`, which
+v24 records), never values from before. So a storage error on the server
+can at worst make a brand-new account write the few things chosen on it,
+and never makes a restored account, one from before sync, or one that
+has synced, overwrite the real file. Such an account whose file truly
+does not exist waits for a device made with sync (or an official app)
+to start it.
 
 Merge, per `(key, identifier)`, for keys in the registry with scope
 `.account` only. When the file has the same key and identifier more than
@@ -324,8 +337,10 @@ official app is applied, never overwritten (the confirmation threshold
 only if it is stricter, decision 7). Where the file lacks an official key,
 the value from before stays on this Mac and does not go up. The first
 sync **uploads** in exactly these cases, and only once the file has
-decrypted (a "not found" on his first sync uploads nothing from before
-v24):
+decrypted (his account was restored into Peel, and its database is from
+before sync, so it has no `device.may_start_preferences`: a "not found"
+uploads nothing at all, and is not reported while no file has ever been
+seen here: the account waits quietly for one to exist):
 
 - a per-chat time zone row (the only old values with real dates, from
   when he flipped a switch in Peel since 2026-10-08) that is newer than
@@ -373,11 +388,12 @@ change to storage or sync:
    and never an item the official reader would rewrite or crash on.
 3. **The boost amount syncs as `tip_amount`, but a one-tap boost over
    this device's threshold sends only an amount confirmed on this device**
-   (`device.boost_confirmed_msat`, recorded when the amount is set here or
-   a boost with it is confirmed). An amount over the threshold that came
-   from the file makes the first one-tap boost ask, with the app's second
-   click, before it sends (changed after the independent review; first
-   planned as applied unconfirmed).
+   (`device.boost_confirmed_msat`, recorded when the amount is set here, or
+   once a confirmed boost with it has gone). An amount over the threshold
+   that came from the file makes a one-tap boost ask first: the app names
+   the amount and a second Boost of the same message sends it (CLI:
+   `--yes`). Changed after the independent review; first planned as
+   applied unconfirmed.
 4. **The PIN timeout stays on each device.** The PIN is per device in Peel
    (it seals the words in this Mac's Keychain) and in the official apps;
    how long a device stays unlocked depends on the device (a desk or a
@@ -395,9 +411,14 @@ change to storage or sync:
    another device is ignored here until it is chosen on this device; one
    chosen here goes up as usual. A device never asks for less
    confirmation because another one did.
-8. **"Not found" is trusted once only** (see "Sync"): the memes server
-   says it for any storage error, and the official apps' bootstrap on it
-   can wipe the file.
+8. **"Not found" is trusted once only, and only by an account made with
+   sync** (see "Sync"): the memes server says it for any storage error,
+   and the official apps' bootstrap on it can wipe the file. "Made on
+   this device" is a marker written at signup by a build with sync
+   (`device.may_start_preferences`), never inferred from the absence of
+   a restore row: an account signed up in Peel before sync and restored
+   on a phone since, or restored by a build that wrote no such row, has
+   none either. Changed after the second independent review (F2).
 
 ## Verification plan
 
@@ -450,3 +471,57 @@ change to storage or sync:
   one transaction for the boost amount and its confirmation (the engine
   is an actor and the confirmation is written first, so the worst case is
   a confirmation for an amount the person did confirm).
+- 2026-10-10, PR c (the sync): `PreferencesFile.swift`, the sync in
+  `Engine+Preferences.swift`, `MemesServer.preferences` and
+  `uploadPreferences` (the multipart body shared with attachments), the
+  stub's `/preferences` (a 404 for "not found", as sphinx-meme), CLI
+  `prefs-sync` and `--dry-run`, `.preferencesChanged` in the app, a sync
+  when the app comes to the front. Compatibility: the official
+  `DataSyncModels.swift`, compiled as is outside the repo, reads a file
+  Peel wrote and writes it back unchanged; it rewrites "007" to "7",
+  "TRUE" to "true", "1e3" to "1000", "0x10" to "16", and traps on "nan"
+  (all confirmed; the independent review re-ran this against the Mac and
+  iOS readers). Journeys (`PreferencesJourneys`): a change on one device
+  seen on the other, conflicting offline edits, unknown keys
+  round-tripped, a restore bringing settings back, a 404 after the file
+  was seen writing nothing, a dry run changing nothing, an unreadable
+  file left alone. The app (offscreen, a development profile) took a
+  boost amount and threshold set on a second device of its account when
+  it connected; the Account screen itself was not reached (⌘, does not
+  open it through the offscreen driver).
+- Review findings not applied: a chat's time zone panel open while a sync
+  changes its switch shows the old value until it is opened again (the
+  panels read on appear, as before); a 200 with an empty body is
+  unreadable rather than "not found", since reading it as none could let
+  Peel replace a file it failed to fetch; PBKDF2 on the engine's actor
+  (four derivations a sync, milliseconds).
+- 2026-10-10, PR c rebased onto the rebased PR b. Review fixes: the
+  app's `.preferencesChanged` handler ignores an account switched away
+  from while it read the settings; coming to the front is throttled by
+  the last sync that fetched the file, not the last one started, so a
+  sync that failed offline is retried on the next return; the memes
+  server a file was seen on is recorded in lower case, so another
+  spelling of the same host does not trust its "not found" again. Not
+  applied: a restored account whose file was never made reports
+  `preferencesMissing` once a launch and never uploads (by design, until
+  another device starts the file); recording a restore as "file seen"
+  instead of reading `needsRestore` (the flag holds for any memes
+  server, the seen record only for one); reading a 404 as refused in
+  `Web.Transfer` (the body tells "not found" from other 404s); caching
+  the node key and pubkey derivations (well under a millisecond); a
+  reconnect throttled like coming to the front (it is what uploads edits
+  made offline). After #154 the scheduled sync starts through
+  `Engine.background`, as the engine's other background work does.
+- 2026-10-11, after the independent review of the rebased PRs: v24
+  tolerates the development builds' "v22"/"v23" (F1, above); bootstrapping
+  only on `device.may_start_preferences`, written at signup, so no
+  database from before sync starts a file (F2, decision 8); a file value
+  the apply policy refuses still gives the stored row its date, keeping
+  the value, so a later change here is dated after the file's even when
+  that device's clock ran ahead, the date taken at most a day ahead of
+  this clock (F3); the dry run lists only values that would change. The
+  review of these fixes: the marker is written last in `Account.open`
+  and set false on a restore, and a restore row still blocks starting;
+  a "not found" where no file was ever seen is not reported (it is the
+  normal state of an account from before sync until a file exists); v24
+  also dates the boost amount a "v22" build kept as confirmed.

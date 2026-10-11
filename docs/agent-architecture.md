@@ -181,7 +181,10 @@ Every write becomes one event:
 - **Encryption.** Events are encrypted with the account's key, as the
   preferences file is (RNCryptor with the node secret key; see
   [phases/11-preferences-sync.md](phases/11-preferences-sync.md)). The
-  memes server sees only ciphertext.
+  memes server sees only ciphertext. Only the official preferences file
+  uses the raw node secret (the official apps need it); Peel-only graph
+  data uses its own key, derived from the node secret by HKDF with a
+  label, so one key never serves two formats.
 - **Transport** (Tom T's plan, 2026-10-10: every write logged locally with
   its timestamp, uploaded to the memes server as an encrypted file; the
   fetch and push rules are still to be agreed). Proposed rules:

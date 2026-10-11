@@ -87,6 +87,25 @@ extension Preference where Value == String {
     public static var timeZone: Self {
         Self(key: "peel.time_zone", scope: .account, read: \.string, write: { .string($0) })
     }
+
+    /// The memes server this device has seen the account's preferences
+    /// file on (one decrypted here, or an upload done). From then on that
+    /// server's "not found", which it also says for a storage error, is not
+    /// believed: Peel never starts the file anew over a real one. A new
+    /// memes server is a new start.
+    public static var preferencesFileSeen: Self {
+        Self(key: "device.preferences_file_seen", scope: .device, read: \.string, write: { .string($0) })
+    }
+}
+
+extension Preference where Value == Bool {
+    /// Whether this device may start the account's preferences file on a
+    /// "not found": written only when an account is signed up or created
+    /// by a build that has sync (`Account.open`), never by a restore or the
+    /// migration, so no existing database starts a file (decision 8).
+    public static var mayStartPreferences: Self {
+        Self(key: "device.may_start_preferences", scope: .device, read: \.flag, write: { .string($0 ? "true" : "false") })
+    }
 }
 
 extension Preference where Value == TimeZoneSharing {
@@ -143,6 +162,8 @@ public enum Preferences {
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
         Preference<Int>.pinTimeoutHours.entry,
         Preference<Bool>.notificationText.entry,
+        Preference<String>.preferencesFileSeen.entry,
+        Preference<Bool>.mayStartPreferences.entry,
     ])
 
     /// Keys that follow the account.

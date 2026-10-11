@@ -107,7 +107,9 @@ hand and pass its directory as `PEEL_STACK_DIR` (the first line `start`
 prints); stop it with `scripts/test-stack.sh stop <dir>`.
 
 `scripts/test-stack.sh` runs the broker, the tribes server, the mixer
-(`NO_LIGHTNING`), a memes stub and a wire tap in front of the broker
+(`NO_LIGHTNING`), a memes stub (attachments, and since phase 11 the
+`/preferences` file, kept per account under `memes/preferences/`) and a
+wire tap in front of the broker
 (`scripts/test-stack-helpers.py`, python3 with `cryptography`), each on a
 random free port, never 1883 or 8000. Binaries come from `SPHINX_BIN_DIR`
 (default `~/Documents/sphinx/target/debug`) or `SPHINX_BROKER`,

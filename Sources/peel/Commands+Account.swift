@@ -65,6 +65,20 @@ extension Invocation {
                 print("\(row.key)\(chat)  \(row.value)  \(when)  \(row.followsAccount ? "account" : "this device")")
             }
 
+        case "prefs-sync":
+            let engine = try await load()
+            if dryRun {
+                // Keys and chats only: a value never leaves the engine here.
+                let plan = try await engine.previewPreferences()
+                print(plan.found ? "file found" : "no file yet: a sync would start one")
+                for item in plan.applied { print("would apply   \(item.key) \(item.identifier.prefix(12))") }
+                for item in plan.uploaded { print("would upload  \(item.key) \(item.identifier.prefix(12))") }
+                if plan.applied.isEmpty, plan.uploaded.isEmpty { print("nothing to do") }
+            } else {
+                let sync = try await engine.syncPreferences()
+                print("applied \(sync.applied) from the preferences file; \(sync.uploaded ? "uploaded it" : "nothing to upload")")
+            }
+
         case "pref":
             guard let name = arguments.next() else { throw PeelError("pref needs a name: \(Self.prefNames)") }
             let value = arguments.next()

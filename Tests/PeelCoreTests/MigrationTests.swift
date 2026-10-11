@@ -48,6 +48,77 @@ private let shippedSchema = #"""
     table tribe: CREATE TABLE "tribe" ("pubkey" TEXT PRIMARY KEY NOT NULL, "name" TEXT, "photoURL" TEXT, "summary" TEXT, "host" TEXT, "pricePerMessageMsat" INTEGER NOT NULL DEFAULT 0, "escrowMsat" INTEGER NOT NULL DEFAULT 0, "isPrivate" BOOLEAN NOT NULL DEFAULT 0, "isOwner" BOOLEAN NOT NULL DEFAULT 0, "left" BOOLEAN NOT NULL DEFAULT 0, "status" INTEGER NOT NULL DEFAULT 0, "pin" TEXT, "appURL" TEXT, "secondBrainURL" TEXT)
     """#
 
+/// The schema after v23, frozen the same way for the migrations after v17:
+/// the search table, its triggers and the indexes up to v23. The search
+/// table's tokenizer is written as plain `trigram`; with SQLite 3.45 and
+/// later it also removes diacritics (`remove_diacritics 1`). When a later
+/// migration ships, freeze the schema after it as well.
+private let shippedSchemaV23 = #"""
+    index invite_tag: CREATE INDEX invite_tag ON invite (tag) WHERE tag IS NOT NULL
+    index invoice_tag: CREATE INDEX invoice_tag ON invoice (tag) WHERE tag IS NOT NULL
+    index message_chat_serverIndex: CREATE INDEX "message_chat_serverIndex" ON "message"("chat", "serverIndex")
+    index message_chat_timestamp: CREATE INDEX "message_chat_timestamp" ON "message"("chat", "timestamp")
+    index message_mentions: CREATE INDEX message_mentions ON message (chat, serverIndex) WHERE mentionsMe = 1
+    index message_money: CREATE INDEX message_money ON message (timestamp)
+        WHERE type IN (5, 29, 7, 9, 3)
+    index message_on_serverIndex: CREATE INDEX "message_on_serverIndex" ON "message"("serverIndex")
+    index message_on_tag: CREATE INDEX "message_on_tag" ON "message"("tag")
+    index message_payment: CREATE INDEX message_payment ON message (timestamp)
+        WHERE type IN (5, 29)
+    index message_paymentHash: CREATE INDEX message_paymentHash ON message (paymentHash) WHERE paymentHash IS NOT NULL
+    index message_pending: CREATE INDEX message_pending ON message (id)
+        WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
+    index message_preview: CREATE INDEX message_preview ON message (chat, timestamp)
+    WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 32) AND deleted = 0))
+    index message_purchase: CREATE INDEX message_purchase ON message (chat)
+        WHERE type IN (7, 8, 9)
+    index message_reply: CREATE INDEX message_reply ON message (chat, replyUUID) WHERE replyUUID IS NOT NULL
+    index message_senderTZ: CREATE INDEX message_senderTZ ON message (chat, timestamp) WHERE senderTZ IS NOT NULL AND fromMe = 0
+    index message_thread: CREATE INDEX message_thread ON message (chat, threadUUID, timestamp) WHERE threadUUID IS NOT NULL
+    index message_unread: CREATE INDEX message_unread ON message (chat, fromMe, type, serverIndex, noWords)
+    index message_upload: CREATE INDEX message_upload ON message (upload) WHERE upload IS NOT NULL
+    index payment_msgIndex: CREATE INDEX payment_msgIndex ON payment (msgIndex) WHERE msgIndex IS NOT NULL
+    index payment_ts: CREATE INDEX "payment_ts" ON "payment"("ts")
+    table chatState: CREATE TABLE "chatState" ("chat" TEXT PRIMARY KEY NOT NULL, "lastRead" INTEGER, "muteLevel" INTEGER NOT NULL DEFAULT 0, "readPending" INTEGER NOT NULL DEFAULT 0)
+    table chatTimeZone: CREATE TABLE "chatTimeZone" ("chat" TEXT PRIMARY KEY NOT NULL, "enabled" BOOLEAN NOT NULL DEFAULT 0, "identifier" TEXT, "updatedAt" INTEGER NOT NULL)
+    table contact: CREATE TABLE "contact" ("pubkey" TEXT PRIMARY KEY NOT NULL, "alias" TEXT, "photoURL" TEXT, "ready" BOOLEAN NOT NULL DEFAULT 0, "isNew" BOOLEAN NOT NULL DEFAULT 0)
+    table coreState: CREATE TABLE "coreState" ("key" TEXT PRIMARY KEY NOT NULL, "value" BLOB NOT NULL)
+    table invite: CREATE TABLE "invite" ("code" TEXT PRIMARY KEY NOT NULL, "link" TEXT NOT NULL, "amountMsat" INTEGER NOT NULL, "nickname" TEXT, "message" TEXT, "tag" TEXT, "status" TEXT NOT NULL, "createdAt" INTEGER NOT NULL, "usedBy" TEXT)
+    table invoice: CREATE TABLE "invoice" ("paymentHash" TEXT NOT NULL, "incoming" BOOLEAN NOT NULL, "bolt11" TEXT NOT NULL, "amountMsat" INTEGER NOT NULL, "memo" TEXT NOT NULL DEFAULT '', "payee" TEXT NOT NULL, "createdAt" INTEGER NOT NULL, "expiresAt" INTEGER, "status" TEXT NOT NULL, "paidAt" INTEGER, "paidMsat" INTEGER, "tag" TEXT, "chat" TEXT, "error" TEXT, PRIMARY KEY ("paymentHash", "incoming"))
+    table message: CREATE TABLE "message" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "uuid" TEXT UNIQUE, "serverIndex" INTEGER, "type" INTEGER NOT NULL, "chat" TEXT NOT NULL, "fromMe" BOOLEAN NOT NULL, "sender" TEXT, "body" TEXT, "content" TEXT, "msat" INTEGER, "timestamp" INTEGER, "tag" TEXT, "paymentHash" TEXT, "status" TEXT, "mentionsMe" BOOLEAN NOT NULL DEFAULT 0, "replyUUID" TEXT, "threadUUID" TEXT, "mediaType" TEXT, "fileName" TEXT, "fileSize" INTEGER, "upload" TEXT, "deleted" BOOLEAN NOT NULL DEFAULT 0, "amountMsat" INTEGER, senderTZ TEXT GENERATED ALWAYS AS (CASE
+        WHEN body IS NULL OR body NOT LIKE '%metadata%' OR NOT json_valid(body) THEN NULL
+        WHEN json_type(body, '$.metadata') IS NOT 'text' THEN NULL
+        WHEN NOT json_valid(json_extract(body, '$.metadata')) THEN NULL
+        WHEN json_type(json_extract(body, '$.metadata'), '$.tz') IS NOT 'text' THEN NULL
+        WHEN length(json_extract(json_extract(body, '$.metadata'), '$.tz')) BETWEEN 1 AND 64
+        THEN json_extract(json_extract(body, '$.metadata'), '$.tz') END) VIRTUAL, noWords BOOLEAN NOT NULL DEFAULT 0, "arrived" BOOLEAN, "firstSentAt" INTEGER, "autoResentAt" INTEGER)
+    table messageText: CREATE VIRTUAL TABLE messageText USING fts5(
+        content, content = 'message', content_rowid = 'id', tokenize = 'trigram')
+    table messageText_config: CREATE TABLE 'messageText_config'(k PRIMARY KEY, v) WITHOUT ROWID
+    table messageText_data: CREATE TABLE 'messageText_data'(id INTEGER PRIMARY KEY, block BLOB)
+    table messageText_docsize: CREATE TABLE 'messageText_docsize'(id INTEGER PRIMARY KEY, sz BLOB)
+    table messageText_idx: CREATE TABLE 'messageText_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID
+    table payment: CREATE TABLE "payment" ("rhash" TEXT NOT NULL, "ts" INTEGER NOT NULL, "amountMsat" INTEGER NOT NULL, "incoming" BOOLEAN NOT NULL, "msgIndex" INTEGER, "remote" BOOLEAN NOT NULL DEFAULT 0, "error" TEXT, PRIMARY KEY ("rhash", "incoming", "ts"))
+    table paymentPing: CREATE TABLE "paymentPing" ("rhash" TEXT PRIMARY KEY NOT NULL, "forHash" TEXT NOT NULL)
+    table setting: CREATE TABLE "setting" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL)
+    table tribe: CREATE TABLE "tribe" ("pubkey" TEXT PRIMARY KEY NOT NULL, "name" TEXT, "photoURL" TEXT, "summary" TEXT, "host" TEXT, "pricePerMessageMsat" INTEGER NOT NULL DEFAULT 0, "escrowMsat" INTEGER NOT NULL DEFAULT 0, "isPrivate" BOOLEAN NOT NULL DEFAULT 0, "isOwner" BOOLEAN NOT NULL DEFAULT 0, "left" BOOLEAN NOT NULL DEFAULT 0, "status" INTEGER NOT NULL DEFAULT 0, "pin" TEXT, "appURL" TEXT, "secondBrainURL" TEXT, "myAlias" TEXT, "myPhotoURL" TEXT)
+    trigger messageText_delete: CREATE TRIGGER messageText_delete AFTER DELETE ON message
+    WHEN old.type IN (0, 6) AND old.content IS NOT NULL BEGIN
+        INSERT INTO messageText (messageText, rowid, content) VALUES ('delete', old.id, old.content);
+    END
+    trigger messageText_insert: CREATE TRIGGER messageText_insert AFTER INSERT ON message
+    WHEN new.type IN (0, 6) AND new.content IS NOT NULL BEGIN
+        INSERT INTO messageText (rowid, content) VALUES (new.id, new.content);
+    END
+    trigger messageText_update: CREATE TRIGGER messageText_update AFTER UPDATE OF type, content ON message
+    WHEN old.type IS NOT new.type OR old.content IS NOT new.content BEGIN
+        INSERT INTO messageText (messageText, rowid, content)
+            SELECT 'delete', old.id, old.content WHERE old.type IN (0, 6) AND old.content IS NOT NULL;
+        INSERT INTO messageText (rowid, content)
+            SELECT new.id, new.content WHERE new.type IN (0, 6) AND new.content IS NOT NULL;
+    END
+    """#
+
 struct MigrationTests {
     let profile = TempProfile()
 
@@ -66,6 +137,14 @@ struct MigrationTests {
         let queue = try profile.queue()
         try Storage.migrator.migrate(queue, upTo: "v17")
         #expect(try schema(queue) == shippedSchema)
+    }
+
+    @Test func v23GetsTheShippedSchema() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v23")
+        let found = try schema(queue)
+            .replacingOccurrences(of: "tokenize = 'trigram remove_diacritics 1'", with: "tokenize = 'trigram'")
+        #expect(found == shippedSchemaV23)
     }
 
     /// Covers the v2 contact backfill; v8 and v11 have their own tests too.
@@ -256,6 +335,10 @@ struct MigrationTests {
         #expect(MessageType.sqlList(MessageType.moneySends + [MessageType.invoicePayment]) == "5, 29, 7, 9, 3")
         #expect(MessageType.sqlList([MessageType.purchase, MessageType.purchaseAccept, MessageType.purchaseDeny]) == "7, 8, 9")
         #expect(MessageType.boost == 29)
+        // v19's search triggers and v23's preview index.
+        #expect(MessageType.contentSQL == "0, 6")
+        #expect(MessageType.directPayment == 5)
+        #expect(MessageType.call == 32)
         #expect(Tribe.Status.active.rawValue == 0)
         #expect(Message.Delivery.pending.rawValue == "PENDING")
     }

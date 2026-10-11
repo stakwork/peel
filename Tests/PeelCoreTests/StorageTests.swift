@@ -270,6 +270,35 @@ struct StorageTests {
         #expect(conversations[2].lastContent == nil)
     }
 
+    /// A message deleted for everyone stays empty whatever copy of it comes
+    /// again (a history replay), stays out of search, and an attachment's
+    /// body is handed back so its decrypted file can be removed.
+    @Test func aDeletedMessageStaysDeletedWhenItsCopyComesAgain() async throws {
+        let storage = try profile.storage()
+        let note = Message.fixture(
+            uuid: uuid(1), serverIndex: 1, body: #"{"content":"secret plan"}"#, content: "secret plan", timestamp: 1_000
+        )
+        var file = Message.fixture(
+            uuid: uuid(2), serverIndex: 2, type: MessageType.attachment, body: #"{"mediaToken":"tok"}"#, content: nil,
+            timestamp: 2_000
+        )
+        file.mediaType = "image/png"
+        func delete(_ n: Int, of target: Int) -> (Message, Bool, String?) {
+            (Message.fixture(uuid: uuid(n), serverIndex: Int64(n), type: MessageType.delete, content: "",
+                             timestamp: Int64(n) * 1_000, replyUUID: uuid(target)), false, nil)
+        }
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(note, false, nil), (file, false, nil)]))
+        let applied = try storage.apply(Storage.Commit(messages: [delete(3, of: 1), delete(4, of: 2)]))
+        #expect(applied.purged == [#"{"mediaToken":"tok"}"#])
+
+        _ = try storage.apply(Storage.Commit(messages: [(note, false, nil), (file, false, nil)]))
+        let text = try #require(try storage.message(uuid: uuid(1), in: dm))
+        #expect(text.deleted && text.content == nil && text.body == nil)
+        let image = try #require(try storage.message(uuid: uuid(2), in: dm))
+        #expect(image.deleted && image.body == nil && image.mediaType == nil)
+        #expect(try await storage.searchMessages(MessageQuery("secret"), in: dm, limit: 10).isEmpty)
+    }
+
     @Test func timelineFirstEmission() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [

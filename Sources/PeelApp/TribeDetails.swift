@@ -349,37 +349,16 @@ struct TagChips: View {
         ChipFlow(spacing: 6) {
             ForEach(tags.prefix(16), id: \.self) { tag in
                 if let selection {
-                    let on = selection.wrappedValue.contains(tag)
-                    Button {
-                        if on { selection.wrappedValue.removeAll { $0 == tag } } else { selection.wrappedValue.append(tag) }
-                    } label: {
-                        chip(tag, on: on)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                    Chip(tag, selected: Binding {
+                        selection.wrappedValue.contains(tag)
+                    } set: { on in
+                        if on { selection.wrappedValue.append(tag) } else { selection.wrappedValue.removeAll { $0 == tag } }
+                    })
                 } else {
-                    chip(tag, on: false)
+                    Chip(tag)
                 }
             }
         }
-    }
-
-    private func chip(_ tag: String, on: Bool) -> some View {
-        let shape = Capsule(style: .circular)
-        return HStack(spacing: 4) {
-            if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-            Text(tag).lineLimit(1).truncationMode(.tail)
-        }
-        .frame(maxWidth: 200)
-        .font(Theme.font(12, .medium))
-        .foregroundStyle(on ? Theme.selectionText : Theme.text)
-        .padding(.horizontal, 10)
-        .frame(height: 24)
-        .background {
-            shape.fill(on ? Theme.selection : Theme.fieldFill)
-                .overlay { shape.strokeBorder(on ? Theme.accent.opacity(0.6) : Theme.inputBorder) }
-        }
-        .contentShape(shape)
     }
 }
 

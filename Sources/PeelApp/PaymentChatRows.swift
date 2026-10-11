@@ -47,7 +47,6 @@ private struct BoostChip: View {
     let inTribe: Bool
 
     @State private var showing = false
-    @State private var hovering = false
 
     static let shownBoosters = 3
     /// A booster without a photo shows their initial on their colour, as
@@ -69,13 +68,7 @@ private struct BoostChip: View {
         let people = boosters
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
-        let fill = mine ? Theme.boostMineFill : Theme.quote
-        // The hairline keeps the chip's edge on a tinted, hovered or
-        // selected row; it firms up under the pointer.
-        let edge = hovering ? Theme.secondaryText.opacity(0.4) : mine ? Theme.accent.opacity(0.25) : Theme.divider
-        Button {
-            showing = true
-        } label: {
+        Chip(.inset, lit: mine, action: { showing = true }) {
             HStack(spacing: 4) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
@@ -89,7 +82,7 @@ private struct BoostChip: View {
                                                   chat: chat, inTribe: inTribe)
                         Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
                             .padding(1)
-                            .background(fill, in: Circle())
+                            .background(ChipStyle.inset.fill(lit: mine), in: Circle())
                             .zIndex(Double(Self.shownBoosters - index))
                     }
                 }
@@ -105,14 +98,7 @@ private struct BoostChip: View {
             .padding(.leading, 7)
             .padding(.trailing, people.count > Self.shownBoosters ? 7 : 2)
             .padding(.vertical, 1)
-            // Circular ends: the default (continuous) capsule's stroke
-            // draws square stubs past its ends at this height.
-            .background(fill, in: Capsule(style: .circular))
-            .overlay(Capsule(style: .circular).strokeBorder(edge))
-            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help(help)
         .peelPopover(isPresented: $showing) {
             BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe) { showing = false }

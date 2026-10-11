@@ -466,15 +466,7 @@ struct DayDivider: View {
     var body: some View {
         HStack(spacing: 12) {
             Theme.divider.frame(height: 1)
-            Text(Formatting.dayHeading(date))
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
-                // Circular ends: the continuous capsule's stroke draws square
-                // stubs past its ends at this height.
-                .overlay(Capsule(style: .circular).strokeBorder(Theme.divider))
-                .fixedSize()
+            Badge(Formatting.dayHeading(date), .outline)
             Theme.divider.frame(height: 1)
         }
         .padding(.vertical, 8)

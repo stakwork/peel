@@ -33,12 +33,12 @@ struct Sidebar: View {
                             SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
                                 Image(systemName: "bubble.left").font(.system(size: 13))
                             } accessory: {
-                                if unreadThreads > 0 { UnreadBadge(count: unreadThreads) }
+                                if unreadThreads > 0 { Badge(count: unreadThreads) }
                             }
                             SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
                                 Image(systemName: "at").font(.system(size: 13))
                             } accessory: {
-                                if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                                if unreadMentions > 0 { Badge(count: unreadMentions) }
                             }
                             PaymentsLink(money: model.money)
                         }
@@ -463,14 +463,17 @@ struct ConversationLink: View {
             }
             if unread > 0 {
                 if state?.mentions ?? 0 > 0 {
-                    UnreadBadge(text: UnreadBadge.text(unread), foreground: Theme.mentionYouText, fill: Theme.mentionYouFill)
+                    Badge(count: unread, .mention)
                         .help("Mentions you")
                         .accessibilityLabel("\(unread) unread, mentions you")
                 } else {
-                    UnreadBadge(count: unread)
+                    Badge(count: unread)
                 }
             } else if state?.isNew == true {
-                NewContactBadge()
+                // Someone who added you: the core accepts them at once, so
+                // there is no request to answer; this only says they are new.
+                Badge("New")
+                    .help("Added you as a contact")
             } else if level == .muted {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 11))

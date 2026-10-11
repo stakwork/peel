@@ -79,39 +79,6 @@ extension View {
     }
 }
 
-/// A sidebar row's badge: an unread count, or what else the row counts
-/// (Payments' "+350").
-struct UnreadBadge: View {
-    let text: String
-    var foreground = Theme.buttonText
-    var fill = Theme.accent
-
-    init(count: Int) {
-        text = Self.text(count)
-    }
-
-    init(text: String, foreground: Color, fill: Color) {
-        self.text = text
-        self.foreground = foreground
-        self.fill = fill
-    }
-
-    /// A count as badges show it, capped at "99+".
-    static func text(_ count: Int) -> String { count > 99 ? "99+" : "\(count)" }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.font(11, .bold))
-            .monospacedDigit()
-            .lineLimit(1)
-            .fixedSize()
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(fill, in: Capsule())
-    }
-}
-
 /// Why the last attempt failed: quiet, not red, since nothing was lost.
 struct ProblemText: View {
     let text: String

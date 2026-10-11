@@ -17,16 +17,6 @@ struct ContactsSidebarRows: View {
     }
 }
 
-/// "New" on a direct message whose contact added this account and that has
-/// not been read since. The core accepts someone who adds us at once, so
-/// there is no request to answer: this only says they are new.
-struct NewContactBadge: View {
-    var body: some View {
-        UnreadBadge(text: "New", foreground: Theme.buttonText, fill: Theme.accent)
-            .help("Added you as a contact")
-    }
-}
-
 private struct PendingInviteRows: View {
     @Environment(AppModel.self) private var model
 

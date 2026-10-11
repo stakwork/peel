@@ -666,7 +666,7 @@ private struct JumpToNewestButton: View {
     }
 
     private var newMessages: String {
-        count == 1 ? "1 new message" : "\(UnreadBadge.text(count)) new messages"
+        count == 1 ? "1 new message" : "\(Badge.text(count)) new messages"
     }
 
     var body: some View {

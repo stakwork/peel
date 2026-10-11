@@ -409,9 +409,15 @@ struct MessageList: View {
             } action: { old, new in
                 if atEnd != new.atEnd { atEnd = new.atEnd }
                 if pinning, new.atEnd { pinning = false }
-                // Back from far by a re-pin, whose early return below skipped
-                // the crossing.
-                if new.atBottom, farFromBottom { farFromBottom = false }
+                // At the bottom the jump button goes and nothing below counts
+                // as new, whatever the last report said: a re-pin's early
+                // return below skips the crossing, and reports can be
+                // coalesced, so a return here can arrive with `old` already
+                // at the bottom.
+                if new.atBottom {
+                    if farFromBottom { farFromBottom = false }
+                    if seenUpTo != nil { seenUpTo = nil }
+                }
                 // A row that changed height under a list following at its end
                 // (one that does not reserve its final size, such as a video
                 // sizing itself), or the list's own height changing there,
@@ -428,7 +434,6 @@ struct MessageList: View {
                 // back there, through resizes that cross the one-screen line.
                 if new.atBottom {
                     following = true
-                    seenUpTo = nil
                     if composer.thread == nil, !old.atBottom { model.chatListAtBottom() }
                 } else {
                     // Scrolled away by hand: no longer following, and

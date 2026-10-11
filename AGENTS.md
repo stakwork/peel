@@ -570,10 +570,15 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Tom works on this Mac while agents run. Run builds, tests and test
-  servers at background priority so his work always comes first:
-  `taskpolicy -b swift build`, `taskpolicy -b swift test`,
-  `taskpolicy -b scripts/bundle-app.sh`, `taskpolicy -b scripts/test-stack.sh`.
-  Delete your worktree's `.build` when you finish.
+  servers at normal priority (`taskpolicy -b` keeps them on the efficiency
+  cores and made builds several times slower), with at most three agents
+  building at once. Iterate with `swift test --filter`; run the full suite
+  once before the PR. Delete your worktree's `.build` when you finish.
+- Work in your own worktree (`git worktree add .claude/worktrees/<name>
+  <branch>`), never in a shared checkout. `~/Documents/peel` is where other
+  sessions run: never switch its branch or edit files there.
+  `~/Documents/peel-main` is Tom's build folder, kept at `origin/main` for
+  `scripts/run-app.sh`: never commit, edit, check out or build anything there.
 - Do not add a dependency for something under a hundred lines.
 - Keep the engine agent-ready (`docs/agent-native.md`): no UI types, global
   state or single-account assumptions in `PeelCore`; every user action is an

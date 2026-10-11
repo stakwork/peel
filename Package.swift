@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "PeelCore", targets: ["PeelCore"]),
+        .library(name: "AgentKit", targets: ["AgentKit"]),
         .executable(name: "peel", targets: ["peel"]),
         .executable(name: "PeelApp", targets: ["PeelApp"]),
     ],
@@ -37,6 +38,9 @@ let package = Package(
                 .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
             ]
         ),
+        // The agent's records and their event log (docs/agent-architecture.md);
+        // GRDB only, so it builds for macOS and iOS without the core.
+        .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
         .executableTarget(name: "peel", dependencies: ["PeelCore"]),
         // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
         .executableTarget(
@@ -48,6 +52,10 @@ let package = Package(
         .testTarget(
             name: "PeelCoreTests",
             dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
+        .testTarget(
+            name: "AgentKitTests",
+            dependencies: ["AgentKit", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Journeys through the real core against a local stack
         // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1.

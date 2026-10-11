@@ -2632,3 +2632,22 @@ Checked offscreen (`scripts/check-app.sh`) on new development profiles:
   screen, and the arrival). That is read from the code, not observed: in
   the run on main the arrival did not move the list off its bottom.
 - Next Unread: no pill. Idle on the chat for a minute: 0.0% CPU.
+
+## Recent calls with a plain loop (2026-10-11, branch `idle/rows-once-per-message`, #138)
+
+Found while measuring idle CPU (`04-money.md`, "Idle CPU"), first written
+on 2026-10-09 with a second change: the conversations list rebuilding the
+open chat's rows on every newest message. #158 fixed that one on main
+(the rebuild now waits for a change of the contact's alias or photo, or
+of whether the chat is a tribe), so the rebased branch keeps only this.
+
+The header's recent calls (`refreshRecentCalls`) run on every rebuild of
+the rows, and since #158 also when the rows come out the same. They
+walked a chain of lazy collections, unspecialized, over every row under
+12 hours old; a plain loop that stops at three calls gives the same
+calls. Busy tribe on a local stack, about one message a second, debug
+build through `scripts/check-app.sh`: `sample` over 25 seconds put 296
+main-thread samples in `refreshRecentCalls` before and 35 after; CPU per
+arriving message 152, 149, 148 ms before and 130, 143, 129 ms after
+(alternating runs, load average near 60). Idle on the tribe for a minute
+afterwards: 0.15%, the main thread waiting in `mach_msg`.

@@ -98,8 +98,13 @@ extension AppModel {
         let now = Date.now
         // A row's date is its newest message's, never older than its call.
         // Presence is asked only for calls that may be live (`CallLink.mayBeLive`).
-        let recent = chatRows.reversed().lazy.prefix { now.timeIntervalSince($0.date) < CallLink.liveAge }
-        let calls = Array(recent.filter { CallLink.mayBeLive($0.message, now: now) }.compactMap(\.call).prefix(3))
+        // A plain loop, run on every change of the rows: a chain of lazy
+        // collections here costs a busy chat milliseconds per message.
+        var calls: [CallLink] = []
+        for row in chatRows.reversed() {
+            guard calls.count < 3, now.timeIntervalSince(row.date) < CallLink.liveAge else { break }
+            if let call = row.call, CallLink.mayBeLive(row.message, now: now) { calls.append(call) }
+        }
         if calls != recentCalls { recentCalls = calls }
     }
 

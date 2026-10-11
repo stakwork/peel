@@ -252,6 +252,10 @@ is a short plan. Update the status and the journal when you finish something.
   `Badge` (`Badge`, a word or count in a capsule: unread counts, gold
   when it mentions you, "New", Payments' "+350", the day divider; `Chip`,
   a tag on and off, and a message's boosts);
+  `Rows` (`ListRow`, shadcn's item: hover and the one selected fill,
+  `Theme.selection`; search results, time zones, members, boosters,
+  Payments' rows, mentions; `FactList` and `Fact`, a description list on
+  a card: tribe details, a payment, an invoice, the Account's sections);
   `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
@@ -677,7 +681,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

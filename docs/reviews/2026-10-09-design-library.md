@@ -280,6 +280,9 @@ picker (`AccountView.swift:668`).
 (`TribeDetails.swift:251-278`), `SettingsRow` (`AccountView.swift:812-841`)
 and `KeyValues` (`PaymentPanes.swift:54-95`).
 
+(Batch 12: the seven are on `ListRow` and the three on `FactList`, with
+`Theme.selection` the one selected fill; see Progress.)
+
 ### Empty states
 
 `EmptyPlace` (`MainView.swift:261-274`, used for the start screen and
@@ -1256,3 +1259,121 @@ library outside forms.
     data. Not rendered: the Threads count (no unread thread was seeded;
     same `Badge(count:)` as Mentions), "99+", a boost chip with "+N", a
     dated day divider (only "Today").
+- **Batch 12, `ListRow` and `FactList` (2026-10-11).** `UI/Rows.swift`:
+  `ListRow` (sizes `.sm` and `.md`; `selected`, `tint`, `alignment`,
+  `minHeight`, an optional action; a start, a title over a detail, an
+  end that the title gives way to) and `FactList` with `Fact` (a muted name in a
+  column, 100 or 150 wide, the value, an optional action; on the first
+  baseline; `Fact(_:text:symbol:tint:monospaced:)` for words, as
+  `KeyValues` drew them). `DetailRow` (TribeDetails), `SettingsRow`
+  (AccountView; `SettingsSection` is now a `SectionHeader` over a
+  `FactList(labelWidth: 150)`) and `KeyValues` (PaymentPanes) are gone; a
+  payment's detail, Pay an invoice and Receive's paid invoice use
+  `FactList`. On `ListRow`: `SearchResultRow`, `ZoneRow`, `MemberRow`
+  (still the members panel's helper, its shell `ListRow`), the boosters'
+  rows, `MentionRow` (which wore `SidebarRowStyle` outside the sidebar)
+  and `PaymentListRow`'s shell.
+  - The bug, three selected fills: the doc's one, `Theme.selection`, is
+    now the only selected fill a row has. Payments' selected row was the
+    accent at 14% and is `selection` (a firmer blue, the sidebar's); the
+    zone picker lit `selection` under the pointer, which read as
+    selected, and now lights `hover`, its chosen zone keeping the tick.
+    Search results already used `selection`: unchanged. Every row's
+    corners are 6, the sidebar's.
+  - After the independent review (no must-fix items): the end is no
+    longer `fixedSize` as a whole, which let the members panel's
+    InlineConfirm "Remove <long alias>" squeeze the title to nothing and
+    spill past the panel; the title column is `.layoutPriority(-1)`
+    instead, the times and amounts in an end are `.fixedSize()` each (as
+    `SearchResultRow`'s time was), and a row's buttons wrap. Rendered with
+    a 46-character alias: the confirm wraps onto three lines inside the
+    panel (the title is then cut to its first letter, the avatar's
+    initials still naming the row). The end keeps a gap of at least
+    twice the spacing (16 in `.sm`, 24 in `.md`: padding before the end,
+    not a `Spacer`, which would outbid the title's low priority); the old
+    rows had 24 (search, members, boosters), 36 (Payments) and 30
+    (zones). On `selection` the detail and the end are `selectionText`
+    at 80%, the sidebar's pairing: 4.83:1 light and 7.07:1 dark, where
+    `secondaryText` was 4.28 and 3.91 (under 4.5). A row with no action
+    has a rectangular hit shape, so a right click on its padding opens
+    its menu. `Fact(text:tint:)` colours the text as well as the icon:
+    Pay an invoice's "Expired at …" is `attention` again (it was on
+    `origin/main` only as a tint with no icon, so nothing showed) and a
+    payment's "Received" or "Settled" is `confirmed` green with its tick.
+    Tabular digits: `FactText` and Tribe details' list (as `KeyValues`
+    and `DetailRow` had them), not every Account value (whose numbers
+    already set their own). `MemberRow` is private.
+  - Left as they are, deliberately: `InviteRow` (ContactsViews) is one of
+    the sidebar's own rows, between its chats and Add contact, and keeps
+    `SidebarRowStyle` (14 pt, the sidebar's padding and colours) so it
+    matches them; it already had `selection` and `hover`. The sidebar's
+    rows and `MenuRow` are untouched. The name-over-muted-line rows in
+    `Sidebar` and `ThreadViews` (section 1) are outside this batch's
+    files. The small text actions in rows (Approve, Decline, Remove,
+    Unpin, Retry) sit in `ListRow`'s end as they were; no variant yet.
+  - Every visual difference, before (`origin/main`) → after:
+    - Payments: the selected row's fill accent 14% → `selection`, radius
+      8 → 6 (the lit "just received" row keeps `confirmed` at 14%); its
+      detail and time `secondaryText` → `selectionText` at 80%. The
+      unselected list matches for titles that fit; a long one now
+      truncates 24 from the amount (was 36).
+    - A payment's facts: on a card (were bare two columns, 10 apart),
+      a hairline between them, the name column 100 wide (was as wide as
+      the longest name, so a long "When" now wraps onto two lines), rows
+      36 tall at least; Copy beside the payment hash moves to the row's
+      end; "Received" or "Settled" green (was `text`). Pay an invoice's facts the same (the Fee note wraps a word
+      earlier); an expired invoice's "Expired at …" amber (was `text`). Receive's paid invoice: the same, and the divider above
+      its facts is gone (the card separates them); not rendered (no
+      Lightning on the stack, so no invoice is ever paid).
+    - Tribe details' facts: the hairlines are full width (were inset 12)
+      and take a point each, so the card is 4 pt taller; text and
+      columns unchanged.
+    - Account: every label is the muted 13 pt name (was `FormLabel`'s 13
+      pt `text`); name, value and button sit on the first line's
+      baseline (were centred), so a dropdown or button with a note under
+      it lines up with its name, and a label beside a two-line value
+      reads at the top; a one-line row with no button is 36 tall (was
+      44: Balance); rows with a button or a note are unchanged in
+      height. No tabular digits added: the values that are numbers set
+      their own, as before.
+    - Time zone picker: under the pointer `hover` (was `selection`, not
+      rendered: the offscreen app never hovers); radius 5 → 6; the tick
+      1 pt closer to the name (8 apart, was 9); a long name keeps 16
+      from the offset (was 30; the rendered names fit either way).
+    - Members: rows 8 apart → 8 of padding in the row (the same 32 pt
+      pitch); the list 4 pt further from what is above and below it (the
+      rows' own padding); a note 8 from the name (was 9). Boosts: each
+      row 30 tall (was 22, 6 apart), so the panel is 8 pt taller for one
+      booster. In both, a long name keeps 16 from the end (was 24), and
+      the list's scroll indicator sits about 2 pt from the panel's edge
+      (the list is outdented 8 to line the rows' text up).
+    - Mentions: the row's padding 12 by 8 (was 20 by 13 with
+      `SidebarRowStyle`'s on top of its own), avatar to text 12 (was 10);
+      its hover is `hover` at radius 6 as before.
+    - Search results: the selected row's time `secondaryText` →
+      `selectionText` at 80%; the rest the same for names that fit (a
+      long snippet keeps 16 from the time, was 24).
+  - Renders: new development profiles b12-app (the app), b12-bob and
+    b12-carol on the loopback stack, all funded by `scripts/fund-dev.sh`;
+    seeded from the CLI: Bob's tribe Rows Club (both joined; messages,
+    one mentioning app, app's 20-sat boost), app's private App Club (Bob
+    approved, Carol waiting), payments both ways with Bob, an invite of
+    300 for "Dana". The same drive file before and after, offscreen, with
+    temporary driver hooks (not committed) to open the invite, Boosts, the
+    members panel, Mentions, a payment's detail, Receive, Pay an invoice
+    (the BOLT 11 test vector "coffee", expired) and the zone picker:
+    23 snapshots, pixel-diffed. Identical with this data (short names,
+    so no title reached the end): the main windows with Rows Club, the
+    sidebar's invite row and its panel, Payments' unselected list,
+    Receive's form. Differing only as above: the rest. Not
+    rendered: hover anywhere, light mode, Receive's paid invoice, a
+    payment with a routing fee or a ping, a booster still sending.
+    After the review's fixes the drive ran again with a fourth
+    profile, b12-dave (alias "Bartholomew Montgomery-Fitzwilliam of
+    Llandaff", in App Club as Bartholomew_MontgomeryFitzwilliam_of_Llandaff,
+    funded by `fund-dev.sh`, approved by app, and paying app 42 sats),
+    plus a temporary hook opening his Remove confirm: the panels with
+    short names (Boosts, the Rows Club members, a member's tribe
+    details, the invite, the zone picker) are pixel-identical to the
+    first after renders; the owner's tribe details differ only in the
+    member count.

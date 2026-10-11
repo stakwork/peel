@@ -302,13 +302,16 @@ struct TribeMembersPanel: View {
             let me = model.myPubkey
             let canManage = tribe?.canManage == true
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
                     // Requests to join a private tribe come first, as in the Mac app.
                     if !pending.isEmpty {
                         SectionHeader("Waiting for approval")
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 4)
                         ForEach(pending) { member in
                             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member), note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
+                                    .fixedSize()
                             }
                             .peelMenu {
                                 .sections(
@@ -325,6 +328,9 @@ struct TribeMembersPanel: View {
                             }
                         }
                         SectionHeader("Members")
+                            .padding(.horizontal, 8)
+                            .padding(.top, 4)
+                            .padding(.bottom, 4)
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
@@ -357,6 +363,8 @@ struct TribeMembersPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // The rows' own inset lines their text up with the panel's.
+            .padding(.horizontal, -8)
             .frame(maxHeight: 320)
             .fixedSize(horizontal: false, vertical: true)
         } else if problem == nil {
@@ -398,7 +406,7 @@ struct TribeMembersPanel: View {
     }
 }
 
-struct MemberRow<Actions: View>: View {
+private struct MemberRow<Actions: View>: View {
     let alias: String
     let photoURL: String?
     let hue: PersonHue
@@ -406,18 +414,20 @@ struct MemberRow<Actions: View>: View {
     @ViewBuilder var actions: Actions
 
     var body: some View {
-        HStack(spacing: 9) {
+        ListRow {
             Avatar(name: alias, url: photoURL, size: 24, hue: hue)
-            Text(alias)
-                .font(Theme.font(13))
-                .foregroundStyle(hue.name)
-                .lineLimit(1)
-            if let note {
-                Text(note)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+        } title: {
+            HStack(spacing: 8) {
+                Text(alias)
+                    .foregroundStyle(hue.name)
+                    .lineLimit(1)
+                if let note {
+                    Text(note)
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                }
             }
-            Spacer(minLength: 6)
+        } trailing: {
             actions
         }
     }

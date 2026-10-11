@@ -265,8 +265,6 @@ private struct SearchResults: View {
     @Environment(AppModel.self) private var model
     let search: ChatSearch
 
-    private static let rowHeight: CGFloat = 36
-
     var body: some View {
         let terms = search.query?.terms ?? []
         ScrollViewReader { proxy in
@@ -279,14 +277,13 @@ private struct SearchResults: View {
                         ) {
                             model.showSearchMatch(index)
                         }
-                        .frame(height: Self.rowHeight)
                         .id(index)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
             }
-            .frame(maxHeight: Self.rowHeight * 5.5 + 8)
+            .frame(maxHeight: SearchResultRow.height * 5.5 + 8)
             .fixedSize(horizontal: false, vertical: true)
             .onChange(of: search.current) { _, index in
                 if let index { proxy.scrollTo(index) }
@@ -308,22 +305,23 @@ private struct SearchResultRow: View {
     let selected: Bool
     let action: () -> Void
 
-    @State private var hovering = false
+    static let height: CGFloat = 36
 
     var body: some View {
-        Button(action: action) {
+        ListRow(selected: selected, minHeight: Self.height, action: action) {
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: 20, hue: sender.hue)
+        } title: {
             HStack(spacing: 8) {
-                Avatar(name: sender.avatarName, url: sender.photoURL, size: 20, hue: sender.hue)
                 Text(sender.label)
                     .font(Theme.font(13, .semibold))
                     .foregroundStyle(sender.hue.name)
                     .lineLimit(1)
                     .layoutPriority(1)
                 Text(snippet)
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.text)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+            }
+        } trailing: {
+            HStack(spacing: 8) {
                 if message.threadUUID != nil {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .font(.system(size: 11))
@@ -333,18 +331,10 @@ private struct SearchResultRow: View {
                 Text(Formatting.relative(message.date))
                     .font(Theme.font(12))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
                     .fixedSize()
             }
-            .padding(.horizontal, 8)
-            .frame(maxHeight: .infinity)
-            .background(selected ? Theme.selection : hovering ? Theme.hover : .clear,
-                        in: RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 }
 

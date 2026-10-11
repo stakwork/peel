@@ -99,19 +99,18 @@ struct TribeDetailsPanel: View {
     }
 
     @ViewBuilder private var facts: some View {
-        Card {
-            VStack(spacing: 0) {
-                DetailRow("Owner") { owner }
-                switch memberList {
-                case nil: DetailRow("Members") { known(nil) }
-                case .success(let members): DetailRow("Members") { Text(members.countLabel) }
-                case .failure: EmptyView()
-                }
-                DetailRow("To join") { known(info?.joinPrice.described) }
-                DetailRow("Each message") { Text(tribe.messagePrice.described) }
-                DetailRow("Escrow", last: true) { Text(escrow) }
+        FactList {
+            Fact("Owner") { owner }
+            switch memberList {
+            case nil: Fact("Members") { known(nil) }
+            case .success(let members): Fact("Members") { Text(members.countLabel) }
+            case .failure: EmptyView()
             }
+            Fact("To join") { known(info?.joinPrice.described) }
+            Fact("Each message") { Text(tribe.messagePrice.described) }
+            Fact("Escrow") { Text(escrow) }
         }
+        .monospacedDigit()
         .padding(.top, 14)
         if let problem {
             ProblemText(problem).padding(.top, 6)
@@ -230,36 +229,6 @@ extension TribeMembers {
         guard complete else { return "\((members.count + 1).formatted()) seen" }
         let count = members.count { !$0.pending }
         return count == 1 ? "1 member" : "\(count.formatted()) members"
-    }
-}
-
-/// One fact on the details card: its name in a column, the value beside it.
-private struct DetailRow<Value: View>: View {
-    let label: String
-    var last = false
-    @ViewBuilder let value: Value
-
-    init(_ label: String, last: Bool = false, @ViewBuilder value: () -> Value) {
-        self.label = label
-        self.last = last
-        self.value = value()
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 100, alignment: .leading)
-            value
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(Theme.font(13))
-        .monospacedDigit()
-        .padding(.horizontal, 12)
-        .frame(minHeight: 36)
-        .overlay(alignment: .bottom) {
-            if !last { Theme.divider.frame(height: 1).padding(.leading, 12) }
-        }
     }
 }
 

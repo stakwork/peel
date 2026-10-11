@@ -475,10 +475,10 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-`ListRow`, `FactList` and `EmptyState`. Its
+`EmptyState`, then the tokens sweep. Its
 batch plan comes before the payments fixes and the personal agent. Until
 a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
-`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
+`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `FormKit`, `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
 
@@ -569,6 +569,40 @@ Built so far:
   form, `Chip("Bitcoin")` the same shown in its details; a message's
   boosts are `Chip(.inset, lit: mine, action:)` around the bolt, the
   total and the faces.
+- **List rows** (batch 12). `ListRow` in `UI/Rows.swift`, shadcn's
+  `Item`: a start (avatar, tick), a title over an optional muted detail
+  (13 pt `text` over 12 pt `secondaryText` unless the caller sets its
+  own), and an end (a time, an amount, a row's own buttons; the end's
+  text is `secondaryText` too); the title column takes what the end
+  leaves and truncates, at least twice the spacing from the end. A time
+  or an amount in the end is `.fixedSize()` so it never truncates; a
+  row's buttons wrap first. On the selected fill the detail and the end
+  are `selectionText` at 80%, the sidebar's pairing (`secondaryText`
+  there is under 4.5:1). Sizes: `.sm` (8 apart, 8 by 4 of padding, 28
+  tall at least: a time zone, a member, a booster; a search result 36)
+  and `.md` (12 apart, 12 by 8: a payment, a mention). With an action it is a plain button: `hover` under the
+  pointer and **`selection` when selected, the one selected fill** (the
+  sidebar's, search results', a payment's), at radius 6; `tint` is a
+  fill of the row's own when not selected (a payment just received,
+  `confirmed` at 14%). Without an action it only lays out and never
+  lights (members, boosters: their menu is a right click). A list of
+  rows in a panel is outdented 8 so their text lines up with the
+  panel's; its headings take the same 8 back. The sidebar's rows (its
+  chats, Add contact, pending invites) keep `SidebarRowStyle`, 14 pt
+  with their unread and keyboard states, on the same two fills; the
+  menu's rows keep `MenuRow`.
+- **Facts** (batch 12). `FactList { Fact("Owner") { … } }` in
+  `UI/Rows.swift`, a description list on a `Card`: each `Fact` a muted
+  13 pt name in a column (100 wide, 150 on the Account page with
+  `labelWidth`), its value beside it and an optional action at the end
+  (Edit, Copy), on the first line's baseline, 12 by 9 of padding, 36
+  tall at least, a full-width hairline between facts.
+  `Fact("Amount", text: …, symbol:, tint:, monospaced:)` is a value in
+  words, selectable and wrapping, with an icon; `tint` colours both
+  (a payment's green Received, an invoice's amber Expired). Tribe
+  details, a payment, Pay an invoice, a paid invoice in Receive and
+  every Account section (`SettingsSection` is a `SectionHeader` over a
+  `FactList`).
 - **Problem lines** (batch 7). Every failure the app shows goes through
   `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
   as a sentence (a capital, unless the first word is a name such as a
@@ -660,11 +694,12 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
 - The call header's split Join is one outline box (`fieldFill`,
   `inputBorder`, `Theme.Radius.control`) holding a ghost `.sm` Join and a
   ghost `IconButton` chevron, split by a 1 pt `inputBorder` line.
-- Still drawn by hand, for later batches: the small text actions inside
-  rows (a join request's Approve and Decline, a pinned message's Unpin, a
-  failed message's Retry and Cancel), which are muted or `accent` 11–12 pt
-  text with a mini spinner, and `InlineConfirm`'s `.text` style that draws
-  them (batch 12, `ListRow`).
+- Still drawn by hand: the small text actions inside rows (a join
+  request's Approve and Decline, a member's Remove, a pinned message's
+  Unpin, a failed message's Retry and Cancel), which are muted or
+  `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
+  `.text` style that draws them. `ListRow` holds them in its end slot as
+  they are; a text-action variant waits for the tokens sweep (batch 14).
 
 ### Icon buttons (`IconButton`)
 

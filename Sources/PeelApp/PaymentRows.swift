@@ -68,40 +68,28 @@ struct PaymentListRow: View {
     var lit = false
     let action: () -> Void
 
-    @State private var hovering = false
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                PaymentAvatar(item: item, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(Theme.font(14, .semibold))
-                        .foregroundStyle(model.nameColour(of: item))
-                    Text(item.subtitle)
-                        .font(Theme.font(12.5))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+        ListRow(size: .md, selected: selected, tint: lit ? Theme.confirmed.opacity(0.14) : nil, action: action) {
+            PaymentAvatar(item: item, size: 32)
+        } title: {
+            Text(item.title)
+                .font(Theme.font(14, .semibold))
+                .foregroundStyle(model.nameColour(of: item))
                 .lineLimit(1)
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 2) {
-                    SignedAmount(msat: item.amountMsat, incoming: item.incoming, status: item.status)
-                    Text(time)
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                }
+        } detail: {
+            Text(item.subtitle)
+                .font(Theme.font(12.5))
+                .lineLimit(1)
+        } trailing: {
+            VStack(alignment: .trailing, spacing: 2) {
+                SignedAmount(msat: item.amountMsat, incoming: item.incoming, status: item.status)
+                    .fixedSize()
+                Text(time)
+                    .font(Theme.font(12))
+                    .monospacedDigit()
+                    .fixedSize()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                selected ? Theme.accent.opacity(0.14) : lit ? Theme.confirmed.opacity(0.14) : hovering ? Theme.hover : .clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 
     private var time: String {
@@ -163,7 +151,7 @@ struct PaymentDetailPane: View {
                 }
                 .buttonStyle(.peel(.link))
             }
-            KeyValues(rows: facts)
+            facts
         }
     }
 
@@ -203,37 +191,37 @@ struct PaymentDetailPane: View {
         return "Waiting for \(item.chatName ?? "them") to come online. \(WaitingForServer.waitsForPerson(item.chatName))"
     }
 
-    private var facts: [KeyValues.Row] {
-        var rows: [KeyValues.Row] = []
-        switch item.status {
-        case .complete:
-            rows.append(.init(key: "Status", value: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed))
-        case .pending:
-            rows.append(.init(key: "Status", value: pendingStatus, symbol: "clock"))
-        case .unsettled:
-            rows.append(.init(key: "Status", value: NotSettled.explanation, symbol: "questionmark.circle"))
-        case .failed where item.incoming:
-            rows.append(.init(key: "Status", value: item.error ?? "Not received", symbol: "xmark"))
-        case .failed:
-            rows.append(.init(key: "Status", value: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark"))
+    private var facts: some View {
+        FactList {
+            switch item.status {
+            case .complete:
+                Fact("Status", text: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed)
+            case .pending:
+                Fact("Status", text: pendingStatus, symbol: "clock")
+            case .unsettled:
+                Fact("Status", text: NotSettled.explanation, symbol: "questionmark.circle")
+            case .failed where item.incoming:
+                Fact("Status", text: item.error ?? "Not received", symbol: "xmark")
+            case .failed:
+                Fact("Status", text: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark")
+            }
+            Fact("When", text: item.date.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute().second()))
+            Fact("Amount", text: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
+            if let fee = item.feeMsat {
+                Fact("Routing fee", text: fee == 0 ? "None" : Sats.format(msat: fee))
+            }
+            if let why = item.keyExchangeNote {
+                Fact("Why", text: why)
+            }
+            if let ping = item.pingMsat {
+                Fact("Ping", text: "\(Sats.format(msat: ping)), sent with it to reach them")
+            }
+            if let hash = item.paymentHash {
+                Fact("Payment hash", text: Formatting.shortKey(hash), monospaced: true) {
+                    CopyButton("Copy", text: hash).buttonStyle(.peel(.outline, size: .sm))
+                }
+            }
         }
-        rows.append(.init(key: "When", value: item.date.formatted(
-            .dateTime.weekday(.wide).day().month(.wide).hour().minute().second()
-        )))
-        rows.append(.init(key: "Amount", value: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
-        if let fee = item.feeMsat {
-            rows.append(.init(key: "Routing fee", value: fee == 0 ? "None" : Sats.format(msat: fee)))
-        }
-        if let why = item.keyExchangeNote {
-            rows.append(.init(key: "Why", value: why))
-        }
-        if let ping = item.pingMsat {
-            rows.append(.init(key: "Ping", value: "\(Sats.format(msat: ping)), sent with it to reach them"))
-        }
-        if let hash = item.paymentHash {
-            rows.append(.init(key: "Payment hash", value: Formatting.shortKey(hash), monospaced: true, copy: hash))
-        }
-        return rows
     }
 }
 

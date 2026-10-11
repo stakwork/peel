@@ -441,37 +441,32 @@ private struct MentionRow: View {
 
     var body: some View {
         let sender = Sender(member: message)
-        Button {
-            model.focus(on: message)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Avatar(name: sender.avatarName, url: sender.photoURL, size: 28, hue: sender.hue)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(sender.name)
-                            .font(Theme.font(13, .medium))
-                            .foregroundStyle(sender.hue.name)
-                        Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                        Spacer(minLength: 8)
-                        Text(message.date, format: .dateTime.month(.abbreviated).day().hour().minute())
-                            .font(Theme.font(11))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
-                    }
-                    Text(LinkText.attributed(message.shownText, myAliases: model.mentionAliases(in: message.chat)))
-                        .font(Theme.font(14))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(4)
-                        .multilineTextAlignment(.leading)
-                }
+        ListRow(size: .md, alignment: .top, action: { model.focus(on: message) }) {
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: 28, hue: sender.hue)
+        } title: {
+            HStack(spacing: 6) {
+                Text(sender.name)
+                    .font(Theme.font(13, .medium))
+                    .foregroundStyle(sender.hue.name)
+                Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                Spacer(minLength: 8)
+                Text(message.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                    .font(Theme.font(11))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.secondaryText)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+        } detail: {
+            Text(LinkText.attributed(message.shownText, myAliases: model.mentionAliases(in: message.chat)))
+                .font(Theme.font(14))
+                .foregroundStyle(Theme.text)
+                .lineLimit(4)
+                .multilineTextAlignment(.leading)
+                .padding(.top, 1)
+        } trailing: {
+            EmptyView()
         }
-        .buttonStyle(SidebarRowStyle(selected: false))
         .peelMenu {
             var entries: [MenuEntry] = [.button("Open in #\(tribeName ?? "tribe")", systemImage: "number") {
                 model.focus(on: message)

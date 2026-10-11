@@ -132,30 +132,36 @@ private struct BoostersPanel: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondaryText)
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
-                        HStack(spacing: 8) {
+                        ListRow {
                             Avatar(name: avatar.avatarName, url: avatar.photoURL, size: 22, hue: avatar.hue)
+                        } title: {
                             Text(avatar.label)
-                                .font(Theme.font(13))
                                 .foregroundStyle(avatar.hue.name)
                                 .lineLimit(1)
-                            Spacer(minLength: 8)
-                            if boost.pendingSince != nil || boost.unsettled {
-                                Text(boost.unsettled ? "not settled" : "sending")
-                                    .font(Theme.font(12))
+                        } trailing: {
+                            HStack(spacing: 8) {
+                                if boost.pendingSince != nil || boost.unsettled {
+                                    Text(boost.unsettled ? "not settled" : "sending")
+                                        .font(Theme.font(12))
+                                        .foregroundStyle(Theme.secondaryText)
+                                        .fixedSize()
+                                }
+                                Text(Sats.format(msat: boost.amountMsat))
+                                    .font(Theme.font(13))
+                                    .monospacedDigit()
                                     .foregroundStyle(Theme.secondaryText)
+                                    .fixedSize()
                             }
-                            Text(Sats.format(msat: boost.amountMsat))
-                                .font(Theme.font(13))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
                         }
                     }
                 }
             }
+            // The rows' own inset lines their text up with the panel's.
+            .padding(.horizontal, -8)
             .frame(maxHeight: 240)
             .fixedSize(horizontal: false, vertical: true)
         }

@@ -393,6 +393,12 @@ group `T3M78XC3UV.dev.peel.mac`), so:
 swift test      # needs the generated bindings, like swift build
 ```
 
+Before writing, changing, reviewing or auditing a test, read
+`.claude/skills/test-audit/SKILL.md` (Claude loads it as the `test-audit`
+skill): the four questions every new test must answer, the patterns that
+fail them, the contracts never to drop, and how to sweep for gaps and
+low-value tests.
+
 `Tests/PeelCoreTests` uses Swift Testing and runs offline, each storage test in
 its own temporary profile directory. It covers `StateCodec` round-trips and
 malformed input; `Storage` commits (atomic state and settings), message upsert

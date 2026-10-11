@@ -91,6 +91,11 @@ struct Composer: View {
     /// The composer's distance from the window's sides; the mention
     /// suggestions line up with the field's edge at it.
     private static let inset: CGFloat = 20
+    /// The buttons row's distance from the field's edge.
+    fileprivate static let buttonsInset: CGFloat = 6
+    /// The field's corners, concentric with the buttons' (`Theme.Radius.control`)
+    /// at `buttonsInset` in from them.
+    fileprivate static let radius = Theme.Radius.control + buttonsInset
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -105,18 +110,18 @@ struct Composer: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 5)
             buttons
-                .padding(.horizontal, 6)
-                .padding(.bottom, 6)
+                .padding(.horizontal, Self.buttonsInset)
+                .padding(.bottom, Self.buttonsInset)
         }
         .background {
             // A click anywhere in the field that no button or the text takes
             // puts the cursor in the text.
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .fill(Theme.input)
                 .onTapGesture { model.composerFocus[composer, default: 0] += 1 }
                 .accessibilityHidden(true)
         }
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.divider))
+        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Theme.divider))
         .padding(.horizontal, Self.inset)
         .padding(.top, 6)
         .padding(.bottom, 16)
@@ -215,7 +220,7 @@ private struct ReplyBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background {
-            UnevenRoundedRectangle(topLeadingRadius: 18, topTrailingRadius: 18, style: .continuous)
+            UnevenRoundedRectangle(topLeadingRadius: Composer.radius, topTrailingRadius: Composer.radius, style: .continuous)
                 .fill(Theme.quote)
                 .allowsHitTesting(false)
         }

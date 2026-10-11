@@ -6,8 +6,8 @@ import SwiftUI
 /// a link card, a payment request). The content brings its own padding.
 ///
 /// ```swift
-/// Card { rows.padding(12) }
-/// Card(.inset) { callCard.padding(.horizontal, 14).padding(.vertical, 12) }
+/// Card { rows.padding(Theme.Space.md) }
+/// Card(.inset) { callCard.padding(.horizontal, 14).padding(.vertical, Theme.Space.md) }
 /// ```
 struct Card<Content: View>: View {
     enum Style {
@@ -91,7 +91,7 @@ struct Callout<Actions: View>: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
             if let icon { image(icon) }
             VStack(alignment: .leading, spacing: 3) {
                 if let title {
@@ -115,7 +115,7 @@ struct Callout<Actions: View>: View {
                     .padding(.vertical, -6)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, 10)
         .background(tone == .attention ? Theme.attention.opacity(0.07) : Theme.panel, in: shape)
         .overlay(shape.strokeBorder(tone == .attention ? Theme.attention.opacity(0.28) : Theme.divider))

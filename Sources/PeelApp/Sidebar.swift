@@ -22,12 +22,12 @@ struct Sidebar: View {
         // Read here, where the mentions count already reads them all, and
         // passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             SidebarHeader()
             SearchField(text: $model.searchQuery, focusRequest: model.sidebarSearchFocus)
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Space.lg) {
                         VStack(spacing: 1) {
                             let unreadThreads = model.unreadThreads
                             SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
@@ -77,7 +77,7 @@ struct Sidebar: View {
                             }
                         }
                     }
-                    .padding(.bottom, 12)
+                    .padding(.bottom, Theme.Space.md)
                 }
                 .scrollIndicators(.automatic)
                 .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
@@ -252,7 +252,7 @@ struct SidebarHeader: View {
                 presenter?.show(entries, at: anchor, source: "you")
             } label: {
                 HStack(spacing: 9) {
-                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 30, hue: model.myHue)
+                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.lg, hue: model.myHue)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 5) {
                             Text(model.me.name)
@@ -267,9 +267,9 @@ struct SidebarHeader: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.vertical, Theme.Space.xs)
                 .background(hovering || presenter?.source == AnyHashable("you") ? Theme.hover : .clear,
-                            in: RoundedRectangle(cornerRadius: 6))
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -308,7 +308,7 @@ private struct MenuIdentity: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Avatar(name: name, url: photoURL, size: 34, hue: hue)
+            Avatar(name: name, url: photoURL, size: Theme.AvatarSize.lg, hue: hue)
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
                     .font(Theme.font(14, .bold))
@@ -322,7 +322,7 @@ private struct MenuIdentity: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.sm)
         .padding(.vertical, 6)
     }
 }
@@ -384,7 +384,7 @@ struct SidebarSection<Content: View>: View {
         }
         .foregroundStyle(Theme.secondaryText)
         .padding(.horizontal, 10)
-        .padding(.bottom, 4)
+        .padding(.bottom, Theme.Space.xs)
         .contentShape(Rectangle())
     }
 }
@@ -419,7 +419,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
             clicked()
         } label: {
             HStack(spacing: 9) {
-                icon.frame(width: 18)
+                icon.frame(width: Theme.AvatarSize.sm)
                 Text(title).lineLimit(1)
                 Spacer(minLength: 4)
                 accessory
@@ -451,7 +451,7 @@ struct ConversationLink: View {
         // A muted chat that mentions you is in Unread at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
                     dimmed: level == .muted && unread == 0) {
-            ConversationIcon(conversation: conversation, size: 18)
+            ConversationIcon(conversation: conversation, size: Theme.AvatarSize.sm)
         } accessory: {
             if onCall > 0 {
                 let people = Formatting.people(onCall)
@@ -486,7 +486,7 @@ struct ConversationLink: View {
         }
         .overlay {
             if presenter?.source == AnyHashable(conversation.chat) {
-                RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.accent, lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
             }
         }
         .peelMenu(source: conversation.chat) { ConversationMenu.entries(for: conversation, model: model) }
@@ -708,7 +708,7 @@ private struct SidebarActionLabel: View {
         HStack(spacing: 9) {
             Image(systemName: systemImage)
                 .font(.system(size: 12))
-                .frame(width: 18)
+                .frame(width: Theme.AvatarSize.sm)
             Text(title)
         }
     }
@@ -740,7 +740,7 @@ struct SidebarRowStyle: ButtonStyle {
                 .padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control)
                         .fill(selected ? Theme.selection : hovering || highlighted ? Theme.hover : .clear)
                 )
                 .contentShape(Rectangle())

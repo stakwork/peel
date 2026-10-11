@@ -174,7 +174,7 @@ struct ContactLinkCard: View {
 }
 
 /// The photo or icon on a link card.
-private let linkCardIconSize: CGFloat = 44
+private let linkCardIconSize = Theme.AvatarSize.xl
 
 /// The frame both link cards share: an icon, a title, a few lines about it,
 /// and a line of facts with the action beside it. One size whatever is
@@ -194,7 +194,7 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
 
     var body: some View {
         Card(.inset) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 icon
                     .frame(width: linkCardIconSize, height: linkCardIconSize)
                     .opacity(faded ? 0.5 : 1)
@@ -205,11 +205,11 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
                         .lineLimit(1)
                         .redacted(reason: placeholder ? .placeholder : [])
                     Text(detail ?? " ")
-                        .font(monospacedDetail ? Theme.code(12) : Theme.font(12.5))
+                        .font(monospacedDetail ? Theme.code(12) : Theme.font(12))
                         .foregroundStyle(Theme.secondaryText)
                         .lineLimit(detailLines, reservesSpace: true)
                         .redacted(reason: placeholder ? .placeholder : [])
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.sm) {
                         facts
                             .font(Theme.font(12))
                             .monospacedDigit()
@@ -223,7 +223,7 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, Theme.Space.md)
             .frame(width: CallCard.width, alignment: .leading)
         }
         .padding(.vertical, 2)

@@ -639,7 +639,7 @@ private struct WebToolbar: View {
                 withAnimation(.easeIn(duration: 0.15)) { pane.close() }
             }
         }
-        .padding(.leading, 8)
+        .padding(.leading, Theme.Space.sm)
         .padding(.trailing, 10)
         .frame(height: 60)
         .overlay(alignment: .bottom) {
@@ -838,8 +838,8 @@ private struct DownloadBar: View {
                 Callout(detail: PeelError.problem(reason, couldNot: "download \(name)"), icon: .problem, dismiss: dismiss)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, Theme.Space.sm)
         .background(Theme.panel)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
     }

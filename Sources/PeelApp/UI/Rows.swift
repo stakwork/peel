@@ -31,7 +31,7 @@ struct ListRow<Leading: View, Title: View, Detail: View, Trailing: View>: View {
     }
 
     /// Every row's corners, the sidebar's.
-    static var radius: CGFloat { 6 }
+    static var radius: CGFloat { Theme.Radius.control }
 
     private let size: Size
     private let selected: Bool
@@ -182,7 +182,7 @@ struct Fact<Value: View, Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
             Text(label)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: labelWidth, alignment: .leading)
@@ -191,7 +191,7 @@ struct Fact<Value: View, Trailing: View>: View {
             trailing
         }
         .font(Theme.font(13))
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, 9)
         .frame(minHeight: 36)
     }

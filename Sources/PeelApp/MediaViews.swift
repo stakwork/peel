@@ -191,7 +191,7 @@ struct VideoTile: View {
 
     var body: some View {
         let handle = model.attachment(id)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             tile(handle)
             if let saved = handle.savedTo { SavedNote(file: saved) }
         }
@@ -226,7 +226,7 @@ struct VideoTile: View {
                 }
                 .buttonStyle(.plain)
                 .help("Full screen (double-click)")
-                .padding(4)
+                .padding(Theme.Space.xs)
             }
         }
         .attachmentTile(fitted: frame, message: message, handle: handle)
@@ -261,34 +261,33 @@ struct VideoTile: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(.black.opacity(0.55), in: Capsule())
-                    .padding(8)
+                    .padding(Theme.Space.sm)
             }
         }
     }
 
     private func waiting(_ handle: AttachmentHandle, status: MediaStatus?) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Theme.Space.sm) {
             Image(systemName: AttachmentKind.video.symbol ?? "video")
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.secondaryText)
             if let status {
                 Text(status.text("Video"))
-                    .font(Theme.font(12))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                     .help(handle.failureReason ?? "")
                 if case .held = status {
                     Button("Load") { Task { await model.download(message) } }
                         .buttonStyle(.peel(.outline, size: .sm))
                 }
             } else if case .downloading = handle.state, let progress = handle.progress {
-                TransferBar(label: "Downloading", progress: progress).padding(.horizontal, 12)
+                TransferBar(label: "Downloading", progress: progress).padding(.horizontal, Theme.Space.md)
             } else {
                 ProgressView().controlSize(.small)
             }
         }
         .multilineTextAlignment(.center)
-        .padding(12)
+        .padding(Theme.Space.md)
     }
 
     private func openViewer() {
@@ -354,8 +353,8 @@ struct AudioCard: View {
         let known = MediaLoading.known(read, file: file)
         let info = known ?? nil
         let status = MediaStatus(message, handle, unplayable: known != nil && info == nil)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            HStack(spacing: Theme.Space.md) {
                 // Held or failed, a click loads it (again) and plays.
                 PlayButton(message: message, handle: handle, disabled: status.map { !$0.canLoad } ?? false)
                 if let status {

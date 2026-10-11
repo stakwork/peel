@@ -341,14 +341,14 @@ struct MessageList: View {
                     ForEach(rows) { row in
                         if row.startsDay {
                             DayDivider(date: row.date)
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, Theme.Space.xl)
                         }
                         // "New messages" shares its row's id, so scrolling to
                         // the row (drawn or not) shows it.
                         VStack(alignment: .leading, spacing: 0) {
                             if row.startsNew {
                                 NewMessagesDivider()
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, Theme.Space.xl)
                             }
                             switch row.kind {
                             case .message:
@@ -356,28 +356,28 @@ struct MessageList: View {
                                     .equatable()
                             case .request:
                                 JoinRequestNote(message: row.message, sender: row.sender, approved: row.approved, canAnswer: canAnswer)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, Theme.Space.xl)
                             case .note:
                                 MembershipNote(message: row.message, sender: row.sender)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, Theme.Space.xl)
                             case .payment:
                                 PaymentRow(row: row, flashed: flashed == row.id)
                             case .paymentRequest:
                                 PaymentRequestRow(row: row, flashed: flashed == row.id)
                             case .missingOriginal:
                                 OriginalNotAvailable()
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, Theme.Space.xl)
+                                    .padding(.vertical, Theme.Space.sm)
                             case .replies(let count):
                                 RepliesDivider(count: count)
-                                    .padding(.horizontal, 20)
+                                    .padding(.horizontal, Theme.Space.xl)
                             }
                         }
                         .id(row.id)
                     }
                 }
                 .environment(\.goToMessage) { go(to: $0, proxy: proxy) }
-                .padding(.vertical, 12)
+                .padding(.vertical, Theme.Space.md)
                 .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottomID) }
             }
             // A thread reads from its original down; a chat from its newest up.
@@ -490,8 +490,8 @@ struct MessageList: View {
                 let count = newSinceScrolledUp
                 if farFromBottom || count > 0 {
                     JumpToNewestButton(count: count, composer: composer) { jumpToNewest(proxy) }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 12)
+                        .padding(.trailing, Theme.Space.xl)
+                        .padding(.bottom, Theme.Space.md)
                         .transition(.opacity)
                 }
             }
@@ -666,7 +666,7 @@ private struct JumpToNewestButton: View {
     }
 
     private var newMessages: String {
-        count == 1 ? "1 new message" : "\(Badge.text(count)) new messages"
+        Formatting.count(count, "new message", shown: Badge.text(count))
     }
 
     var body: some View {
@@ -681,17 +681,17 @@ private struct JumpToNewestButton: View {
                         .monospacedDigit()
                 }
                 .foregroundStyle(Theme.buttonText)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .frame(height: 32)
                 .background(Theme.button, in: Capsule())
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                .shadow(color: Theme.menuShadow, radius: 10, y: 4)
                 .contentShape(Capsule())
             } else {
                 Image(systemName: "arrow.down")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .frame(width: 36, height: 36)
-                    .menuBoxed(cornerRadius: 18, style: .circular)
+                    .menuBoxed(in: Circle())
                     .contentShape(Circle())
             }
         }
@@ -709,9 +709,8 @@ struct OriginalNotAvailable: View {
 
     var body: some View {
         Text("Original message not available")
-            .font(Theme.font(12))
+            .muted()
             .italic()
-            .foregroundStyle(Theme.secondaryText)
     }
 }
 
@@ -752,7 +751,7 @@ struct MessageRow: View, Equatable {
         a.row == b.row && a.composer == b.composer && a.flashed == b.flashed
     }
 
-    static let avatarSize: CGFloat = 32
+    static let avatarSize = Theme.AvatarSize.lg
     static let gutterSpacing: CGFloat = 10
     /// About 68 characters of 14 pt text: lines short enough to read.
     static let textWidth: CGFloat = 560
@@ -784,7 +783,7 @@ struct MessageRow: View, Equatable {
                            hue: row.sender.hue)
                         .personCard(PersonRef(row))
                 } else {
-                    Text(message.date, format: .dateTime.hour().minute())
+                    Text(Formatting.time(message.date))
                         .font(Theme.font(11))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -823,7 +822,7 @@ struct MessageRow: View, Equatable {
             .frame(maxWidth: Self.textWidth, alignment: .leading)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         // Inside a run, 5 pt between messages: more than a message's 3 pt
         // line spacing, so two read as two (design README, Flat rows).
         .padding(.top, row.startsRun ? 8 : 3)
@@ -836,7 +835,7 @@ struct MessageRow: View, Equatable {
         .overlay(alignment: .topTrailing) {
             if (hovering && !menuOpen) || presenter?.source == AnyHashable(row.id), !retryable, !uploading, !message.deleted {
                 HoverBar(row: row, composer: composer)
-                    .padding(.trailing, 20)
+                    .padding(.trailing, Theme.Space.xl)
                     .offset(y: -10)
             }
         }
@@ -900,7 +899,7 @@ struct RunHeader: View {
         let name = row.sender.name
         let person = PersonRef(row)
         let tooltip = model.timeTooltip(date, zone: row.senderZone, name: name)
-            ?? date.formatted(date: .complete, time: .shortened)
+            ?? Formatting.moment(date)
         if let zone = row.senderZone, model.difference(zone, at: date) != 0 {
             ViewThatFits(in: .horizontal) {
                 line(name, person, tooltip) { RunLocalTime(date: date, zone: zone, name: name) }
@@ -925,10 +924,9 @@ struct RunHeader: View {
                     .lineLimit(1)
                     .personCard(person)
             }
-            Text(message.date, format: .dateTime.hour().minute())
-                .font(Theme.font(12))
+            Text(Formatting.time(message.date))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
                 .help(tooltip)
             local()
             if message.fromMe, message.delivery == .delivered {
@@ -982,7 +980,7 @@ private struct HoverBar: View {
             }
         }
         .padding(2)
-        .menuBoxed(cornerRadius: 7, shadow: false)
+        .menuBoxed(cornerRadius: Theme.Radius.control, shadow: false)
     }
 }
 
@@ -1134,17 +1132,17 @@ struct MessageText: View {
         let blocks = MessageMarkup.blocks(text)
         let myAliases = model.mentionAliases(in: chat)
         let found = model.search.flatMap { $0.chat == chat ? $0.query?.terms : nil } ?? []
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let line):
                     styled(line, myAliases, found)
                 case .item(let line):
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
                         Text("•").foregroundStyle(Theme.secondaryText)
                         styled(line, myAliases, found)
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, Theme.Space.xs)
                 case .numbered(let number, let line):
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("\(number).")
@@ -1153,13 +1151,13 @@ struct MessageText: View {
                             .foregroundStyle(Theme.secondaryText)
                         styled(line, myAliases, found)
                     }
-                    .padding(.leading, 4)
+                    .padding(.leading, Theme.Space.xs)
                 case .heading(let level, let line):
                     styled(line, myAliases, found, font: Theme.font(level == 1 ? 20 : level == 2 ? 17 : 15, .semibold))
                         .padding(.top, 2)
                 case .quote(let line):
                     styled(line, myAliases, found)
-                        .padding(.leading, 12)
+                        .padding(.leading, Theme.Space.md)
                         .overlay(alignment: .leading) {
                             Capsule().fill(Theme.secondaryText.opacity(0.4)).frame(width: 3)
                         }
@@ -1171,9 +1169,9 @@ struct MessageText: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Theme.Space.sm)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 }
             }
         }
@@ -1204,10 +1202,10 @@ struct QuoteView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.quote, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         case .message(let parent, let sender):
             Button { goTo(parent) } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.sm) {
                     if parent.attachmentKind != nil {
                         AttachmentMark(message: parent, size: 32)
                     }
@@ -1225,7 +1223,7 @@ struct QuoteView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.quote, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

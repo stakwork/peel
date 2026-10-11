@@ -70,7 +70,7 @@ struct PaymentListRow: View {
 
     var body: some View {
         ListRow(size: .md, selected: selected, tint: lit ? Theme.confirmed.opacity(0.14) : nil, action: action) {
-            PaymentAvatar(item: item, size: 32)
+            PaymentAvatar(item: item, size: Theme.AvatarSize.lg)
         } title: {
             Text(item.title)
                 .font(Theme.font(14, .semibold))
@@ -78,7 +78,7 @@ struct PaymentListRow: View {
                 .lineLimit(1)
         } detail: {
             Text(item.subtitle)
-                .font(Theme.font(12.5))
+                .font(Theme.font(12))
                 .lineLimit(1)
         } trailing: {
             VStack(alignment: .trailing, spacing: 2) {
@@ -114,8 +114,7 @@ struct PaymentDetailPane: View {
         PaneFrame(title: "Payment", close: close) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.headline)
-                    .font(Theme.font(12.5))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                 BigAmount(
                     amount: Sats.signed(msat: item.amountMsat, incoming: item.incoming),
                     color: item.status != .complete ? Theme.secondaryText : item.incoming ? Theme.confirmed : Theme.text,
@@ -124,19 +123,17 @@ struct PaymentDetailPane: View {
             }
             who
             if let quoted {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(quoted.label)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                     QuotedMessage(message: quoted.message)
                 }
             } else if let note = item.note {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.kind == .invoice ? "Memo" : "Note")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                     Text(note)
-                        .font(Theme.font(13.5))
+                        .font(Theme.font(13))
                         .textSelection(.enabled)
                 }
             }
@@ -144,7 +141,7 @@ struct PaymentDetailPane: View {
                 Button {
                     model.destination = .chat(chat)
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.Space.xs) {
                         Text(item.isTribe ? "Open in #\(item.chatName ?? "")" : "Open chat with \(item.chatName ?? "them")")
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     }
@@ -157,14 +154,13 @@ struct PaymentDetailPane: View {
 
     @ViewBuilder private var who: some View {
         HStack(spacing: 10) {
-            PaymentAvatar(item: item, size: 36)
+            PaymentAvatar(item: item, size: Theme.AvatarSize.lg)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(model.nameColour(of: item))
                 Text(context)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
             .lineLimit(1)
         }
@@ -205,7 +201,7 @@ struct PaymentDetailPane: View {
             case .failed:
                 Fact("Status", text: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark")
             }
-            Fact("When", text: item.date.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute().second()))
+            Fact("When", text: Formatting.moment(item.date, seconds: true))
             Fact("Amount", text: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
             if let fee = item.feeMsat {
                 Fact("Routing fee", text: fee == 0 ? "None" : Sats.format(msat: fee))
@@ -235,17 +231,16 @@ private struct QuotedMessage: View {
             let sender = model.sender(of: message)
             (Text(sender.label).fontWeight(.semibold).foregroundColor(sender.hue.name)
                 + Text(" · \(Formatting.when(message.date))"))
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
             Text(message.preview)
-                .font(Theme.font(13.5))
+                .font(Theme.font(13))
                 .lineSpacing(3)
                 .lineLimit(6)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
     }
 }

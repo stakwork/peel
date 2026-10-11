@@ -152,7 +152,7 @@ struct ToastView: View {
                 .foregroundStyle(Theme.text)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .menuBoxed(cornerRadius: 16)
+                .menuBoxed(in: Capsule(style: .circular))
                 .transition(
                     reduceMotion
                         ? .opacity

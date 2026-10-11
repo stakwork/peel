@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelCore
 
 /// An icon button that opens a menu below it, such as a message's More; lit
 /// while its menu is open.
@@ -47,7 +48,7 @@ struct PeelDropdown<Value: Hashable>: View {
                 at: anchor, minWidth: anchor.screenRect.width, highlightChecked: true
             )
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Text(options.first { $0.value == selection }?.label ?? "")
                     .font(Theme.font(13))
                     .lineLimit(1)
@@ -60,6 +61,35 @@ struct PeelDropdown<Value: Hashable>: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .menuAnchor(anchor)
+    }
+}
+
+/// A setting chosen from a `PeelDropdown` and saved at once, with its help
+/// muted under it, or what went wrong saving it.
+struct SettingDropdown<Value: Hashable>: View {
+    let selection: Value
+    let options: [(value: Value, label: String)]
+    let help: String
+    let save: @MainActor (Value) async throws -> Void
+
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            PeelDropdown(selection: selection, options: options) { value in
+                Task {
+                    do {
+                        try await save(value)
+                        problem = nil
+                    } catch {
+                        problem = PeelError.problem(error, couldNot: "change the setting")
+                    }
+                }
+            }
+            .fixedSize()
+            Text(problem ?? help)
+                .muted()
+        }
     }
 }
 

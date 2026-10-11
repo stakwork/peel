@@ -52,7 +52,7 @@ struct Receipt: Sendable {
     /// "+350 sats", with "· 3 payments" for more than one.
     static func label(_ receipts: [Receipt]) -> String {
         let total = "+\(Sats.format(msat: totalMsat(receipts)))"
-        return receipts.count > 1 ? "\(total) · \(receipts.count) payments" : total
+        return receipts.count > 1 ? "\(total) · \(Formatting.count(receipts.count, "payment"))" : total
     }
 }
 

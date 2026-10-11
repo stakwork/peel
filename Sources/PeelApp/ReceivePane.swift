@@ -75,13 +75,13 @@ struct ReceivePane: View {
     }
 
     @ViewBuilder private func waiting(_ invoice: InvoiceRecord) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Space.md) {
             QRCodeTile(text: invoice.bolt11.uppercased(), label: "QR code of the invoice", size: 220, inset: 12)
             Text("\(invoice.bolt11.prefix(16))…\(invoice.bolt11.suffix(12))")
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.secondaryText)
                 .textSelection(.enabled)
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 CopyButton("Copy invoice", text: invoice.bolt11)
                     .buttonStyle(.peel(.primary))
                 CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(invoice.bolt11.uppercased()) }
@@ -100,7 +100,7 @@ struct ReceivePane: View {
 
     @ViewBuilder private func paid(_ invoice: InvoiceRecord) -> some View {
         let full = invoice.status == .paid
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Space.md) {
             Image(systemName: full ? "checkmark" : "exclamationmark")
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(full ? Theme.confirmed : Theme.attention)
@@ -114,10 +114,10 @@ struct ReceivePane: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
         FactList {
-            Fact("Received", text: (invoice.paid ?? .now).formatted(.dateTime.hour().minute().second()))
+            Fact("Received", text: Formatting.time(invoice.paid ?? .now, seconds: true))
             Fact("Invoice for", text: Sats.format(msat: invoice.amountMsat))
         }
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
                 .buttonStyle(.peel(.outline))
             Button {
@@ -148,18 +148,17 @@ private struct WaitingStatus: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.sm) {
                         Circle().fill(Theme.accent).frame(width: 8, height: 8)
                             .overlay(Circle().stroke(Theme.accent.opacity(0.25), lineWidth: 4))
-                        Text("Waiting for payment").font(Theme.font(13.5))
+                        Text("Waiting for payment").font(Theme.font(13))
                         Spacer()
                         if let expires = invoice.expires {
                             Text(left < 3600
                                 ? "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))"
                                 : "Expires \(Formatting.expiry(expires))")
-                                .font(Theme.font(12.5))
                                 .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
                     }
                     if let expires = invoice.expires {
@@ -174,12 +173,10 @@ private struct WaitingStatus: View {
                             }
                     }
                     Text("You can close this, and Peel too: the server takes the payment, and it shows in your history.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .muted()
                 }
-                .padding(12)
-                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.divider))
+                .padding(Theme.Space.md)
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(Theme.divider))
             }
         }
     }

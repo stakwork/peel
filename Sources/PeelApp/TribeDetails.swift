@@ -43,7 +43,7 @@ struct TribeDetailsPanel: View {
                     ChatTimeZoneSection(conversation: conversation, tribe: tribe)
                         .padding(.top, 18)
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, Theme.Space.xs)
                 .endsEditingOnClick()
             }
             .frame(maxHeight: 560)
@@ -72,7 +72,7 @@ struct TribeDetailsPanel: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 10) {
             PanelHero(name: tribe.displayName) {
-                TribeIcon(name: tribe.displayName, url: tribe.photoURL, pubkey: tribe.pubkey, size: 56)
+                TribeIcon(name: tribe.displayName, url: tribe.photoURL, pubkey: tribe.pubkey, size: Theme.AvatarSize.xl)
             } lines: {
                 Text(subtitle)
             }
@@ -87,14 +87,14 @@ struct TribeDetailsPanel: View {
                 TagChips(tags: tags)
             }
         }
-        .padding(.top, 12)
+        .padding(.top, Theme.Space.md)
     }
 
     /// "Public tribe · Created 3 Oct 2026".
     private var subtitle: String {
         [
             tribe.isPrivate ? "Private tribe" : "Public tribe",
-            info?.created.map { "Created \($0.formatted(.dateTime.day().month(.abbreviated).year()))" },
+            info?.created.map { "Created \(Formatting.date($0))" },
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -121,12 +121,12 @@ struct TribeDetailsPanel: View {
         if tribe.isOwner {
             let me = model.me(in: tribe.pubkey)
             HStack(spacing: 6) {
-                Avatar(name: me.avatarName, url: me.photoURL, size: 18, hue: me.hue)
+                Avatar(name: me.avatarName, url: me.photoURL, size: Theme.AvatarSize.sm, hue: me.hue)
                 Text("You")
             }
         } else if let alias = info?.ownerAlias?.nilIfEmpty {
             HStack(spacing: 6) {
-                Avatar(name: alias, url: details?.ownerPhotoURL, size: 18,
+                Avatar(name: alias, url: details?.ownerPhotoURL, size: Theme.AvatarSize.sm,
                        hue: model.hue(pubkey: tribe.pubkey, alias: alias, inTribe: true))
                 Text(alias).lineLimit(1)
             }
@@ -152,7 +152,7 @@ struct TribeDetailsPanel: View {
     /// The tribe's pages (`Tribe.pages`, in the More menu's order), opened
     /// in the web pane beside the chat.
     private var pages: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             ForEach(tribe.pages, id: \.kind) { page in
                 Button {
                     done()
@@ -171,25 +171,23 @@ struct TribeDetailsPanel: View {
         Card {
             HStack(alignment: .top, spacing: 14) {
                 QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Anyone with the link or the code can join.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .muted()
                     CopyButton("Copy link", text: link, systemImage: "link")
                     CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
                 }
                 .buttonStyle(.peel(.outline))
                 Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(Theme.Space.md)
         }
         .padding(.top, 14)
     }
 
     /// Where to go on the left; Leave, the one destructive action, on the right.
     private var footer: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Button("Members", action: members)
                 .buttonStyle(.peel(.outline))
             if tribe.canManage {
@@ -228,7 +226,7 @@ extension TribeMembers {
     var countLabel: String {
         guard complete else { return "\((members.count + 1).formatted()) seen" }
         let count = members.count { !$0.pending }
-        return count == 1 ? "1 member" : "\(count.formatted()) members"
+        return Formatting.count(count, "member")
     }
 }
 
@@ -259,7 +257,7 @@ private struct TribeIdentitySection: View {
             FormItem(label: "Photo") {
                 PictureField(
                     picture: Avatar(name: alias.trimmed.nilIfEmpty ?? accountName, url: photoURL ?? model.myPhotoURL,
-                                    size: 40, hue: model.myHue),
+                                    size: Theme.AvatarSize.xl, hue: model.myHue),
                     upload: { photoURL = try await model.uploadPicture($0) },
                     remove: photoURL == nil ? nil : .now { photoURL = nil },
                     uploading: $uploading

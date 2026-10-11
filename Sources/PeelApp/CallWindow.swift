@@ -81,7 +81,7 @@ private struct CallRoomView: View {
     /// The chat and the running time, centred in the title bar; Keep on top
     /// at its right.
     private var titleBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             ChatTitle(title: call.title)
                 .font(Theme.font(13, .semibold))
                 .lineLimit(1)
@@ -121,7 +121,7 @@ private struct CallStage: View {
                 CallTileView(tile: main, avatarSize: 96, focused: true) { call.toggleFocus(main.id) }
                 if !others.isEmpty { strip(others) }
             }
-            .padding(16)
+            .padding(Theme.Space.lg)
         } else {
             CallGrid(call: call)
         }
@@ -196,7 +196,7 @@ private struct CallGrid: View {
             }
             .scrollIndicators(.automatic)
         }
-        .padding(16)
+        .padding(Theme.Space.lg)
     }
 }
 
@@ -238,24 +238,24 @@ private struct CallTileView: View {
                         .accessibilityLabel("Muted")
                 }
                 Text(name)
-                    .font(Theme.font(12.5, .medium))
+                    .font(Theme.font(12, .medium))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, Theme.Space.sm)
             .padding(.vertical, 3)
-            .background(Theme.callTag, in: RoundedRectangle(cornerRadius: 6))
+            .background(Theme.callTag, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
             .padding(10)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .overlay {
             // The accent edge while they speak; a screen's own edge.
             if tile.speaking {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 2)
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous).strokeBorder(Theme.accent, lineWidth: 2)
             } else if tile.isScreen {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.divider, lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous).strokeBorder(Theme.divider, lineWidth: 1)
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .onTapGesture(perform: click)
         .help(focused ? "\(name) · Click or press Escape to see everyone" : "\(name) · Click to focus")
         .accessibilityElement(children: .combine)
@@ -294,15 +294,15 @@ private struct CallControls: View {
                     model.leaveCall()
                 } label: {
                     pill("phone.down.fill", "Leave", weight: .bold, text: Theme.buttonText, fill: Theme.destructive)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, Theme.Space.xs)
                 }
                 .buttonStyle(.plain)
                 .help("Leave the call (⌘W)")
             }
             notes
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
+        .padding(.horizontal, Theme.Space.lg)
+        .padding(.top, Theme.Space.xs)
         .padding(.bottom, 18)
     }
 
@@ -321,14 +321,14 @@ private struct CallControls: View {
 
     /// A labelled control in the bar: Share and Leave.
     private func pill(_ systemImage: String, _ title: String, weight: Font.Weight, text: Color, fill: Color) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Image(systemName: systemImage).font(.system(size: 14))
-            Text(title).font(Theme.font(13.5, weight))
+            Text(title).font(Theme.font(13, weight))
         }
         .foregroundStyle(text)
         .padding(.horizontal, 14)
         .frame(height: 44)
-        .background(fill, in: RoundedRectangle(cornerRadius: 10))
+        .background(fill, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
         .contentShape(Rectangle())
     }
 
@@ -366,7 +366,7 @@ private struct CallControls: View {
             .menuAnchor(chevron)
         }
         .frame(height: 44)
-        .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
         .opacity(refused ? 0.45 : 1)
     }
 
@@ -397,7 +397,7 @@ private struct CallControls: View {
     }
 
     private func note(_ text: String, action: String? = nil, perform: @escaping () -> Void = {}) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xs) {
             Text(text).foregroundStyle(Theme.secondaryText)
             if let action {
                 Text("·").foregroundStyle(Theme.secondaryText)
@@ -410,7 +410,7 @@ private struct CallControls: View {
     private func showDevices(at anchor: MenuAnchor) {
         func section(_ title: String, _ devices: [CallSession.Device], chosen: String?, choose: @escaping (String) -> Void) -> [MenuEntry] {
             [.header(title)] + (devices.isEmpty
-                ? [.view(AnyView(Text("None found").font(Theme.font(13)).foregroundStyle(Theme.secondaryText).padding(.horizontal, 33).padding(.vertical, 4)))]
+                ? [.view(AnyView(Text("None found").font(Theme.font(13)).foregroundStyle(Theme.secondaryText).padding(.horizontal, 33).padding(.vertical, Theme.Space.xs)))]
                 : devices.map { device in .button(device.name, checked: device.id == chosen) { choose(device.id) } })
         }
         let entries = [MenuEntry].sections(

@@ -124,7 +124,7 @@ struct Composer: View {
         .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Theme.divider))
         .padding(.horizontal, Self.inset)
         .padding(.top, 6)
-        .padding(.bottom, 16)
+        .padding(.bottom, Theme.Space.lg)
         .overlay(alignment: .topLeading) {
             let shown = suggestions
             if !shown.isEmpty {
@@ -218,7 +218,7 @@ private struct ReplyBar: View {
             .help("Stop replying (Escape)")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, Theme.Space.sm)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: Composer.radius, topTrailingRadius: Composer.radius, style: .continuous)
                 .fill(Theme.quote)
@@ -251,8 +251,8 @@ struct MentionSuggestions: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
-                        HStack(spacing: 8) {
-                            Avatar(name: member.alias, url: member.photoURL, size: 20,
+                        HStack(spacing: Theme.Space.sm) {
+                            Avatar(name: member.alias, url: member.photoURL, size: Theme.AvatarSize.sm,
                                    hue: model.hue(of: member))
                             Text(member.alias)
                                 .font(Theme.font(13))
@@ -260,9 +260,9 @@ struct MentionSuggestions: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, Theme.Space.sm)
                         .frame(height: Self.rowHeight)
-                        .background(index == highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        .background(index == highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                         .contentShape(Rectangle())
                         .onTapGesture { choose(member) }
                         .id(index)

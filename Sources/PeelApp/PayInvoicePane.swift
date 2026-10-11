@@ -78,7 +78,7 @@ struct PayInvoicePane: View {
                 BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 30)
                 facts(invoice, expired: expired)
             }
-            .padding(.top, 16)
+            .padding(.top, Theme.Space.lg)
             .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
             if let payment, payment.status != .failed {
                 outcome(payment, sent: sent)
@@ -88,7 +88,7 @@ struct PayInvoicePane: View {
                 if let checked, let problem = checked.problem {
                     blocker(problem, invoice: invoice, paidAt: checked.paidAt, sent: sent)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.sm) {
                     Button("Cancel", action: close).buttonStyle(.peel(.outline))
                     Spacer()
                     Button("Pay") {}
@@ -105,11 +105,10 @@ struct PayInvoicePane: View {
     }
 
     private func payForm(_ invoice: Invoice) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
             if let failed = payment?.error {
                 Text("The last try failed (\(failed)); nothing was sent, so paying again pays once.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
             FormFooter(problem: attempt.problem) {
                 Button("Cancel", action: close).buttonStyle(.peel(.outline))
@@ -119,9 +118,8 @@ struct PayInvoicePane: View {
             }
             Text(model.paymentConfirmationMsat == 0 ? "Every payment takes a second click."
                  : "Payments over \(Sats.format(msat: model.paymentConfirmationMsat)) take a second click.")
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         }
     }
 
@@ -155,12 +153,12 @@ struct PayInvoicePane: View {
             (title, detail) = ("This invoice names no amount", "Peel pays invoices that say how much. Ask for one with an amount.")
         case .invoiceExpired:
             (title, detail) = ("This invoice has expired",
-                               "It ran out \(invoice.expiresAt?.formatted(date: .abbreviated, time: .shortened) ?? ""). Ask for a new one.")
+                               "It ran out \(invoice.expiresAt.map { Formatting.dateAndTime($0) } ?? ""). Ask for a new one.")
         case .ownInvoice:
             (title, detail) = ("This is your own invoice", "Send it to whoever is paying you.")
         case .invoiceAlreadyPaid:
             (title, detail) = ("You already paid this invoice",
-                               paidAt.map { "On \($0.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))." } ?? "")
+                               paidAt.map { "On \(Formatting.moment($0))." } ?? "")
             if let sent {
                 link = ("Show that payment", { show(sent.id) })
             }
@@ -183,16 +181,15 @@ struct PayInvoicePane: View {
     @ViewBuilder private func outcome(_ payment: InvoiceRecord, sent item: PaymentItem?) -> some View {
         switch payment.status {
         case .paid:
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 Label("Paid \(Sats.format(msat: payment.amountMsat))", systemImage: "checkmark")
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
                 Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Sats.format(msat: $0))." }
                      ?? "The fee shows once the server's history has this payment.")
-                    .font(Theme.font(12))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                 HStack {
                     if let item { Button("Show the payment") { show(item.id) }.buttonStyle(.peel(.link)) }
                     Spacer()
@@ -207,7 +204,7 @@ struct PayInvoicePane: View {
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         default:
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ProgressView().controlSize(.small)
                 Text("Paying \(Sats.format(msat: payment.amountMsat)). It stays pending until the server confirms.")
                     .font(Theme.font(13))

@@ -41,7 +41,7 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Text(title).font(Theme.font(15, .bold))
                 Spacer(minLength: 8)
                 actions
@@ -55,13 +55,13 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, compact ? 10 : 2)
-            .padding(.bottom, 4)
+            .padding(.bottom, Theme.Space.xs)
             // No footer (left out, or a condition that is false) takes no room.
             footer
                 .padding(.horizontal, 18)
-                .padding(.top, 16)
+                .padding(.top, Theme.Space.lg)
         }
-        .padding(.bottom, 16)
+        .padding(.bottom, Theme.Space.lg)
         .frame(width: compact ? 320 : 372)
         // The shadow on the box alone: on the whole view every label would cast one.
         .background {
@@ -97,15 +97,14 @@ struct PanelHero<Picture: View, Lines: View>: View {
     @ViewBuilder let lines: Lines
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             picture
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
                     .font(Theme.font(16, .bold))
                     .lineLimit(2)
                 lines
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
         }
     }

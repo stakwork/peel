@@ -34,11 +34,11 @@ struct FormSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             if let title { SectionHeader(title) }
             content
         }
-        .padding(.top, 16)
+        .padding(.top, Theme.Space.lg)
     }
 }
 
@@ -158,7 +158,7 @@ struct FormTextField: View {
                 .lineLimit(multiline ? 3...6 : 1...1)
                 .focused($focused)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, multiline ? 8 : 0)
         .frame(maxWidth: .infinity, minHeight: 32, alignment: multiline ? .topLeading : .leading)
         .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
@@ -192,7 +192,7 @@ struct FormNumberField: View {
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .frame(maxWidth: .infinity, minHeight: 32)
         .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
         .focusesOnClick($focused)
@@ -220,7 +220,7 @@ struct FormSwitchRow: View {
         Card {
             Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
                 .toggleStyle(FormSwitchStyle())
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
         }
     }
@@ -231,7 +231,7 @@ private struct FormSwitchStyle: ToggleStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             configuration.label.frame(maxWidth: .infinity, alignment: .leading)
             Button { configuration.isOn.toggle() } label: {
                 Capsule()
@@ -270,7 +270,7 @@ struct FormDestructiveSection: View {
         Card {
             InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
         }
-        .padding(.top, 16)
+        .padding(.top, Theme.Space.lg)
     }
 }
 
@@ -352,9 +352,7 @@ struct InlineConfirm<Trigger: View>: View {
                     Text(prompt).foregroundStyle(Theme.secondaryText)
                 } else {
                     Text(prompt)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .muted()
                 }
             }
             if style == .section { Spacer(minLength: 8) }
@@ -412,7 +410,7 @@ private struct SectionTrigger<Label: View>: View {
             label
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.destructive)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                 .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .contentShape(Rectangle())

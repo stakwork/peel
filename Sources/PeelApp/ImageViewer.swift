@@ -34,12 +34,12 @@ struct ImageViewer: View {
                     Group {
                         if isVideo, playback.current == current.id, let player = playback.player {
                             PlayerSurface(player: player, style: .floating)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                         } else if let image {
                             Image(decorative: image, scale: 1)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                         } else if let reason = notShown ?? handle.failureReason {
                             Text(reason)
                                 .font(Theme.font(13))
@@ -61,14 +61,14 @@ struct ImageViewer: View {
                         .textSelection(.enabled)
                 }
                 if state.messages.count > 1 {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.sm) {
                         ForEach(Array(state.messages.enumerated()), id: \.element.id) { index, message in
                             Button {
                                 model.viewer?.index = index
                             } label: {
                                 AttachmentMark(message: message, size: 44)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                                             .strokeBorder(index == state.index ? Theme.accent : .clear, lineWidth: 2)
                                     )
                                     .opacity(index == state.index ? 1 : 0.6)
@@ -85,7 +85,7 @@ struct ImageViewer: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 14)
-            .padding(.bottom, 20)
+            .padding(.bottom, Theme.Space.xl)
         }
         .foregroundStyle(.white)
         .task(id: current.id) {
@@ -140,13 +140,12 @@ struct ImageViewer: View {
         let isTribe = conversation?.isTribe ?? false
         let sender = model.sender(of: current)
         return HStack(spacing: 10) {
-            Avatar(name: sender.avatarName, url: sender.photoURL, size: 32, hue: sender.hue)
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.lg, hue: sender.hue)
             VStack(alignment: .leading, spacing: 1) {
                 Text(sender.label).font(Theme.font(14, .bold)).foregroundStyle(sender.hue.name)
-                Text("\(isTribe ? "#" : "")\(conversation?.name ?? "") · \(Formatting.dayHeading(current.date)) \(current.date.formatted(.dateTime.hour().minute()))")
-                    .font(Theme.font(12))
+                Text("\(isTribe ? "#" : "")\(conversation?.name ?? "") · \(Formatting.dayHeading(current.date)) \(Formatting.time(current.date))")
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
             Spacer()
             if current.isLinkable(inTribe: isTribe) {

@@ -137,7 +137,7 @@ struct ChatFooter: View {
     var body: some View {
         if showsNotice, let notice = model.conversationNotices[conversation.chat] {
             Callout(detail: notice, icon: .problem, dismiss: { model.dismissNotice(in: conversation.chat) })
-                .padding(.horizontal, 20)
+                .padding(.horizontal, Theme.Space.xl)
                 .padding(.top, 6)
         }
         if let tribe, !tribe.canPost {
@@ -178,9 +178,9 @@ struct TribeHeader: View {
 
     var body: some View {
         DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details }) {
-            ConversationIcon(conversation: conversation, size: 32)
+            ConversationIcon(conversation: conversation, size: Theme.AvatarSize.lg)
         } trailing: {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 SearchHeaderButton(chat: conversation.chat)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
@@ -270,9 +270,7 @@ struct TribeMembersPanel: View {
         Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
             if members?.complete == false {
                 Text("Only the tribe's owner gets the full member list.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .muted()
             }
             memberList
         } actions: {
@@ -306,8 +304,8 @@ struct TribeMembersPanel: View {
                     // Requests to join a private tribe come first, as in the Mac app.
                     if !pending.isEmpty {
                         SectionHeader("Waiting for approval")
-                            .padding(.horizontal, 8)
-                            .padding(.bottom, 4)
+                            .padding(.horizontal, Theme.Space.sm)
+                            .padding(.bottom, Theme.Space.xs)
                         ForEach(pending) { member in
                             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member), note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
@@ -328,9 +326,9 @@ struct TribeMembersPanel: View {
                             }
                         }
                         SectionHeader("Members")
-                            .padding(.horizontal, 8)
-                            .padding(.top, 4)
-                            .padding(.bottom, 4)
+                            .padding(.horizontal, Theme.Space.sm)
+                            .padding(.top, Theme.Space.xs)
+                            .padding(.bottom, Theme.Space.xs)
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
@@ -415,16 +413,15 @@ private struct MemberRow<Actions: View>: View {
 
     var body: some View {
         ListRow {
-            Avatar(name: alias, url: photoURL, size: 24, hue: hue)
+            Avatar(name: alias, url: photoURL, size: Theme.AvatarSize.md, hue: hue)
         } title: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Text(alias)
                     .foregroundStyle(hue.name)
                     .lineLimit(1)
                 if let note {
                     Text(note)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
             }
         } trailing: {
@@ -474,12 +471,12 @@ struct DayDivider: View {
     let date: Date
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             Theme.divider.frame(height: 1)
             Badge(Formatting.dayHeading(date), .outline)
             Theme.divider.frame(height: 1)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Theme.Space.sm)
     }
 }
 

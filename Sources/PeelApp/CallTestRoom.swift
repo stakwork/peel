@@ -53,7 +53,7 @@ struct CallTestView: View {
             ForEach(lines.indices, id: \.self) { Text(lines[$0]).font(.system(.body, design: .monospaced)) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
+        .padding(Theme.Space.lg)
         .frame(minWidth: 420, minHeight: 220)
         // Track state changes on participants and publications as well as the
         // room, so a once-a-second poll is the simplest complete view of it.

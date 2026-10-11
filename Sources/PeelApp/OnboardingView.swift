@@ -306,9 +306,8 @@ struct RestoreRow: View {
                         .foregroundStyle(state == .waiting ? Theme.secondaryText : Theme.text)
                     Spacer()
                     Text(detail)
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
                 if let fraction, state == .active {
                     ProgressView(value: fraction)
@@ -316,7 +315,7 @@ struct RestoreRow: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Theme.Space.lg)
         .padding(.vertical, 14)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
     }
@@ -333,7 +332,7 @@ struct OnboardingPage<Content: View>: View {
     var body: some View {
         VStack(spacing: 22) {
             if let progress {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     HStack(spacing: 6) {
                         ForEach(1...progress.of, id: \.self) { index in
                             Capsule()
@@ -342,8 +341,7 @@ struct OnboardingPage<Content: View>: View {
                         }
                     }
                     Text("Step \(progress.step) of \(progress.of)")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
                 .frame(maxWidth: 440)
             }
@@ -373,7 +371,7 @@ struct StepBody<Fields: View, Footer: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 Text(title)
                     .font(Theme.font(24, .bold))
                 Text(detail)
@@ -397,7 +395,7 @@ struct NumberedWordGrid<Cell: View>: View {
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Space.sm), count: 3), spacing: Theme.Space.sm) {
             ForEach(0..<count, id: \.self) { index in
                 HStack(spacing: 10) {
                     Text("\(index + 1)")
@@ -407,7 +405,7 @@ struct NumberedWordGrid<Cell: View>: View {
                         .frame(width: 18, alignment: .trailing)
                     cell(index)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
                 .modifier(FieldChrome(focused: focused == index))
             }
@@ -422,7 +420,7 @@ struct WordEntryGrid: View {
     @FocusState private var focus: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             Button {
                 if let text = Clipboard.paste() {
                     focus = nil
@@ -486,7 +484,7 @@ struct PinField: View {
                 .focused($focused)
                 .opacity(0.01)
                 .accessibilityLabel("PIN")
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ForEach(0..<6, id: \.self) { index in
                     // The form's boxed field; the next digit's box ringed.
                     Color.clear

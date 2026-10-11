@@ -244,7 +244,7 @@ struct CallHeaderButton: View {
                 }
                 pill(live)
             } else {
-                HeaderButton(systemImage: "phone", help: "Start a call", working: model.startingCallIn == chat) {
+                IconButton("phone", help: "Start a call", lit: menuOpen, working: model.startingCallIn == chat) {
                     showMenu(header: false)
                 }
                 .menuAnchor(anchor)
@@ -275,6 +275,9 @@ struct CallHeaderButton: View {
         let count = model.presence(of: live.room).people?.count ?? 0
         let onIt = model.isOnCall(live.room)
         let joining = model.joiningRoom == live.room
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        // One outline box split in two: Join as a ghost `.sm` button, the
+        // chevron as a ghost icon button.
         return HStack(spacing: 0) {
             Button {
                 ask(.join(live), leaving: model.otherCall(than: live.room))
@@ -282,41 +285,37 @@ struct CallHeaderButton: View {
                 HStack(spacing: 7) {
                     OnlineDot()
                     Text("\(onIt ? "Open" : "Join") · \(count)")
-                        .font(Theme.font(13, .semibold))
                         .monospacedDigit()
                 }
                 .buttonProgress(joining || model.startingCallIn == chat)
-                .foregroundStyle(Theme.text)
-                .padding(.horizontal, 10)
-                .frame(height: 28)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.peel(.ghost, size: .sm))
             .disabled(model.joiningRoom != nil && !joining)
             .help(onIt ? "Bring the call window forward" : "Join the newest live call")
             .accessibilityLabel(onIt ? "Open the call, \(count) on it" : "Join the call, \(count) on it")
-            Theme.divider.frame(width: 1, height: 28)
-            Button { showMenu(header: true) } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 24, height: 28)
-                    .contentShape(Rectangle())
+            Theme.inputBorder.frame(width: 1, height: PeelButton.Size.sm.height)
+            IconButton(help: "Start a new call", lit: menuOpen) {
+                showMenu(header: true)
+            } label: {
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .help("Start a new call")
-            .accessibilityLabel("More call options")
         }
-        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
+        .background(Theme.fieldFill, in: shape)
+        .overlay { shape.strokeBorder(Theme.inputBorder) }
         .menuAnchor(anchor)
     }
+
+    private var menuSource: AnyHashable { "call-\(chat)" }
+
+    /// Its menu is open: the button that opened it is lit.
+    private var menuOpen: Bool { presenter?.isOpen(from: menuSource) == true }
 
     private func showMenu(header: Bool) {
         let items: [MenuEntry] = [
             .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor, source: "call-\(chat)")
+        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor, source: menuSource)
     }
 
     private func start(audioOnly: Bool) {
@@ -416,19 +415,12 @@ struct OnCallBar: View {
             .frame(minHeight: 20)
             HStack(spacing: 6) {
                 let label = call.micOn ? "Mute" : "Unmute"
-                Button(action: call.toggleMicrophone) {
+                IconButton(help: "\(label) (⌘⇧A)", variant: .outline, action: call.toggleMicrophone) {
                     Image(systemName: call.micOn ? "mic" : "mic.slash")
-                        .font(.system(size: 13))
                         .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
-                        .frame(width: 30, height: 30)
-                        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .disabled(call.micAccess == .refused)
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .help("\(label) (⌘⇧A)")
-                .accessibilityLabel(label)
                 Button { openWindow(id: CallWindow.id) } label: {
                     Label("Return to call", systemImage: "arrow.up.forward.square")
                         .frame(maxWidth: .infinity)

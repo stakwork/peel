@@ -469,11 +469,11 @@ The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
 inventories what is still drawn by hand and plans the rest in batches:
-`IconButton`, `Panel` (with the placement rule for its actions), the
+`Panel` (with the placement rule for its actions), the
 composer with its buttons inside the field, `SectionHeader`, `Card`,
 `Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
 batch plan comes before the payments fixes and the personal agent. Until
-a batch lands, new UI uses the pieces that exist (`PeelButton`, `FormKit`,
+a batch lands, new UI uses the pieces that exist (`PeelButton`, `IconButton`, `FormKit`,
 `Controls`, `CopyButton`) and adds no new variant.
 
 Built so far:
@@ -535,12 +535,47 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
   `.sm`; panels and forms `.md`; onboarding `.lg`, its Back `.ghost`.
   The Payments header's buttons are `.outline`, `.secondary` while their
   pane is open.
-- Still drawn by hand, for later batches: icon buttons (batch 3), the
-  call header's split Join and its chevron (batch 3), and the small text
-  actions inside rows (a join request's Approve and Decline, a pinned
-  message's Unpin, a failed message's Retry and Cancel), which are muted or
-  `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
-  `.text` style that draws them (batch 12, `ListRow`).
+- The call header's split Join is one outline box (`fieldFill`,
+  `inputBorder`, `Theme.Radius.control`) holding a ghost `.sm` Join and a
+  ghost `IconButton` chevron, split by a 1 pt `inputBorder` line.
+- Still drawn by hand, for later batches: the small text actions inside
+  rows (a join request's Approve and Decline, a pinned message's Unpin, a
+  failed message's Retry and Cancel), which are muted or `accent` 11–12 pt
+  text with a mini spinner, and `InlineConfirm`'s `.text` style that draws
+  them (batch 12, `ListRow`).
+
+### Icon buttons (`IconButton`)
+
+shadcn's `<Button variant="ghost" size="icon">`, in `UI/IconButton.swift`.
+`HoverIconButton` and `HeaderButton` are gone: every icon button is one.
+
+```swift
+IconButton("xmark", help: "Close", action: close)
+IconButton("magnifyingglass", help: "Search in chat (⌘F)", lit: open) { … }
+IconButton("phone", help: "Start a call", working: starting) { … }
+IconButton(help: title, action: copy) { CopyLabel(…) }        // any label
+```
+
+- `help` is the tooltip and the accessibility label, always.
+- The icon is 13 pt, `secondaryText` at rest and `text` under the pointer,
+  pressed or `lit`, on a `hover` fill at `Theme.Radius.control`. A label
+  that sets its own colour keeps it (the connection bolt, the call
+  window's pin, the copy check).
+- `lit`: what it opened is open (a menu, the details, the search, the
+  connection card). `MenuButton` is lit while its menu is open, so every
+  More (•••) is.
+- `working` puts the spinner in the icon's place (`buttonProgress`).
+- Disabled is half opacity with no hover and never lit, as `PeelButton`; no call site
+  dims it again.
+- Variants: `.ghost` (default) and `.outline` (`fieldFill` and
+  `inputBorder`, beside an outline button: the sidebar call bar's
+  microphone). Sizes: `.md` 28 square (default; the height of a `.sm`
+  `PeelButton`) and `.sm` 24 (the connection bolt, a notice's dismiss).
+- Stay apart: the call window's control bar (its own `segment` and
+  `pill`), controls drawn over a picture or video (the viewer's arrows,
+  a video's full-screen button, the audio card's play), the jump to newest
+  button, the composer's attach, bolt and send and the file tray's remove
+  and "+" (batch 5).
 
 ## Forms (shadcn's conventions)
 

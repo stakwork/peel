@@ -20,7 +20,7 @@ struct FormPopover<Content: View, Footer: View>: View {
             HStack {
                 Text(title).font(Theme.font(15, .bold))
                 Spacer(minLength: 8)
-                HoverIconButton(systemImage: "xmark", help: "Close", action: close)
+                IconButton("xmark", help: "Close", action: close)
             }
             .padding(.leading, 18)
             .padding(.trailing, 10)

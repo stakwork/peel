@@ -19,7 +19,7 @@ struct ThreadPanel: View {
             DetailHeader(title: "Thread", subtitle: conversation.title) {
                 EmptyView()
             } trailing: {
-                HeaderButton(systemImage: "xmark", help: "Close thread (Escape)") {
+                IconButton("xmark", help: "Close thread (Escape)") {
                     withAnimation(.easeIn(duration: 0.15)) { model.closeThread() }
                 }
             }

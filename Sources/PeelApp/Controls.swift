@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// An icon button that opens a menu below it, such as a message's More.
+/// An icon button that opens a menu below it, such as a message's More; lit
+/// while its menu is open.
 struct MenuButton<Label: View>: View {
     @Environment(\.menuPresenter) private var presenter
     let help: String
@@ -11,7 +12,7 @@ struct MenuButton<Label: View>: View {
     @State private var anchor = MenuAnchor()
 
     var body: some View {
-        HoverIconButton(help: help) {
+        IconButton(help: help, lit: presenter?.isOpen(from: source) == true) {
             presenter?.show(entries(), at: anchor, source: source)
         } label: {
             label()
@@ -23,37 +24,6 @@ struct MenuButton<Label: View>: View {
 extension MenuButton where Label == Image {
     init(systemImage: String, help: String, source: AnyHashable? = nil, entries: @escaping @MainActor () -> [MenuEntry]) {
         self.init(help: help, source: source, entries: entries) { Image(systemName: systemImage) }
-    }
-}
-
-/// A small icon button that lights up under the pointer: an SF Symbol, or
-/// any label (`CopyButton`'s icon).
-struct HoverIconButton<Label: View>: View {
-    let help: String
-    let action: () -> Void
-    @ViewBuilder let label: () -> Label
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            label()
-                .font(.system(size: 13))
-                .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
-                .frame(width: 28, height: 26)
-                .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(help)
-        .accessibilityLabel(help)
-    }
-}
-
-extension HoverIconButton where Label == Image {
-    init(systemImage: String, help: String, action: @escaping () -> Void) {
-        self.init(help: help, action: action) { Image(systemName: systemImage) }
     }
 }
 

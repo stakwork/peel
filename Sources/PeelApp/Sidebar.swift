@@ -567,19 +567,13 @@ struct ConnectionBolt: View {
     private var connected: Bool { model.connection == .connected }
 
     var body: some View {
-        Button {
+        IconButton(help: model.connection.label, size: .sm, lit: showing) {
             showing.toggle()
         } label: {
             Image(systemName: "bolt.fill")
-                .font(.system(size: 13))
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
                 .receivedGlow(model.money)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(model.connection.label)
-        .accessibilityLabel(model.connection.label)
         .peelPopover(isPresented: $showing) {
             ConnectionCard()
         }

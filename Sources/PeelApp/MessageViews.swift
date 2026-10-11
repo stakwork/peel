@@ -908,13 +908,13 @@ private struct HoverBar: View {
         let message = row.message
         HStack(spacing: 0) {
             if message.isLinkable(inTribe: row.inTribe) {
-                HoverIconButton(systemImage: "arrowshape.turn.up.left", help: "Reply (R)") {
+                IconButton("arrowshape.turn.up.left", help: "Reply (R)") {
                     withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
                 }
             }
             if row.canBoost {
                 // One tap boosts with the boost amount (Account sets it).
-                HoverIconButton(systemImage: "bolt", help: model.quickBoostLabel) {
+                IconButton("bolt", help: model.quickBoostLabel) {
                     Task { await model.quickBoost(message) }
                 }
             }

@@ -364,10 +364,10 @@ struct FileCard: View {
                 EmptyView()
             case .idle, .held, .failed, .ready:
                 if model.opensAsPage(message) {
-                    HoverIconButton(systemImage: "globe", help: "Open in Peel", action: openPage)
+                    IconButton("globe", help: "Open in Peel", action: openPage)
                 }
                 if handle.savedTo == nil {
-                    HoverIconButton(systemImage: "arrow.down.to.line", help: "Download to Downloads") {
+                    IconButton("arrow.down.to.line", help: "Download to Downloads") {
                         Task { await model.saveToDownloads(message) }
                     }
                 }

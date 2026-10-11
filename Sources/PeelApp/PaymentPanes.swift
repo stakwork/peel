@@ -10,7 +10,7 @@ struct PaneFrame<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: title, leading: { EmptyView() }) {
-                HeaderButton(systemImage: "xmark", help: "Close (Escape)", action: close)
+                IconButton("xmark", help: "Close (Escape)", action: close)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {

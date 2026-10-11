@@ -33,6 +33,11 @@ final class MenuPresenter {
     private(set) var isOpen = false
     private(set) var source: AnyHashable?
 
+    /// The open menu was opened from `source`: the button that opened it is lit.
+    func isOpen(from source: AnyHashable?) -> Bool {
+        source != nil && isOpen && self.source == source
+    }
+
     /// A short note at the bottom of the host window, such as "Copied".
     struct Toast: Equatable {
         let id = UUID()

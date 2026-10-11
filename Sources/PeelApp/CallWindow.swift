@@ -96,7 +96,7 @@ private struct CallRoomView: View {
 
     private var keepOnTop: some View {
         let on = call.keepOnTop
-        return HoverIconButton(help: on ? "Stop keeping the call above other windows" : "Keep the call above other windows") {
+        return IconButton(help: on ? "Stop keeping the call above other windows" : "Keep the call above other windows") {
             call.keepOnTop.toggle()
         } label: {
             if on {

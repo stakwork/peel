@@ -180,8 +180,10 @@ extension Storage {
     /// (`create_sphinx_msg`), while a message it takes for ours by its date
     /// alone (`dec_ts_matches`, which any sender can arrange) has none.
     /// The tag travels to the recipient, who can replay it: the engine drops
-    /// a copy signed by the person whose chat it is (`Engine.message(from:)`),
-    /// and no request goes to a tribe, so none there counts.
+    /// a copy signed by the person whose chat it is (`Engine.message(from:)`)
+    /// and, in a tribe, a later copy of a tag already held (`Engine.isReplay`).
+    /// No request goes to a tribe, so none there counts, which also covers
+    /// rows stored before that check.
     /// `invoiceProblem` asks this only of an invoice our own server made.
     func isOurRequest(paymentHash: String) throws -> Bool {
         try pool.read { db in

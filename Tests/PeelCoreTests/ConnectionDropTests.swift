@@ -211,7 +211,7 @@ struct ConnectionDropTests {
     /// An invoice payment cut short stays pending, and paying it again is
     /// refused as pending rather than sent twice.
     @Test func anInvoicePaymentCutShortIsNotPaidAgain() async throws {
-        let bolt11 = try someoneElsesInvoice()
+        let bolt11 = try madeInvoice().bolt11
         let invoice = try Invoice(bolt11)
         let (transport, _) = cutTransport(accepting: 0, then: cutShort)
         try await withEngine(transport: transport) { engine, storage throws in

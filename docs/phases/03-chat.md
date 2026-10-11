@@ -377,7 +377,9 @@ by `TribeInfo.fetch` (only from a host already trusted for that tribe).
 `/code-review high`, all fixed: `read`/`mute` lost their wait before exit
 (merge slip); a tribe found on another host could never be named (pasting its
 link now looks it up); a restore replaying our leave brought the tribe back
-(own join/leave now set membership); a joined link could set the account's
+(own join/leave now set membership; since 2026-10-11 only a join replayed on
+a restore does, a member can replay our tag: `04-money.md`, "Our tag
+replayed in a tribe"); a joined link could set the account's
 tribes host (now config or flag only); a tribe's echo of our message did not
 mark it delivered (Retry would have paid twice); a join/leave note could hide
 the time under the message before it; `tribeSenders` counted joins/leaves and

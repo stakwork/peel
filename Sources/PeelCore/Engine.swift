@@ -681,6 +681,15 @@ public actor Engine {
         var droppedIndex = self.droppedIndex
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
+        // The tags of our copies taken in this call, with their uuids (`isReplay`).
+        var tagged: [String: String] = [:]
+        // A message passed over unstored; the sync cursor still moves past it.
+        func skip(_ message: Message) {
+            if let index = message.serverIndex, index > droppedIndex {
+                droppedIndex = index
+                commit.settings[.droppedIndex] = String(index)
+            }
+        }
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
@@ -688,6 +697,10 @@ public actor Engine {
             }
             guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState) else { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
+            if try isReplay(message, original: decoded.fields?.originalUuid, state: newState, taken: &tagged) {
+                skip(message)
+                continue
+            }
             if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
                let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
                 knownTribes[found.pubkey] = found
@@ -704,10 +717,7 @@ public actor Engine {
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
                 if tribe.left {
-                    if let index = message.serverIndex, index > droppedIndex {
-                        droppedIndex = index
-                        commit.settings[.droppedIndex] = String(index)
-                    }
+                    skip(message)
                     continue
                 }
                 // The sender pubkey is the tribe's; the alias and photo are

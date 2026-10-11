@@ -398,11 +398,43 @@ extension Engine {
         return Tribe(pubkey: message.chat, host: host == tribeHost ? host : nil)
     }
 
+    /// Whether a copy the core calls ours by its tag is a member's replay of
+    /// it. Our tag opens as ours whoever sends it (`dec_tag`), and a tribe
+    /// forwards it to every member on each of our messages. A tag reaches
+    /// them only after the tribe has forwarded our message to us too, and
+    /// history comes oldest first, so the first copy with a tag is ours and
+    /// a later one (another uuid, or the same at another server index) is
+    /// a replay. Not always: a purchase or a join request goes to one
+    /// member, a long message's earlier chunks carry tags we never store,
+    /// and a fast member can race our own forward, so membership does not
+    /// lean on this alone (`membership`). The member chooses the uuid
+    /// bytes, hence `originalUuid`, and a chunk's uuid, so `original`
+    /// counts only as our send not yet taken over, of the same type and
+    /// words (`Storage.holdsTag`). `taken` holds the tags already taken in this
+    /// core call, not yet stored. Checked before the copy names a tribe,
+    /// changes our membership or aliases, or is stored. A person's chat is
+    /// left to the signer check (`message(from:)`).
+    func isReplay(
+        _ message: Message, original: String?, state: [String: Data], taken: inout [String: String]
+    ) throws -> Bool {
+        guard message.fromMe, let tag = message.tag, Self.isPerson(message.chat, in: state) != true else { return false }
+        // One delivery: its uuid at its server index (a chunked message's
+        // uuid is the sender's own `chunk_id`, so a uuid alone is not one).
+        let delivery = "\(message.uuid ?? "")@\(message.serverIndex.map(String.init) ?? "")"
+        if let first = taken[tag] { return first != delivery }
+        if try storage.holdsTag(tag, besides: message, takingOver: original) { return true }
+        taken[tag] = delivery
+        return false
+    }
+
     /// What a tribe message says about this account's place in the tribe,
-    /// or nil if nothing changes. Our own join or leave (replayed on a
-    /// restore, or sent from another device) says whether we are in it; our
-    /// own request to join comes back only from this device's send, since
-    /// the tribe forwards it to the owner alone. The owner's answers reach a
+    /// or nil if nothing changes. Our own join replayed on a restore says
+    /// we are in it. Otherwise our own join, leave and request count only
+    /// as sent from this device, which records them: a copy that arrives
+    /// may be a member's with our tag (the tribe forwards it, and a request
+    /// goes to the owner alone, so it reaches us only to forge our own
+    /// tribe's status). So a tribe left on another device, or before a
+    /// restore, stays joined here (the server never removes a leaver). The owner's answers reach a
     /// member from the tribe itself: a rejection or a removal, which the
     /// tribes server sends only to that member and the owner, and the
     /// tribe's deletion. Someone else's join never concerns us. The owner's
@@ -428,12 +460,11 @@ extension Engine {
         var changed = tribe
         if message.fromMe {
             if message.senderInfo?.role == 0 { changed.isOwner = true }
-            switch message.type {
-            case MessageType.groupJoin: changed.left = false; changed.status = .active
-            case MessageType.memberRequest: changed.left = false; changed.status = .pending
-            case MessageType.groupLeave: changed.left = true
-            default: break
-            }
+            // Our own join, leave and request are recorded when sent
+            // (`joinTribe`, `leaveTribe`); a copy that arrives may be a
+            // member's, with our tag (`isReplay`), so only a restore, which
+            // finds its tribes by our joins, takes a join from the network.
+            if message.type == MessageType.groupJoin, replaying { changed.left = false; changed.status = .active }
         } else if [MessageType.tribeDelete, MessageType.groupKick, MessageType.memberReject, MessageType.memberApprove]
                     .contains(message.type), message.senderInfo?.role != 0 {
             // The owner's decisions carry the owner's role; the tribes server

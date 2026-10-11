@@ -55,6 +55,14 @@ struct Person: Sendable {
         return Person(name: name, profile: profile, engine: created.engine, mnemonic: created.mnemonic)
     }
 
+    /// The same account and profile with a new engine, connected: a
+    /// relaunch, nothing kept in memory. Close this one's engine first.
+    func relaunched() async throws -> Person {
+        let person = Person(name: name, profile: profile, engine: try Engine(mnemonic: mnemonic, storage: storage), mnemonic: mnemonic)
+        try await person.engine.connect()
+        return person
+    }
+
     static func address(_ text: String) throws -> ServerAddress {
         guard let address = ServerAddress(text) else { throw StackError("unreadable address \(text)") }
         return address

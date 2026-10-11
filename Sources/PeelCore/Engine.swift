@@ -36,7 +36,8 @@ public actor Engine {
     /// changes while the engine keeps connected (`watchNetwork`).
     private var keepAliveTask: Task<Void, Never>?
     private var networkWatch: Task<Void, Never>?
-    /// The sends a reconnect makes again by itself (`resendRecent`).
+    /// The sends a reconnect makes by itself: its resends (`resendRecent`),
+    /// then the keys purchases are still owed (`answerOwedPurchases`).
     private var resendTask: Task<Void, Never>?
     /// The tags of the reconnect's candidates that `checkPendingSends` asked
     /// the server about on this connection, and the tags its records named

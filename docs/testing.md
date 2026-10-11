@@ -170,7 +170,8 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Two devices of one account each pay an offline contact; one goes through (review F2, and journey 2 for F4) | `Payments.twoDevicesPayAnOfflineContact` | see "Payments review, reconciliation" in `phases/04-money.md`: the recipient's history confirms one, the other reads not received, Payments counts one; a third device restored afterwards reads the failed send as failed |
 | The whole balance (nothing left for the ping), over the threshold unconfirmed: nothing moves | `Payments.refusedPaymentsMoveNothing` | pass |
 | `request_invoice` on a `NO_LIGHTNING` server | `Payments.requestInvoiceWithoutLightning` | pass (`noInvoiceFromServer`, nothing stored) |
-| Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments` | pass |
+| Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments.uploadDownloadAndDecrypt` | pass |
+| A paid picture in a DM (payments review journey 4): Alice buys it and Bob's key unlocks it; a second purchase Bob stores but does not answer before his engine closes is answered when it connects again (bug hunt N3). Each purchase costs Alice the price and the 1-sat ping once and brings Bob the price; the answers move no sats and are delivered | `Attachments.aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops` | pass (2026-10-11) |
 | Invite: make (exactly its amount), redeem by signup, seen used | `Invites.makeAndRedeem` | pass |
 | Invite: cancel refunds exactly; a signup with it afterwards gets nothing | `Invites.cancelRefunds` | pass |
 | Restore history on a second device: contact, DMs both ways, payment, tribe and post, balance | `History` | pass; once, a key exchange timed out (finding 3) |
@@ -220,4 +221,5 @@ Findings:
 Not built: invoices paid and received (the server makes invoices only with
 a Lightning node, so this needs a regtest bitcoind and CLN behind the
 mixer), migrations from a real v14 or v16 database fixture (the offline
-`MigrationTests` still cover the chain from v1), paid attachments, calls.
+`MigrationTests` still cover the chain from v1), paid attachments in a tribe,
+calls.

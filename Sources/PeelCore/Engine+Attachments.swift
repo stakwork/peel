@@ -348,12 +348,14 @@ extension Engine {
     /// (`msat`, what really arrived) cover the price, give or take the
     /// official apps' 3 sats for routing (never more than a tenth of the
     /// price, so a cheap one is not given away). A purchase is answered
-    /// once, and again only if its answer failed. One that pays too little
-    /// is left unanswered: the official apps refund it automatically, but
-    /// two of this account's devices online at once would each refund it
-    /// (see docs/phases/04-money.md). That is said as it arrives
-    /// (`reportsShortfall`), not at every connection.
-    func answerPurchase(_ purchase: Message, reportsShortfall: Bool = true) async throws {
+    /// once, and again only if its answer did not go (`Storage.isAnswered`).
+    /// One that pays too little is left unanswered: the official apps
+    /// refund it automatically, but two of this account's devices online
+    /// at once would each refund it (see docs/phases/04-money.md). `auto`,
+    /// for a connection's own sweep (`answerOwedPurchases`), says nothing:
+    /// the shortfall was said as it arrived, and a send that fails goes
+    /// again with the next connection.
+    func answerPurchase(_ purchase: Message, auto: Bool = false) async throws {
         guard !purchase.fromMe, tribes[purchase.chat] == nil,
               let token = AttachmentFields.decode(purchase.body)?.mediaToken,
               let attachment = try storage.ownAttachment(token: token, in: purchase.chat),
@@ -363,7 +365,7 @@ extension Engine {
               try !storage.isAnswered(purchase: purchase, token: token) else { return }
         let paid = UInt64(max(purchase.msat ?? 0, 0))
         guard paid > 0, paid + min(3000, price / 10) >= price else {
-            if reportsShortfall {
+            if !auto {
                 emit.yield(.conversationError(
                     chat: purchase.chat,
                     message: "A purchase of your paid attachment brought \(Sats.format(msat: paid, of: price)), so its key was not sent"
@@ -371,30 +373,29 @@ extension Engine {
             }
             return
         }
-        // Its arrival and a connection's sweep may both reach it.
-        let answering = "answer \(purchase.id ?? -1)"
-        guard money.sendsInFlight.insert(answering).inserted else { return }
-        defer { money.sendsInFlight.remove(answering) }
+        // Its arrival and a connection's sweep may both come here; nothing
+        // waits between the check above and `deliver` storing the answer,
+        // pending, so whichever is second finds it answered.
         var answer = ["content": "", "mediaKey": key, "mediaKeyForSelf": key, "mediaToken": token]
         answer["mediaType"] = fields.mediaType
-        try await deliver(body: try Self.json(answer), to: purchase.chat, type: MessageType.purchaseAccept, replacing: nil)
+        _ = try await deliver(
+            body: try Self.json(answer), to: purchase.chat, type: MessageType.purchaseAccept, replacing: nil, auto: auto
+        )
     }
 
     /// After the connection comes back (`cameOnline`), on that connection:
-    /// answers each purchase still owed its key, through `answerPurchase`.
-    /// Its arrival answers it only as a follow-up of the commit that stored
-    /// it, so a Peel that stopped in between, or whose answer failed, owes
-    /// it still. Not while a restore is filling in history, whose answers
-    /// may be still to come.
+    /// answers each purchase still owed its key, through `answerPurchase`,
+    /// quietly. Its arrival answers it only as a follow-up of the commit
+    /// that stored it, so a Peel that stopped in between, or whose answer
+    /// did not go, owes it still. Runs after `resendRecent`, which waits for
+    /// the server's records of our pending sends, so an answer that reached
+    /// the server is no longer pending here. Not while a restore is filling
+    /// in history, whose answers may be still to come.
     func answerOwedPurchases(on connection: Transport) async {
         guard !restoring, let purchases = try? storage.receivedPurchases() else { return }
         for purchase in purchases {
             guard transport === connection, !Task.isCancelled else { return }
-            do {
-                try await answerPurchase(purchase, reportsShortfall: false)
-            } catch {
-                emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(PeelError.readable(error))"))
-            }
+            try? await answerPurchase(purchase, auto: true)
         }
     }
 

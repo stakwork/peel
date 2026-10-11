@@ -35,6 +35,10 @@ public enum Setting: String, Sendable {
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout
+    /// "1" once the twelve words were checked: three of them typed back
+    /// (`Engine.confirmWords`), or all twelve to restore. Never the words
+    /// themselves. An account with no record has not been checked.
+    case wordsConfirmed
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

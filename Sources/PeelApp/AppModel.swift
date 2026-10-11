@@ -181,6 +181,17 @@ final class AppModel {
     /// Sats promised to people still offline (`Storage.waitingMsat`): still
     /// in the balance, but not to be spent again.
     var waitingMsat: UInt64 = 0
+    /// Whether the account's twelve words were checked (`Engine.wordsConfirmed`);
+    /// true until the account loads, so nothing asks before it is known.
+    var wordsConfirmed = true
+    /// The words check was asked for (the sidebar's reminder): the Account
+    /// screen opens it, until it ends or the screen closes.
+    var wordsCheckRequested = false
+    /// Forget's in-place confirm is open on the lock screen.
+    var confirmingForget = false
+    /// The sidebar's reminder to check the words: while the account holds
+    /// sats that would be lost with this Mac's copy of them.
+    var remindsToCheckWords: Bool { !wordsConfirmed && (balanceMsat ?? 0) > 0 }
     /// "4,000 waiting", shown beside the balance; nil when nothing waits.
     var waitingText: String? { waitingMsat > 0 ? "\(Sats.number(msat: waitingMsat)) waiting" : nil }
     /// "4,996 sats · 4,000 waiting"; nil until the server reports a balance.
@@ -493,6 +504,29 @@ final class AppModel {
     func revealWords(pin: String) async throws -> [String] {
         guard let profile else { throw PeelError("no profile") }
         return try await Task.detached { try profile.words(pin: pin) }.value
+    }
+
+    /// Records that the words were written down when `answers` (typed back,
+    /// by position) match `words`, the account's own as shown. Throws
+    /// `Engine.Failure.wrongWords` naming the positions that differ.
+    func confirmWords(_ answers: [Int: String], of words: [String]) async throws {
+        try await signedIn().confirmWords(answers, mnemonic: words.joined(separator: " "))
+        wordsConfirmed = true
+        wordsCheckRequested = false
+    }
+
+    /// The sidebar's reminder: the Account screen, with the words check open.
+    func checkWords() {
+        destination = .account
+        wordsCheckRequested = true
+    }
+
+    /// What the account holds, for Forget on the lock screen: the open
+    /// account's balance, or before it opens the one last stored.
+    func balanceBeforeForget() async -> UInt64? {
+        if engine != nil { return balanceMsat }
+        guard let profile else { return nil }
+        return await Task.detached { profile.storedBalanceMsat() }.value
     }
 
     /// Reseals the words under a new PIN, typed twice.
@@ -1006,6 +1040,8 @@ final class AppModel {
         leaveCall()
         money.reset()
         balanceMsat = nil
+        wordsConfirmed = true
+        wordsCheckRequested = false
         waitingMsat = 0
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
@@ -1033,6 +1069,7 @@ final class AppModel {
         callServer = settings.callServer
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
+        wordsConfirmed = settings.wordsConfirmed ?? false
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()

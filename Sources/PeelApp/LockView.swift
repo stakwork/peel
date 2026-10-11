@@ -7,6 +7,8 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
+    /// What the account holds, for Forget (`AppModel.balanceBeforeForget`).
+    @State private var balanceMsat: UInt64?
 
     var body: some View {
         OnboardingPage {
@@ -28,11 +30,24 @@ struct LockView: View {
                 // For a lost PIN.
                 ForgetAccountControl(
                     trigger: "Forgot your PIN? Forget this account on this Mac",
-                    explanation: "This removes the account's words and messages from this Mac. You can restore it later with your twelve words."
+                    explanation: forgetExplanation
                 )
                 .frame(maxWidth: 360)
             }
         }
+        .task { balanceMsat = await model.balanceBeforeForget() }
+        .onDisappear { model.confirmingForget = false }
+    }
+
+    /// What the account holds, then what is lost without the words: Forget
+    /// asks for no proof of them, so a lost PIN can start again.
+    private var forgetExplanation: String {
+        let holds = switch balanceMsat {
+        case nil: "Peel doesn't know how many sats this account holds."
+        case 0?: "This account holds no sats."
+        case let msat?: "This account holds \(Sats.format(msat: msat))."
+        }
+        return "\(holds) Without your twelve words, it and its sats cannot be brought back. Forgetting removes its words and messages from this Mac; with the words you can restore it here or on any device."
     }
 
     private func unlock() async {
@@ -68,13 +83,14 @@ struct ForgetAccountControl: View {
     @State private var problem: String?
 
     var body: some View {
+        @Bindable var model = model
         VStack(alignment: section ? .leading : .center, spacing: 8) {
             if section {
                 FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
             } else {
                 InlineConfirm(
                     trigger: trigger, explanation: explanation, confirm: "Forget account", style: .text, alignment: .center,
-                    action: forget
+                    confirming: $model.confirmingForget, action: forget
                 )
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)

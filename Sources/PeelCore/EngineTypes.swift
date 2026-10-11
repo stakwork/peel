@@ -219,6 +219,11 @@ extension Engine {
         case nicknameTooLong
         case inviteMessageTooLong
         case cancelInProgress
+        /// Words typed back that differ from the account's, by position
+        /// (1 to 12). Never the words.
+        case wrongWords(positions: [Int])
+        /// Words to check against that are not this account's.
+        case notThisAccountsWords
 
         public var description: String {
             switch self {
@@ -326,6 +331,11 @@ extension Engine {
             case .nicknameTooLong: "the nickname is too long"
             case .inviteMessageTooLong: "the message is too long"
             case .cancelInProgress: "an invite is already being cancelled"
+            case .wrongWords(let positions):
+                positions.count == 1
+                    ? "word \(positions[0]) does not match"
+                    : "words \(positions.map(String.init).formatted(.list(type: .and))) do not match"
+            case .notThisAccountsWords: "those are not this account's twelve words"
             }
         }
     }

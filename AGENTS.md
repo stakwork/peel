@@ -444,6 +444,9 @@ quitting before any window opens.
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
+  {"open": "check-words"}                 // the words check on Account, as the sidebar's reminder opens it
+  {"open": "lock"}                        // the lock screen, as the PIN timeout locks
+  {"open": "forget"}                      // the lock screen's Forget confirm, as its trigger opens it
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}

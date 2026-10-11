@@ -54,6 +54,41 @@ extension Engine {
         state["my_scid"] != nil && state["server_pubkey"] != nil
     }
 
+    // MARK: - The words written down
+
+    /// How many of the twelve words a check asks back.
+    public static let wordsChecked = 3
+
+    /// Positions (0 to 11, in order) of the words a check asks back,
+    /// chosen at random.
+    public static func wordsToCheck() -> [Int] {
+        Array((0..<12).shuffled().prefix(wordsChecked)).sorted()
+    }
+
+    /// Whether this account's words were checked, here or by restoring
+    /// from them. Accounts from before the check have no record: not checked.
+    public func wordsConfirmed() throws -> Bool {
+        try storage.value(for: .wordsConfirmed) == "1"
+    }
+
+    /// Records that the words were written down, if each of `answers`
+    /// (typed back, by position 0 to 11; at least `wordsChecked`) matches
+    /// the word there. `mnemonic` is the words as shown (just made, or read
+    /// with the PIN); another account's are refused. A mismatch throws
+    /// `wrongWords` with the positions, never the words, and records nothing.
+    public func confirmWords(_ answers: [Int: String], mnemonic: String) throws {
+        let words = Self.words(in: mnemonic)
+        guard words.count == 12, (try? Sphinxrs.mnemonicToSeed(mnemonic: words.joined(separator: " "))) == seed else {
+            throw Failure.notThisAccountsWords
+        }
+        guard answers.count >= Self.wordsChecked, answers.keys.allSatisfy(words.indices.contains) else {
+            throw PeelError("three of the twelve words are needed")
+        }
+        let wrong = answers.filter { Self.words(in: $0.value) != [words[$0.key]] }.keys.sorted()
+        guard wrong.isEmpty else { throw Failure.wrongWords(positions: wrong.map { $0 + 1 }) }
+        try storage.set("1", for: .wordsConfirmed)
+    }
+
     // MARK: - Account
 
     public var isRegistered: Bool { Self.isRegistered(state) }
@@ -197,6 +232,7 @@ extension Engine {
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
         public let sidebarLayout: ChatSections.Layout?
+        public let wordsConfirmed: Bool?
         public let connection: ConnectionState
     }
 
@@ -208,7 +244,7 @@ extension Engine {
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
             notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
-            connection: connection
+            wordsConfirmed: try? wordsConfirmed(), connection: connection
         )
     }
 

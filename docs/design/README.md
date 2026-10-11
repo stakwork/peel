@@ -261,7 +261,17 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
   Notifications; and "Remove this account from this Mac", the only red text.
 - **New account:** Welcome (invite or restore), then four steps: invite,
   name and photo, a six-digit PIN with an optional Touch ID unlock, and the
-  twelve words with an "I've written them down" check before Peel opens.
+  twelve words. "I've written them down" then asks for three of them, at
+  random places, typed back; Peel opens once they match (finding N5,
+  2026-10-11). A wrong word is named by its place, never shown.
+- **The words checked** are a setting of the account (`wordsConfirmed`),
+  never the words: set by that check, by the same check from Account's
+  "Twelve words" row (after the PIN), or by a restore. Accounts from
+  before it count as not checked. While one holds sats unchecked, a quiet
+  card at the foot of the sidebar, "Check your twelve words", opens the
+  check; no colour, as a state rather than an alarm. Forget on the lock
+  screen says first what the account holds and that without the words it
+  and its sats cannot be brought back.
 - **Restore:** twelve word fields (paste fills all twelve, suggestions as you
   type), then a progress page: account, contacts, messages with a count,
   tribes. "Open Peel" works before history finishes.

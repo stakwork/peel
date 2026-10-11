@@ -111,6 +111,9 @@ public enum Account {
         let storage = try Storage(directory: profile.directory)
         try storage.set(network, for: .network)
         if needsRestore { try storage.set("1", for: .needsRestore) }
+        // Restored words were just typed, all twelve; new ones are checked
+        // once written down (`Engine.confirmWords`).
+        try storage.set(needsRestore ? "1" : "0", for: .wordsConfirmed)
         let engine = try Engine(mnemonic: mnemonic, storage: storage)
         try await engine.setAlias(alias)
         try await engine.setServer(server)

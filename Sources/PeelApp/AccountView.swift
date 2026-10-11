@@ -10,62 +10,71 @@ struct AccountView: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
-            ScrollView {
-                // Settings, not a form: facts of what is set on cards
-                // (`SettingsSection`); a text field, when one opens, is a
-                // `FormItem`.
-                VStack(alignment: .leading, spacing: 18) {
-                    IdentitySection()
-                    ContactInfoSection()
-                    SettingsSection("Account") {
-                        NameRow()
-                        Fact("Balance") {
-                            Text(model.balanceText ?? "Known once connected")
-                                .monospacedDigit()
-                                .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
-                        }
-                        Fact("Confirm payments") {
-                            PaymentConfirmationRow()
-                        }
-                        Fact("Boost amount") {
-                            BoostAmountRow()
-                        }
-                        Fact("Server") {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(model.myServer ?? "None")
-                                    .textSelection(.enabled)
-                                Text(model.connection.label)
-                                    .font(Theme.font(12))
-                                    .foregroundStyle(Theme.secondaryText)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // Settings, not a form: facts of what is set on cards
+                    // (`SettingsSection`); a text field, when one opens, is a
+                    // `FormItem`.
+                    VStack(alignment: .leading, spacing: 18) {
+                        IdentitySection()
+                        ContactInfoSection()
+                        SettingsSection("Account") {
+                            NameRow()
+                            Fact("Balance") {
+                                Text(model.balanceText ?? "Known once connected")
+                                    .monospacedDigit()
+                                    .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
+                            }
+                            Fact("Confirm payments") {
+                                PaymentConfirmationRow()
+                            }
+                            Fact("Boost amount") {
+                                BoostAmountRow()
+                            }
+                            Fact("Server") {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(model.myServer ?? "None")
+                                        .textSelection(.enabled)
+                                    Text(model.connection.label)
+                                        .font(Theme.font(12))
+                                        .foregroundStyle(Theme.secondaryText)
+                                }
                             }
                         }
-                    }
-                    TimeZoneSection()
-                    SettingsSection("Security") {
-                        if model.profile?.requiresPIN == true {
-                            ChangePINRow()
-                            PINTimeoutRow()
+                        TimeZoneSection()
+                        SettingsSection("Security") {
+                            if model.profile?.requiresPIN == true {
+                                ChangePINRow()
+                                PINTimeoutRow()
+                            }
+                            WordsRow()
+                                .id(WordsRow.id)
+                            WebsiteDataRow()
                         }
-                        WordsRow()
-                        WebsiteDataRow()
+                        SettingsSection("Notifications") {
+                            NotificationsRow()
+                            NotificationTextRow()
+                        }
+                        ForgetAccountControl(
+                            trigger: "Forget this account on this Mac…",
+                            explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
+                            section: true
+                        )
                     }
-                    SettingsSection("Notifications") {
-                        NotificationsRow()
-                        NotificationTextRow()
-                    }
-                    ForgetAccountControl(
-                        trigger: "Forget this account on this Mac…",
-                        explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
-                        section: true
-                    )
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 32)
+                    .padding(.bottom, 40)
+                    .frame(maxWidth: .infinity)
+                    // In the scroll view as well: a click there never reaches a gesture outside it.
+                    .endsEditingOnClick()
                 }
-                .frame(maxWidth: 640, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 32)
-                .padding(.bottom, 40)
-                .frame(maxWidth: .infinity)
-                // In the scroll view as well: a click there never reaches a gesture outside it.
-                .endsEditingOnClick()
+                // The sidebar's reminder opened the words check.
+                .task(id: model.wordsCheckRequested) {
+                    guard model.wordsCheckRequested else { return }
+                    try? await Task.sleep(for: .milliseconds(100))
+                    proxy.scrollTo(WordsRow.id, anchor: .center)
+                }
             }
         }
         .endsEditingOnClick()
@@ -331,13 +340,22 @@ private struct PINTimeoutRow: View {
 private struct WordsRow: View {
     @Environment(AppModel.self) private var model
 
+    static let id = "words"
     private static let shownFor: TimeInterval = 30
 
+    /// Show the words, or check them: three typed back from paper, the
+    /// words read with the PIN but never shown.
+    private enum Purpose { case show, check }
+
+    @State private var purpose = Purpose.show
     @State private var askingPIN = false
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
     @State private var words: [String] = []
+    /// The places of the three words a check asks back, and what was typed.
+    @State private var positions: [Int] = []
+    @State private var answers: [String] = []
     @State private var hideAt = Date.distantPast
     @State private var visible = false
     @State private var confirmingCopy = false
@@ -352,22 +370,32 @@ private struct WordsRow: View {
             Fact("Twelve words") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
-                    Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                    Group {
+                        Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
+                        Text(model.wordsConfirmed ? "Your written copy is checked" : "Your written copy is not checked yet")
+                    }
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
                 }
             } trailing: {
                 if words.isEmpty, !askingPIN {
-                    Button("Show words") { start() }
-                        .buttonStyle(.peel(.outline))
+                    HStack(spacing: 8) {
+                        if !model.wordsConfirmed {
+                            Button("Check words") { start(.check) }
+                                .buttonStyle(.peel(.outline))
+                        }
+                        Button("Show words") { start(.show) }
+                            .buttonStyle(.peel(.outline))
+                    }
                 } else {
-                    Button(words.isEmpty ? "Cancel" : "Hide") { hide() }
+                    Button(words.isEmpty || purpose == .check ? "Cancel" : "Hide") { hide() }
                         .buttonStyle(.peel(.outline))
                 }
             }
             if askingPIN {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(problem ?? "Enter your PIN to show your twelve words.")
+                    Text(problem ?? (purpose == .check ? "Enter your PIN to check your twelve words."
+                                                       : "Enter your PIN to show your twelve words."))
                         .font(Theme.font(13))
                         .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
                     PinField(pin: $pin) { Task { await reveal() } }
@@ -378,11 +406,15 @@ private struct WordsRow: View {
                 .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, 8)
             } else if !words.isEmpty {
-                shown
+                if purpose == .check { checking } else { shown }
             } else if let problem {
                 ProblemText(problem)
                     .padding([.horizontal, .bottom], settingsRowPadding)
             }
+        }
+        // The sidebar's reminder asked for the check.
+        .task(id: model.wordsCheckRequested) {
+            if model.wordsCheckRequested, words.isEmpty, !askingPIN { start(.check) }
         }
         .onDisappear { hide() }
         #if os(macOS)
@@ -438,7 +470,38 @@ private struct WordsRow: View {
         }
     }
 
-    private func start() {
+    /// Three words typed back; the words themselves stay off the screen.
+    private var checking: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(problem ?? "Type these three words from what you wrote down.")
+                .font(Theme.font(13))
+                .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+            WordCheckGrid(positions: positions, answers: $answers) { Task { await check() } }
+            HStack {
+                Spacer()
+                Button { Task { await check() } } label: { Text("Check").buttonProgress(working) }
+                    .buttonStyle(.peel(.primary))
+                    .disabled(answers.contains { $0.trimmed.isEmpty })
+            }
+        }
+        .padding([.horizontal, .bottom], settingsRowPadding)
+    }
+
+    private func check() async {
+        guard !working, !answers.contains(where: { $0.trimmed.isEmpty }) else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.confirmWords(WordCheckGrid.answers(answers, at: positions), of: words)
+            hide()
+        } catch {
+            problem = WordCheckGrid.problem(error)
+        }
+    }
+
+    private func start(_ purpose: Purpose) {
+        self.purpose = purpose
         problem = nil
         if model.profile?.requiresPIN == true {
             pin = ""
@@ -457,6 +520,8 @@ private struct WordsRow: View {
             let revealed = try await model.revealWords(pin: pin)
             guard generation == started else { return }
             words = revealed
+            positions = Engine.wordsToCheck()
+            answers = positions.map { _ in "" }
             askingPIN = false
             visible = false
             hideAt = .now.addingTimeInterval(Self.shownFor)
@@ -471,11 +536,14 @@ private struct WordsRow: View {
         generation += 1
         problem = nil
         words = []
+        positions = []
+        answers = []
         pin = ""
         askingPIN = false
         visible = false
         confirmingCopy = false
         copiedAt = nil
+        model.wordsCheckRequested = false
     }
 }
 

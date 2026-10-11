@@ -1,4 +1,6 @@
 import Foundation
+import Sphinxrs
+import Testing
 @testable import PeelCore
 
 // Fixtures shared by the PeelCore tests. `TempProfile` lives in
@@ -81,6 +83,18 @@ func request(fromMe: Bool, id: Int = 1, chat: String? = nil) -> Message {
 let registeredState: [String: Data] = [
     "my_scid": be64(1), "server_pubkey": hex(key3G), "blockheight": be64(800_000), "device": Data("dev".utf8),
 ]
+
+/// An invoice the core makes for another account (payee and server alike,
+/// `registeredState`), valid for an hour.
+func madeInvoice(msat: UInt64 = 10_000) throws -> Invoice {
+    let seed = try Sphinxrs.mnemonicToSeed(
+        mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
+    )
+    return try Invoice(try #require(try Sphinxrs.makeInvoice(
+        seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
+        amtMsat: msat, description: "test"
+    ).invoice))
+}
 
 /// A transport that never connected: to the engine, a connection that has
 /// just gone, so every publish throws `notConnected`. Nothing dials it.

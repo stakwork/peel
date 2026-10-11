@@ -414,7 +414,8 @@ extension Engine {
         }
         // Our own request, made by our server on another device: paying it
         // would move sats from us to us, or mark it paid with none moved.
-        if invoice.payee == keys?.server, try storage.isOurRequest(paymentHash: invoice.paymentHash) {
+        if let keys, invoice.payee == keys.server,
+           try storage.isOurRequest(paymentHash: invoice.paymentHash, signedBy: keys.pubkey) {
             return .ownInvoice
         }
         guard let balance = try storage.spendableMsat() else { return .balanceUnknown }

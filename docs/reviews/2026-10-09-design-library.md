@@ -771,3 +771,51 @@ library outside forms.
     call window and the sidebar call bar (they need media, a thread, a
     page or a call). Hover and pressed were not rendered in the app (the
     offscreen app is never active).
+- **Batch 5, the composer (2026-10-10).** Attach, the bolt (a direct
+  message's Send or request sats) and send are inside the one rounded
+  field, on a row under the text: attach and the bolt at the left, send at
+  the right. The reply bar and the file tray stay at the field's top, as
+  before. Only `ComposerView` changed; the tray's padding in
+  `AttachmentViews` did not need to.
+  - Attach and the bolt are ghost `IconButton`s (28 square); the bolt is
+    `lit` while its panel is open, drawn as under the pointer, where it
+    was `attention` amber before. Send is `PeelButton` `.sm`, a
+    28 pt square: `.primary` when there is something to send, `.ghost`
+    and disabled otherwise (a half-opacity arrow, no fill). The old one
+    was a 28 pt `accent` circle, muted grey when empty; the new one is
+    `button` blue in a rounded square. Its label is framed to `.sm`'s
+    height less its padding, so it is square: `IconButton` has no primary
+    variant, so send stays a `PeelButton` until a second filled icon
+    button wants one.
+  - New: a click anywhere in the field that no button or the text takes
+    puts the cursor in the text (a tap on its background, hidden from
+    VoiceOver), and so does a click on the reply bar outside its ✕.
+    Before, only a click on the text itself did.
+  - The field keeps radius 18 but is now `.continuous`, like the reply
+    bar's top corners: with the button row it is always taller than twice
+    the radius, which was the reason for `.circular`.
+  - The mention suggestions line up with the field's left edge (the
+    composer's 20 pt inset) instead of a fixed 62 that assumed the
+    buttons outside.
+  - Unchanged: Return sends, Shift- and Option-Return add a line, Escape
+    stops replying then closes the thread, the `@` keys, focus, drafts,
+    the paid attachment's price, the eight-line limit and the
+    placeholder. `ComposerField` is untouched. There is no edit banner
+    in Peel to keep (editing a sent message is not built).
+  - Renders: before (`origin/main`) and after, offscreen on new
+    development profiles on the loopback stack (a DM with Bob, a tribe
+    at 3 sats a message), drawn at the same window width: empty, one
+    line, several lines, a picture in the tray with a 50-sat price,
+    replying, Send sats open, and the narrowest window (760, the
+    window's minimum). A temporary driver step (not committed) set the
+    reply, the tray and the width, which no key reaches.
+  - Real keys: typing, Shift-Return for a new line, Return sending (one
+    two-line message, confirmed by the server, and the field cleared) and
+    Escape ending the reply, in both builds. The timeline stayed drawn
+    while Shift-Return grew the field, its last message moving up with
+    the field's top, with no blank or jump. Idle with the
+    composer focused and text in it: 0.0% CPU over 40 seconds (before:
+    0 to 1.4%).
+  - Not checked: the pointer (hover, the click in the field's empty
+    part), since the offscreen app is never active and has no mouse
+    step; the thread composer; light mode.

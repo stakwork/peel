@@ -4,7 +4,8 @@
 
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
-plan, #157) and PR 2 (the AgentKit data layer).
+plan, #157) and PR 2 (the AgentKit data layer). PR 3 (model clients and
+the turn loop, driven by `peel agent`) is in review.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -170,6 +171,56 @@ Later: compaction, then memory.
   orders new events after old ones.
 - Next: share the Event and Record shapes with Tom T. For sync, cap how
   far ahead a remote stamp may be, and authenticate events.
+
+**PR 3, model clients and the turn loop (2026-10-11).**
+- Done: `ModelProvider` with two clients of our own, `AnthropicProvider`
+  (Messages, streamed) and `OpenAICompatibleProvider` (Chat Completions,
+  OpenAI and OpenRouter), over one shared `URLSession` with no cookies,
+  cache or redirects, https only (or http to this Mac). `ModelError`
+  words a bad key, a rate limit, an outage, no network and a refused
+  request plainly, with the key scrubbed from provider messages. `Tool`
+  (with its `read` or `send` effect), `ToolRegistry`, the `current_time`
+  tool, `ContextWindow` (recent whole turns within a token budget,
+  estimated at three UTF-8 bytes a token) and `AgentLoop` (stream, run
+  tools, repeat, at most `maxSteps` model calls). `peel agent` holds a
+  streamed conversation in the terminal with the key from
+  `PEEL_AGENT_API_KEY` only; Ctrl-C stops the reply, not the process.
+  Checked by hand: no key, a fake key (401), nothing listening, an http
+  address, Ctrl-C during two replies from a local slow stream (each
+  request is cancelled and the process carries on), and two Ctrl-Cs in
+  one reply, which quit.
+- Learned: `ExpressibleByNilLiteral` on `JSONValue` turns `cond ? nil : x`
+  into `.null`, which broke props removal and the Anthropic encoder, so
+  the library has every literal but nil. Anthropic refuses whitespace-only
+  text blocks, so a stopped reply of "\n\n" would have broken every later
+  turn. Signed thinking blocks are bound to the conversation before them,
+  so the loop sends them back only within their own turn and strips them
+  from earlier ones (removing a leading run is allowed). A refused reply
+  is left out of the history, as Anthropic advises; OpenAI words its
+  refusals in `delta.refusal` and finishes with "stop". A turn that ends
+  on tool results (Stop during a tool, the step cap) gets a closing
+  assistant line, since the next turn sends no reasoning and an open tool
+  loop without it is refused; a turn with no reply adds nothing, so asking
+  again does not send the question twice. A token per four characters
+  undercounts code and CJK; a token per three UTF-8 bytes errs high for
+  English and is about right for both. The independent review found
+  those last three, a recent turn over the budget emptying the whole
+  window, and two quick Ctrl-Cs arriving as one signal.
+- Not applied, with reasons: server-side refusal `fallbacks` (a mid-stream
+  fallback changes which blocks may be echoed back; worth doing with the
+  chat UI, when there is somewhere to show it); per-model `effort` (Opus
+  5.5 defaults to medium, which suits chat); in-place appends for
+  Anthropic thinking and tool-argument text (enum payloads cannot be
+  mutated in place, current models send thinking empty, and tool
+  arguments are small); `Tool.Effect` and `ModelError.isRetryable`, which
+  nothing reads yet, are kept because the plan needs them (the send gate,
+  Retry); the `agent` dispatch stays a check on the first argument, since
+  it opens no profile and the usage says so; `maxTokens` stays 16,000
+  (OpenAI-compatible models cap lower than Anthropic's, and one default
+  serves both); a two-chunk HTTP test of the line splitter (its unit
+  tests cover CRLF split across reads).
+- Next: PR 4, the Sphinx read tools on this loop, with every tool call
+  recorded in the AgentKit store.
 
 ## User journeys
 

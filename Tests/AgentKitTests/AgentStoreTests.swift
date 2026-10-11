@@ -3,19 +3,6 @@ import GRDB
 import Testing
 @testable import AgentKit
 
-extension JSONValue: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral,
-    ExpressibleByBooleanLiteral, ExpressibleByNilLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
-    public init(stringLiteral value: String) { self = .string(value) }
-    public init(integerLiteral value: Int) { self = .number(Double(value)) }
-    public init(floatLiteral value: Double) { self = .number(value) }
-    public init(booleanLiteral value: Bool) { self = .bool(value) }
-    public init(nilLiteral: ()) { self = .null }
-    public init(arrayLiteral elements: JSONValue...) { self = .array(elements) }
-    public init(dictionaryLiteral elements: (String, JSONValue)...) {
-        self = .object(Dictionary(elements, uniquingKeysWith: { $1 }))
-    }
-}
-
 /// A store on device `device` whose wall clock stands still at `ms`.
 private func store(_ device: String = "a", at ms: Int64 = 1_000) throws -> SQLiteAgentStore {
     try SQLiteAgentStore.inMemory(device: device, now: { ms })
@@ -66,7 +53,7 @@ struct EventFormatTests {
     }
 
     @Test func jsonValueRoundTrips() throws {
-        let value: JSONValue = ["a": [1, 2.5, "x", true, nil], "b": ["c": false]]
+        let value: JSONValue = ["a": [1, 2.5, "x", true, .null], "b": ["c": false]]
         let data = try JSONEncoder().encode(value)
         #expect(try JSONDecoder().decode(JSONValue.self, from: data) == value)
     }
@@ -190,7 +177,7 @@ struct ApplyTests {
     @Test func fieldsOfTheWrongTypeAreIgnored() throws {
         let s = try store()
         let id = try s.add(type: "T", name: "kept", body: "body", createdBy: "u")
-        try s.write(event(.update, id, ["name": 5, "type": nil, "body": true, "deleted_ms": "soon", "color": "red"],
+        try s.write(event(.update, id, ["name": 5, "type": .null, "body": true, "deleted_ms": "soon", "color": "red"],
                           wall: 9_999))
         let record = try #require(try s.read(id))
         #expect(record.name == "kept" && record.type == "T" && record.body == "body" && record.deletedMs == nil)

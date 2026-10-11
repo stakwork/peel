@@ -112,6 +112,12 @@ struct PeelCommand {
                                       room, identity, expiry and whether a token came (never the token)
           call-who <id|link>          who is on a call, from the call server's presence feed, for --wait seconds
 
+          agent                       talk with a model in the terminal, with one built-in tool (current_time);
+                                      takes no --profile. The key comes from PEEL_AGENT_API_KEY only.
+                                      --provider anthropic|openai|openrouter (default anthropic), --model <id>
+                                      (needed but for anthropic), --base-url <url>, --max-steps <n>.
+                                      Ctrl-C stops a reply, Ctrl-D quits
+
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
                               never the app's own profile)
@@ -146,6 +152,10 @@ struct PeelCommand {
     }
 
     static func run() async throws {
+        // The agent opens no account, so it needs no profile.
+        if CommandLine.arguments.dropFirst().first == "agent" {
+            return try await AgentCommand.run(Arguments(CommandLine.arguments.dropFirst(2)))
+        }
         var arguments = Arguments(CommandLine.arguments.dropFirst())
         // The app's own profile holds the real account; the CLI only ever opens
         // development profiles, and never one called "default" so the two cannot be confused.

@@ -1,0 +1,6 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-2","choices":[{"index":0,"delta":{"role":"assistant","content":"Par"},"finish_reason":null}]}
+
+data: {"error":{"code":502,"message":"Upstream provider refused sk-or-v1-abcdef123456"}}
+

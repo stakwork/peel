@@ -1,9 +1,9 @@
 import Foundation
 
 /// The history machine without the network: the run in flight, the runs
-/// queued behind it, and whether a restore is waiting for the server's
-/// counts. The engine asks for the pages it names and feeds it each one
-/// (`Engine+History`).
+/// queued behind it, whether a restore is waiting for the server's counts,
+/// and where history stands. The engine asks for the pages it names and
+/// feeds it each page, and each message that comes live (`Engine+History`).
 struct HistoryCursor: Equatable {
     /// A history fetch: which kind, the next index to ask for, and where it
     /// ends (unknown until the server says).
@@ -27,8 +27,22 @@ struct HistoryCursor: Equatable {
         case ended
     }
 
+    /// A page taken: how far it moved its run, and what follows.
+    typealias Page = (progress: Progress?, step: Step)
+
     private(set) var active: Run?
     private(set) var queued: [Run] = []
+    /// Where history stands, and the next catch-up starts: every message
+    /// below this server index has been handled, by a page of history or
+    /// as it came live (`Setting.historyFrom`).
+    var from: UInt64 = 0
+    /// Indices handled as they came live above a gap at `from`, held until
+    /// it fills. Only in memory: after a relaunch the catch-up fetches them
+    /// again.
+    private(set) var liveAbove: Set<UInt64> = []
+    /// Past any real server index: a page or live message claiming one is
+    /// the server's mistake, and moves nothing.
+    private static let pastAnyIndex = UInt64(Int64.max)
     /// `getMsgsCounts` was asked for a restore and not yet answered.
     var awaitingCounts = false
 
@@ -61,15 +75,24 @@ struct HistoryCursor: Equatable {
         return first
     }
 
-    /// Takes a page: the server indices of its messages, and the total
-    /// only history pages carry. Each page moves the run past its highest
-    /// index; a page that moves it nowhere ends the run, so an unreadable
-    /// message cannot cause an endless loop. Nil with no run in flight.
-    mutating func advance(indices: [UInt64], total: UInt64?) -> (progress: Progress?, step: Step)? {
+    /// Takes a page: the server indices of its messages (every one the
+    /// server sent, read or not), and the total only history pages carry.
+    /// Each page moves the run past its highest index; an empty page ends
+    /// it. A page behind the cursor is a duplicate or a stale reply (pages
+    /// carry no request ID) and is ignored. Nil with no run in flight, or
+    /// for a page ignored. A messages page that starts no further than
+    /// `from` moves it; a contacts page skips messages.
+    mutating func advance(indices: [UInt64], total: UInt64?) -> Page? {
         guard var run = active else { return nil }
         run.end = run.end ?? total
-        guard let reached = indices.max(), reached >= run.next, reached < UInt64(Int64.max) else {
+        guard let reached = indices.max(), reached < Self.pastAnyIndex else {
             return (nil, finish())
+        }
+        guard reached >= run.next else { return nil }
+        if run.phase == .messages, run.next <= from {
+            from = max(from, reached + 1)
+            liveAbove = liveAbove.filter { $0 >= from }
+            takeLive()
         }
         run.next = reached + 1
         let progress = Progress(phase: run.phase, reached: reached, end: run.end)
@@ -80,6 +103,14 @@ struct HistoryCursor: Equatable {
         return (progress, .request(run))
     }
 
+    /// A message handled as it came live, at server index `index`: `from`
+    /// moves past it once every index below it is in.
+    mutating func cameLive(_ index: UInt64) {
+        guard index >= from, index < Self.pastAnyIndex else { return }
+        liveAbove.insert(index)
+        takeLive()
+    }
+
     /// No page came for the run whose next index was `expected`: drops it
     /// and the queue, and returns it. Nil when that run has since moved on
     /// or ended.
@@ -88,6 +119,11 @@ struct HistoryCursor: Equatable {
         active = nil
         queued = []
         return run
+    }
+
+    /// `from` moved over the live indices that start at it.
+    private mutating func takeLive() {
+        while liveAbove.remove(from) != nil { from += 1 }
     }
 
     private mutating func finish() -> Step {

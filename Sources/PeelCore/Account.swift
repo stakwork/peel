@@ -25,13 +25,16 @@ public enum Account {
     }
 
     /// Creates an account from an invite and connects. The profile is removed
-    /// again only if the server never registered the account, since a
-    /// registered one has used the invite. Adding the inviter as the first
-    /// contact comes last; if that fails the account still exists. The tribes
-    /// host comes from the public config when the invite names the server,
-    /// unless that server is a loopback one (a local test stack, which the
-    /// production config does not describe); if the config cannot be read,
-    /// the engine tries again on coming online.
+    /// again only if no register can have reached the server: the server
+    /// redeems the invite as it registers the account, before it answers, so
+    /// an answer lost or late may hide an account that holds the invite's
+    /// sats. Such an account is returned unconfirmed and disconnected, its
+    /// words kept; it registers again as it connects, and either way the
+    /// inviter is added once the account is online (`Setting.invite`).
+    /// The tribes host comes from the public config when the invite names
+    /// the server, unless that server is a loopback one (a local test stack,
+    /// which the production config does not describe); if the config cannot
+    /// be read, the engine tries again on coming online.
     public static func signup(
         _ profile: Profile, invite: Engine.Invite, alias: String, pin: String, network: String = "bitcoin",
         server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil,
@@ -50,15 +53,15 @@ public enum Account {
         )
         let engine = created.engine
         do {
-            try await engine.connect(inviteCode: invite.code, allowUntrustedCertificate: allowUntrustedCertificate)
+            try await engine.storeInvite(invite)
+            try await engine.connect(allowUntrustedCertificate: allowUntrustedCertificate)
         } catch {
-            if await !engine.isRegistered {
+            let (registered, redeemed) = await (engine.isRegistered, engine.inviteMayBeRedeemed)
+            guard registered || redeemed else {
                 try? profile.delete()
+                throw error
             }
-            throw error
-        }
-        if let inviter = invite.inviterContactInfo {
-            try await engine.addContact(inviter, alias: invite.inviterAlias, inviteCode: invite.code)
+            await engine.disconnect()
         }
         return created
     }

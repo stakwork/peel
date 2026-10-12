@@ -71,6 +71,10 @@ actor Stack {
         /// Stops it in place: connections stay open and carry nothing.
         case freeze
         case thaw
+        /// A connection that sends a register hears nothing more from the
+        /// broker: the server's reply is lost. `hear` ends it for new ones.
+        case deafen
+        case hear
     }
 
     /// The network between the clients on the wire tap and the broker.

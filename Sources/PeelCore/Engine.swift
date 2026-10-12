@@ -32,6 +32,9 @@ public actor Engine {
     private(set) var closed = false
     /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
     private var cameOnlineHere = false
+    /// A register naming an invite may have reached the server: the account
+    /// may exist and hold the invite's sats (`Account.signup`).
+    private(set) var inviteMayBeRedeemed = false
     /// This connection's pings (`keepAlive`), and the system's network
     /// changes while the engine keeps connected (`watchNetwork`).
     private var keepAliveTask: Task<Void, Never>?
@@ -196,14 +199,14 @@ public actor Engine {
 
     // MARK: - Connection
 
-    /// Connects once and returns when the account is online. Pass the invite code
-    /// only when creating the account. A dropped connection stays dropped.
-    public func connect(inviteCode: String? = nil, allowUntrustedCertificate: Bool = false) async throws {
+    /// Connects once and returns when the account is online. A dropped
+    /// connection stays dropped.
+    public func connect(allowUntrustedCertificate: Bool = false) async throws {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
         self.allowUntrustedCertificate = allowUntrustedCertificate
-        try await establish(inviteCode: inviteCode)
+        try await establish()
         try await waitUntilRegistered()
     }
 
@@ -252,8 +255,12 @@ public actor Engine {
         emit.finish()
     }
 
-    private func establish(inviteCode: String?) async throws {
+    private func establish() async throws {
         guard let server else { throw Failure.noServer }
+        // A signup whose registration was never confirmed registers with
+        // its invite again: the server answers `already_registered` if the
+        // first register landed, and needs the invite if it did not.
+        let inviteCode = try isRegistered ? nil : storedInvite()?.code
         await teardown()
         setConnection(.connecting)
         do {
@@ -261,7 +268,7 @@ public actor Engine {
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
             let loginTime = clock.next()
             let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Transport(
+            let transport = Self.connectingForTesting ?? Transport(
                 server: server, clientID: xpub, username: loginTime, password: signature,
                 allowUntrustedCertificate: allowUntrustedCertificate
             )
@@ -280,11 +287,16 @@ public actor Engine {
                 }
                 await self?.connectionClosed(transport)
             }
-            try await run { time, state in
-                try Sphinxrs.initialSetup(
-                    seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
-                )
-            }
+            // How far the register got, as for a money send: only `.none`
+            // says it never left.
+            let time = clock.next()
+            let setup = try Sphinxrs.initialSetup(
+                seed: seed, uniqueTime: time, state: StateCodec.encode(state), device: deviceID, inviteCode: inviteCode
+            )
+            let published = try await commitAndPublish(setup, time: time)
+            if case .none = published { throw Failure.notConnected }
+            if inviteCode != nil { inviteMayBeRedeemed = true }
+            if case .unknown(let error) = published { throw error }
             let tribeTopic = try Sphinxrs.getTribeManagementTopic(
                 seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state)
             )
@@ -366,7 +378,7 @@ public actor Engine {
                 if !keepConnected || Task.isCancelled { break }
             }
             do {
-                try await establish(inviteCode: nil)
+                try await establish()
                 // Dropped again while coming online (`connectionClosed`
                 // leaves the reconnect to this loop): go again, backing off.
                 if transport != nil { break }
@@ -497,6 +509,12 @@ public actor Engine {
     /// Tests only: a transport that never connected stands for one whose
     /// connection has just gone (its publishes throw `notConnected`).
     func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+
+    /// Tests only: the connection every connect in this task makes, such
+    /// as `Transport(publishing:)`, in place of one to the server.
+    @TaskLocal static var connectingForTesting: Transport?
+    #else
+    static var connectingForTesting: Transport? { nil }
     #endif
 
     private func setConnection(_ state: ConnectionState) {
@@ -1210,6 +1228,7 @@ public actor Engine {
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }
+        addInviterIfPending()
         cameOnlineHere = true
         wakeWaiters()
         // Only on the connection this ran for: one that went meanwhile has

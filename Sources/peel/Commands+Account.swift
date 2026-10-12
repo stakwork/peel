@@ -22,6 +22,9 @@ extension Invocation {
                 tribeHost: tribeHost, memesHost: memesHost, allowUntrustedCertificate: insecure
             )
             print("account created in \(profile.directory.path)")
+            if await !created.engine.isRegistered {
+                print("the server has not confirmed it yet; any connecting command registers it again")
+            }
             try await Session(withPhoto(created.engine)).finish(after: wait)
 
         case "restore":

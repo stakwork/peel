@@ -138,6 +138,14 @@ struct OnboardingView: View {
                         .font(Theme.font(15))
                     Spacer(minLength: 0)
                 }
+                if model.myContactInfo == nil {
+                    // Signed up, the server's answer not yet in: the engine registers again as it
+                    // connects. A refused invite gets no answer at all, so the line names that too.
+                    Text("Your account is saved with these words. The server hasn't confirmed it yet, and Peel asks again each time it connects. If it never confirms, the invite may have been used or cancelled: ask whoever sent it.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Toggle("I've written them down somewhere safe, on paper", isOn: $wroteDown)
                     .toggleStyle(.checkbox)
                     .font(Theme.font(14))

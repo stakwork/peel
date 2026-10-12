@@ -153,7 +153,6 @@ extension Journeys {
                 try db.execute(sql: "UPDATE message SET status = 'FAILED', tag = NULL WHERE id = ?", arguments: [id])
             }
 
-            // Relaunch: a new engine on the same profile, nothing in memory.
             await alice.engine.close()
             let relaunched = try alice.relaunched()
             try await relaunched.engine.connect()

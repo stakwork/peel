@@ -39,7 +39,8 @@ public actor Engine {
     /// changes while the engine keeps connected (`watchNetwork`).
     private var keepAliveTask: Task<Void, Never>?
     private var networkWatch: Task<Void, Never>?
-    /// The sends a reconnect makes again by itself (`resendRecent`).
+    /// The sends a reconnect makes by itself: its resends (`resendRecent`),
+    /// then the keys purchases are still owed (`answerOwedPurchases`).
     private var resendTask: Task<Void, Never>?
     /// The tags of the reconnect's candidates that `checkPendingSends` asked
     /// the server about on this connection, and the tags its records named
@@ -1235,7 +1236,10 @@ public actor Engine {
     /// Runs once per connection, as soon as the account is registered. Decides
     /// what history to fetch: resume a run a dropped connection interrupted, do
     /// the full restore an account brought back from its words still needs, or
-    /// catch up from where history stands (`syncMessages`).
+    /// catch up from where history stands (`syncMessages`). Then, in the
+    /// background, it sends again what a reconnect sends by itself
+    /// (`resendRecent`) and answers purchases still owed their key
+    /// (`answerOwedPurchases`).
     private func cameOnline() async {
         let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
@@ -1275,7 +1279,10 @@ public actor Engine {
         // its own `cameOnline` to come.
         guard let connection, transport === connection else { return }
         resendTask?.cancel()
-        resendTask = Self.background { [weak self] in await self?.resendRecent(on: connection) }
+        resendTask = Self.background { [weak self] in
+            await self?.resendRecent(on: connection)
+            await self?.answerOwedPurchases(on: connection)
+        }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out

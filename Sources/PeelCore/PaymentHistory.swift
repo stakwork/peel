@@ -444,13 +444,42 @@ extension Storage {
     }
 
     /// Whether a purchase of ours has had its answer from here, or another
-    /// device: a key sent for that token after it, or a refund after it.
+    /// device: a key sent for that token, or a refund after it. One that
+    /// failed never reached the buyer, and a key still pending past
+    /// `Message.inFlightLimit` never reached the server (the records a
+    /// connection asks for first settle one that did), so neither counts:
+    /// the key goes again, which moves no sats.
     func isAnswered(purchase: Message, token: String) throws -> Bool {
-        try pool.read { db in
-            try Self.purchaseMessages(token: token, chat: purchase.chat, db).contains {
-                $0.fromMe && ($0.type == MessageType.purchaseAccept
-                    || ($0.type == MessageType.purchaseDeny && $0.date >= purchase.date))
+        let now = Date.now
+        return try pool.read { db in
+            try Self.purchaseMessages(token: token, chat: purchase.chat, db).contains { answer in
+                guard answer.fromMe, answer.delivery != .failed else { return false }
+                switch answer.type {
+                case MessageType.purchaseAccept:
+                    return answer.delivery != .pending || now.timeIntervalSince(answer.firstSent) <= Message.inFlightLimit
+                case MessageType.purchaseDeny:
+                    return answer.date >= purchase.date
+                default:
+                    return false
+                }
             }
+        }
+    }
+
+    /// Purchases others made in direct messages, oldest first: what
+    /// `Engine.answerOwedPurchases` looks over, through `message_purchase`
+    /// (its partial index's own `type IN`).
+    func receivedPurchases() throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message INDEXED BY message_purchase
+                    WHERE type IN (\(MessageType.purchase), \(MessageType.purchaseAccept), \(MessageType.purchaseDeny))
+                        AND type = \(MessageType.purchase) AND fromMe = 0 AND deleted = 0 AND chat NOT IN (\(Self.tribeChats))
+                    ORDER BY timestamp, id
+                    """
+            )
         }
     }
 

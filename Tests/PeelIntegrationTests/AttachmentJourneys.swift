@@ -49,5 +49,92 @@ extension Journeys {
             await alice.close()
             await bob.close()
         }
+
+        /// The payments review's journey 4: Bob sells a picture in a direct
+        /// message, Alice buys it, his key comes back and the picture
+        /// decrypts. A second one's purchase Bob stores but does not answer
+        /// before his engine closes (bug hunt N3); relaunched, he answers it.
+        /// Each purchase costs Alice its price and the ping once and brings
+        /// Bob the price; his answers move no sats, and both are delivered.
+        @Test func aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops() async throws {
+            let (alice, bob) = try await Journeys.Payments.pair()
+            let (aliceKey, bobKey) = (try alice.pubkey, try bob.pubkey)
+
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("PeelIntegration-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            /// Bob sells a picture for 20 sats; Alice's copy of it, locked.
+            func sell(_ name: String) async throws -> (sold: Int64, received: Message) {
+                let file = folder.appendingPathComponent("\(name).png")
+                try onePixelPNG.write(to: file)
+                let sold = try await bob.engine.sendAttachment(file, text: name, to: aliceKey, priceSats: 20)
+                let received = try await eventually("Alice to receive \(name)") {
+                    try alice.messages(in: bobKey).first { $0.type == MessageType.attachment && $0.content == name }
+                }
+                #expect(try alice.storage.purchaseState(of: received) == .locked)
+                return (sold, received)
+            }
+            /// Alice buys it: the price and the 1-sat ping, once, and Bob gets
+            /// the price. Their balances after.
+            func buy(_ received: Message) async throws -> (alice: UInt64, bob: UInt64) {
+                let a0 = try #require(try await alice.settledBalance())
+                let b0 = try #require(try await bob.settledBalance())
+                try await alice.engine.buyAttachment(messageID: try #require(received.id), confirmedMsat: 20_000)
+                let b1 = try #require(try await bob.balance(settlingAt: b0 + 20))
+                #expect(b1 == b0 + 20)
+                let a1 = try #require(try await alice.settledBalance())
+                #expect(a1 + 20 + Engine.pingMsat(toTribe: false) / 1000 == a0, "Alice went from \(a0) to \(a1) sats")
+                return (a1, b1)
+            }
+            /// Alice's copy unlocked by the key, and the picture it decrypts to.
+            func opened(_ received: Message, timeout: Duration = .seconds(20)) async throws -> Data {
+                try await eventually("the key for \(received.content ?? "") to arrive", timeout: timeout) {
+                    try alice.storage.purchaseState(of: received) == .unlocked
+                }
+                let downloaded = try await alice.engine.downloadAttachment(messageID: try #require(received.id))
+                return try Data(contentsOf: downloaded.file)
+            }
+
+            let first = try await sell("first")
+            _ = try await buy(first.received)
+            #expect(try await opened(first.received) == onePixelPNG)
+
+            // The second: Bob's copy has no key while the purchase lands, so
+            // it is stored and not answered, as if Peel stopped in between.
+            let second = try await sell("second")
+            let body = try #require(try bob.storage.message(id: second.sold)?.body)
+            try await bob.storage.pool.write { db in
+                try db.execute(sql: "UPDATE message SET body = ? WHERE id = ?", arguments: [
+                    #"{"mediaToken":"\#(AttachmentFields.decode(body)?.mediaToken ?? "")"}"#, second.sold,
+                ])
+            }
+            let paid = try await buy(second.received)
+            try await eventually("Bob to store the purchase") {
+                try bob.messages(in: aliceKey).filter { $0.type == MessageType.purchase && !$0.fromMe }.count == 2
+            }
+            await bob.engine.close()
+            try await bob.storage.pool.write { db in
+                try db.execute(sql: "UPDATE message SET body = ? WHERE id = ?", arguments: [body, second.sold])
+            }
+            #expect(try alice.storage.purchaseState(of: second.received) == .processing)
+
+            // Relaunched, a new engine on the same profile answers it, once.
+            let relaunched = try bob.relaunched()
+            try await relaunched.engine.connect()
+            #expect(try await opened(second.received, timeout: .seconds(40)) == onePixelPNG)
+            let answers = try await eventually("Bob's answers to be delivered") { () -> [Message]? in
+                let answers = try relaunched.messages(in: aliceKey).filter { $0.type == MessageType.purchaseAccept }
+                return answers.allSatisfy { $0.delivery == .delivered } ? answers : nil
+            }
+            #expect(answers.count == 2)
+            #expect(try await alice.settledBalance() == paid.alice)
+            #expect(try await relaunched.settledBalance() == paid.bob)
+
+            await alice.close()
+            await relaunched.close()
+        }
     }
 }
+
+/// A one-pixel PNG.
+private let onePixelPNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")!

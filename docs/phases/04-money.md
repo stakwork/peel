@@ -21,6 +21,10 @@ notified (#51). Storage was at v13 then; it is at v21 now.
   ("Payments review, waiting words and the async pay"); F5's cancel, F10
   and F3's core half open. F11's tribe-text Retry fixed ("Tribe messages
   held like payments"), its trade-offs for Tom's sign-off.
+- Paid attachments: a key still owed after a stop is sent on the next
+  connection (bug hunt N3, "A paid attachment's key owed after a stop");
+  the key still goes before the history confirms the sats (the payments
+  review's follow-up, open).
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -1868,3 +1872,52 @@ no way out.
   The take-over now writes the sats the new send carries (`Resend.msat`,
   as `deliver` writes a new row's). Test:
   `aRetriedTribeTextTakesTheSatsItNowCarries`, which fails without it.
+
+## A paid attachment's key owed after a stop (bug hunt N3, 2026-10-11)
+
+- **Problem.** The seller answered a purchase only as a follow-up of the
+  commit that stored it. A Peel that stopped in between, or whose answer
+  failed, never answered: the buyer read "Processing" for ever and could
+  not buy again. A failed type 8 also counted as answered.
+- **Fix.** Each connection, after a reconnect's resends (which wait for
+  the server's records of our pending sends), answers every purchase in a
+  direct message still owed its key (`Engine.answerOwedPurchases` over
+  `Storage.receivedPurchases`), through `answerPurchase` and its rules
+  (the price less min(3 sats, a tenth); tribes are not answered here;
+  skipped while a restore is filling in history). An answer that failed,
+  or that is still pending past `Message.inFlightLimit` (cut short by the
+  app stopping, or written into a connection already dead), no longer
+  counts (`Storage.isAnswered`), so the key goes again; it moves no sats.
+  The sweep is quiet (`auto`, as a reconnect's resends): an underpaid
+  purchase is reported only as it arrives, and a send that fails goes
+  again with the next connection. The arrival and the sweep cannot both
+  answer one purchase: the answer is stored, pending, before anything
+  waits.
+- **Tests.** `AuditMoneyTests.aPurchaseOwedItsKeyIsAnsweredOnceByTheNextConnection`
+  (never answered, failed, pending past the limit, still on its way,
+  underpaid); the payments review's journey 4,
+  `Journeys.Attachments.aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops`
+  (the price and the ping once per purchase, answers that move no sats
+  and are delivered).
+- **Left.** A second key can go: when another device of the account
+  answered while this one was away (the sweep does not wait for the
+  catch-up), when a publish failed after it left, or when two devices
+  sweep at once. Each is a message with no sats and the same key. An
+  owed purchase found by a restore is answered on the connection after
+  it. Every send moves the chat's read marker on the server, so an
+  answer sent by a connection's sweep marks that chat read.
+- **Independent review**, applied: an answer still pending past
+  `Message.inFlightLimit` no longer counts (above), and the journey checks
+  that answers are delivered, which that rule relies on; the sweep is
+  quiet (`auto` replaces `reportsShortfall`, and its copy of the arrival
+  path's error handling went); the in-flight key in `sendsInFlight` went,
+  since it could never fire; `receivedPurchases` reads through
+  `message_purchase` and the shared `tribeChats`; the journey checks the
+  sats each purchase moves and that an answer moves none; a relaunch in
+  the journeys is `Person.relaunched()`. Not applied: waiting for the
+  catch-up before sweeping, or a time limit on old purchases (a second
+  key costs nothing, an owed key is owed however old); one query for
+  owed purchases instead of two reads each (a second owner of
+  `isAnswered`'s rule, for well under a millisecond); sweeping at a
+  restore's end (the next connection does). `/security-review`: no
+  findings.

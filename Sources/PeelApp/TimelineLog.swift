@@ -40,10 +40,6 @@ enum TimelineLog {
         return composer.thread == nil ? tag(chat) : "\(tag(chat))/thread"
     }
 
-    /// Rows each list's lazy stack has made (appeared, not yet gone), by
-    /// `tag(composer)`: none made apart from none in view.
-    @MainActor static var realised: [String: Int] = [:]
-
     /// One decimal place, enough for points.
     static func points(_ value: CGFloat) -> String {
         String(format: "%.1f", Double(value))
@@ -51,20 +47,6 @@ enum TimelineLog {
 }
 
 extension View {
-    /// With the timeline log on, counts this row in `TimelineLog.realised`
-    /// while the lazy stack has it made; off, the view as it is.
-    @ViewBuilder
-    func timelineRealised(_ composer: ComposerID) -> some View {
-        if TimelineLog.enabled {
-            let list = TimelineLog.tag(composer)
-            self
-                .onAppear { TimelineLog.realised[list, default: 0] += 1 }
-                .onDisappear { TimelineLog.realised[list, default: 0] -= 1 }
-        } else {
-            self
-        }
-    }
-
     /// With the timeline log on, reports the list's whole scroll geometry and
     /// which rows are in view; off, the view as it is.
     @ViewBuilder

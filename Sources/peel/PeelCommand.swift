@@ -43,8 +43,9 @@ struct PeelCommand {
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages
           threads                     threads (tribes and contacts) this account started or wrote in, newest first
-          resend <id>                 send an undelivered message again (a failed payment: --yes over
-                                      the confirmation threshold)
+          resend <id>                 send an undelivered message again; one that carried sats (a payment,
+                                      a tribe message) only once failed (a payment: --yes over the
+                                      confirmation threshold)
           discard <id>                drop an undelivered message
           delete <id>                 delete a message for everyone (yours, or any in a tribe you own)
           unread                      unread counts and mute levels by chat

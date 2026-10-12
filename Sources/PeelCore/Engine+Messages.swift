@@ -110,7 +110,9 @@ extension Engine {
     /// message pays the tribe's current price, as a first send would, but
     /// never more than the price it was first sent at: a raise since then
     /// shows in the tribe's header, and the message must be sent anew.
-    /// A payment or boost goes again only once it failed (`isRetryable`), for
+    /// Anything that carried sats (a payment, a boost, or a tribe message,
+    /// which paid the price) goes again only once it failed (`isRetryable`):
+    /// an unconfirmed one may have paid. A payment or boost goes again for
     /// the same amount, within the balance and, like a new one, confirmed
     /// when over the threshold; a boost in a tribe only if that amount still
     /// covers the tribe's price, and only while its message can be boosted.
@@ -255,9 +257,10 @@ extension Engine {
     /// local row is written in the same transaction as the state, before
     /// publishing. If the publish fails the row is marked failed, ready to send
     /// again, and the failure is reported as a send status rather than thrown.
-    /// A payment is marked failed only when nothing was published
-    /// (`commitAndPublish`'s `.none`): once anything went out it may have
-    /// paid, so it stays pending, never to be sent again, until the server says.
+    /// Anything that carries sats (a payment, or a tribe's price) is marked
+    /// failed only when nothing was published (`commitAndPublish`'s `.none`):
+    /// once anything went out it may have paid, so it stays pending, never to
+    /// be sent again, until the server says.
     /// `auto` (a reconnect's own resend) leaves a failure to the row alone.
     func deliver(
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
@@ -306,8 +309,9 @@ extension Engine {
             failure = nil
         case .none:
             failure = Failure.notConnected
-        case .unknown(let error) where amountMsat != nil:
-            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error)))
+        case .unknown(let error) where sats > 0:
+            let what = amountMsat == nil ? "message" : "payment"
+            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error, what: what)))
             return sent?.tag
         case .unknown(let error):
             failure = error

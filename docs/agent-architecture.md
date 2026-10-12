@@ -273,6 +273,15 @@ Two kinds of provider:
   route inside the terms may be the vendor's own CLI over ACP, which is not
   possible on iPhone.
 
+## Own versus rent
+
+Peel owns what no package does for it: the Sphinx tools, the session and
+UI, the event log and sync, and small pieces tied to its storage and UI.
+It rents what providers change every month: the model clients and MCP.
+The full list of what the agent has and lacks is in
+[phases/09-agents.md](phases/09-agents.md), "Capabilities against agent
+SDKs".
+
 ## Risks
 
 - **Sends without approval.** To carry out a task the agent reads a chat,

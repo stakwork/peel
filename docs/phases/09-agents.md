@@ -5,8 +5,12 @@
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
 plan, #157), PR 2 (the AgentKit data layer, #171), PR 3 (model clients
-and the turn loop, #178) and PR 4 (the Sphinx read tools, #181). PR 5
-(the Agent chat in the app) is in review. Next: PR 6, the send tool.
+and the turn loop, #178), PR 4 (the Sphinx read tools, #181) and PR 5
+(the Agent chat in the app). PR 6, the approval gate and the send tool,
+is in review (2026-10-12, Tom's brief: every send asks first, so the gate
+came with it). `mark_chat_as_seen` is deferred to a PR of its own: it
+needs the gate's "always" wording for a tool that changes no message.
+Next: compaction (the loop-hardening branch), then memory.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -42,13 +46,13 @@ act in Sphinx.
     Clear conversation, in Account, starts over.
   - Errors show inline, with Retry.
   - Settings in an Agent section of the Account page.
-- **Sphinx tools,** with the official apps' names (below). Sends go out
-  directly, without asking. Every send shows as a row in the Agent chat,
-  linking to the message.
-- **Each tool declares its effect,** read or send, so a gate can be added
-  later without touching the tools.
+- **Sphinx tools,** with the official apps' names (below). Every send
+  asks first, on a card in the Agent chat (changed 2026-10-12 from "sends
+  go out directly"), and shows as a row linking to the message.
+- **Each tool declares its effect,** read or send; every call of a tool
+  that acts waits on the approval gate.
 
-Out of v1: payments, approval gating, memory, the graph, sync, Hive tools,
+Out of v1: payments, memory, the graph, sync, Hive tools,
 web search (optional, if it is cheap), iPhone, always-on, ACP workers,
 connectors, and reading the official apps' synced `ai_agent_config`.
 
@@ -369,6 +373,85 @@ Later: compaction, then memory.
   OpenRouter model ids are a best guess (unverified without keys); a
   wrong one shows the provider's refusal at Connect.
 
+**PR 6, the approval gate and the send tool (2026-10-12).**
+- Done: a gate for every tool that acts, in AgentKit. A tool plans first
+  (`Tool.Plan`): an answer for the model at once, or an action with a
+  `ToolIntent` (what will happen in plain words, the exact content, the
+  details, the cost, the target an "always" would cover) and the work,
+  run only once allowed, so what runs is what was shown. A tool with only
+  a handler is asked by its name and arguments. The loop asks its
+  `ToolApprover` before every action and waits; with none, the call is
+  refused. `ApprovalGate` (shared by the app and the CLI) allows by a
+  remembered rule or asks the person: Allow once, Always allow (per tool
+  and target, kept as `ApprovalRule` records in `agent.sqlite`, listed
+  and revoked in Account › Peel agent), Deny ("The user declined: …" to
+  the model). An action that costs anything, or names no target, is
+  asked every time. Stop, Clear and close take a waiting card down as
+  stopped. `send_sphinx_message(chat, text, thread_uuid?,
+  reply_to_uuid?)` in PeelAgent resolves the chat with the read tools'
+  resolver (ambiguity lists the candidates), checks the thread and reply
+  with the engine's own `checkLinks`, words the card with the tribe's
+  price ("Costs 3 sats, the minimum. Paid from your balance."), and sends
+  through the composer's `Engine.sendText`, with `priceAtMost` the price
+  on the card (a tribe whose price rose is refused, `tribePriceRose`; a
+  contact sends with a cap of 0). Text with control characters or
+  anything that draws nothing (default-ignorable code points; the joiner
+  and emoji selector only after an emoji) is refused, so nothing rides
+  along unseen. The row: "Send to Kate · Allowed once · Sent to 'Kate' ·
+  0.4 s · View", View through the agent's message link. The card sits
+  where the row will be (`Callout` in attention, `Card` for the text,
+  `PeelButton`s), takes the keys from an empty composer (Return Allow
+  once, Escape Deny; a paid send needs a click), gives them back once
+  answered; the sidebar row says "Waiting on you" in orange. `peel
+  --profile <dev> agent --send` connects and asks in the terminal (y,
+  a for always, n), control characters written out, typed-ahead lines
+  dropped before each question.
+- Checked: `ApprovalTests` (the loop with a scripted approver: allow,
+  deny, no approver, reads never ask, an answer without action, a
+  handler-only tool, Stop while waiting; the gate: once, always per
+  target, a cost never remembered, a tool with no target, across a
+  reopen, revoke, what shows whole; the session: the card, deny, Stop,
+  always across a reopen then revoke, Clear and close while waiting),
+  `SendToolTests` (a real engine on a connection that takes every
+  write: the card's words, a send and its link, the tribe price and its
+  cap, threads and replies, ids from another chat, ambiguity, hidden
+  characters, the link only at the end of a row's line). In the app
+  offscreen on a development profile against the local stack and a stub
+  of the Messages API: the card, Return sends (the message in Kate's
+  chat), Always skips the card next time, Account lists and revokes the
+  rule, the card again, Escape denies and the model is told. The CLI
+  against the same stub: once, no, always, then no question.
+- Reviews: /code-review found Return on a focused Deny allowing, the card
+  taking a Return meant for a typed message, a planted "(chat= uuid=)" in
+  a name redirecting View, thread and reply checked only in part,
+  format characters, a stale run writing on a new reply, the CLI's
+  cancel resuming a newer wait, rules failing to load hiding the chat,
+  the CLI connecting before checking its key; all fixed. /simplify: the
+  refusal words out of the loop (`ApprovalOutcome.refusal`), every
+  `.action` asked (no effect check twice), `ToolIntent.lines` and
+  `alwaysLabel`, `TribePrice.described`, the price cap in `deliver`,
+  `SQLiteAgentStore.open(for:storage:)` shared by app and CLI.
+  /security-review: invisible characters (variation selectors, fillers,
+  a joiner between letters) carrying data past the card; fixed.
+  Independent review: a tribe with no price yet offered "always" and no
+  cap, typed-ahead CLI answers, Return paying, the card off screen, an
+  allowed-then-stopped row saying allowed, a failed "always" silent, a
+  generic tool's "always" covering any arguments; all fixed.
+- Not applied, with reasons: the send's link as data on the tool's
+  result rather than parsed from its summary (it changes `LoopEvent` and
+  `Tool.Output`, which the loop-hardening branch is changing; the summary
+  cap went from 120 to 240 characters so the ids fit, and the parse only
+  takes fixed-length hex ids at the end of the line); one piece of state
+  for "a card waits" in place of `waiting` and the row's approval (both
+  are set on the main actor in one place); two contacts of one name show
+  alike on a card (the target id is the chat's, so a rule never covers
+  the other); a test for a tribe the engine does not hold (the fixture
+  cannot make one; the plan refuses it).
+- Learned: the provisioning profile had under two days left, which
+  `sign-app.sh` refuses, so the offscreen checks ran with the threshold
+  lowered to one day in the worktree, not committed; Tom's weekly
+  `scripts/run-app.sh` renews it.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,
@@ -396,8 +479,8 @@ Mastra. Have = built, Partial = some of it, Missing = not built.
 | Tools | Registry with schemas and an effect (read, send) | Have | |
 | | Caps and untrusted-text markers on tool output | Have | |
 | | Sphinx read tools | Have | Five, PR 4 |
-| | Approval gate | Missing | Needed before send and pay |
-| | Sphinx send and pay | Missing | Send is PR 6 |
+| | Approval gate | Have | PR 6: once, always per tool and chat, deny; a cost always asks; Account revokes |
+| | Sphinx send and pay | Partial | Send (PR 6), price capped at the card's; pay missing |
 | | Connectors (MCP) | Missing | Use the official MCP Swift SDK, not our own |
 | | Calendar | Missing | EventKit, read only first |
 | | Web search | Missing | |

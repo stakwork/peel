@@ -55,6 +55,15 @@ struct AgentSettingsSection: View {
                         .fixedSize()
                     }
                 }
+                // Each "Always allow" given on a card, until revoked.
+                ForEach(Array(agent.approvalRules.enumerated()), id: \.element.id) { index, rule in
+                    Fact(index == 0 ? "Always allowed" : "") {
+                        Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
+                    } trailing: {
+                        Button("Revoke") { attempt { try agent.revoke(rule) } }
+                            .buttonStyle(.peel(.outline))
+                    }
+                }
                 Fact("Conversation") {
                     Text("Clears the agent chat on this Mac. Your other chats are not touched.")
                         .font(Theme.font(12))

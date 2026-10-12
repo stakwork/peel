@@ -370,15 +370,6 @@ struct AgentSessionTests {
         dump(key, to: &dumped)
         #expect(!dumped.contains("sk-ant"))
     }
-
-    /// Waits for `condition`, up to two seconds.
-    private func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        Issue.record("timed out")
-    }
 }
 
 /// A credential kept in memory; `failing` makes reads throw, as a locked Keychain would.

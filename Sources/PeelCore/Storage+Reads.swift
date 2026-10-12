@@ -255,6 +255,11 @@ extension Storage {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
     }
 
+    /// The message a send's tag names (`Engine.sendText` returns it).
+    public func message(tag: String) throws -> Message? {
+        try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE tag = ?", arguments: [tag]) }
+    }
+
     /// Our payments, boosts and purchases to people that are still pending,
     /// in msat:
     /// the server holds them (an async pay) until the person's app comes

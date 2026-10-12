@@ -16,12 +16,14 @@ extension AppModel {
         You are Peel's agent, a helper inside Peel, a Sphinx chat app on the user's Mac. Answer plainly and \
         briefly, in Markdown when it helps. Use a tool when it gives a better answer than guessing. When the \
         tools you have cannot do what is asked, say so.
-        """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt
+        """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt + " " + SphinxTools.sendPrompt
 
-    /// The tools the agent may use over the account's `storage`: the time,
-    /// and the Sphinx read tools (`PeelAgent`).
-    static func agentTools(_ storage: Storage) -> ToolRegistry {
-        ToolRegistry([.currentTime] + SphinxTools(storage: storage).tools)
+    /// The tools the agent may use over the account's `engine`: the time,
+    /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
+    /// the person's approval for each message.
+    static func agentTools(_ engine: Engine) -> ToolRegistry {
+        let sphinx = SphinxTools(storage: engine.storage)
+        return ToolRegistry([.currentTime] + sphinx.tools + [sphinx.send(through: engine)])
     }
 
     /// Opens the message an agent's link names (`AgentMessageLink`), as a
@@ -43,12 +45,11 @@ extension AppModel {
     /// server with `-agentBaseURL http://127.0.0.1:<port>`.
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
-            let device = (try? engine.storage.value(for: .deviceID)) ?? "peel"
-            let store = try SQLiteAgentStore(path: profile.agentDatabase.path, device: device)
+            let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             let baseURL = profile.kind == .development
                 ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
             agent = AgentSession(
-                store: store, credentials: KeptCredential(item: profile.agentCredential), tools: Self.agentTools(engine.storage),
+                store: store, credentials: KeptCredential(item: profile.agentCredential), tools: Self.agentTools(engine),
                 systemPrompt: Self.agentSystemPrompt
             ) { $0.provider.client(apiKey: $0.apiKey, baseURL: baseURL) }
         } catch {
@@ -100,6 +101,7 @@ enum AgentToolTitle {
         "read_unseen_messages": "Read unseen messages",
         "read_threads": "Read threads",
         "search_messages": "Searched messages",
+        "send_sphinx_message": "Send a message",
     ]
 
     static func of(_ name: String) -> String {
@@ -113,6 +115,17 @@ enum AgentToolTitle {
     static func summary(_ line: String) -> String {
         line.replacingOccurrences(of: #" \(chat=[^)]*\)"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+    }
+
+    /// How a tool that acts was answered: "Allowed once", "Declined".
+    static func outcome(_ outcome: ApprovalOutcome, target: String?) -> String {
+        switch outcome {
+        case .allowedOnce: "Allowed once"
+        case .alwaysAllowed: target.map { "Always allowed for \($0)" } ?? "Always allowed"
+        case .allowedByRule: target.map { "Allowed, always for \($0)" } ?? "Allowed, always"
+        case .denied: "Declined"
+        case .stopped: "Stopped"
+        }
     }
 
     /// "0.1 s", "12 s".

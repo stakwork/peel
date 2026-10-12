@@ -112,7 +112,11 @@ struct SphinxToolsTests {
     private func run(_ name: String, _ input: AgentKit.JSONValue = [:], on storage: Storage) async throws -> String {
         let tool = try #require(ToolRegistry(SphinxTools(storage: storage).tools)[name])
         #expect(tool.effect == .read)
-        return try await tool.handler(input).text
+        guard case .result(let output) = try await tool.plan(input) else {
+            Issue.record("a read tool asked to act")
+            return ""
+        }
+        return output.text
     }
 
     /// The lines between the markers.

@@ -8,6 +8,16 @@ extension JSONValue {
         self = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
     }
 
+    /// Any Codable value as JSON: a record's props.
+    public init(encoding value: some Encodable) throws {
+        self = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
+    }
+
+    /// Read back as `type`.
+    public func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try JSONDecoder().decode(type, from: JSONEncoder().encode(self))
+    }
+
     /// Compact JSON text in AgentKit's stable encoding (`StableJSON`).
     public var jsonString: String {
         // Encoding a JSONValue cannot fail: every case maps to plain JSON.

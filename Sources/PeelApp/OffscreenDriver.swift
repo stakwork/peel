@@ -154,6 +154,8 @@ final class OffscreenDriver {
     /// `agent-connect`, the agent chat's Connect panel; `agent-settings`,
     /// its gear (Account at Peel agent); `agent-retry`, its
     /// Retry; `agent-view`, the first View in its newest reply;
+    /// `agent-sent-view`, View on its newest send row; `agent-always`, the
+    /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `check-words`, the words check (the sidebar's reminder).
     private func open(_ name: String) throws {
@@ -186,6 +188,23 @@ final class OffscreenDriver {
             }.first
             guard let link else { throw Failure(description: "no View link in the agent's reply") }
             _ = model.openAgentLink(link)
+        case "agent-sent-view":
+            // A click on View in the newest tool row that sent a message.
+            let summaries = model.agent?.turns.flatMap(\.tools).compactMap(\.summary) ?? []
+            guard let url = summaries.lazy.reversed().compactMap({ AgentMessageLink(summary: $0)?.url }).first else {
+                throw Failure(description: "no sent message in the agent chat")
+            }
+            _ = model.openAgentLink(url)
+        case "agent-always":
+            // A click on the waiting card's "Always allow for …".
+            guard model.agent?.waiting != nil else { throw Failure(description: "no card waiting") }
+            model.agent?.answer(.alwaysAllow)
+        case "agent-revoke":
+            // Account › Peel agent: the first "Always allowed" row's Revoke.
+            guard let agent = model.agent, let rule = agent.approvalRules.first else {
+                throw Failure(description: "no always-allowed rule")
+            }
+            try agent.revoke(rule)
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()

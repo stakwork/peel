@@ -181,6 +181,9 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Read markers and a mute across two devices of one account, both ways (nothing pushed live; the other device's ask on coming to the front brings them); a tribe join after a read leaves it behind the server's marker with nothing Peel counts, and reading it moves the marker past the join | `Reads.markersAndMutesAcrossDevices` | pass (2026-10-12) |
 | 600 messages while the tap is down, all on the server first; a live one as soon as she is back, then a quit before the catch-up ends (required, so it cannot pass untested); the next launch fetches the rest, no server index missing (bug hunt N4) | `History.aCatchUpCutShortByAQuitLeavesNoGap` | pass (2026-10-12); before the fix 501 never came, server indices 6 to 606 had gaps |
 | A malformed chunk (type 34) between two texts while the tap is down: the catch-up keeps both texts, and the next one goes past it | `History.aMessageTheCoreCannotReadLeavesOnlyItselfOut` | pass (2026-10-12); before, neither text came: the catch-up stopped at that page, and the next started there again |
+| The agent's read tools over Alice's account: Bob's two messages and his tribe thread, read side by side as a model asks (unseen, search, contacts and tribes, then the thread), with their real uuids, chat ids and unseen counts, between the markers | `Agent.readToolsSeeWhatArrived` | pass (2026-10-12) |
+| The send tool through the approval gate in the agent chat's session: allowed once, Bob receives exactly the card's words and the row links to that message (its uuid); denied, nothing leaves either side and the model is told | `Agent.aSendGoesOnlyOnceAllowed` | pass (2026-10-12) |
+| A post in Bob's paid tribe: the card's price is exactly what leaves Alice's balance; Bob doubles the price while a second card waits, and allowing it pays nothing, sends nothing, and says why | `Agent.aTribeSendPaysWhatTheCardSaidAndNeverMore` | pass (2026-10-12); without the tool's cap Alice pays the new price; before the fix the row read "The operation couldn't be completed. (PeelCore.Engine.Failure error 6.)" |
 
 Findings:
 
@@ -224,11 +227,42 @@ Findings:
    contact needs 5 sats." (`contactNeedsSats`); offline it is still told
    it is not connected.
 
+The agent's journeys (`AgentJourneys.swift`) drive AgentKit's
+`AgentSession` over a real account, as the app opens it (its
+`agent.sqlite`, the Sphinx read tools and the send tool over its engine);
+only the model is scripted (`ScriptedModel`, which asks for the calls a
+model would and keeps the tool results it was sent). Run them alone with
+`PEEL_INTEGRATION=1 SPHINX_BIN_DIR=~/sphinx-target/debug swift test --filter Journeys/Agent`.
+
 Not built: invoices paid and received (the server makes invoices only with
 a Lightning node, so this needs a regtest bitcoind and CLN behind the
 mixer), migrations from a real v14 or v16 database fixture (the offline
 `MigrationTests` still cover the chain from v1), paid attachments in a tribe,
 calls.
+
+## Live model checks
+
+`Tests/AgentKitTests/LiveProviderTests.swift` calls the real providers,
+the one proof of the wire shapes the hand-written `Fixtures/` streams only
+describe. Skipped unless `PEEL_AGENT_LIVE=1`, so plain `swift test` never
+reaches the network. Never run with a key an agent was given; Tom runs
+them with his own, one provider at a time:
+
+```sh
+PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=anthropic  PEEL_AGENT_API_KEY=sk-ant-… swift test --filter LiveProviderTests
+PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=openai     PEEL_AGENT_API_KEY=sk-…     swift test --filter LiveProviderTests
+PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=openrouter PEEL_AGENT_API_KEY=sk-or-…  swift test --filter LiveProviderTests
+# optional: PEEL_AGENT_MODEL=<id>; default, the provider's recommended model in the picker
+```
+
+With a key, for that provider: a streamed reply (more than one piece, its
+usage, ended as a finished turn) and one tool call round trip through
+`AgentLoop` (the tool's result goes back in the provider's format and the
+answer uses it). With `PEEL_AGENT_LIVE=1` alone, no key: each of the three
+providers answers a made-up key with `.invalidKey`, without the key in its
+words. The made-up key run passed on 2026-10-12 for all three; the keyed
+checks have not been run yet. A wrong model id (OpenAI's and OpenRouter's
+are unverified) fails the keyed checks with the provider's refusal.
 
 ## Timeline log
 

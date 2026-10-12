@@ -403,14 +403,18 @@ is a short plan. Update the status and the journal when you finish something.
   `SphinxToolsTests` (PeelAgent's, here for the storage fixtures: name
   resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block) and `SendToolTests` (the send
-  tool over a real engine: the card's words, the price cap, threads and
-  replies, hidden characters, the row's link); the audits'
+  tool over a real engine: the card's words, the price cap through the
+  tool (a price raised while the card waits is refused in the engine's
+  words), threads and replies, hidden characters) and
+  `AgentMessageLinkTests` (the agent's message links and a send row's
+  link, only the one at the end); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
   the clock, apply order, idempotency, per-field last write wins, forget
-  and unlink, rebuild, search, walk and ontology); recorded streams in
-  `Fixtures/` through both decoders, HTTP statuses to `ModelError`, the
+  and unlink, rebuild, search, walk and ontology); streams in `Fixtures/`
+  (written by hand from the providers' docs, never recorded) through both
+  decoders, HTTP statuses to `ModelError`, the
   request bodies over an in-process `URLProtocol` stub, the loop with
   a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
   caps, Stop during a wait, read tools side by side and in order, an
@@ -418,14 +422,19 @@ is a short plan. Update the status and the journal when you finish something.
   summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
   failures and Retry, connecting, the key, reopening, Clear) and
   `ApprovalTests` (the loop with a scripted approver, the gate's rules,
-  the session's card)
+  the session's card); `LiveProviderTests`, the opt-in checks against the
+  real providers (`PEEL_AGENT_LIVE=1`, skipped otherwise; docs/testing.md,
+  "Live model checks"); `TestSupport` (the scripted provider and approver,
+  the in-memory credential, a connected session)
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
-  `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`; `FundDev` (the bank's half of
+  `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`, `AgentJourneys`
+  (the agent's tools and approval gate over a real account, the model
+  scripted); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
@@ -640,6 +649,14 @@ or 8000); opt-in, see `docs/testing.md`:
 
 ```sh
 PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
+```
+
+`LiveProviderTests` (AgentKitTests) calls the real model providers with
+Tom's key; opt-in, never with a key an agent was given (docs/testing.md,
+"Live model checks"):
+
+```sh
+PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=anthropic PEEL_AGENT_API_KEY=<key> swift test --filter LiveProviderTests
 ```
 
 `Tests/PeelBenchmarks` times the hot paths on a synthetic account (50

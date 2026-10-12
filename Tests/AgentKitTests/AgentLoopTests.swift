@@ -91,43 +91,6 @@ struct AgentLoopTests {
         #expect(turn.summary == "Stopped. No tools ran.")
     }
 
-    @Test func cancellingDuringAToolAnswersEveryCall() async {
-        let (started, signal) = AsyncStream.makeStream(of: Void.self)
-        let slow = Tool(name: "slow", description: "", inputSchema: ["type": "object"], effect: .read) { _ in
-            signal.yield()
-            try await Task.sleep(for: .seconds(600))
-            return .text("never")
-        }
-        let provider = FakeProvider([
-            .events([
-                .toolCallCompleted(ToolCall(id: "a", name: "slow", input: [:])),
-                .toolCallCompleted(ToolCall(id: "b", name: "echo", input: [:])),
-                .finished(.toolUse),
-            ])
-        ])
-        // A send runs after the reads, so Stop during the read leaves it unrun.
-        let send = Tool(name: "echo", description: "", inputSchema: ["type": "object"], effect: .send) { _ in .text("sent") }
-        let agent = loop(provider, tools: [slow, send])
-        let task = Task { await agent.run(history: [], message: "hi") }
-        for await _ in started { break }
-        task.cancel()
-        let turn = await task.value
-
-        #expect(turn.outcome == .stopped)
-        #expect(provider.received.count == 1)
-        #expect(turn.toolsRun == ["slow"])
-        #expect(turn.toolsNotRun == ["echo"])
-        #expect(turn.messages.last?.role == .assistant)
-        #expect(
-            turn.messages.dropLast().last
-                == ModelMessage(
-                    role: .user,
-                    content: [
-                        .toolResult(ToolResult(toolCallID: "a", content: "Stopped by the user before it finished.", isError: true)),
-                        .toolResult(ToolResult(toolCallID: "b", content: "Not run: stopped by the user.", isError: true)),
-                    ]))
-    }
-
     @Test func aProviderErrorEndsTheTurnAndIsReported() async {
         let provider = FakeProvider([.failing([.textDelta("Par")], .invalidKey("bad key"))])
         let turn = await loop(provider).run(history: [], message: "hi")

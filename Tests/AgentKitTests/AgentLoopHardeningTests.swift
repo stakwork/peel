@@ -275,10 +275,11 @@ struct AgentLoopConcurrencyTests {
 
     @Test func stopWhileACardWaitsLeavesTheReadsAfterItUnrun() async throws {
         let trace = Trace()
-        let send = Tool(name: "s1", description: "", inputSchema: ["type": "object"], effect: .send) { _ in .text("never") }
+        let runs = Counter()
         let approver = ScriptedApprover(.hang)
-        let provider = FakeProvider([calls(["r1", "s1", "r2"])])
-        var agent = AgentLoop(provider: provider, tools: ToolRegistry([read("r1", trace: trace), send, read("r2", trace: trace)]),
+        let provider = FakeProvider([calls(["r1", "send", "r2"])])
+        var agent = AgentLoop(provider: provider,
+                              tools: ToolRegistry([read("r1", trace: trace), sendTool(runs: runs), read("r2", trace: trace)]),
                               model: "m", systemPrompt: "")
         agent.approver = approver
         let task = Task { await agent.run(history: [], message: "go") }
@@ -287,8 +288,11 @@ struct AgentLoopConcurrencyTests {
         let turn = await task.value
 
         #expect(turn.outcome == .stopped)
+        #expect(runs.value == 0)
+        #expect(provider.received.count == 1)
         #expect(trace.order == ["r1"])
         #expect(results(turn).map(\.content) == ["r1 done", "Not run: stopped by the user.", "Not run: stopped by the user."])
+        #expect(results(turn).map(\.isError) == [false, true, true])
         #expect(turn.toolsNotRun == ["r2"])
     }
 
@@ -329,9 +333,14 @@ struct AgentLoopConcurrencyTests {
         let turn = await task.value
 
         #expect(turn.outcome == .stopped)
+        #expect(provider.received.count == 1)
         #expect(results(turn).map(\.content) == [
             "Stopped by the user before it finished.", "Stopped by the user before it finished.", "Not run: stopped by the user.",
         ])
+        // Errors to the model, never a result it could take for an answer.
+        #expect(results(turn).allSatisfy { $0.isError })
+        // Closed on the model's side, so the next turn does not open on tool results.
+        #expect(turn.messages.last?.role == .assistant)
         #expect(turn.toolsRun == ["h1", "h2"])
         #expect(turn.toolsNotRun == ["send"])
         // Every row that opened is closed (failed); the send never opened one.

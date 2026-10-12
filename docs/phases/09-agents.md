@@ -625,6 +625,49 @@ Later: memory.
   brief says before a turn); the test helpers shared with
   `AgentSessionTests` (separate suites, small).
 
+**Agent tests: audit, journeys and live checks (2026-10-12).**
+- Audit, by the test-audit skill, of the 169 agent tests: 161 retained;
+  2 fixed, being vacuous (the failure after an allowed send now scripts a
+  Retry that would really send twice under an "always" rule; the tribe
+  price cap is now proven through the send tool, not by calling the
+  engine around it, with the price raised by `saveRecords` while the
+  card waits); 6 folded into the tests that already owned them (Stop
+  during a tool, Stop while a card waits, streaming and Stop, tool rows,
+  the send row's link moved to `AgentMessageLinkTests`). The shared
+  fixtures moved to `AgentKitTests/TestSupport`. The `Fixtures/` streams
+  were written by hand from the providers' docs, never recorded; they
+  now say so.
+- Gaps filled: `AgentJourneys` (the read tools over a real account; a
+  send allowed once, then denied; a paid tribe send costing exactly the
+  card's price, and refused when the price rises while the card waits),
+  with the model scripted and the rest real; `LiveProviderTests`, opt-in
+  with `PEEL_AGENT_LIVE=1` (a streamed reply, a tool round trip and a
+  bad key per provider; docs/testing.md, "Live model checks"). The
+  made-up key run passed against all three providers; the keyed checks
+  wait for Tom's keys.
+- Found by the journey and fixed: a send the engine refused reached the
+  model and the row as "The operation couldn't be completed.
+  (PeelCore.Engine.Failure error 6.)". `SendTool` now words a refusal
+  "Not sent to 'X'. <the engine's words> Ask the user before trying
+  again." and any other error as "may or may not have gone; check the
+  chat"; a sent message whose row cannot be read back is still "Sent".
+- Regression proofs (fix reverted, test run, restored): unlink (three
+  `ApplyTests` fail), the double send after an allowed send (fails,
+  sending twice), the declined action through compaction (fails),
+  the tool's price cap (the unit test and the tribe journey fail).
+- Reviews: /code-review, /simplify (four lanes), /security-review
+  (nothing at confidence 8) and an independent review (risk raised to
+  high: the send path moves money); their findings applied.
+- Follow-ups: "Return on a focused Deny allowed the send" is not proven
+  by a test: the fix is SwiftUI focus in `AgentViews`, PeelApp has no
+  test target, and focusing Deny offscreen needs Full Keyboard Access, a
+  system setting agents may not change; Tom checks it by hand, or an app
+  check once keyboard navigation is on. `Engine.Failure` (and
+  `MediaCrypto.Failure`) as `LocalizedError`, the deeper fix for "error
+  6" wherever `localizedDescription` is used. One agent tool list and
+  prompt in PeelAgent, shared by the app, the CLI and the journeys
+  (today each builds its own).
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

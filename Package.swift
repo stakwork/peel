@@ -63,10 +63,11 @@ let package = Package(
             resources: [.copy("Fixtures")]
         ),
         // Journeys through the real core against a local stack
-        // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1.
+        // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1. The
+        // agent's journeys drive AgentKit and PeelAgent with a scripted model.
         .testTarget(
             name: "PeelIntegrationTests",
-            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
         .testTarget(

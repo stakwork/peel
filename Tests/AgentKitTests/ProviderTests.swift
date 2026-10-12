@@ -56,16 +56,6 @@ final class StubProtocol: URLProtocol {
     }
 }
 
-private func collect(_ stream: AsyncThrowingStream<ModelEvent, Error>) async -> ([ModelEvent], ModelError?) {
-    var events: [ModelEvent] = []
-    do {
-        for try await event in stream { events.append(event) }
-        return (events, nil)
-    } catch {
-        return (events, ModelError(error))
-    }
-}
-
 private let request = ModelRequest(
     model: "test-model", system: "Be brief.",
     messages: [

@@ -3,7 +3,9 @@ import Synchronization
 import Testing
 @testable import AgentKit
 
-/// A recorded stream from `Fixtures/`.
+/// A stream from `Fixtures/`, written by hand from each provider's
+/// streaming docs (never recorded): the decoders' logic on documented
+/// shapes. The real wire shape is `LiveProviderTests`' to prove.
 func fixture(_ name: String) throws -> String {
     let url = try #require(Bundle.module.url(forResource: name, withExtension: "sse", subdirectory: "Fixtures"))
     return try String(contentsOf: url, encoding: .utf8)
@@ -140,4 +142,96 @@ func until(_ condition: () -> Bool) async throws {
         try await Task.sleep(for: .milliseconds(10))
     }
     Issue.record("timed out")
+}
+
+/// An approver that answers from a script and records what it was asked;
+/// `.hang` waits until its task is cancelled.
+final class ScriptedApprover: ToolApprover {
+    enum Answer: Sendable { case outcome(ApprovalOutcome), hang }
+
+    private let answer: Answer
+    private let asked = Mutex<[ApprovalRequest]>([])
+    var requests: [ApprovalRequest] { asked.withLock { $0 } }
+
+    init(_ answer: Answer) {
+        self.answer = answer
+    }
+
+    func approve(_ request: ApprovalRequest) async -> ApprovalOutcome {
+        asked.withLock { $0.append(request) }
+        switch answer {
+        case .outcome(let outcome):
+            return outcome
+        case .hang:
+            try? await Task.sleep(for: .seconds(600))
+            return .stopped
+        }
+    }
+}
+
+/// A send-effect tool that says what it will do, counting its runs.
+func sendTool(runs: Counter = Counter(), cost: String? = nil) -> Tool {
+    Tool(name: "send", description: "Sends.", inputSchema: ["type": "object"], effect: .send) { input in
+        let to = input["to"]?.string ?? "nobody"
+        guard to != "two" else { return .result(.text("Two chats match; ask which.")) }
+        let intent = ToolIntent(action: "Send to \(to)", content: input["text"]?.string, cost: cost,
+                                target: ToolIntent.Target(id: "id-\(to)", name: to))
+        return .action(intent) {
+            runs.increment()
+            return .text("Sent to \(to)")
+        }
+    }
+}
+
+/// A credential kept in memory; `failing` makes reads throw, as a locked Keychain would.
+final class MemoryCredentials: AgentCredentialStore {
+    private let kept = Mutex<AgentCredential?>(nil)
+    private let fails = Mutex(false)
+    var failing: Bool {
+        get { fails.withLock { $0 } }
+        set { fails.withLock { $0 = newValue } }
+    }
+
+    struct Locked: LocalizedError { var errorDescription: String? { "locked" } }
+
+    func read() throws -> AgentCredential? {
+        if failing { throw Locked() }
+        return kept.withLock { $0 }
+    }
+    func write(_ credential: AgentCredential) throws { kept.withLock { $0 = credential } }
+    func delete() throws { kept.withLock { $0 = nil } }
+}
+
+/// The credential every session test connects with.
+let testKey = AgentCredential(provider: .anthropic, model: "claude-sonnet-5-5", apiKey: "sk-ant-test-4f2a")
+
+/// A session playing `provider`'s script, connected with `testKey`
+/// unless given `credentials` of its own.
+@MainActor
+func connectedSession(
+    _ provider: FakeProvider, store: any AgentStore, tools: [Tool] = [echoTool()], credentials: MemoryCredentials? = nil
+) throws -> AgentSession {
+    let credentials = try credentials ?? {
+        let connected = MemoryCredentials()
+        try connected.write(testKey)
+        return connected
+    }()
+    return AgentSession(store: store, credentials: credentials, tools: ToolRegistry(tools), systemPrompt: "system",
+                        makeClient: { _ in provider })
+}
+
+/// A fresh path for an agent store in the temporary directory; the caller removes it.
+func temporaryStorePath() -> String {
+    FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
+}
+
+/// Every event of a stream, and the error that ended it, as `ModelError`.
+func collect(_ stream: AsyncThrowingStream<ModelEvent, Error>) async -> ([ModelEvent], ModelError?) {
+    var events: [ModelEvent] = []
+    do {
+        for try await event in stream { events.append(event) }
+        return (events, nil)
+    } catch {
+        return (events, ModelError(error))
+    }
 }

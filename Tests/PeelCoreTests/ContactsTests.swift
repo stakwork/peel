@@ -572,7 +572,7 @@ struct ContactRecordTests {
     @Test(arguments: [strangerKey, key2G])
     func aRecordThisAccountSignedIsKept(target: String) async throws {
         let (engine, storage) = try engine()
-        let own = try await engine.accountPubkey()
+        let own = await engine.accountKey
         try await receive(naming: target, index: 7, signedBy: own, on: engine)
         let kept = try #require(Engine.contact(target, in: storage.loadCoreState()))
         #expect(kept.childIndex == 7 && kept.contactKey == strangerKey)

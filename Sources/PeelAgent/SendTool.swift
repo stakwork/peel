@@ -103,8 +103,24 @@ extension SphinxTools {
             cost: price.map { "Costs \($0.described). Paid from your balance." },
             target: ToolIntent.Target(id: chat.chat, name: name))
         return .action(intent) {
-            let tag = try await engine.sendText(text, to: chat.chat, replyTo: replyTo, inThread: thread, priceAtMost: price?.msat ?? 0)
-            let sent = try tag.flatMap { try storage.message(tag: $0) }
+            let tag: String?
+            do {
+                tag = try await engine.sendText(text, to: chat.chat, replyTo: replyTo, inThread: thread, priceAtMost: price?.msat ?? 0)
+            } catch let refusal as Engine.Failure {
+                // A refusal, in the engine's words (the row and the model read
+                // them): thrown before anything is written or published, so
+                // nothing was sent. A failed publish is a status, not this.
+                throw ToolFailure(errorDescription: "Not sent to \(ChatData.quoted(chat)). \(PeelError.problem(refusal))"
+                    + " Ask the user before trying again.")
+            } catch let error where !(error is CancellationError) {
+                // Almost always before the row exists, but one path (a failed
+                // publish whose status could not be saved) may have sent it:
+                // never "not sent" without knowing.
+                throw ToolFailure(errorDescription: "The send to \(ChatData.quoted(chat)) may or may not have gone: "
+                    + "\(PeelError.readable(error)). Check the chat before sending it again.")
+            }
+            // Sent: a row that cannot be read back loses only its link.
+            let sent = tag.flatMap { try? storage.message(tag: $0) }
             if sent?.delivery == .failed {
                 return .text("Not delivered to \(ChatData.quoted(chat)): it is in the chat, marked failed, for the user to retry.")
             }

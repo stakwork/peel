@@ -1,46 +1,6 @@
 import Foundation
-import Synchronization
 import Testing
 @testable import AgentKit
-
-/// An approver that answers from a script and records what it was asked;
-/// `.hang` waits until its task is cancelled.
-final class ScriptedApprover: ToolApprover {
-    enum Answer: Sendable { case outcome(ApprovalOutcome), hang }
-
-    private let answer: Answer
-    private let asked = Mutex<[ApprovalRequest]>([])
-    var requests: [ApprovalRequest] { asked.withLock { $0 } }
-
-    init(_ answer: Answer) {
-        self.answer = answer
-    }
-
-    func approve(_ request: ApprovalRequest) async -> ApprovalOutcome {
-        asked.withLock { $0.append(request) }
-        switch answer {
-        case .outcome(let outcome):
-            return outcome
-        case .hang:
-            try? await Task.sleep(for: .seconds(600))
-            return .stopped
-        }
-    }
-}
-
-/// A send-effect tool that says what it will do, counting its runs.
-func sendTool(runs: Counter = Counter(), cost: String? = nil) -> Tool {
-    Tool(name: "send", description: "Sends.", inputSchema: ["type": "object"], effect: .send) { input in
-        let to = input["to"]?.string ?? "nobody"
-        guard to != "two" else { return .result(.text("Two chats match; ask which.")) }
-        let intent = ToolIntent(action: "Send to \(to)", content: input["text"]?.string, cost: cost,
-                                target: ToolIntent.Target(id: "id-\(to)", name: to))
-        return .action(intent) {
-            runs.increment()
-            return .text("Sent to \(to)")
-        }
-    }
-}
 
 private func sendReply(_ id: String = "c1", to: String = "Kate", text: String = "Running 10 min late") -> FakeProvider.Reply {
     toolCallReply(id: id, name: "send", input: ["to": .string(to), "text": .string(text)])
@@ -122,22 +82,6 @@ struct LoopApprovalTests {
         #expect(approver.requests.first?.intent == ToolIntent(action: "Run poke", content: #"{"who":"Kate"}"#))
     }
 
-    @Test func stopWhileWaitingRunsNothing() async throws {
-        let runs = Counter()
-        let provider = FakeProvider([sendReply(), textReply("never")])
-        let approver = ScriptedApprover(.hang)
-        let loop = loop(provider, tools: [sendTool(runs: runs)], approver: approver)
-        let task = Task { await loop.run(history: [], message: "tell Kate") }
-        while approver.requests.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
-        task.cancel()
-        let turn = await task.value
-        #expect(runs.value == 0)
-        #expect(turn.outcome == .stopped)
-        #expect(provider.received.count == 1)
-        let last = try #require(turn.messages.dropLast().last?.content.first)
-        guard case .toolResult(let result) = last else { throw ModelError.malformed("expected a tool result") }
-        #expect(result.content == "Not run: stopped by the user.")
-    }
 }
 
 /// The gate's rules: once, always (per tool and target), deny, a cost
@@ -239,10 +183,7 @@ struct ApprovalGateTests {
 @MainActor
 struct SessionApprovalTests {
     private func session(_ provider: FakeProvider, store: any AgentStore, runs: Counter = Counter()) throws -> AgentSession {
-        let credentials = MemoryCredentials()
-        try credentials.write(AgentCredential(provider: .anthropic, model: "m", apiKey: "k"))
-        return AgentSession(store: store, credentials: credentials, tools: ToolRegistry([sendTool(runs: runs)]),
-                            systemPrompt: "s", makeClient: { _ in provider })
+        try connectedSession(provider, store: store, tools: [sendTool(runs: runs)])
     }
 
     @Test func theCardWaitsThenAllowOnceSends() async throws {
@@ -277,23 +218,29 @@ struct SessionApprovalTests {
         #expect(results(provider).first?.content.hasPrefix("The user declined") == true)
     }
 
+    /// Regression: a failure after an allowed send offered Retry, which
+    /// asked the same message again and, under the "always" rule just
+    /// given, sent it a second time without a card.
     @Test func aFailureAfterASendKeepsTheReplyWithoutRetry() async throws {
         let runs = Counter()
-        let provider = FakeProvider([sendReply(), .failing([], .badRequest(status: 400, "broken"))])
+        // Were the message asked again, the model would send again.
+        let provider = FakeProvider([sendReply(), .failing([], .badRequest(status: 400, "broken")), sendReply("c2"),
+                                     textReply("Sent again.")])
         let agent = try session(provider, store: SQLiteAgentStore.inMemory(device: "t"), runs: runs)
         agent.send("tell Kate, then sum up")
         try await until { agent.waiting != nil }
-        agent.answer(.allowOnce)
+        agent.answer(.alwaysAllow)
         try await until { !agent.isRunning }
 
         #expect(runs.value == 1)
         // Kept with what ran; no Retry that would send it again.
         #expect(agent.problem == nil)
         #expect(agent.turns.last?.ending == .failed)
-        #expect(agent.turns.last?.tools.first?.approval?.outcome == .allowedOnce)
+        #expect(agent.turns.last?.tools.first?.approval?.outcome == .alwaysAllowed)
         agent.retry()
-        #expect(!agent.isRunning)
+        try await until { !agent.isRunning }
         #expect(runs.value == 1)
+        #expect(provider.received.count == 2)
     }
 
     @Test func stopWhileWaitingSendsNothing() async throws {
@@ -315,7 +262,7 @@ struct SessionApprovalTests {
     }
 
     @Test func alwaysSkipsTheCardAcrossAReopenUntilRevoked() async throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let runs = Counter()
         let first = try session(FakeProvider([sendReply(), textReply("Sent.")]), store: SQLiteAgentStore(path: path, device: "mac"),

@@ -73,19 +73,31 @@ struct SendToolTests {
         }
     }
 
+    /// The card names the price; the send it allows pays no more than
+    /// that, even when the registry raised the price while the card waited
+    /// (as the background refresh brings it in, `saveRecords`).
     @Test func aTribeSendSaysWhatItCostsAndNeverPaysMore() async throws {
         try await withTool { tool, engine, _ in
-            let (intent, _) = try action(try await plan(tool, ["chat": "bitcoin devs", "text": "gm"]))
+            let (intent, run) = try action(try await plan(tool, ["chat": "bitcoin devs", "text": "gm"]))
             #expect(intent.action == "Send to the tribe Bitcoin Devs")
             #expect(intent.cost == "Costs 3 sats, the minimum. Paid from your balance.")
             #expect(!intent.mayBeAlwaysAllowed)
 
-            // The engine refuses a price above the one agreed, and writes nothing.
-            await #expect(throws: Engine.Failure.tribePriceRose(boost: false)) {
-                try await engine.sendText("gm", to: key2G, priceAtMost: 2_000)
-            }
+            let raised = try #require(JSON.decode(
+                TribeInfo.self, from: #"{"pubkey":"\#(key2G)","name":"Bitcoin Devs","price_per_message":5000}"#))
+            await engine.saveRecords([raised], asked: .now)
+            // Refused in the engine's words, which the row and the model read.
+            let refusal = await #expect(throws: (any Error).self) { try await run() }
+            #expect(refusal?.localizedDescription
+                == "Not sent to 'Bitcoin Devs'. This tribe now charges more per message; send it as a new message."
+                + " Ask the user before trying again.")
             #expect(try rows(profile, "SELECT id FROM message WHERE fromMe = 1").isEmpty)
-            #expect(try await engine.sendText("gm", to: key2G, priceAtMost: 3_000) != nil)
+
+            // Asked again, the card says the new price, and that send goes.
+            let (again, send) = try action(try await plan(tool, ["chat": "bitcoin devs", "text": "gm"]))
+            #expect(again.cost == "Costs 5 sats. Paid from your balance.")
+            #expect(try await send().text.hasPrefix("Sent to"))
+            #expect(try rows(profile, "SELECT id FROM message WHERE fromMe = 1").count == 1)
         }
     }
 
@@ -123,7 +135,8 @@ struct SendToolTests {
 
     @Test func hiddenCharactersAndEmptyTextAreRefused() async throws {
         try await withTool { tool, _, _ in
-            for text in ["", "  ", "ok\u{202E}evil", "bell\u{7}", "tag\u{E0041}", "hid\u{FFF9}den\u{FFFB}", "a\u{2062}b", "ok\u{E0100}", "ok\u{FE01}", "a\u{200D}b", "x\u{3164}y"] {
+            // Which characters hide something is `ToolIntent.isShowable`'s (ApprovalGateTests); here, that the tool asks it.
+            for text in ["", "  ", "ok\u{202E}evil", "bell\u{7}", "hid\u{FFF9}den\u{FFFB}"] {
                 await #expect(throws: (any Error).self) { try await tool.plan(["chat": "Kate", "text": .string(text)]) }
             }
             // Lines and tabs are fine.
@@ -131,16 +144,6 @@ struct SendToolTests {
             // Emoji keep their joiner.
             _ = try action(try await plan(tool, ["chat": "Kate", "text": "family 👨‍👩‍👧"]))
         }
-    }
-
-    /// A send row's link is the tool's own, at the end of its line, never
-    /// one a name or message put earlier in it.
-    @Test func aRowsLinkIsOnlyTheOneAtTheEnd() {
-        let real = "(chat=\(keyG) uuid=\(uuid(1)))"
-        let planted = "(chat=\(key2G) uuid=\(uuid(2)))"
-        #expect(AgentMessageLink(summary: "Sent to 'Kate \(planted)' \(real)") == AgentMessageLink(chat: keyG, uuid: uuid(1)))
-        #expect(AgentMessageLink(summary: "Sent to 'Kate \(planted)'") == nil)
-        #expect(AgentMessageLink(summary: "Unseen messages in 'x' (chat=\(keyG)):") == nil)
     }
 
     @Test func aReplyOutsideTheThreadNamedIsRefusedBeforeTheCard() async throws {

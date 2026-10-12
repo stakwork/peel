@@ -71,23 +71,13 @@ struct CompactionTests {
 
 @MainActor
 struct AgentCompactionTests {
-    private let key = AgentCredential(provider: .anthropic, model: "claude-sonnet-5-5", apiKey: "sk-ant-test-4f2a")
-
     /// Three exchanges of 10 + 10 tokens: two are past the trigger, and the last one is kept.
-    private func session(_ provider: FakeProvider, path: String) throws -> AgentSession {
-        let credentials = MemoryCredentials()
-        try credentials.write(key)
-        let agent = AgentSession(
-            store: try SQLiteAgentStore(path: path, device: "mac"), credentials: credentials, tools: ToolRegistry(),
-            systemPrompt: "system", makeClient: { _ in provider })
+    private func session(_ provider: FakeProvider, path: String, tools: [Tool] = []) throws -> AgentSession {
+        let agent = try connectedSession(provider, store: SQLiteAgentStore(path: path, device: "mac"), tools: tools)
         agent.compaction.trigger = 30
         agent.compaction.keep = 25
         agent.retryPolicy = .never
         return agent
-    }
-
-    private func temporaryPath() -> String {
-        FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
     }
 
     private let first = String(repeating: "a", count: 30)
@@ -104,7 +94,7 @@ struct AgentCompactionTests {
     }
 
     @Test func olderTurnsAreSummarisedBeforeATurnAndTheSummaryIsKept() async throws {
-        let path = temporaryPath()
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let provider = FakeProvider([
             textReply(first), textReply(second), textReply("Kate said she is late."), textReply("Three."),
@@ -149,7 +139,7 @@ struct AgentCompactionTests {
     }
 
     @Test func aLaterSummaryBuildsOnTheLastAndReachesFurther() async throws {
-        let path = temporaryPath()
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let provider = FakeProvider([
             textReply(first), textReply(second), textReply("Sum one."), textReply("Three."), textReply("Sum two."),
@@ -183,22 +173,15 @@ struct AgentCompactionTests {
     }
 
     @Test func aDeclinedSendStaysDeclinedThroughASummary() async throws {
-        let path = temporaryPath()
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
-        let credentials = MemoryCredentials()
-        try credentials.write(key)
         // A reply long enough to be cut in the summary's request.
         let long = String(repeating: "recap ", count: 1_000)
         let provider = FakeProvider([
             toolCallReply(id: "c1", name: "send", input: ["to": "Kate", "text": "late"]), textReply(long),
             textReply(second), textReply("Kate was not told; the person declined."), textReply("Three."),
         ])
-        let agent = AgentSession(
-            store: try SQLiteAgentStore(path: path, device: "mac"), credentials: credentials,
-            tools: ToolRegistry([sendTool()]), systemPrompt: "system", makeClient: { _ in provider })
-        agent.compaction.trigger = 30
-        agent.compaction.keep = 25
-        agent.retryPolicy = .never
+        let agent = try session(provider, path: path, tools: [sendTool()])
         agent.send(first)
         try await until { agent.waiting != nil }
         agent.answer(.deny)
@@ -244,7 +227,7 @@ struct AgentCompactionTests {
     }
 
     @Test func aFailedSummarySendsWhatItWouldHaveAndKeepsNothing() async throws {
-        let path = temporaryPath()
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let provider = FakeProvider([
             textReply(first), textReply(second), .failing([], .badRequest(status: 400, "too long")), textReply("Three."),
@@ -269,7 +252,7 @@ struct AgentCompactionTests {
     }
 
     @Test func clearForgetsTheSummary() async throws {
-        let path = temporaryPath()
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let provider = FakeProvider([
             textReply(first), textReply(second), textReply("Summary."), textReply("Three."), textReply("Fresh."),

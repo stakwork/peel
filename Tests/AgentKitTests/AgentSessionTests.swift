@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 @testable import AgentKit
 
@@ -8,39 +7,16 @@ import Testing
 /// the store across a reopen and forgotten by Clear.
 @MainActor
 struct AgentSessionTests {
-    private let key = AgentCredential(provider: .anthropic, model: "claude-sonnet-5-5", apiKey: "sk-ant-test-4f2a")
-
     private func session(
         _ provider: FakeProvider, store: (any AgentStore)? = nil, credentials: MemoryCredentials = MemoryCredentials(),
         tools: [Tool] = [echoTool()]
     ) throws -> AgentSession {
-        AgentSession(
-            store: try store ?? SQLiteAgentStore.inMemory(device: "test"), credentials: credentials,
-            tools: ToolRegistry(tools), systemPrompt: "system", makeClient: { _ in provider })
+        try connectedSession(provider, store: store ?? SQLiteAgentStore.inMemory(device: "test"), tools: tools,
+                             credentials: credentials)
     }
 
     private func connected(_ provider: FakeProvider, store: (any AgentStore)? = nil) throws -> AgentSession {
-        let credentials = MemoryCredentials()
-        try credentials.write(key)
-        return try session(provider, store: store, credentials: credentials)
-    }
-
-    @Test func aReplyStreamsInAndBothMessagesAreKept() async throws {
-        let provider = FakeProvider([.hanging([.textDelta("Hel"), .textDelta("lo")])])
-        let agent = try connected(provider)
-        agent.send("  hi  ")
-
-        #expect(agent.isRunning)
-        #expect(agent.turns.map(\.text) == ["hi"])
-        try await until { agent.reply?.text == "Hello" }
-        agent.stop()
-        try await until { !agent.isRunning }
-
-        #expect(agent.reply == nil)
-        #expect(agent.turns.map(\.author) == [.user, .agent])
-        #expect(agent.turns.last?.text == "Hello")
-        #expect(provider.received.first?.model == "claude-sonnet-5-5")
-        #expect(provider.received.first?.system == "system")
+        try connectedSession(provider, store: store ?? SQLiteAgentStore.inMemory(device: "test"))
     }
 
     @Test func aFinishedReplyHasNoEndingAndCountsAsUnreadOffScreen() async throws {
@@ -55,15 +31,22 @@ struct AgentSessionTests {
         #expect(agent.unread == 0)
     }
 
-    @Test func stopKeepsWhatArrivedMarkedStopped() async throws {
+    /// A reply streams in; Stop keeps what arrived, marked stopped.
+    @Test func aReplyStreamsInAndStopKeepsWhatArrived() async throws {
         let provider = FakeProvider([.hanging([.textDelta("Half a "), .textDelta("thought")]), textReply("Next.")])
         let agent = try connected(provider)
         agent.isShown = true
-        agent.send("go on")
+        agent.send("  go on  ")
+        #expect(agent.isRunning)
+        #expect(agent.turns.map(\.text) == ["go on"])
         try await until { agent.reply?.text == "Half a thought" }
+        #expect(provider.received.first?.model == "claude-sonnet-5-5")
+        #expect(provider.received.first?.system == "system")
         agent.stop()
         try await until { !agent.isRunning }
 
+        #expect(agent.reply == nil)
+        #expect(agent.turns.map(\.author) == [.user, .agent])
         #expect(agent.turns.last?.text == "Half a thought")
         #expect(agent.turns.last?.ending == .stopped)
         #expect(agent.problem == nil)
@@ -73,20 +56,6 @@ struct AgentSessionTests {
         agent.send("and?")
         try await until { !agent.isRunning }
         #expect(provider.received.last?.messages.map(\.text) == ["go on", "Half a thought", "and?"])
-    }
-
-    @Test func toolsRunAsActivityAndAreKept() async throws {
-        let provider = FakeProvider([toolCallReply(id: "c1", name: "echo", input: ["n": 1]), textReply("Done.")])
-        let agent = try connected(provider)
-        agent.send("use the tool")
-        try await until { !agent.isRunning }
-
-        let tools = try #require(agent.turns.last?.tools)
-        #expect(tools.map(\.name) == ["echo"])
-        #expect(tools.first?.summary == #"{"n":1}"#)
-        #expect(tools.first?.duration != nil)
-        #expect(tools.first?.failed == false)
-        #expect(agent.turns.last?.text == "Done.")
     }
 
     @Test func aRefusedKeyIsAProblemWithNothingKeptAndRetryAsksAgain() async throws {
@@ -167,9 +136,9 @@ struct AgentSessionTests {
         #expect(!agent.isRunning)
         #expect(provider.received.isEmpty)
 
-        try await agent.connect(key)
+        try await agent.connect(testKey)
         #expect(agent.connection == AgentSession.Connection(provider: .anthropic, model: "claude-sonnet-5-5", keyHint: "4f2a"))
-        #expect(try credentials.read() == key)
+        #expect(try credentials.read() == testKey)
         try await until { !agent.isRunning }
         #expect(agent.turns.map(\.text) == ["hello?", "Answer."])
         // The check was one small call of its own.
@@ -180,7 +149,7 @@ struct AgentSessionTests {
     @Test func aKeyThatFailsItsCheckIsNotKept() async throws {
         let credentials = MemoryCredentials()
         let agent = try session(FakeProvider([.failing([], .invalidKey(nil))]), credentials: credentials)
-        await #expect(throws: ModelError.invalidKey(nil)) { try await agent.connect(key) }
+        await #expect(throws: ModelError.invalidKey(nil)) { try await agent.connect(testKey) }
         #expect(agent.connection == nil)
         #expect(try credentials.read() == nil)
     }
@@ -188,13 +157,13 @@ struct AgentSessionTests {
     @Test func theModelChangesAndTheKeyIsRemoved() async throws {
         let provider = FakeProvider([textReply("Hi.")])
         let credentials = MemoryCredentials()
-        try credentials.write(key)
+        try credentials.write(testKey)
         let agent = try session(provider, credentials: credentials)
 
         try agent.setModel("claude-opus-5-5")
         #expect(agent.connection?.model == "claude-opus-5-5")
         #expect(try credentials.read()?.model == "claude-opus-5-5")
-        #expect(try credentials.read()?.apiKey == key.apiKey)
+        #expect(try credentials.read()?.apiKey == testKey.apiKey)
 
         try agent.removeKey()
         #expect(agent.connection == nil)
@@ -205,7 +174,7 @@ struct AgentSessionTests {
     }
 
     @Test func theConversationSurvivesAReopen() async throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let first = try connected(
             FakeProvider([toolCallReply(id: "c1", name: "echo", input: ["n": 1]), textReply("Done."),
@@ -263,7 +232,7 @@ struct AgentSessionTests {
     }
 
     @Test func toolCallsComeBackInTheOrderTheyRanAndRepeatedIdsKeepTheirOwnRows() async throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let names = ["echo", "zeta", "alpha", "mid"]
         let tools = names.map { name in
@@ -278,25 +247,21 @@ struct AgentSessionTests {
                      .toolCallCompleted(ToolCall(id: "call_1", name: "mid", input: [:])), .finished(.toolUse)]),
             textReply("Done."),
         ])
-        let credentials = MemoryCredentials()
-        try credentials.write(key)
-        let agent = try session(provider, store: SQLiteAgentStore(path: path, device: "mac"), credentials: credentials,
-                                tools: tools)
+        let agent = try connectedSession(provider, store: SQLiteAgentStore(path: path, device: "mac"), tools: tools)
         agent.send("run them")
         try await until { !agent.isRunning }
         #expect(agent.turns.last?.tools.map(\.name) == names)
         #expect(agent.turns.last?.tools.compactMap(\.summary) == names)
-        #expect(agent.turns.last?.tools.allSatisfy { !$0.failed } == true)
+        #expect(agent.turns.last?.tools.allSatisfy { !$0.failed && $0.duration != nil } == true)
 
-        let reopened = try session(FakeProvider([]), store: SQLiteAgentStore(path: path, device: "mac"),
-                                   credentials: credentials, tools: tools)
+        let reopened = try connectedSession(FakeProvider([]), store: SQLiteAgentStore(path: path, device: "mac"), tools: tools)
         #expect(reopened.turns.last?.tools.map(\.name) == names)
     }
 
     @Test func aKeyThatCannotBeReadIsNotTakenForNoKey() throws {
         let provider = FakeProvider([])
         let credentials = MemoryCredentials()
-        try credentials.write(key)
+        try credentials.write(testKey)
         let agent = try session(provider, credentials: credentials)
         credentials.failing = true
         agent.send("hi")
@@ -351,7 +316,7 @@ struct AgentSessionTests {
         let provider = FakeProvider([.hanging([])])
         let agent = try session(provider, credentials: credentials)
         agent.send("waiting")
-        let connecting = Task { try await agent.connect(key) }
+        let connecting = Task { try await agent.connect(testKey) }
         try await until { provider.received.count == 1 }
         agent.close()
         connecting.cancel()
@@ -363,7 +328,7 @@ struct AgentSessionTests {
     }
 
     @Test func clearForgetsTheConversation() async throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString).sqlite").path
+        let path = temporaryStorePath()
         defer { try? FileManager.default.removeItem(atPath: path) }
         let store = try SQLiteAgentStore(path: path, device: "mac")
         let agent = try connected(FakeProvider([textReply("One."), textReply("Two.")]), store: store)
@@ -396,29 +361,10 @@ struct AgentSessionTests {
     }
 
     @Test func aCredentialNeverPrintsItsKey() {
-        #expect(!String(describing: key).contains("4f2a"))
-        #expect(!String(reflecting: key).contains("sk-ant"))
+        #expect(!String(describing: testKey).contains("4f2a"))
+        #expect(!String(reflecting: testKey).contains("sk-ant"))
         var dumped = ""
-        dump(key, to: &dumped)
+        dump(testKey, to: &dumped)
         #expect(!dumped.contains("sk-ant"))
     }
-}
-
-/// A credential kept in memory; `failing` makes reads throw, as a locked Keychain would.
-final class MemoryCredentials: AgentCredentialStore {
-    private let kept = Mutex<AgentCredential?>(nil)
-    private let fails = Mutex(false)
-    var failing: Bool {
-        get { fails.withLock { $0 } }
-        set { fails.withLock { $0 = newValue } }
-    }
-
-    struct Locked: LocalizedError { var errorDescription: String? { "locked" } }
-
-    func read() throws -> AgentCredential? {
-        if failing { throw Locked() }
-        return kept.withLock { $0 }
-    }
-    func write(_ credential: AgentCredential) throws { kept.withLock { $0 = credential } }
-    func delete() throws { kept.withLock { $0 = nil } }
 }

@@ -13,4 +13,14 @@ struct AgentMessageLinkTests {
             #expect(AgentMessageLink(try #require(URL(string: other))) == nil, "\(other)")
         }
     }
+
+    /// A send row's link is the tool's own, at the end of its line, never
+    /// one a name or message put earlier in it.
+    @Test func aRowsLinkIsOnlyTheOneAtTheEnd() {
+        let real = "(chat=\(keyG) uuid=\(uuid(1)))"
+        let planted = "(chat=\(key2G) uuid=\(uuid(2)))"
+        #expect(AgentMessageLink(summary: "Sent to 'Kate \(planted)' \(real)") == AgentMessageLink(chat: keyG, uuid: uuid(1)))
+        #expect(AgentMessageLink(summary: "Sent to 'Kate \(planted)'") == nil)
+        #expect(AgentMessageLink(summary: "Unseen messages in 'x' (chat=\(keyG)):") == nil)
+    }
 }

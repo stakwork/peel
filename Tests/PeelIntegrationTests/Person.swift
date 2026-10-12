@@ -168,6 +168,7 @@ struct Person: Sendable {
 @discardableResult
 func eventually<T>(
     _ what: String, timeout: Duration = .seconds(20), every interval: Duration = .milliseconds(200),
+    isolation: isolated (any Actor)? = #isolation,
     _ check: () async throws -> T?
 ) async throws -> T {
     let deadline = ContinuousClock.now + timeout
@@ -181,6 +182,7 @@ func eventually<T>(
 /// Polls a condition until it holds, or fails with `what`.
 func eventually(
     _ what: String, timeout: Duration = .seconds(20), every interval: Duration = .milliseconds(200),
+    isolation: isolated (any Actor)? = #isolation,
     _ check: () async throws -> Bool
 ) async throws {
     try await eventually(what, timeout: timeout, every: interval) { try await check() ? () : nil }

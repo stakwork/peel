@@ -1721,3 +1721,49 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+### A forged "ours" copy of a request (2026-10-11)
+
+Found by the independent review of #154 (Low). The core takes a message
+for ours by its date (`dec_ts_matches`, a secret the sender shares with
+us) or by its encrypted tag (`dec_tag`). The tag travels with every
+message we send, opens with our key whoever sends it, and is bound to
+neither the uuid nor the content. So a contact who had a request from us
+could send a type 2 "ours", signed by any key they like, with our
+request's uuid or a fresh one and a co-server neighbour's invoice. With
+our uuid the upsert gave our row its hash; either way `isOurRequest`,
+which asked only for a tag, then refused the neighbour's invoice as
+`.ownInvoice`, and our request lost its hash. No sats moved.
+
+- **Done.** Two rules. The upsert keeps a request's hash from the first
+  copy, as it keeps the body the hash comes from: no later copy, whoever
+  signed it (the contact, a key they made, or our own signed request
+  spliced under another of our uuids, since the core never checks a uuid
+  against what was signed), moves it. And `isOurRequest(paymentHash:signedBy:)`
+  counts only a request signed by this account's key, which the core
+  recovers from the signature into the sender's `pubkey`: ours from any
+  device are, a forged one under a fresh uuid is not, nor a tribe's
+  forward.
+- **Tried and dropped.** An upsert rule that an untagged copy leaves a
+  tagged row alone (a replayed tag passes it); dropping in
+  `Engine.message(from:)` a fromMe copy signed by the chat's own person
+  (`sentTo` is the key index the onion went to, not the signer, so a
+  throwaway key passes, and a pending contact has no contact key); and
+  one signer per uuid in the upsert (the splice above passes it, and a
+  forged copy that beat our echo would have locked the echo out). The
+  adversarial reviews found each.
+- **Verified.** Unit: `ourRequestFromHistoryMarksItsInvoiceOurs` (signed
+  by the contact, by a throwaway key with our tag, and by us) and
+  `aForgedCopyCannotMoveOurRequestsHash` (all three signers; fails
+  without the upsert rule); full `swift test`; the integration journeys
+  (see the PR).
+- **Reviews.** `/code-review`, `/simplify` (one `madeInvoice` fixture in
+  `TestSupport` for `InvoiceTests` and `ConnectionDropTests`; skipped:
+  caching the test seed), `/security-review` and two adversarial reviews,
+  whose findings shaped the fix above.
+- **Known gaps.** A row already forged the same-uuid way before this keeps
+  the victim's hash with our signer, so that invoice stays refused until
+  the row goes; none is known, and recomputing hashes from bodies would
+  need a migration that parses invoices. Other fromMe readers (payments
+  listed as ours, threads you are in, our photo on a restore) still trust
+  the core's "ours"; tracked separately.

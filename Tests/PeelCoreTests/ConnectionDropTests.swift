@@ -60,21 +60,9 @@ struct ConnectionDropTests {
         await engine.disconnect()
     }
 
-    /// An invoice for 10 sats from another account, valid for an hour.
-    private func someoneElsesInvoice() throws -> String {
-        let seed = try Sphinxrs.mnemonicToSeed(
-            mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
-        )
-        let made = try Sphinxrs.makeInvoice(
-            seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
-            amtMsat: 10_000, description: "test"
-        )
-        return try #require(made.invoice)
-    }
-
     @Test func anInvoicePaymentThatNeverLeftFailsAndCanBePaidAgain() async throws {
-        let bolt11 = try someoneElsesInvoice()
-        let invoice = try Invoice(bolt11)
+        let invoice = try madeInvoice()
+        let bolt11 = invoice.bolt11
         try await withEngine { engine, storage throws in
             await #expect(throws: Engine.Failure.notConnected) {
                 try await engine.payInvoice(bolt11, confirmedMsat: invoice.amountMsat)
@@ -224,8 +212,8 @@ struct ConnectionDropTests {
     /// An invoice payment cut short stays pending, and paying it again is
     /// refused as pending rather than sent twice.
     @Test func anInvoicePaymentCutShortIsNotPaidAgain() async throws {
-        let bolt11 = try someoneElsesInvoice()
-        let invoice = try Invoice(bolt11)
+        let invoice = try madeInvoice()
+        let bolt11 = invoice.bolt11
         let (transport, _) = cutTransport(accepting: 0, then: cutShort)
         try await withEngine(transport: transport) { engine, storage throws in
             let record = try await engine.payInvoice(bolt11, confirmedMsat: invoice.amountMsat)

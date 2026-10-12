@@ -232,8 +232,12 @@ extension Storage {
     /// A message can arrive more than once: live, as the server's echo of our own
     /// send, and again from history. Rows are matched on uuid. Server-side facts
     /// (index, time, amount, hash) are filled in from the later copy; what the
-    /// message says is kept from the first. A uuid already used in another
-    /// conversation is rejected, so no contact can rewrite another's messages.
+    /// message says is kept from the first, and with it a request's hash: the
+    /// core takes a contact's message for ours by a replayed tag or its date,
+    /// and parses a uuid without checking it, so a later "ours" with our
+    /// request's uuid could carry any invoice (`isOurRequest`). A uuid already
+    /// used in another conversation is rejected, so no contact can rewrite
+    /// another's messages.
     ///
     /// A tribe gives each message it forwards a new uuid and keeps the sender's
     /// as `originalUuid`, so our own message coming back from the tribe takes
@@ -273,7 +277,10 @@ extension Storage {
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
                     timestamp = COALESCE(excluded.timestamp, message.timestamp),
                     msat = COALESCE(excluded.msat, message.msat),
-                    paymentHash = COALESCE(excluded.paymentHash, message.paymentHash),
+                    -- A request's hash is its invoice's, which goes with the body kept.
+                    paymentHash = CASE WHEN message.type = \(MessageType.invoice)
+                        THEN COALESCE(message.paymentHash, excluded.paymentHash)
+                        ELSE COALESCE(excluded.paymentHash, message.paymentHash) END,
                     tag = COALESCE(message.tag, excluded.tag),
                     sender = COALESCE(message.sender, excluded.sender),
                     -- A deleted message stays empty whatever copy comes again.

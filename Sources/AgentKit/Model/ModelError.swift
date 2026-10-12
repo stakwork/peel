@@ -35,6 +35,9 @@ public enum ModelError: Error, Sendable, Hashable {
         switch status {
         case 401, 403: self = .invalidKey(message)
         case 408: self = .network("The provider took too long to answer.")
+        // OpenAI's 429 for an account with no credit: waiting will not help.
+        case 429 where error?["code"]?.string == "insufficient_quota" || error?["type"]?.string == "insufficient_quota":
+            self = .badRequest(status: 429, message ?? "No credit left on this account.")
         case 429: self = .rateLimited(retryAfter: retryAfter.flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) })
         case 500...: self = .unavailable(status: status, message)
         default: self = .badRequest(status: status, message ?? HTTPURLResponse.localizedString(forStatusCode: status))
@@ -49,7 +52,8 @@ public enum ModelError: Error, Sendable, Hashable {
         // OpenAI names a rate limit by its code ("rate_limit_exceeded"), with
         // a type ("tokens", "requests") that says which limit.
         let status: Int =
-            if error["code"]?.string == "rate_limit_exceeded" { 429 } else {
+            if error["code"]?.string == "rate_limit_exceeded" { 429 }
+            else if error["code"]?.string == "insufficient_quota" { 402 } else {
             switch error["type"]?.string {
             case "authentication_error": 401
             case "permission_error": 403
@@ -117,16 +121,28 @@ public enum ModelError: Error, Sendable, Hashable {
 }
 
 extension ModelError: LocalizedError {
+    /// What went wrong without what to do about it, for a note that says
+    /// what happens next ("Retrying in 4 s…").
+    public var reason: String {
+        switch self {
+        case .rateLimited:
+            "Rate limited by the provider."
+        case .unavailable(let status, let message):
+            (status == 529 ? "The provider is overloaded." : "The provider had a problem (\(status)).")
+                + (message.map { " " + Self.sentence($0) } ?? "")
+        default:
+            errorDescription ?? ""
+        }
+    }
+
     public var errorDescription: String? {
         switch self {
         case .invalidKey(let message):
             "The provider refused the API key." + (message.map { " (\($0))" } ?? "")
         case .rateLimited(let after):
-            "Rate limited by the provider. "
-                + (after.map { "Try again in \(Int($0.rounded(.up))) seconds." } ?? "Try again in a moment.")
-        case .unavailable(let status, let message):
-            (status == 529 ? "The provider is overloaded." : "The provider had a problem (\(status)).")
-                + (message.map { " " + Self.sentence($0) } ?? "") + " Try again in a moment."
+            reason + " " + (after.map { "Try again in \(Int($0.rounded(.up))) seconds." } ?? "Try again in a moment.")
+        case .unavailable:
+            reason + " Try again in a moment."
         case .badRequest(let status, let message):
             "The provider refused the request (\(status)): \(message)"
         case .network(let message):

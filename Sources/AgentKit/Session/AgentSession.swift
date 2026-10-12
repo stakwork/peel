@@ -15,6 +15,9 @@ public struct AgentTurn: Identifiable, Sendable, Equatable {
         case declined
         /// The turn ran out of steps.
         case stepLimit = "step_limit"
+        /// The provider failed after an action had run: kept, so asking
+        /// again is the person's choice, never a Retry that acts twice.
+        case failed
     }
 
     public internal(set) var id: String
@@ -106,6 +109,13 @@ public final class AgentSession {
         public let failure: Failure
     }
 
+    /// A model call made again on its own: how long it waits (`.zero` once
+    /// it goes), and why.
+    public struct Retrying: Sendable, Equatable {
+        public let after: Duration
+        public let reason: ModelError
+    }
+
     /// The connected model as screens show it: no key, only its last four.
     public struct Connection: Sendable, Equatable {
         public let provider: AgentProvider
@@ -117,6 +127,9 @@ public final class AgentSession {
     public private(set) var turns: [AgentTurn] = []
     /// The reply streaming now.
     public private(set) var reply: AgentTurn?
+    /// The reply's model call failed and is made again on its own after a
+    /// wait; nil once anything else happens.
+    public private(set) var retrying: Retrying?
     public private(set) var problem: Problem?
     public private(set) var connection: Connection?
     /// What the agent is called in the sidebar, its header and its messages.
@@ -156,6 +169,8 @@ public final class AgentSession {
     /// rebuilt from the records at launch.
     private var history: [ModelMessage] = []
     private var running: Task<Void, Never>?
+    /// When a failed model call is made again on its own (tests turn it off).
+    @ObservationIgnored var retryPolicy = RetryPolicy()
     /// Streamed text not yet shown: deltas are shown at most every 50 ms,
     /// so a fast stream redraws and re-reads its Markdown a few times a
     /// second rather than once a token.
@@ -251,6 +266,7 @@ public final class AgentSession {
             return
         }
         var loop = AgentLoop(provider: makeClient(credential), tools: tools, model: credential.model, systemPrompt: systemPrompt)
+        loop.retry = retryPolicy
         let earlier = history
         let id = UUID()
         runID = id
@@ -268,6 +284,12 @@ public final class AgentSession {
 
     private func apply(_ event: LoopEvent, run: UUID) {
         guard runID == run else { return }
+        if case .retrying(let delay, let reason) = event {
+            retrying = Retrying(after: delay, reason: reason)
+            return
+        }
+        // Only when set: clearing it on every delta would redraw the reply each token.
+        if retrying != nil { retrying = nil }
         if case .textDelta(let text) = event {
             // The model's words after a tool ran start a paragraph of their
             // own: "Let me look." and "You have 3 unread." never run together.
@@ -284,7 +306,7 @@ public final class AgentSession {
         }
         showPendingText()
         switch event {
-        case .textDelta:
+        case .textDelta, .retrying:
             break
         case .toolStarted(let id, let name, let input):
             paragraphDue = reply?.text.isEmpty == false
@@ -314,13 +336,19 @@ public final class AgentSession {
         running = nil
         runID = nil
         reply = nil
+        retrying = nil
         let ending: AgentTurn.Ending?
         switch result.outcome {
         case .failed(let error):
-            // Nothing is kept: Retry asks the same message again.
-            problem = Problem(turnID: turn.id, failure: .model(error))
-            if !isShown { unread += 1 }
-            return
+            // Once an action ran, Retry could do it again: the reply is kept,
+            // with what ran, and ends there.
+            guard shown.tools.contains(where: { $0.approval?.outcome?.allows == true }) else {
+                // Nothing else is kept: Retry asks the same message again.
+                problem = Problem(turnID: turn.id, failure: .model(error))
+                if !isShown { unread += 1 }
+                return
+            }
+            ending = .failed
         case .finished(.endTurn), .finished(.toolUse), .finished(.other): ending = nil
         case .finished(.maxTokens): ending = .cutOff
         case .finished(.refusal): ending = .declined
@@ -487,6 +515,7 @@ public final class AgentSession {
         running = nil
         runID = nil
         reply = nil
+        retrying = nil
         flushing?.cancel()
         flushing = nil
         pendingText = ""

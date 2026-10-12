@@ -90,7 +90,19 @@ final class EventLog: Sendable {
     private let events = Mutex<[LoopEvent]>([])
     var all: [LoopEvent] { events.withLock { $0 } }
     func record(_ event: LoopEvent) { events.withLock { $0.append(event) } }
+
+    /// The tool rows opened and closed, by call id, in order.
+    var opened: [String] { all.compactMap { if case .toolStarted(let id, _, _) = $0 { id } else { nil } } }
+    var closed: [String] { all.compactMap { if case .toolFinished(let id, _, _, _, _) = $0 { id } else { nil } } }
 }
+
+/// Waits a loop was asked to make.
+final class Waits: Sendable {
+    private let waits = Mutex<[Duration]>([])
+    var all: [Duration] { waits.withLock { $0 } }
+    func record(_ wait: Duration) { waits.withLock { $0.append(wait) } }
+}
+
 
 /// A reply that asks for one tool call.
 func toolCallReply(id: String, name: String, input: JSONValue = [:], text: String = "") -> FakeProvider.Reply {

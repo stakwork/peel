@@ -10,4 +10,5 @@ Sources/Sphinxrs/sphinxrs.swift
 !scripts/provision/Provision.xcodeproj/
 
 # Session worktrees and settings of the Claude desktop app
-.claude/
+.claude/*
+!.claude/skills/

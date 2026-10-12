@@ -26,12 +26,15 @@ extension Storage {
         /// (marked unread on another device), except where ours is pending.
         var reads: [String: Int64] = [:]
         var mutes: [String: Int] = [:]
-        /// An outgoing row sent again: it takes the new send's uuid, tag and
-        /// payment hash, keeps when it was first sent, and with `auto` notes
-        /// that a reconnect sent it (`Message.autoResentAt`).
+        /// An outgoing row sent again: it takes the new send's uuid, tag,
+        /// payment hash and sats (`msat`, what this send carries, so a row
+        /// first sent free that now paid a tribe's price may have paid),
+        /// keeps when it was first sent, and with `auto` notes that a
+        /// reconnect sent it (`Message.autoResentAt`).
         var resend: Resend?
         typealias Resend = (
-            id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64, auto: Bool
+            id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, msat: Int64?,
+            timestamp: Int64, auto: Bool
         )
         var tribes: [Tribe] = []
         /// Rows of the server's payment history.
@@ -213,7 +216,7 @@ extension Storage {
                     sql: """
                         UPDATE message SET uuid = ?, tag = ?,
                             paymentHash = CASE WHEN type = \(MessageType.invoice) THEN COALESCE(?, paymentHash) ELSE ? END,
-                            status = ?, timestamp = ?, firstSentAt = COALESCE(firstSentAt, timestamp),
+                            msat = ?, status = ?, timestamp = ?, firstSentAt = COALESCE(firstSentAt, timestamp),
                             autoResentAt = COALESCE(?, autoResentAt)
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
                             AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
@@ -222,7 +225,8 @@ extension Storage {
                         RETURNING *
                         """,
                     arguments: [
-                        resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, Message.Delivery.pending.rawValue,
+                        resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, resend.msat,
+                        Message.Delivery.pending.rawValue,
                         resend.timestamp, resend.auto ? resend.timestamp : nil,
                         resend.id, resend.chat,
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,

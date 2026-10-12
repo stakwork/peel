@@ -108,8 +108,10 @@ extension Engine {
     /// and tag, so the same row takes them over and moves to now; the server's
     /// echo then matches that row rather than adding a second one. A tribe
     /// message pays the tribe's current price, as a first send would, but
-    /// never more than the price it was first sent at: a raise since then
-    /// shows in the tribe's header, and the message must be sent anew.
+    /// never more than the price it last went at (the row takes each send's
+    /// sats): a raise since then shows in the tribe's header, and the
+    /// message must be sent anew. One that went free (no sats) has no price
+    /// to hold to, and goes at the current one.
     /// Anything that carried sats (a payment, a boost, or a tribe message,
     /// which paid the price) goes again only once it failed (`isRetryable`):
     /// an unconfirmed one may have paid. A payment or boost goes again for
@@ -286,13 +288,14 @@ extension Engine {
         let now = Date().millisecondsSince1970
         var outgoing: Message?
         var resend: Storage.Commit.Resend?
+        let msat = sats > 0 ? Int64(clamping: sats) : nil
         if let id {
-            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, now, auto)
+            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, msat, now, auto)
         } else {
             let fields = BodyFields.decode(body)
             outgoing = Message(
                 uuid: sent?.uuid, type: type, chat: pubkey, fromMe: true, body: body,
-                content: fields?.content, msat: sats > 0 ? Int64(clamping: sats) : nil,
+                content: fields?.content, msat: msat,
                 timestamp: now, tag: sent?.tag, paymentHash: sent?.paymentHash,
                 status: Message.Delivery.pending.rawValue,
                 replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,

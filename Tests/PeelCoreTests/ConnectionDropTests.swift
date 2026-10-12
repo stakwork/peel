@@ -242,6 +242,29 @@ struct ConnectionDropTests {
         }
     }
 
+    /// A tribe text that failed when it carried no sats (here a row from
+    /// before the tribe charged), sent again now the tribe does: the row
+    /// takes the sats of the send that took it over, so one cut short may
+    /// have paid and is never offered for Retry again.
+    @Test func aRetriedTribeTextTakesTheSatsItNowCarries() async throws {
+        let (transport, writes) = cutTransport(accepting: 0, then: cutShort)
+        try await withEngine(tribe: Tribe(pubkey: key2G), transport: transport) { engine, storage throws in
+            var free = pending(1, type: MessageType.text, minutesAgo: 1, chat: key2G)
+            free.status = Message.Delivery.failed.rawValue
+            _ = try storage.apply(Storage.Commit(messages: [(free, false, nil)]))
+            let id = try #require(try storage.message(uuid: uuid(1), in: key2G)?.id)
+            #expect(try storage.message(id: id)?.msat == nil)
+            _ = try await engine.resend(messageID: id)
+            #expect(writes.count >= 1)
+            let row = try #require(try storage.message(id: id))
+            #expect(row.msat == 3_000)
+            #expect(row.delivery == .pending)
+            #expect(row.mayHavePaid)
+            #expect(!row.isRetryable(now: .now.addingTimeInterval(3600)))
+            await #expect(throws: Engine.Failure.notRetryable) { try await engine.resend(messageID: id) }
+        }
+    }
+
     /// An attachment of ours to a tribe, uploaded and waiting for its first
     /// send as `sendAttachment` leaves it: pending, no uuid or tag yet, and
     /// already carrying the tribe's price; or, with `sent`, that send taken.

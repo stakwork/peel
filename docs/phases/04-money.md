@@ -1861,3 +1861,10 @@ no way out.
   server confirms it, the tribe's copy comes back, or a later reconnect
   finds no record (then it fails, with Retry). The trade-offs above (the
   reconnect-only release; calls and deletes held) are his to sign off.
+- **Follow-up: a resend's sats (2026-10-12).** The resend take-over
+  kept the row's old `msat`, so a tribe text first sent free (from
+  before the tribe charged) and sent again once it did kept `msat`
+  empty: cut short, `mayHavePaid` said no, and Retry paid a second time.
+  The take-over now writes the sats the new send carries (`Resend.msat`,
+  as `deliver` writes a new row's). Test:
+  `aRetriedTribeTextTakesTheSatsItNowCarries`, which fails without it.

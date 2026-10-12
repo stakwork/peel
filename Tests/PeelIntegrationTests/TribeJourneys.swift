@@ -130,6 +130,47 @@ extension Journeys {
             for person in [alice, bob] { await person.close() }
         }
 
+        /// Alice on two devices, as the official apps keep a tribe across
+        /// them: she joins Carol's tribe on the first, and the second, which
+        /// has never seen it, shows it joined (from our own tribes registry),
+        /// with her post there as hers. She leaves on the first, and the
+        /// second shows it left. The second pays nothing for either.
+        @Test func aTribeJoinedAndLeftOnOneDeviceFollowsOnTheOther() async throws {
+            let carol = try await Person.create("carol")
+            let alice = try await Person.create("alice")
+            for person in [alice, carol] { try await Bank.shared.give(500, to: person) }
+            let club = try await carol.engine.createTribe(TribeSettings(name: "both \(UUID().uuidString.prefix(6))"))
+            let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) {
+                await !second.engine.isSyncingHistory ? true : nil
+            }
+            #expect(try second.storage.tribes().isEmpty)
+
+            try await alice.engine.joinTribe(link: try #require(club.link))
+            try await Self.waitUntilIn(club.pubkey, alice)
+            // Posted at once, before the second Mac has asked the registry:
+            // held there, and kept once the tribe is known.
+            let post = "from the first Mac \(UUID().uuidString.prefix(6))"
+            try await alice.engine.sendText(post, to: club.pubkey)
+            try await Self.waitUntilIn(club.pubkey, second)
+            let joined = try #require(try second.storage.tribes().first { $0.pubkey == club.pubkey })
+            #expect(joined.name == club.name && !joined.isOwner)
+            try await eventually("Alice's post to show as hers on her second Mac") {
+                try second.messages(in: club.pubkey).contains { $0.content == post && $0.fromMe }
+            }
+
+            try await alice.engine.leaveTribe(club.pubkey)
+            try await eventually("the second Mac to show the tribe left") {
+                try second.storage.tribes().contains { $0.pubkey == club.pubkey && $0.left }
+            }
+            // The second Mac sent nothing, so paid nothing: every row it holds
+            // there came from the network (a send of its own has a status).
+            try await Task.sleep(for: .seconds(2))
+            #expect(try second.messages(in: club.pubkey).allSatisfy { $0.status == nil })
+
+            for person in [alice, second, carol] { await person.close() }
+        }
+
         static func waitUntilIn(_ tribe: String, _ person: Person) async throws {
             try await eventually("\(person.name) to be in the tribe") {
                 try person.storage.tribes().contains { $0.pubkey == tribe && !$0.left && $0.status == .active }

@@ -427,7 +427,7 @@ extension Engine {
         let signature = try Sphinxrs.signBase64(
             seed: seed, idx: 0, time: clock.next(), network: network, msg: MediaToken.base64URLEncode(bytes)
         )
-        let token = try await memes.verify(id: id, signature: signature, pubkey: try accountPubkey())
+        let token = try await memes.verify(id: id, signature: signature, pubkey: accountKey)
         memesToken = (memes.host, token)
         return token
     }

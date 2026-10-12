@@ -15,6 +15,9 @@ public actor Engine {
 
     let seed: String
     let network: String
+    /// This account's key (child index 0, hex), which signs every message we
+    /// send, signs in to the memes server and names our preferences file there.
+    let accountKey: String
     private let deviceID: String
     var alias: String
     var photoURL: String
@@ -83,7 +86,22 @@ public actor Engine {
         var toRecheck: Set<String> = []
         /// When each tribe's last read record was asked for, this session.
         var readAt: [String: ContinuousClock.Instant] = [:]
+        /// What this device heard in a tribe another device of this account
+        /// joined, before its core knew the tribe (`unfiled`), oldest first,
+        /// with our own tribes host once our join or an approval naming us
+        /// came: replayed once our registry lists the tribe (`confirmTribes`).
+        var held: [String: HeldTribe] = [:]
+        /// The chats in `held`, oldest first: the first to go when it is full.
+        var heldOrder: [String] = []
+        /// Chats our tribes registry did not list, this session: never asked again.
+        var notListed: Set<String> = []
     }
+    struct HeldTribe {
+        var host: String?
+        var msgs: [Msg] = []
+    }
+    /// How many unfiled chats, and messages in each, are held at most.
+    static let heldTribes = 20, heldPerTribe = 500
     var tribeWork = TribeWork()
     static let tribeRecheck: Duration = .seconds(5 * 60)
     /// Chats whose read marker was sent since `getReads` was last asked: its
@@ -183,6 +201,7 @@ public actor Engine {
         photoURL = try storage.value(for: .photoURL) ?? ""
         server = try storage.value(for: .server).flatMap(ServerAddress.init)
         clock = UniqueClock(last: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0)
+        accountKey = try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
@@ -573,6 +592,9 @@ public actor Engine {
         var restorePlan: MessageCounts?
         /// Tribes first seen in this call, whose names are still to be looked up.
         var discoveredTribes = false
+        /// A tribe another device of this account joined is to be asked of
+        /// our own tribes registry (`TribeWork.held`, `confirmTribes`).
+        var confirmTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
         /// The balance went up (or changed at all with an invoice open,
@@ -621,7 +643,7 @@ public actor Engine {
               updates.keys.contains(where: { $0.hasPrefix("c/") }) else { return false }
         let again = try call(clock.next(), StateCodec.encode(state.merging(updates) { _, new in new }))
         let signer = again.msgs.first(where: isRecord).flatMap { JSON.decode(SenderInfo.self, from: $0.sender)?.pubkey }
-        return try signer != accountPubkey()
+        return signer != accountKey
     }
 
     /// The topics a live message comes on: pushed (`stream`), or asked for.
@@ -750,6 +772,7 @@ public actor Engine {
         }
         var landedPings: [String] = []
         var knownTribes = tribes
+        var held: [(chat: String, msg: Msg, host: String?)] = []
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
         for msg in result.msgs {
@@ -757,14 +780,28 @@ public actor Engine {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState) else { continue }
+            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState, accountKey: accountKey) else { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
+            // Filed under its signer, which this device's core does not know:
+            // a tribe joined on another device. Held, not stored, until the
+            // tribe is known; our join, or the owner's approval naming us,
+            // makes it one to ask our own tribes registry about.
+            if decoded.unfiled, knownTribes[message.chat] == nil {
+                let host = tribeToConfirm(message, state: newState)
+                if host != nil { followUps.confirmTribes = true }
+                held.append((message.chat, msg, host))
+                continue
+            }
             if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
                let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
                 knownTribes[found.pubkey] = found
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
+            // Ours signed by the chat itself is a tribe's forward or forged. The
+            // core files any signer as a contact at the index it wrote to, so
+            // a contact without a contact key is no proof of a tribe.
+            if decoded.signedByChat, knownTribes[message.chat] == nil { continue }
             if let tribe = knownTribes[message.chat],
                let changed = Self.membership(
                    after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
@@ -859,6 +896,7 @@ public actor Engine {
             contactsByChildIndex = Self.index(contacts)
         }
         tribes = knownTribes
+        hold(held)
         if echoedAliases != self.echoedAliases {
             self.echoedAliases = echoedAliases
             emit.yield(.echoedAliases(echoedAliases))
@@ -1125,6 +1163,22 @@ public actor Engine {
         }
     }
 
+    /// Messages already read by the core, committed as if the core had just
+    /// returned them (a held tribe's, once the tribe is known).
+    func replay(_ msgs: [Msg]) async throws {
+        let result = RunReturn(
+            msgs: msgs, msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [], settleTopic: nil, settlePayload: nil,
+            asyncpayTopic: nil, asyncpayPayload: nil, registerTopic: nil, registerPayload: nil, topics: [], payloads: [],
+            stateMp: nil, stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil, settledStatus: nil,
+            registerResponse: nil, asyncpayTag: nil, error: nil, newTribe: nil, tribeMembers: nil, newInvite: nil,
+            inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil, lspHost: nil, invoice: nil, route: nil,
+            node: nil, lastRead: nil, muteLevels: nil, payments: nil, paymentsTotal: nil, tags: nil, deletedMsgs: nil,
+            newChildIdx: nil, ping: nil
+        )
+        let followUps = try commit(result, time: clock.next(), expectedSender: nil)
+        try await complete(result, followUps)
+    }
+
     private func followUp(_ result: RunReturn, _ followUps: FollowUps) async throws {
         for pingTime in followUps.acknowledgedPings {
             try await run { time, state in
@@ -1132,6 +1186,7 @@ public actor Engine {
             }
         }
         if followUps.discoveredTribes { refreshTribesInBackground() }
+        if followUps.confirmTribes { confirmTribesInBackground() }
         if followUps.reconcile { reconcileInBackground() }
         for purchase in followUps.purchases {
             do {
@@ -1156,26 +1211,45 @@ public actor Engine {
     /// sender can only ever name themself; for a live message the child index in
     /// the topic names the contact as well and the two must agree. Contact
     /// records (type 33) count only when this account signed them: the core
-    /// checks those in history, `run` live ones (`isForeignContactRecord`).
+    /// checks those in history, `run` live ones (`isForeignContactRecord`);
+    /// they come back with no `sentTo`, so never as ours.
     /// Messages from senders the core does not know are dropped.
+    /// The core calls a message ours by a tag or a date a contact can
+    /// arrange, so a copy of ours is kept only when signed by this account
+    /// or by the chat it is filed under, which `commit` then requires to be
+    /// a tribe (docs/phases/04-money.md, "Who may write ours").
+    /// On another device of this account, a tribe joined elsewhere is not in
+    /// the core yet: its forward of ours comes with no `sentTo`, and the
+    /// owner's approval from a sender the core does not know. Each is filed
+    /// under its signer as `unfiled`, which `commit` keeps only once the
+    /// tribe is known.
     private static func message(
-        from msg: Msg, expectedSender: String?, state: [String: Data]
-    ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
+        from msg: Msg, expectedSender: String?, state: [String: Data], accountKey: String
+    ) -> (message: Message, trustSender: Bool, signedByChat: Bool, unfiled: Bool, fields: BodyFields?)? {
         guard let type = msg.type else { return nil }
         let fromMe = msg.fromMe ?? false
-        let claimed = JSON.decode(SenderInfo.self, from: msg.sender)?.pubkey
+        let sender = JSON.decode(SenderInfo.self, from: msg.sender)
+        let claimed = sender?.pubkey
         let chat: String
         var trustSender = false
+        var unfiled = false
         if fromMe {
-            guard let to = msg.sentTo else { return nil }
+            // Ours signed by our own key with no `sentTo` (a contact record) is never filed.
+            guard let to = msg.sentTo ?? claimed.flatMap({ $0 == accountKey ? nil : $0 }) else { return nil }
+            guard claimed == accountKey || claimed == to else { return nil }
             chat = to
+            unfiled = msg.sentTo == nil
         } else if let expectedSender {
             chat = expectedSender
             trustSender = claimed == expectedSender
-        } else {
-            guard let claimed, state["c/\(claimed)"] != nil else { return nil }
+        } else if let claimed, state["c/\(claimed)"] != nil {
             chat = claimed
             trustSender = true
+        } else if let claimed, Int(type) == MessageType.memberApprove, sender?.host?.nilIfEmpty != nil {
+            chat = claimed
+            unfiled = true
+        } else {
+            return nil
         }
         let fields = BodyFields.decode(msg.message)
         let msat = msg.msat.map { Int64(clamping: $0) }
@@ -1213,7 +1287,7 @@ public actor Engine {
         default:
             break
         }
-        return (message, trustSender, fields)
+        return (message, trustSender, fromMe && claimed != accountKey, unfiled, fields)
     }
 
     func receive(_ inbound: Inbound) async {
@@ -1275,6 +1349,7 @@ public actor Engine {
         let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
+        if tribeWork.held.values.contains(where: { $0.host != nil }) { confirmTribesInBackground() }
         reconcileInBackground()
         // The account's preferences, a restore's included: applied as soon
         // as it is online, and anything changed here offline goes up.

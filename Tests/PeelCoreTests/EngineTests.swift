@@ -1,4 +1,5 @@
 import Foundation
+import Sphinxrs
 import Testing
 @testable import PeelCore
 
@@ -136,5 +137,267 @@ struct WordsConfirmationTests {
         #expect(try await engine.wordsConfirmed() == false)
         // What the person reads names positions, never a word.
         #expect("\(Engine.Failure.wrongWords(positions: [6, 12]))" == "words 6 and 12 do not match")
+    }
+}
+
+/// What the core calls ours is kept only when our key signed it, or a tribe
+/// we know signed it in its own chat: the tag and the date that make it
+/// ours are a contact's to arrange (docs/phases/04-money.md, "Who may write
+/// ours"). `keyG` is a tribe, `key2G` a person, `strangerKey` anyone.
+struct OursTests {
+    let profile = TempProfile()
+
+    private static func copy(
+        signedBy signer: String, to chat: String?, fromMe: Bool = true, type: Int = MessageType.text, host: String? = nil
+    ) -> Msg {
+        Msg(message: #"{"content":"hi"}"#, type: UInt8(type), uuid: uuid(1), tag: "aa", index: "7",
+            sender: sender(signer, host: host), msat: nil, timestamp: 1_000, sentTo: chat, fromMe: fromMe,
+            paymentHash: nil, error: nil)
+    }
+
+    /// The row the copy left in `chat`, if any, with the core's `state`
+    /// changes and the tribes stored first.
+    private func stored(
+        _ msg: @Sendable () -> Msg, in chat: String, expectedSender: String? = nil, state: [String: Data] = [:], tribes: [Tribe] = []
+    ) async throws -> Message? {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(tribes: tribes))
+        let engine = try testEngine(storage)
+        _ = try await engine.commit(coreResult(msgs: [msg()], state: state), time: "1", expectedSender: expectedSender)
+        return try storage.message(uuid: uuid(1), in: chat)
+    }
+
+    @Test func ourKeysCopyIsKept() async throws {
+        let other = TempProfile()
+        let ours = await (try testEngine(other.storage())).accountKey
+        let row = try #require(try await stored({ Self.copy(signedBy: ours, to: key2G) }, in: key2G))
+        #expect(row.fromMe)
+    }
+
+    @Test func aKnownTribesForwardOfOursIsKept() async throws {
+        let row = try #require(try await stored({ Self.copy(signedBy: keyG, to: keyG) }, in: keyG, tribes: [Tribe(pubkey: keyG)]))
+        #expect(row.fromMe)
+    }
+
+    /// Our own join forwarded back with the tribe's host, as on a restore,
+    /// makes the tribe known, and is kept.
+    @Test func ourJoinThatIntroducesTheTribeIsKept() async throws {
+        let row = try await stored({
+            Self.copy(signedBy: keyG, to: keyG, type: MessageType.groupJoin, host: "tribes.example")
+        }, in: keyG, state: coreContact(keyG, contactKey: nil))
+        #expect(row?.fromMe == true)
+        #expect(try profile.storage().tribes().contains { $0.pubkey == keyG })
+    }
+
+    /// Signed by us it is ours wherever it is filed, a tribe Peel does not
+    /// know included (our echo on another device).
+    @Test func ourKeysCopyInAnUnknownTribeShapedChatIsKept() async throws {
+        let other = TempProfile()
+        let ours = await (try testEngine(other.storage())).accountKey
+        let row = try await stored({ Self.copy(signedBy: ours, to: keyG) }, in: keyG, state: coreContact(keyG, contactKey: nil))
+        #expect(row?.fromMe == true)
+    }
+
+    @Test func aCopyWithNoSenderIsDropped() async throws {
+        let msg: @Sendable () -> Msg = {
+            Msg(message: #"{"content":"hi"}"#, type: UInt8(MessageType.text), uuid: uuid(1), tag: "aa", index: "7",
+                sender: nil, msat: nil, timestamp: 1_000, sentTo: key2G, fromMe: true, paymentHash: nil, error: nil)
+        }
+        #expect(try await stored(msg, in: key2G) == nil)
+    }
+
+    @Test func aCopySignedByTheChatsPersonIsDropped() async throws {
+        #expect(try await stored({ Self.copy(signedBy: key2G, to: key2G) }, in: key2G) == nil)
+    }
+
+    @Test func aDMCopySignedByAnotherKeyIsDropped() async throws {
+        #expect(try await stored({ Self.copy(signedBy: strangerKey, to: key2G) }, in: key2G) == nil)
+    }
+
+    @Test func aCopyInATribeSignedByAnotherKeyIsDropped() async throws {
+        #expect(try await stored({ Self.copy(signedBy: strangerKey, to: keyG) }, in: keyG, tribes: [Tribe(pubkey: keyG)]) == nil)
+    }
+
+    /// The core files a signer as a contact at the index it wrote to,
+    /// without a contact key if they leave it out: tribe-shaped, not a tribe.
+    /// With no host to introduce it, it is no tribe Peel knows (with one, it
+    /// would be: documented residual).
+    @Test func aCopyInAContactThatOnlyLooksLikeATribeIsDropped() async throws {
+        let minted = coreContact(strangerKey, contactKey: nil)
+        #expect(try await stored({ Self.copy(signedBy: strangerKey, to: strangerKey) }, in: strangerKey, state: minted) == nil)
+    }
+
+    /// Someone else's message is filed by the topic as before.
+    @Test func notOursIsUnchanged() async throws {
+        let row = try #require(try await stored({ Self.copy(signedBy: key2G, to: nil, fromMe: false) }, in: key2G, expectedSender: key2G))
+        #expect(!row.fromMe)
+    }
+
+    // MARK: A tribe joined on another device of this account
+
+    /// A tribes server's forward as this device's core reports one when it
+    /// does not know the tribe yet: no `sentTo`, signed by `signer`.
+    private static func unfiledCopy(
+        _ n: Int, type: Int, signer: String = keyG, host: String? = "tribes.example", fromMe: Bool = true,
+        alias: String? = nil, role: Int? = nil, words: String = ""
+    ) -> Msg {
+        Msg(message: #"{"content":"\#(words)"}"#, type: UInt8(type), uuid: uuid(n), tag: fromMe ? "t\(n)" : nil,
+            index: String(n), sender: sender(signer, alias: alias, host: host, role: role), msat: nil,
+            timestamp: UInt64(n) * 1_000, sentTo: nil, fromMe: fromMe, paymentHash: nil, error: nil)
+    }
+
+    /// An engine on our tribes host, named Ann, with `tribes` stored, after
+    /// a core call that returned `msgs`.
+    private func heard(_ msgs: @Sendable () -> [Msg], tribes: [Tribe] = []) async throws -> (Storage, Engine) {
+        let storage = try profile.storage()
+        try storage.set("tribes.example", for: .tribeHost)
+        try storage.set("Ann", for: .alias)
+        _ = try storage.apply(Storage.Commit(tribes: tribes))
+        let engine = try testEngine(storage)
+        _ = try await engine.commit(coreResult(msgs: msgs()), time: "1", expectedSender: nil)
+        return (storage, engine)
+    }
+
+    private static func listed(deleted: Bool = false) -> @Sendable (String, String) async throws -> TribeInfo {
+        { pubkey, _ in
+            try JSONDecoder().decode(TribeInfo.self, from: Data(
+                #"{"pubkey":"\#(pubkey)","name":"club","price_per_message":0,"deleted":\#(deleted)}"#.utf8
+            ))
+        }
+    }
+
+    private static let notListed: @Sendable (String, String) async throws -> TribeInfo = { _, _ in
+        throw TribeInfo.NotServed(status: 404)
+    }
+
+    /// Our join on another device: nothing is stored until our registry
+    /// lists the tribe; then it is joined, with the registry's name, and
+    /// what was heard there meanwhile is ours.
+    @Test func ourJoinFromAnotherDeviceJoinsOnceOurRegistryListsTheTribe() async throws {
+        let (storage, engine) = try await heard({ [
+            Self.unfiledCopy(1, type: MessageType.groupJoin), Self.unfiledCopy(2, type: MessageType.text, words: "hi"),
+        ] })
+        #expect(try storage.tribes().isEmpty)
+        #expect(try storage.message(uuid: uuid(1), in: keyG) == nil)
+        await engine.confirmTribes(fetch: Self.listed())
+        let tribe = try #require(try storage.tribes().first)
+        #expect(tribe.pubkey == keyG && tribe.name == "club" && !tribe.left && tribe.status == .active && !tribe.isOwner)
+        #expect(tribe.host == "tribes.example")
+        #expect(try storage.message(uuid: uuid(2), in: keyG)?.fromMe == true)
+        #expect(await engine.heldChats.isEmpty)
+    }
+
+    /// The owner's own join (role 0) makes the tribe ours to run here too.
+    @Test func ourOwnTribeFromAnotherDeviceIsOwned() async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin, role: 0)] })
+        await engine.confirmTribes(fetch: Self.listed())
+        #expect(try storage.tribes().first?.isOwner == true)
+    }
+
+    /// Joined and left on the other device before this one heard back from
+    /// the registry: left here too, whatever order the calls came in.
+    @Test func joinedThenLeftOnAnotherDeviceIsLeft() async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin)] })
+        _ = try await engine.commit(coreResult(msgs: [Self.unfiledCopy(2, type: MessageType.groupLeave)]), time: "2", expectedSender: nil)
+        await engine.confirmTribes(fetch: Self.listed())
+        #expect(try storage.tribes().first?.left == true)
+    }
+
+    /// The owner's approval naming us (a private tribe) lets us in.
+    @Test func anApprovalNamingUsFromAnotherDeviceJoins() async throws {
+        let (storage, engine) = try await heard({ [
+            Self.unfiledCopy(1, type: MessageType.memberApprove, fromMe: false, alias: "Ann", role: 0),
+        ] })
+        await engine.confirmTribes(fetch: Self.listed())
+        #expect(try storage.tribes().first?.status == .active)
+    }
+
+    /// A key our registry does not list (a throwaway that signed a copy of
+    /// "ours") is recorded nowhere, and not asked about again.
+    @Test func whatOurRegistryDoesNotListIsNoTribe() async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin, signer: strangerKey)] })
+        await engine.confirmTribes(fetch: Self.notListed)
+        #expect(try storage.tribes().isEmpty)
+        _ = try await engine.commit(coreResult(msgs: [Self.unfiledCopy(2, type: MessageType.groupJoin, signer: strangerKey)]),
+                                    time: "2", expectedSender: nil)
+        #expect(await engine.heldChats.isEmpty)
+    }
+
+    /// A registry that fails otherwise (here a 500) is asked again later,
+    /// with nothing lost.
+    @Test func aRegistryFailureKeepsWhatWasHeld() async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin)] })
+        await engine.confirmTribes(fetch: { _, _ in throw TribeInfo.NotServed(status: 500) })
+        #expect(try storage.tribes().isEmpty)
+        #expect(await engine.heldChats == [keyG])
+        await engine.confirmTribes(fetch: Self.listed())
+        #expect(try storage.tribes().first?.status == .active)
+    }
+
+    /// Joined here while the registry could not be asked: what was held
+    /// is filed, but an older leave from the other device does not undo
+    /// the join made here.
+    @Test func aTribeJoinedHereMeanwhileKeepsItsJoin() async throws {
+        let (storage, engine) = try await heard({ [
+            Self.unfiledCopy(1, type: MessageType.groupJoin), Self.unfiledCopy(2, type: MessageType.text, words: "hi"),
+            Self.unfiledCopy(3, type: MessageType.groupLeave),
+        ] })
+        await engine.confirmTribes(fetch: { _, _ in throw TribeInfo.NotServed(status: 500) })
+        // Known here meanwhile: our join, with the tribe in the core.
+        _ = try await engine.commit(coreResult(msgs: [Self.copy(
+            signedBy: keyG, to: keyG, type: MessageType.groupJoin, host: "tribes.example"
+        )], state: coreContact(keyG, contactKey: nil)), time: "2", expectedSender: nil)
+        #expect(try storage.tribes().first?.left == false)
+        await engine.confirmTribes(fetch: Self.listed())
+        #expect(try storage.tribes().first?.left == false)
+        #expect(try storage.message(uuid: uuid(2), in: keyG)?.fromMe == true)
+        #expect(await engine.heldChats.isEmpty)
+    }
+
+    @Test func aDeletedTribeIsNotRecorded() async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin)] })
+        await engine.confirmTribes(fetch: Self.listed(deleted: true))
+        #expect(try storage.tribes().isEmpty)
+    }
+
+    @Test(arguments: [
+        // Another host: never fetched from a host a message names.
+        (MessageType.groupJoin, "elsewhere.example", true, nil as String?, nil as Int?),
+        // Not a join: a text or our leave alone names nothing.
+        (MessageType.text, "tribes.example", true, nil, nil),
+        (MessageType.groupLeave, "tribes.example", true, nil, nil),
+        // An approval of someone else, or not from the owner.
+        (MessageType.memberApprove, "tribes.example", false, "Bob", 0),
+        (MessageType.memberApprove, "tribes.example", false, "Ann", nil),
+    ])
+    func nothingElseIsHeld(type: Int, host: String, fromMe: Bool, alias: String?, role: Int?) async throws {
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: type, host: host, fromMe: fromMe, alias: alias, role: role)] })
+        #expect(await engine.heldChats.isEmpty)
+        #expect(try storage.message(uuid: uuid(1), in: keyG) == nil)
+    }
+
+    /// A tribe already known (here left) is never recorded again: what the
+    /// other device sends there is filed as usual, our leave leaves.
+    @Test func aKnownTribeIsNotConfirmedAgain() async throws {
+        var known = Tribe(pubkey: keyG)
+        known.myAlias = "me"
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupLeave)] }, tribes: [known])
+        #expect(await engine.heldChats.isEmpty)
+        let tribe = try #require(try storage.tribes().first)
+        #expect(tribe.left && tribe.myAlias == "me")
+    }
+
+    @Test func ourPostFromAnotherDeviceInAKnownTribeIsOurs() async throws {
+        let (storage, _) = try await heard({ [Self.unfiledCopy(1, type: MessageType.text)] }, tribes: [Tribe(pubkey: keyG)])
+        #expect(try storage.message(uuid: uuid(1), in: keyG)?.fromMe == true)
+    }
+
+    /// Our own key's copy with no `sentTo` (a contact record) is filed nowhere.
+    @Test func ourKeysCopyWithNoChatIsDropped() async throws {
+        let other = TempProfile()
+        let ours = await (try testEngine(other.storage())).accountKey
+        let (storage, engine) = try await heard({ [Self.unfiledCopy(1, type: MessageType.groupJoin, signer: ours)] })
+        #expect(await engine.heldChats.isEmpty)
+        #expect(try storage.message(uuid: uuid(1), in: ours) == nil)
     }
 }

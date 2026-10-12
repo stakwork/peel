@@ -396,6 +396,132 @@ extension Engine {
         return Tribe(pubkey: message.chat, host: host == tribeHost ? host : nil)
     }
 
+    /// The host of the tribe an unfiled copy names (`message(from:)`),
+    /// when it may be one this account joined on another device: our own
+    /// join, or the owner's approval naming us, as the official apps take a
+    /// tribe from either. Only a tribe on our own tribes host
+    /// (`isOwnTribeHost`), never a host the message chooses, nor a person's
+    /// chat or one our registry already did not list. An approval is
+    /// matched by the account's alias: one set for the tribe on the other
+    /// device is not known here, so its approval is missed (the join of a
+    /// public tribe is not).
+    func tribeToConfirm(_ message: Message, state: [String: Data]) -> String? {
+        guard let host = message.senderInfo?.host, isOwnTribeHost(host),
+              !tribeWork.notListed.contains(message.chat), Self.isPerson(message.chat, in: state) != true else { return nil }
+        if message.fromMe { return message.type == MessageType.groupJoin ? host : nil }
+        guard message.type == MessageType.memberApprove, message.senderInfo?.role == 0,
+              let named = message.senderAlias,
+              approvalNamesUs(named, sent: Tribe(pubkey: message.chat).sentAlias(account: alias), echoed: [])
+        else { return nil }
+        return host
+    }
+
+    /// The chats held for a tribe to confirm (`TribeWork.held`).
+    var heldChats: Set<String> { Set(tribeWork.held.keys) }
+
+    /// Keeps what `commit` heard in tribes this device does not know yet
+    /// (`TribeWork.held`), from the copy that names one to confirm (one with
+    /// a `host`) on, within `heldTribes` (the oldest goes for a new one, so
+    /// keys that are no tribes cannot keep a real one out) and `heldPerTribe`.
+    func hold(_ heard: [(chat: String, msg: Msg, host: String?)]) {
+        for (chat, msg, host) in heard {
+            guard tribes[chat] == nil, host != nil || tribeWork.held[chat] != nil else { continue }
+            if tribeWork.held[chat] == nil {
+                if tribeWork.held.count >= Self.heldTribes, !tribeWork.heldOrder.isEmpty {
+                    tribeWork.held[tribeWork.heldOrder.removeFirst()] = nil
+                }
+                tribeWork.heldOrder.append(chat)
+            }
+            var entry = tribeWork.held[chat] ?? HeldTribe()
+            guard entry.msgs.count < Self.heldPerTribe else { continue }
+            entry.msgs.append(msg)
+            if let host { entry.host = host }
+            tribeWork.held[chat] = entry
+        }
+    }
+
+    /// Asks our own tribes registry about each held tribe with a host
+    /// (`TribeWork.held`). One it lists, not deleted, is recorded (pending,
+    /// with the registry's details) and what was held there is committed as
+    /// if just heard, oldest first: our join makes it joined (and owned,
+    /// with the owner's role), the approval naming us lets us in, our leave
+    /// after it leaves, our posts are ours. Nothing is paid or sent. One the
+    /// registry does not list (404) is dropped and never asked about again
+    /// this session: anyone can sign a copy of ours (a replayed tag) or an
+    /// approval, but only a tribe is listed there. Any other failure keeps
+    /// it for the next try (another copy naming it, or the next connection).
+    func confirmTribesInBackground() {
+        _ = Self.background { [weak self] in await self?.confirmTribes() }
+    }
+
+    func confirmTribes(
+        fetch: @Sendable (String, String) async throws -> TribeInfo = { try await TribeInfo.fetch(pubkey: $0, host: $1) }
+    ) async {
+        for (pubkey, entry) in tribeWork.held {
+            guard let host = entry.host, !closed else { continue }
+            guard tribes[pubkey] == nil else {
+                await replayHeld(pubkey)
+                continue
+            }
+            let info: TribeInfo
+            do {
+                info = try await fetch(pubkey, host)
+            } catch let refused as TribeInfo.NotServed where refused.status == 404 {
+                dropHeld(pubkey, notListed: true)
+                continue
+            } catch {
+                // Kept for the next try: another copy with a host, or the next connection.
+                continue
+            }
+            // Heard meanwhile is held too; known meanwhile is filed as usual.
+            guard let held = tribeWork.held[pubkey], tribes[pubkey] == nil, !closed else {
+                await replayHeld(pubkey)
+                continue
+            }
+            dropHeld(pubkey)
+            guard info.deleted != true else {
+                dropHeld(pubkey, notListed: true)
+                continue
+            }
+            var tribe = Tribe(pubkey: pubkey, host: host)
+            tribe.update(from: info, trustingPrivacy: true)
+            tribe.status = .pending
+            do {
+                try record(tribe)
+                tribeWork.readAt[pubkey] = .now
+                try await replay(held.msgs)
+            } catch {
+                emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
+            }
+        }
+    }
+
+    /// What was held in a tribe that became known meanwhile (joined here),
+    /// committed as usual, but for joins, leaves and the owner's answers:
+    /// older than what this device did since, they must not undo it (a
+    /// leave from before would hide a tribe just joined, and paid for, here).
+    private func replayHeld(_ pubkey: String) async {
+        guard let held = tribeWork.held[pubkey] else { return }
+        dropHeld(pubkey)
+        let membership = [MessageType.groupJoin, MessageType.groupLeave, MessageType.memberRequest,
+                          MessageType.memberApprove, MessageType.memberReject, MessageType.groupKick].map(UInt8.init)
+        do {
+            try await replay(held.msgs.filter { !membership.contains($0.type ?? 0) })
+        } catch {
+            emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
+        }
+    }
+
+    /// Forgets what was held for `pubkey`; `notListed`, and our registry does
+    /// not list it (at most `heldTribes` times 50 kept).
+    private func dropHeld(_ pubkey: String, notListed: Bool = false) {
+        tribeWork.held[pubkey] = nil
+        tribeWork.heldOrder.removeAll { $0 == pubkey }
+        guard notListed else { return }
+        if tribeWork.notListed.count >= Self.heldTribes * 50 { tribeWork.notListed = [] }
+        tribeWork.notListed.insert(pubkey)
+    }
+
     /// What a tribe message says about this account's place in the tribe,
     /// or nil if nothing changes. Our own join or leave (replayed on a
     /// restore, or sent from another device) says whether we are in it; our

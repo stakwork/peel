@@ -92,14 +92,15 @@ func goneTransport() -> Transport {
     )
 }
 
-/// A core result with only the publish fields, a page of history and the server's records set.
+/// A core result with only the publish fields, the messages (with a total,
+/// a page of history), a page of payment history and the server's records set.
 func coreResult(
     settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
     asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
-    tags: String? = nil
+    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil
 ) -> RunReturn {
     RunReturn(
-        msgs: [], msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [],
+        msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
         settleTopic: settle, settlePayload: settle.map { _ in Data([1]) },
         asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
         registerTopic: register, registerPayload: register.map { _ in Data() },
@@ -110,4 +111,60 @@ func coreResult(
         lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,
         paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
     )
+}
+
+extension Msg {
+    /// A message as the core reports one.
+    static func fixture(
+        type: UInt8? = 0, message: String? = nil, uuid: String? = nil, index: String? = nil, sender: String? = nil,
+        msat: UInt64? = nil, timestamp: UInt64? = nil, sentTo: String? = nil, fromMe: Bool? = false
+    ) -> Msg {
+        Msg(message: message, type: type, uuid: uuid, tag: nil, index: index, sender: sender, msat: msat,
+            timestamp: timestamp, sentTo: sentTo, fromMe: fromMe, paymentHash: nil, error: nil)
+    }
+}
+
+/// A registered account (`registeredState`) on a server nothing dials, with
+/// `contact` as a ready contact at child index 1, and what else `commit` holds.
+func registeredStorage(
+    _ profile: TempProfile, contact: String? = nil, _ commit: Storage.Commit = Storage.Commit()
+) throws -> Storage {
+    let storage = try profile.storage()
+    var commit = commit
+    commit.state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
+    commit.settings[.server] = "mqtt://127.0.0.1:1"
+    commit.contacts = contact.map { [($0, true)] }
+    _ = try storage.apply(commit)
+    return storage
+}
+
+/// Runs `body` on an engine for `storage` on `transport`, and disconnects
+/// after, even when it throws: that shuts the transport's client down,
+/// which mqtt-nio requires before one is freed.
+func withTestEngine(_ storage: Storage, on transport: Transport, _ body: (Engine) async throws -> Void) async throws {
+    let engine = try testEngine(storage)
+    await engine.useTransportForTesting(transport)
+    do {
+        try await body(engine)
+    } catch {
+        await engine.disconnect()
+        throw error
+    }
+    await engine.disconnect()
+}
+
+/// One onion of a page of history as the server frames it (`encode_onion`):
+/// the onion (`data`, zeros by default), then its index, time and child
+/// index 1, and for a payment its amount and payment hash.
+func batchOnion(index: UInt64, paidMsat: UInt64? = nil, data: Data? = nil) -> Data {
+    var onion = (data ?? Data(count: paidMsat == nil ? 1401 : 1366)) + be64(index) + be64(7) + be64(1)
+    if let paidMsat { onion += be64(paidMsat) + Data(repeating: 0xAB, count: 32) }
+    return onion
+}
+
+/// A page of history: a MessagePack fixarray of bin16 onions.
+func batchPage(_ onions: [Data]) -> Data {
+    var out = Data([0x90 | UInt8(onions.count)])
+    for onion in onions { out += Data([0xC5, UInt8(onion.count >> 8), UInt8(onion.count & 0xFF)]) + onion }
+    return out
 }

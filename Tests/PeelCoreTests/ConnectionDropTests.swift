@@ -41,22 +41,10 @@ struct ConnectionDropTests {
         balanceMsat: UInt64? = 1_000_000, contact: String? = nil, transport: Transport = goneTransport(),
         _ body: (Engine, Storage) async throws -> Void
     ) async throws {
-        let storage = try profile.storage()
-        var settings: [Setting: String] = [.server: "mqtt://127.0.0.1:1"]
-        settings[.balanceMsat] = balanceMsat.map(String.init)
-        let state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
-        _ = try storage.apply(Storage.Commit(
-            state: state, settings: settings, contacts: contact.map { [($0, true)] }
-        ))
-        let engine = try testEngine(storage)
-        await engine.useTransportForTesting(transport)
-        do {
-            try await body(engine, storage)
-        } catch {
-            await engine.disconnect()
-            throw error
-        }
-        await engine.disconnect()
+        var balance = Storage.Commit()
+        balance.settings[.balanceMsat] = balanceMsat.map(String.init)
+        let storage = try registeredStorage(profile, contact: contact, balance)
+        try await withTestEngine(storage, on: transport) { try await body($0, storage) }
     }
 
     /// An invoice for 10 sats from another account, valid for an hour.

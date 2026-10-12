@@ -671,22 +671,91 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    could not read left the messages below it unfetched for good. Pages
    carry no request ID either, so the same page twice (a reconnect asks for
    the page in flight again) ended the run, and a restore with it.
-   - The index fetched through with no gap is kept in the `setting` table
-     (`Setting.historyIndex`, `HistoryCursor.through`), written in the
-     same transaction as the page that moves it. Only a messages run that
-     started just after it moves it (a restore's contacts pages skip
-     messages); a live message never does. Every catch-up starts after it.
-     A profile from before starts from its newest stored message, as then,
-     and keeps that as its index.
-   - The cursor moves by the indices in the page's own payload
-     (`StateCodec.messageIndices`), the ones the core could not read
-     included, so a page it refuses moves the run on rather than ending it.
+   - Where history stands is kept in the `setting` table
+     (`Setting.historyFrom`, `HistoryCursor.from`): every message below it
+     has been handled, written in the same transaction as what moves it.
+     Every catch-up starts there.
+   - A messages page that starts no further than it moves it (a restore's
+     contacts pages skip messages), by the indices in the page's own frame
+     (`StateCodec.onions`), the ones the core could not read included.
+   - A live message moves it when its index (from its topic) is the next
+     one; one above a gap is held in memory until the gap fills. So a
+     catch-up fetches again only what came live above a gap that a quit or
+     a stall left, not everything since the last one.
+   - A page the core refuses whole (one malformed chunk fails the whole
+     call in sphinx-ffi's `handle_chunks`, and any contact or tribe member
+     can send one) is read again without the messages it refuses, found
+     by halves (`Engine.readablePart`, `readable`); a core error names
+     their indices. History moves past the whole page.
    - A page behind the cursor (a duplicate or a stale reply) is ignored and
      the watchdog keeps waiting for the page asked for. An empty page still
      ends the run.
-   - Cost: a catch-up now fetches again what came live since the last one
-     (upserted by uuid; notifications dedupe by uuid, and the first sync
-     after launch notifies nothing).
+   - Where history stands is read when the engine is made, before any
+     connection can store a live message: a profile from before starts
+     after its newest message stored, or dropped from a left tribe
+     (`Setting.droppedIndex`, read only then), as it did.
+
+   Review (2026-10-12): an independent review, `/code-review`, `/simplify`
+   and `/security-review`. The first version had a regression: one message
+   the core cannot read (a malformed chunk, which any contact or tribe
+   member can send) failed its whole page, so the index never moved past
+   it and every catch-up stopped there for good, where before the next
+   live message moved the start past it. Closed by reading the page again
+   without what the core refuses (`readablePart`). Also fixed:
+   - A catch-up fetched again everything that came live since the last
+     one, which brought back Retry's first copy as a second row, a
+     discarded send, a tribe removed from Peel, and notifications for
+     unread messages; now it fetches only what came live above a gap.
+   - The start for a profile from before was read at the first catch-up,
+     after live messages on that connection could already be stored; it is
+     read when the engine is made.
+   - The journey passed without testing anything when the catch-up ended
+     before the live message landed, as it did in four runs of four here.
+     It now waits for the server to hold every message, sends the live one
+     as soon as Alice is back, and requires the catch-up to be cut short.
+   - The engine tests could crash the test process on a failure (no
+     disconnect); they share `withTestEngine` and `registeredStorage` with
+     `ConnectionDropTests`.
+   - Each page is read once (`Engine.arrived`, both the amounts and the
+     indices), not twice.
+
+   The security review found nothing. Not applied, with reasons:
+   - Matching each page to its request (`req_id`). A duplicate of a
+     restore's last contacts page that lands after its messages run began
+     at 0, or a page meant for another Mac with the same device ID, is
+     still taken as a messages page, and moves the index past messages
+     never fetched. The mixer echoes a `req_id` in the reply topic, but the
+     core never sets one, so Peel would edit the core's request. Before
+     this change the same page skipped those messages too. For Tom: it
+     changes what Peel sends the server, and production's mixer version is
+     unknown (bug hunt N6).
+   - A tribe removed from Peel, or a request to join asked again, can still
+     come back when a catch-up after a quit or a stall fetches its own join,
+     or the rejection, again. That is now only what came live above a gap.
+     Skipping membership for stored messages was tried and dropped: a leave
+     is never stored (the tribe is left when it lands), so leave then
+     rejoin fetched again would hide a tribe the person is in, and drop its
+     messages. The fix is the index each tribe was hidden at: a column and
+     a migration.
+   - A live message the core refuses does not move the index. The next
+     catch-up asks for it again and reads it as history, or leaves it out
+     like any refused page message. Until then the live messages after it
+     wait in memory, and a relaunch fetches them again.
+   - The cursor moves in `commit`, and the next page is asked for at the
+     end of `followUp`. A follow-up that throws first (a `pingDone` on a
+     connection that just went) leaves the run with no request and no
+     watchdog until the next connection asks again.
+   - What the core refuses only for the moment (a payment against a stale
+     block height), or drops for a sender not yet known, is moved past for
+     good. So did the old start above the newest stored message. A restore
+     still fetches everything from the first, which keeps phase 3's "must
+     stay re-fetchable" for restores.
+   - Seeding the index in a migration, not in `Engine.init`: the guarantee
+     is the same (before any connection), and migration numbers are
+     contended across open branches (v22 to v24).
+   - One helper for "Alice and Bob as contacts" shared with the payments
+     journeys' `pair()`, and one recorder of test writes shared with
+     `ConnectionDropTests`: outside this change.
 
 ## Done criteria
 

@@ -138,8 +138,8 @@ messages, payments and boosts are separate tasks and not listed.
   to a tribe through the shared `deliver` (sats, tribe alias, `isTribe`).
   A send to a left tribe throws `notInTribe`. In `commit`, a message whose
   chat is a tribe does not rename the contact, takes its time from the
-  tribe's `date`, and is dropped if the tribe was left (the sync cursor still
-  advances past it, `Setting.droppedIndex`, cached in the engine). Our own
+  tribe's `date`, and is dropped if the tribe was left (history still
+  moves past it, `HistoryCursor.from`; phase 2, item 13). Our own
   message coming back from a tribe takes over the row written at send
   (matched on `originalUuid`, decided in the engine and passed to storage as
   `replaces`) and is marked delivered. Our own join or leave (replayed on a

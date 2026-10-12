@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Sphinxrs
 import Synchronization
 import Testing
@@ -13,9 +14,7 @@ private func counts(total: UInt64, highest: UInt64, keys: UInt64, keysHighest: U
 }
 
 /// A page for a run in flight.
-private func advance(
-    _ cursor: inout HistoryCursor, _ indices: [UInt64], total: UInt64?
-) throws -> (progress: HistoryCursor.Progress?, step: HistoryCursor.Step) {
+private func advance(_ cursor: inout HistoryCursor, _ indices: [UInt64], total: UInt64?) throws -> HistoryCursor.Page {
     let page = cursor.advance(indices: indices, total: total)
     return try #require(page)
 }
@@ -82,21 +81,78 @@ struct HistoryCursorTests {
         #expect(next.step == .request(Run(phase: .messages, next: 10, end: 40)))
     }
 
-    /// The index fetched through moves only with a messages run that
-    /// started just after it: a contacts page (one message per key) skips
-    /// the messages between, and so does a run from further on.
+    /// Where history stands moves only with a messages page that starts no
+    /// further than it: a contacts page (one message per key) skips the
+    /// messages between, and so does a run from further on.
     @Test(arguments: [
-        (Run(phase: .messages, next: 5, end: nil), UInt64(9)),
-        (Run(phase: .messages, next: 3, end: nil), UInt64(9)),
-        (Run(phase: .contacts, next: 5, end: nil), UInt64(4)),
-        (Run(phase: .messages, next: 6, end: nil), UInt64(4)),
+        (Run(phase: .messages, next: 5, end: nil), UInt64(10)),
+        (Run(phase: .messages, next: 3, end: nil), UInt64(10)),
+        (Run(phase: .contacts, next: 5, end: nil), UInt64(5)),
+        (Run(phase: .messages, next: 6, end: nil), UInt64(5)),
     ])
-    func onlyAMessagesRunFromTheIndexMovesIt(run: HistoryCursor.Run, through: UInt64) {
+    func onlyAMessagesRunFromWhereHistoryStandsMovesIt(run: HistoryCursor.Run, from: UInt64) {
         var cursor = HistoryCursor()
-        cursor.through = 4
+        cursor.from = 5
         _ = cursor.start([run])
         _ = cursor.advance(indices: [7, 9], total: 40)
-        #expect(cursor.through == through)
+        #expect(cursor.from == from)
+    }
+
+    /// A live message moves where history stands when it is the next
+    /// index; one above a gap waits until the gap fills, by a later live
+    /// message or a page.
+    @Test func aLiveMessageMovesWhereHistoryStandsOnlyOverNoGap() throws {
+        var cursor = HistoryCursor()
+        cursor.from = 5
+        cursor.cameLive(7)
+        #expect(cursor.from == 5)
+        cursor.cameLive(5)
+        #expect(cursor.from == 6)
+        cursor.cameLive(6)
+        #expect(cursor.from == 8)
+        cursor.cameLive(10)
+        _ = cursor.start([Run(phase: .messages, next: 8, end: nil)])
+        _ = try advance(&cursor, [8, 9], total: 20)
+        #expect(cursor.from == 11)
+        #expect(cursor.liveAbove.isEmpty)
+        // No real index is that high: one that is is the server's mistake.
+        cursor.cameLive(UInt64.max)
+        #expect(cursor.liveAbove.isEmpty)
+    }
+
+    /// A page the core refused whole is asked about in halves: what it
+    /// reads is kept, and what it refuses on its own left out.
+    @Test(arguments: [
+        ([], Array(0..<8)),
+        ([3], [0, 1, 2, 4, 5, 6, 7]),
+        ([0, 7], Array(1..<7)),
+        (Array(0..<8), []),
+    ])
+    func aRefusedPageKeepsWhatTheCoreReads(refused: [Int], kept: [Int]) {
+        #expect(Engine.readable(Array(0..<8)) { !Set(refused).isDisjoint(with: $0) } == kept)
+    }
+
+    /// A page the core refuses whole is read again without what it refuses
+    /// on its own, which the error names, or with nothing when it refuses
+    /// the rest together. A refusal of no message in particular (of an
+    /// empty page too) is thrown as it came.
+    @Test func aRefusedPageIsReadAgainWithoutWhatTheCoreRefuses() throws {
+        let page = try #require(StateCodec.onions(inBatch: batchPage((0..<8).map { batchOnion(index: $0) })))
+        func read(refusing refused: (Set<UInt64>) -> Bool) throws -> (kept: [String], error: String?) {
+            let result = try Engine.readablePart(of: page, refusal: PeelError("refused")) { payload in
+                let indices = (StateCodec.onions(inBatch: payload) ?? []).map(StateCodec.index(of:))
+                if refused(Set(indices)) { throw PeelError("refused") }
+                return coreResult(msgs: indices.map { .fixture(index: String($0)) })
+            }
+            return (result.msgs.compactMap(\.index), result.error)
+        }
+        let alone = try read { $0.contains(3) }
+        #expect(alone.kept == ["0", "1", "2", "4", "5", "6", "7"])
+        #expect(alone.error?.contains("(server index 3)") == true)
+        let together = try read { $0.isSuperset(of: [2, 5]) }
+        #expect(together.kept.isEmpty)
+        #expect(together.error?.contains("(server index 0, 1, 2, 3, 4, 5, 6, 7)") == true)
+        #expect(throws: PeelError.self) { try read { _ in true } }
     }
 
     @Test func aPageWithNoRunInFlightIsIgnored() {
@@ -186,59 +242,87 @@ private func recordingTransport() -> (Transport, Asked) {
     return (transport, asked)
 }
 
-/// A text from `keyG` at server index `index`.
-private func fromG(_ index: UInt64) -> Msg {
-    Msg(message: #"{"content":"m\#(index)"}"#, type: 0, uuid: uuid(Int(index) + 1), tag: nil, index: String(index),
-        sender: sender(keyG), msat: nil, timestamp: 1_000 * (index + 1), sentTo: nil, fromMe: false,
-        paymentHash: nil, error: nil)
+/// Someone who writes to this account: their child key 1 to its child
+/// key 1, where `coreContact` keeps them.
+private let theirSeed = String(repeating: "22", count: 32)
+
+private func theirKey() throws -> String {
+    try Sphinxrs.pubkeyFromSeed(seed: theirSeed, idx: 1, time: "1000", network: "bitcoin")
 }
 
-/// The core's reply to a page of history, or to a live message (no total).
-private func reply(_ msgs: [Msg], total: UInt64?) -> RunReturn {
-    var result = coreResult()
-    result.msgs = msgs
-    result.msgsTotal = total
-    return result
+/// A real Sphinx message of `type` from them, its onion as the server
+/// keeps it (`createOnionMsg`), for the core to open with this account's key.
+private func messageFromThem(type: Int, _ message: String) throws -> Data {
+    let ours = try Sphinxrs.mnemonicToSeed(mnemonic: abandon.joined(separator: " "))
+    let to = try Sphinxrs.pubkeyFromSeed(seed: ours, idx: 1, time: "1000", network: "bitcoin")
+    let onion = try Sphinxrs.createOnionMsg(
+        seed: theirSeed, idx: 1, time: "1000", network: "bitcoin", hops: #"[{"pubkey":"\#(to)"}]"#,
+        json: #"{"type":\#(type),"sender":{"pubkey":""},"message":\#(message)}"#
+    )
+    try #require(onion.count == 1401)
+    return onion
 }
 
-/// Where catching up starts, through the engine: from the index history
-/// was fetched through with no gap, whatever came live meanwhile.
+/// Their text at server index `index`, as the core reports one.
+private func theirText(_ index: UInt64, from them: String) -> Msg {
+    .fixture(message: #"{"content":"m\#(index)"}"#, uuid: uuid(Int(index) + 1), index: String(index), sender: sender(them),
+             timestamp: 1_000 * (index + 1))
+}
+
+/// A page of history as the server sends it, its highest index 20.
+private func page(_ onions: [Data]) -> Inbound {
+    Inbound(topic: "root/pk/0/res/dev/batch/_/20", payload: batchPage(onions))
+}
+
+/// Where catching up starts, through the engine: where history stands,
+/// every message below it handled, by a page or as it came live.
 struct HistorySyncTests {
     let profile = TempProfile()
 
-    private func engine(_ storage: Storage, on transport: Transport) async throws -> Engine {
-        let engine = try testEngine(storage)
-        await engine.useTransportForTesting(transport)
-        return engine
+    /// A registered account with them as a contact.
+    private func setUp(_ commit: Storage.Commit = Storage.Commit()) throws -> Storage {
+        try registeredStorage(profile, contact: try theirKey(), commit)
     }
 
-    private func setUp() throws -> Storage {
-        let storage = try profile.storage()
-        _ = try storage.apply(Storage.Commit(
-            state: registeredState.merging(coreContact(keyG, contactKey: key3G)) { $1 },
-            settings: [.server: "mqtt://127.0.0.1:1"], contacts: [(keyG, true)]
-        ))
-        return storage
-    }
-
-    /// A live message stored during a catch-up sits above messages not
-    /// fetched yet. Peel quits before the catch-up ends; the next launch
-    /// asks from the end of the last page, not from the live message.
-    @Test func aLiveMessageDoesNotMoveWhereTheNextCatchUpStarts() async throws {
+    /// A live message moves where the next catch-up starts only when no
+    /// message below it is still to fetch. One stored during a catch-up
+    /// above messages not fetched yet leaves it, so after a quit the next
+    /// launch asks from the end of the last page, not after the live one
+    /// (bug hunt N4); one just after it moves it, so the next catch-up
+    /// does not fetch it again.
+    @Test(arguments: [(UInt64(10), UInt64(3)), (3, 4)])
+    func aLiveMessageMovesWhereTheNextCatchUpStartsOnlyOverNoGap(live: UInt64, nextStart: UInt64) async throws {
         let storage = try setUp()
+        let them = try theirKey()
         let (transport, asked) = recordingTransport()
-        let first = try await engine(storage, on: transport)
-        try await first.syncMessages()
-        try await first.take(reply([fromG(0), fromG(1), fromG(2)], total: 20))
-        try await first.take(reply([fromG(10)], total: nil), from: keyG)
-        #expect(try storage.highestServerIndex() == 10)
-        #expect(asked.since.withLock { $0 } == [0, 3])
-        await first.disconnect()
+        try await withTestEngine(storage, on: transport) { engine in
+            try await engine.syncMessages()
+            try await engine.take(coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20))
+            let message = try messageFromThem(type: MessageType.text, #"{"content":"live"}"#)
+            await engine.receive(Inbound(topic: "root/pk/1/res/_/stream/\(live)/1000", payload: message))
+            #expect(try storage.highestServerIndex() == Int64(live))
+        }
+        try await withTestEngine(storage, on: transport) { try await $0.syncMessages() }
+        #expect(asked.since.withLock { $0 } == [0, 3, nextStart])
+    }
 
-        let next = try await engine(storage, on: transport)
-        try await next.syncMessages()
-        #expect(asked.since.withLock { $0 } == [0, 3, 3])
-        await next.disconnect()
+    /// A profile from before the index was kept starts from its newest
+    /// message stored (or dropped from a left tribe), as it did then:
+    /// read before it connects, so a live message stored while it comes
+    /// online cannot move that start past messages not fetched yet.
+    @Test func aProfileFromBeforeStartsFromItsNewestMessageWhateverComesLive() async throws {
+        let them = try theirKey()
+        let stored = Message.fixture(uuid: uuid(1), serverIndex: 10, chat: them)
+        let storage = try setUp(Storage.Commit(settings: [.droppedIndex: "12"], messages: [(stored, false, nil)]))
+        let (transport, asked) = recordingTransport()
+        try await withTestEngine(storage, on: transport) { engine in
+            let message = try messageFromThem(type: MessageType.text, #"{"content":"live"}"#)
+            await engine.receive(Inbound(topic: "root/pk/1/res/_/stream/20/1000", payload: message))
+            #expect(try storage.highestServerIndex() == 20)
+            try await engine.syncMessages()
+        }
+        #expect(asked.since.withLock { $0 } == [13])
+        #expect(try storage.value(for: .historyFrom) == "13")
     }
 
     /// A page whose every onion the core refuses (it leaves them out of its
@@ -247,35 +331,46 @@ struct HistorySyncTests {
     @Test func aPageTheCoreCannotReadMovesTheCatchUpOn() async throws {
         let storage = try setUp()
         let (transport, asked) = recordingTransport()
-        let first = try await engine(storage, on: transport)
-        try await first.syncMessages()
-        // Unreadable onions as the server frames them (`encode_onion`): a
-        // message at index 0, a payment at 1, a message at 2.
-        func onion(_ index: UInt64, payment: Bool) -> Data {
-            Data(count: payment ? 1366 : 1401) + be64(index) + be64(1_000) + be64(1)
-                + (payment ? be64(5_000) + Data(count: 32) : Data())
+        try await withTestEngine(storage, on: transport) { engine in
+            try await engine.syncMessages()
+            // Onions no key of this account opens: a message, a payment, a message.
+            await engine.receive(page([batchOnion(index: 0), batchOnion(index: 1, paidMsat: 5_000), batchOnion(index: 2)]))
+            #expect(try storage.highestServerIndex() == nil)
+            #expect(await engine.isSyncingHistory)
         }
-        var payload = Data([0x93])
-        for item in [onion(0, payment: false), onion(1, payment: true), onion(2, payment: false)] {
-            payload += Data([0xC5, UInt8(item.count >> 8), UInt8(item.count & 0xFF)]) + item
-        }
-        await first.receive(Inbound(topic: "root/pk/0/res/dev/batch/_/20", payload: payload))
-        #expect(try storage.highestServerIndex() == nil)
-        #expect(asked.since.withLock { $0 } == [0, 3])
-        #expect(await first.isSyncingHistory)
-        await first.disconnect()
-
-        let next = try await engine(storage, on: transport)
-        try await next.syncMessages()
+        try await withTestEngine(storage, on: transport) { try await $0.syncMessages() }
         #expect(asked.since.withLock { $0 } == [0, 3, 3])
-        await next.disconnect()
+    }
+
+    /// One message can fail its whole page in the core: a malformed chunk
+    /// (type 34), which any contact or tribe member can send, fails the
+    /// call. The page is read again without it: the rest is kept, the
+    /// catch-up goes on past it and names what it left out, where it once
+    /// stopped there at every launch.
+    @Test func aMessageThatFailsItsWholePageIsLeftOutAlone() async throws {
+        let storage = try setUp()
+        let (transport, asked) = recordingTransport()
+        var errors: [String] = []
+        try await withTestEngine(storage, on: transport) { engine in
+            try await engine.syncMessages()
+            await engine.receive(page([
+                batchOnion(index: 0, data: try messageFromThem(type: MessageType.text, #"{"content":"before"}"#)),
+                batchOnion(index: 1, data: try messageFromThem(type: 34, #"{"content":"not a chunk"}"#)),
+                batchOnion(index: 2, data: try messageFromThem(type: MessageType.text, #"{"content":"after"}"#)),
+            ]))
+            await engine.close()
+            for await case .coreError(let error) in engine.events { errors.append(error) }
+        }
+        let kept = try rows(profile, "SELECT content FROM message ORDER BY serverIndex").map { $0["content"] as String? }
+        #expect(kept == ["before", "after"])
+        #expect(asked.since.withLock { $0 } == [0, 3])
+        #expect(errors.contains { $0.contains("server index 1)") })
     }
 }
 
 private extension Engine {
-    /// A core reply as `receive` takes one (`sender`, the contact a live
-    /// message's topic names): committed, then followed up.
-    func take(_ result: RunReturn, from sender: String? = nil) async throws {
-        try await run(expectedSender: sender) { _, _ in result }
+    /// A core reply as `receive` takes one: committed, then followed up.
+    func take(_ result: RunReturn) async throws {
+        try await run { _, _ in result }
     }
 }

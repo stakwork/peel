@@ -55,56 +55,59 @@ enum StateCodec {
         return state
     }
 
-    /// What really arrived with each payment on a page of history (the
-    /// `batch` payload), in msat by message index. The server sends a
-    /// MessagePack array of onions, each followed by its index, time and
-    /// child index and, for a payment, its amount and payment hash
-    /// (`encode_onion` in the core's `ping/onion.rs`); the core reports the
-    /// amount the sender wrote in the onion instead. Messages without a
-    /// payment are left out; nil when the page cannot be read.
-    static func paymentAmounts(inBatch data: Data) -> [String: UInt64]? {
-        guard let items = onions(inBatch: data) else { return nil }
-        var amounts: [String: UInt64] = [:]
-        for bytes in items where bytes.count == paymentLength {
-            amounts[String(number(in: bytes, at: paymentOnion))] = number(in: bytes, at: paymentOnion + 24)
+    /// The onions of a page of history as the server frames them: a
+    /// MessagePack array, each onion followed by its index, time and child
+    /// index and, for a payment, its amount and payment hash
+    /// (`encode_onion` in the core's `ping/onion.rs`). Nil when the page
+    /// cannot be read as the core reads it.
+    static func onions(inBatch data: Data) -> [Data]? {
+        var reader = Reader(data: data)
+        guard let count = try? reader.length(of: .array, "array") else { return nil }
+        var onions: [Data] = []
+        for _ in 0..<count {
+            guard let length = try? reader.length(of: .bin, "onion"), [messageLength, paymentLength].contains(length),
+                  let onion = try? reader.take(length) else { return nil }
+            onions.append(onion)
         }
-        return amounts
+        return reader.isAtEnd ? onions : nil
     }
 
-    /// The server index of every message on a page of history, those the
-    /// core cannot read included (it leaves them out of its reply); nil
-    /// when the page cannot be read as the core reads it.
-    static func messageIndices(inBatch data: Data) -> [UInt64]? {
-        guard let items = onions(inBatch: data) else { return nil }
-        var indices: [UInt64] = []
-        for bytes in items {
-            switch bytes.count {
-            case paymentLength: indices.append(number(in: bytes, at: paymentOnion))
-            case messageLength: indices.append(number(in: bytes, at: messageLength - 24))
-            default: return nil
-            }
+    /// A page of history made of `onions` (from `onions(inBatch:)`), framed
+    /// as the server frames one.
+    static func batch(_ onions: [Data]) -> Data {
+        var out = Data()
+        write(onions.count, as: .array, to: &out)
+        for onion in onions {
+            write(onion.count, as: .bin, to: &out)
+            out.append(onion)
         }
-        return indices
+        return out
+    }
+
+    /// The server index of an onion from `onions(inBatch:)`.
+    static func index(of onion: Data) -> UInt64 {
+        number(in: onion, at: onion.count == paymentLength ? paymentOnion : messageOnion)
+    }
+
+    /// What really arrived with each payment on a page of history, in msat
+    /// by message index; the core reports the amount the sender wrote in
+    /// the onion instead. Messages without a payment are left out.
+    static func paymentAmounts(of onions: [Data]) -> [String: UInt64] {
+        var amounts: [String: UInt64] = [:]
+        for onion in onions where onion.count == paymentLength {
+            amounts[String(index(of: onion))] = number(in: onion, at: paymentOnion + 24)
+        }
+        return amounts
     }
 
     // ping/onion.rs: a message is a 1401-byte onion, then id, ts and key
     // index (8 bytes each); a payment a 1366-byte onion, then id, ts, key
     // index and amount, then the hash.
-    private static let messageLength = 1425, paymentOnion = 1366, paymentLength = 1430
+    private static let messageOnion = 1401, messageLength = 1425, paymentOnion = 1366, paymentLength = 1430
 
-    private static func onions(inBatch data: Data) -> [[UInt8]]? {
-        var reader = Reader(data: data)
-        guard let count = try? reader.length(of: .array, "array") else { return nil }
-        var items: [[UInt8]] = []
-        for _ in 0..<count {
-            guard let length = try? reader.length(of: .bin, "onion"), let item = try? reader.take(length) else { return nil }
-            items.append([UInt8](item))
-        }
-        return reader.isAtEnd ? items : nil
-    }
-
-    private static func number(in bytes: [UInt8], at offset: Int) -> UInt64 {
-        bytes[offset..<offset + 8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+    private static func number(in onion: Data, at offset: Int) -> UInt64 {
+        let start = onion.startIndex + offset
+        return onion[start..<start + 8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
     }
 
     private static func write(_ length: Int, as family: Family, to out: inout Data) {

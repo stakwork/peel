@@ -5,23 +5,11 @@ extension Engine {
     /// True while a restore or catch-up is still asking the server for history.
     public var isSyncingHistory: Bool { history.isSyncing }
 
-    /// Asks the server for every message after the last one history was
-    /// fetched through with no gap (`HistoryCursor.through`), whatever came
-    /// live since: a catch-up cut short, by a quit, a stall or a page the
-    /// core could not read, leaves nothing behind.
+    /// Asks the server for every message from where history stands
+    /// (`HistoryCursor.from`): a catch-up cut short, by a quit or a stall,
+    /// leaves nothing behind.
     public func syncMessages() async throws {
-        if history.through == nil {
-            // A profile from before the index was kept starts from the
-            // newest message stored, as it did then (messages dropped from
-            // left tribes are not stored but still count).
-            let highest = max(try storage.highestServerIndex() ?? -1, droppedIndex)
-            if highest >= 0 {
-                try storage.set(String(highest), for: .historyIndex)
-                history.through = UInt64(highest)
-            }
-        }
-        let next = history.through.map { $0 + 1 } ?? 0
-        if let run = history.start([HistoryCursor.Run(phase: .messages, next: next, end: nil)]) {
+        if let run = history.start([HistoryCursor.Run(phase: .messages, next: history.from, end: nil)]) {
             try await request(run)
         }
     }
@@ -71,7 +59,7 @@ extension Engine {
     /// committed (`HistoryCursor.advance`), says what follows each. A page
     /// it ignored never gets here, and leaves the watchdog waiting for the
     /// one asked for.
-    func advanceHistory(_ page: (progress: HistoryCursor.Progress?, step: HistoryCursor.Step)) async throws {
+    func advanceHistory(_ page: HistoryCursor.Page) async throws {
         if let progress = page.progress {
             emit.yield(.history(phase: progress.phase, reached: progress.reached, end: progress.end))
         }
@@ -81,6 +69,35 @@ extension Engine {
         case .request(let run): try await request(run)
         case .ended: try await historyEnded()
         }
+    }
+
+    /// A page of history the core refuses whole, as it does when one message
+    /// on it cannot be read (a malformed chunk fails the whole call): the
+    /// core is given the page again without the messages it refuses
+    /// (`readable`), which the result's error names. History still moves
+    /// past the whole page, so one message can neither stop every catch-up
+    /// nor take the rest of its page with it. A refusal of no message in
+    /// particular (one of an empty page too) is thrown as it came.
+    static func readablePart(of page: [Data], refusal: any Error, handle: (Data) throws -> RunReturn) throws -> RunReturn {
+        guard var result = try? handle(StateCodec.batch([])) else { throw refusal }
+        var kept = readable(page) { (try? handle(StateCodec.batch($0))) == nil }
+        // What it reads apart it may still refuse together: then none of it.
+        if let read = try? handle(StateCodec.batch(kept)) { result = read } else { kept = [] }
+        let left = Set(page.map(StateCodec.index(of:))).subtracting(kept.map(StateCodec.index(of:))).sorted()
+        if !left.isEmpty {
+            let indices = left.map(String.init).joined(separator: ", ")
+            result.error = "skipped messages in history that could not be read (server index \(indices)): \(PeelError.readable(refusal))"
+        }
+        return result
+    }
+
+    /// What of a page the core refused whole it reads: the page in halves,
+    /// and each half it refuses in halves again, until each part it refuses
+    /// is one message, left out.
+    static func readable<Item>(_ refused: [Item], refuses: ([Item]) -> Bool) -> [Item] {
+        guard refused.count > 1 else { return [] }
+        let middle = refused.count / 2
+        return [Array(refused[..<middle]), Array(refused[middle...])].flatMap { refuses($0) ? readable($0, refuses: refuses) : $0 }
     }
 
     private func historyEnded() async throws {

@@ -298,8 +298,9 @@ struct MessageList: View {
     @State private var flashed: String?
     @State private var phase = ScrollPhase.idle
     private var userScrolling: Bool { phase == .interacting || phase == .decelerating }
-    /// A scroll back to the end is waiting for the layout pass to finish.
-    @State private var repinning = false
+    /// The rows made and the re-pin's requests, kept where writing them
+    /// redraws nothing.
+    @State private var tracking = ListTracking()
     /// A re-pin scrolled and the list has not reached its end since: the
     /// lazy stack's estimates can leave that scroll short, so it goes again.
     @State private var pinning = false
@@ -381,7 +382,10 @@ struct MessageList: View {
                             }
                         }
                         .id(row.id)
-                        .timelineRealised(composer)
+                        // A day divider alone in view counts as none made:
+                        // one re-pin more, no harm.
+                        .onAppear { tracking.appeared(row.id) }
+                        .onDisappear { tracking.made.remove(row.id) }
                     }
                 }
                 // Only for the timeline log's visible rows.
@@ -414,6 +418,10 @@ struct MessageList: View {
                 if composer.thread == nil, focusTarget == nil {
                     log("place: appear scrollTo bottom")
                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                    // Then by the last row once the estimate has settled: at
+                    // the end already, the scroll above can move nothing,
+                    // and the stack can be left with no row made there.
+                    repin(proxy, byLastRow: true)
                 }
                 if focusTarget != nil || divider != nil {
                     // A message asked for wins over "New messages". Both
@@ -443,7 +451,10 @@ struct MessageList: View {
             .onScrollPhaseChange { _, new in
                 log("phase \(phase) -> \(new)")
                 phase = new
-                if new == .interacting { pinning = false }
+                if new == .interacting {
+                    pinning = false
+                    tracking.lastRowTries = 0
+                }
                 // A scroll that ended at the bottom sends no report once still.
                 if new == .idle { settled() }
             }
@@ -472,6 +483,19 @@ struct MessageList: View {
                 if (resized && bottom.atBottom) || pinning, !new.atEnd, following, phase == .idle {
                     log("repin: \(resized ? "resized" : "pinning") height=\(TimelineLog.points(new.height)) container=\(TimelineLog.points(new.container))")
                     return repin(proxy)
+                }
+                // At its end with no row made: placed right but blank. The
+                // offset only clamped as the stack's estimate shrank (on
+                // opening), or followed a transient estimate thousands of
+                // points taller when the list's own height changed, and the
+                // stack draws for neither. A thread reads from its top and
+                // is left where it is; a list opening at a message asked
+                // for waits for it. Not again once the scroll to the last
+                // row has failed `ListTracking.lastRowLimit` times.
+                if resized, new.atEnd, following, phase == .idle, composer.thread == nil, focusTarget == nil,
+                   !rows.isEmpty, tracking.made.isEmpty, tracking.lastRowTries < ListTracking.lastRowLimit {
+                    log("repin: none made at the end height=\(TimelineLog.points(new.height)) container=\(TimelineLog.points(new.container))")
+                    repin(proxy)
                 }
                 // Judged against the last crossing taken, not `old`, which a
                 // coalesced report can have moved past.
@@ -603,21 +627,38 @@ struct MessageList: View {
         }
     }
 
-    /// Back to the end once this layout pass is over: a scroll asked for
-    /// inside it can be lost. One for a burst of changes, and none once
-    /// you have taken the list.
-    private func repin(_ proxy: ScrollViewProxy) {
-        guard !repinning else { return }
-        repinning = true
+    /// Back to the end once no further request has come for 20 ms: a
+    /// scroll asked for inside a layout pass can be lost, and a height
+    /// change can swing the lazy stack's estimate thousands of points and
+    /// back within one. One for a burst of changes, at most 100 ms late
+    /// while they keep coming, and none once you have taken the list.
+    ///
+    /// With no row made (or `byLastRow`, on opening): to the last row
+    /// first, then the end marker. The marker sits outside the lazy rows,
+    /// so a scroll to it, or an offset clamped to the end as the estimate
+    /// shrinks, can leave the stack with no row made at the end: a blank
+    /// list until a scroll by hand. A scroll to a row makes the stack make it.
+    private func repin(_ proxy: ScrollViewProxy, byLastRow: Bool = false) {
+        let request = tracking.ask(byLastRow: byLastRow)
         Task {
-            repinning = false
-            if following, !userScrolling {
-                if !atEnd { pinning = true }
-                log("place: repin scrollTo bottom atEnd=\(atEnd)")
-                proxy.scrollTo(Self.bottomID, anchor: .bottom)
-            } else {
-                log("repin skipped")
+            try? await Task.sleep(for: .milliseconds(20))
+            guard let byLastRow = tracking.take(request) else { return }
+            let latest = tracking.request
+            guard following, !userScrolling else { return log("repin skipped") }
+            if byLastRow, let last = rows.last?.id, tracking.lastRowTries < ListTracking.lastRowLimit {
+                if tracking.made.isEmpty { tracking.lastRowTries += 1 }
+                log("place: repin scrollTo last row")
+                proxy.scrollTo(last, anchor: .bottom)
+                // A frame for it to land before the marker below it; a
+                // request since (its own resize, a new message) goes instead.
+                try? await Task.sleep(for: .milliseconds(20))
+                guard tracking.request == latest, rows.last?.id == last, following, !userScrolling else {
+                    return log("repin skipped")
+                }
             }
+            if !atEnd { pinning = true }
+            log("place: repin scrollTo bottom atEnd=\(atEnd)")
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
     }
 
@@ -689,7 +730,7 @@ struct MessageList: View {
     private func log(_ event: @autoclosure () -> String) {
         TimelineLog.log("\(TimelineLog.tag(composer)) \(event()) | rows=\(rows.count) atBottom=\(bottom.atBottom) "
             + "atEnd=\(atEnd) following=\(following) opening=\(opening) pinning=\(pinning) phase=\(phase) "
-            + "realised=\(TimelineLog.realised[TimelineLog.tag(composer)] ?? 0)")
+            + "realised=\(tracking.made.count)")
     }
 
     /// A row's place in the list, never its id (a message's uuid).
@@ -722,6 +763,50 @@ struct MessageList: View {
         } else {
             log(rows.isEmpty ? "visible none, no rows" : "visible NONE with rows: blank")
         }
+    }
+}
+
+/// What a `MessageList` keeps outside SwiftUI's observation, so writing
+/// it redraws nothing: the rows made and the re-pin's requests.
+@MainActor private final class ListTracking {
+    /// The rows the lazy stack has made (appeared, not yet gone), by id, so
+    /// an appear or disappear twice cannot skew it: none with rows to show
+    /// is the blank list.
+    var made: Set<String> = []
+    /// Scrolls to the last row with none made since a row was made or you
+    /// took the list; a stack that never makes one is left after
+    /// `lastRowLimit`, not scrolled every few frames.
+    var lastRowTries = 0
+    static let lastRowLimit = 3
+    /// The latest re-pin asked for, when the oldest still waiting was asked
+    /// for, and whether any of them goes by the last row.
+    private(set) var request = 0
+    private var waitingSince: ContinuousClock.Instant?
+    private var byLastRow = false
+
+    func appeared(_ id: String) {
+        made.insert(id)
+        lastRowTries = 0
+    }
+
+    /// A re-pin asked for; returns its number.
+    func ask(byLastRow: Bool) -> Int {
+        request &+= 1
+        if byLastRow { self.byLastRow = true }
+        if waitingSince == nil { waitingSince = .now }
+        return request
+    }
+
+    /// Whether `request` runs now, and if so whether by the last row: the
+    /// latest one, or any once requests have kept coming for 100 ms.
+    func take(_ request: Int) -> Bool? {
+        guard let since = waitingSince,
+              request == self.request || ContinuousClock.now - since >= .milliseconds(100) else { return nil }
+        defer {
+            waitingSince = nil
+            byLastRow = false
+        }
+        return byLastRow || made.isEmpty
     }
 }
 

@@ -243,7 +243,7 @@ Each line starts with six hex characters of a hash of the chat's key, keyed
 afresh at each launch (the same chat has another tag after a relaunch), then
 the event, then the list's state (`rows`, `atBottom`, `atEnd`,
 `following`, `opening`, `pinning`, `phase`, and `realised`, the rows the
-lazy stack has made). Events: the app's phase; the
+lazy stack has made, which the list counts with the log off too). Events: the app's phase; the
 timeline reset, loaded (messages, threads, limit) and its rows built
 (count, the "New messages" row); the list's appear and disappear (the
 focus or divider row asked for); every placement (`place:` the bottom on

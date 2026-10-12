@@ -2498,6 +2498,85 @@ Confidence: moderate. It removes the only state the log caught that
 matches Tom's, but the blank never persisted offscreen. If it comes back,
 the log on his account says which placement left it there.
 
+## Blank on opening with nothing made (branch `fix/blank-timeline-unrealised`, 2026-10-12)
+
+From Tom on his build of main (e28e764, with #196): "Sphinx & Stak" still
+opened blank, now with the timeline log on. The log for that chat (200
+messages, 199 rows, no divider, no focus): `place: appear scrollTo
+bottom`, then the estimated content shrank in steps (65 097, 37 629,
+26 647, 22 986 pt) and each time the offset was clamped back to the end;
+`atEnd`, `following` true, no re-pin (the list was always at its end),
+`realised=0` and no "visible rows" report for 5 s, until his first scroll,
+when rows 198 and 195 to 198 appeared at once. Chats that drew showed the
+same shrinking with rows reported within 20 ms, two of them after a
+`repin: resized`. So the placement was right and the lazy stack made no
+row there: an offset reached only by clamping, and a scroll to the end
+marker (an overlay outside the lazy rows) that moved nothing, are not
+drawn for. Also from his log (94acf4): every step of the composer growing
+re-estimated the content about 7 500 pt taller and back within a frame,
+the likely Shift-Return blank (#134) when that lands at the end.
+
+Done means: a chat that opens at its end has rows made there without a
+scroll by hand, and a list at its end with no row made after any height
+change goes to its last row; thread lists, "New messages", jump to a
+message, the composer and search bar resizes behave as before.
+
+Changed, in `MessageList`:
+
+- Rows made are tracked always (`ListTracking.made`, the ids of rows
+  appeared and not gone, in a reference so writing it redraws nothing);
+  the log's `realised` reads it. The log-only counter in `TimelineLog` is
+  gone.
+- The re-pin runs once no further request has come for 20 ms (at most
+  100 ms late while they keep coming) rather than on the next turn, so it
+  does not act on a transient estimate; so it is up to 20 ms later than
+  before after each line the composer grows. With no row made, or on
+  opening, it scrolls to the last row (anchor bottom) first, then 20 ms
+  later to the end marker below its padding, unless a request came in
+  between (which goes instead). Not otherwise: the last row stops 12 pt
+  short of the end, and doing it on every composer line moved the rows
+  12 pt for a frame each time. With none made after three such scrolls
+  it stops trying until a row is made or you scroll.
+- Opening a chat at its end asks for that re-pin by the last row after
+  the scroll to the marker.
+- A height change at the end while following, idle, with rows and none
+  made, re-pins. Not in a thread's list, which reads from its top, nor
+  while opening at a message asked for.
+
+Offscreen (`check-app.sh`, dev profiles `bfx-owner` and `bfx-app` on a
+local stack, a tribe of 200 rows: short and long texts with lists and
+code, five sizes of image, tribe link cards, collapsed threads, boosts):
+the estimate starts too tall (16 224 pt for about 9 000) and shrinks with
+the offset clamped, as in Tom's log, but before the change rows were made
+within milliseconds on all 7 opens: the blank did not reproduce. The
+composer growing by Shift-Return (no text, nothing sent) showed the same
+transient as Tom's 94acf4 (8 995 to 19 780 and back at each line), with
+rows made throughout, before and after. After: 7 of 7 opens end at the
+end with rows in view, the last-row scroll once per open, none during
+the composer's growth, every step of which ends flush (below 0). Idle on
+the chat for a minute: 0.0% with the log off; with it on, 0.0 to 0.4%
+after one 13% sample 25 s in.
+
+The log on adds `.scrollTargetLayout` and the visibility probe; Tom's
+first reports were with it off, so the blank does not depend on it, and
+the fix reads only the always-on count.
+
+Independent review (agent, foreground), applied: the count kept as a set
+of ids, so a doubled appear or disappear cannot switch the fix off; the
+last-row scroll capped (a stack that never makes a row would otherwise be
+scrolled every 40 ms); the wait capped at 100 ms; the second stage gives
+way to a later request or a new last row; the blank re-pin not while
+opening at a message asked for; the request counter moved out of
+`@State`. A first version of the second-stage check compared against the
+task's own request and left six of seven opens 12 pt short; it compares
+against the latest request when the task ran. Not applied: dropping the
+last-row scroll on opening (`made` empty covers a blank); kept so the
+opening is placed by a row, as asked.
+
+Confidence: moderate. It acts on the exact state Tom's log shows
+(at the end, nothing made), but that state never persisted offscreen;
+Tom's build with the log on says whether the last-row scroll draws it.
+
 ## Hover cards and menus at their trigger (branch `fix/hover-card-anchor`, 2026-10-10)
 
 Tom's report: in a tribe, after tapping and hovering several boost chips,

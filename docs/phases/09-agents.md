@@ -369,6 +369,62 @@ Later: compaction, then memory.
   OpenRouter model ids are a best guess (unverified without keys); a
   wrong one shows the provider's refusal at Connect.
 
+## Capabilities against agent SDKs
+
+Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,
+the Claude Agent SDK and Claude Code, OpenAI's Agents SDK, LangGraph and
+Mastra. Have = built, Partial = some of it, Missing = not built.
+
+| Area | Capability | State | Notes |
+|---|---|---|---|
+| Model | Providers behind one interface | Have | Anthropic; OpenAI-compatible (OpenAI, OpenRouter) |
+| | Streaming text and tool calls, Stop | Have | |
+| | Typed errors in plain words | Have | Bad key, rate limit, outage, network |
+| | Prompt caching | Have | Anthropic's cache on the whole request |
+| | Automatic retry with backoff | Partial | Manual Retry only; retry-after is parsed, not used |
+| | Extended thinking | Partial | Blocks parsed and kept; never requested |
+| | Usage and cost | Partial | Tokens counted; no cost, nothing shown |
+| | Structured output | Missing | |
+| | Images and files | Missing | |
+| | Model lists from the provider | Missing | Hard-coded; OpenAI and OpenRouter names unverified |
+| Loop | Model and tool steps, step cap | Have | Cap 10 |
+| | Context window | Partial | Recent turns that fit a budget; older ones drop out |
+| | Compaction | Missing | Summarise old turns into a Summary record |
+| | Tools run concurrently | Missing | Sequential |
+| | Per-step and lifecycle hooks | Missing | |
+| | Guardrails on input and output | Missing | |
+| Tools | Registry with schemas and an effect (read, send) | Have | |
+| | Caps and untrusted-text markers on tool output | Have | |
+| | Sphinx read tools | Have | Five, PR 4 |
+| | Approval gate | Missing | Needed before send and pay |
+| | Sphinx send and pay | Missing | Send is PR 6 |
+| | Connectors (MCP) | Missing | Use the official MCP Swift SDK, not our own |
+| | Calendar | Missing | EventKit, read only first |
+| | Web search | Missing | |
+| State | Persistent conversation, tool calls recorded | Have | `agent.sqlite` |
+| | Event log; tables rebuildable from it | Have | |
+| | Long-term memory | Missing | The graph |
+| | Search by meaning (embeddings) | Missing | Keyword search only |
+| | Instruction memory (a rules file) | Missing | |
+| | Resume or branch a conversation | Missing | One timeline |
+| Agents | Subagents, handoffs, skills | Missing | |
+| Running | On the device | Have | |
+| | Durable runs, always-on, scheduled, proactive | Missing | Needs a server |
+| Observability | Tracing per step | Partial | Tool rows show durations; nothing exported |
+| | Evals of agent behaviour | Missing | Unit tests with fake providers only |
+| UI | Streamed loop events; View links into the app | Have | |
+
+**Own versus rent** (Tom, 2026-10-12: avoid rebuilding what packages
+already maintain). Peel owns what is Peel's: the Sphinx tools, the
+session and UI, the event log and sync, and small pieces tied to our
+storage and UI (compaction, the approval gate). Peel rents what is the
+providers': the model clients (structured output, images, thinking, retry,
+model lists, provider tools) and MCP. Until a spike settles the
+replacement, the model clients get fixes only, no new features. The
+candidates: Apple's Foundation Models with Anthropic's Claude provider
+(needs macOS and iOS 27), and Hugging Face's AnyLanguageModel (macOS 14
+and up), each behind `ModelProvider`.
+
 ## User journeys
 
 Each is done when it works in the app on a development profile.

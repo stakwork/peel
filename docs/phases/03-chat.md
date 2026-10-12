@@ -2435,6 +2435,69 @@ or logging.
 
 No unit test: the rule lives in `PeelApp`, which has no test target.
 
+## Blank on opening at "New messages" (branch `fix/blank-timeline-on-open`, 2026-10-12)
+
+From Tom on his build of main (2071689, and 002d77d before it): opening
+"Sphinx & Stak", then "hive", showed the header and composer over an empty
+list, no rows and no day divider, until one scroll brought every row back.
+Both had one or two unread messages at the end (the newest arrived
+overnight); sending in Hive cleared it, which also drops "New messages".
+
+Done means: a chat opening at "New messages" never sits past its drawn
+rows, near the end or far up, and the plain open and a far-up divider
+behave as before. Plus an opt-in log Tom can turn on in his real app
+(`TimelineLog`, `docs/testing.md`, "Timeline log").
+
+Found with the new log on a local stack (dev profiles `tlog-alice-1012`
+and `tlog-bob-1012`, a tribe of 95 to 120 rows with text, wrapped text,
+lists, code, link cards and images; opened from another chat six times
+per run in `check-app.sh`, the offscreen app never marks a chat read):
+
+- Opening with "New messages" set `following = false` and waited 100 ms
+  before its scroll to the divider, so it skipped the bottom scroll the
+  plain open makes. In those 100 ms the initial anchor kept the offset at
+  the lazy stack's estimated end while its estimate swung (5 154, 2 616,
+  then 13 872 pt for 95 rows measured at about 9 500): the rows in view
+  dropped to none (`visible NONE with rows`) on 6 of 6 opens with two
+  unread at the end, and on 1 of 2 with 31 unread. Offscreen the scroll
+  view clamped each time and the rows came back; a divider a row or two
+  from the end then asks for an offset past the end, and with `following`
+  false no re-pin runs, so a list left past its rows stays there. That is
+  the state Tom saw; it was not seen to persist offscreen.
+- The plain open (no divider) scrolls to the end marker in `onAppear` and
+  showed no blank in 6 of 6.
+
+Changed: `MessageList.onAppear` scrolls the chat's list to its end first
+on every open, then (100 ms later, as before) to "New messages" or a
+message asked for. After: two unread at the end, 1 transient blank in 6
+opens (mid-way through the divider pass, recovered within the pass), every
+open ending flush on the newest with the divider in view; 25 unread, 0 of
+6, every open with "New messages" at the top as before; plain opens
+unchanged.
+
+Not changed: a list reported past its end (`below < 0`) counts as at its
+end (`atEnd`, since #134); a scroll back to the end there is left until the
+log shows it in Tom's app, since steering the offset back to the end once
+opened chats blank (#84's branch).
+
+Reviews. Independent review (agent, foreground), applied: the bottom
+scroll is skipped when opening at a message asked for, since reaching the
+bottom there would reset a timeline grown to reach an older message
+(`chatListAtBottom`) before the jump; one `ChatRow.holds(_:)` for the row a
+jump goes to, shared by `go(to:)` and the log; the chat tag is keyed afresh
+at each launch (HMAC), so a pasted log cannot be matched to a tribe's key;
+the log's different configuration with it on is noted in `docs/testing.md`;
+`realised` (rows the lazy stack has made) added, so the log tells a drawing
+problem from a placement one. Not applied: leaving `following` true until
+the first divider pass, so re-pins would hold the end for those 100 ms; it
+changes the jump button's count rules and is left until the log shows it
+is needed. Security: nothing sent, one `UserDefaults` bool read, the log
+at debug level with counts, indices, phases and points only.
+
+Confidence: moderate. It removes the only state the log caught that
+matches Tom's, but the blank never persisted offscreen. If it comes back,
+the log on his account says which placement left it there.
+
 ## Hover cards and menus at their trigger (branch `fix/hover-card-anchor`, 2026-10-10)
 
 Tom's report: in a tribe, after tapping and hovering several boost chips,

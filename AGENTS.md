@@ -222,7 +222,7 @@ is a short plan. Update the status and the journal when you finish something.
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
   `Formatting` (counts and their nouns, times and dates), `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
+  for the chat: `MessageViews`, `TimelineLog` (the opt-in log of the message list's placement, `defaults write dev.peel.mac PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log"), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
   `ComposerField` (the message field: Return sends, `@` mentions),

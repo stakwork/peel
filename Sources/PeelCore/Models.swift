@@ -94,6 +94,11 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     /// whose chat has not been read on this Mac since. The core accepts them
     /// at once: there is no request to answer.
     public var isNew = false
+    /// Someone else's message past the marker, of any type: the server's
+    /// badge count and the official apps' unread take every one (joins,
+    /// others' boosts), where `unread` takes only what Peel counts. Our own
+    /// need no marker: the server moves it to each one we send.
+    public var isBehind = false
 
     public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
 
@@ -115,6 +120,7 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
 
     /// In the sidebar's Unread section (`ChatSections`).
     public var isUnread: Bool { sidebarCount > 0 || isNew }
+
 }
 
 /// What a chat's main conversation shows.

@@ -88,6 +88,11 @@ public actor Engine {
     /// Chats whose read marker was sent since `getReads` was last asked: its
     /// answer may predate the marker, so it is not applied to them.
     var readsSentSinceGetReads: Set<String> = []
+    /// The same for mutes and `getMutes`.
+    var mutesSetSinceGetMutes: Set<String> = []
+    /// When `getReads` and `getMutes` were last asked, until the reads are
+    /// answered: a refresh waits for an answer rather than ask again.
+    var readsAskedAt: ContinuousClock.Instant?
     /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
     private(set) var droppedIndex: Int64
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
@@ -625,7 +630,7 @@ public actor Engine {
         commit.resend = resend
         commit.reads = Self.reads(result.lastRead).filter { !readsSentSinceGetReads.contains($0.key) }
         if let json = result.muteLevels, let mutes = JSON.decode([String: Int].self, from: json) {
-            commit.mutes = mutes
+            commit.mutes = mutes.filter { !mutesSetSinceGetMutes.contains($0.key) }
         }
 
         let updates = try result.stateMp.map(StateCodec.decode) ?? [:]
@@ -897,6 +902,7 @@ public actor Engine {
         state = newState
         contactsByChildIndex = Self.index(contacts)
         readsSentSinceGetReads.remove(pubkey)
+        mutesSetSinceGetMutes.remove(pubkey)
         removeFiles(of: attachments.compactMap(\.body), outgoing: attachments.compactMap(\.id))
     }
 
@@ -1182,6 +1188,7 @@ public actor Engine {
                 )
             }
             if kind == "getreads" {
+                readsAskedAt = nil
                 try await publishPendingReads()
             }
         } catch {
@@ -1285,9 +1292,30 @@ public actor Engine {
         }
     }
 
+    /// Asks again for the markers and mutes the account's other devices set,
+    /// as the official apps do each time they come to the front: the server
+    /// pushes neither (mixer `READ` and `MUTE` answer nothing). Only once
+    /// `cameOnline` has asked on this connection, and not while an ask is
+    /// still unanswered (`readsRefreshWait`). A failure is left to the next
+    /// connect, which asks again.
+    public func refreshReadsAndMutes() async {
+        guard transport != nil, cameOnlineHere else { return }
+        if let asked = readsAskedAt, ContinuousClock.now - asked < Self.readsRefreshWait { return }
+        try? await fetchReadsAndMutes()
+    }
+
+    /// How long a refresh waits for an unanswered `getReads` before asking again.
+    static let readsRefreshWait: Duration = .seconds(30)
+
     /// Read markers and mutes live on the server, shared by every device.
     func fetchReadsAndMutes() async throws {
-        readsSentSinceGetReads = []
+        // With an ask still unanswered, its late answer may predate what
+        // was sent since: keep guarding those chats until one is answered.
+        if readsAskedAt == nil {
+            readsSentSinceGetReads = []
+            mutesSetSinceGetMutes = []
+        }
+        readsAskedAt = .now
         try await run { time, state in
             try Sphinxrs.getReads(seed: seed, uniqueTime: time, state: state)
         }

@@ -121,4 +121,27 @@ struct ReadMarkerTests {
         #expect(try storage.setRead(chat: chat, index: 7, as: .unread))
         #expect(try await first(storage.readStates())?[chat]?.unread == 1)
     }
+
+    /// A message Peel does not count (a join) still leaves the chat behind
+    /// the marker, which the server and the official apps count unread.
+    @Test func anUncountedMessageLeavesTheChatBehind() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(chat, true)],
+            messages: [
+                (.fixture(uuid: "a", serverIndex: 3, chat: chat), false, nil),
+                (.fixture(uuid: "b", serverIndex: 8, type: MessageType.groupJoin, chat: chat), false, nil),
+            ],
+            reads: [chat: 3]
+        ))
+        let state = try #require(try await first(storage.readStates())?[chat])
+        #expect(state.unread == 0 && state.isBehind)
+        #expect(try storage.setRead(chat: chat, index: 8, as: .read))
+        #expect(try await first(storage.readStates())?[chat]?.isBehind == false)
+        // Our own past it: the server moved its marker when we sent it.
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "c", serverIndex: 9, chat: chat, fromMe: true), false, nil),
+        ]))
+        #expect(try await first(storage.readStates())?[chat]?.isBehind == false)
+    }
 }

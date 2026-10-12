@@ -738,7 +738,8 @@ final class AppModel {
         noteNewMessages(in: chat)
         guard isFrontmost, phase == .ready, keepsUnread != chat else { return }
         notifier.removeDelivered(in: [chat])
-        guard let engine, let state = readStates[chat], state.unread > 0 || state.isNew else { return }
+        // Behind, not only unread: the official apps count what Peel does not.
+        guard let engine, let state = readStates[chat], state.isBehind || state.isNew else { return }
         Task {
             do {
                 try await engine.markRead(chat)

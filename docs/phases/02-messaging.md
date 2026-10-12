@@ -274,6 +274,43 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    (screenshots in the session). Not exercised by hand: clicking the menu
    items in the app, the hold on the open chat and its release at the bottom.
 
+   **Reads across clients** (2026-10-12, `fix/read-sync`). Tom: a chat
+   read on the iPhone reads in Peel, one read in Peel stays unread in
+   Sphinx. Found: the mixer stores a `read` (inclusive server index, as
+   Peel and the official apps send it) and pushes nothing to the other
+   devices but a badge count to the one push token; each client asks with
+   `getreads`/`getmutes`. The official apps ask on every coming to the
+   front (Mac `applicationWillBecomeActive` → `reconnectToServer` →
+   `startNewMsgsSync` and `refreshUnreadStatus`; iOS
+   `applicationWillEnterForeground`, pull to refresh, after each history
+   page); Peel asked only once per connection. And Peel sent `read` for the
+   open chat only when its own unread count was above 0, which leaves out
+   joins, leaves, other members' boosts and blank messages; the server's
+   badge and the official apps count every message past the marker, so a
+   tribe whose newest messages were such stayed unread there.
+   Now: `ChatReadState.isBehind` (someone else's message past the marker,
+   of any type; our own need none, the server moves the marker to each we
+   send) gates marking the open chat read instead of `unread > 0`
+   (`readStates` now also re-emits on an uncounted message, which is what
+   triggers it); `Engine.refreshReadsAndMutes` asks again each time the
+   app comes to the front, unless an ask is still unanswered (30 s), and
+   before the open chat is marked read, so that `read` goes after the ask
+   and `readsSentSinceGetReads` keeps the answer off it. Mutes have the
+   same guard now (`mutesSetSinceGetMutes`). Both sets empty only on an
+   ask with none outstanding, so a late answer to an earlier ask cannot
+   lower a marker sent since. Journey `Reads.markersAndMutesAcrossDevices`.
+   Review, not applied: the sidebar's and thread rows' "Mark as read" still
+   show only with Peel's unread (offering it on a chat Peel shows read would
+   confuse; opening the chat now reads it); no floor between answered asks
+   (one getReads and getMutes per activation, as the official Mac app);
+   activation's mark read waits behind the ask's publish (local, short);
+   the gate itself lives in `AppModel` and is covered by the storage test
+   of `isBehind`, not by a journey; no unit test of the mute guard (needs
+   the core).
+   Left: nothing is live while both apps stay in front (the server has no
+   push for it); a delivered notification on the iPhone is not taken
+   away by a read in Peel (the server sends only the badge count).
+
    **Jump to a message** (same branch). `AppModel.focus(on:inThread:)` opens
    a message's chat scrolled to it (anchor centre) and lights the row (the
    selection tint, held 0.4 s, then fading out over 1.5 s); the quote click

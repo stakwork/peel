@@ -384,6 +384,7 @@ extension Engine {
         try await run { time, state in
             try Sphinxrs.mute(seed: seed, uniqueTime: time, state: state, pubkey: chat, muteLevel: UInt8(level.rawValue))
         }
+        mutesSetSinceGetMutes.insert(chat)
         try storage.setMute(chat: chat, level: level)
     }
 }

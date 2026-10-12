@@ -178,10 +178,13 @@ extension Storage {
     /// (`countsAsUnreadSQL`). One row per conversation; each count is ranges
     /// on `message_unread` (one per type), plus a lookup of the boosted
     /// message for each boost in range; the mentions a range on
-    /// `message_mentions`. A message deleted after it arrived still counts,
-    /// as before payments (it was news when it came).
+    /// `message_mentions`; `isBehind` a range past the marker on
+    /// `message_chat_serverIndex`. A message deleted after it arrived still
+    /// counts, as before payments (it was news when it came).
     private static let readStatesSQL = """
-        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew, (
+        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew,
+            EXISTS (SELECT 1 FROM message m WHERE m.chat = c.chat
+                AND m.serverIndex > COALESCE(s.lastRead, -1) AND m.fromMe = 0) AS isBehind, (
             SELECT COUNT(*) FROM message m
             WHERE m.chat = c.chat AND \(countsAsUnreadSQL)
                 AND m.serverIndex > COALESCE(s.lastRead, -1)

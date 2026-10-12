@@ -19,6 +19,11 @@ struct ModelErrorTests {
         let openAI = #"{"error":{"message":"Unknown model gpt-x","type":"invalid_request_error","code":"model_not_found"}}"#
         #expect(error(404, openAI) == .badRequest(status: 404, "Unknown model gpt-x"))
         #expect(error(400) == .badRequest(status: 400, "bad request"))
+        // No credit is not a rate limit: waiting will not help, so it is not retried.
+        let noCredit = #"{"error":{"message":"You exceeded your current quota.","type":"insufficient_quota","code":"insufficient_quota"}}"#
+        #expect(error(429, noCredit) == .badRequest(status: 429, "You exceeded your current quota."))
+        #expect(!error(429, noCredit).isRetryable)
+        #expect(!ModelError(streamError: ["code": "insufficient_quota", "message": "No credit."], secret: "").isRetryable)
     }
 
     @Test func messagesNeverCarryTheKey() {

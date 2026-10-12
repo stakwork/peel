@@ -277,6 +277,25 @@ struct SessionApprovalTests {
         #expect(results(provider).first?.content.hasPrefix("The user declined") == true)
     }
 
+    @Test func aFailureAfterASendKeepsTheReplyWithoutRetry() async throws {
+        let runs = Counter()
+        let provider = FakeProvider([sendReply(), .failing([], .badRequest(status: 400, "broken"))])
+        let agent = try session(provider, store: SQLiteAgentStore.inMemory(device: "t"), runs: runs)
+        agent.send("tell Kate, then sum up")
+        try await until { agent.waiting != nil }
+        agent.answer(.allowOnce)
+        try await until { !agent.isRunning }
+
+        #expect(runs.value == 1)
+        // Kept with what ran; no Retry that would send it again.
+        #expect(agent.problem == nil)
+        #expect(agent.turns.last?.ending == .failed)
+        #expect(agent.turns.last?.tools.first?.approval?.outcome == .allowedOnce)
+        agent.retry()
+        #expect(!agent.isRunning)
+        #expect(runs.value == 1)
+    }
+
     @Test func stopWhileWaitingSendsNothing() async throws {
         let runs = Counter()
         let provider = FakeProvider([sendReply(), textReply("never")])

@@ -194,6 +194,23 @@ private struct AgentReplyRow: View {
                 .onChange(of: reply.tools.count) { grew() }
                 // A card replaces its row in place, taller: kept in view.
                 .onChange(of: agent.waiting) { grew() }
+            AgentRetryRow(agent: agent, grew: grew)
+        }
+    }
+}
+
+/// A model call made again on its own, under the reply, until the reply
+/// goes on: "Rate limited by the provider. Retrying in 4 s…". Its own view,
+/// so the reply's row does not read `retrying`.
+private struct AgentRetryRow: View {
+    let agent: AgentSession
+    let grew: () -> Void
+
+    var body: some View {
+        if let retrying = agent.retrying {
+            Callout(detail: RetryPolicy.note(after: retrying.after, retrying.reason), icon: .progress)
+                .agentNoteRow()
+                .onAppear { grew() }
         }
     }
 }
@@ -273,6 +290,7 @@ private struct AgentTurnRow: View {
         case .cutOff: "The reply reached its length limit."
         case .declined: "The provider declined to answer."
         case .stepLimit: "Stopped after the most steps a reply may take."
+        case .failed: "The provider failed after this ran. Ask again for anything left."
         }
     }
 }
@@ -515,10 +533,7 @@ private struct AgentProblemRow: View {
                     .buttonStyle(.peel(.outline, size: .sm))
             }
         }
-        .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
-        .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
-        .padding(.trailing, 20)
-        .padding(.vertical, 6)
+        .agentNoteRow()
     }
 
     private var words: String {
@@ -533,6 +548,17 @@ private struct AgentProblemRow: View {
         case .model(let error):
             error.localizedDescription
         }
+    }
+}
+
+extension View {
+    /// A note in the agent chat (a failure, a retry), under the message it
+    /// is about, in line with the messages' text.
+    fileprivate func agentNoteRow() -> some View {
+        frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+            .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
+            .padding(.trailing, 20)
+            .padding(.vertical, 6)
     }
 }
 

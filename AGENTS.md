@@ -330,8 +330,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `Loop/` — `Tool` (with its read or send effect, and `Plan`: a result
     at once or an action to approve) and `ToolRegistry`,
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
-    at three UTF-8 bytes each), `AgentLoop` (one turn: stream, run tools,
-    repeat; Stop is cancelling its task; every action asks its approver)
+    at three UTF-8 bytes each), `RetryPolicy` (when a failed model call is
+    made again on its own, and how long it waits), `AgentLoop` (one turn:
+    stream, run tools, repeat; reads next to each other side by side, any
+    other call alone, in order; Stop is cancelling its task; every action
+    asks its approver)
     and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
     card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
     the person, shared by the app and the CLI; `ApprovalRules`, the
@@ -407,7 +410,9 @@ is a short plan. Update the status and the journal when you finish something.
   and unlink, rebuild, search, walk and ontology); recorded streams in
   `Fixtures/` through both decoders, HTTP statuses to `ModelError`, the
   request bodies over an in-process `URLProtocol` stub, the loop with
-  a scripted `FakeProvider`, `AgentSessionTests` (streaming, Stop,
+  a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
+  caps, Stop during a wait, read tools side by side and in order, an
+  action between reads), `AgentSessionTests` (streaming, Stop,
   failures and Retry, connecting, the key, reopening, Clear) and
   `ApprovalTests` (the loop with a scripted approver, the gate's rules,
   the session's card)

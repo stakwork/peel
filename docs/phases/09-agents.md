@@ -10,7 +10,8 @@ and the turn loop, #178), PR 4 (the Sphinx read tools, #181) and PR 5
 is in review (2026-10-12, Tom's brief: every send asks first, so the gate
 came with it). `mark_chat_as_seen` is deferred to a PR of its own: it
 needs the gate's "always" wording for a tool that changes no message.
-Next: compaction (the loop-hardening branch), then memory.
+Hardening the loop: automatic retry and concurrent reads (in review),
+then compaction stacked on it. Then memory.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -159,7 +160,25 @@ Each PR goes through "How a change ships" in `../../AGENTS.md`.
    when "do it for me" passes on a development profile against the local
    test server.
 
-Later: compaction, then memory.
+Hardening the loop (Tom, 2026-10-12: no evals, tracing, cost or
+extended thinking; keep it simple), two stacked PRs:
+
+- **Retry and concurrent reads.** A model call that fails with a rate
+  limit, an outage, a dropped connection or a 408 (`ModelError.isRetryable`)
+  is made again on its own, honouring `retry-after`, else waiting 2, 4 and
+  8 s with jitter: at most three retries, 30 s a wait and 60 s in all, and
+  only while nothing of that call has been shown (no text streamed), so a
+  retry never repeats words or runs a tool twice. Stop ends the wait at
+  once. The chat shows a quiet "Rate limited by the provider. Retrying in
+  4 s…" under the reply, in the failure row's style, until the call goes
+  again. Reads next to each other in a step run side by side, four at a
+  time; any other call runs alone, after them, in order; rows and results
+  stay in call order. Done
+  when tests cover retry-after, the caps, no retry after words, Stop
+  during the wait, overlap, order, and a failing read leaving the others.
+- **Compaction,** after it (below, in its own journal entry).
+
+Later: memory.
 
 ## Journal
 
@@ -452,6 +471,69 @@ Later: compaction, then memory.
   lowered to one day in the worktree, not committed; Tom's weekly
   `scripts/run-app.sh` renews it.
 
+**Hardening A, retry and concurrent reads (2026-10-12).**
+- Done: `RetryPolicy` and `AgentLoop.call`: a retryable model failure
+  (`ModelError.isRetryable`: 429, 5xx, a dropped connection, 408) with no
+  text shown yet is made again: after the provider's `retry-after`, else
+  2, 4 and 8 s halved at random by up to half; at most three retries, no
+  wait over 30 s and none that would take the call past 60 s from its
+  first try. The tool calls of a failed reply were never run, so they go
+  with it; a later step is retried with the earlier steps' results, which
+  never runs a tool twice. `LoopEvent.retrying(after:_:)` says how long it
+  waits, then `.zero` as it goes; `AgentSession.retrying` holds it and the
+  chat shows "Rate limited by the provider. Retrying in 4 s…" under the
+  reply (`RetryPolicy.note`, which the CLI prints too), a `Callout` with
+  the spinner, laid out as the failure row (`agentNoteRow`). Stop cancels
+  the wait at once. `ModelError.reason` is a failure without its "Try
+  again" advice. `runTools`: reads next to each other run side by side in
+  a task group, four at a time, each row opened as it starts; any other
+  call runs alone after the reads before it, so a read after a send sees
+  it. Results keep call order; a failing read is just its own error.
+- With the gate (#210, rebased onto it): an action runs alone after the
+  reads before it, its approval included, so nothing runs while its card
+  waits and the reads after it start only once it is answered and done;
+  a declined action leaves the reads around it as they were. A `.read`
+  tool that plans an action is refused rather than run side by side.
+  /code-review of the resolution: a failure after an allowed action threw
+  the reply away and offered Retry, which could send again (the reply is
+  now kept with what ran, ending "The provider failed after this ran",
+  no Retry); OpenAI's 429 `insufficient_quota` was retried as a rate
+  limit (now a refused request); a call with no tool split a run of
+  reads (it now goes with them); tests made stricter (the reads after an
+  action proven side by side, nothing started while a card waits, Stop
+  while a card waits leaves the reads after it unrun). Not applied: a
+  `Tool` type that cannot plan an action for a read (a change to #210's
+  API; the loop refuses it instead).
+- Checked: `swift test` in full; `AgentLoopHardeningTests` (retry-after
+  kept, the caps, no retry once words were shown, a refused key not
+  retried, a later step retried without its tools again, Stop in the wait,
+  overlap proven by tools that wait for each other, the cap of four, a
+  failing read, sends as barriers in order, Stop during reads) and two
+  `AgentSessionTests` (the note shown then cleared, Stop during it).
+  `peel --profile <dev> agent` against a local stub of the Messages API:
+  a real 429 with `retry-after: 4` was waited and retried, and its three
+  read tools opened in call order and closed as each finished. The app
+  was not checked offscreen: `scripts/check-app.sh` stops at signing (the
+  Personal Team profile has under two days left and Xcode could not
+  fetch a new one; Xcode › Settings › Accounts needs the Apple ID).
+- Reviews: /code-review found reads run ahead of an earlier send (now a
+  barrier), the note redrawing the reply on every token, the note staying
+  up through the retried call (now "Retrying…" once it goes), the total
+  cap counting only waits (now time since the first try), queued reads
+  shown as running (each now opens as it starts), the wording kept three
+  times (now `ModelError.reason` and `RetryPolicy.note`) and timing-based
+  tests (now tools that wait for each other); all fixed. /simplify: one
+  task-group path for reads and sends, each call's tool looked up once,
+  the retry note its own view, `sleep` internal, the test recorders in
+  `TestSupport`. /security-review: nothing at confidence 8; a non-finite
+  `retry-after` that would have crashed is now not waited.
+- Not applied, with reasons: `retry-after` on a 503 or 529 (only 429
+  carries it in `ModelError`; adding it changes a case fourteen places
+  match, and the model clients take fixes only); a duration shared with
+  the tool rows' "0.3 s" (a countdown reads in whole seconds); a session
+  init that configures its loop (one knob, `retryPolicy`, for tests);
+  the tool rows' inset shared with `agentNoteRow` (existing code).
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,
@@ -464,7 +546,7 @@ Mastra. Have = built, Partial = some of it, Missing = not built.
 | | Streaming text and tool calls, Stop | Have | |
 | | Typed errors in plain words | Have | Bad key, rate limit, outage, network |
 | | Prompt caching | Have | Anthropic's cache on the whole request |
-| | Automatic retry with backoff | Partial | Manual Retry only; retry-after is parsed, not used |
+| | Automatic retry with backoff | Have | Retry-after, else 2-4-8 s with jitter; three retries, only before anything is shown; manual Retry after |
 | | Extended thinking | Partial | Blocks parsed and kept; never requested |
 | | Usage and cost | Partial | Tokens counted; no cost, nothing shown |
 | | Structured output | Missing | |
@@ -473,7 +555,7 @@ Mastra. Have = built, Partial = some of it, Missing = not built.
 | Loop | Model and tool steps, step cap | Have | Cap 10 |
 | | Context window | Partial | Recent turns that fit a budget; older ones drop out |
 | | Compaction | Missing | Summarise old turns into a Summary record |
-| | Tools run concurrently | Missing | Sequential |
+| | Tools run concurrently | Have | Reads next to each other, four at a time; any other call alone, in order, each through the approver |
 | | Per-step and lifecycle hooks | Missing | |
 | | Guardrails on input and output | Missing | |
 | Tools | Registry with schemas and an effect (read, send) | Have | |

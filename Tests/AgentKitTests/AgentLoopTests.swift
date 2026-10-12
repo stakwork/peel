@@ -3,8 +3,11 @@ import Testing
 @testable import AgentKit
 
 struct AgentLoopTests {
+    /// Without retries, which `AgentLoopRetryTests` cover.
     private func loop(_ provider: FakeProvider, tools: [Tool] = [echoTool()]) -> AgentLoop {
-        AgentLoop(provider: provider, tools: ToolRegistry(tools), model: "m", systemPrompt: "system")
+        var loop = AgentLoop(provider: provider, tools: ToolRegistry(tools), model: "m", systemPrompt: "system")
+        loop.retry = .never
+        return loop
     }
 
     @Test func toolCallsRunAndTheirResultsGoBackUntilTheModelIsDone() async throws {
@@ -102,7 +105,9 @@ struct AgentLoopTests {
                 .finished(.toolUse),
             ])
         ])
-        let agent = loop(provider, tools: [slow, echoTool()])
+        // A send runs after the reads, so Stop during the read leaves it unrun.
+        let send = Tool(name: "echo", description: "", inputSchema: ["type": "object"], effect: .send) { _ in .text("sent") }
+        let agent = loop(provider, tools: [slow, send])
         let task = Task { await agent.run(history: [], message: "hi") }
         for await _ in started { break }
         task.cancel()

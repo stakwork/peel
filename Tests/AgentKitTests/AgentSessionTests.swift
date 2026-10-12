@@ -114,6 +114,8 @@ struct AgentSessionTests {
         let agent = try connected(FakeProvider([
             .failing([], .rateLimited(retryAfter: 20)), .failing([], .network("Not connected to the internet.")),
         ]))
+        // Shown at once, without the retries the loop would make first.
+        agent.retryPolicy = .never
         agent.send("one")
         try await until { !agent.isRunning }
         #expect(agent.problem?.failure == .model(.rateLimited(retryAfter: 20)))
@@ -122,6 +124,36 @@ struct AgentSessionTests {
         agent.retry()
         try await until { !agent.isRunning }
         #expect(agent.problem?.failure == .model(.network("Not connected to the internet.")))
+    }
+
+    @Test func aRetryIsShownWhileItWaitsThenGoes() async throws {
+        let provider = FakeProvider([.failing([], .rateLimited(retryAfter: 0.3)), textReply("Here.")])
+        let agent = try connected(provider)
+        agent.send("hi")
+        try await until { agent.retrying != nil }
+        #expect(agent.retrying?.reason == .rateLimited(retryAfter: 0.3))
+        #expect([.milliseconds(300), .zero].contains(agent.retrying?.after))
+        #expect(agent.problem == nil)
+        try await until { !agent.isRunning }
+
+        #expect(agent.retrying == nil)
+        #expect(agent.problem == nil)
+        #expect(agent.turns.map(\.text) == ["hi", "Here."])
+        #expect(provider.received.count == 2)
+    }
+
+    @Test func stopDuringARetryEndsTheReplyAtOnce() async throws {
+        let provider = FakeProvider([.failing([], .unavailable(status: 529, nil)), textReply("never")])
+        let agent = try connected(provider)
+        agent.send("hi")
+        try await until { agent.retrying != nil }
+        agent.stop()
+        try await until { !agent.isRunning }
+
+        #expect(agent.retrying == nil)
+        #expect(agent.problem == nil)
+        #expect(agent.turns.last?.ending == .stopped)
+        #expect(provider.received.count == 1)
     }
 
     @Test func withNoModelTheMessageWaitsAndConnectingAsksIt() async throws {

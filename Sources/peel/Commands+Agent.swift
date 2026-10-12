@@ -191,6 +191,8 @@ enum AgentCommand {
         case .toolFinished(_, let name, let summary, let duration, let failed):
             let seconds = duration / .seconds(1)
             print("[\(name) \(failed ? "failed" : "done") in \(String(format: "%.2f", seconds)) s: \(summary)]")
+        case .retrying(let delay, let reason):
+            print("[\(RetryPolicy.note(after: delay, reason))]")
         }
     }
 }

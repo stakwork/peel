@@ -59,62 +59,54 @@ struct StateCodecTests {
 /// message's topic, or the amounts beside the onions of a history page,
 /// cap what the core reports from the sender's onion.
 struct ArrivedAmountTests {
-    /// One onion of a `batch` page as the server encodes it (`encode_onion`):
-    /// the onion, then index, time and child index, and for a payment its
-    /// amount and payment hash.
-    private func onion(index: UInt64, paidMsat: UInt64?) -> Data {
-        let number = { (n: UInt64) in Data((0..<8).reversed().map { UInt8(truncatingIfNeeded: n >> ($0 * 8)) }) }
-        var data = Data(count: paidMsat == nil ? 1401 : 1366) + number(index) + number(7) + number(1)
-        if let paidMsat { data += number(paidMsat) + Data(repeating: 0xAB, count: 32) }
-        return data
-    }
-
-    /// A MessagePack fixarray of bin16 items.
-    private func page(_ items: [Data]) -> Data {
-        var out = Data([0x90 | UInt8(items.count)])
-        for item in items { out += Data([0xC5, UInt8(item.count >> 8), UInt8(item.count & 0xFF)]) + item }
-        return out
-    }
-
-    @Test func aHistoryPageGivesEachPaymentsAmountByIndex() {
-        let amounts = StateCodec.paymentAmounts(inBatch: page([
-            onion(index: 3, paidMsat: nil), onion(index: 4, paidMsat: 21_000), onion(index: 9, paidMsat: 1),
-        ]))
-        #expect(amounts == ["4": 21_000, "9": 1])
-        #expect(StateCodec.paymentAmounts(inBatch: page([])) == [:])
-        // Truncated, or not an array: nothing is believed.
-        #expect(StateCodec.paymentAmounts(inBatch: page([onion(index: 4, paidMsat: 1)]).dropLast()) == nil)
-        #expect(StateCodec.paymentAmounts(inBatch: Data([0x81])) == nil)
+    /// A page gives each payment's amount and every message's index, from
+    /// either length of onion: what history moves past (`HistoryCursor.from`).
+    @Test func aHistoryPageGivesEachPaymentsAmountAndEveryIndex() throws {
+        let page = try #require(StateCodec.onions(inBatch: batchPage([
+            batchOnion(index: 3), batchOnion(index: 4, paidMsat: 21_000), batchOnion(index: 9, paidMsat: 1),
+        ])))
+        let arrived = Engine.arrived(kind: "batch", topic: [], page: page)
+        #expect(arrived.msat == ["4": 21_000, "9": 1])
+        #expect(arrived.indices == [3, 4, 9])
+        #expect(StateCodec.onions(inBatch: batchPage([]))?.isEmpty == true)
+        // Truncated, not an array, or an onion of a length the core does not
+        // read (it refuses that page too): nothing is believed.
+        #expect(StateCodec.onions(inBatch: batchPage([batchOnion(index: 4, paidMsat: 1)]).dropLast()) == nil)
+        #expect(StateCodec.onions(inBatch: Data([0x81])) == nil)
+        #expect(StateCodec.onions(inBatch: batchPage([batchOnion(index: 3), Data(count: 1424)])) == nil)
     }
 
     /// The page comes from the server: lengths that claim more than is
     /// there, and random bytes, are refused without a crash or a long loop.
     @Test func aMalformedPageIsRefusedSafely() {
-        #expect(StateCodec.paymentAmounts(inBatch: Data()) == nil)
+        #expect(StateCodec.onions(inBatch: Data()) == nil)
         // array32 of 4 billion items, then nothing.
-        #expect(StateCodec.paymentAmounts(inBatch: Data([0xDD, 0xFF, 0xFF, 0xFF, 0xFF])) == nil)
+        #expect(StateCodec.onions(inBatch: Data([0xDD, 0xFF, 0xFF, 0xFF, 0xFF])) == nil)
         // One bin32 item claiming 4 GB.
-        #expect(StateCodec.paymentAmounts(inBatch: Data([0x91, 0xC6, 0xFF, 0xFF, 0xFF, 0xFF, 0x00])) == nil)
+        #expect(StateCodec.onions(inBatch: Data([0x91, 0xC6, 0xFF, 0xFF, 0xFF, 0xFF, 0x00])) == nil)
         // A payment-sized item and trailing bytes.
-        #expect(StateCodec.paymentAmounts(inBatch: page([onion(index: 4, paidMsat: 1)]) + Data([0x00])) == nil)
+        #expect(StateCodec.onions(inBatch: batchPage([batchOnion(index: 4, paidMsat: 1)]) + Data([0x00])) == nil)
         var generator = SystemRandomNumberGenerator()
         for _ in 0..<500 {
             let bytes = (0..<Int.random(in: 0...1600, using: &generator)).map { _ in UInt8.random(in: 0...255, using: &generator) }
-            _ = StateCodec.paymentAmounts(inBatch: Data(bytes))
+            _ = StateCodec.onions(inBatch: Data(bytes))
         }
     }
 
+    /// A live message's topic names what arrived, and its index.
     @Test func aLiveMessagesTopicNamesWhatArrived() {
         let paid = "root/pk/2/res/dev/stream/41/1700000000000/\(uuid(1))/21000".split(separator: "/", omittingEmptySubsequences: false)
-        #expect(Engine.arrivedMsat(kind: "stream", topic: paid, payload: Data()) == ["41": 21_000])
+        #expect(Engine.arrived(kind: "stream", topic: paid, page: nil).msat == ["41": 21_000])
+        #expect(Engine.arrived(kind: "stream", topic: paid, page: nil).indices == [41])
         let unpaid = "root/pk/2/res/dev/msg/41/1700000000000".split(separator: "/", omittingEmptySubsequences: false)
-        #expect(Engine.arrivedMsat(kind: "msg", topic: unpaid, payload: Data()) == [:])
-        #expect(Engine.arrivedMsat(kind: "ping", topic: paid, payload: Data()) == [:])
+        #expect(Engine.arrived(kind: "msg", topic: unpaid, page: nil).msat == [:])
+        #expect(Engine.arrived(kind: "msg", topic: unpaid, page: nil).indices == [41])
+        #expect(Engine.arrived(kind: "ping", topic: paid, page: nil).msat == [:])
+        #expect(Engine.arrived(kind: "ping", topic: paid, page: nil).indices == nil)
     }
 
     private func msg(index: String?, msat: UInt64?, fromMe: Bool? = false) -> Msg {
-        Msg(message: nil, type: 5, uuid: nil, tag: nil, index: index, sender: nil, msat: msat, timestamp: nil,
-            sentTo: nil, fromMe: fromMe, paymentHash: nil, error: nil)
+        .fixture(type: 5, index: index, msat: msat, fromMe: fromMe)
     }
 
     /// A modified client can write any amount into its onion: Peel takes at

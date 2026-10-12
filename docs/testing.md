@@ -176,6 +176,8 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Invite: a signup whose register reply is lost (tap deafened) keeps its words; the next connect registers with the invite's sats and adds the inviter, who sees the invite used (bug hunt N2) | `Invites.aSignupWhoseReplyIsLostKeepsTheWords` | pass (2026-10-11); fails before the fix (signup throws, the profile deleted) |
 | Restore history on a second device: contact, DMs both ways, payment, tribe and post, balance | `History` | pass; once, a key exchange timed out (finding 3) |
 | Read markers and a mute across two devices of one account, both ways (nothing pushed live; the other device's ask on coming to the front brings them); a tribe join after a read leaves it behind the server's marker with nothing Peel counts, and reading it moves the marker past the join | `Reads.markersAndMutesAcrossDevices` | pass (2026-10-12) |
+| 600 messages while the tap is down, all on the server first; a live one as soon as she is back, then a quit before the catch-up ends (required, so it cannot pass untested); the next launch fetches the rest, no server index missing (bug hunt N4) | `History.aCatchUpCutShortByAQuitLeavesNoGap` | pass (2026-10-12); before the fix 501 never came, server indices 6 to 606 had gaps |
+| A malformed chunk (type 34) between two texts while the tap is down: the catch-up keeps both texts, and the next one goes past it | `History.aMessageTheCoreCannotReadLeavesOnlyItselfOut` | pass (2026-10-12); before, neither text came: the catch-up stopped at that page, and the next started there again |
 
 Findings:
 

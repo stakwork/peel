@@ -93,8 +93,6 @@ public actor Engine {
     /// When `getReads` and `getMutes` were last asked, until the reads are
     /// answered: a refresh waits for an answer rather than ask again.
     var readsAskedAt: ContinuousClock.Instant?
-    /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
-    private(set) var droppedIndex: Int64
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
     var restoring: Bool
     /// Whether `recoverOwnPhoto` has run for this engine.
@@ -158,7 +156,7 @@ public actor Engine {
     static let defaultMemesHost = "memes.sphinx.chat"
     static let defaultCallServer = "chat.sphinx.chat"
 
-    /// History fetches: the run in flight and those queued behind it.
+    /// History fetches and where history stands (`HistoryCursor`).
     var history = HistoryCursor()
     var historyWatchdog: Task<Void, Never>?
     /// Each `poll` waiting to check again.
@@ -190,7 +188,6 @@ public actor Engine {
         let contacts = try Self.contacts(in: state)
         contactsByChildIndex = Self.index(contacts)
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
-        droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
         restoring = try storage.value(for: .needsRestore) == "1"
         echoedAliases = try storage.echoedOwnAliases()
         media = MediaStore(profile: storage.directory)
@@ -199,7 +196,21 @@ public actor Engine {
         try storage.failInterruptedUploads()
         let stored = try storage.highestMessageID() ?? 0
         money.judgedThrough = stored
+        history.from = try Self.historyFrom(storage)
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
+    }
+
+    /// Where history stands (`HistoryCursor.from`), read before any
+    /// connection could store a live message above messages not fetched
+    /// yet. A profile from before it was kept starts after its newest
+    /// message stored (or dropped from a left tribe), as it did then.
+    private static func historyFrom(_ storage: Storage) throws -> UInt64 {
+        if let kept = try storage.value(for: .historyFrom) { return UInt64(kept) ?? 0 }
+        let dropped = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
+        let highest = max(try storage.highestServerIndex() ?? -1, dropped)
+        let from = highest < 0 ? 0 : UInt64(highest) + 1
+        try storage.set(String(from), for: .historyFrom)
+        return from
     }
 
     // MARK: - Connection
@@ -533,16 +544,18 @@ public actor Engine {
     /// Runs one core call against the current state. The returned state is
     /// committed before this function first suspends, so no other call can ever
     /// run against stale state. For what the server sent (`receive`), a
-    /// payment counts for no more than `arrived` says came (`cappedToArrived`).
+    /// payment counts for no more than `arrived` says came (`cappedToArrived`),
+    /// and the message `indices` it carried move where history stands
+    /// (both from `arrived(kind:topic:page:)`).
     @discardableResult
     func run(
-        expectedSender: String? = nil, arrived: [String: UInt64]? = nil,
+        expectedSender: String? = nil, arrived: [String: UInt64]? = nil, indices: [UInt64]? = nil,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         var result = try call(time, StateCodec.encode(state))
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
-        let followUps = try commit(result, time: time, expectedSender: expectedSender)
+        let followUps = try commit(result, time: time, expectedSender: expectedSender, indices: indices)
         try await complete(result, followUps)
         return result
     }
@@ -559,6 +572,8 @@ public actor Engine {
         /// `balanceCallsForReconcile`), or someone's payment came: the server's
         /// history may now settle an invoice made here or confirm the sats.
         var reconcile = false
+        /// What follows a page of history, the cursor already moved (`HistoryCursor.advance`).
+        var historyPage: HistoryCursor.Page?
     }
 
     /// What received payments brought, as Peel takes it: never more than the
@@ -579,22 +594,24 @@ public actor Engine {
         }
     }
 
-    /// What arrived with a live message or a page of history, by message
-    /// index, as the server sent it: a live payment's topic ends with its
-    /// index, time, payment hash and amount
+    /// The topics a live message comes on: pushed (`stream`), or asked for.
+    static let liveKinds: Set<String> = ["msg", "msgs", "stream"]
+
+    /// What the server says it sent, beside what the core reads, by message
+    /// index: what arrived with each payment (`cappedToArrived`), and every
+    /// message's index, those the core cannot read too, which moves where
+    /// history stands. A live message's topic ends with its index, time and,
+    /// for a payment, its hash and amount
     /// (`{root}/{pk}/{idx}/res/{device}/{kind}/{index}/{ts}/{hash}/{msat}`,
-    /// the mixer's `stream_res_topic`); a page carries each payment's amount
-    /// beside its onion (`StateCodec.paymentAmounts`).
-    static func arrivedMsat(kind: String, topic parts: [Substring], payload: Data) -> [String: UInt64] {
-        switch kind {
-        case "batch":
-            return StateCodec.paymentAmounts(inBatch: payload) ?? [:]
-        case "msg", "msgs", "stream":
-            guard parts.count > 9, let msat = UInt64(parts[9]) else { return [:] }
-            return [String(parts[6]): msat]
-        default:
-            return [:]
-        }
+    /// the mixer's `stream_res_topic`); a page of history carries each
+    /// beside its onion (`page`, from `StateCodec.onions`).
+    static func arrived(
+        kind: String, topic parts: [Substring], page: [Data]?
+    ) -> (msat: [String: UInt64], indices: [UInt64]?) {
+        if let page { return (StateCodec.paymentAmounts(of: page), page.map(StateCodec.index(of:))) }
+        guard liveKinds.contains(kind), parts.count > 6 else { return ([:], nil) }
+        let msat = parts.count > 9 ? UInt64(parts[9]).map { [String(parts[6]): $0] } : nil
+        return (msat ?? [:], UInt64(parts[6]).map { [$0] })
     }
 
     /// Whether a new balance calls for the server's history: sats came in,
@@ -620,7 +637,7 @@ public actor Engine {
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
-        invites: [InviteRecord] = []
+        invites: [InviteRecord] = [], indices: [UInt64]? = nil
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -703,7 +720,6 @@ public actor Engine {
         }
         var landedPings: [String] = []
         var knownTribes = tribes
-        var droppedIndex = self.droppedIndex
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
         for msg in result.msgs {
@@ -728,13 +744,8 @@ public actor Engine {
             }
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
-                if tribe.left {
-                    if let index = message.serverIndex, index > droppedIndex {
-                        droppedIndex = index
-                        commit.settings[.droppedIndex] = String(index)
-                    }
-                    continue
-                }
+                // Left: what the tribe still sends is dropped.
+                if tribe.left { continue }
                 // The sender pubkey is the tribe's; the alias and photo are
                 // the member's and must not rename the tribe.
                 trustSender = false
@@ -787,10 +798,24 @@ public actor Engine {
             }
         }
 
+        // What the server sent moves where history stands, written with it:
+        // a page of history by every index on it, a live message by its own.
+        var cursor = history
+        if arrival != .live {
+            let indices = indices ?? result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
+            followUps.historyPage = cursor.advance(indices: indices, total: result.msgsTotal)
+        } else {
+            for index in indices ?? [] { cursor.cameLive(index) }
+        }
+        if cursor.from != history.from {
+            commit.settings[.historyFrom] = String(cursor.from)
+        }
+
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let applied = try storage.apply(commit)
         removeFiles(of: applied.purged)
         state = newState
+        history = cursor
         if let records {
             unrecordedPayments = []
             // Merged: a record once heard stays heard.
@@ -809,7 +834,6 @@ public actor Engine {
             emit.yield(.echoedAliases(echoedAliases))
             checkMentionsIfNeeded()
         }
-        self.droppedIndex = droppedIndex
         if let members {
             tribeWork.memberLists[members.pubkey] = members
         }
@@ -1092,9 +1116,8 @@ public actor Engine {
         if let counts = followUps.restorePlan {
             try await startRestore(counts)
         }
-        // Only batch responses carry a total.
-        if result.msgsTotal != nil {
-            try await advanceHistory(with: result)
+        if let page = followUps.historyPage {
+            try await advanceHistory(page)
         }
     }
 
@@ -1162,7 +1185,7 @@ public actor Engine {
         return (message, trustSender, fields)
     }
 
-    private func receive(_ inbound: Inbound) async {
+    func receive(_ inbound: Inbound) async {
         let parts = inbound.topic.split(separator: "/", omittingEmptySubsequences: false)
         let kind = parts.count > 5 ? String(parts[5]) : inbound.topic
 
@@ -1176,16 +1199,25 @@ public actor Engine {
         // The child index in a live message's topic names the contact whose key
         // decrypted it; index 0 is the account key used for key exchange.
         var expectedSender: String?
-        if ["msg", "msgs", "stream"].contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
+        if Self.liveKinds.contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            let arrived = Self.arrivedMsat(kind: kind, topic: parts, payload: inbound.payload)
-            try await run(expectedSender: expectedSender, arrived: arrived) { time, state in
-                try Sphinxrs.handle(
-                    topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
-                    state: state, myAlias: alias, myImg: photoURL
-                )
+            let page = kind == "batch" ? StateCodec.onions(inBatch: inbound.payload) : nil
+            let arrived = Self.arrived(kind: kind, topic: parts, page: page)
+            try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices) { time, state in
+                let handle = { (payload: Data) in
+                    try Sphinxrs.handle(
+                        topic: inbound.topic, payload: payload, seed: self.seed, uniqueTime: time,
+                        state: state, myAlias: self.alias, myImg: self.photoURL
+                    )
+                }
+                do {
+                    return try handle(inbound.payload)
+                } catch let refusal {
+                    guard let page else { throw refusal }
+                    return try Self.readablePart(of: page, refusal: refusal, handle: handle)
+                }
             }
             if kind == "getreads" {
                 readsAskedAt = nil
@@ -1203,7 +1235,7 @@ public actor Engine {
     /// Runs once per connection, as soon as the account is registered. Decides
     /// what history to fetch: resume a run a dropped connection interrupted, do
     /// the full restore an account brought back from its words still needs, or
-    /// catch up from the newest message stored.
+    /// catch up from where history stands (`syncMessages`).
     private func cameOnline() async {
         let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))

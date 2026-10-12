@@ -59,24 +59,17 @@ struct ConnectionDropTests {
         balanceMsat: UInt64? = 1_000_000, contact: String? = nil, tribe: Tribe? = nil,
         transport: Transport = goneTransport(), _ body: (Engine, Storage) async throws -> Void
     ) async throws {
-        let storage = try profile.storage()
-        var settings: [Setting: String] = [.server: "mqtt://127.0.0.1:1"]
-        settings[.balanceMsat] = balanceMsat.map(String.init)
-        if let tribe { try storage.save([tribe]) }
-        let state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
-            .merging(tribe.map { coreContact($0.pubkey, contactKey: nil) } ?? [:]) { $1 }
-        _ = try storage.apply(Storage.Commit(
-            state: state, settings: settings, contacts: contact.map { [($0, true)] }
-        ))
-        let engine = try testEngine(storage)
-        await engine.useTransportForTesting(transport)
-        do {
-            try await body(engine, storage)
-        } catch {
-            await engine.disconnect()
-            throw error
+        var setup = Storage.Commit()
+        setup.settings[.balanceMsat] = balanceMsat.map(String.init)
+        let storage = try registeredStorage(profile, contact: contact, setup)
+        if let tribe {
+            try storage.save([tribe])
+            var joined = Storage.Commit()
+            joined.state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
+                .merging(coreContact(tribe.pubkey, contactKey: nil)) { $1 }
+            _ = try storage.apply(joined)
         }
-        await engine.disconnect()
+        try await withTestEngine(storage, on: transport) { try await body($0, storage) }
     }
 
     @Test func anInvoicePaymentThatNeverLeftFailsAndCanBePaidAgain() async throws {

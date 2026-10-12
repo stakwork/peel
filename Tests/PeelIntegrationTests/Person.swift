@@ -57,6 +57,33 @@ struct Person: Sendable {
         return Person(name: name, profile: profile, engine: created.engine, mnemonic: created.mnemonic)
     }
 
+    /// Alice on the wire tap, kept connected as the app keeps her, and Bob
+    /// off it, as contacts.
+    static func contactsOnTap() async throws -> (alice: Person, bob: Person) {
+        let alice = try await Person.create("alice", throughTap: true)
+        let bob = try await Person.create("bob")
+        try await Bank.shared.give(1_000, to: alice)
+        try await alice.engine.addContact(code: try bob.contactInfo)
+        try await eventually("Alice and Bob to be contacts") {
+            try alice.isReadyContact(bob) && bob.isReadyContact(alice)
+        }
+        await alice.engine.start()
+        return (alice, bob)
+    }
+
+    /// Takes the wire tap down and waits until this account, on it, sees
+    /// its connection go.
+    func loseTheTap() async throws {
+        try await Stack.shared.tap(.down)
+        try await eventually("\(name.capitalized) to see the connection go") { await engine.connection != .connected }
+    }
+
+    /// This account in a new engine on the same profile, as after a
+    /// relaunch: nothing in memory. Not connected yet.
+    func relaunched() throws -> Person {
+        Person(name: name, profile: profile, engine: try Engine(mnemonic: mnemonic, storage: storage), mnemonic: mnemonic)
+    }
+
     static func address(_ text: String) throws -> ServerAddress {
         guard let address = ServerAddress(text) else { throw StackError("unreadable address \(text)") }
         return address
@@ -137,20 +164,24 @@ struct Person: Sendable {
     }
 }
 
-/// Polls `check` until it returns a value, or fails with `what`.
+/// Polls `check` every `interval` until it returns a value, or fails with `what`.
 @discardableResult
 func eventually<T>(
-    _ what: String, timeout: Duration = .seconds(20), _ check: () async throws -> T?
+    _ what: String, timeout: Duration = .seconds(20), every interval: Duration = .milliseconds(200),
+    _ check: () async throws -> T?
 ) async throws -> T {
     let deadline = ContinuousClock.now + timeout
     while true {
         if let value = try await check() { return value }
         guard ContinuousClock.now < deadline else { throw StackError("timed out waiting for \(what)") }
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: interval)
     }
 }
 
 /// Polls a condition until it holds, or fails with `what`.
-func eventually(_ what: String, timeout: Duration = .seconds(20), _ check: () async throws -> Bool) async throws {
-    try await eventually(what, timeout: timeout) { try await check() ? () : nil }
+func eventually(
+    _ what: String, timeout: Duration = .seconds(20), every interval: Duration = .milliseconds(200),
+    _ check: () async throws -> Bool
+) async throws {
+    try await eventually(what, timeout: timeout, every: interval) { try await check() ? () : nil }
 }

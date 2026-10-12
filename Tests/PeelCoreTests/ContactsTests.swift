@@ -2,6 +2,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Foundation
 import GRDB
+import Sphinxrs
 import Testing
 @testable import PeelCore
 
@@ -504,5 +505,85 @@ struct ContactDeleteTests {
         #expect(try count("message", is: keyG, storage) == 3)
         #expect(try storage.hasPendingPayment(in: keyG))
         #expect(try storage.hasPendingPayment(in: key2G) == false)
+    }
+}
+
+/// Live contact records (type 33), kept only when this account signed them
+/// (`Engine.isForeignContactRecord`), with the core's answers made up; the
+/// journeys run the real core (`Journeys.Contacts`).
+struct ContactRecordTests {
+    let profile = TempProfile()
+
+    /// `keyG` holds child key 1 and `key2G` child key 2, both ready.
+    private let known = coreContact(keyG, contactKey: key3G, index: 1)
+        .merging(coreContact(key2G, contactKey: key3G, index: 2)) { $1 }
+
+    private func engine() throws -> (Engine, Storage) {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(state: known, contacts: [(keyG, true), (key2G, true)]))
+        return (try testEngine(storage), storage)
+    }
+
+    /// A record naming `target`, read on child key `index` as `receive` reads
+    /// a live message, signed by `signer`: by default the key's holder, or
+    /// someone else on a key nobody here holds. The core writes the contact
+    /// with the record's route and key and gives `target` as the sender (the
+    /// bindings hand back the whole state with it); once the record is in
+    /// the state it is given, it writes nothing and gives the signer.
+    private func receive(naming target: String, index: UInt64, signedBy signer: String? = nil, on engine: Engine) async throws {
+        let holder = Engine.index(try Engine.contacts(in: known))[index]
+        let entry = coreContact(target, contactKey: strangerKey, lsp: keyG, index: index)
+        func record(from pubkey: String, writing state: [String: Data]? = nil) -> RunReturn {
+            let msg = Msg(
+                message: #"{"content":""}"#, type: UInt8(MessageType.contactKeyRecord), uuid: "r33", tag: nil, index: "5",
+                sender: sender(pubkey, alias: "Bob"), msat: nil, timestamp: 1, sentTo: nil, fromMe: false,
+                paymentHash: nil, error: nil
+            )
+            return coreResult(msgs: [msg], state: state)
+        }
+        let writes = record(from: target, writing: known.merging(entry) { $1 })
+        let signed = record(from: signer ?? holder ?? strangerKey)
+        try await engine.runLive(expectedSender: holder) { _, state in
+            try StateCodec.decode(state)["c/\(target)"] == entry["c/\(target)"] ? signed : writes
+        }
+    }
+
+    /// Someone else's record changes nothing, whichever key it comes on: the
+    /// one its signer holds, the account key, or one nobody here holds.
+    @Test(arguments: [
+        (key2G, UInt64(1)),        // a contact rewrites another
+        (strangerKey, UInt64(1)),  // a contact plants someone new
+        (strangerKey, UInt64(0)),  // anyone, on the account key
+        (key2G, UInt64(7)),        // rewrites a contact, on a key nobody holds
+        (strangerKey, UInt64(7)),  // plants someone new, on a key nobody holds
+    ])
+    func aRecordSomeoneElseSignedChangesNothing(target: String, index: UInt64) async throws {
+        let (engine, storage) = try engine()
+        try await receive(naming: target, index: index, on: engine)
+        #expect(try storage.loadCoreState() == known)
+        #expect(await engine.state == known)
+        #expect(try rows(profile, "SELECT * FROM message").isEmpty)
+    }
+
+    /// The account's other devices sign with its own key: a record of theirs
+    /// adds someone this device does not have yet, or moves a contact to the
+    /// child key they gave them (both devices answered the same key exchange,
+    /// each on a key of its own).
+    @Test(arguments: [strangerKey, key2G])
+    func aRecordThisAccountSignedIsKept(target: String) async throws {
+        let (engine, storage) = try engine()
+        let own = try await engine.accountPubkey()
+        try await receive(naming: target, index: 7, signedBy: own, on: engine)
+        let kept = try #require(Engine.contact(target, in: storage.loadCoreState()))
+        #expect(kept.childIndex == 7 && kept.contactKey == strangerKey)
+        #expect(await engine.isContact(target))
+        #expect(try storage.message(uuid: "r33", in: target) != nil)
+    }
+}
+
+private extension Engine {
+    /// `run` for a live message, its result left on the actor (`RunReturn` is not `Sendable`).
+    func runLive(expectedSender: String?, _ call: (_ time: String, _ state: Data) throws -> RunReturn) async throws {
+        try await run(expectedSender: expectedSender, live: true, call)
     }
 }

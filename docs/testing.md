@@ -163,6 +163,8 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Sign up; restore from twelve words in a second directory | `Accounts` | pass |
 | Key exchange by contact info; both sides ready; no second exchange; the adder −3 sats, the added +1, and Payments labels the four rows (review F6, journey 3) | `Contacts.keyExchangeByContactInfo` | pass |
 | Key exchange from an invite's code (inviter added, invite untouched) | `Contacts.keyExchangeByInvite` | pass |
+| A contact's record (type 33) naming another contact changes nothing (bug hunt N1) | `Contacts.aContactRecordSomeoneElseSentChangesNothing` | pass (2026-10-11); fails without `Engine.isForeignContactRecord` |
+| The account's other device adds a contact; its record adds them here as it happens | `Contacts.aContactRecordFromTheAccountsOtherDeviceAddsTheContact` | pass (2026-10-11) |
 | DMs both ways through the wire tap; the plain text never on the wire (raw, base64, hex, a 16-byte run) | `DirectMessages` | pass |
 | Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10) and a paid file (10, one row, which the tribe's copy finds); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |
 | Keysend both ways, both balances after each; a sent row set back to pending (as older builds left them) is settled by the history on the next connect | `Payments.keysendBothWays` | pass: the recipient gets the amount, the sender pays it plus the 1-sat ping (finding 1) |

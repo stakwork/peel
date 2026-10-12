@@ -181,7 +181,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
     the words in the data-protection Keychain sealed under a six-digit PIN
     (moved there from the login Keychain on first unlock), `.development`
-    profiles in a plain file with no PIN (CLI only)
+    profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
+    data-protection Keychain item, which the words and the agent's key
+    share) and `FileItem` (an owner-only file) behind `SecretItem`; the
+    profile's `agentCredential` (the agent's provider, model and API key)
+    and `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
@@ -200,7 +204,10 @@ is a short plan. Update the status and the journal when you finish something.
   calls; the view passes the call window's opening in), `AppModel+Payments`
   (`PaymentOutcome`, boosts, sends, history, invoices, buying an
   attachment), `AppModel+Contacts` (adding by code, invites) and
-  `AppModel+TimeZones` (sender zones, local times, the zone setting);
+  `AppModel+TimeZones` (sender zones, local times, the zone setting) and
+  `AppModel+Agent` (opening the account's `AgentSession`, its tools and
+  system prompt, the key kept through `Profile.agentCredential`, the tool
+  rows' titles);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -227,6 +234,11 @@ is a short plan. Update the status and the journal when you finish something.
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
   `.hiddenShortcut`, `SettingDropdown`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
+  the agent chat: `AgentViews` (`PeelLogo`, `AgentTag`, the sidebar's
+  `AgentLink`, `AgentChatView` with Peel's first message and its Connect
+  card, the turn rows, tool rows and the failure row, `AgentConnectButton`),
+  `AgentConnectPanel` (provider, key, model and the test call) and
+  `AgentSettings` (Account › Peel agent);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
@@ -297,7 +309,7 @@ is a short plan. Update the status and the journal when you finish something.
   - `SQLiteAgentStore.swift` — the event log and applying it: idempotent
     by event_id, last write wins per field (`field_clock`), `rebuild`
   - `SQLiteAgentStore+Reads.swift` — `read`, `search` (FTS5 over name and
-    body), `walk` (depth at most 2), `ontology`
+    body), `walk` (depth at most 2), `ontology`, `records(type:)` (oldest first)
   - `SQLiteAgentStore+Migrations.swift` — its own schema, append-only
   - `Model/` — the model clients: `ModelProvider` (a `ModelRequest` in, a
     stream of `ModelEvent`s out, cancelled with its task), `ModelMessage`
@@ -310,6 +322,13 @@ is a short plan. Update the status and the journal when you finish something.
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
     at three UTF-8 bytes each) and `AgentLoop` (one turn: stream, run tools,
     repeat; Stop is cancelling its task)
+  - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
+    key pages, the picker's models, the client), `AgentCredential` (prints
+    without its key) and `AgentCredentialStore`; `AgentSession`, the agent
+    chat's model: the conversation as `Conversation`, `Turn`
+    and `ToolCall` records, the streaming reply (shown every 50 ms), Stop,
+    failures and Retry, connecting with a test call, the model, removing
+    the key, Clear, the agent's name and `close`
 - `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
   and PeelCore; no AppKit or UIKit)
   - `SphinxTools.swift` — the read tools under the official Mac app's names
@@ -324,6 +343,9 @@ is a short plan. Update the status and the journal when you finish something.
     markers that say other people wrote it, one cleaned line per message in
     the official format (`[sender] date (uuid=… thread=… reply=…): text`)
     under a heading with the chat id, capped and cut by whole lines
+  - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
+    message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
+    model is told to write it; the app opens it in place of the web
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -357,8 +379,9 @@ is a short plan. Update the status and the journal when you finish something.
   the clock, apply order, idempotency, per-field last write wins, forget
   and unlink, rebuild, search, walk and ontology); recorded streams in
   `Fixtures/` through both decoders, HTTP statuses to `ModelError`, the
-  request bodies over an in-process `URLProtocol` stub, and the loop with
-  a scripted `FakeProvider`
+  request bodies over an in-process `URLProtocol` stub, the loop with
+  a scripted `FakeProvider`, and `AgentSessionTests` (streaming, Stop,
+  failures and Retry, connecting, the key, reopening, Clear)
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats

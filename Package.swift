@@ -48,7 +48,7 @@ let package = Package(
         // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
         .executableTarget(
             name: "PeelApp",
-            dependencies: ["PeelCore", .product(name: "LiveKit", package: "client-sdk-swift")],
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "LiveKit", package: "client-sdk-swift")],
             // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),

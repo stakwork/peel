@@ -1,3 +1,4 @@
+import AgentKit
 import SwiftUI
 import PeelCore
 
@@ -190,6 +191,12 @@ struct Detail: View {
                 PaymentsView()
             case .account:
                 AccountView()
+            case .agent:
+                if let agent = model.agent {
+                    AgentChatView(agent: agent)
+                } else {
+                    start("The agent chat could not be opened.")
+                }
             case nil:
                 start("Pick a conversation, or add a contact.")
             }
@@ -214,6 +221,8 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
     /// A click on the icon or the title: the chat's details, which open
     /// below More (`HeaderMoreButton`), not here.
     var onTitle: (() -> Void)?
+    /// Beside the title: the agent chat's AGENT.
+    var showsAgentTag = false
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -238,9 +247,12 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
         HStack(spacing: 10) {
             leading
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Theme.font(16, .bold))
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(Theme.font(16, .bold))
+                        .lineLimit(1)
+                    if showsAgentTag { AgentTag() }
+                }
                 if let subtitle {
                     Text(subtitle)
                         .font(Theme.font(12))

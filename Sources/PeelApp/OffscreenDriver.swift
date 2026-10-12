@@ -1,4 +1,5 @@
 #if os(macOS)
+import PeelAgent
 import AppKit
 import PeelCore
 
@@ -77,8 +78,13 @@ final class OffscreenDriver {
     private var main: NSWindow? { NSApp.windows.first { $0.isVisible && $0.canBecomeMain } }
 
     /// Where keys go now and the text there, so a key that did nothing shows.
+    /// An open panel or menu that takes keys, as after the click that opened it.
+    private var keyPanel: NSWindow? {
+        NSApp.windows.first { $0 is FloatingWindow && $0.isVisible && $0.canBecomeKey }
+    }
+
     private var focus: String {
-        guard let responder = (NSApp.keyWindow ?? main)?.firstResponder else { return "none" }
+        guard let responder = (keyPanel ?? NSApp.keyWindow ?? main)?.firstResponder else { return "none" }
         // Never what a secure field holds.
         if "\(type(of: responder))".contains("Secure") { return "\(type(of: responder))" }
         let text = (responder as? NSText)?.string ?? (responder as? NSControl)?.stringValue
@@ -107,6 +113,12 @@ final class OffscreenDriver {
 
     /// The selection a click on the chat's sidebar row makes.
     private func select(_ name: String) throws {
+        if let model = model(), name == model.agent?.name {
+            // The agent's own row in Direct messages.
+            model.destination = .agent
+            Offscreen.log("drive: selected the agent chat")
+            return
+        }
         let (model, chat) = try chat(named: name)
         model.destination = .chat(chat)
         Offscreen.log("drive: selected \(chat.prefix(12))")
@@ -138,7 +150,11 @@ final class OffscreenDriver {
 
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
-    /// Account screen (the menu's Account…); `payments`, the Payments screen.
+    /// Account screen (the menu's Account…); `payments`, the Payments screen;
+    /// `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// its gear (Account at Peel agent); `agent-retry`, its
+    /// Retry; `agent-view`, the first View in its newest reply;
+    /// `agent-remove-key`, Account's Remove key once confirmed.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -151,6 +167,27 @@ final class OffscreenDriver {
         case "payments":
             // What the sidebar's Payments row sets.
             model.destination = .payments
+        case "agent-connect":
+            // The agent chat's Connect, on its card or its error row.
+            model.agentConnectFrom = .chat
+        case "agent-settings":
+            // The agent chat header's gear.
+            model.openAgentSettings()
+        case "agent-retry":
+            // The agent chat's Retry under a failed reply.
+            model.agent?.retry()
+        case "agent-view":
+            // A click on the first View in the agent's newest reply.
+            let reply = model.agent?.turns.last { $0.author == .agent }?.text ?? ""
+            let link = MessageMarkup.spans(in: reply).lazy.compactMap { span -> URL? in
+                guard case .namedLink(let url) = span.kind, AgentMessageLink(url) != nil else { return nil }
+                return url
+            }.first
+            guard let link else { throw Failure(description: "no View link in the agent's reply") }
+            _ = model.openAgentLink(link)
+        case "agent-remove-key":
+            // Account › Peel agent: Remove, then its confirm.
+            try model.agent?.removeKey()
         default:
             throw Failure(description: "nothing to open named \(name)")
         }
@@ -183,9 +220,9 @@ final class OffscreenDriver {
     /// Keys go where they would with Peel in front: its key window, else a
     /// menu or panel it has open, else the main window, made key within Peel.
     private func post(_ key: String, modifiers: NSEvent.ModifierFlags) throws {
-        // An open panel that takes keys has them, as after the click that opened it.
-        if NSApp.keyWindow == nil { (NSApp.windows.first { $0.isVisible && !$0.canBecomeMain && $0.canBecomeKey } ?? main)?.makeKey() }
-        guard let window = NSApp.keyWindow ?? main else { throw Failure(description: "no window") }
+        let panel = keyPanel
+        if NSApp.keyWindow == nil { (panel ?? main)?.makeKey() }
+        guard let window = panel ?? NSApp.keyWindow ?? main else { throw Failure(description: "no window") }
         var modifiers = modifiers
         let characters: String
         let code: UInt16
@@ -207,6 +244,13 @@ final class OffscreenDriver {
                 charactersIgnoringModifiers: modifiers.contains(.shift) ? characters : characters.lowercased(),
                 isARepeat: false, keyCode: code
             ) else { throw Failure(description: "cannot make key \(key)") }
+            // Only a panel: an open menu takes its keys through Peel's key monitor.
+            if let panel, NSApp.keyWindow !== panel, model()?.mainPresenter?.isOpen != true {
+                // Never active, Peel gets no key window, and a posted key goes
+                // to the main window: the panel is handed its keys itself.
+                panel.sendEvent(event)
+                continue
+            }
             if type == .keyDown { offerKeyEquivalents() }
             NSApp.postEvent(event, atStart: false)
         }

@@ -90,7 +90,10 @@ struct Avatar: View {
     }
 
     /// Its shape at its size, for what is drawn over it.
-    var outline: AnyShape {
+    var outline: AnyShape { Self.outline(shape, size: size) }
+
+    /// A shape at a size: people round, tribes and agents a rounded square.
+    static func outline(_ shape: Shape, size: CGFloat) -> AnyShape {
         shape == .circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.25))
     }
 }

@@ -1,3 +1,4 @@
+import PeelAgent
 import SwiftUI
 import PeelCore
 
@@ -581,7 +582,9 @@ enum LinkText {
     /// colour, as `MessageMarkup.linkLabel` words them (the host always
     /// whole; the full address is what opens); a `[text](https://…)` link as
     /// its text with its host beside it, so where it goes is never hidden.
-    static func attributed(_ text: String, myAliases: Set<String>) -> AttributedString {
+    /// With `agentLinks`, in the agent's replies, a link to a message
+    /// (`AgentMessageLink`) shows its text alone: it opens in Peel.
+    static func attributed(_ text: String, myAliases: Set<String>, agentLinks: Bool = false) -> AttributedString {
         var result = AttributedString()
         for inline in MessageMarkup.inlines(text) {
             var shown = AttributedString(inline.text)
@@ -600,6 +603,9 @@ enum LinkText {
                 shown = AttributedString(MessageMarkup.linkLabel(inline.text, url: url))
                 shown.link = url
                 shown.foregroundColor = Theme.link
+            case .namedLink(let url) where agentLinks && AgentMessageLink(url) != nil:
+                shown.foregroundColor = Theme.link
+                shown.link = url
             case .namedLink(let url):
                 shown.foregroundColor = Theme.link
                 // Isolated left to right, so a direction override in the

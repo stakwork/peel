@@ -14,17 +14,24 @@ struct FocusTarget: Equatable {
     let inThread: Bool
 }
 
-/// Which composer: a chat's own, or a thread panel's.
+/// Which composer: a chat's own, a thread panel's, or the agent chat's.
 enum ComposerID: Hashable {
     case chat(String)
     case thread(ThreadRef)
+    /// The agent chat's: text only, to the agent (`AppModel.sendDraft`).
+    case agent
 
-    var chat: String {
+    /// The Sphinx chat it writes in; nil for the agent's.
+    var chat: String? {
         switch self {
         case .chat(let chat): chat
         case .thread(let thread): thread.chat
+        case .agent: nil
         }
     }
+
+    /// Whether files can go with what it sends.
+    var takesFiles: Bool { self != .agent }
 
     var thread: String? {
         if case .thread(let thread) = self { thread.uuid } else { nil }
@@ -208,6 +215,10 @@ extension AppModel {
     func sendDraft(from composer: ComposerID) async {
         let text = (drafts[composer] ?? "").trimmed
         drafts[composer] = nil
+        if composer == .agent {
+            agent?.send(text)
+            return
+        }
         if await !send(text, from: composer), (drafts[composer] ?? "").isEmpty, !text.isEmpty {
             drafts[composer] = text
         }
@@ -221,8 +232,7 @@ extension AppModel {
     /// (`Engine.sendAttachments`).
     @discardableResult
     func send(_ text: String, from composer: ComposerID) async -> Bool {
-        guard let engine else { return false }
-        let chat = composer.chat
+        guard let engine, let chat = composer.chat else { return false }
         let files = pendingFiles[composer] ?? []
         let priceText = attachmentPrices[composer]
         let priceSats = priceText.flatMap { UInt64($0) }
@@ -306,8 +316,8 @@ extension AppModel {
                 return
             }
             addFiles(files, to: composer)
-            if !refused.isEmpty {
-                conversationNotices[composer.chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
+            if !refused.isEmpty, let chat = composer.chat {
+                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
             }
         }
     }

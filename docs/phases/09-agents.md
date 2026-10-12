@@ -1,12 +1,12 @@
 # Phase 9 — The Sphinx agent, v1
 
-## Status (2026-10-11)
+## Status (2026-10-12)
 
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
-plan, #157) and PR 2 (the AgentKit data layer). PR 3 (model clients and
-the turn loop, driven by `peel agent`) and PR 4 (the Sphinx read tools,
-in the new `PeelAgent` target) are in review.
+plan, #157), PR 2 (the AgentKit data layer, #171), PR 3 (model clients
+and the turn loop, #178) and PR 4 (the Sphinx read tools, #181). PR 5
+(the Agent chat in the app) is in review. Next: PR 6, the send tool.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -290,6 +290,84 @@ Later: compaction, then memory.
 - Not done here: recording each tool call in the AgentKit store. It
   belongs with the Agent chat's conversation records (PR 5); the CLI
   keeps no conversation.
+
+**PR 5, the Agent chat (2026-10-12).**
+- Done: a "Peel" row first in Direct messages (the logo on a rounded
+  square; "Set up" in link blue until a model is connected, then AGENT;
+  bold with a count for replies that came while it was not open). The chat
+  opens on Peel's first message with a Connect card (option 1A). Connect
+  opens beside its button (provider, API key with Paste and "Get a key"
+  in the web pane, model with a recommended default), one small test call
+  with the spinner in Connect, failures in `ModelError`'s words under the
+  key. Replies stream in as Markdown, Send turns into Stop (Escape too),
+  a stopped reply keeps its words marked Stopped, tool rows are quiet
+  lines ("Read unseen messages · Unseen messages in 6 chats · 0.1 s")
+  that open to what was asked and answered, failures are a row with
+  Retry (Connect with no model, Replace key for a refused one). The
+  agent's `[View](https://peel.invalid/message?chat=…&uuid=…)` links open
+  the message as a jump from a quote does (`AgentMessageLink`, in
+  PeelAgent). Account › Peel agent: name, provider (Change), the key's
+  last four (Replace, Remove confirmed in place), model, Clear
+  conversation. The model talks to `current_time` and PR 4's five read
+  tools over the open account.
+- Where it lives: `AgentSession` (AgentKit, `@MainActor @Observable`)
+  holds the conversation, the reply streaming now, the failure, the
+  connection (no key) and the actions (`send`, `stop`, `retry`,
+  `connect`, `setModel`, `removeKey`, `clear`, `rename`, `close`); views
+  only render it. The conversation is `Conversation`, `Turn` and
+  `ToolCall` records in `agent.sqlite` beside `peel.sqlite` (each tool
+  call is its own record with the reply that made it as `source`, the
+  item PR 4 left for this one). The key lives with its provider and model
+  as one Keychain item per profile (`dev.peel.agent`, this device only),
+  read for each turn; a development profile keeps it in an owner-only
+  file beside its words. The words' Keychain code and the key's share
+  `KeychainItem` now.
+- Checked: `AgentSessionTests` (20) with a scripted provider, the full
+  suite once, and the whole flow offscreen on a development profile with
+  unread chats against a local stub of the Messages API (set up, a bad
+  key, connect, a streamed reply, `current_time`, `read_unseen_messages`
+  and its View, Stop, a 529 and Retry, Account, Remove key, then no key).
+  Idle on the chat: 0% CPU.
+- Learned: offscreen, Peel is never active, so a panel never becomes key
+  and its field never takes the keyboard; the driver now hands a visible
+  panel its keys itself, and a drive Tabs into the field. The model's
+  words after a tool ran need a paragraph break, or "Let me look." and the
+  answer run together. What the model sees after a turn is what a
+  relaunch rebuilds (each message and the words that answered it); tool
+  results are not kept, being copies of chats Peel stores, so a reply
+  that needs one names it (the View link carries the ids).
+- Reviews: /code-review found tool rows reloading out of order, a
+  half-done Clear able to bring a chat back, repeated call ids across
+  steps, a Keychain read error taken for no key, a reply finishing after
+  the account closed saved into it, the row hidden while collapsed with
+  a reply waiting; all fixed. /simplify (four passes): `ComposerID.agent`
+  in place of a sentinel chat id and the composer's own send path, the
+  streaming reply drawn by a view of its own with deltas shown every 50
+  ms, one rule for the driver's panel, `Avatar.outline`, `rowChrome`,
+  `Callout`, `Card`, `Badge`, `PeelError.problem`, `Duration` arithmetic,
+  the message link moved to PeelAgent. /security-review: nothing at
+  confidence 8 or more (the key's path, the Keychain refactor, the file,
+  the links checked). Independent review: steps' text run together,
+  history differing after a relaunch, Cancel during the test call still
+  keeping the key (and a connect finishing after the account closed), a
+  finished reply pulling the list down, flushes cancelling each other, a
+  failed save giving replies one id, an empty reply left unanswered, the
+  intro promising sends, the driver's panel rule taking the call window,
+  keys typed into an agent chat that failed to open, the row missing from
+  search; all fixed. It found no regression in the words' Keychain code.
+- Not applied, with reasons: paging and batched writes for a very long
+  conversation (load, save and Clear are one SQLite read or write per
+  record, fine at today's sizes; the store needs a batch API first);
+  `FileSecretStore` on `FileItem` (the mnemonic's write path, kept as it
+  is in this PR); a typed notice and unread state out of AgentKit (one
+  front end today); `AgentRow` sharing `RunHeader` (that header is built
+  around `ChatRow`); a generic `NameRow`; `DetailHeader` taking any title
+  accessory (one use); the agent row inside `ChatSections`. Clear forgets
+  the records, but the event log keeps their add events, as every forget
+  does (`../agent-architecture.md`, "nothing is hard-deleted"); the
+  Account line says it clears the chat on this Mac. The OpenAI and
+  OpenRouter model ids are a best guess (unverified without keys); a
+  wrong one shows the provider's refusal at Connect.
 
 ## User journeys
 

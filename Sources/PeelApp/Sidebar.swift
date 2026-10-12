@@ -1,3 +1,4 @@
+import AgentKit
 import SwiftUI
 import PeelCore
 
@@ -65,6 +66,9 @@ struct Sidebar: View {
                         }
                         SidebarSection("Direct messages",
                                        expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                            if let agent = shownAgent(sections) {
+                                AgentLink(agent: agent)
+                            }
                             ForEach(sections.direct) { conversation in
                                 ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                             }
@@ -137,9 +141,22 @@ struct Sidebar: View {
     /// "+" or "Show all" rows or invites.
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
-        let chats = sections.unread + sections.tribes + sections.direct
+        let agent = shownAgent(sections).map { [(AppModel.Destination.agent, $0.name)] } ?? []
         return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
-            + chats.map { (.chat($0.chat), $0.name) }
+            + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
+            + agent
+            + sections.direct.map { (.chat($0.chat), $0.name) }
+    }
+
+    /// The agent's row, first in Direct messages: while the section is open
+    /// or the chat is, and matching the search.
+    private func shownAgent(_ sections: ChatSections) -> AgentSession? {
+        // Like a chat: always while open or unread, in a closed section too.
+        guard let agent = model.agent,
+              sections.directOpen || sections.searching || model.destination == .agent || agent.unread > 0
+        else { return nil }
+        let query = model.searchQuery.trimmed
+        return query.isEmpty || agent.name.localizedCaseInsensitiveContains(query) ? agent : nil
     }
 
     /// The row `offset` from `current` (the selection when nothing is
@@ -204,11 +221,15 @@ struct Sidebar: View {
         let printable = event.characters?.unicodeScalars.allSatisfy {
             !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value)
         } ?? false
-        guard command ? event.charactersIgnoringModifiers == "v" : printable,
-              case .chat(let chat) = model.destination, model.tribes[chat]?.canPost ?? true
-        else { return false }
+        guard command ? event.charactersIgnoringModifiers == "v" : printable else { return false }
+        let composer: ComposerID
+        switch model.destination {
+        case .chat(let chat) where model.tribes[chat]?.canPost ?? true: composer = .chat(chat)
+        case .agent where model.agent != nil: composer = .agent
+        default: return false
+        }
         typedAhead.append(event)
-        model.composerFocus[.chat(chat), default: 0] += 1
+        model.composerFocus[composer, default: 0] += 1
         return true
     }
 

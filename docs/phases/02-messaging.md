@@ -10,6 +10,7 @@ failures, the composer, contacts the other side started surviving a
 restore, and `run-app.sh` quitting Peel first ("Still open in this phase",
 items 0 and 6–11, all done). Item 12, sends across a dropped connection
 (resend on reconnect, a keep-alive that notices, network changes), is
+built on its branch. Item 13, the twelve words checked (finding N5), is
 built on its branch.
 
 **Open:**
@@ -793,6 +794,94 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    - One helper for "Alice and Bob as contacts" shared with the payments
      journeys' `pair()`, and one recorder of test writes shared with
      `ConnectionDropTests`: outside this change.
+
+14. **The twelve words checked (finding N5).** Built 2026-10-11 (branch
+   `fix/words-backup`). The words step's checkbox lived in view state:
+   nothing recorded, or tested, that the words were written down, and
+   every way of losing the Keychain item (Forget after a lost PIN, a new
+   Mac, a change of signing team) then lost the account
+   (`../reviews/2026-10-11-bug-hunt.md`, N5).
+
+   Built:
+   - **Stored, never the words.** `Setting.wordsConfirmed`, "1" or "0".
+     `Account.open` writes "1" for a restore (all twelve were typed) and
+     "0" for a new account. An account from before has no row and counts
+     as not checked: Tom's `default` shows the reminder until he checks
+     his words once.
+   - **The check is the engine's.** `Engine.wordsToCheck()` picks three
+     places at random; `confirmWords(_:mnemonic:)` refuses words whose
+     seed is not this account's (`Engine.seed(of:)`, the one derivation
+     `init` uses too), needs three answers, and stores "1" only when every
+     answer is the word at its place (any case, stray spaces). A mismatch
+     throws `wrongWords(positions:)`, which names places, never a word,
+     and stores nothing.
+   - **Onboarding.** "I've written them down" leads to "Check what you
+     wrote": three numbered boxes (`WordCheck`, `WordCheckGrid`), then
+     "Open Peel" once they match. Back returns to the words, never before
+     them.
+   - **Account.** The Twelve words row says whether the written copy is
+     checked; while it is not, Check words asks for the PIN as Show words
+     does, then shows three boxes. The words are read but never shown.
+   - **The reminder.** While the account holds sats and is unchecked, a
+     neutral `Callout` at the foot of the sidebar, "Check your twelve
+     words", whose link opens the check on Account (not shown beside it).
+   - **Forget on the lock screen** says first that the account holds sats
+     when its balance says so (the open account's, or before the PIN the
+     one last stored, read-only: `Profile.storedBalanceMsat`), then that
+     without the words it and its sats cannot be brought back. Never how
+     many before the PIN, as a locked notification says only "Sats
+     received", and never "no sats": a stored balance can predate sats
+     received since.
+   - **Driver.** `{"open": "check-words"}`, what the reminder's link does.
+
+   Tests: `WordsConfirmationTests` (which accounts start checked, the
+   right words kept across a reopen, wrong words named by place with
+   nothing stored, another account's words refused), `StorageTests`'
+   balance read with no writer open, and the words check inside
+   `AuditSecretsTests`' scan of the profile's files (S14). With the two
+   writes removed, the restore row and `rightWordsConfirmAndAreKept`
+   fail; with places ignored, the wrong-words test fails.
+
+   Review (2026-10-11): an independent review, `/code-review`, `/simplify`
+   and `/security-review`. Fixed: the branch no longer built on `main`
+   (#184 removed `cardBoxed`; the problem lines moved to
+   `PeelError.problem`); the lock screen named the balance before the PIN;
+   `confirmingForget` and the driver's `lock` and `forget` steps existed
+   only for the drive; a check finishing after Cancel left its problem
+   under the closed row; the reminder hand-drew a card where `Callout`
+   exists, and its balance redrew the whole sidebar; two wordings of a
+   wrong word; the balance test read beside an open writer, not as at
+   launch; the wrong-words test passed a check that ignores places; the
+   lock screen said "no sats" from a stored balance that can predate sats
+   received.
+   `/simplify` then folded the places and answers into `WordCheck`, the
+   grid's two parameters into `places`, the typed box's look into
+   `wordBox`, the database's file name into `Storage.exists(in:)`. The
+   app check then crashed on the first successful check from Account: the
+   box being edited read its answer once more after the row had dropped
+   the check (a nil one there; emptied arrays before). A check is now
+   never nil or emptied, only replaced, so every box always has its
+   answer. `/security-review`: no finding at confidence 8 or above. Not
+   applied:
+   - The check is required to open Peel at onboarding, with no skip, as
+     the checkbox was; a quit there leaves the account unchecked, and the
+     reminder then asks.
+   - While a check is open on Account the words stay in view state with
+     no 30-second limit: they are never drawn, and they go on Cancel,
+     success, leaving the screen, Peel leaving the front or the lock. A
+     limit would cut short someone fetching their paper, and would not
+     take them out of memory (Swift strings are never zeroed; the seed
+     stays all session, S20).
+   - A wrong-words problem stays until the next try, as the PIN's does.
+   - The words pasted into a check box are not cleared from the clipboard
+     (S19 covers the restore boxes): nothing offers a paste there, and
+     twelve words in one box never match.
+   - The scroll to the words row waits 100 ms for the screen's layout, as
+     the PIN field waits 150 ms for focus.
+   - `WordCheck` stays in the app: it is what is being typed; the engine
+     takes answers by place, as the CLI or an agent would pass them.
+   - Read-only `Storage` still creates and sets 0700 on the folder;
+     `Storage.exists(in:)` keeps it from being called without a database.
 
 ## Done criteria
 

@@ -88,6 +88,21 @@ struct StorageTests {
         #expect(try reopened.value(for: .server) == "mqtts://broker.example.com:8883")
     }
 
+    /// The lock screen's Forget says whether the account holds sats before
+    /// the PIN opens it: read without the words, and with no writable
+    /// Storage open, as at launch.
+    @Test func storedBalanceIsReadWithoutTheAccount() throws {
+        let local = Profile(developmentAt: profile.url)
+        #expect(local.storedBalanceMsat() == nil)
+        #expect(!FileManager.default.fileExists(atPath: profile.url.path))
+        do {
+            let storage = try profile.storage()
+            #expect(local.storedBalanceMsat() == nil)
+            try storage.set("5000000", for: .balanceMsat)
+        }
+        #expect(local.storedBalanceMsat() == 5_000_000)
+    }
+
     // MARK: Messages
 
     @Test func upsertDedupesOnUUIDAndFillsServerFields() throws {

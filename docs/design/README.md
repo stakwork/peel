@@ -261,7 +261,22 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
   Notifications; and "Remove this account from this Mac", the only red text.
 - **New account:** Welcome (invite or restore), then four steps: invite,
   name and photo, a six-digit PIN with an optional Touch ID unlock, and the
-  twelve words with an "I've written them down" check before Peel opens.
+  twelve words. "I've written them down" then asks for three of them, at
+  random places, typed back; Peel opens once they match (finding N5,
+  2026-10-11). A wrong word is named by its place, never shown.
+- **The words checked** are a setting of the account (`wordsConfirmed`),
+  never the words: set by that check, by the same check from Account's
+  "Twelve words" row (after the PIN), or by a restore. Accounts from
+  before it count as not checked. While one holds sats unchecked, a
+  neutral note at the foot of the sidebar (a `Callout`), "Check your
+  twelve words", has a Check words link that opens the check; no colour,
+  as a state rather than an alarm, and not beside the Account screen.
+  Forget on the lock screen says first that the account holds sats, when
+  its last balance says so, and that without the words it and its sats
+  cannot be brought back; otherwise "this account and any sats it holds".
+  Never how many before the PIN, as a locked notification says only "Sats
+  received", and never "no sats": the stored balance may be older than
+  sats received since.
 - **Restore:** twelve word fields (paste fills all twelve, suggestions as you
   type), then a progress page: account, contacts, messages with a count,
   tribes. "Open Peel" works before history finishes.
@@ -579,6 +594,8 @@ Built so far:
     and Leave or Remove from Peel at the end.
   - Not enough sats and an expired invoice: `.attention` with a title
     and a link.
+  - The sidebar's reminder to check the twelve words: `.neutral` with a
+    title, a key and a link.
   - The web pane's download (under way, saved with Show in Finder, or
     failed): a bar in the strip along the pane's foot, under way and
     saved on one line.

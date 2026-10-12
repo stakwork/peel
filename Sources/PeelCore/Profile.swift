@@ -78,6 +78,14 @@ public struct Profile: Sendable {
         Engine.words(in: try secrets.loadMnemonic(pin: pin))
     }
 
+    /// The balance the server last reported, read without the PIN, for
+    /// before the account is open (the lock screen's Forget); nil if none
+    /// was recorded or there is no database to read.
+    public func storedBalanceMsat() -> UInt64? {
+        guard Storage.exists(in: directory) else { return nil }
+        return try? Storage(directory: directory, readOnly: true).balanceMsat()
+    }
+
     /// Reseals the words under a new PIN. A wrong old PIN throws
     /// `SecretStoreFailure.wrongPIN` and changes nothing. Slow, like `words`.
     public func changePIN(from oldPIN: String, to newPIN: String) throws {

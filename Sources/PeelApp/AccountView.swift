@@ -51,6 +51,7 @@ struct AccountView: View {
                             PINTimeoutRow()
                         }
                         WordsRow()
+                            .id(WordsRow.id)
                         WebsiteDataRow()
                     }
                     SettingsSection("Notifications") {
@@ -74,6 +75,12 @@ struct AccountView: View {
             // Opened from the agent chat's settings: at its section.
             .onAppear { showAgentSettings(proxy) }
             .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
+            // The sidebar's reminder opened the words check.
+            .task(id: model.wordsCheckRequested) {
+                guard model.wordsCheckRequested else { return }
+                try? await Task.sleep(for: .milliseconds(100))
+                proxy.scrollTo(WordsRow.id, anchor: .center)
+            }
             }
         }
         .endsEditingOnClick()
@@ -328,6 +335,7 @@ private struct PINTimeoutRow: View {
 private struct WordsRow: View {
     @Environment(AppModel.self) private var model
 
+    static let id = "words"
     private static let shownFor: TimeInterval = 30
 
     @State private var askingPIN = false
@@ -335,6 +343,12 @@ private struct WordsRow: View {
     @State private var working = false
     @State private var problem: String?
     @State private var words: [String] = []
+    /// Checking the words rather than showing them (Check words): three
+    /// typed back from paper, the words read with the PIN but never shown.
+    @State private var checking = false
+    /// Never nil and never fewer answers, even once closed: a box being
+    /// edited as the row closes still reads its answer.
+    @State private var check = WordCheck()
     @State private var hideAt = Date.distantPast
     @State private var visible = false
     @State private var confirmingCopy = false
@@ -349,23 +363,30 @@ private struct WordsRow: View {
             Fact("Twelve words") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
-                    Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
-                        .muted()
+                    Group {
+                        Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
+                        Text(model.wordsConfirmed ? "Your written copy is checked" : "Your written copy is not checked yet")
+                    }
+                    .muted()
                 }
             } trailing: {
                 if words.isEmpty, !askingPIN {
-                    Button("Show words") { start() }
-                        .buttonStyle(.peel(.outline))
+                    HStack(spacing: 8) {
+                        if !model.wordsConfirmed {
+                            Button("Check words") { start(checking: true) }
+                                .buttonStyle(.peel(.outline))
+                        }
+                        Button("Show words") { start(checking: false) }
+                            .buttonStyle(.peel(.outline))
+                    }
                 } else {
-                    Button(words.isEmpty ? "Cancel" : "Hide") { hide() }
+                    Button(words.isEmpty || checking ? "Cancel" : "Hide") { hide() }
                         .buttonStyle(.peel(.outline))
                 }
             }
             if askingPIN {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    Text(problem ?? "Enter your PIN to show your twelve words.")
-                        .font(Theme.font(13))
-                        .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
+                    prompt("Enter your PIN to \(checking ? "check" : "show") your twelve words.")
                     PinField(pin: $pin) { Task { await reveal() } }
                         .frame(maxWidth: 360)
                         .disabled(working)
@@ -374,11 +395,15 @@ private struct WordsRow: View {
                 .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, Theme.Space.sm)
             } else if !words.isEmpty {
-                shown
+                if checking { boxes } else { shown }
             } else if let problem {
                 ProblemText(problem)
                     .padding([.horizontal, .bottom], settingsRowPadding)
             }
+        }
+        // The sidebar's reminder asked for the check.
+        .task(id: model.wordsCheckRequested) {
+            if model.wordsCheckRequested, words.isEmpty, !askingPIN { start(checking: true) }
         }
         .onDisappear { hide() }
         #if os(macOS)
@@ -392,7 +417,7 @@ private struct WordsRow: View {
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-            NumberedWordGrid(count: words.count) { index in
+            NumberedWordGrid(places: Array(words.indices)) { index in
                 Text(visible ? words[index] : "••••••")
                     .font(Theme.font(15))
                     .foregroundStyle(visible ? Theme.text : Theme.secondaryText)
@@ -432,7 +457,47 @@ private struct WordsRow: View {
         }
     }
 
-    private func start() {
+    /// Three words typed back; the words themselves stay off the screen.
+    private var boxes: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            prompt("Type these three words from what you wrote down.")
+            WordCheckGrid(check: $check) { Task { await confirm() } }
+            FormFooter(problem: nil) {
+                Button { Task { await confirm() } } label: { Text("Check").buttonProgress(working) }
+                    .buttonStyle(.peel(.primary))
+                    .disabled(!check.isFilled)
+            }
+        }
+        .padding([.horizontal, .bottom], settingsRowPadding)
+    }
+
+    /// The line over the PIN or the boxes: what to do, or why it was not
+    /// accepted.
+    private func prompt(_ text: String) -> some View {
+        Text(problem ?? text)
+            .font(Theme.font(13))
+            .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func confirm() async {
+        guard !working, check.isFilled else { return }
+        working = true
+        defer { working = false }
+        let started = generation
+        do {
+            try await model.confirmWords(check.byPosition, of: words)
+            hide()
+        } catch {
+            // Cancelled meanwhile: nothing to say under a closed row.
+            guard generation == started else { return }
+            problem = PeelError.problem(error)
+        }
+    }
+
+    private func start(checking: Bool) {
+        self.checking = checking
+        check = WordCheck()
         problem = nil
         if model.profile?.requiresPIN == true {
             pin = ""
@@ -465,11 +530,14 @@ private struct WordsRow: View {
         generation += 1
         problem = nil
         words = []
+        checking = false
+        check = WordCheck()
         pin = ""
         askingPIN = false
         visible = false
         confirmingCopy = false
         copiedAt = nil
+        model.wordsCheckRequested = false
     }
 }
 

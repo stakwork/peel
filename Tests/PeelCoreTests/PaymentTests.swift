@@ -281,7 +281,7 @@ struct PaymentTests {
         let storage = try storage([failed])
         let id = try #require(try storage.message(uuid: uuid(1), in: dm)?.id)
         let rows = try storage.apply(Storage.Commit(
-            resend: (id, dm, uuid(2), "t2", "hash2", 5_000, false)
+            resend: (id, dm, uuid(2), "t2", "hash2", 10_000, 5_000, false)
         )).stored
         let row = try #require(rows.first)
         #expect(row.uuid == uuid(2))
@@ -289,6 +289,7 @@ struct PaymentTests {
         #expect(row.paymentHash == "hash2")
         #expect(row.delivery == .pending)
         #expect(row.amountMsat == 10_000)
+        #expect(row.msat == 10_000)
     }
 
     @Test func onlyAFailedPaymentIsRetryable() {

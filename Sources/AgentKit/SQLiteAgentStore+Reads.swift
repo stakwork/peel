@@ -98,6 +98,16 @@ extension SQLiteAgentStore {
         }
     }
 
+    public func records(type: String, limit: Int, includeDeleted: Bool) throws -> [Record] {
+        guard limit > 0 else { return [] }
+        return try db.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT ref_id FROM record WHERE type = ? AND \(Self.visible("record", includeDeleted: includeDeleted))
+                ORDER BY created_ms, id LIMIT ?
+                """, arguments: [type, limit]).compactMap { try Self.record($0, includeDeleted: includeDeleted, db) }
+        }
+    }
+
     private static func record(_ refId: String, includeDeleted: Bool, _ db: Database) throws -> Record? {
         guard let row = try Row.fetchOne(
             db, sql: "SELECT * FROM record WHERE ref_id = ? AND \(visible("record", includeDeleted: includeDeleted))",

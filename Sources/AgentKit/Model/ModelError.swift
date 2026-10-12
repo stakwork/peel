@@ -92,6 +92,16 @@ public enum ModelError: Error, Sendable, Hashable {
         return text.count > 300 ? String(text.prefix(300)) + "…" : text
     }
 
+    /// A provider's message as a sentence: "Overloaded" as "Overloaded.",
+    /// "overloaded:" too (the rule `PeelError.sentence` keeps in PeelCore,
+    /// which AgentKit does not import).
+    static func sentence(_ words: String) -> String {
+        var text = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = text.last, ",;:".contains(last) { text.removeLast() }
+        guard let last = text.last, !".!?…".contains(last) else { return text }
+        return text + "."
+    }
+
     private static func words(for error: URLError) -> String {
         switch error.code {
         case .notConnectedToInternet, .dataNotAllowed: "Not connected to the internet."
@@ -116,7 +126,7 @@ extension ModelError: LocalizedError {
                 + (after.map { "Try again in \(Int($0.rounded(.up))) seconds." } ?? "Try again in a moment.")
         case .unavailable(let status, let message):
             (status == 529 ? "The provider is overloaded." : "The provider had a problem (\(status)).")
-                + (message.map { " \($0)" } ?? "") + " Try again in a moment."
+                + (message.map { " " + Self.sentence($0) } ?? "") + " Try again in a moment."
         case .badRequest(let status, let message):
             "The provider refused the request (\(status)): \(message)"
         case .network(let message):

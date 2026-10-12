@@ -55,32 +55,21 @@ public enum PIN {
 /// Words kept by earlier builds in the file-based login Keychain move here on
 /// the first unlock.
 public struct KeychainSecretStore: SecretStore {
-    private static let service = "dev.peel"
     public let account: String
+    /// Where the words live.
+    private let item: KeychainItem
+    /// The file-based login keychain earlier builds used; read only to move
+    /// the words out of it.
+    private let legacy: KeychainItem
 
     public init(account: String) {
         self.account = account
-    }
-
-    private enum Keychain {
-        /// Where the words live.
-        case dataProtection
-        /// The file-based login keychain earlier builds used; read only to move
-        /// the words out of it.
-        case login
-    }
-
-    private func query(_ keychain: Keychain) -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account,
-            kSecUseDataProtectionKeychain as String: keychain == .dataProtection,
-        ]
+        item = KeychainItem(service: "dev.peel", account: account)
+        legacy = KeychainItem(service: "dev.peel", account: account, dataProtection: false)
     }
 
     public var hasMnemonic: Bool {
-        exists(.dataProtection) || exists(.login)
+        item.exists || legacy.exists
     }
 
     public var requiresPIN: Bool { true }
@@ -88,12 +77,12 @@ public struct KeychainSecretStore: SecretStore {
     /// Opens the words with the PIN. Words still in the login Keychain are
     /// moved to the data-protection Keychain once the PIN has opened them.
     public func loadMnemonic(pin: String) throws -> String {
-        if let sealed = try read(.dataProtection) {
+        if let sealed = try item.read() {
             return try PINBox.open(sealed, pin: pin)
         }
-        guard let legacy = try read(.login) else { throw SecretStoreFailure.noAccount }
-        let words = try PINBox.open(legacy, pin: pin)
-        try moveToDataProtection(legacy)
+        guard let old = try legacy.read() else { throw SecretStoreFailure.noAccount }
+        let words = try PINBox.open(old, pin: pin)
+        try moveToDataProtection(old)
         return words
     }
 
@@ -106,19 +95,13 @@ public struct KeychainSecretStore: SecretStore {
     public func changePIN(from oldPIN: String, to newPIN: String) throws {
         try PIN.validate(newPIN)
         let mnemonic = try loadMnemonic(pin: oldPIN)
-        let update = [kSecValueData as String: try PINBox.seal(mnemonic, pin: newPIN)]
-        let status = SecItemUpdate(query(.dataProtection) as CFDictionary, update as CFDictionary)
-        guard status == errSecSuccess else { throw PeelError("Keychain update failed: \(Self.message(status))") }
+        try item.update(PINBox.seal(mnemonic, pin: newPIN))
     }
 
     /// Removes the words from both keychains.
     public func deleteMnemonic() throws {
-        for keychain in [Keychain.dataProtection, .login] {
-            let status = SecItemDelete(query(keychain) as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw PeelError("Keychain delete failed: \(Self.message(status))")
-            }
-        }
+        try item.delete()
+        try legacy.delete()
     }
 
     /// Copies the sealed words from the login Keychain, reads the copy back,
@@ -131,42 +114,75 @@ public struct KeychainSecretStore: SecretStore {
         } catch {
             throw PeelError("could not move the account into the data-protection Keychain (\(error)); it is still in the login Keychain")
         }
-        guard (try? read(.dataProtection)) == sealed else {
-            _ = SecItemDelete(query(.dataProtection) as CFDictionary)
+        guard (try? item.read()) == sealed else {
+            try? item.delete()
             throw PeelError("the account's copy in the data-protection Keychain did not read back the same; it is still in the login Keychain")
         }
-        let status = SecItemDelete(query(.login) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw PeelError("the account moved to the data-protection Keychain, but its old copy in the login Keychain could not be removed: \(Self.message(status))")
+        do {
+            try legacy.delete()
+        } catch {
+            throw PeelError("the account moved to the data-protection Keychain, but its old copy in the login Keychain could not be removed: \(error)")
         }
     }
 
     private func add(_ sealed: Data) throws {
-        let attributes = query(.dataProtection).merging([
-            kSecValueData as String: sealed,
-            kSecAttrLabel as String: "Peel account \(account)",
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecAttrSynchronizable as String: false,
-        ]) { $1 }
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status != errSecDuplicateItem else { throw SecretStoreFailure.accountExists }
-        guard status == errSecSuccess else { throw PeelError("Keychain write failed: \(Self.message(status))") }
+        guard try item.add(sealed, label: "Peel account \(account)") else { throw SecretStoreFailure.accountExists }
+    }
+}
+
+/// One secret this device keeps, read and replaced whole: an agent's API key.
+public protocol SecretItem: Sendable {
+    /// The secret, or nil when none is kept.
+    func read() throws -> Data?
+    /// Keeps `data`, replacing what was there.
+    func write(_ data: Data) throws
+    /// Removes it; nothing kept is not an error.
+    func delete() throws
+}
+
+/// A generic password in the data-protection Keychain: in the app's access
+/// group, `WhenUnlockedThisDeviceOnly` (wrapped by a key tied to this Mac,
+/// never synced to iCloud or restored from a backup onto another Mac).
+/// Needs a bundle signed with a provisioning profile that grants the access
+/// group (`scripts/sign-app.sh`); anything else gets `errSecMissingEntitlement`.
+public struct KeychainItem: SecretItem {
+    public let service: String
+    public let account: String
+    /// The data-protection Keychain; false only to read and remove what
+    /// earlier builds left in the file-based login keychain.
+    let dataProtection: Bool
+
+    /// Internal, so nothing outside PeelCore can name the words' item.
+    init(service: String, account: String) {
+        self.init(service: service, account: account, dataProtection: true)
     }
 
-    private func exists(_ keychain: Keychain) -> Bool {
-        SecItemCopyMatching(query(keychain) as CFDictionary, nil) == errSecSuccess
+    init(service: String, account: String, dataProtection: Bool) {
+        self.service = service
+        self.account = account
+        self.dataProtection = dataProtection
     }
 
-    /// The sealed words, or nil when there is no item.
-    private func read(_ keychain: Keychain) throws -> Data? {
+    private var query: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: dataProtection,
+        ]
+    }
+
+    var exists: Bool {
+        SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    public func read() throws -> Data? {
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(
-            query(keychain).merging([kSecReturnData as String: true]) { $1 } as CFDictionary, &item
-        )
+        let status = SecItemCopyMatching(query.merging([kSecReturnData as String: true]) { $1 } as CFDictionary, &item)
         switch status {
         case errSecSuccess:
-            guard let sealed = item as? Data else { throw PeelError("the Keychain item for \(account) is unreadable") }
-            return sealed
+            guard let data = item as? Data else { throw PeelError("the Keychain item for \(account) is unreadable") }
+            return data
         case errSecItemNotFound:
             return nil
         default:
@@ -174,8 +190,72 @@ public struct KeychainSecretStore: SecretStore {
         }
     }
 
+    public func write(_ data: Data) throws {
+        if try !add(data, label: "Peel \(service) \(account)") { try update(data) }
+    }
+
+    /// Adds the item; false if one is already there.
+    func add(_ data: Data, label: String) throws -> Bool {
+        let attributes = query.merging([
+            kSecValueData as String: data,
+            kSecAttrLabel as String: label,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrSynchronizable as String: false,
+        ]) { $1 }
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        guard status != errSecDuplicateItem else { return false }
+        guard status == errSecSuccess else { throw PeelError("Keychain write failed: \(Self.message(status))") }
+        return true
+    }
+
+    func update(_ data: Data) throws {
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        guard status == errSecSuccess else { throw PeelError("Keychain update failed: \(Self.message(status))") }
+    }
+
+    public func delete() throws {
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw PeelError("Keychain delete failed: \(Self.message(status))")
+        }
+    }
+
     private static func message(_ status: OSStatus) -> String {
         (SecCopyErrorMessageString(status, nil) as String?) ?? "error \(status)"
+    }
+}
+
+/// A secret in a plain file with owner-only permissions, for development
+/// profiles, which keep their words in a file too (`FileSecretStore`).
+public struct FileItem: SecretItem {
+    public let file: URL
+
+    public init(file: URL) {
+        self.file = file
+    }
+
+    public func read() throws -> Data? {
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try Data(contentsOf: file)
+    }
+
+    public func write(_ data: Data) throws {
+        try FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let fd = open(file.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw PeelError("could not write \(file.lastPathComponent)") }
+        defer { close(fd) }
+        // Owner-only even when the file was there before with other permissions.
+        guard fchmod(fd, 0o600) == 0 else { throw PeelError("could not protect \(file.lastPathComponent)") }
+        try FileHandle(fileDescriptor: fd, closeOnDealloc: false).write(contentsOf: data)
+    }
+
+    public func delete() throws {
+        if FileManager.default.fileExists(atPath: file.path) {
+            try FileManager.default.removeItem(at: file)
+        }
     }
 }
 

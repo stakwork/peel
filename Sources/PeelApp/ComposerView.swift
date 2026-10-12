@@ -8,6 +8,8 @@ import PeelCore
 /// and each open thread have their own (`ComposerID`); its draft, what it replies to and the files it holds
 /// live in the model, so the message menus can set them and a draft
 /// outlives the view (a thread covering its chat, another chat opened).
+/// The agent chat's (`ComposerID.agent`) takes text alone; while its reply
+/// runs, `stop` turns send into Stop.
 struct Composer: View {
     @Environment(AppModel.self) private var model
     let composer: ComposerID
@@ -17,6 +19,8 @@ struct Composer: View {
     var loadMentionable: (@MainActor @Sendable () async -> [TribeMember])?
     /// In a direct message: who the bolt in the field sends sats to.
     var paysTo: String?
+    /// While a reply runs: send is Stop, and Escape stops it too.
+    var stop: (@MainActor () -> Void)?
 
     @State private var mentionable: [TribeMember] = []
     @State private var mention: String?
@@ -31,7 +35,7 @@ struct Composer: View {
     }
 
     private var canSend: Bool {
-        !(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty
+        stop == nil && (!(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty)
     }
 
     private func send() {
@@ -73,9 +77,15 @@ struct Composer: View {
             // A chat opened from the sidebar's keys leaves them there.
             focusesOnAppear: !(model.sidebarHasKeys && composer.thread == nil), submit: send,
             mention: $mention, insertion: insertion, suggestionKey: handle,
-            escape: { withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) } },
-            attach: { model.attach($0, to: composer) },
-            dropTargeted: { model.dropTargeted($0, composer: composer) }
+            escape: {
+                if let stop {
+                    stop()
+                    return true
+                }
+                return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+            },
+            attach: { if composer.takesFiles { model.attach($0, to: composer) } },
+            dropTargeted: { if composer.takesFiles { model.dropTargeted($0, composer: composer) } }
         )
         .onChange(of: mention) { highlighted = 0 }
         .task(id: mention != nil) {
@@ -143,10 +153,12 @@ struct Composer: View {
     /// the left, send at the right, under the text so its left edge stays.
     private var buttons: some View {
         HStack(spacing: 2) {
-            IconButton("paperclip", help: "Attach files") {
-                model.chooseFiles(for: composer)
+            if composer.takesFiles {
+                IconButton("paperclip", help: "Attach files") {
+                    model.chooseFiles(for: composer)
+                }
             }
-            if let paysTo {
+            if let paysTo, let chat = composer.chat {
                 let sendingSats = Binding(
                     get: { model.sendingSats == composer },
                     set: { model.sendingSats = $0 ? composer : nil }
@@ -156,28 +168,43 @@ struct Composer: View {
                 }
                 .accessibilityAddTraits(sendingSats.wrappedValue ? .isSelected : [])
                 .peelPopover(isPresented: sendingSats) {
-                    SendSatsPanel(chat: composer.chat, name: paysTo) { sendingSats.wrappedValue = false }
+                    SendSatsPanel(chat: chat, name: paysTo) { sendingSats.wrappedValue = false }
                 }
                 // The view stays when another chat opens in its place: the
                 // panel left behind is closed, not opened again on coming back.
                 .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
             }
             Spacer(minLength: 8)
-            Button(action: send) {
-                // As wide as `.sm` is tall, less its padding: a square.
-                // `IconButton` has no primary variant.
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
+            if let stop {
+                Button(action: stop) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
+                }
+                .buttonStyle(.peel(.outline, size: .sm))
+                .help("Stop the reply (Escape)")
+                .accessibilityLabel("Stop")
+            } else {
+                sendButton
             }
-            // Filled when there is something to send, a muted arrow otherwise.
-            .buttonStyle(.peel(canSend ? .primary : .ghost, size: .sm))
-            .disabled(!canSend)
-            // No Cmd-Return here: with a thread open two composers share the
-            // window, and Return in the field already sends from the right one.
-            .help("Send (Return). Shift-Return for a new line.")
-            .accessibilityLabel("Send")
         }
+    }
+
+    private var sendButton: some View {
+        Button(action: send) {
+            // As wide as `.sm` is tall, less its padding: a square.
+            // `IconButton` has no primary variant.
+            Image(systemName: "arrow.up")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
+        }
+        // Filled when there is something to send, a muted arrow otherwise.
+        .buttonStyle(.peel(canSend ? .primary : .ghost, size: .sm))
+        .disabled(!canSend)
+        // No Cmd-Return here: with a thread open two composers share the
+        // window, and Return in the field already sends from the right one.
+        .help("Send (Return). Shift-Return for a new line.")
+        .accessibilityLabel("Send")
     }
 }
 

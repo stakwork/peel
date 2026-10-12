@@ -590,7 +590,7 @@ struct MessageList: View {
     /// but not its scroll position).
     private func reachedBottom() {
         dividerUnread = false
-        if composer.thread == nil { model.reachedBottom(of: composer.chat) }
+        if composer.thread == nil, let chat = composer.chat { model.reachedBottom(of: chat) }
     }
 
     /// The model's focused message, if it belongs in this list: scrolled
@@ -858,14 +858,15 @@ extension Message {
 /// yours on a faint accent tint.
 private struct RowChrome: ViewModifier {
     @Environment(\.menuPresenter) private var presenter
-    let id: String
+    /// The row's menu source; nil for a row with no menu (the agent chat's).
+    let id: String?
     let fromMe: Bool
     let lit: Bool
     let hovering: Bool
 
     func body(content: Content) -> some View {
         content.background {
-            if lit || presenter?.source == AnyHashable(id) {
+            if lit || id.map({ presenter?.source == AnyHashable($0) }) == true {
                 Theme.selection.opacity(0.45)
             } else if hovering {
                 Theme.hover.opacity(0.55)
@@ -879,7 +880,11 @@ private struct RowChrome: ViewModifier {
 extension View {
     /// The row's chrome (`RowChrome`): `lit` while flashed, or for its open thread.
     func rowChrome(_ row: ChatRow, lit: Bool, hovering: Bool) -> some View {
-        modifier(RowChrome(id: row.id, fromMe: row.message.fromMe, lit: lit, hovering: hovering))
+        rowChrome(id: row.id, fromMe: row.message.fromMe, lit: lit, hovering: hovering)
+    }
+
+    func rowChrome(id: String?, fromMe: Bool, lit: Bool = false, hovering: Bool) -> some View {
+        modifier(RowChrome(id: id, fromMe: fromMe, lit: lit, hovering: hovering))
     }
 }
 
@@ -1125,13 +1130,16 @@ private extension View {
 struct MessageText: View {
     @Environment(AppModel.self) private var model
     let text: String
-    /// Where it was said, for what a mention of you looks like there.
-    let chat: String
+    /// Where it was said, for what a mention of you looks like there; nil
+    /// in the agent chat.
+    let chat: String?
+    /// The agent's reply: its links to messages open them (`LinkText`).
+    var agentLinks = false
 
     var body: some View {
         let blocks = MessageMarkup.blocks(text)
-        let myAliases = model.mentionAliases(in: chat)
-        let found = model.search.flatMap { $0.chat == chat ? $0.query?.terms : nil } ?? []
+        let myAliases = chat.map(model.mentionAliases(in:)) ?? []
+        let found = model.search.flatMap { chat != nil && $0.chat == chat ? $0.query?.terms : nil } ?? []
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
@@ -1180,7 +1188,7 @@ struct MessageText: View {
     /// A line of text, with what the chat's search `found` lit.
     private func styled(_ line: String, _ myAliases: Set<String>, _ found: [String],
                         font: Font = Theme.font(14)) -> some View {
-        Text(LinkText.attributed(line, myAliases: myAliases).highlighting(found))
+        Text(LinkText.attributed(line, myAliases: myAliases, agentLinks: agentLinks).highlighting(found))
             .font(font)
             .lineSpacing(3)
             .foregroundStyle(Theme.text)

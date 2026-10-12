@@ -138,12 +138,14 @@ struct FormTextField: View {
     var monospaced = false
     var focusOnAppear = false
     var focusRequest = 0
+    /// Dots for what is typed (an API key); one line.
+    var secure = false
 
     @FocusState private var focused: Bool
     @State private var hovering = false
 
     var body: some View {
-        let multiline = axis == .vertical
+        let multiline = axis == .vertical && !secure
         HStack(alignment: multiline ? .firstTextBaseline : .center, spacing: 7) {
             if let systemImage {
                 Image(systemName: systemImage)
@@ -151,12 +153,19 @@ struct FormTextField: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             // No prompt is an empty one: the label above already names the field.
-            TextField(label, text: $text, prompt: Text(prompt ?? "").foregroundStyle(Theme.tertiaryText), axis: axis)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-                .fontDesign(monospaced ? .monospaced : nil)
-                .lineLimit(multiline ? 3...6 : 1...1)
-                .focused($focused)
+            let prompt = Text(prompt ?? "").foregroundStyle(Theme.tertiaryText)
+            Group {
+                if secure {
+                    SecureField(label, text: $text, prompt: prompt)
+                } else {
+                    TextField(label, text: $text, prompt: prompt, axis: axis)
+                        .lineLimit(multiline ? 3...6 : 1...1)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(Theme.font(13))
+            .fontDesign(monospaced ? .monospaced : nil)
+            .focused($focused)
         }
         .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, multiline ? 8 : 0)

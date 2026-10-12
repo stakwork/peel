@@ -83,6 +83,8 @@ public protocol AgentStore: Sendable {
         includeDeleted: Bool
     ) throws -> [WalkStep]
     func ontology() throws -> [TypeCount]
+    /// Records of one type, oldest first, at most `limit`.
+    func records(type: String, limit: Int, includeDeleted: Bool) throws -> [Record]
 }
 
 public let maxWalkDepth = 2
@@ -101,6 +103,10 @@ extension AgentStore {
         limit: Int = 50
     ) throws -> [WalkStep] {
         try walk(refId, edgeTypes: edgeTypes, direction: direction, depth: depth, limit: limit, includeDeleted: false)
+    }
+
+    public func records(type: String, limit: Int = 100) throws -> [Record] {
+        try records(type: type, limit: limit, includeDeleted: false)
     }
 }
 

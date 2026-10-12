@@ -10,6 +10,7 @@ struct AccountView: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
+            ScrollViewReader { proxy in
             ScrollView {
                 // Settings, not a form: facts of what is set on cards
                 // (`SettingsSection`); a text field, when one opens, is a
@@ -39,6 +40,10 @@ struct AccountView: View {
                             }
                         }
                     }
+                    if let agent = model.agent {
+                        AgentSettingsSection(agent: agent)
+                            .id(AgentSettingsSection.id)
+                    }
                     TimeZoneSection()
                     SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {
@@ -66,9 +71,19 @@ struct AccountView: View {
                 // In the scroll view as well: a click there never reaches a gesture outside it.
                 .endsEditingOnClick()
             }
+            // Opened from the agent chat's settings: at its section.
+            .onAppear { showAgentSettings(proxy) }
+            .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
+            }
         }
         .endsEditingOnClick()
         .font(Theme.font(13))
+    }
+
+    private func showAgentSettings(_ proxy: ScrollViewProxy) {
+        guard model.showsAgentSettings else { return }
+        model.showsAgentSettings = false
+        proxy.scrollTo(AgentSettingsSection.id, anchor: .top)
     }
 }
 
@@ -717,11 +732,11 @@ private struct WebsiteDataRow: View {
 
 // MARK: - Building blocks
 
-private let settingsRowPadding: CGFloat = 12
+let settingsRowPadding: CGFloat = 12
 
 /// A titled group of Account rows: a `FactList` with the page's wider
 /// label column.
-private struct SettingsSection<Content: View>: View {
+struct SettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
 

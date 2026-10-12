@@ -14,6 +14,10 @@ public struct Profile: Sendable {
     public let kind: Kind
     public let directory: URL
     public let secrets: any SecretStore
+    /// The agent's connected model and its API key: in the Keychain for an
+    /// app profile, in an owner-only file beside the words for a
+    /// development one. Never in a database (docs/phases/09-agents.md).
+    public let agentCredential: any SecretItem
 
     /// Names are path components, so only plain characters are allowed.
     public init(name: String, kind: Kind) throws {
@@ -30,9 +34,10 @@ public struct Profile: Sendable {
         case .app:
             directory = root.appendingPathComponent(name)
             secrets = KeychainSecretStore(account: name)
+            agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            secrets = FileSecretStore(file: directory.appendingPathComponent("mnemonic"))
+            (secrets, agentCredential) = Self.files(in: directory)
         }
     }
 
@@ -42,8 +47,17 @@ public struct Profile: Sendable {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        secrets = FileSecretStore(file: directory.appendingPathComponent("mnemonic"))
+        (secrets, agentCredential) = Self.files(in: directory)
     }
+
+    /// A development profile's words and agent key, in files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem) {
+        (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
+         FileItem(file: directory.appendingPathComponent("agent-credential")))
+    }
+
+    /// Where the agent's database lives, beside the account's.
+    public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
     public var hasAccount: Bool { secrets.hasMnemonic }
 
@@ -71,9 +85,11 @@ public struct Profile: Sendable {
         try secrets.changePIN(from: oldPIN, to: newPIN)
     }
 
-    /// Removes the words and everything stored with them. A failure to remove
-    /// the words is reported, and the database is then kept with them.
+    /// Removes the words and everything stored with them, the agent's key
+    /// first. A failure to remove either is reported, and the database is
+    /// then kept with them.
     public func delete() throws {
+        try agentCredential.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

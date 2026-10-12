@@ -3,6 +3,7 @@ import Observation
 #if os(macOS)
 import AppKit
 #endif
+import AgentKit
 import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
@@ -36,6 +37,8 @@ final class AppModel {
     /// What the sidebar has selected.
     enum Destination: Hashable {
         case threads, mentions, payments, account
+        /// The agent chat, Peel's own row in Direct messages.
+        case agent
         case chat(String)
     }
 
@@ -247,6 +250,12 @@ final class AppModel {
     /// a plain file; the window says so.
     private(set) var profile: Profile?
     private(set) var engine: Engine?
+    /// The account's agent chat (`AppModel+Agent`), open with the account.
+    var agent: AgentSession?
+    /// Where the Connect panel is open from, if it is.
+    var agentConnectFrom: AgentConnectSource?
+    /// Account opens at the Peel agent section (`openAgentSettings`).
+    var showsAgentSettings = false
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -954,6 +963,7 @@ final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
+        closeAgent()
         Clipboard.clearSecret()
         // Players are keyed by message id, which the next account reuses.
         MediaPlayback.shared.closeFullScreen()
@@ -1040,6 +1050,7 @@ final class AppModel {
         connection = settings.connection
         // Forgotten while loading.
         guard self.engine === engine else { return }
+        if let profile { openAgent(profile, engine: engine) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }

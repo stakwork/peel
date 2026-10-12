@@ -1,0 +1,448 @@
+import AgentKit
+import SwiftUI
+import PeelCore
+
+// MARK: - Pieces
+
+/// Peel's logo as the agent's avatar: the app's icon, its tile filling a
+/// rounded square (agents are rounded squares, people circles).
+struct PeelLogo: View {
+    let size: CGFloat
+
+    var body: some View {
+        // The icon's tile is 824 of its 1024 points; the rest is margin.
+        AppIcon(size: size * 1024 / 824)
+            .frame(width: size, height: size)
+            .clipShape(Avatar.outline(.roundedSquare, size: size))
+            .accessibilityHidden(true)
+    }
+}
+
+/// "AGENT" beside an agent's name: its sidebar row, header and messages.
+struct AgentTag: View {
+    var body: some View {
+        Text("AGENT")
+            .font(Theme.font(10, .semibold))
+            .tracking(0.4)
+            .foregroundStyle(Theme.secondaryText)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.divider))
+            .fixedSize()
+            .accessibilityLabel("Agent")
+    }
+}
+
+/// Peel's row at the top of Direct messages: "Set up" in link blue until a
+/// model is connected, then AGENT; bold with a count for replies that
+/// came while it was not open.
+struct AgentLink: View {
+    let agent: AgentSession
+
+    var body: some View {
+        let unread = agent.unread
+        SidebarLink(agent.name, to: .agent, unread: unread > 0) {
+            PeelLogo(size: 18)
+        } accessory: {
+            if unread > 0 {
+                Badge(count: unread)
+            } else if agent.connection == nil {
+                Text("Set up")
+                    .font(Theme.font(12, .medium))
+                    .foregroundStyle(Theme.link)
+            } else {
+                AgentTag()
+            }
+        }
+    }
+}
+
+// MARK: - The chat
+
+/// The agent chat: one long conversation like a direct message. Peel's
+/// first message introduces it, with a card to connect a model until one
+/// is; replies stream in as Markdown, tools run as quiet rows, a failure
+/// is a row with Retry. Everything it does is an `AgentSession` action.
+struct AgentChatView: View {
+    @Environment(AppModel.self) private var model
+    let agent: AgentSession
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            if let notice = agent.notice {
+                Callout(detail: notice, icon: .problem, dismiss: { agent.notice = nil })
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+            }
+            AgentMessageList(agent: agent)
+            Composer(composer: .agent, placeholder: "Message \(agent.name)",
+                     stop: agent.isRunning ? { agent.stop() } : nil)
+        }
+        // A reply's View opens the message; any other link goes where a
+        // message's link goes (`WebPane.linkAction`).
+        .environment(\.openURL, OpenURLAction { url in
+            if model.openAgentLink(url) { return .handled }
+            model.web.linkAction(url)
+            return .handled
+        })
+        .onAppear {
+            agent.isShown = true
+            // After this layout pass, once the chat it replaced has let go
+            // of the keyboard (Tom: back from a View, the cursor was lost).
+            if !model.sidebarHasKeys { Task { model.composerFocus[.agent, default: 0] += 1 } }
+        }
+        .onDisappear { agent.isShown = false }
+        // Connected: the cursor goes to the field, ready for the first question.
+        .onChange(of: agent.connection) { _, connection in
+            if connection != nil { model.composerFocus[.agent, default: 0] += 1 }
+        }
+    }
+
+    private var header: some View {
+        let subtitle = agent.connection.map { "\($0.provider.modelName($0.model)) · \($0.provider.name)" }
+        return DetailHeader(title: agent.name, subtitle: subtitle ?? "No model connected", showsAgentTag: true) {
+            PeelLogo(size: 28)
+        } trailing: {
+            if agent.connection != nil {
+                IconButton("gearshape", help: "Agent settings") { model.openAgentSettings() }
+            }
+        }
+    }
+}
+
+/// The conversation, newest at the bottom, following the reply as it
+/// streams while the list is at the bottom.
+private struct AgentMessageList: View {
+    @Environment(AppModel.self) private var model
+    let agent: AgentSession
+
+    /// Taken down with the reply: until scrolled away by hand, and again
+    /// once back at the bottom.
+    @State private var following = true
+    @State private var phase = ScrollPhase.idle
+    private static let bottom = "bottom"
+
+    var body: some View {
+        let turns = agent.turns
+        let problem = agent.problem
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    AgentIntro(agent: agent)
+                    ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
+                        if index == 0 || !Calendar.current.isDate(turn.date, inSameDayAs: turns[index - 1].date) {
+                            DayDivider(date: turn.date)
+                                .padding(.horizontal, 20)
+                        }
+                        AgentTurnRow(turn: turn, name: agent.name)
+                        if let problem, problem.turnID == turn.id {
+                            AgentProblemRow(agent: agent, failure: problem.failure)
+                        }
+                    }
+                    // Its own view: the reply growing redraws it alone.
+                    AgentReplyRow(agent: agent) { if following { proxy.scrollTo(Self.bottom, anchor: .bottom) } }
+                }
+                .padding(.vertical, 12)
+                .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottom) }
+            }
+            // Short, it sits on the composer, as a chat does.
+            .defaultScrollAnchor(.bottom, for: .alignment)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .onScrollPhaseChange { _, new in phase = new }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height) <= 24
+            } action: { _, bottom in
+                if bottom {
+                    following = true
+                } else if phase == .interacting || phase == .decelerating {
+                    following = false
+                }
+            }
+            .onAppear { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+            // A message sent always goes to the newest; a reply growing
+            // only while the list is at the bottom.
+            .onChange(of: turns.count) {
+                if turns.last?.author == .user { following = true }
+                if following { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+            }
+            .onChange(of: problem) { if following { proxy.scrollTo(Self.bottom, anchor: .bottom) } }
+        }
+    }
+}
+
+/// The reply streaming now, the only view that reads it, so the rest of
+/// the list is not drawn again as it grows; `grew` keeps it in view.
+private struct AgentReplyRow: View {
+    let agent: AgentSession
+    let grew: () -> Void
+
+    var body: some View {
+        if let reply = agent.reply {
+            AgentTurnRow(turn: reply, name: agent.name, writing: true)
+                .onChange(of: reply.text.count) { grew() }
+                .onChange(of: reply.tools.count) { grew() }
+        }
+    }
+}
+
+/// Peel's first message: what it can do, and until a model is connected a
+/// card to connect one.
+private struct AgentIntro: View {
+    @Environment(AppModel.self) private var model
+    let agent: AgentSession
+
+    var body: some View {
+        AgentRow(author: .agent, name: agent.name) {
+            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on your chats and find what someone said.")
+                .font(Theme.font(14))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+            if agent.connection == nil {
+                Card {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Connect a model to start")
+                            .font(Theme.font(14, .semibold))
+                        Text("Anthropic, OpenAI or OpenRouter. What the agent reads to answer you goes to the provider you connect, not to Sphinx or to us.")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    AgentConnectButton(source: .chat, title: "Connect", variant: .primary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                }
+                .padding(.top, 6)
+            }
+        }
+    }
+}
+
+/// One message: the person's on a faint tint with their photo, or the
+/// agent's with its logo and AGENT; the tools a reply ran above it; how it
+/// ended when not on its own ("Stopped").
+private struct AgentTurnRow: View {
+    let turn: AgentTurn
+    let name: String
+    var writing = false
+
+    var body: some View {
+        if !turn.tools.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                // By position: a provider may repeat a call id across steps.
+                ForEach(Array(turn.tools.enumerated()), id: \.offset) { AgentToolRow(tool: $0.element) }
+            }
+            .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
+            .padding(.trailing, 20)
+            .padding(.top, 6)
+        }
+        if turn.author == .user || writing || !turn.text.isEmpty || turn.ending != nil {
+            AgentRow(author: turn.author, name: name, date: writing ? nil : turn.date, writing: writing) {
+                if !turn.text.isEmpty {
+                    MessageText(text: turn.text, chat: nil, agentLinks: turn.author == .agent)
+                }
+                if let ending = turn.ending {
+                    Text(Self.words(for: ending))
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+    }
+
+    static func words(for ending: AgentTurn.Ending) -> String {
+        switch ending {
+        case .stopped: "Stopped"
+        case .cutOff: "The reply reached its length limit."
+        case .declined: "The provider declined to answer."
+        case .stepLimit: "Stopped after the most steps a reply may take."
+        }
+    }
+}
+
+/// A row of the agent chat in a message row's shape (`MessageRow`): the
+/// photo or logo in the gutter, then the name, AGENT and the time, then
+/// the body; yours on the faint accent tint.
+private struct AgentRow<Content: View>: View {
+    @Environment(AppModel.self) private var model
+    let author: AgentTurn.Author
+    let name: String
+    var date: Date?
+    var writing = false
+    @ViewBuilder let content: Content
+
+    @State private var hovering = false
+
+    var body: some View {
+        let me = model.me
+        HStack(alignment: .top, spacing: MessageRow.gutterSpacing) {
+            Group {
+                if author == .user {
+                    Avatar(name: me.avatarName, url: me.photoURL, size: MessageRow.avatarSize, hue: me.hue)
+                } else {
+                    PeelLogo(size: MessageRow.avatarSize)
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(author == .user ? me.name : name)
+                        .font(Theme.font(13, .semibold))
+                        .foregroundStyle(author == .user ? me.hue.name : Theme.text)
+                        .lineLimit(1)
+                    if author == .agent { AgentTag().alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 } }
+                    if writing {
+                        Text("writing…")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                    } else if let date {
+                        Text(Formatting.time(date))
+                            .font(Theme.font(12))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.secondaryText)
+                            .help(date.formatted(date: .complete, time: .shortened))
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) { content }
+            }
+            .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .rowChrome(id: nil, fromMe: author == .user, hovering: hovering)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// A tool the agent ran, one quiet line ("Read the time · 0.1 s"); a click
+/// opens what it was asked and what it answered.
+private struct AgentToolRow: View {
+    let tool: ToolActivity
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                open.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    Text(AgentToolTitle.of(tool.name))
+                        .layoutPriority(1)
+                    if let summary = tool.summary.map(AgentToolTitle.summary), !summary.isEmpty {
+                        Text("· " + summary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(summary)
+                    }
+                    if let duration = tool.duration {
+                        Text("· " + (tool.failed ? "failed · " : "") + AgentToolTitle.duration(duration))
+                            .monospacedDigit()
+                            .fixedSize()
+                    } else {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            if open {
+                Card(.inset) {
+                VStack(alignment: .leading, spacing: 4) {
+                    detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
+                    if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func detail(_ label: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 64, alignment: .leading)
+            Text(text)
+                .foregroundStyle(Theme.text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(Theme.font(12))
+    }
+}
+
+/// Why a message got no reply, in the provider's plain words, with what
+/// helps: Retry, Replace key for a key that stopped working, Connect when
+/// none is. Quiet, not red: nothing was lost.
+private struct AgentProblemRow: View {
+    let agent: AgentSession
+    let failure: AgentSession.Failure
+
+    var body: some View {
+        Callout(detail: words, icon: .problem) {
+            switch failure {
+            case .noModel:
+                AgentConnectButton(source: .problem, title: "Connect", variant: .primary, size: .sm)
+            case .model(.invalidKey):
+                AgentConnectButton(source: .problem, title: "Replace key", variant: .primary, size: .sm)
+            case .unreadableKey, .model:
+                Button("Retry") { agent.retry() }
+                    .buttonStyle(.peel(.outline, size: .sm))
+            }
+        }
+        .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+        .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
+        .padding(.trailing, 20)
+        .padding(.vertical, 6)
+    }
+
+    private var words: String {
+        switch failure {
+        case .noModel:
+            "No model connected. Connect one and this message is asked again."
+        case .unreadableKey(let reason):
+            PeelError.problem(reason, couldNot: "read the API key on this Mac")
+        case .model(.invalidKey(let message)):
+            "Your \(agent.connection?.provider.name ?? "provider's") key stopped working."
+                + (message.map { " (\($0))" } ?? "")
+        case .model(let error):
+            error.localizedDescription
+        }
+    }
+}
+
+/// A button that opens the Connect panel beside itself. Each place has its
+/// own `source`, so the panel opens next to the button clicked.
+struct AgentConnectButton: View {
+    @Environment(AppModel.self) private var model
+    let source: AgentConnectSource
+    let title: String
+    var variant = PeelButton.Variant.outline
+    var size = PeelButton.Size.md
+
+    var body: some View {
+        let open = Binding(
+            get: { model.agentConnectFrom == source },
+            set: { model.agentConnectFrom = $0 ? source : nil }
+        )
+        Button(title) { open.wrappedValue = true }
+            .buttonStyle(.peel(variant, size: size))
+            .peelPopover(isPresented: open) {
+                if let agent = model.agent {
+                    AgentConnectPanel(agent: agent) { open.wrappedValue = false }
+                }
+            }
+    }
+}

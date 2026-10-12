@@ -166,7 +166,7 @@ struct PeelCommand {
             _ = arguments.next()
             let storage = try name.map { name in
                 let directory = try Profile(name: name, kind: .development).directory
-                guard FileManager.default.fileExists(atPath: directory.appendingPathComponent("peel.sqlite").path) else {
+                guard Storage.exists(in: directory) else {
                     throw PeelError("no development profile named \(name)")
                 }
                 return try Storage(directory: directory, readOnly: true)

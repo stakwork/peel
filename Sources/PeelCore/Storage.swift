@@ -22,7 +22,7 @@ public final class Storage: Sendable {
         lock = readOnly ? nil : try Self.lock(directory)
         var configuration = Configuration()
         configuration.readonly = readOnly
-        pool = try DatabasePool(path: directory.appendingPathComponent("peel.sqlite").path, configuration: configuration)
+        pool = try DatabasePool(path: Self.database(in: directory).path, configuration: configuration)
         if !readOnly {
             try Self.migrator.migrate(pool)
             try markNoWords()
@@ -31,6 +31,16 @@ public final class Storage: Sendable {
 
     deinit {
         if let lock { close(lock) }
+    }
+
+    /// Whether a profile directory holds a database to open, for a read-only
+    /// open that must not create one.
+    public static func exists(in directory: URL) -> Bool {
+        FileManager.default.fileExists(atPath: database(in: directory).path)
+    }
+
+    private static func database(in directory: URL) -> URL {
+        directory.appendingPathComponent("peel.sqlite")
     }
 
     private static func lock(_ directory: URL) throws -> Int32 {

@@ -169,7 +169,7 @@ public actor Engine {
     static let registerSettle: Duration = .milliseconds(750)
 
     public init(mnemonic: String, storage: Storage) throws {
-        seed = try Sphinxrs.mnemonicToSeed(mnemonic: Self.normalise(mnemonic: mnemonic))
+        seed = try Self.seed(of: mnemonic)
         self.storage = storage
         network = try storage.value(for: .network) ?? "bitcoin"
         state = try storage.loadCoreState()

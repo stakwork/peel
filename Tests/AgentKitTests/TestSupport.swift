@@ -119,3 +119,13 @@ func echoTool(runs: Counter = Counter()) -> Tool {
         return .json(input)
     }
 }
+
+/// Waits for `condition`, up to two seconds.
+@MainActor
+func until(_ condition: () -> Bool) async throws {
+    for _ in 0..<200 {
+        if condition() { return }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    Issue.record("timed out")
+}

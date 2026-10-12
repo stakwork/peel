@@ -25,6 +25,9 @@ public struct AgentLoop: Sendable {
     public var historyBudget = 60_000
     /// The most characters of a tool's result the model is sent.
     public var maxToolResultCharacters = 50_000
+    /// Asked before every call of a tool that acts (`Tool.Effect.send`);
+    /// with none, such calls are refused.
+    public var approver: (any ToolApprover)?
 
     public init(provider: any ModelProvider, tools: ToolRegistry, model: String, systemPrompt: String) {
         self.provider = provider
@@ -147,7 +150,15 @@ public struct AgentLoop: Sendable {
         }
         guard let tool = tools[call.name] else { return ("There is no tool named \(call.name).", true) }
         do {
-            let output = try await tool.handler(call.input).text
+            let output: String
+            switch try await tool.plan(call.input) {
+            case .result(let result):
+                output = result.text
+            case .action(let intent, let run):
+                let outcome = await approver?.approve(ApprovalRequest(callID: call.id, tool: call.name, intent: intent))
+                if let refusal = ApprovalOutcome.refusal(outcome, of: intent) { return refusal }
+                output = try await run().text
+            }
             guard output.count > maxToolResultCharacters else { return (output, false) }
             return (String(output.prefix(maxToolResultCharacters)) + "\n[cut: the result was longer]", false)
         } catch is CancellationError {
@@ -157,10 +168,11 @@ public struct AgentLoop: Sendable {
         }
     }
 
-    /// A tool's result in one short line, for a quiet row in the chat.
+    /// A tool's result in one short line, for a quiet row in the chat: room
+    /// for a chat id and a message uuid (a send's link) beside the words.
     static func summary(of output: String) -> String {
         let line = output.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        return line.count > 120 ? String(line.prefix(119)) + "…" : line
+        return line.count > 240 ? String(line.prefix(239)) + "…" : line
     }
 }
 

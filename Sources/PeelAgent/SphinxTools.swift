@@ -295,12 +295,12 @@ public struct SphinxTools: Sendable {
     // MARK: - Shared
 
     /// The chats as the sidebar lists them, newest first.
-    private func chats() async throws -> [Conversation] {
+    func chats() async throws -> [Conversation] {
         try await first(storage.conversations()) ?? []
     }
 
     /// A chat by name or id; throws what to tell the model instead.
-    private func resolve(_ query: String, among chats: [Conversation], tribesOnly: Bool = false) throws -> Conversation {
+    func resolve(_ query: String, among chats: [Conversation], tribesOnly: Bool = false) throws -> Conversation {
         let quoted = ChatData.clean(query, max: ChatData.maxName)
         switch ChatDirectory(chats: chats).resolve(query, tribesOnly: tribesOnly) {
         case .found(let chat):

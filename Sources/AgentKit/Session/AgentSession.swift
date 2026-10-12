@@ -45,18 +45,36 @@ public struct ToolActivity: Identifiable, Sendable, Equatable {
     public var summary: String?
     public var duration: Duration?
     public var failed = false
+    /// For a tool that acts: what it asked to do and how the person answered.
+    public var approval: ToolApproval?
 
     public init(id: String, name: String, input: JSONValue, summary: String? = nil, duration: Duration? = nil,
-                failed: Bool = false) {
+                failed: Bool = false, approval: ToolApproval? = nil) {
         self.id = id
         self.name = name
         self.input = input
         self.summary = summary
         self.duration = duration
         self.failed = failed
+        self.approval = approval
     }
 
     public var isRunning: Bool { duration == nil }
+
+    /// Waiting on the person: its card is up.
+    public var isWaiting: Bool { approval != nil && approval?.outcome == nil && isRunning }
+}
+
+/// A tool call that needed approval: what it would do, and the answer
+/// (nil while its card waits).
+public struct ToolApproval: Sendable, Equatable, Codable {
+    public var intent: ToolIntent
+    public var outcome: ApprovalOutcome?
+
+    public init(intent: ToolIntent, outcome: ApprovalOutcome? = nil) {
+        self.intent = intent
+        self.outcome = outcome
+    }
 }
 
 /// The agent chat: one long conversation with the connected model, kept in
@@ -114,6 +132,11 @@ public final class AgentSession {
 
     public var isRunning: Bool { running != nil }
 
+    /// The tool call whose card waits on the person, if any.
+    public private(set) var waiting: ApprovalRequest?
+    /// The account's remembered "Always allow" rules, for Account to list.
+    public private(set) var approvalRules: [ApprovalRule] = []
+
     public static let defaultName = "Peel"
 
     /// The tools the agent may use; registering one is a line in the app.
@@ -121,6 +144,11 @@ public final class AgentSession {
     public var systemPrompt: String
 
     private let store: any AgentStore
+    private let rules: ApprovalRules
+    /// Answers the card that waits (`waiting`).
+    @ObservationIgnored private var answering: CheckedContinuation<ApprovalDecision, Never>?
+    /// The person's last answer, to tell an "Always" that could not be kept.
+    @ObservationIgnored private var lastAnswer: ApprovalDecision?
     private let credentials: any AgentCredentialStore
     private let makeClient: @Sendable (AgentCredential) -> any ModelProvider
     private var conversationID: String?
@@ -149,6 +177,7 @@ public final class AgentSession {
         }
     ) {
         self.store = store
+        rules = ApprovalRules(store: store)
         self.credentials = credentials
         self.tools = tools
         self.systemPrompt = systemPrompt
@@ -161,6 +190,12 @@ public final class AgentSession {
             connection = try credentials.read().map(Connection.init)
         } catch {
             notice = "Could not read the connected model's key: \(error.localizedDescription)"
+        }
+        do {
+            approvalRules = try rules.all()
+        } catch {
+            notice = [notice, "Could not read what the agent is always allowed to do: \(error.localizedDescription)"]
+                .compactMap { $0 }.joined(separator: " ")
         }
         do {
             name = try store.records(type: RecordType.agent, limit: 1).first?.name ?? Self.defaultName
@@ -215,10 +250,11 @@ public final class AgentSession {
             problem = Problem(turnID: turn.id, failure: .noModel)
             return
         }
-        let loop = AgentLoop(provider: makeClient(credential), tools: tools, model: credential.model, systemPrompt: systemPrompt)
+        var loop = AgentLoop(provider: makeClient(credential), tools: tools, model: credential.model, systemPrompt: systemPrompt)
         let earlier = history
         let id = UUID()
         runID = id
+        loop.approver = RunApprover(session: self, run: id)
         reply = AgentTurn(id: UUID().uuidString.lowercased(), author: .agent, text: "", date: .now)
         paragraphDue = false
         // Holds the session until the turn ends, which Stop makes prompt.
@@ -254,12 +290,11 @@ public final class AgentSession {
             paragraphDue = reply?.text.isEmpty == false
             reply?.tools.append(ToolActivity(id: id, name: name, input: input))
         case .toolFinished(let id, _, let summary, let duration, let failed):
-            // Ids can repeat across a reply's steps (an OpenAI-compatible
-            // provider that numbers its calls): the newest one still running.
-            guard let index = reply?.tools.lastIndex(where: { $0.id == id && $0.isRunning }) else { return }
-            reply?.tools[index].summary = summary
-            reply?.tools[index].duration = duration
-            reply?.tools[index].failed = failed
+            updateTool(id) {
+                $0.summary = summary
+                $0.duration = duration
+                $0.failed = failed
+            }
         }
     }
 
@@ -312,6 +347,67 @@ public final class AgentSession {
         // are copies of chats Peel keeps); a reply that needs one names it.
         history = Self.history(of: turns)
         if !isShown { unread += 1 }
+    }
+
+    // MARK: Approvals
+
+    /// Answers the card that waits: Return is Allow once, Escape Deny.
+    public func answer(_ decision: ApprovalDecision) {
+        guard let answering else { return }
+        lastAnswer = decision
+        self.answering = nil
+        waiting = nil
+        answering.resume(returning: decision)
+    }
+
+    /// Forgets an "Always allow": that tool asks again for that target.
+    public func revoke(_ rule: ApprovalRule) throws {
+        try rules.revoke(rule)
+        approvalRules = try rules.all()
+    }
+
+    /// What the loop asks before a tool that acts: a rule, or the card.
+    /// The tool's row shows the card while it waits, then the outcome.
+    /// Only for `run`, the reply in progress: one that Clear or Stop left
+    /// behind asks nothing and changes no row.
+    fileprivate func approveShown(_ request: ApprovalRequest, run: UUID) async -> ApprovalOutcome {
+        guard runID == run else { return .stopped }
+        let gate = ApprovalGate(rules: rules) { [weak self] request in await self?.ask(request, run: run) ?? .deny }
+        lastAnswer = nil
+        var outcome = await gate.approve(request)
+        guard runID == run else { return .stopped }
+        // Allowed, then stopped before it ran: the row says so, not "allowed".
+        if Task.isCancelled { outcome = .stopped }
+        updateTool(request.callID) { $0.approval = ToolApproval(intent: request.intent, outcome: outcome) }
+        if outcome == .alwaysAllowed { approvalRules = (try? rules.all()) ?? approvalRules }
+        if outcome == .allowedOnce, lastAnswer == .alwaysAllow {
+            notice = "Could not remember \"\(request.intent.alwaysLabel)\"; it was allowed this once."
+        }
+        return outcome
+    }
+
+    /// Puts the card up and waits for `answer`; Stop (the task cancelled)
+    /// takes it down as a Deny, which the gate reads as stopped.
+    private func ask(_ request: ApprovalRequest, run: UUID) async -> ApprovalDecision {
+        guard !closed, !Task.isCancelled, runID == run, answering == nil else { return .deny }
+        updateTool(request.callID) { $0.approval = ToolApproval(intent: request.intent) }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                answering = continuation
+                waiting = request
+            }
+        } onCancel: {
+            // Only this run's card: by the time this runs another may be up.
+            Task { @MainActor in if self.runID == run, self.waiting == request { self.answer(.deny) } }
+        }
+    }
+
+    /// Changes the reply's newest running tool with `id`: ids can repeat
+    /// across a reply's steps (an OpenAI-compatible provider that numbers
+    /// its calls).
+    private func updateTool(_ id: String, _ change: (inout ToolActivity) -> Void) {
+        guard let index = reply?.tools.lastIndex(where: { $0.id == id && $0.isRunning }) else { return }
+        change(&reply!.tools[index])
     }
 
     // MARK: Connecting
@@ -387,6 +483,7 @@ public final class AgentSession {
     /// Ends the reply in progress and lets go of it, keeping nothing of it.
     private func endRun() {
         running?.cancel()
+        answer(.deny)
         running = nil
         runID = nil
         reply = nil
@@ -477,6 +574,16 @@ public final class AgentSession {
     }
 }
 
+/// The approver one run of the session's loop asks: the card in its reply.
+private struct RunApprover: ToolApprover {
+    let session: AgentSession
+    let run: UUID
+
+    func approve(_ request: ApprovalRequest) async -> ApprovalOutcome {
+        await session.approveShown(request, run: run)
+    }
+}
+
 extension AgentSession.Connection {
     init(_ credential: AgentCredential) {
         self.init(provider: credential.provider, model: credential.model, keyHint: credential.keyHint)
@@ -512,12 +619,14 @@ extension ToolActivity {
         let props = JSONValue.object(record.props)
         let ms: Double? = if case .number(let ms)? = props["ms"] { ms } else { nil }
         self.init(id: props["call_id"]?.string ?? record.refId, name: record.name, input: props["input"] ?? .object([:]),
-                  summary: record.body, duration: .milliseconds(Int64(ms ?? 0)), failed: props["failed"] == .bool(true))
+                  summary: record.body, duration: .milliseconds(Int64(ms ?? 0)), failed: props["failed"] == .bool(true),
+                  approval: props["approval"].flatMap { try? $0.decoded(as: ToolApproval.self) })
     }
 
     var props: [String: JSONValue] {
         var props: [String: JSONValue] = ["call_id": .string(id), "input": input, "failed": .bool(failed)]
         if let duration { props["ms"] = .number((duration / .milliseconds(1)).rounded()) }
+        if let approval, let json = try? JSONValue(encoding: approval) { props["approval"] = json }
         return props
     }
 }

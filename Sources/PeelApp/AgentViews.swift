@@ -1,4 +1,5 @@
 import AgentKit
+import PeelAgent
 import SwiftUI
 import PeelCore
 
@@ -35,7 +36,8 @@ struct AgentTag: View {
 
 /// Peel's row at the top of Direct messages: "Set up" in link blue until a
 /// model is connected, then AGENT; bold with a count for replies that
-/// came while it was not open.
+/// came while it was not open; "Waiting on you" in orange while a send's
+/// card waits for an answer.
 struct AgentLink: View {
     let agent: AgentSession
 
@@ -44,7 +46,11 @@ struct AgentLink: View {
         SidebarLink(agent.name, to: .agent, unread: unread > 0) {
             PeelLogo(size: 18)
         } accessory: {
-            if unread > 0 {
+            if agent.waiting != nil {
+                Text("Waiting on you")
+                    .font(Theme.font(12, .medium))
+                    .foregroundStyle(Theme.attention)
+            } else if unread > 0 {
                 Badge(count: unread)
             } else if agent.connection == nil {
                 Text("Set up")
@@ -96,6 +102,10 @@ struct AgentChatView: View {
         // Connected: the cursor goes to the field, ready for the first question.
         .onChange(of: agent.connection) { _, connection in
             if connection != nil { model.composerFocus[.agent, default: 0] += 1 }
+        }
+        // A card took the keys while it waited; answered, they go back to the field.
+        .onChange(of: agent.waiting == nil) { _, answered in
+            if answered { model.composerFocus[.agent, default: 0] += 1 }
         }
     }
 
@@ -179,9 +189,11 @@ private struct AgentReplyRow: View {
 
     var body: some View {
         if let reply = agent.reply {
-            AgentTurnRow(turn: reply, name: agent.name, writing: true)
+            AgentTurnRow(turn: reply, name: agent.name, writing: true, agent: agent)
                 .onChange(of: reply.text.count) { grew() }
                 .onChange(of: reply.tools.count) { grew() }
+                // A card replaces its row in place, taller: kept in view.
+                .onChange(of: agent.waiting) { grew() }
         }
     }
 }
@@ -194,7 +206,7 @@ private struct AgentIntro: View {
 
     var body: some View {
         AgentRow(author: .agent, name: agent.name) {
-            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on your chats and find what someone said.")
+            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on your chats, find what someone said, and send messages for you once you allow each one.")
                 .font(Theme.font(14))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -228,12 +240,14 @@ private struct AgentTurnRow: View {
     let turn: AgentTurn
     let name: String
     var writing = false
+    /// The reply streaming now: answers a card that waits.
+    var agent: AgentSession?
 
     var body: some View {
         if !turn.tools.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 // By position: a provider may repeat a call id across steps.
-                ForEach(Array(turn.tools.enumerated()), id: \.offset) { AgentToolRow(tool: $0.element) }
+                ForEach(Array(turn.tools.enumerated()), id: \.offset) { AgentToolRow(tool: $0.element, agent: agent) }
             }
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.trailing, 20)
@@ -319,12 +333,24 @@ private struct AgentRow<Content: View>: View {
 }
 
 /// A tool the agent ran, one quiet line ("Read the time · 0.1 s"); a click
-/// opens what it was asked and what it answered.
+/// opens what it was asked and what it answered. A tool that acts shows
+/// its approval card in its place while it waits, then what it did and
+/// how it was answered ("Send to Kate · Allowed once · 0.4 s · View").
 private struct AgentToolRow: View {
+    @Environment(AppModel.self) private var model
     let tool: ToolActivity
+    var agent: AgentSession?
     @State private var open = false
 
     var body: some View {
+        if tool.isWaiting, let agent, let approval = tool.approval {
+            AgentApprovalCard(agent: agent, intent: approval.intent)
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 open.toggle()
@@ -333,9 +359,14 @@ private struct AgentToolRow: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
-                    Text(AgentToolTitle.of(tool.name))
+                    Text(tool.approval?.intent.action ?? AgentToolTitle.of(tool.name))
                         .layoutPriority(1)
-                    if let summary = tool.summary.map(AgentToolTitle.summary), !summary.isEmpty {
+                    if let approval = tool.approval, let outcome = approval.outcome {
+                        Text("· " + AgentToolTitle.outcome(outcome, target: approval.intent.target?.name))
+                            .fixedSize()
+                    }
+                    if tool.approval?.outcome?.allows != false,
+                       let summary = tool.summary.map(AgentToolTitle.summary), !summary.isEmpty {
                         Text("· " + summary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -348,6 +379,11 @@ private struct AgentToolRow: View {
                     } else {
                         ProgressView().controlSize(.mini)
                     }
+                    if tool.approval != nil, let url = tool.summary.flatMap(AgentMessageLink.init(summary:))?.url {
+                        Button("View") { _ = model.openAgentLink(url) }
+                            .buttonStyle(.peel(.link))
+                            .fixedSize()
+                    }
                 }
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
@@ -358,6 +394,7 @@ private struct AgentToolRow: View {
             if open {
                 Card(.inset) {
                 VStack(alignment: .leading, spacing: 4) {
+                    if let content = tool.approval?.intent.content { detail("Content", content) }
                     detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
                     if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
                 }
@@ -380,6 +417,82 @@ private struct AgentToolRow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(Theme.font(12))
+    }
+}
+
+/// A tool that acts, waiting on you, where its row will be: what will
+/// happen in plain words, the exact content, any cost, and Allow once
+/// (Return), Always allow for its target, and Deny (Escape). Orange while
+/// it waits; no red, since nothing is lost by declining. Once answered it
+/// is the tool's row again, one line with the outcome.
+private struct AgentApprovalCard: View {
+    @Environment(AppModel.self) private var model
+    let agent: AgentSession
+    let intent: ToolIntent
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Callout(.attention, intent.action, detail: detail, icon: .symbol("paperplane", Theme.attention)) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                if let content = intent.content {
+                    Card(.inset) {
+                        Text(content)
+                            .font(Theme.font(13))
+                            .foregroundStyle(Theme.text)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                    }
+                }
+                HStack(spacing: Theme.Space.sm) {
+                    Button("Allow once") { agent.answer(.allowOnce) }
+                        .buttonStyle(.peel(.primary, size: .sm))
+                        .help(intent.cost == nil ? "Return" : "Click to pay and send")
+                    if intent.mayBeAlwaysAllowed {
+                        Button(intent.alwaysLabel) {
+                            agent.answer(.alwaysAllow)
+                        }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                    }
+                    Button("Deny") { agent.answer(.deny) }
+                        .buttonStyle(.peel(.ghost, size: .sm))
+                        .help("Escape")
+                }
+                .padding(.top, 2)
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        // Only while the card itself has the keys: Return on a button inside
+        // it (Deny tabbed to) is not Allow once. A send that costs sats takes
+        // a click on Allow once, never a key that may have been meant for
+        // something else.
+        .onKeyPress(.return) {
+            guard focused, intent.cost == nil else { return .ignored }
+            agent.answer(.allowOnce)
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            guard focused else { return .ignored }
+            agent.answer(.deny)
+            return .handled
+        }
+        // It takes the keys only from an empty composer: a Return meant for
+        // a half-typed message never allows a send unread.
+        .onAppear { if (model.drafts[.agent] ?? "").trimmed.isEmpty { focused = true } }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Waiting on you: \(intent.action)")
+    }
+
+    /// What else will happen, and what it costs.
+    private var detail: String {
+        let lines = intent.lines
+        return lines.isEmpty ? "Waiting on you. Nothing is sent until you allow it." : lines.joined(separator: "\n")
     }
 }
 

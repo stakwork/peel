@@ -2,10 +2,10 @@ import Foundation
 
 /// Something the agent can do, with what the model is told about it.
 public struct Tool: Sendable {
-    /// What running a tool does, so a gate can be put in front of `send`
-    /// tools later without changing them.
+    /// What running a tool does: every call of a tool that is not `.read`
+    /// waits on the loop's approver (`ToolApprover`) before it runs.
     public enum Effect: String, Sendable, Hashable {
-        /// Only reads.
+        /// Only reads; never asks.
         case read
         /// Acts for the person: sends, marks read, changes something.
         case send
@@ -29,18 +29,39 @@ public struct Tool: Sendable {
     /// throws to tell the model what was wrong.
     public typealias Handler = @Sendable (_ input: JSONValue) async throws -> Output
 
+    /// What a call comes to before anything is done: an answer for the
+    /// model at once (a read's result, or why there is nothing to do, such
+    /// as a name that matches two chats), or an action to approve: what it
+    /// will do in a person's words, and the work itself, run only once
+    /// allowed, so what runs is what was shown.
+    public enum Plan: Sendable {
+        case result(Output)
+        case action(ToolIntent, run: @Sendable () async throws -> Output)
+    }
+
+    public typealias Planner = @Sendable (_ input: JSONValue) async throws -> Plan
+
     public let definition: ToolDefinition
     public let effect: Effect
-    public let handler: Handler
+    public let plan: Planner
 
     public var name: String { definition.name }
 
     /// `inputSchema` is a JSON Schema object. A handler that throws reports
-    /// the failure to the model, worded by the error's description.
+    /// the failure to the model, worded by the error's description. A tool
+    /// that acts given only a handler is approved by its name and arguments
+    /// (`ToolIntent.generic`); one that can say what it will do uses `plan`.
     public init(name: String, description: String, inputSchema: JSONValue, effect: Effect, handler: @escaping Handler) {
+        self.init(name: name, description: description, inputSchema: inputSchema, effect: effect) { input in
+            guard effect != .read else { return .result(try await handler(input)) }
+            return .action(.generic(name, input: input), run: { try await handler(input) })
+        }
+    }
+
+    public init(name: String, description: String, inputSchema: JSONValue, effect: Effect, plan: @escaping Planner) {
         definition = ToolDefinition(name: name, description: description, inputSchema: inputSchema)
         self.effect = effect
-        self.handler = handler
+        self.plan = plan
     }
 }
 

@@ -242,9 +242,11 @@ is a short plan. Update the status and the journal when you finish something.
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
   the agent chat: `AgentViews` (`PeelLogo`, `AgentTag`, the sidebar's
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
-  card, the turn rows, tool rows and the failure row, `AgentConnectButton`),
-  `AgentConnectPanel` (provider, key, model and the test call) and
-  `AgentSettings` (Account › Peel agent);
+  card, the turn rows, tool rows (an acting tool's outcome and View) and
+  the failure row, `AgentApprovalCard` (a send waiting on you, where its
+  row will be), `AgentConnectButton`), `AgentConnectPanel` (provider, key,
+  model and the test call) and `AgentSettings` (Account › Peel agent, with
+  the "Always allowed" rules and Revoke);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
@@ -325,17 +327,24 @@ is a short plan. Update the status and the journal when you finish something.
     `OpenAICompatibleProvider` (Chat Completions: OpenAI, OpenRouter),
     `ModelHTTP` (the one shared session, no cookies, cache or redirects;
     https only; `Secret`, a key that prints as "[key]"; the streamed body) and `ServerSentEvents` (the SSE parser)
-  - `Loop/` — `Tool` (with its read or send effect) and `ToolRegistry`,
+  - `Loop/` — `Tool` (with its read or send effect, and `Plan`: a result
+    at once or an action to approve) and `ToolRegistry`,
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
-    at three UTF-8 bytes each) and `AgentLoop` (one turn: stream, run tools,
-    repeat; Stop is cancelling its task)
+    at three UTF-8 bytes each), `AgentLoop` (one turn: stream, run tools,
+    repeat; Stop is cancelling its task; every action asks its approver)
+    and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
+    card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
+    the person, shared by the app and the CLI; `ApprovalRules`, the
+    "always" rules as records, per tool and target, never for a cost)
   - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
     key pages, the picker's models, the client), `AgentCredential` (prints
     without its key) and `AgentCredentialStore`; `AgentSession`, the agent
     chat's model: the conversation as `Conversation`, `Turn`
     and `ToolCall` records, the streaming reply (shown every 50 ms), Stop,
     failures and Retry, connecting with a test call, the model, removing
-    the key, Clear, the agent's name and `close`
+    the key, Clear, the agent's name and `close`; the approval card of its
+    run (`waiting`, `answer`, the outcome kept on the tool's row) and the
+    rules (`approvalRules`, `revoke`)
 - `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
   and PeelCore; no AppKit or UIKit)
   - `SphinxTools.swift` — the read tools under the official Mac app's names
@@ -350,9 +359,16 @@ is a short plan. Update the status and the journal when you finish something.
     markers that say other people wrote it, one cleaned line per message in
     the official format (`[sender] date (uuid=… thread=… reply=…): text`)
     under a heading with the chat id, capped and cut by whole lines
+  - `SendTool.swift` — `send_sphinx_message`, effect send: the chat by
+    the read tools' resolver, thread and reply by `Engine.checkLinks`, the
+    card's words and a tribe's price, then `Engine.sendText` capped at
+    that price; its row's line ends with the sent message's ids
+  - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
+    the account's `agent.sqlite` as the app and the CLI open it
   - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
     message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
-    model is told to write it; the app opens it in place of the web
+    model is told to write it, and the one at the end of a send row's
+    line; the app opens it in place of the web
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -362,7 +378,9 @@ is a short plan. Update the status and the journal when you finish something.
     each an `Invocation` method that returns false for a command not its own
   - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
     the terminal (the key from `PEEL_AGENT_API_KEY` only); with
-    `--profile`, the Sphinx read tools over that profile, read-only
+    `--profile`, the Sphinx read tools over that profile, read-only; with
+    `--send`, connected, and the send tool, each send asked in the
+    terminal (`TerminalLines`, stdin shared by the prompt and the question)
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -379,7 +397,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
   `SphinxToolsTests` (PeelAgent's, here for the storage fixtures: name
   resolution, each tool on a seeded profile, caps, unseen grouping, message
-  text that tries to end the data block); the audits'
+  text that tries to end the data block) and `SendToolTests` (the send
+  tool over a real engine: the card's words, the price cap, threads and
+  replies, hidden characters, the row's link); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
@@ -387,8 +407,10 @@ is a short plan. Update the status and the journal when you finish something.
   and unlink, rebuild, search, walk and ontology); recorded streams in
   `Fixtures/` through both decoders, HTTP statuses to `ModelError`, the
   request bodies over an in-process `URLProtocol` stub, the loop with
-  a scripted `FakeProvider`, and `AgentSessionTests` (streaming, Stop,
-  failures and Retry, connecting, the key, reopening, Clear)
+  a scripted `FakeProvider`, `AgentSessionTests` (streaming, Stop,
+  failures and Retry, connecting, the key, reopening, Clear) and
+  `ApprovalTests` (the loop with a scripted approver, the gate's rules,
+  the session's card)
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats

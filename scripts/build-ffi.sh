@@ -4,7 +4,8 @@
 #   Sources/Sphinxrs/sphinxrs.swift - the generated Swift bindings
 #
 # Both come from sibling checkouts so they stay in lockstep with what the
-# official Mac app ships. Override the locations with SPHINX_RS and SPHINX_MAC.
+# official Mac app ships. Override the locations with SPHINX_RS and SPHINX_MAC,
+# and with SPHINX the core's own checkout, which the security check reads.
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,6 +38,43 @@ if [ "${1:-}" = "--update" ] || [ ! -f "$LOCK" ]; then
 elif [ "$(cat "$LOCK")" != "$ACTUAL" ]; then
   echo "universal-sphinxrs-mac.a or sphinx-rs differ from Vendor/sphinxrs.lock; re-run with --update if intended" >&2
   exit 1
+fi
+
+# The core rev sphinx-rs pins must carry upstream's client security fixes
+# (merged 2026-09-25). The pinned bd9e140 has none of them, so for now this
+# warns rather than stops. Two stand in meanwhile: Engine.cappedToArrived for
+# SR-016's amount check, Engine.isForeignContactRecord for SR-017.
+SPHINX="${SPHINX:-$ROOT/../sphinx}"
+# As committed, the sphinx-rs commit the lock names.
+CORE_REV="$(git -C "$SPHINX_RS" show HEAD:sphinx-ffi/Cargo.toml | sed -n 's/^sphinx = .*rev = "\([0-9a-f]*\)".*/\1/p')"
+CORE_KNOWN=no
+git -C "$SPHINX" cat-file -e "${CORE_REV:-none}^{commit}" 2>/dev/null && CORE_KNOWN=yes
+MISSING=""
+UNCHECKED=""
+while read -r commit name; do
+  if [ "$CORE_KNOWN" = no ] || ! git -C "$SPHINX" cat-file -e "$commit^{commit}" 2>/dev/null; then
+    UNCHECKED="$UNCHECKED $name"
+  elif ! git -C "$SPHINX" merge-base --is-ancestor "$commit" "$CORE_REV"; then
+    MISSING="$MISSING $name"
+  fi
+done <<'EOF'
+c3ddbb7d02f26c70a96c50384dbd776d403fc229 SR-016(amount)
+031427c3062722a1e70be5437f084cb610c8b6f4 SR-016(keyx)
+9f784bc635e0d9b5a70e2f942216f697d04cd23a SR-017
+a962ce1f3ca7d00cece2743e21ac27d38acc81ee SR-018
+948f8cc1b0346000600858fbe51b522d09179cee SR-019
+c1a46181f38e6085fdef51e84d9a28b09b102cf0 SR-020
+480b3ae35fe511fb777b2f2ab3d72b0683ebb1e6 SR-022
+EOF
+if [ -n "$MISSING$UNCHECKED" ]; then
+  {
+    echo "************************************************************"
+    echo "WARNING: the core this library pins (sphinx ${CORE_REV:-unknown})"
+    [ -z "$MISSING" ] || echo "  lacks upstream's client security fixes:$MISSING"
+    [ -z "$UNCHECKED" ] || echo "  could not be checked in $SPHINX for:$UNCHECKED"
+    echo "  Fixed upstream in v0.6.29; sphinx-rs must move its pin."
+    echo "************************************************************"
+  } >&2
 fi
 
 XCF="$ROOT/Vendor/sphinxrsFFI.xcframework"

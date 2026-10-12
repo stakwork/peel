@@ -37,8 +37,8 @@ let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c7
 /// A contact record as the core stores it (`rmp_utils::serialize_contact`):
 /// version, child index, LSP key, scid and, once the key exchange is done,
 /// the contact key. A person has one; a tribe never does.
-func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G) -> [String: Data] {
-    ["c/\(pubkey)": Data([0]) + be64(1) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
+func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G, index: UInt64 = 1) -> [String: Data] {
+    ["c/\(pubkey)": Data([0]) + be64(index) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
 }
 
 /// Sender details as the core and a tribes server put them on a message.
@@ -106,11 +106,11 @@ func goneTransport() -> Transport {
 }
 
 /// A core result with only the publish fields, the messages (with a total,
-/// a page of history), a page of payment history and the server's records set.
+/// a page of history), a page of payment history, the server's records and state set.
 func coreResult(
     settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
     asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
-    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil
+    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil
 ) -> RunReturn {
     RunReturn(
         msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
@@ -118,7 +118,7 @@ func coreResult(
         asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
         registerTopic: register, registerPayload: register.map { _ in Data() },
         topics: topics, payloads: topics.map { _ in Data([3]) },
-        stateMp: nil, stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
+        stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
         settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: nil,
         tribeMembers: nil, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
         lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,

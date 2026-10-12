@@ -572,7 +572,8 @@ search, or refused), the per-profile store identifier and a tribe's app and seco
 (`ContactCode` parsing and its refusals, tribe and contact links found
 in message text (`MessageLink`), QR codes read from a picture,
 invite statuses by tag, an invite marked used by the key exchange that
-names it, new contacts, the invite and add refusals, the price to join
+names it, new contacts, live contact records (type 33) kept only when
+this account signed them, the invite and add refusals, the price to join
 held to the balance and the threshold); money when the connection goes
 (`ConnectionDropTests`: a send that never left fails and may go again, one
 cut short or dropped after a write stays pending, a tribe text (which pays
@@ -666,7 +667,12 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   only ever name themself. For a live message the child index in the topic
   names the contact as well and `Engine` requires the two to agree. History
   (`batch`) messages are accepted only from contacts the core knows. Contact
-  records (type 33) are honoured by the core only when signed by this account.
+  records (type 33) in history are honoured by the core only when signed by
+  this account; the core Peel links (`bd9e140`, before upstream's SR-017)
+  takes a live one from anyone, so `Engine.run` keeps a live record only
+  when this account signed it (`isForeignContactRecord`).
+  `scripts/build-ffi.sh` warns while the linked core lacks upstream's client
+  security fixes.
 - Names and photos are not core state; they arrive with messages and invites.
   A contact is a conversation only once the core holds their key (`ready`).
 

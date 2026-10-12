@@ -119,5 +119,66 @@ extension Journeys {
             await erin.close()
             await frank.close()
         }
+
+        /// Bob, Alice's contact, sends her a contact record (type 33) naming
+        /// Carol, her other contact, with his own server and key
+        /// (`Engine.isForeignContactRecord`): Alice keeps Carol as she was and
+        /// stores nothing of it.
+        @Test func aContactRecordSomeoneElseSentChangesNothing() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            let carol = try await Person.create("carol")
+            try await Bank.shared.give(1_000, to: alice)
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await alice.engine.addContact(code: try carol.contactInfo)
+            try await eventually("Alice, Bob and Carol to be contacts") {
+                try alice.isReadyContact(bob) && bob.isReadyContact(alice) && alice.isReadyContact(carol)
+            }
+            let carolsKey = try carol.pubkey
+            let before = try #require(try alice.storage.loadCoreState()["c/\(carolsKey)"])
+
+            let bobs = try #require(Engine.contactInfoParts(try bob.contactInfo))
+            let body = #"{"content":"","fullContactInfo":"\#(carolsKey)_\#(bobs[1])_\#(bobs[2])_\#(bobs[0])"}"#
+            let sent = try await bob.engine.deliver(
+                body: body, to: try alice.pubkey, type: MessageType.contactKeyRecord, replacing: nil
+            )
+            let tag = try #require(sent)
+            // Once the server has handed the record to Alice, a word follows
+            // it; when the word is in, Alice has read the record, which came first.
+            try await eventually("the server to hand Bob's record to Alice") {
+                try bob.messages(in: alice.pubkey).first { $0.tag == tag }?.delivery == .delivered
+            }
+            let word = "after the record \(UUID().uuidString.prefix(6))"
+            try await bob.engine.sendText(word, to: try alice.pubkey)
+            try await eventually("Alice to receive Bob's word") {
+                try alice.messages(in: bob.pubkey).contains { $0.content == word }
+            }
+            #expect(try alice.storage.loadCoreState()["c/\(carolsKey)"] == before)
+            #expect(try alice.messages(in: bob.pubkey).allSatisfy { $0.type != MessageType.contactKeyRecord })
+
+            await alice.close()
+            await bob.close()
+            await carol.close()
+        }
+
+        /// Alice's words on a second device, then Alice adds Bob on the
+        /// first: the contact record the first device signs reaches the
+        /// second as it happens, and Bob is a contact there too.
+        @Test func aContactRecordFromTheAccountsOtherDeviceAddsTheContact() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            try await Bank.shared.give(100, to: alice)
+            let second = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) {
+                await !second.engine.isSyncingHistory
+            }
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await eventually("Bob to be a contact on both of Alice's devices") {
+                try alice.isReadyContact(bob) && second.isReadyContact(bob)
+            }
+            await second.close()
+            await alice.close()
+            await bob.close()
+        }
     }
 }

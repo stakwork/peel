@@ -89,3 +89,46 @@ read, against a written bar, with the features frozen.
 
 Slop compounds and is cheapest to remove early. Once phase 3 lands, run items
 1, 2, 3 and 10 as a half-day pass and fix what they find. Record it here.
+
+## Bug hunt fixes
+
+### N1, meanwhile: live contact records only from this account (2026-10-11, `fix/contact-record-guard`)
+
+The core Peel links (`bd9e140`) takes a live contact record (type 33) from
+anyone and writes it over the contact it names; upstream checks the signer
+since SR-017 (v0.6.29). Until `sphinx-rs` moves its pin, `Engine.run` does
+it for live messages (`isForeignContactRecord`). The core gives the
+rewritten contact as the record's sender, so the call is made again
+against the state the record would leave, where it gives the signer, and
+the record is kept only when this account signed it. Nothing of a refused
+one is committed or published. `scripts/build-ffi.sh` warns while the
+pinned core lacks upstream's seven client fixes; `cappedToArrived` and
+`isForeignContactRecord` can go once it has them.
+
+- Tests: `ContactRecordTests` (the core's answers made up) and two
+  journeys, `Contacts.aContactRecordSomeoneElseSentChangesNothing` and
+  `Contacts.aContactRecordFromTheAccountsOtherDeviceAddsTheContact`.
+  Without the check, the foreign cases and the first journey fail.
+- Learned: the bindings hand back the whole state on almost every
+  `handle` call (`handle_chunks` compares its own sorted encoding with
+  Peel's, which is in dictionary order), so a result's state does not say
+  what a call changed. And the local server stops routing to a contact's
+  child key once Peel removes the contact (`delete_all_for_child_key`), so
+  a removed contact cannot reach that key there.
+- Review: the first version judged a record by the state it would change.
+  That could not tell the account's other devices from someone else in
+  every case, and with the whole state handed back it would have refused
+  the other device's records whenever a contact was ready. Checking the
+  signer replaced it.
+- Not applied, with reasons:
+  - Stopping the build while the fixes are missing: no library with them
+    exists yet. Make the warning a refusal once `sphinx-rs` moves.
+  - A trace of refused records: they are now only forged ones, and the
+    person can do nothing about them.
+  - Settling sats a refused record carries: nothing of it is taken.
+  - Moving the check into `receive`'s closure: it would need an error
+    thrown through `receive`'s catch. `run` takes `live` as it takes
+    `arrived`.
+  - Caching `accountPubkey()`: its three callers are rare.
+  - One upstream merge commit instead of the seven in `build-ffi.sh`: the
+    list names what is missing.

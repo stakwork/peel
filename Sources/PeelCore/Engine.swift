@@ -546,16 +546,22 @@ public actor Engine {
     /// committed before this function first suspends, so no other call can ever
     /// run against stale state. For what the server sent (`receive`), a
     /// payment counts for no more than `arrived` says came (`cappedToArrived`),
-    /// and the message `indices` it carried move where history stands
-    /// (both from `arrived(kind:topic:page:)`).
+    /// the message `indices` it carried move where history stands
+    /// (both from `arrived(kind:topic:page:)`), and a `live` message's contact
+    /// record only when this account signed it (`isForeignContactRecord`, which
+    /// may make the call a second time).
     @discardableResult
     func run(
         expectedSender: String? = nil, arrived: [String: UInt64]? = nil, indices: [UInt64]? = nil,
+        live: Bool = false,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         var result = try call(time, StateCodec.encode(state))
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
+        // Nothing of it is committed or published, not even the message, and
+        // sats it carries are not settled.
+        if live, try isForeignContactRecord(result, again: call) { return result }
         let followUps = try commit(result, time: time, expectedSender: expectedSender, indices: indices)
         try await complete(result, followUps)
         return result
@@ -593,6 +599,29 @@ public actor Engine {
             msg.msat = msg.index.flatMap { arrived[$0] }.map { min($0, msat) }
             return msg
         }
+    }
+
+    /// Whether a live message's result is a contact record (type 33) that
+    /// would write contacts though this account did not sign it. The core
+    /// Peel links (`bd9e140`) takes one from anyone (`handle_msg.rs`; upstream
+    /// checks the signer since SR-017): it writes the record's route and
+    /// contact key over the contact it names, with the topic's child index,
+    /// and gives that contact as the message's sender, so the result does not
+    /// say who signed it. Against the state the record would leave, the same
+    /// call writes nothing and gives the signer (`overwrite_incoming_type_33`
+    /// returns early), so it is made once more there. Only this account's own
+    /// key, which its other devices sign with, may have signed one. History
+    /// pages need none of this: the core checks the signer there itself.
+    private func isForeignContactRecord(
+        _ result: RunReturn, again call: (_ time: String, _ state: Data) throws -> RunReturn
+    ) throws -> Bool {
+        let isRecord = { (msg: Msg) in msg.type == UInt8(MessageType.contactKeyRecord) }
+        guard result.msgs.contains(where: isRecord),
+              let updates = try result.stateMp.map(StateCodec.decode),
+              updates.keys.contains(where: { $0.hasPrefix("c/") }) else { return false }
+        let again = try call(clock.next(), StateCodec.encode(state.merging(updates) { _, new in new }))
+        let signer = again.msgs.first(where: isRecord).flatMap { JSON.decode(SenderInfo.self, from: $0.sender)?.pubkey }
+        return try signer != accountPubkey()
     }
 
     /// The topics a live message comes on: pushed (`stream`), or asked for.
@@ -1126,8 +1155,9 @@ public actor Engine {
     /// belongs to. The core recovers a message's sender from its signature, so a
     /// sender can only ever name themself; for a live message the child index in
     /// the topic names the contact as well and the two must agree. Contact
-    /// records (type 33) are honoured by the core only when signed by this
-    /// account. Messages from senders the core does not know are dropped.
+    /// records (type 33) count only when this account signed them: the core
+    /// checks those in history, `run` live ones (`isForeignContactRecord`).
+    /// Messages from senders the core does not know are dropped.
     private static func message(
         from msg: Msg, expectedSender: String?, state: [String: Data]
     ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
@@ -1199,14 +1229,15 @@ public actor Engine {
 
         // The child index in a live message's topic names the contact whose key
         // decrypted it; index 0 is the account key used for key exchange.
+        let live = Self.liveKinds.contains(kind)
         var expectedSender: String?
-        if Self.liveKinds.contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
+        if live, parts.count > 2, let index = UInt64(parts[2]), index > 0 {
             expectedSender = contactsByChildIndex[index]
         }
         do {
             let page = kind == "batch" ? StateCodec.onions(inBatch: inbound.payload) : nil
             let arrived = Self.arrived(kind: kind, topic: parts, page: page)
-            try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices) { time, state in
+            try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices, live: live) { time, state in
                 let handle = { (payload: Data) in
                     try Sphinxrs.handle(
                         topic: inbound.topic, payload: payload, seed: self.seed, uniqueTime: time,

@@ -131,6 +131,11 @@ extension Engine {
         }
     }
 
+    /// The account's key (hex), child index 0: the one its messages are signed with.
+    func accountPubkey() throws -> String {
+        try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
+    }
+
     /// The name and photo this account sends with its messages.
     public var myAlias: String { alias }
     public var myPhotoURL: String? { photoURL.httpsOnly }

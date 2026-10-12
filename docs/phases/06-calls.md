@@ -764,8 +764,8 @@ the build, so it lands before any UI depends on it.
     1 to 256 bytes with no control characters. `video.roomAdmin` is read
     and reported.
   - `CallTicket` prints, dumps and reflects without its token.
-- **`mediaHosts` is empty** until Tom's production check names the
-  LiveKit host. Until then a production ticket whose `serverUrl` is not on
+- **`mediaHosts` was empty** until Tom's production check named the
+  LiveKit host (`livekit.sphinx.chat`, recorded 2026-10-12). Until then a production ticket whose `serverUrl` is not on
   `chat.sphinx.chat:443` itself fails with `mediaHostNotAllowed(host)`,
   whose text is "the call server named a media server Peel does not know
   (`<host>:<port>`)". The host is shown only when it is plain letters,
@@ -1400,6 +1400,55 @@ that there's a call in the tribe. Currently when you move tribes it drops."
     `phase`'s `didSet`: three sites set `phase`, one observer covers them.
   - Your own call's count folded into `liveCallCounts`: rows read
     `call` only on join and leave, and `people` changes only on joins.
+
+## Call card presence and the production media host (2026-10-12)
+
+Tom on the real #hive call, beside the official app (Jamie, Gonza and
+rasul on it):
+
+- **The card said "G, G, G, +1 · 4 on the call".** Peel showed every
+  participant in the feed, and one with no `nickname` as "Guest" (so "G").
+  The official Mac app keeps only participants with a name, both in
+  `current_participants` and on a join
+  (`NewChatTableDataSource+CellDelegateExtension.swift:1260-1283`), and for
+  a join with no name asks again (a second `subscribe`) two seconds later,
+  since LiveKit may not have passed the name on yet. Peel now does the
+  same (`CallServer.applying`, `askAgain`, one at a time per room, and not
+  before the first list), still one entry per identity; a name of only
+  spaces is no name (trimmed as the feed is read), and someone listed unnamed keeps a name
+  they had earlier in the same list or before it (their client
+  reconnected; not after Peel's own feed drops, when every room starts
+  again from unknown). The real feed was never read (no production
+  request from an agent): that the extra entries were nameless (a
+  recorder, an agent, or a join not yet named) is inferred from the three
+  identical "G"s and the official filter, not observed.
+- **Join said "the call server named a media server Peel does not know
+  (livekit.sphinx.chat:443)".** The production call server's answer is now
+  known: `CallServer.mediaHosts["chat.sphinx.chat"] = ["livekit.sphinx.chat"]`,
+  exact host on 443, only for that call server on its default port.
+  Lookalikes, other ports, userinfo and other call servers (also
+  `chat.sphinx.chat:8443`) are refused (tests). A call server set in
+  Account still may name only itself.
+- **The header showed that error, cut short, beside "Join · 4".** A join
+  or start from the header (or ⌥⌘A, ⌥⌘V) now fails into the chat's notice
+  ("Could not join the call. …"), cleared (only that notice) when the
+  header joins again; a
+  join from the card keeps its line beside Join.
+- **The header's "Start a new call" menu opened at the window's bottom
+  left.** `MenuAnchor`'s view behind `.menuAnchor` took the anchor on every
+  update, and the header's two triggers (the phone, then the split Join)
+  shared one anchor: when the phone gave way to the split Join, the
+  outgoing view was updated after the new one and took the anchor back,
+  then left the window, so the menu had a zero frame. The anchor view now
+  takes its anchor when it joins a window and on an update only from a
+  view in none, and lets go when it leaves; the chevron has its own
+  anchor. Both halves were checked on their own (a shared anchor with the
+  new rule also opens under the trigger). Checked offscreen with a scratch
+  hook that faked a live call (not committed): the menu under the chevron.
+- Checked offscreen against a scratch loopback presence stub (a recorder
+  with no name, one identity twice, a join named only on the second
+  subscribe): `call-who` and the card read "J, G, R" then "+1 · 4" once the
+  late join was named.
 
 ## Decided (Tom, 2026-10-08)
 

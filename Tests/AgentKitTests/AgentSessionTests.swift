@@ -392,7 +392,7 @@ struct AgentSessionTests {
             AgentTurn(id: "6", author: .agent, text: "", date: at, ending: .stopped),
             AgentTurn(id: "7", author: .user, text: "d", date: at),
         ]
-        #expect(AgentSession.history(of: turns).map(\.text) == ["a", "A"])
+        #expect(AgentSession.exchanges(of: turns).flatMap(\.messages).map(\.text) == ["a", "A"])
     }
 
     @Test func aCredentialNeverPrintsItsKey() {

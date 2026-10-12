@@ -1,4 +1,5 @@
 import Foundation
+import Sphinxrs
 import Testing
 @testable import PeelCore
 
@@ -33,18 +34,23 @@ private func tribe(
 
 struct MembershipTests {
     @Test(arguments: [
-        // Our own messages say whether we are in, and a role 0 one that we own it.
-        MembershipCase(testDescription: "our join rejoins", tribe: tribe(left: true, status: .removed),
-                       type: MessageType.groupJoin, fromMe: true, expected: tribe()),
+        // Our own join or leave, on a restore or from another device, says
+        // whether we are in, and a role 0 message that we own it; our
+        // request counts only when sent here. A member's replay of our tag
+        // never gets this far (`isReplay`).
+        MembershipCase(testDescription: "our join replayed on a restore rejoins", tribe: tribe(left: true, status: .removed),
+                       type: MessageType.groupJoin, fromMe: true, replaying: true, expected: tribe()),
+        MembershipCase(testDescription: "our join from another device rejoins",
+                       tribe: tribe(left: true, status: .removed), type: MessageType.groupJoin, fromMe: true, expected: tribe()),
         MembershipCase(testDescription: "our join with role 0 makes us owner", tribe: tribe(left: true),
-                       type: MessageType.groupJoin, fromMe: true, role: 0, expected: tribe(isOwner: true)),
+                       type: MessageType.groupJoin, fromMe: true, role: 0, replaying: true, expected: tribe(isOwner: true)),
         MembershipCase(testDescription: "our text with role 0 makes us owner",
                        type: MessageType.text, fromMe: true, role: 0, expected: tribe(isOwner: true)),
         MembershipCase(testDescription: "our text with another role changes nothing",
                        type: MessageType.text, fromMe: true, role: 1, expected: nil),
-        MembershipCase(testDescription: "our request makes us pending", tribe: tribe(left: true),
-                       type: MessageType.memberRequest, fromMe: true, expected: tribe(status: .pending)),
-        MembershipCase(testDescription: "our leave leaves",
+        MembershipCase(testDescription: "a request of ours that arrives changes nothing", tribe: tribe(isOwner: true),
+                       type: MessageType.memberRequest, fromMe: true, expected: nil),
+        MembershipCase(testDescription: "our leave from another device leaves",
                        type: MessageType.groupLeave, fromMe: true, expected: tribe(left: true)),
         MembershipCase(testDescription: "our leave when left changes nothing", tribe: tribe(left: true),
                        type: MessageType.groupLeave, fromMe: true, expected: nil),
@@ -197,5 +203,187 @@ struct DiscoveredTribeTests {
         let (found, notTribes) = try await discovered(join(chat: person, host: ownHost), by: engine(tribeHost: ownHost))
         #expect(found == nil)
         #expect(notTribes == [person])
+    }
+}
+
+/// Our encrypted tag opens as ours whoever sends it, and the tribes server
+/// forwards it to every member: a member can post it again. The first copy
+/// with a tag is ours; a later one under another uuid is dropped before it
+/// can change the tribe, the timeline, payments or our aliases.
+struct ReplayedTagTests {
+    let profile = TempProfile()
+
+    /// A tribe's forward, as the core returns one it took for ours by `tag`
+    /// (or, `to` a person, our own copy, signed by `signer`).
+    private func forward(
+        _ n: Int, type: Int = MessageType.text, tag: String? = "aa", original: Int? = nil, alias: String = ourAlias,
+        to chat: String = tribeKey, signer: String = tribeKey, words: String? = nil
+    ) -> Msg {
+        let originalUuid = original.map { #","originalUuid":"\#(uuid($0))""# } ?? ""
+        // A forward keeps the words of the message it forwards.
+        return Msg(
+            message: #"{"content":"\#(words ?? "m\(original ?? n)")"\#(originalUuid)}"#, type: UInt8(type), uuid: uuid(n), tag: tag, index: String(n),
+            sender: sender(signer, alias: alias), msat: nil, timestamp: UInt64(n) * 1_000, sentTo: chat, fromMe: true,
+            paymentHash: nil, error: nil
+        )
+    }
+
+    private func setUp(_ ours: Message? = nil) throws -> (Storage, Engine) {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: ours.map { [($0, false, nil)] } ?? [], tribes: [tribe()]))
+        return (storage, try testEngine(storage))
+    }
+
+    private func stored(_ storage: Storage) throws -> [Message] {
+        try storage.pool.read { db in
+            try Message.fetchAll(db, sql: "SELECT * FROM message WHERE chat = ? ORDER BY id", arguments: [tribeKey])
+        }
+    }
+
+    /// Our send comes back from the tribe and takes over its row; a member's
+    /// leave, text and boost with the same tag change nothing.
+    @Test func aMembersReplayOfOurTagIsDropped() async throws {
+        let sent = Message.fixture(uuid: uuid(1), chat: tribeKey, fromMe: true, content: "m1", tag: "aa")
+        let (storage, engine) = try setUp(sent)
+        _ = try await engine.commit(coreResult(msgs: [
+            forward(2, original: 1),
+            forward(3, type: MessageType.groupLeave, original: 9, alias: "eve"),
+            forward(4, original: 8, alias: "eve"),
+            forward(5, type: MessageType.boost, original: 7, alias: "eve"),
+            // The member chooses `originalUuid`: naming our row is no pass.
+            forward(6, type: MessageType.groupLeave, original: 2, alias: "eve"),
+        ]), time: "1", expectedSender: nil)
+        let rows = try stored(storage)
+        #expect(rows.map(\.uuid) == [uuid(2)])
+        #expect(rows.first?.serverIndex == 2)
+        #expect(await engine.tribes[tribeKey]?.left == false)
+        #expect(await engine.echoedAliases[tribeKey] == [ourAlias])
+        // The same forward again, as history brings it, is still ours.
+        _ = try await engine.commit(coreResult(msgs: [forward(2, original: 1)]), time: "2", expectedSender: nil)
+        // In a later call: a replay naming our row (taken over now) with its
+        // type and words, and one under our row's own uuid at another
+        // index, as a chunk's sender chooses it.
+        var chunk = forward(2, alias: "eve")
+        chunk.index = "8"
+        _ = try await engine.commit(coreResult(msgs: [forward(7, original: 2, alias: "eve", words: "m1")]), time: "3", expectedSender: nil)
+        _ = try await engine.commit(coreResult(msgs: [chunk]), time: "4", expectedSender: nil)
+        let after = try stored(storage)
+        #expect(after.map(\.uuid) == [uuid(2)] && after.first?.serverIndex == 2 && after.first?.content == "m1")
+        #expect(await engine.echoedAliases[tribeKey] == [ourAlias])
+    }
+
+    /// A restore or another device holds no row of ours: the first copy
+    /// with a tag wins, also against a replay later in the same page.
+    @Test func theFirstCopyWithATagIsOurs() async throws {
+        let (storage, engine) = try setUp()
+        _ = try await engine.commit(coreResult(msgs: [
+            forward(2, original: 1),
+            forward(3, type: MessageType.groupLeave, original: 9, alias: "eve"),
+            forward(4, type: MessageType.groupLeave, original: 2, alias: "eve"),
+        ]), time: "1", expectedSender: nil)
+        #expect(try stored(storage).map(\.uuid) == [uuid(2)])
+        #expect(await engine.tribes[tribeKey]?.left == false)
+    }
+
+    /// A copy naming our unsent row, of its type but not its words (a
+    /// member racing our own forward), is not it; nor is a chunk under the
+    /// row's own uuid with other words.
+    @Test func aCopyWithOtherWordsTakesOverNothing() async throws {
+        let sent = Message.fixture(uuid: uuid(1), chat: tribeKey, fromMe: true, content: "m1", tag: "aa")
+        let (storage, engine) = try setUp(sent)
+        _ = try await engine.commit(coreResult(msgs: [forward(3, original: 1, alias: "eve", words: "other")]), time: "1", expectedSender: nil)
+        _ = try await engine.commit(coreResult(msgs: [forward(1, alias: "eve", words: "other")]), time: "2", expectedSender: nil)
+        let rows = try stored(storage)
+        #expect(rows.map(\.uuid) == [uuid(1)] && rows.first?.serverIndex == nil)
+        #expect(await engine.echoedAliases[tribeKey] == nil)
+    }
+
+    /// Our send the tribe never brings back (a purchase goes to the seller
+    /// alone) keeps no server index: a copy naming it is ours only with
+    /// its type and words.
+    @Test func aSendTheTribeNeverReturnsExcusesNoOtherCopy() async throws {
+        let (storage, engine) = try setUp(.fixture(
+            uuid: uuid(1), type: MessageType.purchase, chat: tribeKey, fromMe: true, content: nil, tag: "aa"
+        ))
+        _ = try await engine.commit(coreResult(msgs: [
+            forward(2, original: 1, alias: "eve"), forward(3, type: MessageType.boost, original: 1, alias: "eve"),
+        ]), time: "1", expectedSender: nil)
+        #expect(try stored(storage).map(\.uuid) == [uuid(1)])
+    }
+
+    /// A tag copied from a DM we sent is held by that message, even when
+    /// the replay names it as the row it takes over.
+    @Test func aTagFromOurDirectMessageIsAReplay() async throws {
+        let (storage, engine) = try setUp(.fixture(uuid: uuid(1), chat: dm, fromMe: true, tag: "aa"))
+        _ = try await engine.commit(coreResult(msgs: [
+            forward(2, original: 9, alias: "eve"), forward(3, original: 1, alias: "eve"),
+        ]), time: "1", expectedSender: nil)
+        #expect(try stored(storage).isEmpty)
+    }
+
+    /// Our DM send's echo and its history copy keep the send's uuid and tag
+    /// (here a chat the core does not hold as a person, as `isReplay` sees
+    /// one before a restore's contacts; a person's is left to the signer).
+    @Test func ourDirectMessagesEchoIsKept() async throws {
+        let (storage, engine) = try setUp(.fixture(uuid: uuid(1), chat: dm, fromMe: true, content: "m1", tag: "aa"))
+        let echo = forward(1, to: dm, signer: await engine.accountKey)
+        _ = try await engine.commit(coreResult(msgs: [echo, echo]), time: "1", expectedSender: nil)
+        let row = try #require(try storage.message(uuid: uuid(1), in: dm))
+        #expect(row.serverIndex == 1)
+    }
+
+    /// On another device, a join replaying a tag we hold names no tribe
+    /// to confirm (nothing is held for it).
+    @Test func aReplayFromATribeThisDeviceDoesNotKnowNamesNothing() async throws {
+        let storage = try profile.storage()
+        try storage.set("tribes.example", for: .tribeHost)
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: uuid(1), chat: dm, fromMe: true, tag: "aa"), false, nil)]))
+        let engine = try testEngine(storage)
+        var join = forward(2, type: MessageType.groupJoin, alias: "eve")
+        join.sentTo = nil
+        join.sender = sender(tribeKey, alias: "eve", host: "tribes.example")
+        _ = try await engine.commit(coreResult(msgs: [join]), time: "1", expectedSender: nil)
+        #expect(await engine.heldChats.isEmpty)
+    }
+
+    /// Our leave is kept, though the tribe is then left, so its tag is
+    /// held: after a re-join, the tribe's replay of the last messages
+    /// (newest first, our leave among them, at a new index) is not our leave
+    /// again, nor is a member's copy of it.
+    @Test func ourOldLeaveReplayedAfterARejoinIsNotALeave() async throws {
+        let (storage, engine) = try setUp()
+        _ = try await engine.commit(coreResult(msgs: [forward(2, type: MessageType.groupLeave, tag: "lv")]), time: "1", expectedSender: nil)
+        #expect(await engine.tribes[tribeKey]?.left == true)
+        #expect(try storage.message(uuid: uuid(2), in: tribeKey)?.tag == "lv")
+        _ = try await engine.commit(coreResult(msgs: [forward(3, type: MessageType.groupJoin, tag: "jn")]), time: "2", expectedSender: nil)
+        #expect(await engine.tribes[tribeKey]?.left == false)
+        var replayed = forward(2, type: MessageType.groupLeave, tag: "lv")
+        replayed.index = "9"
+        _ = try await engine.commit(coreResult(msgs: [
+            replayed, forward(10, type: MessageType.groupLeave, tag: "lv", alias: "eve"),
+        ]), time: "3", expectedSender: nil)
+        #expect(await engine.tribes[tribeKey]?.left == false)
+    }
+
+    /// Our leave sent from this device, whose forward never came back: a
+    /// copy naming its row, after a re-join, is no leave of ours.
+    @Test func ourUnsentLeaveNamedByACopyAfterARejoinIsNotALeave() async throws {
+        let (storage, engine) = try setUp(.fixture(
+            uuid: uuid(1), type: MessageType.groupLeave, chat: tribeKey, fromMe: true, content: "", tag: "lv"
+        ))
+        _ = try storage
+        _ = try await engine.commit(coreResult(msgs: [forward(3, type: MessageType.groupJoin, tag: "jn")]), time: "1", expectedSender: nil)
+        _ = try await engine.commit(coreResult(msgs: [
+            forward(4, type: MessageType.groupLeave, tag: "lv", original: 1, words: ""),
+            forward(1, type: MessageType.groupLeave, tag: "lv", words: ""),
+        ]), time: "2", expectedSender: nil)
+        #expect(await engine.tribes[tribeKey]?.left == false)
+    }
+
+    /// What the tribes server itself makes ours by date carries no tag.
+    @Test func anUntaggedCopyIsKept() async throws {
+        let (storage, engine) = try setUp()
+        _ = try await engine.commit(coreResult(msgs: [forward(2, tag: nil), forward(3, tag: nil)]), time: "1", expectedSender: nil)
+        #expect(try stored(storage).map(\.uuid) == [uuid(2), uuid(3)])
     }
 }

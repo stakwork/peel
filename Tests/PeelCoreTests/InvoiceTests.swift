@@ -372,6 +372,21 @@ struct InvoiceTests {
         #expect(echo.stored.first?.paymentHash == ours.paymentHash)
     }
 
+    /// No request of ours goes to a tribe (`requestToTribe`), so a tagged one
+    /// there, a member's replay of our tag, never makes an invoice ours.
+    @Test func aRequestInATribeIsNeverOurs() throws {
+        let invoice = try madeInvoice()
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("100000000", for: .balanceMsat)
+        try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(
+            uuid: uuid(1), type: MessageType.invoice, chat: strangerKey, fromMe: true, sender: sender(strangerKey),
+            body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: "aa", paymentHash: invoice.paymentHash
+        ), false, nil)], tribes: [Tribe(pubkey: strangerKey)]))
+        #expect(try engine.invoiceProblem(invoice) == nil)
+    }
+
     /// Any balance change while an invoice made here is open, unexpired,
     /// asks the history; otherwise only a rise does (payments review F11).
     @Test func anOpenInvoiceIsCheckedOnAnyBalanceChange() throws {

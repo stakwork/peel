@@ -389,7 +389,7 @@ is a short plan. Update the status and the journal when you finish something.
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
-  `ReconnectJourneys`, `PreferencesJourneys`; `FundDev` (the bank's half of
+  `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`; `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the

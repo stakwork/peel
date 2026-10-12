@@ -252,6 +252,13 @@ struct ChatRow: Identifiable, Equatable {
         return .message(parent, people.sender(of: parent, inTribe: inTribe))
     }
 
+    /// Whether this is the row a jump to the message with `uuid` goes to:
+    /// its own, in its run of images, or the original of its thread.
+    func holds(_ uuid: String?) -> Bool {
+        [.message, .payment, .paymentRequest].contains(kind)
+            && (message.uuid == uuid || images.contains { $0.uuid == uuid } || summary?.original.uuid == uuid)
+    }
+
     /// Whether `next` joins this row's run of images.
     private func takes(_ next: Message, sender: Sender) -> Bool {
         guard kind == .message, summary == nil, message.attachmentKind == .image, next.attachmentKind == .image,
@@ -374,8 +381,11 @@ struct MessageList: View {
                             }
                         }
                         .id(row.id)
+                        .timelineRealised(composer)
                     }
                 }
+                // Only for the timeline log's visible rows.
+                .scrollTargetLayout(isEnabled: TimelineLog.enabled)
                 .environment(\.goToMessage) { go(to: $0, proxy: proxy) }
                 .padding(.vertical, Theme.Space.md)
                 .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottomID) }
@@ -393,10 +403,22 @@ struct MessageList: View {
             // initial anchor can land short of the end; go to the newest.
             // With "New messages", open at it instead.
             .onAppear {
+                log("appear focus=\(focusTarget.map { index(of: $0.message) } ?? "none") divider=\(divider.map { index(of: $0.id) } ?? "none")")
+                // The newest first, also before "New messages": left at the
+                // initial anchor, a list opening at it sat for those 100 ms
+                // at the lazy stack's estimated end, past every row it had
+                // drawn (logged blank on every such open), and the scroll to
+                // a divider near the end could not leave it. Not before a
+                // message asked for: reaching the bottom would drop the
+                // longer timeline loaded to reach it (`chatListAtBottom`).
+                if composer.thread == nil, focusTarget == nil {
+                    log("place: appear scrollTo bottom")
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
                 if focusTarget != nil || divider != nil {
-                    // A message asked for wins over "New messages". Both go
-                    // after the list's initial bottom anchor, which would
-                    // undo a scroll asked for now.
+                    // A message asked for wins over "New messages". Both
+                    // wait for the list's initial bottom anchor, which would
+                    // undo a scroll to them asked for now.
                     if focusTarget == nil {
                         following = false
                         dividerUnread = true
@@ -413,11 +435,13 @@ struct MessageList: View {
                         }
                     }
                 } else {
-                    if composer.thread == nil { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
                     opened()
                 }
             }
+            .onDisappear { log("disappear") }
+            .timelineProbe(geometry: logGeometry, visible: logVisible)
             .onScrollPhaseChange { _, new in
+                log("phase \(phase) -> \(new)")
                 phase = new
                 if new == .interacting { pinning = false }
                 // A scroll that ended at the bottom sends no report once still.
@@ -446,6 +470,7 @@ struct MessageList: View {
                 // moved the end; or a re-pin fell short: back to the end.
                 let resized = new.height != old.height || new.container != old.container
                 if (resized && bottom.atBottom) || pinning, !new.atEnd, following, phase == .idle {
+                    log("repin: \(resized ? "resized" : "pinning") height=\(TimelineLog.points(new.height)) container=\(TimelineLog.points(new.container))")
                     return repin(proxy)
                 }
                 // Judged against the last crossing taken, not `old`, which a
@@ -484,7 +509,9 @@ struct MessageList: View {
             // while following. Scrolled up, you stay where you are and the
             // jump button counts them.
             .onChange(of: rows.last?.id) { _, _ in
-                if following || rows.last?.shown.last?.fromMe == true { scrollToNewest(proxy) }
+                let scrolls = following || rows.last?.shown.last?.fromMe == true
+                log("newest row changed, scrolls=\(scrolls)")
+                if scrolls { scrollToNewest(proxy) }
             }
             .overlay(alignment: .bottomTrailing) {
                 let count = newSinceScrolledUp
@@ -509,6 +536,7 @@ struct MessageList: View {
             guard let divider, !userScrolling, pass == 0 || !following else { return }
             // The initial anchor may have set it, reaching the bottom.
             following = false
+            log("place: divider pass \(pass) scrollTo row \(index(of: divider.id))")
             proxy.scrollTo(divider.id, anchor: .top)
             try? await Task.sleep(for: .milliseconds(100))
         }
@@ -550,7 +578,10 @@ struct MessageList: View {
     private func update(_ change: (inout ListBottom) -> Void) {
         var bottom = self.bottom
         change(&bottom)
-        if bottom != self.bottom { self.bottom = bottom }
+        guard bottom != self.bottom else { return }
+        // A write here redraws the list's body (the jump button reads it).
+        log("bottom state written, crossing \(self.bottom.atBottom) -> \(bottom.atBottom)")
+        self.bottom = bottom
     }
 
     /// To the newest message; like scrolling there by hand, it ends a
@@ -563,6 +594,7 @@ struct MessageList: View {
     /// To the end of the list, following what arrives on the way.
     private func scrollToNewest(_ proxy: ScrollViewProxy, duration: Double = 0.2) {
         following = true
+        log("place: scrollToNewest scrollTo bottom")
         withAnimation(.easeInOut(duration: duration)) {
             proxy.scrollTo(Self.bottomID, anchor: .bottom)
         } completion: {
@@ -581,7 +613,10 @@ struct MessageList: View {
             repinning = false
             if following, !userScrolling {
                 if !atEnd { pinning = true }
+                log("place: repin scrollTo bottom atEnd=\(atEnd)")
                 proxy.scrollTo(Self.bottomID, anchor: .bottom)
+            } else {
+                log("repin skipped")
             }
         }
     }
@@ -597,6 +632,7 @@ struct MessageList: View {
     /// to and lit (or its thread opened, whose list then takes it).
     private func takeFocus(_ proxy: ScrollViewProxy) {
         guard let target = focusTarget else { return }
+        log("focus target \(index(of: target.message))")
         if go(to: target.message, proxy: proxy) {
             model.focus = nil
             return
@@ -623,11 +659,9 @@ struct MessageList: View {
     @discardableResult
     private func go(to parent: Message, proxy: ScrollViewProxy) -> Bool {
         let uuid = parent.uuid
-        if let row = rows.first(where: { row in
-            [.message, .payment, .paymentRequest].contains(row.kind)
-                && (row.message.uuid == uuid || row.images.contains { $0.uuid == uuid } || row.summary?.original.uuid == uuid)
-        }) {
+        if let row = rows.first(where: { $0.holds(uuid) }) {
             following = false
+            log("place: go(to:) scrollTo row \(index(of: row.id))")
             withAnimation(.easeInOut(duration: 0.25)) {
                 proxy.scrollTo(row.id, anchor: .center)
             } completion: {
@@ -647,6 +681,47 @@ struct MessageList: View {
             withAnimation(.easeOut(duration: 0.2)) { model.focus(on: parent, inThread: true) }
         }
         return false
+    }
+
+    // MARK: Timeline log (`TimelineLog`; nothing is built while it is off)
+
+    /// One line: the event, then the list's own state.
+    private func log(_ event: @autoclosure () -> String) {
+        TimelineLog.log("\(TimelineLog.tag(composer)) \(event()) | rows=\(rows.count) atBottom=\(bottom.atBottom) "
+            + "atEnd=\(atEnd) following=\(following) opening=\(opening) pinning=\(pinning) phase=\(phase) "
+            + "realised=\(TimelineLog.realised[TimelineLog.tag(composer)] ?? 0)")
+    }
+
+    /// A row's place in the list, never its id (a message's uuid).
+    private func index(of id: String) -> String {
+        rows.firstIndex { $0.id == id }.map { "\($0)" } ?? "absent"
+    }
+
+    private func index(of message: Message) -> String {
+        rows.firstIndex { $0.holds(message.uuid) }.map { "\($0)" } ?? "absent"
+    }
+
+    /// Not while scrolled by hand, which would be a line a frame.
+    private func logGeometry(_ geometry: ScrollGeometry) {
+        guard !userScrolling else { return }
+        let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
+        log("geometry offset=\(TimelineLog.points(geometry.contentOffset.y)) "
+            + "content=\(TimelineLog.points(geometry.contentSize.height)) "
+            + "container=\(TimelineLog.points(geometry.containerSize.height)) below=\(TimelineLog.points(below)) "
+            + "insets=\(TimelineLog.points(geometry.contentInsets.top))/\(TimelineLog.points(geometry.contentInsets.bottom))")
+    }
+
+    /// The first and last rows in view, by index; none in view with rows
+    /// to show is the blank list.
+    private func logVisible(_ ids: [String]) {
+        let positions = Dictionary(rows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // A day divider shares its row's id.
+        let shown = Set(ids.compactMap { positions[$0] })
+        if let first = shown.min(), let last = shown.max() {
+            log("visible rows \(first)...\(last) (\(shown.count))")
+        } else {
+            log(rows.isEmpty ? "visible none, no rows" : "visible NONE with rows: blank")
+        }
     }
 }
 

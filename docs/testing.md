@@ -221,3 +221,42 @@ Not built: invoices paid and received (the server makes invoices only with
 a Lightning node, so this needs a regtest bitcoind and CLN behind the
 mixer), migrations from a real v14 or v16 database fixture (the offline
 `MigrationTests` still cover the chain from v1), paid attachments, calls.
+
+## Timeline log
+
+An opt-in log of how a chat's message list is placed, for a list that opens
+blank or in the wrong place on a real account, where `check-app.sh` does
+not show it. Off by default; while off nothing extra is built or observed.
+
+```sh
+defaults write dev.peel.mac PeelTimelineLog -bool YES     # then quit and reopen Peel
+/usr/bin/log stream --predicate 'subsystem == "dev.peel.mac" AND category == "timeline"' --level debug
+# reproduce, then Ctrl-C and paste the output
+defaults delete dev.peel.mac PeelTimelineLog              # off again, after a relaunch
+```
+
+Use `/usr/bin/log`: in zsh, `log` alone is a shell builtin. The setting is
+read once at launch (`TimelineLog.enabled`). A development build checked
+with `check-app.sh` reads its own domain, `dev.peel.mac.check`.
+
+Each line starts with six hex characters of a hash of the chat's key, keyed
+afresh at each launch (the same chat has another tag after a relaunch), then
+the event, then the list's state (`rows`, `atBottom`, `atEnd`,
+`following`, `opening`, `pinning`, `phase`, and `realised`, the rows the
+lazy stack has made). Events: the app's phase; the
+timeline reset, loaded (messages, threads, limit) and its rows built
+(count, the "New messages" row); the list's appear and disappear (the
+focus or divider row asked for); every placement (`place:` the bottom on
+appear, a divider pass, `go(to:)`, `scrollToNewest`, a re-pin) and why a
+re-pin ran or was skipped; scroll phase changes; `bottom state written`;
+the scroll geometry (offset, content and container heights, `below` the
+end, insets; not while scrolled by hand); and the rows in view by index,
+or `visible NONE with rows: blank`, the blank list itself. Read together:
+rows realised and in view while the screen is empty is a drawing problem;
+none in view with the offset past the content (`below` negative) is a
+placement problem; none realised at all is the lazy stack not making them. Never message
+text, names, keys, ids or amounts. With the log on, the lazy stack is a
+scroll target layout (`.scrollTargetLayout`) so its rows in view can be
+reported; off, it is not. So the list runs a little differently with the
+log on: a blank that will not come back with it on says that much, not
+that the bug is gone.

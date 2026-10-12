@@ -44,7 +44,12 @@ final class AppModel {
 
     var phase: Phase = .loading {
         // Locked, no call is watched.
-        didSet { if phase != oldValue { refreshCallWatches() } }
+        didSet {
+            if phase != oldValue {
+                TimelineLog.log("app phase \(oldValue) -> \(phase)")
+                refreshCallWatches()
+            }
+        }
     }
     var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
@@ -437,6 +442,8 @@ final class AppModel {
         ), in: chat)
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.
+        TimelineLog.log("\(TimelineLog.tag(chat)) rows built: \(rows.count) (changed \(rows != chatRows)), "
+            + "new messages at \(rows.firstIndex(where: \.startsNew).map { "\($0)" } ?? "none")")
         if rows != chatRows { chatRows = rows } else { refreshRecentCalls() }
     }
 
@@ -1212,11 +1219,13 @@ final class AppModel {
         chatRows = []
         pinnedMessage = nil
         guard let storage = engine?.storage, let chat = selectedChat else { return }
+        let limit = timelineLimit ?? Storage.pageSize
+        TimelineLog.log("\(TimelineLog.tag(chat)) timeline reset, limit \(limit)")
         messagesTask = Task {
             do {
-                for try await timeline in storage.timeline(
-                    in: chat, limit: timelineLimit ?? Storage.pageSize
-                ) where !Task.isCancelled {
+                for try await timeline in storage.timeline(in: chat, limit: limit) where !Task.isCancelled {
+                    TimelineLog.log("\(TimelineLog.tag(chat)) timeline loaded: \(timeline.messages.count) messages, "
+                        + "\(timeline.threads.count) threads, limit \(limit)")
                     self.timeline = timeline
                     rebuildChatRows()
                 }

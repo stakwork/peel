@@ -136,6 +136,7 @@ private struct AgentMessageList: View {
     var body: some View {
         let turns = agent.turns
         let problem = agent.problem
+        let summary = agent.summary
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -146,6 +147,7 @@ private struct AgentMessageList: View {
                                 .padding(.horizontal, 20)
                         }
                         AgentTurnRow(turn: turn, name: agent.name)
+                        if let summary, summary.through == turn.id { AgentSummaryRow(summary: summary) }
                         if let problem, problem.turnID == turn.id {
                             AgentProblemRow(agent: agent, failure: problem.failure)
                         }
@@ -350,6 +352,74 @@ private struct AgentRow<Content: View>: View {
     }
 }
 
+/// One quiet line in the agent chat with a chevron; a click opens `detail`
+/// under it on an inset card. Tool rows and the summary row.
+/// The row that uses it keeps `open`, so a tool row stays open when its
+/// approval card comes and goes.
+private struct AgentDisclosureRow<Label: View, Detail: View>: View {
+    @Binding var open: Bool
+    let label: Label
+    /// Built only while open.
+    let detail: () -> Detail
+
+    init(open: Binding<Bool>, @ViewBuilder label: () -> Label, @ViewBuilder detail: @escaping () -> Detail) {
+        _open = open
+        self.label = label()
+        self.detail = detail
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                open.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    label
+                }
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            if open {
+                Card(.inset) {
+                detail()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+/// Where the model's view of the conversation begins again: "Summarised
+/// earlier conversation", which opens to the summary it is sent instead of
+/// the turns above (they stay here in full).
+private struct AgentSummaryRow: View {
+    let summary: AgentSession.Summary
+    @State private var open = false
+
+    var body: some View {
+        AgentDisclosureRow(open: $open) {
+            Text("Summarised earlier conversation")
+        } detail: {
+            Text(summary.text)
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
+        .padding(.trailing, 20)
+        .padding(.vertical, 6)
+    }
+}
+
 /// A tool the agent ran, one quiet line ("Read the time · 0.1 s"); a click
 /// opens what it was asked and what it answered. A tool that acts shows
 /// its approval card in its place while it waits, then what it did and
@@ -369,57 +439,37 @@ private struct AgentToolRow: View {
     }
 
     private var row: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                open.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                    Text(tool.approval?.intent.action ?? AgentToolTitle.of(tool.name))
-                        .layoutPriority(1)
-                    if let approval = tool.approval, let outcome = approval.outcome {
-                        Text("· " + AgentToolTitle.outcome(outcome, target: approval.intent.target?.name))
-                            .fixedSize()
-                    }
-                    if tool.approval?.outcome?.allows != false,
-                       let summary = tool.summary.map(AgentToolTitle.summary), !summary.isEmpty {
-                        Text("· " + summary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(summary)
-                    }
-                    if let duration = tool.duration {
-                        Text("· " + (tool.failed ? "failed · " : "") + AgentToolTitle.duration(duration))
-                            .monospacedDigit()
-                            .fixedSize()
-                    } else {
-                        ProgressView().controlSize(.mini)
-                    }
-                    if tool.approval != nil, let url = tool.summary.flatMap(AgentMessageLink.init(summary:))?.url {
-                        Button("View") { _ = model.openAgentLink(url) }
-                            .buttonStyle(.peel(.link))
-                            .fixedSize()
-                    }
-                }
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-                .contentShape(Rectangle())
+        AgentDisclosureRow(open: $open) {
+            Text(tool.approval?.intent.action ?? AgentToolTitle.of(tool.name))
+                .layoutPriority(1)
+            if let approval = tool.approval, let outcome = approval.outcome {
+                Text("· " + AgentToolTitle.outcome(outcome, target: approval.intent.target?.name))
+                    .fixedSize()
             }
-            .buttonStyle(.plain)
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
-            if open {
-                Card(.inset) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let content = tool.approval?.intent.content { detail("Content", content) }
-                    detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
-                    if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
-                }
+            if tool.approval?.outcome?.allows != false,
+               let summary = tool.summary.map(AgentToolTitle.summary), !summary.isEmpty {
+                Text("· " + summary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(summary)
+            }
+            if let duration = tool.duration {
+                Text("· " + (tool.failed ? "failed · " : "") + AgentToolTitle.duration(duration))
+                    .monospacedDigit()
+                    .fixedSize()
+            } else {
+                ProgressView().controlSize(.mini)
+            }
+            if tool.approval != nil, let url = tool.summary.flatMap(AgentMessageLink.init(summary:))?.url {
+                Button("View") { _ = model.openAgentLink(url) }
+                    .buttonStyle(.peel(.link))
+                    .fixedSize()
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 4) {
+                if let content = tool.approval?.intent.content { detail("Content", content) }
+                detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
+                if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
             }
         }
     }

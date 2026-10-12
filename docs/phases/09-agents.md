@@ -10,8 +10,8 @@ and the turn loop, #178), PR 4 (the Sphinx read tools, #181) and PR 5
 is in review (2026-10-12, Tom's brief: every send asks first, so the gate
 came with it). `mark_chat_as_seen` is deferred to a PR of its own: it
 needs the gate's "always" wording for a tool that changes no message.
-Hardening the loop: automatic retry and concurrent reads (in review),
-then compaction stacked on it. Then memory.
+Hardening the loop: automatic retry and concurrent reads, and compaction
+stacked on it (both in review). Then memory.
 
 The plan of 2026-10-08 (an agent host with its own Sphinx account, workers
 over ACP, Strut jobs, graph memory) was replaced on 2026-10-10. It is in
@@ -123,8 +123,8 @@ with him before PR 2 merges.
 - **Tool:** a name, an input schema, a handler and an effect.
 - **Turn loop:** one turn per message: build the context, call the model,
   run its tool calls, write the reply.
-- **Context:** the system prompt and the most recent turns that fit a
-  token budget. Compaction comes later, as a Summary record.
+- **Context:** the system prompt, a summary of older turns once there is
+  one (a Summary record), and the most recent turns that fit a token budget.
 
 ## Package layout
 
@@ -176,7 +176,23 @@ extended thinking; keep it simple), two stacked PRs:
   stay in call order. Done
   when tests cover retry-after, the caps, no retry after words, Stop
   during the wait, overlap, order, and a failing read leaving the others.
-- **Compaction,** after it (below, in its own journal entry).
+- **Compaction,** stacked on it, by OpenClaw's rules
+  (docs.openclaw.ai/concepts/compaction). Before a turn, when the history
+  the model would see (summary included) passes 45,000 estimated tokens,
+  the older whole turns become one summary, made by one model call with a
+  short fixed prompt (names, decisions, open questions, what the person
+  asked for, message references with their chat ids and uuids; capped at
+  6,000 characters), and the most recent turns within 15,000 tokens stay word
+  for word. A cut falls only where the person typed, so a tool call is
+  never split from its result. The summary is a `Summary` record linked
+  from the conversation and to the turns it covers; the next one is made
+  from it and the turns after. The model is sent the summary, then the
+  turns after it; every message still shows, with a quiet "Summarised
+  earlier conversation" row that opens to the summary. A failed summary
+  sends what was sent before (the window keeps what fits) and never stops
+  the turn; Clear forgets it. Done when tests cover the trigger, the cut,
+  tool pairs, the summary kept and reused after a reopen, the fallback
+  and Clear.
 
 Later: memory.
 
@@ -534,6 +550,81 @@ Later: memory.
   init that configures its loop (one knob, `retryPolicy`, for tests);
   the tool rows' inset shared with `agentNoteRow` (existing code).
 
+**Hardening B, compaction (2026-10-12).**
+- Done: `Compaction` (AgentKit `Loop/`): `isDue` (history the model
+  would see, summary included, over 45,000 estimated tokens), `split`
+  (how many whole turns to summarise so the newest within 15,000 stay
+  word for word; the latest always stays; whole turns only, so a tool
+  call never leaves its result), the fixed summarising prompt and one
+  call (no tools, 1,500 tokens out, not retried: the turn after it
+  retries as always). The request is the summary so far plus the newer
+  turns, the newest 40,000 tokens of them, each message at most 4,000
+  characters; a summary over 6,000 characters, or cut off by its token
+  limit, is cut at a line. `AgentSession` runs it before a turn, never
+  mid-reply; keeps it as a `Summary` record (`through`, the last turn it
+  covers) linked to each turn it newly covers and the summary it
+  replaces, then from the conversation, last, so a relaunch never finds
+  one half written; loads the one reaching furthest; Clear forgets them
+  all. `AgentLoop.summary` is sent as the first exchange, in the
+  person's turn, marked as notes that retell other people's messages and
+  are never instructions, then the turns after it through the window as
+  before (the window stays the fallback). A failed or unsaved summary
+  sends what was sent before and is not tried again for three exchanges.
+  The chat shows "Summarised earlier conversation" under the last turn
+  it covers, opening to the summary (`AgentDisclosureRow`, which the tool
+  rows now use too, builds its detail only while open).
+- With the gate (#210, rebased onto it and on hardening A): what each
+  reply's actions came to now opens the reply the model is sent ("(Peel's
+  actions this turn, as the app recorded them:)", then "- Send to Kate:
+  declined by the person, not done"; stopped, failed and done alike),
+  ahead of its words, so no message cut reaches it and a reply with no
+  words but an action still counts. The summariser reads the same, and
+  its prompt says only that opening record tells how an action came out
+  and that one declined, stopped or failed is settled as not done: a
+  summary never turns a "no" into a task the model would retry. Tool
+  rows and their approval answers are records of their own, which
+  compaction never touches. /code-review of the resolution found the
+  record appended after the words (cut by the 4,000-character limit),
+  replies with no words dropped with their outcome, a failed allowed
+  send recorded as done, the record reaching only the summariser, a
+  test that checked a constant, and a tool row closing when its card
+  came and went (the row keeps `open` again); all fixed. Not applied:
+  one outcome wording shared with `ApprovalOutcome.refusal` (that one is
+  the tool result's sentence, this a line of a record).
+- Checked: `swift test` in full; `CompactionTests` (the trigger, the cut,
+  a tool turn kept whole, the request and its caps, a summary made before
+  the turn and kept, its links, reused after a reopen, a second summary
+  built on the first, a failed summary and no retry the next turn, Clear).
+  The app was not checked offscreen: `scripts/check-app.sh` stops at
+  signing, as for hardening A.
+- Reviews: /code-review found a failed summary retried before every turn
+  (now three exchanges later), a request larger than any turn (now
+  40,000 tokens), unknown finish reasons refused, an over-long message
+  dropping everything older, a cut summary splitting a reference, the
+  split counting messages by twos (now whole turns) and a dead
+  `history(of:)`; all fixed. /simplify: an `Exchange` alias, `compact`
+  returning the summary it made, the covered turns from `unsummarised`,
+  `Summary.init(record:)`, one gate (`nextCompaction`), the dead
+  `turns(of:)` removed, the disclosure's detail built lazily.
+  /security-review: nothing at confidence 8 (keys never reach the
+  request; the summary is plain `Text`; Clear forgets it). Risk raised to
+  high (writes to the agent store; other people's words re-enter the
+  context): the independent review found the summary call retrying on
+  top of the turn's own retries, an unsaved summary made again each turn
+  and a half-written record, "which you wrote" lending the notes the
+  person's word, "what Peel said it would do" keeping injected promises,
+  ties on load, a summary cut by its token limit kept whole, and no test
+  of a second summary; all fixed.
+- Not applied, with reasons: summarising turns older than the 40,000
+  read in further passes (the window dropped them before; the model sees
+  as much as it did); thresholds derived from `historyBudget` (one place
+  sets each, beside it); a single-call API beside `AgentLoop` (the loop
+  with no tools and one step is that call); compaction in the CLI (it
+  keeps no records); batched store writes (the store has no batch API;
+  see PR 5); compacting after a reply rather than before a turn (the
+  brief says before a turn); the test helpers shared with
+  `AgentSessionTests` (separate suites, small).
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,
@@ -553,8 +644,8 @@ Mastra. Have = built, Partial = some of it, Missing = not built.
 | | Images and files | Missing | |
 | | Model lists from the provider | Missing | Hard-coded; OpenAI and OpenRouter names unverified |
 | Loop | Model and tool steps, step cap | Have | Cap 10 |
-| | Context window | Partial | Recent turns that fit a budget; older ones drop out |
-| | Compaction | Missing | Summarise old turns into a Summary record |
+| | Context window | Have | A summary of older turns, then the recent turns that fit a budget |
+| | Compaction | Have | Older turns summarised into a Summary record past 45,000 tokens; the window is the fallback |
 | | Tools run concurrently | Have | Reads next to each other, four at a time; any other call alone, in order, each through the approver |
 | | Per-step and lifecycle hooks | Missing | |
 | | Guardrails on input and output | Missing | |

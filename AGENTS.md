@@ -331,10 +331,11 @@ is a short plan. Update the status and the journal when you finish something.
     at once or an action to approve) and `ToolRegistry`,
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
     at three UTF-8 bytes each), `RetryPolicy` (when a failed model call is
-    made again on its own, and how long it waits), `AgentLoop` (one turn:
-    stream, run tools, repeat; reads next to each other side by side, any
-    other call alone, in order; Stop is cancelling its task; every action
-    asks its approver)
+    made again on its own, and how long it waits), `Compaction` (when older
+    turns are summarised, where the cut falls, the one summarising call),
+    `AgentLoop` (one turn: stream, run tools, repeat; reads next to each
+    other side by side, any other call alone, in order; Stop is cancelling
+    its task; every action asks its approver)
     and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
     card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
     the person, shared by the app and the CLI; `ApprovalRules`, the
@@ -342,8 +343,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
     key pages, the picker's models, the client), `AgentCredential` (prints
     without its key) and `AgentCredentialStore`; `AgentSession`, the agent
-    chat's model: the conversation as `Conversation`, `Turn`
-    and `ToolCall` records, the streaming reply (shown every 50 ms), Stop,
+    chat's model: the conversation as `Conversation`, `Turn`,
+    `ToolCall` and `Summary` records (the summary sent in place of older
+    turns), the streaming reply (shown every 50 ms), Stop,
     failures and Retry, connecting with a test call, the model, removing
     the key, Clear, the agent's name and `close`; the approval card of its
     run (`waiting`, `answer`, the outcome kept on the tool's row) and the
@@ -412,7 +414,8 @@ is a short plan. Update the status and the journal when you finish something.
   request bodies over an in-process `URLProtocol` stub, the loop with
   a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
   caps, Stop during a wait, read tools side by side and in order, an
-  action between reads), `AgentSessionTests` (streaming, Stop,
+  action between reads; `CompactionTests`: the trigger, the cut, the
+  summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
   failures and Retry, connecting, the key, reopening, Clear) and
   `ApprovalTests` (the loop with a scripted approver, the gate's rules,
   the session's card)

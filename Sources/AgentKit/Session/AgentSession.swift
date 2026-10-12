@@ -116,6 +116,16 @@ public final class AgentSession {
         public let reason: ModelError
     }
 
+    /// A summary of the conversation up to a turn, which the model is sent
+    /// in place of those turns (`Compaction`); they still show in full.
+    public struct Summary: Sendable, Equatable {
+        public let id: String
+        public let text: String
+        /// The last turn it covers.
+        public let through: String
+        public let date: Date
+    }
+
     /// The connected model as screens show it: no key, only its last four.
     public struct Connection: Sendable, Equatable {
         public let provider: AgentProvider
@@ -131,6 +141,9 @@ public final class AgentSession {
     /// wait; nil once anything else happens.
     public private(set) var retrying: Retrying?
     public private(set) var problem: Problem?
+    /// The latest summary of earlier turns, if the conversation has grown
+    /// long enough for one.
+    public private(set) var summary: Summary?
     public private(set) var connection: Connection?
     /// What the agent is called in the sidebar, its header and its messages.
     public private(set) var name = AgentSession.defaultName
@@ -165,12 +178,16 @@ public final class AgentSession {
     private let credentials: any AgentCredentialStore
     private let makeClient: @Sendable (AgentCredential) -> any ModelProvider
     private var conversationID: String?
-    /// What the model is sent as the conversation so far: whole turns,
-    /// rebuilt from the records at launch.
-    private var history: [ModelMessage] = []
     private var running: Task<Void, Never>?
     /// When a failed model call is made again on its own (tests turn it off).
     @ObservationIgnored var retryPolicy = RetryPolicy()
+    /// When older turns are summarised (tests make it small).
+    @ObservationIgnored var compaction = Compaction()
+    /// How many exchanges the model was sent when a summary last failed.
+    /// No summary is tried before the model is sent this many exchanges:
+    /// after one failed, a few more, so a model that cannot summarise is not
+    /// sent a doomed call before every turn.
+    @ObservationIgnored private var nextCompaction = 0
     /// Streamed text not yet shown: deltas are shown at most every 50 ms,
     /// so a fast stream redraws and re-reads its Markdown a few times a
     /// second rather than once a token.
@@ -222,7 +239,12 @@ public final class AgentSession {
                 if turn.author == .agent { turn.tools = try toolCalls(of: turn.id).map(ToolActivity.init(record:)) }
                 return turn
             }
-            history = Self.history(of: turns)
+            // The newest summary whose last turn is still here.
+            // Each summary reaches further than the one before it.
+            let order = Dictionary(turns.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { a, _ in a })
+            summary = try summaries().compactMap(Summary.init(record:))
+                .filter { order[$0.through] != nil }
+                .max { order[$0.through]! < order[$1.through]! }
         } catch {
             notice = "Could not read the agent chat: \(error.localizedDescription)"
         }
@@ -267,7 +289,9 @@ public final class AgentSession {
         }
         var loop = AgentLoop(provider: makeClient(credential), tools: tools, model: credential.model, systemPrompt: systemPrompt)
         loop.retry = retryPolicy
-        let earlier = history
+        // What the model sees: the summary, then each later message and the
+        // words that answered it (what a relaunch rebuilds).
+        let earlier = Self.exchanges(of: unsummarised)
         let id = UUID()
         runID = id
         loop.approver = RunApprover(session: self, run: id)
@@ -275,11 +299,55 @@ public final class AgentSession {
         paragraphDue = false
         // Holds the session until the turn ends, which Stop makes prompt.
         running = Task {
-            let result = await loop.run(history: earlier, message: turn.text) { event in
+            loop.summary = summary?.text
+            var history = earlier.flatMap(\.messages)
+            // Before the turn, never in the middle of a reply.
+            if earlier.count >= nextCompaction, compaction.isDue(summary: loop.summary, history: history),
+               let (made, kept) = await compact(earlier, with: loop, run: id) {
+                loop.summary = made
+                history = kept.flatMap(\.messages)
+            }
+            let result = await loop.run(history: history, message: turn.text) { event in
                 await self.apply(event, run: id)
             }
             finish(result, answering: turn, run: id)
         }
+    }
+
+    /// Summarises the older of `exchanges` into a new `summary`, kept as a
+    /// record, and returns it with the recent exchanges kept word for word;
+    /// nil when there is nothing old enough or the summary failed, and the
+    /// model is then sent what it was before (the window keeps what fits).
+    private func compact(
+        _ exchanges: [Exchange], with loop: AgentLoop, run: UUID
+    ) async -> (summary: String, kept: [Exchange])? {
+        // Every exchange is a message and its reply, so a cut between two
+        // is where the person typed.
+        let cut = compaction.split(exchanges.map(\.messages))
+        guard cut > 0 else { return nil }
+        let through = exchanges[cut - 1].through
+        let older = exchanges[..<cut]
+        let text: String
+        do {
+            text = try await compaction.summarise(
+                summary: loop.summary, older: older.flatMap(\.messages), provider: loop.provider, model: loop.model)
+        } catch {
+            if !(error is CancellationError) { nextCompaction = exchanges.count + 3 }
+            return nil
+        }
+        // The turns it newly covers: from the last summary's end to `through`.
+        let unsummarised = unsummarised
+        guard runID == run, !closed else { return nil }
+        guard let end = unsummarised.firstIndex(where: { $0.id == through }),
+              let saved = saveSummary(text, through: through, covering: unsummarised[...end].map(\.id))
+        else {
+            // Not kept: a summary made only to be lost is not made again each turn.
+            nextCompaction = exchanges.count + 3
+            return nil
+        }
+        summary = saved
+        nextCompaction = 0
+        return (text, Array(exchanges[cut...]))
     }
 
     private func apply(_ event: LoopEvent, run: UUID) {
@@ -369,11 +437,9 @@ public final class AgentSession {
             if !isShown { unread += 1 }
             return
         }
+        // What the model sees next is this reply's words, not the tool
+        // results (copies of chats Peel keeps); a reply that needs one names it.
         turns.append(save(shown, answering: turn.id))
-        // What the model sees next is what a relaunch rebuilds: each message
-        // and the words that answered it. Tool results are left out (they
-        // are copies of chats Peel keeps); a reply that needs one names it.
-        history = Self.history(of: turns)
         if !isShown { unread += 1 }
     }
 
@@ -487,14 +553,17 @@ public final class AgentSession {
     /// Forgets every message of the conversation; the next starts a new one.
     public func clear() throws {
         endRun()
+        let kept = try summaries().map(\.refId)
         // The conversation first: once it is forgotten nothing reads its
         // turns, so a failure part way leaves no old chat to come back.
         if let conversationID { try store.forget(conversationID, reason: "cleared") }
         let ids = turns.map(\.id)
         conversationID = nil
         turns = []
-        history = []
+        summary = nil
+        nextCompaction = 0
         problem = nil
+        for id in kept { try store.forget(id, reason: "cleared") }
         for id in ids {
             for call in try toolCalls(of: id) { try store.forget(call.refId, reason: "cleared") }
             try store.forget(id, reason: "cleared")
@@ -540,11 +609,52 @@ public final class AgentSession {
         static let conversation = "Conversation"
         static let turn = "Turn"
         static let toolCall = "ToolCall"
+        static let summary = "Summary"
     }
 
     enum LinkType {
         static let turn = "turn"
         static let toolCall = "tool_call"
+        static let summary = "summary"
+        static let covers = "covers"
+    }
+
+    /// The conversation's summaries, the newest and those it replaced.
+    private func summaries() throws -> [Record] {
+        guard let conversationID else { return [] }
+        return try store.walk(conversationID, edgeTypes: [LinkType.summary], direction: .outgoing, depth: 1,
+                              limit: Int.max).map(\.record)
+    }
+
+    /// Keeps a summary as a `Summary` record linked from the conversation
+    /// and to each turn it newly covers (and the summary it replaces).
+    private func saveSummary(_ text: String, through: String, covering turnIDs: [String]) -> Summary? {
+        guard let conversationID else { return nil }
+        let author = AgentTurn.Author.agent.rawValue
+        var id: String?
+        do {
+            let made = try store.add(type: RecordType.summary, name: "Summary of the earlier conversation", body: text,
+                                     props: ["through": .string(through)], createdBy: author, source: through)
+            id = made
+            for covered in turnIDs + (summary.map { [$0.id] } ?? []) {
+                try store.link(made, LinkType.covers, covered, createdBy: author)
+            }
+            // Last, so a relaunch never finds one half written.
+            try store.link(conversationID, LinkType.summary, made, createdBy: author)
+            return Summary(id: made, text: text, through: through, date: .now)
+        } catch {
+            if let id { try? store.forget(id, reason: "not saved whole") }
+            notice = "Could not save the agent chat: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// The turns after the summary, which the model is sent word for word.
+    private var unsummarised: ArraySlice<AgentTurn> {
+        guard let through = summary?.through, let index = turns.firstIndex(where: { $0.id == through }) else {
+            return turns[...]
+        }
+        return turns[(index + 1)...]
     }
 
     /// The tool calls a reply made, in the order they ran.
@@ -583,23 +693,50 @@ public final class AgentSession {
         }
     }
 
-    /// What the model sees of `turns`: each message and the reply to it,
-    /// without replies that are empty or were declined.
-    static func history(of turns: [AgentTurn]) -> [ModelMessage] {
-        var history: [ModelMessage] = []
+    /// The app's record of the actions a reply asked to take and how each
+    /// came out, under a fixed heading; nil for a reply that asked none.
+    static func actionRecord(of tools: [ToolActivity]) -> String? {
+        let lines = tools.compactMap { tool -> String? in
+            guard let approval = tool.approval, let outcome = approval.outcome else { return nil }
+            let result =
+                switch outcome {
+                case .denied: "declined by the person, not done"
+                case .stopped: "stopped by the person, not done"
+                case _ where tool.failed: "allowed, but it failed: not done"
+                case .allowedOnce, .alwaysAllowed, .allowedByRule: "allowed and done"
+                }
+            return "- \(approval.intent.action): \(result)"
+        }
+        return lines.isEmpty ? nil : ([Self.actionRecordHeading] + lines).joined(separator: "\n")
+    }
+
+    static let actionRecordHeading = "(Peel's actions this turn, as the app recorded them:)"
+
+    /// A message and its reply, as the model is sent them, with the reply's id.
+    typealias Exchange = (through: String, messages: [ModelMessage])
+
+    /// What the model sees of `turns`, by exchange: each message and the
+    /// reply to it, with the reply's id; without replies that are empty or
+    /// were declined.
+    static func exchanges(of turns: some Sequence<AgentTurn>) -> [Exchange] {
+        var exchanges: [Exchange] = []
         var asked: AgentTurn?
         for turn in turns {
             switch turn.author {
             case .user:
                 asked = turn
             case .agent:
-                guard let question = asked, !turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      turn.ending != .declined else { continue }
-                history += [.user(question.text), ModelMessage(role: .assistant, content: [.text(turn.text)])]
+                guard let question = asked, turn.ending != .declined else { continue }
+                // What its actions came to goes first, where no cut reaches it,
+                // so a "no" stays a "no" in the model's view and in a summary.
+                let words = turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : turn.text
+                let reply = [actionRecord(of: turn.tools), words].compactMap { $0 }.joined(separator: "\n\n")
+                guard !reply.isEmpty else { continue }
+                exchanges.append((turn.id, [.user(question.text), ModelMessage(role: .assistant, content: [.text(reply)])]))
                 asked = nil
             }
         }
-        return history
+        return exchanges
     }
 }
 
@@ -636,6 +773,15 @@ extension AgentTurn {
         var props: [String: JSONValue] = [:]
         if let ending { props["ending"] = .string(ending.rawValue) }
         return props
+    }
+}
+
+extension AgentSession.Summary {
+    /// A `Summary` record: its text as the body, the last turn it covers.
+    init?(record: Record) {
+        guard let through = record.props["through"]?.string else { return nil }
+        self.init(id: record.refId, text: record.body ?? "", through: through,
+                  date: Date(timeIntervalSince1970: Double(record.createdMs) / 1000))
     }
 }
 

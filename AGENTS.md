@@ -569,12 +569,15 @@ swift test      # needs the generated bindings, like swift build
 `Tests/PeelCoreTests` uses Swift Testing and runs offline, each storage test in
 its own temporary profile directory. It covers `StateCodec` round-trips and
 malformed input; `Storage` commits (atomic state and settings), message upsert
-(uuid dedupe, server fields from the later copy, cross-chat uuid rejection),
-status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
+(uuid dedupe, server fields from the later copy, cross-chat uuid rejection,
+a deleted message kept empty when its copy comes again), status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
 `timeline(in:)` first emission, and the profile lock; `Message` helpers;
 `ServerAddress` parsing; and the `Engine` helpers that need no server
 (mnemonics, invites, a fresh account, the words check: which
-accounts start checked, wrong words named by place, nothing kept on a mismatch); attachment encryption against an
+accounts start checked, wrong words named by place, nothing kept on a mismatch); who a message from the core is
+from (`SenderTests`: a live sender believed only when the topic agrees,
+history from strangers dropped, our own copy in the chat it went to and a
+tribe's copy of it taking over its row, a member's replay of our tag dropped, a request's amount from its invoice); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); person colours (`PersonHue`: the key
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
@@ -609,7 +612,8 @@ whose register never left leaves nothing, and a new account's inviter is
 added at most once);
 refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
-database, with the literals frozen into shipped migrations; and the audit's
+database, with the schema frozen after v17 and after v23 and the literals
+frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the
 parsers, markup in linear time against a reference, link labels, names,
 hosts, codes and the attachment cipher). Nothing talks to

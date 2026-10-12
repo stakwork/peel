@@ -174,21 +174,24 @@ extension Storage {
 
     /// Whether a payment request of ours (type 2) carries this invoice: one
     /// made on another device comes back from history, its invoice record
-    /// does not (payments review F11). Only one that is ours by its tag:
-    /// the core sets a tag only when the message's encrypted tag opens with
-    /// this account's own key (`dec_tag`), as every send of ours carries
-    /// (`create_sphinx_msg`), while a message it takes for ours by its date
-    /// alone (`dec_ts_matches`, which any sender can arrange) has none.
+    /// does not (payments review F11). Only one signed by this account's
+    /// key (`pubkey`): the core recovers a message's signer from its
+    /// signature, but takes a message for ours by its date
+    /// (`dec_ts_matches`) or by a replayed encrypted tag (`dec_tag`; every
+    /// message carries one, and it opens with our key whoever sends it),
+    /// either of which a contact can arrange, with any key they like and
+    /// a uuid of ours. A tribe's forward is signed by the tribe.
     /// `invoiceProblem` asks this only of an invoice our own server made.
-    func isOurRequest(paymentHash: String) throws -> Bool {
+    func isOurRequest(paymentHash: String, signedBy pubkey: String) throws -> Bool {
         try pool.read { db in
             try Bool.fetchOne(
                 db,
                 sql: """
                     SELECT EXISTS (SELECT 1 FROM message
-                        WHERE fromMe = 1 AND tag IS NOT NULL AND type = \(MessageType.invoice) AND paymentHash = ?)
+                        WHERE fromMe = 1 AND type = \(MessageType.invoice) AND paymentHash = ?
+                            AND json_valid(sender) AND json_extract(sender, '$.pubkey') = ?)
                     """,
-                arguments: [paymentHash]
+                arguments: [paymentHash, pubkey]
             ) ?? false
         }
     }

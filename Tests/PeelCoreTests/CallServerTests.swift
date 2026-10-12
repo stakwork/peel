@@ -79,6 +79,37 @@ struct CallTicketCheckTests {
         }
     }
 
+    @Test(arguments: ["wss://livekit.sphinx.chat", "wss://LIVEKIT.sphinx.chat:443", "wss://livekit.sphinx.chat/rtc"])
+    func acceptsTheOfficialMediaServer(serverURL: String) throws {
+        let ticket = try CallServer.ticket(serverURL: serverURL, token: token(claims()), room: room, callServer: production)
+        #expect(ticket.serverURL.host?.lowercased() == "livekit.sphinx.chat")
+    }
+
+    @Test(arguments: [
+        "wss://livekit.sphinx.chat.evil.com", "wss://evil-livekit.sphinx.chat", "wss://x.livekit.sphinx.chat",
+        "wss://livekit.sphinx.chat.", "wss://livekit.sphinx.chat.evil", "wss://sphinx.chat.evil", "wss://sphinx.chat",
+        "wss://livekit.sphinx.chat@evil.com", "wss://evil.com@livekit.sphinx.chat", "wss://u:p@livekit.sphinx.chat",
+        "wss://evil.com#@livekit.sphinx.chat", "wss://evil.com?@livekit.sphinx.chat", "wss://livekit.sphinx.chat%2eevil.com",
+        "wss://livekit.sphinx.chat:8443", "ws://livekit.sphinx.chat", "https://livekit.sphinx.chat", "//livekit.sphinx.chat",
+    ])
+    func refusesLookalikesOfTheOfficialMediaServer(serverURL: String) {
+        #expect(throws: CallServer.Failure.self) {
+            try CallServer.ticket(serverURL: serverURL, token: token(claims()), room: room, callServer: production)
+        }
+    }
+
+    /// Only the call server it is recorded for may name it.
+    @Test func theOfficialMediaServerIsOnlyForTheOfficialCallServer() {
+        #expect(throws: CallServer.Failure.mediaHostNotAllowed("livekit.sphinx.chat:443")) {
+            try CallServer.mediaURL("wss://livekit.sphinx.chat", callServer: URL(string: "https://calls.example.com")!)
+        }
+        #expect(throws: CallServer.Failure.self) { try CallServer.mediaURL("wss://livekit.sphinx.chat", callServer: local) }
+        // Another call server on the same host, on another port, is another call server.
+        #expect(throws: CallServer.Failure.self) {
+            try CallServer.mediaURL("wss://livekit.sphinx.chat", callServer: URL(string: "https://chat.sphinx.chat:8443")!)
+        }
+    }
+
     @Test(arguments: ["ws://127.0.0.1:7881", "ws://localhost:7880", "wss://127.0.0.1:7881", "ws://127.0.0.1"])
     func refusesAnotherPortOrHostOnALocalServer(serverURL: String) {
         #expect(throws: CallServer.Failure.self) { try CallServer.mediaURL(serverURL, callServer: local) }
@@ -210,6 +241,36 @@ struct CallPresenceTests {
         #expect(presence == .ended)
         #expect(S.applying(.left("bob-2"), to: .ended) == .ended)
         #expect(S.applying(.joined(alice), to: .ended) == .live([alice]))
+    }
+
+    /// The official Mac app counts and shows only participants with a
+    /// name: a recorder, an agent or a join LiveKit has not named yet is
+    /// not a person on the call (four in the feed, three on the call).
+    @Test func leavesOutParticipantsWithNoName() {
+        typealias S = CallServer
+        let recorder = CallParticipant(identity: "EG_abc", nickname: "", avatarURL: nil)
+        let carol = CallParticipant(identity: "carol-3", nickname: "Carol", avatarURL: nil)
+        #expect(S.applying(.current([recorder, alice, bob, carol]), to: .unknown) == .live([alice, bob, carol]))
+        #expect(S.applying(.current([recorder]), to: .unknown) == .live([]))
+        // One person twice (a second session under the same identity) is one.
+        #expect(S.applying(.current([alice, bob, alice]), to: .unknown) == .live([bob, alice]))
+        // A join with no name changes nothing, before or after the list.
+        let presence = S.applying(.current([alice]), to: .unknown)
+        #expect(S.applying(.joined(recorder), to: presence) == presence)
+        #expect(S.applying(.joined(recorder), to: .ended) == .ended)
+        // The same identity named later is counted then.
+        let named = CallParticipant(identity: "EG_abc", nickname: "Dan", avatarURL: nil)
+        #expect(S.applying(.joined(named), to: presence) == .live([alice, named]))
+        // Someone named who comes back unnamed in a list (a reconnect) keeps their name.
+        let aliceAgain = CallParticipant(identity: "alice-1", nickname: "", avatarURL: nil)
+        #expect(S.applying(.current([aliceAgain, bob]), to: .live([alice])) == .live([alice, bob]))
+        // Listed twice, the last time unnamed: the name from the first.
+        #expect(S.applying(.current([alice, aliceAgain]), to: .unknown) == .live([alice]))
+        // Spaces are no name.
+        #expect(S.participant(["identity": "s", "nickname": " \n "])?.nickname == "")
+        // A name of only control characters is no name.
+        let blank = S.update(from: #"{"type":"current_participants","roomName":"\#(room)","participants":[{"identity":"z","nickname":"\u001b"}]}"#)
+        #expect(blank.map { S.applying($0.change, to: .unknown) } == .live([]))
     }
 }
 

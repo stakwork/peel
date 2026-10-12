@@ -57,6 +57,11 @@ public enum CallPresence: Sendable, Equatable {
     case live([CallParticipant])
     /// The call server closed the room. It opens again if someone joins.
     case ended
+
+    /// Who is on it, when the call server has said.
+    public var people: [CallParticipant]? {
+        if case .live(let people) = self { people } else { nil }
+    }
 }
 
 /// One account's call server: the ticket request (`GET
@@ -107,11 +112,13 @@ actor CallServer {
     // MARK: - The ticket
 
     /// The LiveKit media servers each call server may name besides itself,
-    /// by exact host and port, never a suffix (`*.livekit.cloud` would
-    /// admit any LiveKit tenant). Empty until the production call server's
-    /// answer is recorded; a ticket naming another host is refused, and the
-    /// error names it.
-    static let mediaHosts: [String: [String]] = [:]
+    /// on port 443, by exact host, never a suffix (`*.livekit.cloud` would
+    /// admit any LiveKit tenant). The official apps' call server names
+    /// `livekit.sphinx.chat` (seen 2026-10-12). A ticket naming any other
+    /// host is refused, and the error names it.
+    static let mediaHosts: [String: [String]] = [
+        "chat.sphinx.chat": ["livekit.sphinx.chat"],
+    ]
 
     /// Asks for a token to join `link`'s room as `participantName`, with
     /// the account's photo and a Hive link's key passed on. Never `isHost`.
@@ -187,7 +194,8 @@ actor CallServer {
         let loopback = callServer.scheme == "http"
         let ownHost = callServer.host?.lowercased() ?? ""
         let allowed = [endpoint(ownHost, callServer.port, secure: !loopback)]
-            + (mediaHosts[ownHost] ?? []).map { endpoint($0, nil, secure: true) }
+            // Only the call server itself on its default port: not another one on the same host.
+            + (callServer.port == nil ? mediaHosts[ownHost] ?? [] : []).map { endpoint($0, nil, secure: true) }
         guard scheme == "wss" || (scheme == "ws" && loopback), allowed.contains(named) else {
             throw Failure.mediaHostNotAllowed(TribeLink.isPlainHost(named) ? named : nil)
         }
@@ -229,6 +237,8 @@ actor CallServer {
     private var pings: Task<Void, Never>?
     private var failures = 0
     private var closed = false
+    /// Rooms whose list is asked for again (`askAgain`).
+    private var askingAgain = Set<String>()
 
     /// Who is on the call in `room`, now and as it changes, starting with
     /// `.unknown`. The first listener for a room subscribes on the one
@@ -327,7 +337,24 @@ actor CallServer {
             if case .string(let text) = message, let update = Self.update(from: text),
                let presence = rooms[update.room]?.presence {
                 set(Self.applying(update.change, to: presence), in: update.room)
+                if case .joined(let participant) = update.change, participant.nickname.isEmpty, presence != .unknown {
+                    askAgain(update.room, on: socket)
+                }
             }
+        }
+    }
+
+    /// The room's list again in two seconds, for someone who joined with
+    /// no name yet, as the official Mac app does: a second subscribe
+    /// answers with `current_participants`.
+    /// One at a time per room, however many join unnamed.
+    private func askAgain(_ room: String, on socket: URLSessionWebSocketTask) {
+        guard askingAgain.insert(room).inserted else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            askingAgain.remove(room)
+            guard self.socket === socket, rooms[room] != nil else { return }
+            send(["action": "subscribe", "roomName": room], on: socket)
         }
     }
 
@@ -353,13 +380,26 @@ actor CallServer {
         socket.send(.string(Self.json(fields))) { _ in }
     }
 
-    /// What a room's presence becomes after one message of the feed.
+    /// What a room's presence becomes after one message of the feed. A
+    /// participant with no name is left out, as the official Mac app leaves
+    /// them out (`NewChatTableDataSource+CellDelegateExtension.swift`): the
+    /// room's recorder or agent, or someone whose name LiveKit has not
+    /// passed on yet (`receive` asks again for those).
     static func applying(_ change: Change, to presence: CallPresence) -> CallPresence {
         switch (change, presence) {
         case (.current(let participants), _):
+            // Someone unnamed here keeps the name they had: earlier in this
+            // list (a second session), or before it (their client reconnected).
+            let known = Dictionary(((presence.people ?? []) + participants.filter { !$0.nickname.isEmpty })
+                .map { ($0.identity, $0) }, uniquingKeysWith: { $1 })
             // One entry per identity, the last word kept, as for a join.
             var seen = Set<String>()
-            return .live(Array(participants.reversed().filter { seen.insert($0.identity).inserted }.reversed()))
+            return .live(Array(participants.reversed().compactMap { person -> CallParticipant? in
+                guard seen.insert(person.identity).inserted else { return nil }
+                return person.nickname.isEmpty ? known[person.identity] : person
+            }.reversed()))
+        case (.joined(let participant), _) where participant.nickname.isEmpty:
+            return presence
         case (.joined(let participant), .live(var participants)):
             participants.removeAll { $0.identity == participant.identity }
             if participants.count < maxParticipants { participants.append(participant) }
@@ -426,8 +466,11 @@ actor CallServer {
 
     static func participant(_ fields: [String: Any]) -> CallParticipant? {
         guard let identity = fields["identity"] as? String, isIdentity(identity) else { return nil }
-        // Control characters out, so a name cannot rewrite a terminal line.
-        let nickname = (fields["nickname"] as? String).map { String($0.withoutControlCharacters.prefix(maxName)) }
+        // Control characters out, so a name cannot rewrite a terminal line;
+        // a name of only spaces is none.
+        let nickname = (fields["nickname"] as? String).map {
+            String($0.withoutControlCharacters.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxName))
+        }
         let avatar = (fields["avatarUrl"] as? String).flatMap { $0.utf8.count <= 2048 ? URL(string: $0) : nil }
             .flatMap { Web.isPublic($0) ? $0 : nil }
         return CallParticipant(identity: identity, nickname: nickname ?? "", avatarURL: avatar)

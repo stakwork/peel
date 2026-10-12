@@ -206,7 +206,9 @@ struct CallHeaderButton: View {
     @Environment(\.openWindow) private var openWindow
     let chat: String
 
+    /// The phone button's, and the split Join's chevron's: one per trigger.
     @State private var anchor = MenuAnchor()
+    @State private var chevron = MenuAnchor()
     /// What waits for "Leave and join" (or start), and the call it leaves.
     @State private var pending: (action: Pending, other: String)?
 
@@ -232,15 +234,6 @@ struct CallHeaderButton: View {
                     cancel: { self.pending = nil }, confirm: { run(pending.action) }
                 )
             } else if let live {
-                if let failure = model.callFailures[live.room] {
-                    Text(failure)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 260, alignment: .trailing)
-                        .help(failure)
-                }
                 pill(live)
             } else {
                 IconButton("phone", help: "Start a call", lit: menuOpen, working: model.startingCallIn == chat) {
@@ -298,10 +291,10 @@ struct CallHeaderButton: View {
             } label: {
                 Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
             }
+            .menuAnchor(chevron)
         }
         .background(Theme.fieldFill, in: shape)
         .overlay { shape.strokeBorder(Theme.inputBorder) }
-        .menuAnchor(anchor)
     }
 
     private var menuSource: AnyHashable { "call-\(chat)" }
@@ -314,7 +307,7 @@ struct CallHeaderButton: View {
             .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor, source: menuSource)
+        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: header ? chevron : anchor, source: menuSource)
     }
 
     private func start(audioOnly: Bool) {
@@ -329,7 +322,7 @@ struct CallHeaderButton: View {
     private func run(_ action: Pending) {
         model.openingCallWindow({ openWindow(id: CallWindow.id) }) {
             let done = switch action {
-            case .join(let link): await model.joinCall(link, in: chat)
+            case .join(let link): await model.joinCall(link, in: chat, failureInChat: true)
             case .start(let audioOnly): await model.startCall(in: chat, audioOnly: audioOnly)
             }
             pending = nil

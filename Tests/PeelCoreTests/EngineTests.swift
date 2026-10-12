@@ -351,6 +351,8 @@ struct OursTests {
         await engine.confirmTribes(fetch: Self.listed())
         #expect(try storage.tribes().first?.left == false)
         #expect(try storage.message(uuid: uuid(2), in: keyG)?.fromMe == true)
+        // Stored without leaving, so its tag is held.
+        #expect(try storage.message(uuid: uuid(3), in: keyG)?.tag == "t3")
         #expect(await engine.heldChats.isEmpty)
     }
 

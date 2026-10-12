@@ -689,7 +689,7 @@ public actor Engine {
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
-        invites: [InviteRecord] = [], indices: [UInt64]? = nil
+        invites: [InviteRecord] = [], indices: [UInt64]? = nil, keepMembership: Bool = false
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -775,6 +775,8 @@ public actor Engine {
         var held: [(chat: String, msg: Msg, host: String?)] = []
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
+        // The tags of our copies taken in this call, with their uuids (`isReplay`).
+        var tagged: [String: String] = [:]
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
@@ -782,6 +784,11 @@ public actor Engine {
             }
             guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState, accountKey: accountKey) else { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
+            // A member's replay of our tag: dropped before it can name a
+            // tribe, change our membership or aliases, or be stored.
+            if try isReplay(message, original: decoded.fields?.originalUuid, state: newState, taken: &tagged) {
+                continue
+            }
             // Filed under its signer, which this device's core does not know:
             // a tribe joined on another device. Held, not stored, until the
             // tribe is known; our join, or the owner's approval naming us,
@@ -802,7 +809,7 @@ public actor Engine {
             // core files any signer as a contact at the index it wrote to, so
             // a contact without a contact key is no proof of a tribe.
             if decoded.signedByChat, knownTribes[message.chat] == nil { continue }
-            if let tribe = knownTribes[message.chat],
+            if !keepMembership, let tribe = knownTribes[message.chat],
                let changed = Self.membership(
                    after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
                    replaying: restoring) {
@@ -811,8 +818,18 @@ public actor Engine {
             }
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
-                // Left: what the tribe still sends is dropped.
-                if tribe.left { continue }
+                // Left: what the tribe still sends is dropped, but for our own
+                // leave (or a join stored without changing membership,
+                // `keepMembership`), kept so its tag is held: a later copy of
+                // it (the tribe's replay to a re-join, or a member's) is then
+                // a replay (`isReplay`), not our leave or join again.
+                if tribe.left {
+                    if message.fromMe, message.tag != nil,
+                       [MessageType.groupLeave, MessageType.groupJoin].contains(message.type) {
+                        commit.messages.append((message, false, decoded.fields?.originalUuid))
+                    }
+                    continue
+                }
                 // The sender pubkey is the tribe's; the alias and photo are
                 // the member's and must not rename the tribe.
                 trustSender = false
@@ -1164,8 +1181,9 @@ public actor Engine {
     }
 
     /// Messages already read by the core, committed as if the core had just
-    /// returned them (a held tribe's, once the tribe is known).
-    func replay(_ msgs: [Msg]) async throws {
+    /// returned them (a held tribe's, once the tribe is known); with
+    /// `keepMembership`, stored without changing the tribe's membership.
+    func replay(_ msgs: [Msg], keepMembership: Bool = false) async throws {
         let result = RunReturn(
             msgs: msgs, msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [], settleTopic: nil, settlePayload: nil,
             asyncpayTopic: nil, asyncpayPayload: nil, registerTopic: nil, registerPayload: nil, topics: [], payloads: [],
@@ -1175,7 +1193,7 @@ public actor Engine {
             node: nil, lastRead: nil, muteLevels: nil, payments: nil, paymentsTotal: nil, tags: nil, deletedMsgs: nil,
             newChildIdx: nil, ping: nil
         )
-        let followUps = try commit(result, time: clock.next(), expectedSender: nil)
+        let followUps = try commit(result, time: clock.next(), expectedSender: nil, keepMembership: keepMembership)
         try await complete(result, followUps)
     }
 

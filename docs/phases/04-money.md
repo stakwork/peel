@@ -26,6 +26,20 @@ notified (#51). Storage was at v13 then; it is at v21 now.
   the key still goes before the history confirms the sats (the payments
   review's follow-up, open).
 
+  ("Payments review, waiting words and the async pay"); F5's cancel, F10,
+  F11's tribe-text Retry (needs Tom) and F3's core half open.
+- Our tag replayed in a tribe: dropped before it can change membership,
+  the timeline, payments or aliases ("Our tag replayed in a tribe"); our
+  own join and leave from another device count once past it. Open: a long
+  message's earlier chunks carry tags Peel never stores (needs the core to
+  return them); a member racing our own forward with a copy of the same
+  type and words (either can still change membership here); on a
+  restore, a seller's payment-type copy with our purchase's tag (our
+  purchase never comes back) is listed as a payment of ours, display only;
+  rows
+  stored from a replay before the fix; a DM forged with a third key
+  (branch `fix/forged-from-me`).
+
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
 again; one-tap boost with the account's amount, once per message; underpaid
@@ -2145,3 +2159,192 @@ the tribe it introduces. Not applied: a cleanup of rows stored before
 (Residual), the registry check (follow-up above).
 `/security-review`: one finding, older than this change and not closed
 by it, the replay of our own signed bytes (under Residual).
+
+### Our tag replayed in a tribe (2026-10-11)
+
+The known gap above, checked against the core and the tribes server
+(`sphinx` at `caa76a12`) before any code.
+
+**The premise holds.** The core calls a message ours when its
+`encrypted_tag` opens with our account key (`dec_tag` in
+`bindings/handle_msg.rs`) or its `encrypted_date` matches (`dec_ts_matches`,
+a secret shared with the signer). The tag is sealed under our key alone and
+bound to nothing else in the message (`create_sphinx_msg`, `msg/mod.rs`).
+The tribes server keeps it on every forward, on purpose ("dont overwrite
+encrypted tag (so sender can tell they sent it)", `finalize_msg` in
+`tribes/src/forward.rs`), so **every member of a tribe receives our tag on
+every message we post there**. A member copies one into a message of their
+own and posts it; the tribe re-signs and forwards it to everyone, us
+included, and our core returns it `fromMe` with our real tag. The tribe
+sets `originalUuid` to the uuid bytes the member's message carries (which
+nothing checks against its content) and `date` to its clock
+(`mutate_msg_to_forward`), so only the tag path is open to a member;
+the date path in a tribe is the tribes server's own (the seller's purchase
+accept). Our DM signer check cannot help: the signer is always the tribe.
+
+**What a member can do with it**, reader by reader, today:
+
+| Reader | Abuse | How bad |
+|---|---|---|
+| `Engine.membership` (not in the brief's list) | A GroupLeave carrying our tag: free (no price per message on a leave), forwarded to every member, and replayed to new joiners. Peel sets `left`, then drops every later message of that tribe unstored and moves the cursor past them. A MemberRequest with our tag to a private tribe we own (the server sends requests to the owner alone) turns our own tribe `pending`. A join with our tag brings back a tribe we left (the server never removes a leaver). | **High**: one free message silences a tribe for us, without a sign. |
+| Timeline (every fromMe reader in the chat) | Any text, attachment or boost of theirs shows as written by us, on our screen only (others see their alias). No notification and no mention for it (`!fromMe` checks). | Medium: impersonation to ourselves. |
+| `PaymentHistory` (`tribeMessagesSQL`, `moneyMessagesSQL`) | A boost or payment with our tag lists as ours: "unlisted" sends show their declared amount (any figure), and one can take the tribe's keysend row to us by its hash. Balance untouched. | Medium-low: a false "you sent N sats". |
+| `echoedAliases` / `echoedOwnAliases` | Their alias joins the aliases that name us: their @mentions notify us, and an owner's approval naming them could flip a pending or removed tribe of ours to active (only locally). | Low-medium. |
+| Statuses by tag (`applyStatus`), the delete on a delivered status | The copy shares our real tag, so our send's later statuses (and a delete's) move it too. A copy moved to `PENDING` or `FAILED` would be resent as ours by Retry or the reconnect resend. Needs a status for an old tag after the replay: unlikely. | Low in practice, bad if hit. |
+| `Storage+Threads` "threads I'm in" | A reply with our tag puts any thread in our list. | Low: noise. |
+| `newestOwnPhotoURL` | Already leaves tribe chats out. | None. |
+| `reconcile` by hash | Matches `PENDING`/`UNSETTLED` sends only; a received copy has no status until a tag status moves it (row above). | Low. |
+
+**Rule.** One check where messages come in, so every reader above is
+covered at once rather than each patched: **a copy the core calls ours by a
+tag is dropped when a different message we already hold carries that
+tag.** Different means a uuid other than the copy's own (the same forward
+again, live and from history; the tribe hashes what it sends, so the member
+cannot choose it), except the one row a genuine copy takes over: our send
+in the same chat, named by `originalUuid`, with that tag and no server
+index yet. The member chooses `originalUuid` (see the security review
+below), so it excuses nothing else. It holds because a tag reaches a
+member only after the tribe has forwarded our message to us too, so the
+genuine copy is always stored first:
+
+- live: our own row has the tag from the send; on another device the
+  tribe's copy reaches us in index order before any replay of it;
+- restore: history comes oldest first (`HistoryCursor`, `reverse: false`),
+  and the batch is checked in order (tags seen earlier in the same core
+  reply count, not only stored rows);
+- a tag copied from a DM we sent is held by that DM's row (ours, or its
+  self-copy in history).
+
+Nothing in a tribe forward can bind a copy to us when we hold no row for it
+(the tribe strips the member's key; the tag and the uuid are unrelated;
+the original `date` is gone), so a first-seen tag is the best a client can
+do, and enough: the attacker cannot see a tag before we do. `tag` has been
+indexed since v1, so no migration. Untagged copies (the tribes server's own,
+by date) are unchanged. Not for a person's chat: there the sender
+chooses the uuid itself, so a replay under our row's uuid would pass;
+DMs need the signer (see the security review below).
+
+Side effect, wanted: the tribe replaying our old messages to a device that
+rejoins (new forward uuid, same tag) no longer makes a second row.
+
+Not done: rows already stored from a replay before this change stay (no
+cleanup migration; Peel's real account is days old). A genuine copy whose
+forward to us failed (`send_to_single` error) loses to a later replay of
+its tag.
+
+**Done looks like:** `Engine.commit`'s message loop drops such a copy
+(`Engine.isReplay`) before tribe discovery, membership and storage; unit tests for a replayed tag in a
+tribe (text, GroupLeave, boost, a tag from a DM), the genuine echo of our
+send, the same forward twice, two copies in one history page, and an
+untagged copy; full `swift test`; the tribe integration journeys.
+
+**Reviews.** `/code-review high`: added `ourDirectMessagesEchoIsKept` (the
+rule runs on DMs too; our echo keeps its uuid and tag) and the open edges
+to the status. Not applied: storing a replay as the member's message
+instead of dropping it. Others in the tribe may reply to it and we see a
+gap, but storing it would let a copy made from our tag into the incoming
+money and notification paths; dropping matches the DM fix. Not applied:
+one tag query per page instead of one per tagged message of ours (an
+indexed read each; revisit if restores ever show it).
+
+`/simplify`: the rule named and moved beside `membership`
+(`Engine.isReplay`), its two checks one, left out of person chats (the
+signer check covers them, and there `originalUuid` is the sender's); the
+DM echo test shares the `Msg` fixture; `isOurRequest`'s comment names
+both checks. Skipped: one `Msg` fixture shared with `InvoiceTests` (that
+file's tests belong to the previous fix); one tag query per page (above).
+
+`/security-review` found two holes, both checked against the core:
+
+- **Fixed: `originalUuid` is the member's.** `parse_sphinx_msg` takes a
+  message's uuid from its last 32 bytes and never checks it against the
+  content, and the tribes server copies it into `originalUuid`. A member
+  replaying our tag could name our row (after the echo took it over, its
+  uuid is the forward's, which every member saw) and the first version
+  excused it. Now only our send not yet given a server index, in the same
+  chat with the same tag, is excused, and within one core call only the
+  copy's own uuid. Tests: the replays naming our row, an earlier forward
+  in the page and a DM row.
+- **Open, owned by the branch `fix/forged-from-me`:** the DM check above
+  drops a copy signed by the chat's person, but a contact can sign with
+  any other key (`sentTo` comes from the key index the onion reached, not
+  the signer) and pass it. The core's date path also calls a message ours
+  when it carries no `date` and no `encrypted_date` (`dec_ts` gives `None`,
+  and `None == None`), so no tag is needed. The sound rule is "signed by
+  our key", which that branch builds; the date path is a core bug to
+  raise upstream.
+
+**Independent review** (an agent that did not write the change, briefed
+to find problems). It found the first-copy rule weaker than this plan
+claimed, all confirmed in the code:
+
+- A reassembled chunk takes its uuid from the sender's `chunk_id`
+  (`sphinx-ffi/src/chunk.rs`), so "the tribe hashes what it sends" is
+  false for chunks: a one-fragment chunk under our row's uuid passed as
+  the same copy. **Fixed:** one copy is its uuid at its server index.
+- Our purchase (to the seller alone) and our join request (to the owner
+  alone) never come back, so their rows keep no server index and the
+  takeover excuse never closed: the seller could name the row and post a
+  leave. **Fixed:** the excuse needs the same type and words too.
+- A long message of ours goes out in chunks, each with its own tag, and
+  Peel keeps only the last: a member holds tags we never see, so a first
+  copy can be theirs. And the tribes server forwards concurrently, so a
+  fast member could race our own forward. The first version of this
+  branch therefore stopped taking our leave from the network, and our
+  join except on a restore. **Superseded (2026-10-12, Tom):** membership
+  follows the account across devices, as in the official apps, so our
+  own join and leave that arrive (on a restore, or from another device)
+  count again once past `isReplay`; our request still counts only when
+  sent from here (the tribe forwards a request to the owner alone, so a
+  copy reaches us only to forge our own tribe's status). Open, accepted
+  by Tom: a member who replays a tag from one of our long message's
+  earlier chunks, or races our own forward with a copy of ours, can still
+  make us leave a tribe here (or rejoin one we left). Nothing is paid
+  either way; a leave only hides the tribe, and leaving or joining again
+  is in the person's hands.
+- Tests: the takeover clause and the person gate were not exercised.
+  Now a replay naming our taken-over row and the chunk-uuid copy run in
+  their own core calls, and the purchase row has its own test; the DM
+  echo test says what it covers (a chat not held as a person).
+- Pending contact (a `c/` entry without a contact key yet): neither the
+  signer check nor this rule fits; it belongs with `fix/forged-from-me`.
+- A re-join's replay of the tribe's last messages comes newest first
+  (`reverse: true`, `replay_batch_req` in the tribes server), our old
+  leave among them at a new index. With leaves counted again (Tom,
+  2026-10-12), our leave is now kept though the tribe is left, so its tag
+  is held and the replayed copy is a replay; the joins and leaves held
+  for a tribe known meanwhile (`replayHeld`) are stored for the same
+  reason, without changing membership. Test
+  `ourOldLeaveReplayedAfterARejoinIsNotALeave` (fails without it).
+  A copy of our join or leave never takes over our row by its words
+  (every one has none), so the tribe's own forward of a join sent here is
+  dropped too: the row is settled by the server's tag records, and an
+  alias the tribe gave us on that join (`name_2`) is learnt only from our
+  first post that comes back. Noted, not changed.
+
+Still open, for the timeline, payments and aliases (not membership): the
+chunk tags, and the race above. Both need more than a client rule: the
+core returning every chunk's tag, and binding the tag to the message
+(the core's `encrypted_tag` carries nothing of the uuid).
+
+**Re-review** (the same reviewer, on the fixes). Merge verdict: fine once
+Tom accepts the restore change below. Applied: a join of ours that
+arrives counts only on a restore (a forged one could bring back a tribe
+we left, or turn `.removed` and `.rejected` back to active); our unsent
+row matches a copy under its own uuid only with its type and words too
+(a chunk under our purchase's uuid could take it over); test
+`aCopyWithOtherWordsTakesOverNothing`. Checked sound: our row's words are
+the body's (`BodyFields`) and the tribe keeps them, so a genuine forward
+always matches.
+
+**Tom's decision (2026-10-12):** a tribe left on another device, or
+before a restore, stays left, and one joined on another device is joined
+here (`fix/forged-from-me`, "A tribe joined live on another device"),
+with the two gaps above open. Journey
+`Tribes.aTribeJoinedAndLeftOnOneDeviceFollowsOnTheOther`.
+
+Still open, noted: a first-seen chunk tag (or the seller's copy of our
+purchase) still adds the member's alias to our echoed aliases, so their
+@mentions notify us; a long message of ours seen live and then from
+history can come at two indices (the completing chunk's) and the second
+is skipped, losing nothing.

@@ -116,6 +116,32 @@ extension Storage {
         try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }
     }
 
+    /// Whether a message other than `copy` carries its send tag. The same
+    /// message is its uuid at its server index, or our send not yet given
+    /// one (its echo), of the same type and words. Also left out: the row a tribe's
+    /// copy takes over, our send in its chat named by `original`, with the
+    /// same tag, type and words, not yet given a server index. A join or
+    /// leave has no words (every one is ""), so neither of those last two
+    /// counts for one: a copy of our join or leave sent here is a replay,
+    /// harmlessly for the tribe's own forward, as the join or leave is
+    /// already recorded here.
+    func holdsTag(_ tag: String, besides copy: Message, takingOver original: String?) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM message WHERE tag = ?1
+                        AND NOT (uuid IS ?2 AND (serverIndex IS ?3
+                            OR (serverIndex IS NULL AND type = ?6 AND content IS ?7 AND ?6 NOT IN (?8, ?9))))
+                        AND NOT (?4 IS NOT NULL AND uuid = ?4 AND chat = ?5 AND fromMe = 1 AND serverIndex IS NULL
+                            AND type = ?6 AND content IS ?7 AND ?6 NOT IN (?8, ?9)))
+                    """,
+                arguments: [tag, copy.uuid, copy.serverIndex, original, copy.chat, copy.type, copy.content,
+                            MessageType.groupJoin, MessageType.groupLeave]
+            ) ?? false
+        }
+    }
+
     /// Every stored tribe, joined or left: the subquery for "is this chat a tribe".
     static let tribeChats = "SELECT pubkey FROM tribe"
 

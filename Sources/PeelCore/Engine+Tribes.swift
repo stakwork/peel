@@ -497,16 +497,17 @@ extension Engine {
     }
 
     /// What was held in a tribe that became known meanwhile (joined here),
-    /// committed as usual, but for joins, leaves and the owner's answers:
-    /// older than what this device did since, they must not undo it (a
-    /// leave from before would hide a tribe just joined, and paid for, here).
+    /// stored as usual, without changing its membership: older than what
+    /// this device did since, it must not undo it (a leave from before would
+    /// hide a tribe just joined, and paid for, here). Stored all the same, so
+    /// the tags of our joins and leaves there are held (`isReplay`). The
+    /// owner's role on them is not taken either: a tribe joined here
+    /// already knows whether we own it.
     private func replayHeld(_ pubkey: String) async {
         guard let held = tribeWork.held[pubkey] else { return }
         dropHeld(pubkey)
-        let membership = [MessageType.groupJoin, MessageType.groupLeave, MessageType.memberRequest,
-                          MessageType.memberApprove, MessageType.memberReject, MessageType.groupKick].map(UInt8.init)
         do {
-            try await replay(held.msgs.filter { !membership.contains($0.type ?? 0) })
+            try await replay(held.msgs, keepMembership: true)
         } catch {
             emit.yield(.coreError("saving tribes: \(PeelError.readable(error))"))
         }
@@ -522,11 +523,43 @@ extension Engine {
         tribeWork.notListed.insert(pubkey)
     }
 
+    /// Whether a copy the core calls ours by its tag is a member's replay of
+    /// it. Our tag opens as ours whoever sends it (`dec_tag`), and a tribe
+    /// forwards it to every member on each of our messages. A tag reaches
+    /// them only after the tribe has forwarded our message to us too, and
+    /// history comes oldest first, so the first copy with a tag is ours and
+    /// a later one (another uuid, or the same at another server index) is
+    /// a replay. Not always: a purchase or a join request goes to one
+    /// member, a long message's earlier chunks carry tags we never store,
+    /// and a fast member can race our own forward: open gaps, through which
+    /// a member can still change our membership (`membership`). The member chooses the uuid
+    /// bytes, hence `originalUuid`, and a chunk's uuid, so `original`
+    /// counts only as our send not yet taken over, of the same type and
+    /// words (`Storage.holdsTag`). `taken` holds the tags already taken in this
+    /// core call, not yet stored. Checked before the copy names a tribe,
+    /// changes our membership or aliases, or is stored. A person's chat is
+    /// left to the signer check (`message(from:)`).
+    func isReplay(
+        _ message: Message, original: String?, state: [String: Data], taken: inout [String: String]
+    ) throws -> Bool {
+        guard message.fromMe, let tag = message.tag, Self.isPerson(message.chat, in: state) != true else { return false }
+        // One delivery: its uuid at its server index (a chunked message's
+        // uuid is the sender's own `chunk_id`, so a uuid alone is not one).
+        let delivery = "\(message.uuid ?? "")@\(message.serverIndex.map(String.init) ?? "")"
+        if let first = taken[tag] { return first != delivery }
+        if try storage.holdsTag(tag, besides: message, takingOver: original) { return true }
+        taken[tag] = delivery
+        return false
+    }
+
     /// What a tribe message says about this account's place in the tribe,
     /// or nil if nothing changes. Our own join or leave (replayed on a
-    /// restore, or sent from another device) says whether we are in it; our
-    /// own request to join comes back only from this device's send, since
-    /// the tribe forwards it to the owner alone. The owner's answers reach a
+    /// restore, or sent from another device of this account) says whether
+    /// we are in it, as membership follows the account across devices: a
+    /// member's replay of our tag is dropped before this (`isReplay`). Our
+    /// own request counts only as sent from this device, which records it:
+    /// the tribe forwards a request to the owner alone, so a copy reaches us
+    /// only to forge our own tribe's status. The owner's answers reach a
     /// member from the tribe itself: a rejection or a removal, which the
     /// tribes server sends only to that member and the owner, and the
     /// tribe's deletion. Someone else's join never concerns us. The owner's
@@ -552,9 +585,10 @@ extension Engine {
         var changed = tribe
         if message.fromMe {
             if message.senderInfo?.role == 0 { changed.isOwner = true }
+            // Our own request is recorded when sent (`joinTribe`); a copy
+            // that arrives is a member's, with our tag.
             switch message.type {
             case MessageType.groupJoin: changed.left = false; changed.status = .active
-            case MessageType.memberRequest: changed.left = false; changed.status = .pending
             case MessageType.groupLeave: changed.left = true
             default: break
             }

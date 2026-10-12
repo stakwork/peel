@@ -1033,9 +1033,10 @@ public actor Engine {
         }
     }
 
-    /// What a money send whose publish ended `.unknown` reports.
-    static func mayHaveGone(_ error: any Error) -> String {
-        "The connection failed while sending; the payment may have gone. "
+    /// What a money send whose publish ended `.unknown` reports: `what`
+    /// went, a payment, or a message that paid a tribe's price.
+    static func mayHaveGone(_ error: any Error, what: String = "payment") -> String {
+        "The connection failed while sending; the \(what) may have gone. "
             + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
     }
 
@@ -1257,9 +1258,10 @@ public actor Engine {
     /// Asks the server what became of sends still pending here, as the Mac
     /// app does on start: a status published while this device was offline
     /// (an async payment redeemed later, say) is not sent again.
-    /// A payment the server has no record of this long after it was sent
-    /// never reached it (the mixer records every send it handles, an async
-    /// one as pending), so it is marked failed and may be sent again.
+    /// A payment (or a message that paid a tribe's price) the server has no
+    /// record of this long after it was sent never reached it (the mixer
+    /// records every send it handles, an async one as pending), so it is
+    /// marked failed and may be sent again.
     /// Also asks about every message a reconnect may send again by itself
     /// (`autoResendCandidates`), failed ones too, as a send can fail here
     /// after it left: `resendRecent` sends only those the records do not name.

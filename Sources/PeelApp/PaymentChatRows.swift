@@ -167,8 +167,9 @@ private struct BoostersPanel: View {
     }
 }
 
-/// "Waiting for the server…" once our payment or boost has gone unconfirmed
-/// past the usual wait; to a person (`person`, a direct message's chat)
+/// "Waiting for the server…" once our payment or boost, or a message that
+/// paid a tribe's price, has gone unconfirmed past the usual wait; for a
+/// payment to a person (`person`, a direct message's chat)
 /// "Waiting for Bob to come online", since their server holds the sats
 /// until their app answers. It may have paid, so there is no Discard or
 /// Retry until the engine marks it failed; Peel has no way to cancel it

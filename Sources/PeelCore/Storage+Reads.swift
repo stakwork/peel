@@ -295,20 +295,26 @@ extension Storage {
         return balance > waiting ? balance - waiting : 0
     }
 
+    /// `Message.mayHavePaid` for a row of ours: it left (a tag) with sats.
+    static let mayHavePaidSQL =
+        "(tag IS NOT NULL AND (type IN (\(MessageType.sqlList(MessageType.moneySends))) OR COALESCE(msat, 0) > 0))"
+
     /// A send tracked by tag that the server has not confirmed or refused.
     struct PendingSend: Hashable {
         var tag: String
         /// When it was sent or written, in milliseconds since 1970.
         var createdAt: Int64
-        /// It pays: a payment, boost or purchase, an invoice we pay or an
-        /// invite's funding payment, so one the server never recorded failed
+        /// It pays: a payment, boost or purchase, a message that paid a
+        /// tribe's price, an invoice we pay or an invite's funding payment,
+        /// so one the server never recorded failed
         /// (`Message.unrecordedPaymentTimeout`).
         var movesMoney: Bool
     }
 
     /// Every send the server has not confirmed or refused, from the three
-    /// tables that track one by tag: our payments, boosts and purchases, and
-    /// text that has waited past `cutoff` (newest first, at most 200,
+    /// tables that track one by tag: our payments, boosts and purchases,
+    /// messages that paid a tribe's price, and other text that has waited
+    /// past `cutoff` (newest first, at most 200,
     /// `message_pending`); our payments, boosts and purchases with no status
     /// at all, which came from history or another device (newest first, at
     /// most 200; payments review F4), never failed for want of a record:
@@ -322,9 +328,9 @@ extension Storage {
                 db,
                 sql: """
                     SELECT * FROM (
-                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, type IN (\(moneySends)) AS movesMoney
+                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, \(Self.mayHavePaidSQL) AS movesMoney
                         FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
-                            AND (type IN (\(moneySends)) OR timestamp < ?)
+                            AND (\(Self.mayHavePaidSQL) OR timestamp < ?)
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, COALESCE(timestamp, 0), 0

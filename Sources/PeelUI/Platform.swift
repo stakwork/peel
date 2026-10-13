@@ -105,7 +105,8 @@ public protocol WebPresenting: AnyObject {
 /// imports both it and PeelCore inherits the `RustBuffer` header clash.
 @MainActor
 public protocol CallProvider {
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall
+    /// Throws where this device cannot join calls (the iPhone, until I6).
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall
 }
 
 /// The call this device is on.

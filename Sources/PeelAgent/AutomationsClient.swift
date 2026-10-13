@@ -33,6 +33,9 @@ public struct Automation: Sendable, Equatable, Identifiable {
     /// A one-off that ran, or whose time passed while it was on. strut gives
     /// a paused automation no next run either, but a paused one is not done.
     public var isDone: Bool { isOnce && nextRun == nil && (lastRun != nil || enabled) }
+    /// A one-off whose time passed with no run: the Mac was asleep, or strut
+    /// or Peel was not running then. strut never runs it late.
+    public var isMissed: Bool { isDone && lastRun == nil }
     /// Enabled and due, but strut's clock let the time pass: its scheduler is off.
     public func isOverdue(now: Date = .now) -> Bool {
         enabled && !running && (nextRun.map { $0 < now.addingTimeInterval(-90) } ?? false)

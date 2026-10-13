@@ -148,10 +148,18 @@ use the same strut base URL and the same `Web.isThisMac` check:
   (`AutomationsLink` in `Sidebar.swift`, `Destination.automations`). Its
   quiet outline badge counts automations whose last run did not finish.
 - **List view:** one row per automation, with its name, the schedule
-  sentence, the next run, and the last run's status (ran, failed, running).
-  Paused automations are dimmed. At the top is a "New automation" field.
-  Typing there and pressing Return opens the agent chat with that text, so
-  there is one creation path and one approval card.
+  sentence, the next run, and the last run's status (ran, failed, missed,
+  running). Paused automations are dimmed. There is no field to add one:
+  automations are made by asking the agent, so there is one way to make
+  one and one approval card.
+- **Empty states** (approved on the "Peel Automations empty states"
+  canvas, A, 2026-10-13): no model connected → "Set up Peel's agent", with
+  Set up opening the Connect panel; no strut → "Connect strut", with Open
+  Account; nothing yet → "No automations", with Ask Peel opening the agent
+  chat.
+- **Missed:** a one-off whose time passed with no run (the Mac asleep,
+  strut or Peel not running) shows "Missed" under Done, not as if it ran.
+  strut never runs it late; Run now does.
 - **Detail view:** a row opens in place: the prompt (editable), Pause or
   Resume, Run now, and Delete (in its menu, confirmed by a second click).
   Below them is run history from strut's runs for this automation, each
@@ -251,9 +259,9 @@ POST /automations/run   Authorization: Bearer <token>
 - **Read text steering the agent.** A headless run has no tool that sends
   to anyone but you. Text in a read chat can at worst change what you are
   told.
-- **Cost.** Every run is a model call over possibly many messages. The
-  run's token cost is shown in its history. strut's `maxRunCostUsd` on
-  `peel-automation` caps a run.
+- **Cost.** Every run is a model call over possibly many messages. v1
+  shows no cost per run and sets no cap; strut's `maxRunCostUsd` on
+  `peel-automation` could cap a run later.
 - **The loopback endpoint.** It is bound to 127.0.0.1, needs the token,
   and does nothing but run the automation prompt it was given.
 

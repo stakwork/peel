@@ -117,6 +117,18 @@ struct AutomationsClientTests {
         #expect(!reminder.isDone)
         reminder.lastRun = Automation.LastRun(runId: "1", status: "success", startedAt: nil)
         #expect(reminder.isDone)
+        #expect(!reminder.isMissed)
+    }
+
+    /// A one-off whose time passed with no run (the Mac asleep) is missed,
+    /// not done as if it ran; one that ran is not.
+    @Test func aReminderWhoseTimePassedUnrunIsMissed() throws {
+        let reminder = try automations()[1]
+        #expect(reminder.isDone && reminder.isMissed)
+        #expect(tools.describe(reminder).contains("missed"))
+        var paused = reminder
+        paused.enabled = false
+        #expect(!paused.isMissed)
     }
 
     // MARK: The tools

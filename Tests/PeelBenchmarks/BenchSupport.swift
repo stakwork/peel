@@ -35,11 +35,12 @@ enum Bench {
 final class BenchProfile {
     let url: URL
 
-    /// `name` names a directory each run reuses, cleared first: for a
-    /// profile kept to the end of the process, which never deinits.
-    init(name: String = UUID().uuidString) {
-        url = FileManager.default.temporaryDirectory.appendingPathComponent("PeelBench-\(name)", isDirectory: true)
-        try? FileManager.default.removeItem(at: url)
+    /// A `name` gives a directory each run reuses, cleared first: for the
+    /// shared profile, which is never released to remove its own.
+    init(name: String? = nil) {
+        url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PeelBench-\(name ?? UUID().uuidString)", isDirectory: true)
+        if name != nil { try? FileManager.default.removeItem(at: url) }
     }
 
     func storage() throws -> Storage { try Storage(directory: url) }

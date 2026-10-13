@@ -721,7 +721,8 @@ extension Storage {
         } update: { db, row in
             let noWords = Message.hasNoWords(type: row["type"], content: row["content"])
             if noWords != row["noWords"] {
-                try db.execute(sql: "UPDATE message SET noWords = ? WHERE id = ?", arguments: [noWords, row["id"] as Int64])
+                try db.cachedStatement(sql: "UPDATE message SET noWords = ? WHERE id = ?")
+                    .execute(arguments: [noWords, row["id"] as Int64])
             }
         }
         try set(Self.noWordsVersion, for: .noWordsScan)

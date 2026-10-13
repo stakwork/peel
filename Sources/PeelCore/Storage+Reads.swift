@@ -57,8 +57,8 @@ extension Storage {
                     SELECT id, chat, content, mentionsMe FROM message
                     WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
                       AND type IN (\(MessageType.contentSQL)) AND +chat IN (\(Self.tribeChats)) \(only)
-                      -- Without an "@" nothing is a mention: only a row marked one can change.
-                      AND (instr(content, '@') > 0 OR mentionsMe = 1)
+                      -- `mentions` needs an "@": without one only a row marked a mention can change.
+                      AND (mentionsMe = 1 OR instr(content, '@') > 0)
                     ORDER BY id LIMIT ?
                     """,
                 arguments: [after] + StatementArguments(Array(chats ?? [])) + [chunk]

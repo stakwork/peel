@@ -148,9 +148,10 @@ struct StorageTests {
         }
         let message = try #require(try storage.message(uuid: "u1", in: Message.fixture().chat))
         for child in Mirror(reflecting: message).children {
-            // Every flag is set, and every optional is filled (nil prints as "nil").
+            // Every flag is set, and every optional is filled.
             if let flag = child.value as? Bool { #expect(flag, "\(child.label ?? "?") not read") }
-            #expect(String(describing: child.value) != "nil", "\(child.label ?? "?") not read")
+            let value = Mirror(reflecting: child.value)
+            #expect(value.displayStyle != .optional || !value.children.isEmpty, "\(child.label ?? "?") not read")
         }
     }
 

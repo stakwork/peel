@@ -332,8 +332,8 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 }
 
 extension Message {
-    /// Read by hand rather than through `Decodable`, several times faster on
-    /// the reads every write re-runs: every stored property, by column name.
+    /// Read by hand: several times faster than `Decodable` on the reads every
+    /// write re-runs. Must read every stored property.
     public init(row: Row) throws {
         id = row["id"]
         uuid = row["uuid"]

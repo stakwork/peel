@@ -21,7 +21,7 @@ layout, a conversation with an inspector panel, an agent inbox home) were
 mocked and rejected on 2026-10-07.
 
 Colours and type are Sphinx's, because Peel is meant to replace the official
-apps. The sidebar header is you (photo, name, balance) and Peel's menu since
+apps. The sidebar header is you (photo, name, balance), opening Account, since
 option S2; the Peel logo shows only on the lock and welcome screens.
 
 ## Layout
@@ -33,11 +33,9 @@ then the sidebar collapses; panels never overlay the conversation.
 
 Top to bottom:
 
-1. **You, on top** (option S2, Tom, 2026-10-07: like a workspace
-   switcher). Your photo, your name with a chevron, and the balance in sats
-   under it. Clicking it opens Peel's menu: your name, short key and balance,
-   then "Account…" (⌘,) and "Copy contact info". "Receive sats" and "Invite
-   someone" join it when they are built. On the right, Sphinx's connection
+1. **You, on top** (option S2, Tom, 2026-10-07). Your photo, your name,
+   and the balance in sats under it. Clicking it opens the Account screen,
+   as Account… (⌘,) does; no menu (Tom, 2026-10-12). On the right, Sphinx's connection
    bolt: green when connected, orange otherwise; clicking it shows the state,
    the retry countdown and the last connection error.
 2. **Search.** One field over every conversation.
@@ -267,10 +265,7 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
 - **The words checked** are a setting of the account (`wordsConfirmed`),
   never the words: set by that check, by the same check from Account's
   "Twelve words" row (after the PIN), or by a restore. Accounts from
-  before it count as not checked. While one holds sats unchecked, a
-  neutral note at the foot of the sidebar (a `Callout`), "Check your
-  twelve words", has a Check words link that opens the check; no colour,
-  as a state rather than an alarm, and not beside the Account screen.
+  before it count as not checked.
   Forget on the lock screen says first that the account holds sats, when
   its last balance says so, and that without the words it and its sats
   cannot be brought back; otherwise "this account and any sats it holds".
@@ -594,8 +589,6 @@ Built so far:
     and Leave or Remove from Peel at the end.
   - Not enough sats and an expired invoice: `.attention` with a title
     and a link.
-  - The sidebar's reminder to check the twelve words: `.neutral` with a
-    title, a key and a link.
   - The web pane's download (under way, saved with Show in Finder, or
     failed): a bar in the strip along the pane's foot, under way and
     saved on one line.

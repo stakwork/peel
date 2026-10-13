@@ -51,7 +51,6 @@ struct AccountView: View {
                             PINTimeoutRow()
                         }
                         WordsRow()
-                            .id(WordsRow.id)
                         WebsiteDataRow()
                     }
                     SettingsSection("Notifications") {
@@ -75,12 +74,6 @@ struct AccountView: View {
             // Opened from the agent chat's settings: at its section.
             .onAppear { showAgentSettings(proxy) }
             .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
-            // The sidebar's reminder opened the words check.
-            .task(id: model.wordsCheckRequested) {
-                guard model.wordsCheckRequested else { return }
-                try? await Task.sleep(for: .milliseconds(100))
-                proxy.scrollTo(WordsRow.id, anchor: .center)
-            }
             }
         }
         .endsEditingOnClick()
@@ -335,7 +328,6 @@ private struct PINTimeoutRow: View {
 private struct WordsRow: View {
     @Environment(AppModel.self) private var model
 
-    static let id = "words"
     private static let shownFor: TimeInterval = 30
 
     @State private var askingPIN = false
@@ -400,10 +392,6 @@ private struct WordsRow: View {
                 ProblemText(problem)
                     .padding([.horizontal, .bottom], settingsRowPadding)
             }
-        }
-        // The sidebar's reminder asked for the check.
-        .task(id: model.wordsCheckRequested) {
-            if model.wordsCheckRequested, words.isEmpty, !askingPIN { start(checking: true) }
         }
         .onDisappear { hide() }
         #if os(macOS)
@@ -537,7 +525,6 @@ private struct WordsRow: View {
         visible = false
         confirmingCopy = false
         copiedAt = nil
-        model.wordsCheckRequested = false
     }
 }
 

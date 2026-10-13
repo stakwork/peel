@@ -156,8 +156,7 @@ final class OffscreenDriver {
     /// Retry; `agent-view`, the first View in its newest reply;
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
     /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
-    /// `agent-remove-key`, Account's Remove key once confirmed;
-    /// `check-words`, the words check (the sidebar's reminder).
+    /// `agent-remove-key`, Account's Remove key once confirmed.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -208,9 +207,6 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
-        case "check-words":
-            // A click on the sidebar's reminder to check the twelve words.
-            model.checkWords()
         default:
             throw Failure(description: "nothing to open named \(name)")
         }

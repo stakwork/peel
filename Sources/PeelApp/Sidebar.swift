@@ -103,7 +103,6 @@ struct Sidebar: View {
                 model.sidebarHasKeys = true
                 focused = true
             }
-            WordsReminder()
             if let call = model.call {
                 OnCallBar(call: call)
             }
@@ -258,94 +257,39 @@ extension EnvironmentValues {
     @Entry var sidebarClicked: @MainActor () -> Void = {}
 }
 
-/// You, at the top of the sidebar like a workspace switcher: your photo,
-/// name and balance, opening a menu with the account screen and your
-/// contact info; the connection bolt beside it.
+/// You, at the top of the sidebar: your photo, name and balance, opening
+/// the Account screen; the connection bolt beside it.
 struct SidebarHeader: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.menuPresenter) private var presenter
 
-    @State private var anchor = MenuAnchor()
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                presenter?.show(entries, at: anchor, source: "you")
+                model.destination = .account
             } label: {
                 HStack(spacing: 9) {
                     Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.lg, hue: model.myHue)
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Text(model.me.name)
-                                .font(Theme.font(15, .bold))
-                                .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
+                        Text(model.me.name)
+                            .font(Theme.font(15, .bold))
+                            .lineLimit(1)
                         BalanceLabel(money: model.money, waitingMsat: model.waitingMsat)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, Theme.Space.xs)
-                .background(hovering || presenter?.source == AnyHashable("you") ? Theme.hover : .clear,
+                .background(hovering || model.destination == .account ? Theme.hover : .clear,
                             in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .menuAnchor(anchor)
-            .help("You")
+            .help("Account")
             ConnectionBolt()
         }
-    }
-
-    /// Who you are (name, short key, balance), the account screen and your
-    /// contact info. Receiving sats and invites join it when they are built.
-    private var entries: [MenuEntry] {
-        let detail = [model.myPubkey.map { "\($0.prefix(6))…\($0.suffix(4))" },
-                      model.balanceText].compactMap { $0 }.joined(separator: " · ")
-        var actions: [MenuEntry] = [
-            .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
-        ]
-        if let info = model.myContactInfo {
-            actions.append(.copy("Copy contact info", text: info))
-        }
-        return .sections(
-            [.view(AnyView(MenuIdentity(name: model.me.name, detail: detail, photoURL: model.myPhotoURL,
-                                        hue: model.myHue)))],
-            actions
-        )
-    }
-}
-
-/// The header of the "you" menu: photo, name, short key and balance.
-private struct MenuIdentity: View {
-    let name: String
-    let detail: String
-    let photoURL: String?
-    let hue: PersonHue
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Avatar(name: name, url: photoURL, size: Theme.AvatarSize.lg, hue: hue)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                    .font(Theme.font(14, .bold))
-                    .lineLimit(1)
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(.horizontal, Theme.Space.sm)
-        .padding(.vertical, 6)
     }
 }
 
@@ -677,29 +621,6 @@ struct ConnectionCard: View {
     private static func countdown(to at: Date, now: Date) -> String {
         let seconds = max(0, Int(at.timeIntervalSince(now).rounded(.up)))
         return seconds > 0 ? "Offline, retrying in \(seconds)s" : "Offline, retrying"
-    }
-}
-
-/// At the foot of the sidebar while the account holds sats and its twelve
-/// words were never checked (`AppModel.remindsToCheckWords`), except beside
-/// the Account screen, whose words row says the same: a neutral note whose
-/// link opens the check there. Quiet, as a state rather than an alarm. It
-/// reads the balance itself, so a change redraws only the note.
-struct WordsReminder: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        if model.remindsToCheckWords, model.destination != .account {
-            Callout(
-                .neutral, "Check your twelve words",
-                detail: "Without them, this account and its sats can't be brought back.",
-                icon: .symbol("key", Theme.secondaryText)
-            ) {
-                Button("Check words", action: model.checkWords)
-                    .buttonStyle(.peel(.link))
-                    .help("Type three of your words back on the Account screen")
-            }
-        }
     }
 }
 

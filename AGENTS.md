@@ -197,7 +197,9 @@ is a short plan. Update the status and the journal when you finish something.
     registry, the config): ephemeral sessions (also the memes server's), the
     size-limited `Transfer` (also the memes and call servers') and its
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
-    "public https, or http to this machine" (`isAllowed`, `isThisMac`)
+    "public https, or http to this machine" (`isAllowed`, `isThisMac`);
+    `postToThisMac`, a JSON POST to a server on this Mac only, following no
+    redirect (the agent's memory)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -213,7 +215,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+TimeZones` (sender zones, local times, the zone setting) and
   `AppModel+Agent` (opening the account's `AgentSession`, its tools and
   system prompt, the key kept through `Profile.agentCredential`, the tool
-  rows' titles);
+  rows' titles, and the memory tools when `defaults write dev.peel.mac
+  memoryServer http://127.0.0.1:<port>` names a strut on this Mac, on any
+  profile: an experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -327,8 +331,10 @@ is a short plan. Update the status and the journal when you finish something.
     `OpenAICompatibleProvider` (Chat Completions: OpenAI, OpenRouter),
     `ModelHTTP` (the one shared session, no cookies, cache or redirects;
     https only; `Secret`, a key that prints as "[key]"; the streamed body) and `ServerSentEvents` (the SSE parser)
-  - `Loop/` — `Tool` (with its read or send effect, and `Plan`: a result
-    at once or an action to approve) and `ToolRegistry`,
+  - `Loop/` — `Tool` (with its read, send or write effect, whose `asks`
+    and `runsSideBySide` are exhaustive so a new effect must decide: only
+    send asks, only read runs beside others; and `Plan`: a result at once
+    or an action to approve) and `ToolRegistry`,
     `ContextWindow` (the recent turns that fit a budget, tokens estimated
     at three UTF-8 bytes each), `RetryPolicy` (when a failed model call is
     made again on its own, and how long it waits), `Compaction` (when older
@@ -370,6 +376,18 @@ is a short plan. Update the status and the journal when you finish something.
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app and the CLI open it
+  - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
+    strut on this Mac owns (`docs/agent-brain.md`): one memory step run by
+    `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
+    arguments as the run's `input` under the config `{{ input }}` (strut
+    templates any config, so memory text never goes as one), strut's reply
+    read back, a step's own refusal as the failure, cleaned to one line
+  - `MemoryTools.swift` — `remember`, `forget_memory`, `merge_memory`
+    (effect write: never asks) and `recall`, `read_memory`,
+    `memory_ontology` (reads), each one strut step; the vocabulary is only
+    strut's; `created_by` is set here, never by the model; a result is one
+    cleaned line (the row's summary) then the JSON between the chat-data
+    markers
   - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
     message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
     model is told to write it, and the one at the end of a send row's
@@ -407,7 +425,9 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters) and
   `AgentMessageLinkTests` (the agent's message links and a send row's
-  link, only the one at the end); the audits'
+  link, only the one at the end) and `MemoryToolsTests` (this Mac only,
+  the POST included; strut's replies and refusals; which tools write; the
+  rows' lines; the markers; `created_by`); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
@@ -425,7 +445,7 @@ is a short plan. Update the status and the journal when you finish something.
   summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
   failures and Retry, connecting, the key, reopening, Clear) and
   `ApprovalTests` (the loop with a scripted approver, the gate's rules,
-  the session's card); `TestSupport` (the scripted provider and approver,
+  the session's card, writes that never ask and finish before a later read starts); `TestSupport` (the scripted provider and approver,
   the in-memory credential, a connected session, `StreamCase`). No test
   calls a model provider or uses a real key
 - `scripts/record-agent-fixtures.sh` — records one provider's real streams

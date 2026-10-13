@@ -54,6 +54,8 @@ public enum Web {
     }
 
     private static let session = session(requestTimeout: 30, resourceTimeout: 60, redirect: publicOnly)
+    /// For a server on this Mac: no redirect is followed, anywhere.
+    private static let thisMacSession = session(requestTimeout: 30, resourceTimeout: 60) { _, _ in nil }
 
     /// Bytes moved so far and in all, reported at most every 5% or 250 ms
     /// (and always at the end).
@@ -171,13 +173,26 @@ public enum Web {
         return try await Transfer(limit: limit, what: what, progress: nil).run(session.dataTask(with: url)).0
     }
 
+    /// `POST url` with a JSON body to a server on this Mac (the agent's
+    /// memory, a local strut): its reply if the answer is 200 and at most
+    /// `limit` bytes. Anywhere else is refused before anything is sent, and
+    /// a redirect is never followed.
+    public static func postToThisMac(_ url: URL, json body: Data, limit: Int, what: String) async throws -> Data {
+        guard isThisMac(url) else { throw PeelError("\(url.host ?? "the host") is not this Mac") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        return try await Transfer(limit: limit, what: what, progress: nil).run(thisMacSession.dataTask(with: request)).0
+    }
+
     /// A public https host, or this machine over http (the local test stack).
     static func isAllowed(_ url: URL) -> Bool {
         isThisMac(url) || isPublic(url)
     }
 
     /// Plain http to this machine: the local test stack.
-    static func isThisMac(_ url: URL?) -> Bool {
+    public static func isThisMac(_ url: URL?) -> Bool {
         url?.scheme == "http" && url?.host.map(ServerAddress.isLoopback) == true
     }
 

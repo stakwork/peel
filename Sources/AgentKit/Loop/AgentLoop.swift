@@ -29,7 +29,7 @@ public struct AgentLoop: Sendable {
     public var summary: String?
     /// The most characters of a tool's result the model is sent.
     public var maxToolResultCharacters = 50_000
-    /// Asked before every call of a tool that acts (`Tool.Effect.send`);
+    /// Asked before every call of a tool whose effect asks (`Tool.Effect.asks`);
     /// with none, such calls are refused.
     public var approver: (any ToolApprover)?
     /// When a failed model call is made again on its own.
@@ -188,7 +188,7 @@ public struct AgentLoop: Sendable {
         let resolved = calls.map { $0.malformedInput == nil ? tools[$0.name] : nil }
         // A call with no tool to run (unknown, malformed) only answers: it
         // goes with the reads rather than splitting them.
-        let isRead = resolved.map { ($0?.effect ?? .read) == .read }
+        let isRead = resolved.map { ($0?.effect ?? .read).runsSideBySide }
         var outputs = [(output: String, failed: Bool)?](repeating: nil, count: calls.count)
         var next = 0
         while next < calls.count, !Task.isCancelled {
@@ -244,8 +244,8 @@ public struct AgentLoop: Sendable {
             case .result(let result):
                 output = result.text
             case .action(let intent, let run):
-                // Reads run side by side; only a tool declared to act may, one at a time.
-                guard tool.effect != .read else { return ("Not run: a read tool may not act.", true) }
+                // Reads run side by side; only a tool declared to ask may act, one at a time.
+                guard tool.effect.asks else { return ("Not run: a \(tool.effect.rawValue) tool may not act.", true) }
                 let outcome = await approver?.approve(ApprovalRequest(callID: call.id, tool: call.name, intent: intent))
                 if let refusal = ApprovalOutcome.refusal(outcome, of: intent) { return refusal }
                 output = try await run().text

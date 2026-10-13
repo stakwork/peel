@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import AgentKit
 
@@ -59,6 +60,30 @@ struct LoopApprovalTests {
         _ = await loop(provider, tools: [echoTool()], approver: approver).run(history: [], message: "echo")
         #expect(approver.requests.isEmpty)
         #expect(results(provider).map(\.content) == [#"{"n":1}"#])
+    }
+
+    @Test func writesNeverAskAndRunAlone() async throws {
+        let order = Mutex<[String]>([])
+        let remember = Tool(name: "remember", description: "", inputSchema: ["type": "object"], effect: .write) { _ in
+            try await Task.sleep(for: .milliseconds(50))
+            order.withLock { $0.append("write finished") }
+            return .text("Remembered")
+        }
+        let read = Tool(name: "recall", description: "", inputSchema: ["type": "object"], effect: .read) { _ in
+            order.withLock { $0.append("read started") }
+            return .text("Found")
+        }
+        let provider = FakeProvider([
+            .events([.toolCallCompleted(ToolCall(id: "c1", name: "remember", input: [:])),
+                     .toolCallCompleted(ToolCall(id: "c2", name: "recall", input: [:])), .finished(.toolUse)]),
+            textReply("Noted."),
+        ])
+        let approver = ScriptedApprover(.outcome(.denied))
+        _ = await loop(provider, tools: [remember, read], approver: approver).run(history: [], message: "remember")
+        #expect(approver.requests.isEmpty)
+        // The read after the write starts only once the write is done.
+        #expect(order.withLock { $0 } == ["write finished", "read started"])
+        #expect(results(provider).map(\.content) == ["Remembered", "Found"])
     }
 
     @Test func anAnswerWithoutActionIsNotAsked() async throws {

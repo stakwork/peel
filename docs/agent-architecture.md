@@ -3,6 +3,10 @@
 Last updated 2026-10-10. The single source of truth for the Sphinx agent
 that Peel is the client for. Nothing here is built.
 
+> **Proposed change (2026-10-13, not agreed):** the Mac as the brain,
+> strut as the graph's only writer, Peel's agent as a front agent that
+> hands work to strut jobs. See [agent-brain.md](agent-brain.md).
+
 This replaces the plan of 2026-10-08–09 (an always-on agent host with its
 own Sphinx account, Strut jobs, ACP workers and a graph only the host could
 open). Tom judged that too much, too early. The decisions below were agreed

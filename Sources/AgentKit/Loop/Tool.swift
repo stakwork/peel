@@ -2,13 +2,36 @@ import Foundation
 
 /// Something the agent can do, with what the model is told about it.
 public struct Tool: Sendable {
-    /// What running a tool does: every call of a tool that is not `.read`
-    /// waits on the loop's approver (`ToolApprover`) before it runs.
+    /// What running a tool does: whether a call waits on the loop's
+    /// approver (`ToolApprover`, `asks`) and whether it may run beside
+    /// others (`runsSideBySide`). Both are exhaustive, so a new effect must
+    /// decide.
     public enum Effect: String, Sendable, Hashable {
         /// Only reads; never asks.
         case read
-        /// Acts for the person: sends, marks read, changes something.
+        /// Acts for the person towards others: sends, marks read, pays.
         case send
+        /// Changes the person's own data, such as the agent's memory: never
+        /// asks, but runs alone and in order, as an action does, so a read
+        /// after it sees it.
+        case write
+
+        /// Waits on the approver before it runs.
+        public var asks: Bool {
+            switch self {
+            case .read, .write: false
+            case .send: true
+            }
+        }
+
+        /// May run side by side with others like it; anything else runs
+        /// alone, in order.
+        public var runsSideBySide: Bool {
+            switch self {
+            case .read: true
+            case .send, .write: false
+            }
+        }
     }
 
     public enum Output: Sendable, Hashable {
@@ -53,7 +76,7 @@ public struct Tool: Sendable {
     /// (`ToolIntent.generic`); one that can say what it will do uses `plan`.
     public init(name: String, description: String, inputSchema: JSONValue, effect: Effect, handler: @escaping Handler) {
         self.init(name: name, description: description, inputSchema: inputSchema, effect: effect) { input in
-            guard effect != .read else { return .result(try await handler(input)) }
+            guard effect.asks else { return .result(try await handler(input)) }
             return .action(.generic(name, input: input), run: { try await handler(input) })
         }
     }

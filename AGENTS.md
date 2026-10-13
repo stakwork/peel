@@ -220,7 +220,7 @@ is a short plan. Update the status and the journal when you finish something.
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus,
-  `ConversationMenu`, whose pieces the chat header's More shares, and `WordsReminder`, the note to check the twelve words), `SidebarForms` (join a tribe), `ContactsViews` (add
+  and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
@@ -520,7 +520,6 @@ quitting before any window opens.
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
-  {"open": "check-words"}                 // the words check on Account, as the sidebar's reminder opens it
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}

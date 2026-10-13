@@ -2,9 +2,9 @@ import SwiftUI
 import PeelCore
 
 /// One rounded field that holds everything: what it is replying to and the
-/// files waiting to go over the text, then a row under it with attach (and
-/// in a direct message the send-sats bolt) at the left and send at the
-/// right (shadcn's `InputGroup` with its addon at the block end). A chat
+/// files waiting to go over a single row of attach (and in a direct message
+/// the send-sats bolt), the text, and send. The text grows upward from one
+/// line; the buttons stay level with its last. A chat
 /// and each open thread have their own (`ComposerID`); its draft, what it replies to and the files it holds
 /// live in the model, so the message menus can set them and a draft
 /// outlives the view (a thread covering its chat, another chat opened).
@@ -116,12 +116,17 @@ struct Composer: View {
                 PendingFilesTray(composer: composer, files: files)
                     .padding(.horizontal, 10)
             }
-            field
-                .padding(.horizontal, 10)
-                .padding(.top, 5)
-            buttons
-                .padding(.horizontal, Self.buttonsInset)
-                .padding(.bottom, Self.buttonsInset)
+            // One line: the text between the buttons, which keep to its
+            // last line as Shift-Return grows it upward.
+            HStack(alignment: .bottom, spacing: 2) {
+                leadingButtons
+                field
+                    // As tall as the buttons on one line, its text level with them.
+                    .frame(minHeight: PeelButton.Size.sm.height)
+                    .padding(.leading, hasLeadingButtons ? 2 : 4)
+                trailingButton
+            }
+            .padding(Self.buttonsInset)
         }
         .background {
             // A click anywhere in the field that no button or the text takes
@@ -149,44 +154,50 @@ struct Composer: View {
         .zIndex(1)
     }
 
-    /// The field's last row: attach (and in a direct message the bolt) at
-    /// the left, send at the right, under the text so its left edge stays.
-    private var buttons: some View {
-        HStack(spacing: 2) {
-            if composer.takesFiles {
-                IconButton("paperclip", help: "Attach files") {
-                    model.chooseFiles(for: composer)
+    private var hasLeadingButtons: Bool { composer.takesFiles || (paysTo != nil && composer.chat != nil) }
+
+    /// Attach (and in a direct message the bolt), left of the text.
+    @ViewBuilder private var leadingButtons: some View {
+        if hasLeadingButtons {
+            HStack(spacing: 2) {
+                if composer.takesFiles {
+                    IconButton("paperclip", help: "Attach files") {
+                        model.chooseFiles(for: composer)
+                    }
+                }
+                if let paysTo, let chat = composer.chat {
+                    let sendingSats = Binding(
+                        get: { model.sendingSats == composer },
+                        set: { model.sendingSats = $0 ? composer : nil }
+                    )
+                    IconButton("bolt", help: "Send or request sats", lit: sendingSats.wrappedValue) {
+                        sendingSats.wrappedValue = true
+                    }
+                    .accessibilityAddTraits(sendingSats.wrappedValue ? .isSelected : [])
+                    .peelPopover(isPresented: sendingSats) {
+                        SendSatsPanel(chat: chat, name: paysTo) { sendingSats.wrappedValue = false }
+                    }
+                    // The view stays when another chat opens in its place: the
+                    // panel left behind is closed, not opened again on coming back.
+                    .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
                 }
             }
-            if let paysTo, let chat = composer.chat {
-                let sendingSats = Binding(
-                    get: { model.sendingSats == composer },
-                    set: { model.sendingSats = $0 ? composer : nil }
-                )
-                IconButton("bolt", help: "Send or request sats", lit: sendingSats.wrappedValue) {
-                    sendingSats.wrappedValue = true
-                }
-                .accessibilityAddTraits(sendingSats.wrappedValue ? .isSelected : [])
-                .peelPopover(isPresented: sendingSats) {
-                    SendSatsPanel(chat: chat, name: paysTo) { sendingSats.wrappedValue = false }
-                }
-                // The view stays when another chat opens in its place: the
-                // panel left behind is closed, not opened again on coming back.
-                .onChange(of: composer) { old, _ in if model.sendingSats == old { model.sendingSats = nil } }
+        }
+    }
+
+    /// Send, or Stop while a reply runs, right of the text.
+    @ViewBuilder private var trailingButton: some View {
+        if let stop {
+            Button(action: stop) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
             }
-            Spacer(minLength: 8)
-            if let stop {
-                Button(action: stop) {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(width: PeelButton.Size.sm.height - 2 * PeelButton.Size.sm.padding)
-                }
-                .buttonStyle(.peel(.outline, size: .sm))
-                .help("Stop the reply (Escape)")
-                .accessibilityLabel("Stop")
-            } else {
-                sendButton
-            }
+            .buttonStyle(.peel(.outline, size: .sm))
+            .help("Stop the reply (Escape)")
+            .accessibilityLabel("Stop")
+        } else {
+            sendButton
         }
     }
 

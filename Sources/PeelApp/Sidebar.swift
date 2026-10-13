@@ -106,7 +106,7 @@ struct Sidebar: View {
             }
             // Its own view: each page restored redraws the bar, not the sidebar.
             RestoreBar()
-            if let call = model.call {
+            if let call = model.callSession {
                 OnCallBar(call: call)
             }
         }

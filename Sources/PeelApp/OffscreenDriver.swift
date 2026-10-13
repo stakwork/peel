@@ -182,7 +182,7 @@ final class OffscreenDriver {
             model.agentConnectFrom = .automations
         case "message-menu":
             // A click on More over the open chat's newest row from someone else.
-            guard case .chat(let chat) = model.destination, let presenter = model.mainPresenter, let window = main,
+            guard case .chat(let chat) = model.destination, let presenter = model.mainPresenter as? MenuPresenter, let window = main,
                   let row = model.chatRows.last(where: { $0.kind == .message && !$0.message.fromMe && !$0.message.deleted })
             else { throw Failure(description: "no message from someone else in an open chat") }
             let entries = MessageMenu.entries(for: row, composer: .chat(chat), model: model, offersBoost: row.canBoost)
@@ -297,7 +297,7 @@ final class OffscreenDriver {
                 isARepeat: false, keyCode: code
             ) else { throw Failure(description: "cannot make key \(key)") }
             // Only a panel: an open menu takes its keys through Peel's key monitor.
-            if let panel, NSApp.keyWindow !== panel, model()?.mainPresenter?.isOpen != true {
+            if let panel, NSApp.keyWindow !== panel, (model()?.mainPresenter as? MenuPresenter)?.isOpen != true {
                 // Never active, Peel gets no key window, and a posted key goes
                 // to the main window: the panel is handed its keys itself.
                 panel.sendEvent(event)

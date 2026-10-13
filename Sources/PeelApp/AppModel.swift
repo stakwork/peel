@@ -1,10 +1,6 @@
 import Foundation
 import Observation
-#if os(macOS)
-import AppKit
-#endif
 import AgentKit
-import PeelAgent
 import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
@@ -128,7 +124,7 @@ final class AppModel {
     /// each observed on its own so a progress tick redraws only its tile.
     @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
     /// The main window's menus and panels (`peelMenuHost(main:)`).
-    @ObservationIgnored weak var mainPresenter: MenuPresenter?
+    @ObservationIgnored weak var mainPresenter: (any MenuHosting)?
     /// The sidebar's search, which filters its lists.
     var searchQuery = ""
     /// Which sidebar sections are open and shown in full, kept with the
@@ -177,7 +173,7 @@ final class AppModel {
     /// first: what the header watches. Set with the rows, when it changes.
     var recentCalls: [CallLink] = []
     /// The call this Mac is on, and its window.
-    var call: CallSession?
+    var call: (any OngoingCall)?
     /// The goodbye of the calls left, which a quit waits for.
     @ObservationIgnored var callLeaving: Task<Void, Never>?
     /// How many are on each chat's watched calls (the busiest), for chats
@@ -266,11 +262,15 @@ final class AppModel {
     var reconnectAt: Date?
     var restoreProgress = RestoreProgress()
     /// Local notifications and the Dock badge.
-    let notifier = Notifier()
+    let notifier: Notifier
     /// Sats arriving: the header's count-up and pill, Payments' unseen count.
     let money = MoneyArrivals()
+    /// What the app supplies: panels, the clipboard, playback, calls, presence.
+    @ObservationIgnored let platform: Platform
     /// The web pane beside the chat, with this profile's website data.
-    @ObservationIgnored private(set) lazy var web = WebPane(profile: profile)
+    @ObservationIgnored private(set) lazy var webPresenter = platform.web(profile)
+    /// The agent's tools, memory and automations, where the platform has them.
+    var agentHost: (any AgentHost)? { platform.agent }
 
     /// The app's own account keeps its words in the Keychain. Launching with
     /// `-profile <name>` opens a development profile instead, whose words sit in
@@ -279,26 +279,9 @@ final class AppModel {
     private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     var agent: AgentSession?
-    /// The agent's memory: the running strut's address and key (`lookForMemory`).
-    var memoryServer: MemoryServer?
-    /// The strut Peel ships, if this build has one, for this launch's
-    /// profile (`strut(for:)`): started when its agent opens, stopped when
-    /// Peel quits.
-    @ObservationIgnored var strut: BundledStrut?
-    /// The one memory open beside the agent chat (`openMemory`), if any.
-    var memoryPanel: MemoryPanel?
     /// Bumped to open every tool row in the agent chat, as clicks on their
     /// chevrons would (the offscreen driver's `agent-rows`).
     var agentRowsOpened = 0
-    /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
-    @ObservationIgnored var automationServer: AutomationServer?
-    /// The last server's close, which a new one waits for before taking its port.
-    @ObservationIgnored var automationStopping: Task<Void, Never>?
-    /// The token strut sends with each automation: made when the agent opens,
-    /// in memory only, the same for every server and PUT until it closes.
-    @ObservationIgnored var automationToken: String?
-    /// The Automations view's list, read from strut.
-    var automations = AutomationsState()
     /// Where the Connect panel is open from, if it is.
     var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).
@@ -320,7 +303,9 @@ final class AppModel {
     /// `pinTimeoutHours` default earlier builds read, which is left in place.
     private(set) var pinTimeoutHours = 0
 
-    init() {
+    init(platform: Platform) {
+        self.platform = platform
+        notifier = Notifier(presence: platform.presence)
         do {
             if let development = UserDefaults.standard.string(forKey: "profile") {
                 profile = try Profile(name: development, kind: .development)
@@ -371,14 +356,7 @@ final class AppModel {
     var takesCommands: Bool {
         guard phase == .ready, !isLockDue, viewer == nil, let presenter = mainPresenter,
               !presenter.anythingOpen else { return false }
-        #if os(macOS)
-        // The key window; with none (Peel not active, as when checked
-        // offscreen), the window the key press came to.
-        guard let window = NSApp.keyWindow ?? NSApp.currentEvent?.window else { return false }
-        return window === presenter.hostWindow
-        #else
-        return true
-        #endif
+        return presenter.hostsKeyWindow
     }
 
     var selectedConversation: Conversation? {
@@ -444,14 +422,10 @@ final class AppModel {
         await engine?.close()
         engine = nil
         resetAccountState()
-        await web.forgetWebsiteData()
+        await webPresenter.forgetWebsiteData()
         do {
             // What the agent remembered and the automations it ran go too.
-            // The app account's memory is erased even if its strut never
-            // started this launch (forgotten from the lock screen) or this
-            // build ships none; a development profile's is in its folder.
-            strut?.stop(quietly: true)
-            if profile.kind == .app { try BundledStrut.erase() }
+            try agentHost?.forget(profile)
             try profile.delete()
             phase = .onboarding
         } catch {
@@ -550,7 +524,7 @@ final class AppModel {
 
     /// Asks for a picture, beside the window.
     func choosePicture() -> URL? {
-        FilePicking.open(prompt: "Choose", multiple: false, types: [.image])?.first
+        platform.files.open(prompt: "Choose", multiple: false, directories: false, types: [.image])?.first
     }
 
     /// The twelve words, after the PIN. Nothing here keeps or logs them.
@@ -591,7 +565,7 @@ final class AppModel {
     /// comes to the front, and every 30 seconds by `lockWhenIdle`.
     func lockIfDue() {
         guard isLockDue else { return }
-        Clipboard.clearSecret()
+        platform.pasteboard.clearSecret()
         notifier.removeAllDelivered()
         phase = .locked
     }
@@ -621,8 +595,8 @@ final class AppModel {
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
     func willTerminate() {
-        strut?.stop(quietly: true)
-        Clipboard.clearSecret()
+        agentHost?.stop()
+        platform.pasteboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
     }
 
@@ -667,13 +641,7 @@ final class AppModel {
     // MARK: Notifications
 
     /// Whether Peel is the app in front, where the open chat is being read.
-    var isFrontmost: Bool {
-        #if os(macOS)
-        NSApplication.shared.isActive
-        #else
-        true
-        #endif
-    }
+    var isFrontmost: Bool { platform.presence.isFrontmost }
 
     /// Asks the system for permission, after the offer explained it.
     func enableNotifications() async {
@@ -697,9 +665,7 @@ final class AppModel {
     /// A click on a notification: Peel to the front with that chat open,
     /// at the message it was for, or Payments for sats received.
     func openFromNotification(_ chat: String, messageID: Int64?) {
-        #if os(macOS)
-        NSApplication.shared.activate()
-        #endif
+        platform.presence.activate()
         guard phase == .ready || phase == .locked else { return }
         if chat == Notifier.paymentsThread {
             destination = .payments
@@ -1057,11 +1023,11 @@ final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
-        closeAgent()
-        Clipboard.clearSecret()
+        agentHost?.close(in: self)
+        platform.pasteboard.clearSecret()
         // Players are keyed by message id, which the next account reuses.
-        MediaPlayback.shared.closeFullScreen()
-        MediaPlayback.shared.stop()
+        platform.playback.closeFullScreen()
+        platform.playback.stop()
         conversations = []
         tribes = [:]
         linkedTribes = [:]
@@ -1147,7 +1113,7 @@ final class AppModel {
         restoreProgress.restoring = settings.restoring
         // Forgotten while loading.
         guard self.engine === engine else { return }
-        if let profile { openAgent(profile, engine: engine) }
+        if let profile { agentHost?.open(profile, engine: engine, in: self) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
@@ -1380,6 +1346,12 @@ final class AppModel {
             if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load threads") }
         }
     }
+}
+
+/// Where a Connect panel was opened from, so it opens beside that button:
+/// the chat's card or its error row, or the Account page's provider or key.
+enum AgentConnectSource: Hashable {
+    case chat, problem, account, accountKey, automations
 }
 
 private extension AppModel.Destination {

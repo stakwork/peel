@@ -13,7 +13,7 @@ struct CallWindow: View {
 
     var body: some View {
         Group {
-            if let call = model.call {
+            if let call = model.callSession {
                 CallRoomView(call: call)
             } else {
                 Color.clear

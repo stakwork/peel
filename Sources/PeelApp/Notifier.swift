@@ -1,10 +1,6 @@
-#if os(macOS)
-import AppKit
-#endif
 import Foundation
 import Observation
 import PeelCore
-import SwiftUI
 import UserNotifications
 
 /// Local notifications for messages that arrive while Peel runs, and the Dock
@@ -32,6 +28,8 @@ final class Notifier {
 
     /// The chats, read states and lock state that decide what to show.
     @ObservationIgnored weak var model: AppModel?
+    /// The badge on Peel's icon and the system's notification settings.
+    @ObservationIgnored private let presence: any AppPresence
 
     /// Nil when running outside an app bundle, where the notification
     /// center is not available, and offscreen, which posts nothing.
@@ -61,8 +59,9 @@ final class Notifier {
     /// The thread of automation results; a click opens the agent chat.
     static let agentThread = "agent"
 
-    init() {
-        guard Bundle.main.bundleURL.pathExtension == "app", !Offscreen.isOn else {
+    init(presence: any AppPresence) {
+        self.presence = presence
+        guard presence.postsNotifications else {
             center = nil
             delegate = nil
             return
@@ -111,12 +110,7 @@ final class Notifier {
 
     /// Peel's page in System Settings > Notifications.
     func openSystemSettings() {
-        #if os(macOS)
-        let id = Bundle.main.bundleIdentifier ?? ""
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
+        presence.openNotificationSettings()
     }
 
     // MARK: Account
@@ -361,9 +355,7 @@ final class Notifier {
     private func setBadge(_ count: Int) {
         guard count != badge else { return }
         badge = count
-        #if os(macOS)
-        NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
-        #endif
+        presence.showBadge(count)
     }
 
     /// Takes away these chats' notifications, read or open in front of you.

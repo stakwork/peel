@@ -59,8 +59,8 @@ struct ChatRow: Identifiable, Equatable {
 
     let id: String
     var kind: Kind
-    /// What actions act on: the newest of an image run, the original of a
-    /// collapsed thread.
+    /// What actions act on: the newest of an image run (Boost included; a
+    /// tile's own menu offers none), the original of a collapsed thread.
     var message: Message
     /// In a tribe: the member's name and photo show beside their messages.
     var inTribe: Bool
@@ -144,6 +144,7 @@ struct ChatRow: Identifiable, Equatable {
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
             if let request = message.replyUUID { answers[request] = message.type == MessageType.memberApprove }
         }
+        let boostsOn = { (message: Message) in message.uuid.flatMap { boosts[$0] } }
         var rows: [ChatRow] = []
         rows.reserveCapacity(messages.count + 2)
         // A thread's rows start with its original (or, when only its replies
@@ -160,7 +161,7 @@ struct ChatRow: Identifiable, Equatable {
             // No row that would draw nothing (blank space under the last
             // row, Tom 2026-10-08), or only "Original message not
             // available": "New messages" goes to the next.
-            if message.isBlank, collapsed == nil, message.uuid.flatMap({ boosts[$0] }) == nil,
+            if message.isBlank, collapsed == nil, boostsOn(message) == nil,
                (quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people) ?? .missing)
                 == .missing { continue }
             // What counts as unread (`Storage.readStates`): text, attachments, payments.
@@ -180,7 +181,8 @@ struct ChatRow: Identifiable, Equatable {
                 : message.type == MessageType.invoice ? .paymentRequest
                 : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
-            if kind == .message, !startsNew, let last = rows.last, last.takes(message, sender: row.sender) {
+            if kind == .message, !startsNew, let last = rows.last,
+               last.takes(message, sender: row.sender, boosted: { boostsOn($0) != nil }) {
                 rows[rows.count - 1].images = (last.images.isEmpty ? [last.message] : last.images) + [message]
                 rows[rows.count - 1].message = message
                 continue
@@ -205,7 +207,7 @@ struct ChatRow: Identifiable, Equatable {
                 rows[index].card = MessageLink.card(in: rows[index].message.shownText)
                 rows[index].giphy = rows[index].message.giphy
             }
-            rows[index].boosts = rows[index].message.uuid.flatMap { boosts[$0] }
+            rows[index].boosts = boostsOn(rows[index].message)
             rows[index].purchase = rows[index].message.id.flatMap { purchases[$0] }
         }
         // Only boosts on our messages are new: above the first of those.
@@ -259,14 +261,17 @@ struct ChatRow: Identifiable, Equatable {
             && (message.uuid == uuid || images.contains { $0.uuid == uuid } || summary?.original.uuid == uuid)
     }
 
-    /// Whether `next` joins this row's run of images.
-    private func takes(_ next: Message, sender: Sender) -> Bool {
+    /// Whether `next` joins this row's run of images. A run's row carries
+    /// only its newest image's boosts, and its tiles offer no Boost, so a
+    /// boosted image keeps a row of its own, its chip under it alone.
+    private func takes(_ next: Message, sender: Sender, boosted: (Message) -> Bool) -> Bool {
         guard kind == .message, summary == nil, message.attachmentKind == .image, next.attachmentKind == .image,
               (message.content ?? "").isEmpty, message.fromMe == next.fromMe, sender.name == self.sender.name,
               message.replyUUID == next.replyUUID, message.threadUUID == next.threadUUID,
               Self.settled(message), Self.settled(next),
               // A paid image is bought on its own, never in a grid.
               message.attachmentPriceMsat == nil, next.attachmentPriceMsat == nil,
+              !boosted(message), !boosted(next),
               next.date.timeIntervalSince(message.date) <= Self.imageRunGap else { return false }
         return true
     }

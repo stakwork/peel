@@ -150,7 +150,8 @@ final class OffscreenDriver {
 
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
-    /// Account screen (the menu's Account…); `payments`, the Payments screen;
+    /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
+    /// the open chat's newest row from someone else; `payments`, the Payments screen;
     /// `automations`, the Automations page; `automations-setup`, its Set up
     /// (the Connect panel) while no model is connected; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
     /// its gear (Account at Peel agent); `agent-retry`, its
@@ -178,6 +179,13 @@ final class OffscreenDriver {
         case "automations-setup":
             // The Automations page's Set up, while no model is connected.
             model.agentConnectFrom = .automations
+        case "message-menu":
+            // A click on More over the open chat's newest row from someone else.
+            guard case .chat(let chat) = model.destination, let presenter = model.mainPresenter, let window = main,
+                  let row = model.chatRows.last(where: { $0.kind == .message && !$0.message.fromMe && !$0.message.deleted })
+            else { throw Failure(description: "no message from someone else in an open chat") }
+            let entries = MessageMenu.entries(for: row, composer: .chat(chat), model: model, offersBoost: row.canBoost)
+            presenter.show(entries, at: CGPoint(x: window.frame.midX, y: window.frame.midY), in: window, source: row.id)
         case "agent-connect":
             // The agent chat's Connect, on its card or its error row.
             model.agentConnectFrom = .chat

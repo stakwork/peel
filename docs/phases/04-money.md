@@ -2348,3 +2348,68 @@ purchase) still adds the member's alias to our echoed aliases, so their
 @mentions notify us; a long message of ours seen live and then from
 history can come at two indices (the completing chunk's) and the second
 is skipped, losing nothing.
+
+## Boost on attachments (2026-10-13, branch `boost-attachments`)
+
+Done means: someone else's attachment (type 6: an image with or without a
+caption, a run of images, a paid attachment, a file) offers Boost on its
+hover bar and ••• menu as text does, a boost on it shows its chip and
+summary under its row, and the engine takes it.
+
+Found: `Message.isBoostable` allowed only type 0, while its comment said
+"as the Mac app allows it". The Mac app's `isBoostActionAllowed` is any
+incoming message with a uuid that is not an invoice, a direct payment or
+a call link (`isCallLink`: type 32, or content, a text's or a caption,
+that starts with `http` and contains `/sphinx.call`, on any host; Peel's `CallLink.isLink` asks for `/sphinx.call.`, the room prefix, which every room link has). In
+Peel's terms: text or an attachment (payments, requests and calls are not
+content), someone else's, not deleted, with a non-empty uuid, and not a
+call link. Text in the `call::` form, which Peel draws as a call card,
+still offers Boost, as in the Mac app (iOS and Android send that form as
+type 32). One rule, so the hover bar's
+bolt, the ••• menu (`ChatRow.canBoost`), the engine's `boostTarget`
+(`quickBoost`, `boost`, a retry) and the CLI all follow it. Boost totals
+were already read by `replyUUID` whatever the boosted type, and
+`BoostLine` already sat under every message row.
+
+**A run of images boosts its newest image**, the row's own message, as
+every action on the row does (Reply, the bolt, the row's •••); a tile's
+own menu offers Copy and Save, no Boost. One boost per row, the one that
+pays someone; the Mac app has no grid, so a boost there is always on one
+image. To keep every boost visible and on its own image, a boosted image never
+joins a run: it has a row of its own with its chip under it, and the
+images before and after it make their own runs. Boosting a grid takes its
+newest image out of the grid as the boost lands. Before, a boost (from the Mac app,
+or on our own image) on any but the newest image of a run was summed
+nowhere.
+
+The CLI's `boost` and the engine refused an attachment as `notBoostable`;
+they now take it, like the Mac app. A paid attachment can be boosted
+before it is bought, as there.
+
+A drive step `{"open": "message-menu"}` opens the open chat's newest row
+from someone else's ••• menu, as its More does (no key opens it).
+
+Tests: `MessageTests.someoneElsesTextOrAttachmentIsBoostable` (moved from
+`PaymentTests`, which only had the text case), checked failing on the old
+rule for the attachment and call-link cases; the engine's gate in
+`MoneyRefusalTests.onlySomeoneElsesTextOrAttachmentCanBeBoosted` (a call
+link refused, an image through to the balance check). The run rule lives
+in `ChatRow` (PeelApp), which no test target reaches; the app check
+covers it.
+
+Review (independent agent): nothing on the money path (recipient, amount,
+purchases kept apart by type). Applied: a caption that is a call link,
+an empty uuid, a boosted image out of grids entirely, the drive step
+skipping deleted rows, the engine test. Not applied: a failed boost of
+ours on a text call link, made under the old rule, now refuses Retry with
+`notBoostable`'s generic words; Discard still clears it.
+
+Checked offscreen (`scripts/check-app.sh`, profiles `ba-app` and `ba-bob`
+on the local stack, in a tribe at 3 sats a message): bob sent a captioned
+image, a text file, a paid image (5 sats) and a run of images. The grid
+row's ••• (`message-menu`) offers "Boost 100 sats" (B) with the bolt on
+its hover bar; B boosted its newest image (balance down by 100 plus the
+tribe's price), which then left the grid with its chip under it, the
+older image staying a row of its own. The CLI's `boost` took the
+captioned image, the file and the paid image (locked), and each row shows
+its "⚡ 100 sats" chip. Idle CPU over a minute on the chat: 0.0-0.2%.

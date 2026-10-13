@@ -180,9 +180,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// One of ours the server refused or never took.
     public var notSent: Bool { fromMe && delivery == .failed }
 
-    /// Someone else's message that can be boosted, as the Mac app allows it.
+    /// Someone else's message that can be boosted, as the Mac app allows it
+    /// (`isBoostActionAllowed`): text or an attachment (a paid one, bought or
+    /// not, included) with a uuid, never a call or a call link. Payments
+    /// and requests, which the Mac app also leaves out, are not content.
     public var isBoostable: Bool {
-        !fromMe && !deleted && uuid != nil && type == MessageType.text
+        !fromMe && !deleted && uuid?.isEmpty == false && isContent && !(content.map(CallLink.isLink) ?? false)
     }
 
     var senderInfo: SenderInfo? {

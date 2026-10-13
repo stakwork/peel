@@ -215,6 +215,9 @@ final class AppModel {
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     var notice: String?
+    /// The notice a failed background check with the server put up
+    /// (`Engine.Event.serverCheckError`): dismissed by itself once connected.
+    @ObservationIgnored private var serverCheckNotice: String?
     /// The latest error that belongs to a conversation, shown inside it.
     var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
@@ -1101,7 +1104,10 @@ final class AppModel {
             switch event {
             case .connection(let state):
                 connection = state
-                if state == .connected { connectionError = nil }
+                if state == .connected {
+                    connectionError = nil
+                    if notice != nil, notice == serverCheckNotice { notice = nil }
+                }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
                 } else {
@@ -1119,6 +1125,9 @@ final class AppModel {
                 balanceMsat = msat
             case .coreError(let message):
                 notice = PeelError.problem(message)
+            case .serverCheckError(let message):
+                notice = PeelError.problem(message)
+                serverCheckNotice = notice
             case .history(let phase, let reached, let end):
                 switch phase {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)

@@ -129,7 +129,7 @@ public enum ApprovalOutcome: String, Sendable, Hashable, Codable {
 }
 
 /// Decides whether a tool call that acts may run. The loop asks it before
-/// every call of a tool whose effect is not `.read` and waits; a task
+/// every call of a tool whose effect asks (`Tool.Effect.asks`) and waits; a task
 /// cancelled meanwhile (Stop) ends the wait as `.stopped`.
 public protocol ToolApprover: Sendable {
     func approve(_ request: ApprovalRequest) async -> ApprovalOutcome

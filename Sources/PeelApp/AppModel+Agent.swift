@@ -12,18 +12,30 @@ enum AgentConnectSource: Hashable {
 extension AppModel {
     // MARK: The agent chat (docs/phases/09-agents.md, PR 5)
 
-    static let agentSystemPrompt = """
+    static func agentSystemPrompt(remembers: Bool) -> String {
+        """
         You are Peel's agent, a helper inside Peel, a Sphinx chat app on the user's Mac. Answer plainly and \
         briefly, in Markdown when it helps. Use a tool when it gives a better answer than guessing. When the \
         tools you have cannot do what is asked, say so.
         """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt + " " + SphinxTools.sendPrompt
+            + (remembers ? " " + MemoryTools.systemPrompt : "")
+    }
 
     /// The tools the agent may use over the account's `engine`: the time,
     /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
-    /// the person's approval for each message.
-    static func agentTools(_ engine: Engine) -> ToolRegistry {
+    /// the person's approval for each message; and the memory tools when a
+    /// memory server is set.
+    static func agentTools(_ engine: Engine, memory: MemoryServer?) -> ToolRegistry {
         let sphinx = SphinxTools(storage: engine.storage)
-        return ToolRegistry([.currentTime] + sphinx.tools + [sphinx.send(through: engine)])
+        let remembering = memory.map { MemoryTools(server: $0).tools } ?? []
+        return ToolRegistry([.currentTime] + sphinx.tools + [sphinx.send(through: engine)] + remembering)
+    }
+
+    /// The agent's memory (`docs/agent-brain.md`, an experiment): a strut on
+    /// this Mac, named with `defaults write dev.peel.mac memoryServer
+    /// http://127.0.0.1:<port>`. Nil when unset or not on this Mac.
+    static var memoryServer: MemoryServer? {
+        UserDefaults.standard.string(forKey: "memoryServer").flatMap(URL.init(string:)).flatMap(MemoryServer.init(base:))
     }
 
     /// Opens the message an agent's link names (`AgentMessageLink`), as a
@@ -48,9 +60,10 @@ extension AppModel {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             let baseURL = profile.kind == .development
                 ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
+            let memory = Self.memoryServer
             agent = AgentSession(
-                store: store, credentials: KeptCredential(item: profile.agentCredential), tools: Self.agentTools(engine),
-                systemPrompt: Self.agentSystemPrompt
+                store: store, credentials: KeptCredential(item: profile.agentCredential),
+                tools: Self.agentTools(engine, memory: memory), systemPrompt: Self.agentSystemPrompt(remembers: memory != nil)
             ) { $0.provider.client(apiKey: $0.apiKey, baseURL: baseURL) }
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
@@ -102,6 +115,12 @@ enum AgentToolTitle {
         "read_threads": "Read threads",
         "search_messages": "Searched messages",
         "send_sphinx_message": "Send a message",
+        "remember": "Remembered",
+        "recall": "Searched memory",
+        "read_memory": "Read memory",
+        "memory_ontology": "Read memory's vocabulary",
+        "forget_memory": "Forgot",
+        "merge_memory": "Merged",
     ]
 
     static func of(_ name: String) -> String {

@@ -194,7 +194,73 @@ extended thinking; keep it simple), two stacked PRs:
   tool pairs, the summary kept and reused after a reopen, the fallback
   and Clear.
 
-Later: memory.
+**Memory, first slice (experiment, 2026-10-13).** The proposal in
+`../agent-brain.md`: strut owns a Ladybug graph and Peel reaches it over
+HTTP. strut runs seven custom workspace steps (`memory/remember`, `recall`,
+`get`, `ontology`, `forget`, `merge`, `graph`), not yet in strut's repo.
+In Peel:
+
+- Six tools. `remember`, `forget_memory` and `merge_memory` have a new
+  effect, `write`: they change the person's own data, so they never ask,
+  and run alone like an action. Whether an effect asks
+  (`Tool.Effect.asks`) and runs beside others (`runsSideBySide`) are
+  exhaustive switches, so a new effect does not compile until it decides.
+  Peel, not the model, sets a memory's `created_by`. The reads are `recall` (search),
+  `read_memory` (one node) and `memory_ontology`. Each is one
+  synchronous `POST /steps/memory/<verb>/run`, and its result starts
+  with one plain line, the row's summary ("Remembered 'The user's name
+  is Tom.', replacing what it knew"), before the step's JSON.
+- Forget is a soft delete with a reason: an entity takes its facts, an
+  episode the facts that came only from it; Self cannot be forgotten
+  whole. Merge moves a duplicate's facts and mentions to the kept
+  entity, adds its names as aliases, links it `ALIAS_OF` (its ref_id
+  then reads as the kept one), and supersedes repeats and a one-value
+  predicate held twice. Nothing is deleted.
+- The graph's tables change by an append-only list of migrations, each
+  safe to run again (`ALTER TABLE … ADD IF NOT EXISTS`), run on open.
+- The vocabulary lives only in strut's `Ontology` table: entity types and
+  predicates, each with aliases, a status (`active` or `proposed`) and,
+  for a predicate, its cardinality and the types it connects. Peel names
+  none. An alias resolves (`full_name` → `name`); a one-value predicate
+  supersedes the current fact by itself; anything new is kept as
+  `proposed` and reported, never refused.
+- The server's address in `defaults write dev.peel.mac memoryServer
+  http://127.0.0.1:<port>`; this Mac only (`Web.isThisMac`), so no key.
+  One graph for every profile on the Mac, on purpose for now (Tom tries
+  it on his own account); scoping it per profile comes with the key.
+- Memory text goes to strut as the run's `input`, never as config,
+  which strut templates (`{{ … }}` would be evaluated).
+  Without it the tools are absent.
+- No memory UI yet (Tom, 2026-10-13: a first side panel drawing the
+  graph was taken out): memory shows only as the tools' quiet rows.
+  Later, a row such as "Remembered" opens that one memory in a panel.
+
+Done when "Remember: my name is Tom" stores Self and a fact, "call me
+Thomas" supersedes it, and a cleared conversation answers "What's my
+name?" from memory.
+
+Next for memory, in order (2026-10-13):
+
+1. **Version the strut half.** `@ladybugdb/core` goes into strut by a
+   PR; the `memory/*` steps stay Tom's custom steps for now (a local
+   commit), until it is clear how other swarms should get them.
+2. **Lock it down.** strut takes an API key, kept in Peel's Keychain
+   beside the model's; the graph moves to an owner-only file under
+   Application Support (today it is world-readable, in a worktree).
+3. **Encrypted backup.** A snapshot of the graph (Ladybug's export),
+   encrypted with a key derived from the account's seed, as the
+   official apps encrypt the preferences file, uploaded to the memes
+   server; and restore. The server only ever holds ciphertext.
+4. **Memory quality.** Fuzzy name matching and embeddings (MiniLM
+   through strut's onnxruntime) for duplicates and recall; a strut job
+   that draws facts from conversation episodes after the fact, so the
+   front agent only saves what is said explicitly; janitors for
+   duplicates, proposed vocabulary, contradictions and summaries;
+   restore after forget.
+5. **Later.** Readable memory rows that open one memory; caching the
+   ontology instead of a call per conversation; one tool builder the CLI
+   shares, so `peel agent` can use memory; the agent's procedures as
+   concepts it walks to (Glimmer) rather than a longer system prompt.
 
 ## Journal
 

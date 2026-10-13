@@ -320,6 +320,9 @@ struct UserFilesTests {
         #expect(UserFiles.cleanName(".hidden") == "hidden")
         #expect(UserFiles.cleanName("") == "file")
         #expect(UserFiles.cleanName(" .zshrc") == "zshrc")
+        // Quarantine is the Mac's alone (`UserFiles.quarantine`).
+        #if os(macOS)
         #expect(try first.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties != nil)
+        #endif
     }
 }

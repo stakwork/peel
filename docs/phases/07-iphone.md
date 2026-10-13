@@ -1,6 +1,8 @@
 # Phase 7 — iPhone
 
-Last updated 2026-10-14. **A proposal for Tom's review; nothing is built.**
+Last updated 2026-10-14. **A proposal for Tom's review.** Built so far: I1
+(`PeelUI`, on `ios/peelui`) and I2 (the first iPhone app, on `ios/app`;
+status under "I2: the first iPhone app" below).
 Resumed 2026-10-13 (paused since 2026-10-08). It builds on
 [../agent-brain.md](../agent-brain.md) (the Mac is the brain, the phone is a
 remote), [../jobs-architecture.md](../jobs-architecture.md) (jobs run in
@@ -76,7 +78,7 @@ never sleeps. Later the same code runs headless on Linux.
 ## Proposed decisions
 
 1. **iOS 26 is the minimum.** It is the Liquid Glass release and matches the
-   Mac app's macOS 26. The package says iOS 18 today (`Package.swift:6`).
+   Mac app's macOS 26. `Package.swift` says iOS 26 since I2.
 2. **The phone is a remote, not a second brain.** No agent loop, no API key,
    no graph and no Strut on the phone in v1. One brain, one memory, one set of
    jobs.
@@ -163,6 +165,65 @@ Review findings not applied (2026-10-14), for a later batch:
   old `pinTimeoutHours` default.
 - `PeelTestSupport` imports PeelCore `@testable`, so a release build of
   every target fails; nothing builds release today.
+
+### I2: the first iPhone app (built 2026-10-13, `ios/app`)
+
+**Built.** `iOS/Peel.xcodeproj`, written by hand (no xcodegen): one app
+target over the package's `PeelUI` and `PeelCore`, its sources a
+synchronized folder (`iOS/Peel/`), iOS 26, iPhone only, bundle ID
+`dev.peel.ios` with the team in an ignored `iOS/Local.xcconfig`. It builds
+for the iOS 27 simulator and, unsigned, for a device. The app opens to
+the same onboarding the Mac's model drives (invite, name, PIN, the words
+and the check of three; or the words, name, PIN and restore progress),
+each step pushed so Back is the system's; the PIN at launch with Forget in
+place; then a tab bar with **Chats** (Unread, tribes, direct messages from
+`sidebarSections`, Show all, search, the connection bolt and a subtitle
+while not connected; a chat pushes in as the model's `destination`, so it
+is read as on the Mac) and **Account** (name, balance, server, Change PIN,
+show or check the twelve words, Forget). The conversation is read only:
+the newest page of `chatRows`, runs with photo, name and time, day lines,
+"New messages", payments and requests, tribe notes. Both appearances
+follow the system, on the Sphinx tokens in `Theme`.
+
+**Shared, not copied.** `Theme`, `Avatar` and `Clipboard` from
+`Sources/PeelApp` compile into the phone too (they already had UIKit
+branches); `WordCheck`, a tribe's membership notes
+(`Message.membershipNote`) and `PIN.problem` moved into `PeelUI` for both
+apps. `CallProvider.join` now throws: the phone's says calls are not on
+iPhone yet, in the chat, rather than faking a call.
+
+**Not yet, and why.**
+- Message text shows without its marks (`MessageMarkup.blocks` and
+  `plainText`): the styled renderer (`MessageText`, `LinkText`) lives in
+  the Mac's views. F1 moves it where both can use it.
+- No composer, attachments (a row says what it is), threads (the count
+  shows), older pages, chat previews in the list (the stored last content
+  is raw: a GIF's JSON, a call link) or pull to refresh.
+- No notifications: `postsNotifications` is false until push (I5), so
+  nothing asks for permission; the badge is set but shows only once
+  allowed. No PIN timeout on the phone (the PIN is asked at launch only).
+- Files, playback and the web pane do nothing and are never offered.
+- Not verified past the restore screen in the simulator: no account was
+  restored or created by the agent that built it. Tom restores the
+  throwaway himself to check Chats, the conversation and Account.
+
+Review findings not applied (2026-10-14):
+
+- Keychain items outlive the app on iOS, so after a delete and reinstall
+  the lock screen asks for the PIN of an account with no database. A
+  first-launch check that clears them is Tom's call (it erases words).
+- `ITSAppUsesNonExemptEncryption` is NO in the project; the export answer
+  for an end-to-end encrypted client is Tom's before TestFlight.
+- Clearing the clipboard after twelve words are entered cannot tell a
+  paste from dictation or autofill without reading it, which on the phone
+  asks the person; it stays as it is.
+- `CallProvider.join` throws rather than `Platform.calls` being optional,
+  so the phone refuses after fetching the ticket; and the Avatar file names
+  the phone's `Logo` asset. Both wait for calls on the phone (I6).
+- The PIN prompts (lock screen, the words, Change PIN) could share one view,
+  and `WordsScreen`'s flags could be one mode; left for F2c.
+- Nothing covers the chats in the app switcher's snapshot: with no PIN
+  timeout on the phone there is nothing it would be hiding from.
 
 ### The project
 
@@ -512,7 +573,7 @@ client track is held up by S1.
 | PR | Track | What | Depends on |
 |---|---|---|---|
 | **I1** | C | Batch 17: `PeelUI`, the platform protocols, `PeelMac`. Runs alone. Built on `ios/peelui` (2026-10-13), in review: `PeelUI` builds for the iOS Simulator; the Mac target keeps the name `PeelApp`; `PeelUITests` still to come | — |
-| **I2** | C | The iOS project and target, signing, iOS 26 in `Package.swift`; the app opens, unlocks with the PIN, restores from words, connects | I1, S1 |
+| **I2** | C | The iOS project and target, signing, iOS 26 in `Package.swift`; the app opens, unlocks with the PIN, restores from words, connects. Built on `ios/app` (2026-10-13), with Chats and a read-only conversation; restore with a real account still to check | I1, S1 |
 | **F1** | C | Phone foundation: the theme and glass helpers, the tab shell, navigation, the shared rows, a cross-platform Markdown renderer (the Mac's `MessageText` off AppKit) | I2 |
 | **F2a** | C | Chats: the list, its top rows, Unread, Tribes, Direct messages, swipe actions, the not-connected state | F1 |
 | **F2b** | C | Conversation, the Thread sheet and the composer | F1 |

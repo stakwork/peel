@@ -301,19 +301,26 @@ Next for memory, in order (updated 2026-10-13):
 
 Done: the tools (#218); strut's key, the graph's folder owner-only
 (#219); connecting with nothing to set up, from strut's connection file,
-replacing #219's Keychain item and Account row (strut's side a local
-commit beside the memory steps); `@ladybugdb/core`
-proposed to strut as an optional dependency (stakwork/strut#154, Evan's
-call). In the product, Sphinx or Peel starts strut and reads its address
-and key from strut's ready line (`STRUT_READY_KEY`), as Sphinx Mac does
-with its bundled strut.
+replacing #219's Keychain item and Account row (#224, #226);
+`@ladybugdb/core` in strut as an optional dependency (stakwork/strut#154).
+The memory steps go to strut as built-in `memory/*` lib steps, with the
+connection file (a PR for Evan). Memory stays its own Ladybug file beside
+strut's graph (Evan, 2026-10-13: "ladybug as their own file is fine"); on
+a home server strut's graph is Neo4j, next to stakgraph and Jarvis.
 
-1. **Next up: one tool builder for the app and the CLI.** The tools and system
+1. **Next up: Peel bundles strut and starts it**, as Sphinx Mac does with
+   its bundled strut: the desktop package (`package-desktop.mjs`, which
+   leaves Ladybug out today, so it must take it in), started by Peel at
+   launch on a port the OS picks, its address and key read from strut's
+   ready line (`STRUT_READY_KEY`), stopped with Peel. Then nobody starts
+   strut by hand, and the connection file is only for a strut started
+   outside Peel.
+2. **One tool builder for the app and the CLI.** The tools and system
    prompt are put together twice (`AppModel+Agent`, `peel`'s
    `Commands+Agent`); one PeelAgent builder taking storage, an optional
    engine and an optional `MemoryServer` gives `peel agent` memory
    (`--memory`), so memory can be tried and tested from the terminal.
-2. **Encrypted backup.** The memes server holds one preferences file per
+3. **Encrypted backup.** The memes server holds one preferences file per
    account and no other named files (stakwork/sphinx-meme router.go), so:
    strut's `memory/export` makes a snapshot; Peel encrypts it with
    `MediaCrypto` (RNCryptor, as the preferences file) under a key derived
@@ -323,13 +330,13 @@ with its bundled strut.
    `memory/import`. Daily while Peel runs, with no button until memory
    has a place on screen. Old copies pile up until the server can overwrite a
    personal file in place.
-3. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
+4. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
    strut's onnxruntime) for duplicates and recall; Ladybug's full-text and
    vector indexes instead of the word scan; a strut job that draws facts
    from conversation episodes after the fact, so the front agent only
    saves what is said explicitly; janitors for duplicates, proposed
    vocabulary, contradictions and summaries; restore after forget.
-4. **Later.** Readable memory rows that open one memory (a session is on
+5. **Later.** Readable memory rows that open one memory (a session is on
    it); caching the ontology instead of a call per conversation; the
    agent's procedures as concepts it walks to (Glimmer) rather than a
    longer prompt; the memory steps in a place other swarms can learn from

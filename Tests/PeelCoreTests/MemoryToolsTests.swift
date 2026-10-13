@@ -17,7 +17,7 @@ struct MemoryToolsTests {
     /// Writes never ask, so which tools are writes is pinned here.
     @Test func onlyRememberForgetAndMergeWrite() throws {
         let base = try #require(URL(string: "http://127.0.0.1:1"))
-        let tools = MemoryTools(server: try #require(MemoryServer(base: base)))
+        let tools = MemoryTools(server: try #require(MemoryServer(base: base, key: "k")))
         let writes = Set(tools.tools.filter { $0.effect == .write }.map(\.name))
         #expect(writes == ["remember", "forget_memory", "merge_memory"])
         #expect(tools.tools.allSatisfy { $0.effect == .write || $0.effect == .read })
@@ -40,8 +40,8 @@ struct MemoryToolsTests {
         }
         try write(#"{"url":"http://127.0.0.1:3100","key":"s3cret-key","pid":\#(alive)}"#)
         let server = try #require(try MemoryServer.onThisMac(file: file))
-        #expect(server.base.absoluteString == "http://127.0.0.1:3100" && server.hasKey)
-        #expect(!"\(server)".contains("s3cret") && "\(server)".contains("with a key"))
+        #expect(server.base.absoluteString == "http://127.0.0.1:3100" && server.key == "s3cret-key")
+        #expect(!"\(server)".contains("s3cret"))
         var dumped = ""
         dump(server, to: &dumped)
         #expect(!dumped.contains("s3cret") && !String(reflecting: server).contains("s3cret"))
@@ -71,18 +71,18 @@ struct MemoryToolsTests {
         try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
         #expect(throws: PeelError.self) { try MemoryServer.onThisMac(file: file) }
 
-        // An empty key is no key; one with a line break is refused.
+        // An empty key, or one with a line break, is refused.
         let base = try #require(URL(string: "http://127.0.0.1:3100"))
-        #expect(MemoryServer(base: base, key: "")?.hasKey == false)
+        #expect(MemoryServer(base: base, key: "") == nil)
         #expect(MemoryServer(base: base, key: "abc\r\nX-Other: 1") == nil)
     }
 
     @Test func onlyAServerOnThisMac() throws {
-        #expect(MemoryServer(base: try #require(URL(string: "http://127.0.0.1:3100"))) != nil)
-        #expect(MemoryServer(base: try #require(URL(string: "http://localhost:3100"))) != nil)
+        #expect(MemoryServer(base: try #require(URL(string: "http://127.0.0.1:3100")), key: "k") != nil)
+        #expect(MemoryServer(base: try #require(URL(string: "http://localhost:3100")), key: "k") != nil)
         for other in ["https://127.0.0.1:3100", "http://10.0.0.5:3100", "http://strut.example.com", "file:///tmp",
                       "http://u:p@127.0.0.1:3100", "http://127.0.0.1:3100/?tok=x", "http://127.0.0.1:3100/#x"] {
-            #expect(MemoryServer(base: try #require(URL(string: other))) == nil, "\(other)")
+            #expect(MemoryServer(base: try #require(URL(string: other)), key: "k") == nil, "\(other)")
         }
     }
 

@@ -10,27 +10,26 @@ import PeelCore
 /// to `connectionFile` once it is listening (`onThisMac`).
 public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public let base: URL
-    /// strut's `STRUT_API_KEY`; nil for a strut started without one.
-    let key: String?
+    /// strut's `STRUT_API_KEY`.
+    let key: String
 
     /// Nil for anything but plain http to this Mac with nothing else in the
     /// address (no user, password, query or fragment, which would be shown
-    /// and kept), or a key with spaces or control characters in it.
-    public init?(base: URL, key: String? = nil) {
+    /// and kept), or a key that is empty or has spaces or control characters in it.
+    public init?(base: URL, key: String) {
         guard Web.isThisMac(base), base.user == nil, base.password == nil, base.query == nil, base.fragment == nil,
-              !(key ?? "").unicodeScalars.contains(where: { $0.properties.isWhitespace || $0.properties.generalCategory == .control })
+              !key.isEmpty,
+              !key.unicodeScalars.contains(where: { $0.properties.isWhitespace || $0.properties.generalCategory == .control })
         else { return nil }
         self.base = base
-        self.key = key.flatMap { $0.isEmpty ? nil : $0 }
+        self.key = key
     }
 
-    /// The address and whether it has a key; never the key, however it is
-    /// printed (`print`, `debugPrint`, `dump`).
-    public var description: String { base.absoluteString + (key == nil ? "" : " (with a key)") }
+    /// The address; never the key, however it is printed (`print`,
+    /// `debugPrint`, `dump`).
+    public var description: String { base.absoluteString }
     public var debugDescription: String { description }
     public var customMirror: Mirror { Mirror(self, children: [:]) }
-
-    public var hasKey: Bool { key != nil }
 
     /// Where strut, started with `STRUT_CONNECTION_FILE` naming it, says
     /// how to reach it once it is listening, `{"url", "key", "pid"}`, and
@@ -63,7 +62,7 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
             throw PeelError("strut's connection file is not an owner-only file of yours; memory stays off.")
         }
         guard let connection = try? JSONDecoder().decode(Connection.self, from: handle.readToEnd() ?? Data()),
-              !connection.key.isEmpty, let url = URL(string: connection.url),
+              let url = URL(string: connection.url),
               let server = MemoryServer(base: url, key: connection.key) else {
             throw PeelError("strut's connection file does not name a server on this Mac with a key; memory stays off.")
         }

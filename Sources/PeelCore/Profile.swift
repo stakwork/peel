@@ -100,8 +100,8 @@ public struct Profile: Sendable {
     }
 
     /// Removes the memory server #219 kept in the Keychain (strut's key),
-    /// which nothing reads since Peel finds strut's own connection file.
-    /// Best effort; drop once no Mac can still have one.
+    /// which nothing reads since Peel finds strut's own connection file
+    /// (`AppModel.removeOldMemoryKey`, once per profile).
     public func removeOldMemoryKey() {
         guard kind == .app else { return }
         try? KeychainItem(service: "dev.peel.memory", account: name).delete()
@@ -112,7 +112,6 @@ public struct Profile: Sendable {
     /// the database is then kept with them.
     public func delete() throws {
         try agentCredential.delete()
-        removeOldMemoryKey()
         try automationToken.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

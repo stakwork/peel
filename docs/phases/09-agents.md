@@ -235,10 +235,13 @@ In Peel:
   refused unless it is a plain file of this user's no one else may read
   or write, naming a server on this Mac with a key. A file whose strut
   has stopped is ignored, since its port may now be anyone's. A refused
-  file is said in the notice; no file means no memory, quietly. No row
-  in Account and nothing in the Keychain (#219's item is removed on
-  open and with the profile). A development profile never reads it, so
-  a test account never writes to the real graph. Anything on the Mac
+  file is said in the notice; no file means no memory, quietly. Without
+  Peel reads it again before each reply (`AgentSession.willRun`), so a
+  strut started after Peel is found and one that stopped is dropped
+  before the key or memory text goes to its port. No row in Account and nothing
+  in the Keychain (#219's item is removed once per profile on open). A development profile reads only a file named
+  with `-memoryConnection <path>`, so a test account never writes to the
+  real graph and the offscreen check can still reach a test strut. Anything on the Mac
   can reach a loopback port, so the key is what makes the memory
   Peel's.
 - Decided and left, from the independent review (2026-10-13):
@@ -252,6 +255,13 @@ In Peel:
     strut was still running. Left for now (Tom, 2026-10-13); it belongs
     with strut's ready line, when Peel starts strut itself.
   - Only `127.0.0.1` is announced, not `::1` or `localhost`.
+  - A pid reused after strut was killed with SIGKILL makes a stale file
+    look live; the challenge above is the fix.
+  - Nothing on screen says whether memory is on (Tom: no memory UI for
+    now); a missing strut shows only as an agent without memory tools.
+  - Automations and memory links wait for the first reply after a strut
+    starts late; watching the connection file's folder would find it at
+    once.
 - Memory text goes to strut as the run's `input`, never as config,
   which strut templates (`{{ … }}` would be evaluated).
   Without it the tools are absent.

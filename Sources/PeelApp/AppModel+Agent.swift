@@ -66,12 +66,12 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile), and the memory: Peel's own strut for an app
-    /// account, started here if it is not running.
+    /// development profile), and the memory: the strut Peel ships, started
+    /// here if it is not running (`strut(for:)`).
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
-            profile.removeOldMemoryKey()
+            if strut == nil { strut = Self.strut(for: profile) }
             let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
                 tools: Self.agentTools(engine, memory: nil), systemPrompt: Self.agentSystemPrompt(remembers: false)
@@ -86,30 +86,17 @@ extension AppModel {
         }
     }
 
-    /// Gives the open agent its strut while one is running with the memory
-    /// steps, or takes it away once it is not: its tools, prompt and
-    /// automations. For an app account that is Peel's own strut, once
-    /// ready; in a build without one, a strut started outside Peel, found by
-    /// its connection file. Looked at when the agent opens, when Peel's
-    /// strut starts or stops, and before each reply, so one that stopped
-    /// (its port may now be anyone's) is not sent the key or memory text. A
-    /// refused connection file is said when `reporting`.
+    /// Gives the open agent Peel's strut while it is running, or takes it
+    /// away once it is not: its tools, prompt and automations. Looked at when
+    /// the agent opens, when the strut starts or stops, and before each
+    /// reply, which starts it again if it stopped (its port may now be
+    /// anyone's, so the key and memory text are never sent to it). A failed
+    /// start is said when `reporting`.
     func lookForMemory(reporting: Bool = false, restarting: Bool = true) {
         guard let profile, let engine, let agent else { return }
-        var memory: MemoryServer?
-        if profile.kind == .app, let strut {
-            memory = strut.server
-            // Not running yet, or stopped since: started, and here once ready.
-            if memory == nil, restarting { startStrut(strut, reporting: reporting) }
-        } else if let file = Self.memoryConnection(profile) {
-            do {
-                memory = try MemoryServer.onThisMac(file: file)
-            } catch {
-                if reporting { notice = PeelError.problem(error, couldNot: "turn on the agent's memory") }
-            }
-        } else {
-            return
-        }
+        let memory = strut?.server
+        // Not running yet, or stopped since: started, and here once ready.
+        if memory == nil, restarting, let strut { startStrut(strut, reporting: reporting) }
         guard memory != memoryServer else { return }
         memoryServer = memory
         closeMemory()
@@ -128,13 +115,16 @@ extension AppModel {
         }
     }
 
-    /// Where `profile` finds strut: its connection file for an app profile;
-    /// for a development one only a file named by the `memoryConnection`
-    /// default (`-memoryConnection <path>`), so a test account never writes
-    /// to the real graph.
-    private static func memoryConnection(_ profile: Profile) -> URL? {
-        profile.kind == .app ? MemoryServer.connectionFile
-            : UserDefaults.standard.string(forKey: "memoryConnection").map { URL(filePath: $0) }
+    /// The strut `profile`'s agent uses, if this build ships one: the app
+    /// account's in Peel's folder; a development profile's only with
+    /// `-strut YES`, its data inside the profile's own folder, so a test
+    /// account never writes to the real memory.
+    static func strut(for profile: Profile) -> BundledStrut? {
+        switch profile.kind {
+        case .app: BundledStrut()
+        case .development:
+            UserDefaults.standard.bool(forKey: "strut") ? BundledStrut(data: profile.directory.appending(path: "strut")) : nil
+        }
     }
 
     /// The model client for `credential`; a development profile may name a

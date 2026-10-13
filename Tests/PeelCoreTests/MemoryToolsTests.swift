@@ -23,56 +23,15 @@ struct MemoryToolsTests {
         #expect(tools.tools.allSatisfy { $0.effect == .write || $0.effect == .read })
     }
 
-    /// strut's connection file is read only when it is a plain owner-only
-    /// file, names a server on this Mac with a key, and its strut still
-    /// runs; the key is never printed (`print`, `debugPrint`, `dump`).
-    @Test func theServerIsFoundByStrutsOwnerOnlyFile() throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("strut-memory-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let file = folder.appendingPathComponent("connection")
-        #expect(try MemoryServer.onThisMac(file: file) == nil)
-
-        let alive = getpid()
-        func write(_ json: String, mode: Int = 0o600) throws {
-            try Data(json.utf8).write(to: file)
-            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path)
-        }
-        try write(#"{"url":"http://127.0.0.1:3100","key":"s3cret-key","pid":\#(alive)}"#)
-        let server = try #require(try MemoryServer.onThisMac(file: file))
-        #expect(server.base.absoluteString == "http://127.0.0.1:3100" && server.key == "s3cret-key")
+    /// The key is never printed (`print`, `debugPrint`, `dump`); an empty
+    /// key, or one with a line break, is refused.
+    @Test func theKeyIsNeverPrintedAndMustBePlain() throws {
+        let base = try #require(URL(string: "http://127.0.0.1:3100"))
+        let server = try #require(MemoryServer(base: base, key: "s3cret-key"))
         #expect(!"\(server)".contains("s3cret"))
         var dumped = ""
         dump(server, to: &dumped)
         #expect(!dumped.contains("s3cret") && !String(reflecting: server).contains("s3cret"))
-
-        // Its strut has stopped: nothing, since the port may now be anyone's.
-        try write(#"{"url":"http://127.0.0.1:3100","key":"s3cret-key","pid":2147483647}"#)
-        #expect(try MemoryServer.onThisMac(file: file) == nil)
-
-        // Others may read it, it names a server elsewhere or no key, or is not strut's: refused.
-        for (json, mode) in [(#"{"url":"http://127.0.0.1:3100","key":"s3cret-key","pid":\#(alive)}"#, 0o644),
-                             (#"{"url":"http://10.0.0.5:3100","key":"s3cret-key","pid":\#(alive)}"#, 0o600),
-                             (#"{"url":"http://127.0.0.1:3100","key":null,"pid":\#(alive)}"#, 0o600),
-                             (#"{"url":"http://127.0.0.1:3100","key":"","pid":\#(alive)}"#, 0o600),
-                             ("not json", 0o600)] {
-            try write(json, mode: mode)
-            #expect(throws: PeelError.self, "\(json)") { try MemoryServer.onThisMac(file: file) }
-        }
-
-        // A link to a good file, or a folder in its place: refused.
-        let target = folder.appendingPathComponent("elsewhere")
-        try Data(#"{"url":"http://127.0.0.1:3100","key":"s3cret-key","pid":\#(alive)}"#.utf8).write(to: target)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
-        try FileManager.default.removeItem(at: file)
-        try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
-        #expect(throws: PeelError.self) { try MemoryServer.onThisMac(file: file) }
-        try FileManager.default.removeItem(at: file)
-        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
-        #expect(throws: PeelError.self) { try MemoryServer.onThisMac(file: file) }
-
-        // An empty key, or one with a line break, is refused.
-        let base = try #require(URL(string: "http://127.0.0.1:3100"))
         #expect(MemoryServer(base: base, key: "") == nil)
         #expect(MemoryServer(base: base, key: "abc\r\nX-Other: 1") == nil)
     }

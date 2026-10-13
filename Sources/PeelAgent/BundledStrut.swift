@@ -7,8 +7,8 @@ import PeelCore
 /// only in memory; its address is the port the OS gives it, read from its
 /// ready line. It exits by itself when Peel goes away, however that
 /// happens: its stdin is a pipe only Peel holds (`STRUT_EXIT_ON_STDIN_EOF`).
-/// Its workspace and the memory graph are Peel's, under Application Support,
-/// and go with the account (`erase`).
+/// Its workspace and the memory graph are in the folder it is given (the app
+/// account's under Application Support), and go with the account (`erase`).
 @MainActor
 public final class BundledStrut {
     /// The running strut's address and key; nil until it is ready and
@@ -42,6 +42,12 @@ public final class BundledStrut {
     /// remembered and the automations it ran, so a later account starts empty.
     public func erase() throws {
         stop(quietly: true)
+        try Self.erase(data: data)
+    }
+
+    /// Removes a workspace and memory graph, whether or not this build ships
+    /// a strut to run them.
+    public nonisolated static func erase(data: URL = dataFolder) throws {
         if FileManager.default.fileExists(atPath: data.path) { try FileManager.default.removeItem(at: data) }
     }
 

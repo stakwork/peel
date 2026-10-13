@@ -217,10 +217,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Agent` (opening the account's `AgentSession`, its tools and
   system prompt, the key kept through `Profile.agentCredential`, the tool
   rows' titles, and the memory tools once its strut is running: Peel's
-  own (`BundledStrut`) for an app account, started with the agent and
-  started again before a reply if it stopped; a strut found by its
-  connection file only in a build without one, or for a development
-  profile's `-memoryConnection`: an experiment, `docs/agent-brain.md`);
+  own (`BundledStrut`), started with the agent and started again before
+  a reply if it stopped; a development profile's only with `-strut YES`,
+  its data in the profile's folder: an experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -396,15 +395,10 @@ is a short plan. Update the status and the journal when you finish something.
     two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut on this Mac owns (`docs/agent-brain.md`): its address and
-    `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`),
-    or, in a build without one, from the connection file a strut started
-    outside Peel writes once it is listening (`onThisMac`: opened without following a link; anything
-    but a plain owner-only file of this user's naming a server on this
-    Mac with a key refused; ignored once the strut that wrote it has
-    stopped; read again by `AppModel.lookForMemory` before each reply
-    (`AgentSession.willRun`), which drops a strut that stopped; a development
-    profile only with `-memoryConnection <path>`; the key never printed,
-    dumped or reflected); one memory
+    `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`;
+    looked at again by `AppModel.lookForMemory` before each reply, which
+    drops a strut that stopped; the key never printed, dumped or
+    reflected); one memory
     step run by
     `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
     arguments as the run's `input` under the config `{{ input }}` (strut
@@ -454,7 +448,7 @@ is a short plan. Update the status and the journal when you finish something.
   words), threads and replies, hidden characters) and
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end) and `MemoryToolsTests` (this Mac only,
-  the POST included; strut's owner-only connection file; strut's replies and refusals; which tools write; the
+  the POST included; the key never printed; strut's replies and refusals; which tools write; the
   rows' lines; the markers; `created_by`); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
@@ -505,17 +499,20 @@ is a short plan. Update the status and the journal when you finish something.
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
   `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
-  `stage-strut.sh` staged in `Contents/Strut` (without one it says so and
-  goes on)
+  `stage-strut.sh` staged in `Contents/Strut` (without one it warns: that
+  Peel's agent has no memory or automations)
 - `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
-  in `.build/strut`: strut's desktop package (`package-desktop.mjs
-  --no-stt`, with Ladybug and the `memory/*` steps) and Node, a pinned
-  release checked against its SHA-256 (cached in `.build/node`). Apple
-  silicon only. Run it once, and after strut changes
+  once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
+  which every checkout's `bundle-app.sh` copies: strut's desktop package
+  (`package-desktop.mjs --no-stt`, with Ladybug and the `memory/*` steps)
+  and Node, a pinned release checked against its SHA-256 (cached in
+  `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
+  Run it once, after strut changes, and again if macOS clears Caches
 - `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
   (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
   development profile (see "Checking the app")
-- `scripts/run-app.sh` — `bundle-app.sh`, then installs to
+- `scripts/run-app.sh` — refuses without a staged strut (`PEEL_ALLOW_NO_STRUT=1`
+  to go on), `bundle-app.sh`, then installs to
   `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
 - `scripts/signing-identity.sh` — the identity both signing scripts use
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,

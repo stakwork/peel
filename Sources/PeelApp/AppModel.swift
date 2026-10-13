@@ -264,11 +264,12 @@ final class AppModel {
     private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     var agent: AgentSession?
-    /// The agent's memory: Peel's own strut, or one started outside it (`lookForMemory`).
+    /// The agent's memory: the running strut's address and key (`lookForMemory`).
     var memoryServer: MemoryServer?
-    /// The strut Peel ships, if this build has one: started when an app
-    /// account opens its agent, stopped when Peel quits.
-    @ObservationIgnored let strut = BundledStrut()
+    /// The strut Peel ships, if this build has one, for this launch's
+    /// profile (`strut(for:)`): started when its agent opens, stopped when
+    /// Peel quits.
+    @ObservationIgnored var strut: BundledStrut?
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
     /// Bumped to open every tool row in the agent chat, as clicks on their
@@ -430,7 +431,11 @@ final class AppModel {
         await web.forgetWebsiteData()
         do {
             // What the agent remembered and the automations it ran go too.
-            if profile.kind == .app { try strut?.erase() }
+            // The app account's memory is erased even if its strut never
+            // started this launch (forgotten from the lock screen) or this
+            // build ships none; a development profile's is in its folder.
+            strut?.stop(quietly: true)
+            if profile.kind == .app { try BundledStrut.erase() }
             try profile.delete()
             phase = .onboarding
         } catch {

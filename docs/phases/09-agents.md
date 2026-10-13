@@ -225,27 +225,16 @@ In Peel:
   supersedes the current fact by itself; anything new is kept as
   `proposed` and reported, never refused.
 - Nothing to set up (Tom, 2026-10-13: "the moment you create an
-  account, there should be a connection"). strut, started with
-  `STRUT_CONNECTION_FILE` naming
-  `~/Library/Application Support/strut-memory/connection`, writes
-  `{url, key, pid}` there once it is listening (only on 127.0.0.1 with a
-  `STRUT_API_KEY`) and removes it when it closes. When an app account
-  opens its agent, Peel reads it (`MemoryServer.onThisMac`): opened once
-  without following a link, and refused unless it is a plain file of
-  this user's no one else may read or write, naming a server on this Mac
-  with a key. A file whose strut has stopped is ignored, since its port
-  may now be anyone's. A refused file is said in the notice when the
-  agent opens; no file means no memory, quietly. Peel reads it again
-  before each reply (`AgentSession.willRun`), so a strut started after
-  Peel is found and one that stopped is dropped before the key or memory
-  text goes to its port. No row in Account and nothing in the Keychain
-  (#219's item is removed on each open and with the profile). A
-  development profile reads only a file named by the `memoryConnection`
-  default (`-memoryConnection <path>`), so a test account never writes
-  to the real graph and the offscreen check can still reach a test
-  strut; it listens for automations only with an `automationPort` of its
-  own, so it never takes the app's port. Anything on the Mac can reach a
-  loopback port, so the key is what makes the memory Peel's.
+  account, there should be a connection"). Peel ships strut and starts it
+  with the agent (`BundledStrut`); its address and key come from strut's
+  ready line, the key made by Peel for each launch. Peel looks at it again
+  before each reply, so one that stopped is started again and never sent
+  the key or memory text on a port that may now be anyone's. No row in
+  Account and nothing in the Keychain. A development profile has memory
+  only with `-strut YES`, its own strut with data in the profile's
+  folder, so a test account never writes to the real memory. (The
+  connection file a strut started by hand once wrote, #224, is gone with
+  the bundled strut.)
 - Decided and left, from the independent review (2026-10-13):
   - **One graph per Mac, for one account** (Tom, 2026-10-13): assume
     one Sphinx account on the Mac, its graph synced to all its clients.
@@ -261,9 +250,6 @@ In Peel:
     look live; the challenge above is the fix.
   - Nothing on screen says whether memory is on (Tom: no memory UI for
     now); a missing strut shows only as an agent without memory tools.
-  - Automations and memory links wait for the first reply after a strut
-    starts late; watching the connection file's folder would find it at
-    once.
 - Memory text goes to strut as the run's `input`, never as config,
   which strut templates (`{{ … }}` would be evaluated).
   Without it the tools are absent.
@@ -300,35 +286,27 @@ name?" from memory.
 Next for memory, in order (updated 2026-10-13):
 
 Done: the tools (#218); strut's key, the graph's folder owner-only
-(#219); connecting with nothing to set up, from strut's connection file,
-replacing #219's Keychain item and Account row (#224, #226);
-`@ladybugdb/core` in strut as an optional dependency (stakwork/strut#154).
-The memory steps go to strut as built-in `memory/*` lib steps, with the
-connection file (a PR for Evan). Memory stays its own Ladybug file beside
-strut's graph (Evan, 2026-10-13: "ladybug as their own file is fine"); on
-a home server strut's graph is Neo4j, next to stakgraph and Jarvis.
+(#219); connecting with nothing to set up (#224, #226); Peel ships strut
+and runs it (#231): strut's desktop package (`--no-stt`; Ladybug and its
+OpenSSL in `native/`) and a pinned Node 22, staged once per Mac by
+`scripts/stage-strut.sh` into `~/Library/Caches/dev.peel.build/strut`, copied into
+`Contents/Strut` by every checkout's `bundle-app.sh` and signed with
+Peel's identity (Node allow-jit only); `BundledStrut` starts it with the
+agent and stops it with Peel, and it exits by itself if Peel dies. Its
+workspace and memory graph live in `~/Library/Application Support/Peel/Strut`,
+erased with the account. Peel needs macOS 26 (Tom, 2026-10-13): Ladybug's
+addon (0.21.2) is built for it. In strut, waiting on Evan: the `memory/*`
+steps (stakwork/strut#157) and the desktop package (stakwork/strut#159).
+Memory stays its own Ladybug file beside strut's graph (Evan, 2026-10-13:
+"ladybug as their own file is fine"); on a home server strut's graph is
+Neo4j, next to stakgraph and Jarvis.
 
-1. **In progress: Peel bundles strut and starts it**, as Sphinx Mac does
-   with its bundled strut. `scripts/stage-strut.sh` stages strut's desktop
-   package (`--no-stt`; Ladybug and its OpenSSL in `native/`, from the
-   strut PR for the package) and a pinned Node 22; `bundle-app.sh` puts it
-   in `Contents/Strut` and `sign-app.sh` signs Node (allow-jit) and the
-   native libraries with Peel's identity. `BundledStrut` starts it when an
-   app account opens its agent, on a port the OS picks, with a key Peel
-   makes for the launch, and stops it when Peel quits; it exits by itself
-   if Peel dies; one that stops is started again before the next reply,
-   never in a loop. Peel needs macOS 26 (Tom, 2026-10-13): Ladybug's
-   addon (0.21.2) is built for it. Its workspace and memory graph live in
-   `~/Library/Application Support/Peel/Strut`, starting empty (Tom,
-   2026-10-13: no need to keep the test graph). The connection file is
-   only for a build without a strut, or a development profile's
-   `-memoryConnection`.
-2. **One tool builder for the app and the CLI.** The tools and system
+1. **Next up: one tool builder for the app and the CLI.** The tools and system
    prompt are put together twice (`AppModel+Agent`, `peel`'s
    `Commands+Agent`); one PeelAgent builder taking storage, an optional
    engine and an optional `MemoryServer` gives `peel agent` memory
    (`--memory`), so memory can be tried and tested from the terminal.
-3. **Encrypted backup.** The memes server holds one preferences file per
+2. **Encrypted backup.** The memes server holds one preferences file per
    account and no other named files (stakwork/sphinx-meme router.go), so:
    strut's `memory/export` makes a snapshot; Peel encrypts it with
    `MediaCrypto` (RNCryptor, as the preferences file) under a key derived
@@ -338,13 +316,13 @@ a home server strut's graph is Neo4j, next to stakgraph and Jarvis.
    `memory/import`. Daily while Peel runs, with no button until memory
    has a place on screen. Old copies pile up until the server can overwrite a
    personal file in place.
-4. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
+3. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
    strut's onnxruntime) for duplicates and recall; Ladybug's full-text and
    vector indexes instead of the word scan; a strut job that draws facts
    from conversation episodes after the fact, so the front agent only
    saves what is said explicitly; janitors for duplicates, proposed
    vocabulary, contradictions and summaries; restore after forget.
-5. **Later.** Readable memory rows that open one memory (a session is on
+4. **Later.** Readable memory rows that open one memory (a session is on
    it); caching the ontology instead of a call per conversation; the
    agent's procedures as concepts it walks to (Glimmer) rather than a
    longer prompt; the memory steps in a place other swarms can learn from

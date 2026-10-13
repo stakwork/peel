@@ -120,8 +120,10 @@ struct BundledStrutTests {
         await #expect(throws: (any Error).self) { _ = try await server.run("ontology", [:]) }
     }
 
-    nonisolated static let staged = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().appending(path: ".build/strut/strut")
+    /// Where scripts/stage-strut.sh leaves it, for every checkout.
+    nonisolated static let staged = ProcessInfo.processInfo.environment["PEEL_STRUT_STAGE"].map { URL(filePath: $0) }
+        .map { $0.appending(path: "strut") }
+        ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/dev.peel.build/strut/strut")
 
     private final class Marker {}
 }

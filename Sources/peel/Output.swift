@@ -68,6 +68,8 @@ struct Session {
             "connecting: \(message)"
         case .coreError(let message):
             "core error: \(message)"
+        case .serverCheckError(let message):
+            "server check: \(message)"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
         case .echoedAliases(let echoed):

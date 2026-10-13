@@ -19,6 +19,9 @@ extension Engine {
         case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
+        /// A background check with the server failed: shown as `coreError`
+        /// is, and gone once connected again.
+        case serverCheckError(String)
         /// The name or photo this account sends changed (by the user, or
         /// filled in by a restore).
         case profile(alias: String, photoURL: String?)

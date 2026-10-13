@@ -370,7 +370,7 @@ extension Engine {
                 try await fetchBackToOpenSends()
             } catch {
                 if !Task.isCancelled {
-                    emit.yield(.coreError("checking payments with the server: \(PeelError.readable(error))"))
+                    emit.yield(.serverCheckError("checking payments with the server: \(PeelError.readable(error))"))
                 }
                 break
             }

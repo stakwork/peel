@@ -1,12 +1,10 @@
 import AgentKit
 import SwiftUI
-import PeelAgent
 import PeelCore
 
 /// Account › Peel agent: its name, the connected provider (Change), the key
-/// by its last four (Replace, Remove confirmed in place), the model, its
-/// memory server, and Clear conversation. Each change is an `AgentSession`
-/// action, the memory server an `AppModel` one.
+/// by its last four (Replace, Remove confirmed in place), the model and
+/// Clear conversation. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
     static let id = "agent-settings"
     @Environment(AppModel.self) private var model
@@ -66,7 +64,6 @@ struct AgentSettingsSection: View {
                             .buttonStyle(.peel(.outline))
                     }
                 }
-                MemoryServerRow()
                 Fact("Conversation") {
                     Text("Clears the agent chat on this Mac. Your other chats are not touched.")
                         .font(Theme.font(12))
@@ -155,91 +152,6 @@ private struct AgentNameRow: View {
             editing = false
         } catch {
             problem = PeelError.readable(error)
-        }
-    }
-}
-
-/// The agent's memory: a strut on this Mac and its key (`docs/agent-brain.md`,
-/// an experiment). Shown as its address; set, changed and removed in place.
-/// Saving makes a test call first, so a wrong address or key never sticks.
-private struct MemoryServerRow: View {
-    @Environment(AppModel.self) private var model
-    @State private var editing = false
-    @State private var address = ""
-    @State private var key = ""
-    @State private var problem: String?
-    @State private var saving = false
-
-    var body: some View {
-        let kept = model.memoryServer
-        if editing {
-            VStack(alignment: .leading, spacing: 14) {
-                FormItem(label: "Memory server", helper: "A strut on this Mac, e.g. http://127.0.0.1:3100.", problem: problem) {
-                    FormTextField(label: "Memory server", text: $address, problem: problem != nil, monospaced: true,
-                                  focusOnAppear: true)
-                        .onSubmit(save)
-                }
-                FormItem(label: "Key", helper: "Its STRUT_API_KEY. Kept in \(model.agentKeyPlace), not synced.") {
-                    FormTextField(label: "Key", text: $key, secure: true)
-                        .onSubmit(save)
-                }
-                FormFooter(problem: nil) {
-                    Button("Cancel") { editing = false }
-                        .buttonStyle(.peel(.outline))
-                    Button(action: save) { Text("Save").buttonProgress(saving) }
-                        .buttonStyle(.peel(.primary))
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(address.trimmed.isEmpty || saving)
-                }
-            }
-            .padding(settingsRowPadding)
-        } else {
-            Fact("Memory") {
-                Text(kept.map { $0.base.absoluteString } ?? "Off")
-                    .foregroundStyle(kept == nil ? Theme.secondaryText : Theme.text)
-            } trailing: {
-                HStack(spacing: 8) {
-                    Button(kept == nil ? "Set up" : "Change") {
-                        address = kept?.base.absoluteString ?? "http://127.0.0.1:3100"
-                        key = ""
-                        problem = nil
-                        editing = true
-                    }
-                    .buttonStyle(.peel(.outline))
-                    if kept != nil {
-                        InlineConfirm(trigger: "Remove", prompt: "Turn memory off? What it holds stays in strut.",
-                                      confirm: "Remove") {
-                            Task {
-                                do { try await model.setMemoryServer(nil) } catch {
-                                    model.notice = PeelError.problem(error, couldNot: "turn memory off")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func save() {
-        guard !address.trimmed.isEmpty, !saving else { return }
-        guard let url = URL(string: address.trimmed), MemoryServer(base: url) != nil else {
-            problem = "Use a server on this Mac: http://127.0.0.1 or http://localhost and its port, nothing else."
-            return
-        }
-        guard let server = MemoryServer(base: url, key: key.trimmed) else {
-            problem = "The key has a space or line break in it; copy it again."
-            return
-        }
-        saving = true
-        Task {
-            defer { saving = false }
-            do {
-                try await model.setMemoryServer(server)
-                editing = false
-            } catch {
-                problem = PeelError.readable(error)
-            }
         }
     }
 }

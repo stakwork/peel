@@ -18,9 +18,6 @@ public struct Profile: Sendable {
     /// app profile, in an owner-only file beside the words for a
     /// development one. Never in a database (docs/phases/09-agents.md).
     public let agentCredential: any SecretItem
-    /// The agent's memory server on this Mac, its address and key: kept as
-    /// the model's key is, never in a database or the defaults.
-    public let memoryServer: any SecretItem
     /// The token strut sends when an automation fires, made on first use
     /// (`docs/phases/12-automations.md`).
     public let automationToken: any SecretItem
@@ -41,11 +38,10 @@ public struct Profile: Sendable {
             directory = root.appendingPathComponent(name)
             secrets = KeychainSecretStore(account: name)
             agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
-            memoryServer = KeychainItem(service: "dev.peel.memory", account: name)
             automationToken = KeychainItem(service: "dev.peel.automations", account: name)
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            (secrets, agentCredential, memoryServer, automationToken) = Self.files(in: directory)
+            (secrets, agentCredential, automationToken) = Self.files(in: directory)
         }
     }
 
@@ -55,15 +51,14 @@ public struct Profile: Sendable {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        (secrets, agentCredential, memoryServer, automationToken) = Self.files(in: directory)
+        (secrets, agentCredential, automationToken) = Self.files(in: directory)
     }
 
-    /// A development profile's words, agent key, memory server and
-    /// automation token, in files beside its database.
-    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem) {
+    /// A development profile's words, agent key and automation token, in
+    /// files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
          FileItem(file: directory.appendingPathComponent("agent-credential")),
-         FileItem(file: directory.appendingPathComponent("memory-server")),
          FileItem(file: directory.appendingPathComponent("automation-token")))
     }
 
@@ -104,12 +99,20 @@ public struct Profile: Sendable {
         try secrets.changePIN(from: oldPIN, to: newPIN)
     }
 
-    /// Removes the words and everything stored with them, the agent's key,
-    /// memory server and automation token first. A failure to remove any is
-    /// reported, and the database is then kept with them.
+    /// Removes the memory server #219 kept in the Keychain (strut's key),
+    /// which nothing reads since Peel finds strut's own connection file.
+    /// Best effort; drop once no Mac can still have one.
+    public func removeOldMemoryKey() {
+        guard kind == .app else { return }
+        try? KeychainItem(service: "dev.peel.memory", account: name).delete()
+    }
+
+    /// Removes the words and everything stored with them, the agent's key
+    /// and automation token first. A failure to remove any is reported, and
+    /// the database is then kept with them.
     public func delete() throws {
         try agentCredential.delete()
-        try memoryServer.delete()
+        removeOldMemoryKey()
         try automationToken.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

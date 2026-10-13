@@ -27,7 +27,7 @@ extension AppModel {
     /// The tools the agent may use over the account's `engine`: the time,
     /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
     /// the person's approval for each message; and the memory and automation
-    /// tools when a strut is set. A run with no approver (an automation's)
+    /// tools when a strut on this Mac has the memory steps. A run with no approver (an automation's)
     /// is not offered the tools that ask.
     static func agentTools(_ engine: Engine, memory: MemoryServer?) -> ToolRegistry {
         let sphinx = SphinxTools(storage: engine.storage)
@@ -36,32 +36,6 @@ extension AppModel {
             tools += MemoryTools(server: memory).tools + AutomationTools(client: AutomationsClient(server: memory)).tools
         }
         return ToolRegistry(tools)
-    }
-
-    /// The agent's memory (`docs/agent-brain.md`, an experiment): a strut on
-    /// this Mac and its key, set in Account › Peel agent. Keeps `server`
-    /// after a test call to it, or forgets the one kept (nil), and gives the
-    /// open agent its memory tools, or takes them away, at once.
-    func setMemoryServer(_ server: MemoryServer?) async throws {
-        guard let profile, let engine, let agent else { throw PeelError("no account is open") }
-        if let server {
-            try await server.check()
-            // The account may have been locked, switched or removed while
-            // the test call ran: keep nothing for an account no longer open.
-            guard self.profile?.directory == profile.directory, self.agent === agent else {
-                throw PeelError("The account changed while the memory server was checked; nothing was kept.")
-            }
-            try server.keep(in: profile.memoryServer)
-        } else {
-            try profile.memoryServer.delete()
-        }
-        memoryServer = server
-        closeMemory()
-        agent.tools = Self.agentTools(engine, memory: server)
-        agent.systemPrompt = Self.agentSystemPrompt(remembers: server != nil)
-        // Automations live on that strut: listen for it, and point its workflow here.
-        stopAutomations()
-        startAutomations(profile, engine: engine)
     }
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
@@ -92,11 +66,14 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile).
+    /// development profile). The memory is the strut on this Mac, found by
+    /// its connection file, for an app profile only: a development one
+    /// never writes to the real graph.
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
-            let memory = try? MemoryServer.kept(in: profile.memoryServer)
+            profile.removeOldMemoryKey()
+            let memory = profile.kind == .app ? memoryOnThisMac() : nil
             memoryServer = memory
             agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
@@ -105,6 +82,17 @@ extension AppModel {
             startAutomations(profile, engine: engine)
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
+        }
+    }
+
+    /// The strut on this Mac, if one is running with the memory steps; a
+    /// connection file refused is said once, and memory stays off.
+    private func memoryOnThisMac() -> MemoryServer? {
+        do {
+            return try MemoryServer.onThisMac()
+        } catch {
+            notice = PeelError.problem(error, couldNot: "turn on the agent's memory")
+            return nil
         }
     }
 

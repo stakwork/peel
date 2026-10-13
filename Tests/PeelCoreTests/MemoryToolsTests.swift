@@ -23,10 +23,32 @@ struct MemoryToolsTests {
         #expect(tools.tools.allSatisfy { $0.effect == .write || $0.effect == .read })
     }
 
+    /// The server and its key are kept as one secret, and its description never shows the key.
+    @Test func theServerIsKeptWithItsKeyUnprinted() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("memory-server-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let item = FileItem(file: file)
+        #expect(try MemoryServer.kept(in: item) == nil)
+        let base = try #require(URL(string: "http://127.0.0.1:3100"))
+        let server = try #require(MemoryServer(base: base, key: "s3cret-key"))
+        try server.keep(in: item)
+        let kept = try #require(try MemoryServer.kept(in: item))
+        #expect(kept == server && kept.hasKey)
+        #expect(!"\(kept)".contains("s3cret") && "\(kept)".contains("with a key"))
+        // An empty key is no key; one with a line break is refused.
+        #expect(MemoryServer(base: base, key: "")?.hasKey == false)
+        #expect(MemoryServer(base: base, key: "abc\r\nX-Other: 1") == nil)
+        // dump() and debugPrint show no key either.
+        var dumped = ""
+        dump(server, to: &dumped)
+        #expect(!dumped.contains("s3cret") && !String(reflecting: server).contains("s3cret"))
+    }
+
     @Test func onlyAServerOnThisMac() throws {
         #expect(MemoryServer(base: try #require(URL(string: "http://127.0.0.1:3100"))) != nil)
         #expect(MemoryServer(base: try #require(URL(string: "http://localhost:3100"))) != nil)
-        for other in ["https://127.0.0.1:3100", "http://10.0.0.5:3100", "http://strut.example.com", "file:///tmp"] {
+        for other in ["https://127.0.0.1:3100", "http://10.0.0.5:3100", "http://strut.example.com", "file:///tmp",
+                      "http://u:p@127.0.0.1:3100", "http://127.0.0.1:3100/?tok=x", "http://127.0.0.1:3100/#x"] {
             #expect(MemoryServer(base: try #require(URL(string: other))) == nil, "\(other)")
         }
     }

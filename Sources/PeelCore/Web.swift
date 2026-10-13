@@ -25,8 +25,12 @@ public enum Web {
     typealias RedirectPolicy = @Sendable (_ request: URLRequest, _ original: URLRequest?) -> URLRequest?
 
     /// No cookies and no URL cache; every redirect passes `redirect`.
-    static func session(requestTimeout: TimeInterval, resourceTimeout: TimeInterval, redirect: @escaping RedirectPolicy) -> URLSession {
+    /// `direct`: no proxy either, for a request that must stay on this Mac.
+    static func session(
+        requestTimeout: TimeInterval, resourceTimeout: TimeInterval, direct: Bool = false, redirect: @escaping RedirectPolicy
+    ) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
+        if direct { configuration.connectionProxyDictionary = [:] }
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
         configuration.urlCache = nil
@@ -55,7 +59,7 @@ public enum Web {
 
     private static let session = session(requestTimeout: 30, resourceTimeout: 60, redirect: publicOnly)
     /// For a server on this Mac: no redirect is followed, anywhere.
-    private static let thisMacSession = session(requestTimeout: 30, resourceTimeout: 60) { _, _ in nil }
+    private static let thisMacSession = session(requestTimeout: 30, resourceTimeout: 60, direct: true) { _, _ in nil }
 
     /// Bytes moved so far and in all, reported at most every 5% or 250 ms
     /// (and always at the end).
@@ -176,12 +180,15 @@ public enum Web {
     /// `POST url` with a JSON body to a server on this Mac (the agent's
     /// memory, a local strut): its reply if the answer is 200 and at most
     /// `limit` bytes. Anywhere else is refused before anything is sent, and
-    /// a redirect is never followed.
-    public static func postToThisMac(_ url: URL, json body: Data, limit: Int, what: String) async throws -> Data {
+    /// a redirect is never followed. `bearer` is the server's key: anything
+    /// on this Mac can reach a loopback port, so the key is what makes it
+    /// Peel's.
+    public static func postToThisMac(_ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String) async throws -> Data {
         guard isThisMac(url) else { throw PeelError("\(url.host ?? "the host") is not this Mac") }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
         request.httpBody = body
         return try await Transfer(limit: limit, what: what, progress: nil).run(thisMacSession.dataTask(with: request)).0
     }

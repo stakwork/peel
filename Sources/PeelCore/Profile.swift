@@ -18,6 +18,9 @@ public struct Profile: Sendable {
     /// app profile, in an owner-only file beside the words for a
     /// development one. Never in a database (docs/phases/09-agents.md).
     public let agentCredential: any SecretItem
+    /// The agent's memory server on this Mac, its address and key: kept as
+    /// the model's key is, never in a database or the defaults.
+    public let memoryServer: any SecretItem
 
     /// Names are path components, so only plain characters are allowed.
     public init(name: String, kind: Kind) throws {
@@ -35,9 +38,10 @@ public struct Profile: Sendable {
             directory = root.appendingPathComponent(name)
             secrets = KeychainSecretStore(account: name)
             agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
+            memoryServer = KeychainItem(service: "dev.peel.memory", account: name)
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            (secrets, agentCredential) = Self.files(in: directory)
+            (secrets, agentCredential, memoryServer) = Self.files(in: directory)
         }
     }
 
@@ -47,13 +51,14 @@ public struct Profile: Sendable {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        (secrets, agentCredential) = Self.files(in: directory)
+        (secrets, agentCredential, memoryServer) = Self.files(in: directory)
     }
 
-    /// A development profile's words and agent key, in files beside its database.
-    private static func files(in directory: URL) -> (any SecretStore, any SecretItem) {
+    /// A development profile's words, agent key and memory server, in files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
-         FileItem(file: directory.appendingPathComponent("agent-credential")))
+         FileItem(file: directory.appendingPathComponent("agent-credential")),
+         FileItem(file: directory.appendingPathComponent("memory-server")))
     }
 
     /// Where the agent's database lives, beside the account's.
@@ -94,10 +99,11 @@ public struct Profile: Sendable {
     }
 
     /// Removes the words and everything stored with them, the agent's key
-    /// first. A failure to remove either is reported, and the database is
+    /// and memory server first. A failure to remove either is reported, and the database is
     /// then kept with them.
     public func delete() throws {
         try agentCredential.delete()
+        try memoryServer.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

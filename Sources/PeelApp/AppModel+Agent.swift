@@ -32,10 +32,25 @@ extension AppModel {
     }
 
     /// The agent's memory (`docs/agent-brain.md`, an experiment): a strut on
-    /// this Mac, named with `defaults write dev.peel.mac memoryServer
-    /// http://127.0.0.1:<port>`. Nil when unset or not on this Mac.
-    static var memoryServer: MemoryServer? {
-        UserDefaults.standard.string(forKey: "memoryServer").flatMap(URL.init(string:)).flatMap(MemoryServer.init(base:))
+    /// this Mac and its key, set in Account › Peel agent. Keeps `server`
+    /// after a test call to it, or forgets the one kept (nil), and gives the
+    /// open agent its memory tools, or takes them away, at once.
+    func setMemoryServer(_ server: MemoryServer?) async throws {
+        guard let profile, let engine, let agent else { throw PeelError("no account is open") }
+        if let server {
+            try await server.check()
+            // The account may have been locked, switched or removed while
+            // the test call ran: keep nothing for an account no longer open.
+            guard self.profile?.directory == profile.directory, self.agent === agent else {
+                throw PeelError("The account changed while the memory server was checked; nothing was kept.")
+            }
+            try server.keep(in: profile.memoryServer)
+        } else {
+            try profile.memoryServer.delete()
+        }
+        memoryServer = server
+        agent.tools = Self.agentTools(engine, memory: server)
+        agent.systemPrompt = Self.agentSystemPrompt(remembers: server != nil)
     }
 
     /// Opens the message an agent's link names (`AgentMessageLink`), as a
@@ -60,7 +75,8 @@ extension AppModel {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             let baseURL = profile.kind == .development
                 ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
-            let memory = Self.memoryServer
+            let memory = try? MemoryServer.kept(in: profile.memoryServer)
+            memoryServer = memory
             agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
                 tools: Self.agentTools(engine, memory: memory), systemPrompt: Self.agentSystemPrompt(remembers: memory != nil)
@@ -84,6 +100,7 @@ extension AppModel {
     func closeAgent() {
         agent?.close()
         agent = nil
+        memoryServer = nil
         agentConnectFrom = nil
     }
 }

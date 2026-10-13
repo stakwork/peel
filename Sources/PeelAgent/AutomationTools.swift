@@ -209,7 +209,7 @@ public struct AutomationTools: Sendable {
     func describe(_ automation: Automation) -> String {
         var parts = ["\(automation.name) (id=\(automation.id))", automation.summary]
         if !automation.enabled { parts.append("paused") }
-        if automation.isDone { parts.append("done") }
+        if automation.isMissed { parts.append("missed: its time passed without a run") } else if automation.isDone { parts.append("done") }
         if let next = automation.nextRun, automation.enabled { parts.append("next \(format(next))") }
         if let last = automation.lastRun {
             parts.append("last run \(last.status)" + (last.startedAt.map { " \(format($0))" } ?? ""))

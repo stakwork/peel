@@ -74,8 +74,7 @@ extension View {
 }
 
 /// Photo, name (and a contact's short key), then their local time and how
-/// far ahead or behind, with the offset they sent and when. No time line
-/// when they have not shared one.
+/// far ahead or behind. No time line when they have not shared one.
 struct PersonCard: View {
     @Environment(AppModel.self) private var model
     let person: PersonRef
@@ -106,15 +105,11 @@ struct PersonCard: View {
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.secondaryText)
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            let time = Text(Formatting.time(context.date, in: local.zone)).bold()
-                            let offset = Formatting.offset(model.difference(local.zone, at: context.date))
-                            Text("\(time) local time · \(offset ?? "same as yours")")
-                                .font(Theme.font(13))
-                            Text("\(local.sent) · sent \(Formatting.relative(local.seen, now: context.date))")
-                                .muted()
-                        }
-                        .monospacedDigit()
+                        let time = Text(Formatting.time(context.date, in: local.zone)).bold()
+                        let offset = Formatting.offset(model.difference(local.zone, at: context.date))
+                        Text("\(time) local time · \(offset ?? "same as yours")")
+                            .font(Theme.font(13))
+                            .monospacedDigit()
                     }
                     .padding(14)
                 }
@@ -171,8 +166,7 @@ struct DirectHeader: View {
 // MARK: - The per-chat switch (T6)
 
 /// A contact's details: since when, their local time, their full key with
-/// its QR code, whether your time zone goes with what you send them, and
-/// Remove, confirmed in place. A tribe's are `TribeDetailsPanel`.
+/// its QR code, the time zone switch, and Remove, confirmed in place. A tribe's are `TribeDetailsPanel`.
 struct ChatInfoPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -206,19 +200,12 @@ struct ChatInfoPanel: View {
         } footer: {
             FormFooter(problem: removeProblem) {
                 InlineConfirm(
-                    trigger: "Remove contact…", explanation: removeExplanation, confirm: "Remove", alignment: .trailing
+                    trigger: "Remove contact…", explanation: "Remove \(conversation.name) and delete your chat?",
+                    confirm: "Remove", alignment: .trailing
                 ) { await remove() }
             }
         }
         .task(id: conversation.chat) { await load() }
-    }
-
-    /// What Remove deletes, and what it leaves, in plain words.
-    private var removeExplanation: String {
-        let name = conversation.name
-        let call = model.call?.chat == conversation.chat ? " Your call here ends." : ""
-        return "Deletes your chat with \(name) from this Mac and from your server: messages, files and requests. "
-            + "Payment history stays. \(name) is not told and keeps their copy; you can add each other again.\(call)"
     }
 
     private func remove() async {
@@ -239,61 +226,40 @@ struct ChatInfoPanel: View {
 }
 
 /// Whether your time zone goes with what you send in a chat, under a
-/// "Time zone" heading. A public tribe has no switch: it never gets it.
+/// "Time zone" heading. Nothing in a public tribe: it never gets it.
 struct ChatTimeZoneSection: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let tribe: Tribe?
 
     @State private var sharing: Bool?
-    @State private var offset: String?
-    @State private var chatZone: String?
     @State private var problem: String?
 
     private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
     private var target: String { conversation.title }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            SectionHeader("Time zone")
-            if isPublicTribe {
-                Text("Your time zone is never sent in public tribes.")
-                    .font(Theme.font(13))
-                Text("You still see the local time of members who share theirs.").monospacedDigit().muted()
-            } else if let sharing {
-                FormSwitchRow(
-                    label: "Share my time zone with \(target)", detail: sharingNote(sharing),
-                    isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })
-                )
-                if let chatZone {
-                    Text("Uses \(chatZone), set on another device.").monospacedDigit().muted()
-                }
-                if let problem {
-                    ProblemText(problem)
+        if !isPublicTribe {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                SectionHeader("Time zone")
+                if let sharing {
+                    FormSwitchRow(
+                        label: "Share my time zone with \(target)",
+                        isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })
+                    )
+                    if let problem {
+                        ProblemText(problem)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: conversation.chat) { await load() }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: conversation.chat) { await load() }
-    }
-
-    private func sharingNote(_ on: Bool) -> String {
-        let offset = offset.map { "your offset, \($0)," } ?? "your offset"
-        let tribe = conversation.isTribe
-        let keeps = tribe ? "members keep" : "\(conversation.name) keeps"
-        guard on else {
-            return "Off: messages you send here carry no offset. \(tribe ? "Members keep" : keeps) any you sent before."
-        }
-        let audience = tribe ? ", to every member and the tribe's server" : ""
-        return "Sends \(offset) with each message you send here\(audience). Turning it off stops sending; \(keeps) the last one you sent."
     }
 
     private func load() async {
         guard let engine = model.engine else { return }
-        let chat = conversation.chat
-        sharing = (try? await engine.timeZoneSharing(in: chat)) ?? true
-        offset = (try? await engine.timeZone(for: chat)).map { TimeZoneOffset.format($0) }
-        chatZone = try? engine.storage.chatTimeZone(chat)?.identifier
+        sharing = (try? await engine.timeZoneSharing(in: conversation.chat)) ?? true
     }
 
     private func set(_ on: Bool) async {

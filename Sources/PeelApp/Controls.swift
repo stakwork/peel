@@ -65,11 +65,11 @@ struct PeelDropdown<Value: Hashable>: View {
 }
 
 /// A setting chosen from a `PeelDropdown` and saved at once, with its help
-/// muted under it, or what went wrong saving it.
+/// (if any) muted under it, or what went wrong saving it.
 struct SettingDropdown<Value: Hashable>: View {
     let selection: Value
     let options: [(value: Value, label: String)]
-    let help: String
+    var help: String?
     let save: @MainActor (Value) async throws -> Void
 
     @State private var problem: String?
@@ -87,8 +87,10 @@ struct SettingDropdown<Value: Hashable>: View {
                 }
             }
             .fixedSize()
-            Text(problem ?? help)
-                .muted()
+            if let text = problem ?? help {
+                Text(text)
+                    .muted()
+            }
         }
     }
 }

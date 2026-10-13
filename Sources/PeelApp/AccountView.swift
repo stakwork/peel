@@ -21,7 +21,7 @@ struct AccountView: View {
                     SettingsSection("Account") {
                         NameRow()
                         Fact("Balance") {
-                            Text(model.balanceText ?? "Known once connected")
+                            Text(model.balanceText ?? "–")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }
@@ -31,6 +31,7 @@ struct AccountView: View {
                         Fact("Boost amount") {
                             BoostAmountRow()
                         }
+                        TimeZoneRow()
                         Fact("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")
@@ -44,7 +45,6 @@ struct AccountView: View {
                         AgentSettingsSection(agent: agent)
                             .id(AgentSettingsSection.id)
                     }
-                    TimeZoneSection()
                     SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {
                             ChangePINRow()
@@ -59,7 +59,7 @@ struct AccountView: View {
                     }
                     ForgetAccountControl(
                         trigger: "Forget this account on this Mac…",
-                        explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
+                        explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                         section: true
                     )
                 }
@@ -128,12 +128,11 @@ private struct ContactInfoSection: View {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Your contact info")
                         .font(Theme.font(15, .bold))
-                    Text(model.myContactInfo == nil
-                         ? "Available once the server has registered this account."
-                         : "Someone scans this code or pastes your contact info to add you. It holds your public key and how to reach you, nothing secret.")
-                        .font(Theme.font(13))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if model.myContactInfo == nil {
+                        Text("Not ready yet")
+                            .font(Theme.font(13))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                     if let info = model.myContactInfo {
                         CopyButton("Copy contact info", text: info)
                             .buttonStyle(.peel(.outline))
@@ -160,10 +159,7 @@ private struct NameRow: View {
     var body: some View {
         if editing {
             VStack(alignment: .leading, spacing: 14) {
-                FormItem(
-                    label: "Name",
-                    helper: "Contacts and tribes see it on the messages you send from now on. Messages already sent keep the old name."
-                ) {
+                FormItem(label: "Name") {
                     FormTextField(label: "Name", text: $draft)
                         .onSubmit { Task { await save() } }
                         .disabled(working)
@@ -288,9 +284,9 @@ private struct ChangePINRow: View {
         defer { working = false }
         do {
             try await model.changePIN(from: old, to: new, confirmation: confirmation)
-            reset(to: .closed, note: "Changed. Use the new PIN from now on.")
+            reset(to: .closed, note: "PIN changed")
         } catch SecretStoreFailure.wrongPIN {
-            reset(to: .old, note: "That was not your current PIN. Enter it again.")
+            reset(to: .old, note: "Wrong PIN. Try again.")
         } catch {
             reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
         }
@@ -306,8 +302,7 @@ private struct PINTimeoutRow: View {
         Fact("Ask for the PIN") {
             SettingDropdown(
                 selection: model.pinTimeoutHours,
-                options: presets(Self.choices, including: model.pinTimeoutHours).map { ($0, Self.label($0)) },
-                help: "After this long without use, Peel asks again."
+                options: presets(Self.choices, including: model.pinTimeoutHours).map { ($0, Self.label($0)) }
             ) { try await model.setPINTimeout(hours: $0) }
         }
     }
@@ -353,14 +348,7 @@ private struct WordsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Fact("Twelve words") {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
-                    Group {
-                        Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
-                        Text(model.wordsConfirmed ? "Your written copy is checked" : "Your written copy is not checked yet")
-                    }
-                    .muted()
-                }
+                Text(model.wordsConfirmed ? "Checked" : "Not checked yet")
             } trailing: {
                 if words.isEmpty, !askingPIN {
                     HStack(spacing: 8) {
@@ -378,7 +366,7 @@ private struct WordsRow: View {
             }
             if askingPIN {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    prompt("Enter your PIN to \(checking ? "check" : "show") your twelve words.")
+                    prompt("Enter your PIN")
                     PinField(pin: $pin) { Task { await reveal() } }
                         .frame(maxWidth: 360)
                         .disabled(working)
@@ -401,7 +389,7 @@ private struct WordsRow: View {
 
     private var shown: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Anyone who has these words controls your account and its sats. Write them on paper; never type them into a website or a chat.")
+            Text("Anyone with these words controls your account. Keep them on paper.")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -417,7 +405,7 @@ private struct WordsRow: View {
                     .buttonStyle(.peel(.outline))
                 // Not a loss, so the second click is the commit button, not red.
                 InlineConfirm(
-                    prompt: "Other apps can read the clipboard. Peel clears it after a minute.", confirm: "Copy words",
+                    prompt: "Other apps can see the clipboard.", confirm: "Copy words",
                     confirmKind: .primary, confirming: $confirmingCopy
                 ) {
                     Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
@@ -425,10 +413,6 @@ private struct WordsRow: View {
                     CopyFeedback.announce()
                 } trigger: {
                     CopyLabel("Copy", copiedAt: copiedAt)
-                }
-                if !confirmingCopy, copiedAt != nil {
-                    Text("Cleared from the clipboard in a minute")
-                        .muted()
                 }
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -448,7 +432,7 @@ private struct WordsRow: View {
     /// Three words typed back; the words themselves stay off the screen.
     private var boxes: some View {
         VStack(alignment: .leading, spacing: 14) {
-            prompt("Type these three words from what you wrote down.")
+            prompt("Type these three words from your paper")
             WordCheckGrid(check: $check) { Task { await confirm() } }
             FormFooter(problem: nil) {
                 Button { Task { await confirm() } } label: { Text("Check").buttonProgress(working) }
@@ -530,64 +514,48 @@ private struct WordsRow: View {
 
 // MARK: - Time zone
 
-/// The zone your offset comes from (this Mac's, or one chosen from a
-/// searchable list, `ZonePicker`), and how many chats it goes to.
-private struct TimeZoneSection: View {
+/// The zone your time is shown in: this Mac's, or one chosen from a
+/// searchable list (`ZonePicker`).
+private struct TimeZoneRow: View {
     @Environment(AppModel.self) private var model
     @State private var chosen: String?
     @State private var picking = false
     @State private var hovering = false
     @State private var problem: String?
-    @State private var shared: Int?
 
     /// What is sent: the chosen zone, else this Mac's.
     private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
 
     var body: some View {
-        SettingsSection("Time zone") {
-            Fact("Time zone") {
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Button { picking = true } label: {
-                        HStack(spacing: Theme.Space.sm) {
-                            Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
-                                .lineLimit(1)
-                            Text(TimeZoneOffset.format(zone))
-                                .foregroundStyle(Theme.secondaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                        .font(Theme.font(13))
-                        .monospacedDigit()
-                        .dropdownBoxed(hovering: hovering)
+        Fact("Time zone") {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Button { picking = true } label: {
+                    HStack(spacing: Theme.Space.sm) {
+                        Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
+                            .lineLimit(1)
+                        Text(TimeZoneOffset.format(zone))
+                            .foregroundStyle(Theme.secondaryText)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
                     }
-                    .buttonStyle(.plain)
-                    .onHover { hovering = $0 }
-                    .fixedSize()
-                    .peelPopover(isPresented: $picking) {
-                        ZonePicker(chosen: chosen, close: { picking = false }) { identifier in
-                            picking = false
-                            Task { await choose(identifier) }
-                        }
-                    }
-                    Text(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.").muted()
+                    .font(Theme.font(13))
+                    .monospacedDigit()
+                    .dropdownBoxed(hovering: hovering)
                 }
-            }
-            Fact("Shared in") {
-                VStack(alignment: .leading, spacing: 2) {
-                    switch shared {
-                    case nil: EmptyView()
-                    case 0: Text("No chats")
-                    case let count?:
-                        Text("\(Formatting.count(count, "chat")) \(Text("· as \(TimeZoneOffset.format(zone))").foregroundStyle(Theme.secondaryText))")
-                            .monospacedDigit()
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+                .fixedSize()
+                .peelPopover(isPresented: $picking) {
+                    ZonePicker(chosen: chosen, close: { picking = false }) { identifier in
+                        picking = false
+                        Task { await choose(identifier) }
                     }
-                    Text("Every direct message and private tribe, unless you turn it off in that chat's details. Never in public tribes. Each message carries the offset of the moment it is sent, so it follows summer time. You see other people's local time either way.").muted()
                 }
+                if let problem { ProblemText(problem) }
             }
         }
         .task { chosen = try? await model.engine?.chosenTimeZone() }
-        .task(id: model.conversations.count) { await countShared() }
     }
 
     private func choose(_ identifier: String?) async {
@@ -598,16 +566,6 @@ private struct TimeZoneSection: View {
         } catch {
             problem = PeelError.problem(error, couldNot: "change the time zone")
         }
-    }
-
-    /// Every chat whose messages carry the offset now.
-    private func countShared() async {
-        guard let engine = model.engine else { return }
-        var count = 0
-        for conversation in model.conversations {
-            if (try? await engine.offsetShared(in: conversation.chat)) != nil { count += 1 }
-        }
-        shared = count
     }
 }
 
@@ -714,11 +672,7 @@ private struct NotificationsRow: View {
 
     var body: some View {
         Fact("Notifications") {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state)
-                Text(note)
-                    .muted()
-            }
+            Text(state)
         } trailing: {
             switch model.notifier.permission {
             case .notAsked:
@@ -737,17 +691,8 @@ private struct NotificationsRow: View {
         switch model.notifier.permission {
         case .allowed: "On"
         case .notAsked: "Off"
-        case .denied: "Turned off in System Settings"
+        case .denied: "Off in System Settings"
         case .unavailable: "Unavailable"
-        }
-    }
-
-    private var note: String {
-        switch model.notifier.permission {
-        case .allowed: "For new messages while you're elsewhere, by each chat's notification level. Sounds and Focus follow System Settings."
-        case .notAsked: "Peel asks macOS once; you can change it later in System Settings."
-        case .denied: "Allow Peel under Notifications in System Settings to get them."
-        case .unavailable: "Only when Peel runs as an app."
         }
     }
 }
@@ -759,8 +704,7 @@ private struct NotificationTextRow: View {
         Fact("Message text") {
             SettingDropdown(
                 selection: model.notifier.showsText,
-                options: [(true, "Show message text"), (false, "Say only \"New message\"")],
-                help: "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither."
+                options: [(true, "Show"), (false, "Hide")]
             ) { try await model.setNotificationShowsText($0) }
         }
     }
@@ -774,7 +718,7 @@ private struct WebsiteDataRow: View {
 
     var body: some View {
         Fact("Website data") {
-            Text(cleared ? "Cleared." : "Sign-ins, cookies and storage of pages opened in Peel, kept for this account only.")
+            Text(cleared ? "Cleared" : "Sign-ins from pages opened in Peel")
                 .muted()
         } trailing: {
             InlineConfirm(trigger: "Clear…", prompt: "Sign out of every site?", confirm: "Clear") {

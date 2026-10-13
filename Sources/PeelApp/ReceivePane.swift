@@ -40,7 +40,7 @@ struct ReceivePane: View {
 
     @ViewBuilder private var form: some View {
         let amountMsat = Sats.msat(amount)
-        FormItem(label: "Amount", helper: "Lightning invoices from Peel name an amount; the payer cannot choose one.") {
+        FormItem(label: "Amount") {
             SatsField(label: "Amount", text: $amount)
         }
         FormItem(label: "Memo") {
@@ -140,10 +140,7 @@ private struct WaitingStatus: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = invoice.expires.map { $0.timeIntervalSince(context.date) } ?? .infinity
             if left <= 0 {
-                Callout(
-                    .attention, "This invoice has expired",
-                    detail: "It ran out at \(invoice.expires.map(Formatting.expiry) ?? "") unpaid."
-                ) {
+                Callout(.attention, "This invoice has expired", detail: "Nothing was paid.") {
                     Button("Make a new one", action: renew).buttonStyle(.peel(.link))
                 }
             } else {
@@ -172,8 +169,6 @@ private struct WaitingStatus: View {
                                 }
                             }
                     }
-                    Text("You can close this, and Peel too: the server takes the payment, and it shows in your history.")
-                        .muted()
                 }
                 .padding(Theme.Space.md)
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(Theme.divider))

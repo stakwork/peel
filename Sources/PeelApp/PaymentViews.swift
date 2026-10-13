@@ -151,15 +151,10 @@ struct SendSatsPanel: View {
                     TemplatePicker(selection: $template)
                 }
             }
-            Group {
-                if mode == .send {
-                    BalanceLine()
-                } else {
-                    Text("\(name) gets an invoice in this chat, payable for an hour.")
-                        .muted()
-                }
+            if mode == .send {
+                BalanceLine()
+                    .padding(.top, 10)
             }
-            .padding(.top, 10)
         } footer: {
             switch mode {
             case .send:
@@ -249,7 +244,7 @@ struct TemplatePicker: View {
     private var helper: String? {
         switch loading {
         case .loading: nil
-        case .loaded(let templates): templates.isEmpty ? "This account's memes server offers no pictures." : nil
+        case .loaded(let templates): templates.isEmpty ? "No pictures available." : nil
         case .failed(let problem): problem
         }
     }
@@ -436,8 +431,7 @@ struct BoostAmountRow: View {
                     }, sent: { self.custom = nil })
                 }
             }
-            Text(attempt.problem ?? "Boost sends this at once, plus a tribe's price.")
-                .muted()
+            if let problem = attempt.problem { ProblemText(problem) }
         }
     }
 }
@@ -454,8 +448,7 @@ struct PaymentConfirmationRow: View {
         SettingDropdown(
             selection: current,
             options: presets(Self.choices, including: current)
-                .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") },
-            help: "A boost or payment above this takes a second click that shows the amount."
+                .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") }
         ) { try await model.setPaymentConfirmation(msat: $0) }
     }
 }

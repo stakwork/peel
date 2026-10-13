@@ -135,7 +135,7 @@ final class WebPane: NSObject {
     /// the page's place. The page then has the keyboard.
     func go(to typed: String) {
         guard let url = WebPage.typed(typed) else {
-            problem = Problem(url: nil, message: "Peel opens web addresses here: http and https only.")
+            problem = Problem(url: nil, message: "Only http and https addresses open here.")
             return
         }
         open(url)
@@ -432,7 +432,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
 extension WebPane: WKDownloadDelegate {
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
         guard let folder = try? IncomingFiles.newFolder(in: Self.downloadsRoot) else {
-            self.download = .failed(suggestedFilename, reason: "Peel could not make a folder for it")
+            self.download = .failed(suggestedFilename, reason: "Could not make a folder for it")
             return nil
         }
         let file = folder.appendingPathComponent("download", isDirectory: false)

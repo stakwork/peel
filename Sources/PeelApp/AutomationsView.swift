@@ -53,8 +53,7 @@ struct AutomationsView: View {
         if let problem = state.problem {
             Callout(.attention, detail: problem, dismiss: { model.automations.problem = nil })
         } else if state.schedulerLooksOff() {
-            Callout(.attention, "strut's clock looks off",
-                    detail: "An automation's time passed without a run. Start strut with STRUT_SCHEDULER=1; Run now works meanwhile.") {
+            Callout(.attention, "Scheduled runs are paused", detail: "Run now still works.") {
                 EmptyView()
             }
         }

@@ -41,10 +41,7 @@ struct PayInvoicePane: View {
     var body: some View {
         PaneFrame(title: "Pay an invoice", close: close) {
             let unreadable = !text.trimmed.isEmpty && invoice == nil
-            FormItem(
-                label: "Invoice", helper: "Paste one, or drop it anywhere on the window.",
-                problem: unreadable ? "That is not an invoice Peel can read." : nil
-            ) {
+            FormItem(label: "Invoice", problem: unreadable ? "That isn't an invoice." : nil) {
                 FormTextField(label: "Invoice", prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
             }
             if let invoice {
@@ -107,7 +104,7 @@ struct PayInvoicePane: View {
     private func payForm(_ invoice: Invoice) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             if let failed = payment?.error {
-                Text("The last try failed (\(failed)); nothing was sent, so paying again pays once.")
+                Text("Last try failed (\(failed)). Nothing was sent.")
                     .muted()
             }
             FormFooter(problem: attempt.problem) {
@@ -116,10 +113,6 @@ struct PayInvoicePane: View {
                     await model.payInvoice(invoice, confirmedMsat: confirmed)
                 }, sent: {}, namesAmount: false)
             }
-            Text(model.paymentConfirmationMsat == 0 ? "Every payment takes a second click."
-                 : "Payments over \(Sats.format(msat: model.paymentConfirmationMsat)) take a second click.")
-                .monospacedDigit()
-                .muted()
         }
     }
 
@@ -137,7 +130,7 @@ struct PayInvoicePane: View {
                 }
             }
             if payment == nil || payment?.status == .failed {
-                Fact("Fee", text: "Any routing fee is added on top and shown once paid.")
+                Fact("Fee", text: "Added on top")
             }
         }
     }
@@ -150,10 +143,10 @@ struct PayInvoicePane: View {
         var link: (String, () -> Void)?
         switch problem {
         case .invoiceWithoutAmount:
-            (title, detail) = ("This invoice names no amount", "Peel pays invoices that say how much. Ask for one with an amount.")
+            (title, detail) = ("This invoice names no amount", "Ask for one with an amount.")
         case .invoiceExpired:
             (title, detail) = ("This invoice has expired",
-                               "It ran out \(invoice.expiresAt.map { Formatting.dateAndTime($0) } ?? ""). Ask for a new one.")
+                               "Ask for a new one.")
         case .ownInvoice:
             (title, detail) = ("This is your own invoice", "Send it to whoever is paying you.")
         case .invoiceAlreadyPaid:
@@ -164,11 +157,11 @@ struct PayInvoicePane: View {
             }
         case .invoicePending:
             (title, detail) = ("A payment of this invoice is on its way",
-                               "It may already have paid, so it cannot be paid again until the server says.")
+                               "It may have paid already.")
         case .insufficientBalance:
             (title, detail) = ("Not enough sats",
-                               "This needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: reserve)) "
-                                   + "for routing. You have \(Sats.format(msat: model.balanceMsat ?? 0)).")
+                               "Needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: reserve)) "
+                                   + "in fees. You have \(Sats.format(msat: model.balanceMsat ?? 0)).")
             link = ("Receive sats", receive)
         default:
             (title, detail) = ("This invoice cannot be paid now", problem.description)
@@ -187,7 +180,7 @@ struct PayInvoicePane: View {
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
                 Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Sats.format(msat: $0))." }
-                     ?? "The fee shows once the server's history has this payment.")
+                     ?? "Fee not known yet.")
                     .monospacedDigit()
                     .muted()
                 HStack {
@@ -197,8 +190,7 @@ struct PayInvoicePane: View {
                 }
             }
         case .unsettled:
-            Text("Not settled yet: the server holds this payment of \(Sats.format(msat: payment.amountMsat)) and may "
-                 + "never settle it. It is not paid again from here.")
+            Text(NotSettled.explanation + ".")
                 .font(Theme.font(13))
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondaryText)
@@ -206,7 +198,7 @@ struct PayInvoicePane: View {
         default:
             HStack(spacing: Theme.Space.sm) {
                 ProgressView().controlSize(.small)
-                Text("Paying \(Sats.format(msat: payment.amountMsat)). It stays pending until the server confirms.")
+                Text("Paying \(Sats.format(msat: payment.amountMsat))…")
                     .font(Theme.font(13))
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)

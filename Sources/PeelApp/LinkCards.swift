@@ -83,8 +83,7 @@ struct TribeLinkCard: View {
         if deleted { return "This tribe has been deleted." }
         if let problem = read?.problem { return problem }
         if let summary = (info?.summary ?? known?.summary)?.trimmed.nilIfEmpty { return summary }
-        if read == .elsewhere, known == nil { return "Listed on another tribes server. Join looks it up there." }
-        return read == nil || read == .loading ? "Reading the tribe from your tribes server" : link.host
+        return read == nil || read == .loading ? "Loading…" : link.host
     }
 
     @ViewBuilder private func facts(

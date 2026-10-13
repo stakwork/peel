@@ -32,7 +32,8 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                DetailHeader(title: "Payments", subtitle: "Amounts in sats" + (model.waitingText.map { " · \($0)" } ?? ""),
+                DetailHeader(title: "Payments",
+                             subtitle: model.waitingMsat > 0 ? "\(Sats.format(msat: model.waitingMsat)) waiting" : nil,
                              leading: { EmptyView() }) {
                     HStack(spacing: Theme.Space.sm) {
                         HeaderAction(title: "Receive", systemImage: "arrow.down.left", active: pane == .receive) {
@@ -148,8 +149,7 @@ struct PaymentsView: View {
 
     @ViewBuilder private var list: some View {
         if items.isEmpty {
-            EmptyState(problem ?? (model.connection == .connected ? "Payments you send and receive show up here."
-                : "Payments show up here once Peel is connected."))
+            EmptyState(problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -198,7 +198,7 @@ struct PaymentsView: View {
                 PaymentDetailPane(item: item) { self.pane = nil }
             } else {
                 PaneFrame(title: "Payment", close: { self.pane = nil }) {
-                    Text("This payment is no longer in the list.")
+                    Text("This payment is gone.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)
                 }

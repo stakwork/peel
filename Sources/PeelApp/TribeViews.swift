@@ -98,7 +98,7 @@ struct TribeSettingsForm: View {
             FormItem(label: "Name", problem: problem(.name)) {
                 FormTextField(label: "Name", prompt: "Required", text: $name, problem: problem(.name) != nil)
             }
-            FormItem(label: "What it is about", helper: "Shown in the tribes directory and the header.") {
+            FormItem(label: "What it is about") {
                 FormTextField(label: "What it is about", text: $summary, axis: .vertical)
             }
             FormItem(label: "Image", problem: problem(.photo)) {
@@ -112,7 +112,7 @@ struct TribeSettingsForm: View {
                     uploading: $uploadingImage
                 )
             }
-            FormItem(label: "Tags", helper: "The tribes directory lists tribes by tag.") {
+            FormItem(label: "Tags") {
                 // The official apps' set, and any other the tribe already has.
                 TagChips(tags: TribeSettings.tagChoices + (original?.tags ?? []).filter { !TribeSettings.tagChoices.contains($0) },
                          selection: $tags)
@@ -131,8 +131,8 @@ struct TribeSettingsForm: View {
             }
         }
         FormSection("Access") {
-            FormSwitchRow(label: "Private", detail: "People ask to join and you approve them.", isOn: $isPrivate)
-            FormSwitchRow(label: "Unlisted", detail: "Not shown in the tribes directory; joined by link only.", isOn: $unlisted)
+            FormSwitchRow(label: "Private", detail: "You approve who joins.", isOn: $isPrivate)
+            FormSwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $unlisted)
         }
     }
 
@@ -243,7 +243,7 @@ struct TribeServerProgress: View {
     var body: some View {
         HStack {
             ProgressView().controlSize(.small)
-            Text("Asking the tribes server…")
+            Text("Loading…")
                 .muted()
         }
     }
@@ -373,9 +373,9 @@ struct TribeStatusBar: View {
 
     private var text: String {
         switch tribe.status {
-        case .pending: "Waiting for the owner to approve your request to join."
-        case .rejected: "The owner declined your request to join."
-        case .removed: "The owner removed you from this tribe."
+        case .pending: "Waiting for the owner to approve you."
+        case .rejected: "The owner declined your request."
+        case .removed: "The owner removed you."
         case .deleted: "The owner deleted this tribe."
         case .active: "You are not in this tribe."
         }
@@ -406,7 +406,7 @@ struct MentionsView: View {
         VStack(spacing: 0) {
             DetailHeader(title: "Mentions")
             if mentions.isEmpty {
-                EmptyState(problem ?? "Messages that mention you show up here.")
+                EmptyState(problem ?? "No mentions yet.")
             } else {
                 let names = Dictionary(model.conversations.map { ($0.chat, $0.name) }, uniquingKeysWith: { $1 })
                 ScrollView {

@@ -402,7 +402,7 @@ private final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unche
     }
 }
 
-/// Offers notifications once the account is open, saying what they are for.
+/// Offers notifications once the account is open.
 struct NotificationOffer: View {
     @Environment(AppModel.self) private var model
 
@@ -410,7 +410,7 @@ struct NotificationOffer: View {
         HStack(spacing: Theme.Space.md) {
             Image(systemName: "bell")
                 .foregroundStyle(Theme.secondaryText)
-            Text("Peel can show a notification when a message arrives while you're in another app or another chat.")
+            Text("Get notified about new messages?")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -183,8 +183,8 @@ struct PaymentDetailPane: View {
     }
 
     private var pendingStatus: String {
-        guard item.isToContact else { return "Pending: not confirmed by the server yet" }
-        return "Waiting for \(item.chatName ?? "them") to come online. \(WaitingForServer.waitsForPerson(item.chatName))"
+        guard item.isToContact else { return "Pending" }
+        return "Waiting for \(item.chatName ?? "them") to come online, can't be cancelled"
     }
 
     private var facts: some View {
@@ -210,7 +210,7 @@ struct PaymentDetailPane: View {
                 Fact("Why", text: why)
             }
             if let ping = item.pingMsat {
-                Fact("Ping", text: "\(Sats.format(msat: ping)), sent with it to reach them")
+                Fact("Ping", text: Sats.format(msat: ping))
             }
             if let hash = item.paymentHash {
                 Fact("Payment hash", text: Formatting.shortKey(hash), monospaced: true) {

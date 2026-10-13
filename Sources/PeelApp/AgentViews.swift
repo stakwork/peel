@@ -255,21 +255,15 @@ private struct AgentIntro: View {
 
     var body: some View {
         AgentRow(author: .agent, name: agent.name) {
-            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on your chats, find what someone said, and send messages for you once you allow each one.")
+            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on chats and send messages for you.")
                 .font(Theme.font(14))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
             if agent.connection == nil {
                 Card {
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connect a model to start")
-                            .font(Theme.font(14, .semibold))
-                        Text("Anthropic, OpenAI or OpenRouter. What the agent reads to answer you goes to the provider you connect, not to Sphinx or to us.")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text("Connect a model to start")
+                        .font(Theme.font(14, .semibold))
                     Spacer(minLength: 8)
                     AgentConnectButton(source: .chat, title: "Connect", variant: .primary)
                 }
@@ -319,10 +313,10 @@ private struct AgentTurnRow: View {
     static func words(for ending: AgentTurn.Ending) -> String {
         switch ending {
         case .stopped: "Stopped"
-        case .cutOff: "The reply reached its length limit."
-        case .declined: "The provider declined to answer."
-        case .stepLimit: "Stopped after the most steps a reply may take."
-        case .failed: "The provider failed after this ran. Ask again for anything left."
+        case .cutOff: "Reply cut off."
+        case .declined: "The model declined to answer."
+        case .stepLimit: "Stopped: too many steps."
+        case .failed: "Didn't finish. Ask again."
         }
     }
 }
@@ -600,7 +594,7 @@ private struct AgentApprovalCard: View {
     /// What else will happen, and what it costs.
     private var detail: String {
         let lines = intent.lines
-        return lines.isEmpty ? "Waiting on you. Nothing is sent until you allow it." : lines.joined(separator: "\n")
+        return lines.isEmpty ? "Nothing is sent until you allow it." : lines.joined(separator: "\n")
     }
 }
 
@@ -629,7 +623,7 @@ private struct AgentProblemRow: View {
     private var words: String {
         switch failure {
         case .noModel:
-            "No model connected. Connect one and this message is asked again."
+            "No model connected."
         case .unreadableKey(let reason):
             PeelError.problem(reason, couldNot: "read the API key on this Mac")
         case .model(.invalidKey(let message)):

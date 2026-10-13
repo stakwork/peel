@@ -50,7 +50,7 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 Text("Welcome to Peel")
                     .font(Theme.font(28, .bold))
-                Text("Sphinx on your Mac. Private messages, tribes and sats, on an account only you hold the keys to.")
+                Text("Sphinx messages and sats on your Mac.")
                     .font(Theme.font(15))
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -65,7 +65,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.peel(.outline, size: .lg))
             }
-            Text("New to Sphinx? Ask someone already on it for an invite.")
+            Text("No invite? Ask someone on Sphinx.")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
@@ -74,7 +74,7 @@ struct OnboardingView: View {
 
     private var inviteStep: some View {
         StepBody(title: "Paste your invite",
-                 detail: "The link or code someone sent you. It creates your account on the Sphinx server, and may come with sats from whoever invited you.") {
+                 detail: "The link or code someone sent you.") {
             FormItem(label: "Invite") {
                 FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
             }
@@ -85,7 +85,7 @@ struct OnboardingView: View {
 
     private var enterWordsStep: some View {
         StepBody(title: "Restore from twelve words",
-                 detail: "Type them in order, or paste all twelve into the first box. Peel brings back your contacts and message history from the server. Your other devices keep working.",
+                 detail: "Type them in order, or paste all twelve.",
                  width: 520) {
             WordEntryGrid(words: $words)
         } footer: {
@@ -102,8 +102,7 @@ struct OnboardingView: View {
     }
 
     private var nameStep: some View {
-        StepBody(title: "What should people call you?",
-                 detail: "Your name goes with your messages, to the people you talk to and in tribes. You can change it later.") {
+        StepBody(title: "What should people call you?") {
             FormItem(label: "Name") {
                 FormTextField(label: "Name", prompt: "Required", text: $name)
                     .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
@@ -114,8 +113,7 @@ struct OnboardingView: View {
     }
 
     private var pinStep: some View {
-        StepBody(title: "Set a PIN",
-                 detail: "Six digits. Peel asks for it when it opens, and it locks your twelve words on this Mac.") {
+        StepBody(title: "Set a PIN") {
             PinField(pin: $pin) { go(.confirmPin) }
         } footer: {
             footer(next: "Continue", enabled: pin.count == 6) { go(.confirmPin) }
@@ -123,7 +121,7 @@ struct OnboardingView: View {
     }
 
     private var confirmPinStep: some View {
-        StepBody(title: "Enter your PIN again", detail: "To make sure it's the one you meant.") {
+        StepBody(title: "Enter your PIN again") {
             PinField(pin: $confirmation) { Task { await confirmPin() } }
         } footer: {
             footer(next: path == .newAccount ? "Create account" : "Restore",
@@ -133,7 +131,7 @@ struct OnboardingView: View {
 
     private var showWordsStep: some View {
         StepBody(title: "Write down your twelve words",
-                 detail: "They are your account. With them you can restore it on any device; anyone else who has them controls your messages and sats. Peel keeps them locked with your PIN on this Mac and never sends them anywhere.",
+                 detail: "Anyone with these words controls your account.",
                  width: 520) {
             VStack(alignment: .leading, spacing: 18) {
                 NumberedWordGrid(places: Array(shownWords.indices)) { index in
@@ -143,8 +141,8 @@ struct OnboardingView: View {
                 }
                 if model.myContactInfo == nil {
                     // Signed up, the server's answer not yet in: the engine registers again as it
-                    // connects. A refused invite gets no answer at all, so the line names that too.
-                    Text("Your account is saved with these words. The server hasn't confirmed it yet, and Peel asks again each time it connects. If it never confirms, the invite may have been used or cancelled: ask whoever sent it.")
+                    // connects. A refused invite never answers, so the line says what to do.
+                    Text("Not confirmed yet. If it stays this way, ask for a new invite.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -163,7 +161,7 @@ struct OnboardingView: View {
     /// missed or misspelt is caught while the words can still be read here.
     private var checkWordsStep: some View {
         StepBody(title: "Check what you wrote",
-                 detail: "Type these three words from your paper. Peel opens once they match.",
+                 detail: "Type these three words from your paper.",
                  width: 520) {
             WordCheckGrid(check: $check) { Task { await checkWords() } }
         } footer: {
@@ -275,7 +273,7 @@ struct RestoreProgressView: View {
     var body: some View {
         let progress = model.restoreProgress
         StepBody(title: "Restoring your account",
-                 detail: "A busy account takes a few minutes. You can start using Peel now; older history keeps arriving in the background.",
+                 detail: "You can start now while older messages arrive.",
                  width: 460) {
             Card {
                 VStack(spacing: 0) {
@@ -399,10 +397,10 @@ struct OnboardingPage<Content: View>: View {
     }
 }
 
-/// Title, explanation, the step's fields and its buttons.
+/// Title, an optional one-line detail, the step's fields and its buttons.
 struct StepBody<Fields: View, Footer: View>: View {
     let title: String
-    let detail: String
+    var detail: String?
     var width: CGFloat = 440
     @ViewBuilder let fields: Fields
     @ViewBuilder let footer: Footer
@@ -412,11 +410,13 @@ struct StepBody<Fields: View, Footer: View>: View {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 Text(title)
                     .font(Theme.font(24, .bold))
-                Text(detail)
-                    .font(Theme.font(14))
-                    .lineSpacing(3)
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let detail {
+                    Text(detail)
+                        .font(Theme.font(14))
+                        .lineSpacing(3)
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             fields
             footer

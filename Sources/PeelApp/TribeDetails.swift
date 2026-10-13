@@ -172,8 +172,6 @@ struct TribeDetailsPanel: View {
             HStack(alignment: .top, spacing: 14) {
                 QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text("Anyone with the link or the code can join.")
-                        .muted()
                     CopyButton("Copy link", text: link, systemImage: "link")
                     CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
                 }
@@ -211,7 +209,7 @@ struct TribeDetailsPanel: View {
             details = try await model.tribeDetails(tribe.pubkey)
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "load details from the tribes server")
+            problem = PeelError.problem(error, couldNot: "load tribe details")
         }
     }
 }
@@ -279,12 +277,12 @@ private struct TribeIdentitySection: View {
         .onChange(of: alias) { problem = nil }
     }
 
-    /// What members will read: the name as a tribe alias, which is only
-    /// letters, digits and underscores.
-    private var helper: String {
-        let sent = tribeAlias(alias.trimmed.nilIfEmpty ?? model.myAlias ?? "")
-        let empty = alias.trimmed.isEmpty ? " Empty uses your account's name and photo." : ""
-        return "Members see \u{201C}\(sent)\u{201D} on what you send from now on.\(empty)"
+    /// What members will read, only when it is not what was typed: a tribe
+    /// alias is only letters, digits and underscores.
+    private var helper: String? {
+        guard let typed = alias.trimmed.nilIfEmpty else { return nil }
+        let sent = tribeAlias(typed)
+        return sent == typed ? nil : "Members see \u{201C}\(sent)\u{201D}."
     }
 
     private func reset() {

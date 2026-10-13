@@ -159,7 +159,7 @@ private struct ResizeHandle: NSViewRepresentable {
 /// Shown on development profiles, whose words are not in the Keychain.
 struct FileSecretsBanner: View {
     var body: some View {
-        Text("Development profile: its twelve words are in a plain file. Throwaway accounts only.")
+        Text("Development profile. Throwaway accounts only.")
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(maxWidth: .infinity)

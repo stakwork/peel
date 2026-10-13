@@ -613,15 +613,14 @@ private struct PendingFile: View {
 
 extension View {
     /// Files dropped here wait in `composer` until it sends.
-    func fileDrop(into composer: ComposerID, for conversation: Conversation) -> some View {
-        modifier(FileDrop(composer: composer, conversation: conversation))
+    func fileDrop(into composer: ComposerID) -> some View {
+        modifier(FileDrop(composer: composer))
     }
 }
 
 private struct FileDrop: ViewModifier {
     @Environment(AppModel.self) private var model
     let composer: ComposerID
-    let conversation: Conversation
 
     func body(content: Content) -> some View {
         content
@@ -637,8 +636,7 @@ private struct FileDrop: ViewModifier {
             #endif
             .overlay {
                 if model.dropTarget == composer {
-                    DropTarget(name: conversation.title,
-                               inThread: composer.thread != nil)
+                    DropTarget()
                 }
             }
     }
@@ -672,9 +670,6 @@ extension FileDrop {
 
 /// Over a conversation while files are dragged onto it.
 private struct DropTarget: View {
-    let name: String
-    let inThread: Bool
-
     var body: some View {
         ZStack {
             Theme.background.opacity(0.82)
@@ -685,10 +680,6 @@ private struct DropTarget: View {
                     .background(Theme.selection, in: Circle())
                 Text("Drop to attach")
                     .font(Theme.font(16, .bold))
-                Text("For \(inThread ? "this thread in " : "")\(name). They wait in the composer until you send.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
             }
             .padding(24)
         }

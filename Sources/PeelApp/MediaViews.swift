@@ -133,7 +133,7 @@ private enum MediaStatus {
         case .held(let size): [label, AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
         case .failed: "\(label) not available"
         case .notUploaded: "Not uploaded"
-        case .unplayable: "This \(label.lowercased()) cannot be played here"
+        case .unplayable: "Can't play this \(label.lowercased())"
         }
     }
 

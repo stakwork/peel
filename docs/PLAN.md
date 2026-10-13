@@ -115,7 +115,7 @@ child-key indices; it is sensitive but not the seed. Limits are in phase 2.
 
 ### Platform
 
-macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
+macOS 15+ for the core and CLI, macOS 26+ for the app (the agent's memory: Ladybug's addon is built for 26), Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
 the Mac app's repo, is pinned by hash and commit in `Vendor/sphinxrs.lock`
 and is downloaded by `scripts/build-ffi.sh`; building

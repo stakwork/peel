@@ -264,8 +264,11 @@ final class AppModel {
     private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     var agent: AgentSession?
-    /// The agent's memory: the strut on this Mac, from its connection file (`lookForMemory`).
+    /// The agent's memory: Peel's own strut, or one started outside it (`lookForMemory`).
     var memoryServer: MemoryServer?
+    /// The strut Peel ships, if this build has one: started when an app
+    /// account opens its agent, stopped when Peel quits.
+    @ObservationIgnored let strut = BundledStrut()
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
     /// Bumped to open every tool row in the agent chat, as clicks on their
@@ -426,6 +429,8 @@ final class AppModel {
         resetAccountState()
         await web.forgetWebsiteData()
         do {
+            // What the agent remembered and the automations it ran go too.
+            if profile.kind == .app { try strut?.erase() }
             try profile.delete()
             phase = .onboarding
         } catch {
@@ -595,6 +600,7 @@ final class AppModel {
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
     func willTerminate() {
+        strut?.stop(quietly: true)
         Clipboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
     }

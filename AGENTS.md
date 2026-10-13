@@ -216,9 +216,11 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+TimeZones` (sender zones, local times, the zone setting) and
   `AppModel+Agent` (opening the account's `AgentSession`, its tools and
   system prompt, the key kept through `Profile.agentCredential`, the tool
-  rows' titles, and the memory tools when strut's connection file names a
-  server, read on open for an app profile only: an experiment,
-  `docs/agent-brain.md`);
+  rows' titles, and the memory tools once its strut is running: Peel's
+  own (`BundledStrut`) for an app account, started with the agent and
+  started again before a reply if it stopped; a strut found by its
+  connection file only in a build without one, or for a development
+  profile's `-memoryConnection`: an experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -379,10 +381,24 @@ is a short plan. Update the status and the journal when you finish something.
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app and the CLI open it
+  - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut`:
+    started when an app account opens its agent (and again before a reply
+    if it stopped), erased with the account (`erase`: what the agent
+    remembered and its automations), its key made by Peel for
+    this launch and kept only in memory, its port the OS's, read from its
+    ready line (only `127.0.0.1` with Peel's key is trusted); the caller's
+    `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
+    `SSL_CERT_*` dropped, and
+    its OpenSSL (Ladybug's, built for Homebrew's folders) given no
+    configuration, engines or providers; its workspace and memory
+    graph in `~/Library/Application Support/Peel/Strut`; its log read and
+    dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
+    two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut on this Mac owns (`docs/agent-brain.md`): its address and
-    `STRUT_API_KEY`, found in the connection file strut writes once it
-    is listening (`onThisMac`: opened without following a link; anything
+    `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`),
+    or, in a build without one, from the connection file a strut started
+    outside Peel writes once it is listening (`onThisMac`: opened without following a link; anything
     but a plain owner-only file of this user's naming a server on this
     Mac with a key refused; ignored once the strut that wrote it has
     stopped; read again by `AppModel.lookForMemory` before each reply
@@ -488,7 +504,14 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
-  `LiveKitWebRTC.framework`) in `Contents/Frameworks`
+  `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
+  `stage-strut.sh` staged in `Contents/Strut` (without one it says so and
+  goes on)
+- `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
+  in `.build/strut`: strut's desktop package (`package-desktop.mjs
+  --no-stt`, with Ladybug and the `memory/*` steps) and Node, a pinned
+  release checked against its SHA-256 (cached in `.build/node`). Apple
+  silicon only. Run it once, and after strut changes
 - `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
   (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
   development profile (see "Checking the app")
@@ -497,7 +520,9 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/signing-identity.sh` — the identity both signing scripts use
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
-  microphone, camera), frameworks first (see Signing)
+  microphone, camera), frameworks and the strut's Node and native
+  libraries first (Node with `scripts/strut-node.entitlements`:
+  allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon

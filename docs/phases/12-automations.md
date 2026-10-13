@@ -92,8 +92,8 @@ strut tick ── Fri 17:00 ──► run workflow `peel-automation`
   HTTP server bound to 127.0.0.1, port 4778 unless `defaults write
   dev.peel.mac automationPort` says otherwise. It needs a bearer token,
   made on first use and kept in the Keychain (`Profile.automationToken`),
-  and rejects anything else. It runs while Peel has found a strut by its
-  connection file, the same strut as the memory. This is the "channel from
+  and rejects anything else. It runs while Peel's strut is running (the
+  one it ships, `BundledStrut`), the same strut as the memory. This is the "channel from
   strut back into the app" that agent-brain.md says Option B lacked. The
   same endpoint later lets strut jobs reach Sphinx tools.
 
@@ -180,7 +180,7 @@ use the same strut base URL and the same `Web.isThisMac` check:
 
 | | Mac now | Home server later |
 |---|---|---|
-| strut and the schedule | strut on this Mac (its connection file) | strut moved to the Mac mini, with the same records |
+| strut and the schedule | the strut Peel ships, on this Mac | strut moved to the Mac mini, with the same records |
 | The work | Peel.app's `AutomationServer` | A headless `peel serve` (the CLI already has `listen`), with the same endpoint and the same tools |
 | Asleep or closed | The run is skipped (strut skips missed fires) or fails because Peel is closed. The sidebar shows it, and Run now retries | Always on |
 

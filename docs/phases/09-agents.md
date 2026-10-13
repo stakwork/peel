@@ -308,13 +308,21 @@ connection file (a PR for Evan). Memory stays its own Ladybug file beside
 strut's graph (Evan, 2026-10-13: "ladybug as their own file is fine"); on
 a home server strut's graph is Neo4j, next to stakgraph and Jarvis.
 
-1. **Next up: Peel bundles strut and starts it**, as Sphinx Mac does with
-   its bundled strut: the desktop package (`package-desktop.mjs`, which
-   leaves Ladybug out today, so it must take it in), started by Peel at
-   launch on a port the OS picks, its address and key read from strut's
-   ready line (`STRUT_READY_KEY`), stopped with Peel. Then nobody starts
-   strut by hand, and the connection file is only for a strut started
-   outside Peel.
+1. **In progress: Peel bundles strut and starts it**, as Sphinx Mac does
+   with its bundled strut. `scripts/stage-strut.sh` stages strut's desktop
+   package (`--no-stt`; Ladybug and its OpenSSL in `native/`, from the
+   strut PR for the package) and a pinned Node 22; `bundle-app.sh` puts it
+   in `Contents/Strut` and `sign-app.sh` signs Node (allow-jit) and the
+   native libraries with Peel's identity. `BundledStrut` starts it when an
+   app account opens its agent, on a port the OS picks, with a key Peel
+   makes for the launch, and stops it when Peel quits; it exits by itself
+   if Peel dies; one that stops is started again before the next reply,
+   never in a loop. Peel needs macOS 26 (Tom, 2026-10-13): Ladybug's
+   addon (0.21.2) is built for it. Its workspace and memory graph live in
+   `~/Library/Application Support/Peel/Strut`, starting empty (Tom,
+   2026-10-13: no need to keep the test graph). The connection file is
+   only for a build without a strut, or a development profile's
+   `-memoryConnection`.
 2. **One tool builder for the app and the CLI.** The tools and system
    prompt are put together twice (`AppModel+Agent`, `peel`'s
    `Commands+Agent`); one PeelAgent builder taking storage, an optional

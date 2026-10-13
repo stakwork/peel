@@ -190,7 +190,7 @@ is a short plan. Update the status and the journal when you finish something.
     profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
     data-protection Keychain item, which the words and the agent's key
     share) and `FileItem` (an owner-only file) behind `SecretItem`; the
-    profile's `agentCredential` (the agent's provider, model and API key)
+    profile's `agentCredential` (the agent's provider, model and API key), `memoryServer` (the agent's memory server and its key)
     and `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
@@ -198,8 +198,9 @@ is a short plan. Update the status and the journal when you finish something.
     size-limited `Transfer` (also the memes and call servers') and its
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
     "public https, or http to this machine" (`isAllowed`, `isThisMac`);
-    `postToThisMac`, a JSON POST to a server on this Mac only, following no
-    redirect (the agent's memory)
+    `postToThisMac`, a JSON POST with an optional bearer key to a server on
+    this Mac only, following no redirect and through no proxy (the
+    agent's memory)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -215,9 +216,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+TimeZones` (sender zones, local times, the zone setting) and
   `AppModel+Agent` (opening the account's `AgentSession`, its tools and
   system prompt, the key kept through `Profile.agentCredential`, the tool
-  rows' titles, and the memory tools when `defaults write dev.peel.mac
-  memoryServer http://127.0.0.1:<port>` names a strut on this Mac, on any
-  profile: an experiment, `docs/agent-brain.md`);
+  rows' titles, and the memory tools when a memory server is set
+  (`setMemoryServer`: a test call, then `Profile.memoryServer`; the open
+  agent's tools change at once): an experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -377,7 +378,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app and the CLI open it
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
-    strut on this Mac owns (`docs/agent-brain.md`): one memory step run by
+    strut on this Mac owns (`docs/agent-brain.md`): its address and
+    `STRUT_API_KEY`, kept as one secret (`Profile.memoryServer`; never
+    printed, dumped or reflected with the key; an address with a user,
+    query or fragment, or a key with spaces, refused), `check` (the test
+    call); one memory step run by
     `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
     arguments as the run's `input` under the config `{{ input }}` (strut
     templates any config, so memory text never goes as one), strut's reply

@@ -157,3 +157,10 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
         }
     }
 }
+
+/// Its own words wherever an error is read as `localizedDescription` (the
+/// agent's tool loop among them), rather than Foundation's "The operation
+/// couldn't be completed. (PeelCore.PeelError error 1.)".
+extension PeelError: LocalizedError {
+    public var errorDescription: String? { description }
+}

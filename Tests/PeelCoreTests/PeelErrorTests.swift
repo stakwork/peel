@@ -7,6 +7,12 @@ import Testing
 /// as a sentence, with a capital and a full stop, whatever shape its words
 /// arrived in.
 struct PeelErrorTests {
+    /// The agent's tool loop reports a failure by `localizedDescription`.
+    @Test func itsWordsAreItsLocalizedDescription() {
+        let error: any Error = PeelError("The memory server at http://127.0.0.1:3100 did not answer.")
+        #expect(error.localizedDescription == "The memory server at http://127.0.0.1:3100 did not answer.")
+    }
+
     @Test func aFragmentBecomesASentence() {
         #expect(PeelError.problem(Engine.Failure.notConnected) == "Not connected to the server.")
         #expect(PeelError.problem(Engine.Failure.balanceUnknown) == "The balance is not known yet; connect first.")

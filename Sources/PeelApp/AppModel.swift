@@ -4,6 +4,7 @@ import Observation
 import AppKit
 #endif
 import AgentKit
+import PeelAgent
 import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
@@ -263,6 +264,8 @@ final class AppModel {
     private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     var agent: AgentSession?
+    /// The agent's memory server, as `Profile.memoryServer` keeps it (read once per open).
+    var memoryServer: MemoryServer?
     /// Where the Connect panel is open from, if it is.
     var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).

@@ -108,6 +108,12 @@ struct AppIcon: View {
         Image(nsImage: NSApplication.shared.applicationIconImage)
             .resizable()
             .frame(width: size, height: size)
+        #else
+        // The iPhone app's asset catalog holds Assets/peel.svg as "Logo".
+        Image("Logo")
+            .resizable()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
         #endif
     }
 }

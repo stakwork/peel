@@ -349,7 +349,9 @@ The old plan's parts, still wanted, now behind the seams above:
   graph nodes that sync like everything else.
 - **Connections:** calendar first (EventKit on the Mac, OAuth through MCP
   on a server), then email, contacts, files and notes. Read only by
-  default; tokens never travel in a Sphinx message.
+  default; tokens never travel in a Sphinx message. Proposed design
+  (2026-10-13): [jobs-architecture.md](jobs-architecture.md), connectors as
+  Strut steps that jobs use.
 
 ## Open questions
 

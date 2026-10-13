@@ -30,8 +30,8 @@
 #   CARGO_TARGET_DIR=<dir> cargo build --bin sphinx-mixer --bin sphinx-tribes
 # SPHINX_BIN_DIR names that <dir>/debug (default ~/Documents/sphinx/target/debug);
 # SPHINX_BROKER, SPHINX_MIXER and SPHINX_TRIBES override single binaries.
-# The core Peel links (Vendor/, Sources/Sphinxrs) comes from ~/Documents/sphinx-rs
-# by scripts/build-ffi.sh. The memes stub needs python3 with `cryptography`.
+# The core Peel links (Vendor/, Sources/Sphinxrs) comes from
+# scripts/build-ffi.sh. The memes stub needs python3 with `cryptography`.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)

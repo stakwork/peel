@@ -427,8 +427,7 @@ priority.
   - the crash runs;
   - the snapshot comparisons.
 - **Setup:** the runner takes the core library from `build-ffi.sh` with the
-  lock check. It needs the sibling checkouts, and Tom's signing identity
-  for the app check.
+  lock check, and needs an Apple Development identity for the app check.
 
 ## Order and size
 

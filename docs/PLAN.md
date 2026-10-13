@@ -117,7 +117,8 @@ child-key indices; it is sensitive but not the seed. Limits are in phase 2.
 
 macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
-the Mac app's repo and is pinned by hash in `Vendor/sphinxrs.lock`; building
+the Mac app's repo, is pinned by hash and commit in `Vendor/sphinxrs.lock`
+and is downloaded by `scripts/build-ffi.sh`; building
 it from source needs Rust 1.88.0. Xcode is installed and the app is signed
 with Tom's Apple Development identity and a Personal Team provisioning
 profile that lasts 7 days (`scripts/sign-app.sh`; see "Signing and the weekly

@@ -285,8 +285,9 @@ defaults delete dev.peel.mac PeelTimelineLog              # off again, after a r
 ```
 
 Use `/usr/bin/log`: in zsh, `log` alone is a shell builtin. The setting is
-read once at launch (`TimelineLog.enabled`). A development build checked
-with `check-app.sh` reads its own domain, `dev.peel.mac.check`.
+read once at launch (`TimelineLog.enabled`) from the app's bundle ID: a build
+signed by another team reads `dev.peel.mac.<team>`, and one checked with
+`check-app.sh` reads `dev.peel.mac.check`.
 
 Each line starts with six hex characters of a hash of the chat's key, keyed
 afresh at each launch (the same chat has another tag after a relaunch), then

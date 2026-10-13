@@ -125,14 +125,15 @@ platform.
 | PeelCore | Close: no AppKit, UIKit or `Process`; quarantine is behind `#if os(macOS)`; NIOTransportServices, GRDB and ImageIO all work on iOS | Compile it, fix what breaks; a Keychain access group for the extension |
 | AgentKit | Already says it builds for iOS | None. The phone does not run it in v1 |
 | PeelAgent | Not portable: `BundledStrut` runs `Process()` (`BundledStrut.swift:89`); `AutomationServer` is a NIO server | Stays Mac-only. The phone does not link it |
-| PeelApp | About 23k lines; 16 files import AppKit; `AppModel` imports AppKit (`NSApp.keyWindow`, `NSApplication.isActive`) | Batch 17 below |
+| PeelApp | About 23k lines; 16 files import AppKit; `AppModel` imports AppKit (`NSApp.keyWindow`, `NSApplication.isActive`) | Batch 17 below: `AppModel` and its logic now in `PeelUI`, which builds for the iOS Simulator |
 | LiveKit | 2.10.2 pin; any target importing PeelCore and LiveKit inherits the `RustBuffer` header clash | Calls stay behind `CallProvider`, as on the Mac |
 
 ### Batch 17: the iPhone seams
 
 Planned in [../reviews/2026-10-08-second-review.md](../reviews/2026-10-08-second-review.md)
-§9 and never started. It goes first, alone, because it touches every
-`AppModel` file:
+§9. It goes first, alone, because it touches every `AppModel` file. Built
+on `ios/peelui` (2026-10-13) and in review; what moved and what stayed is
+in the review's batch 17 status. The plan:
 
 - A **`PeelUI`** library target (PeelCore, SwiftUI, Observation; no AppKit,
   UIKit or LiveKit): `AppModel` and its extensions, `ChatRow`,
@@ -494,7 +495,7 @@ client track is held up by S1.
 
 | PR | Track | What | Depends on |
 |---|---|---|---|
-| **I1** | C | Batch 17: `PeelUI`, the platform protocols, `PeelMac`. Runs alone | — |
+| **I1** | C | Batch 17: `PeelUI`, the platform protocols, `PeelMac`. Runs alone. Built on `ios/peelui` (2026-10-13), in review: `PeelUI` builds for the iOS Simulator; the Mac target keeps the name `PeelApp`; `PeelUITests` still to come | — |
 | **I2** | C | The iOS project and target, signing, iOS 26 in `Package.swift`; the app opens, unlocks with the PIN, restores from words, connects | I1, S1 |
 | **F1** | C | Phone foundation: the theme and glass helpers, the tab shell, navigation, the shared rows, a cross-platform Markdown renderer (the Mac's `MessageText` off AppKit) | I2 |
 | **F2a** | C | Chats: the list, its top rows, Unread, Tribes, Direct messages, swipe actions, the not-connected state | F1 |

@@ -210,47 +210,74 @@ is a short plan. Update the status and the journal when you finish something.
     (`WebPage.typed`: http or https, or a search), which attachments it
     shows as pages (`WebPage.isHTML`) and each profile's website data
     store identifier
-- `Sources/PeelApp/` — the SwiftUI Mac app (`AppModel`, with its extensions
-  by area in `AppModel+Chat` (replies, threads, sending, attachments, and
-  the chat's small types: `ComposerID`, `ThreadRef`, `AttachmentHandle`),
-  `AppModel+Calls` (join, start, leave, presence and the watches of recent
-  calls; the view passes the call window's opening in), `AppModel+Payments`
-  (`PaymentOutcome`, boosts, sends, history, invoices, buying an
-  attachment), `AppModel+Contacts` (adding by code, invites) and
-  `AppModel+TimeZones` (sender zones, local times, the zone setting) and
-  `AppModel+Agent` (opening the account's `AgentSession`, its tools and
+- `Sources/PeelUI/` — the app's model, shared by the Mac and the iPhone
+  (phase 7, batch 17): PeelCore and AgentKit, SwiftUI and Observation, no
+  AppKit, UIKit, LiveKit or PeelAgent; builds for the iOS Simulator
+  (`xcodebuild -scheme PeelUI -destination 'generic/platform=iOS Simulator'`,
+  after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
+  `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
+  threads, sending, attachments, and the chat's small types: `ComposerID`,
+  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (join, start, leave,
+  presence and the watches of recent calls; the view passes the call
+  window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
+  sends, history, invoices, buying an attachment), `AppModel+Contacts`
+  (adding by code, invites), `AppModel+TimeZones` (sender zones, local
+  times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
+  matches, stepping through them with `focus(on:inThread:)`);
+  `Platform` (what the app supplies at init: `AppPresence` (in front,
+  activate, the badge, notification settings), `MenuHosting` (for
+  `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
+  `WebPresenting`, `CallProvider` and `OngoingCall`, and `AgentHost`, the
+  agent's PeelAgent side); `ChatRow` (`Sender`, `Quote`, the rows built
+  once per change); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
+  whether the server has more); `PaymentItem+Display`; `Formatting`
+  (counts and their nouns, times and dates, offsets); `Labels` (a chat's
+  title, Leave and Remove's words); `MoneyArrivals` (`Receipt`, the
+  balance's roll, what Payments has not shown); `Notifier` (local
+  notifications by PeelCore's `NotificationPolicy`, the badge through
+  `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
+  photos apart, and `animations`: GIFs' frames and sizes, Giphy's bytes;
+  `MediaInfoCache`; `tileSide`, the chat's image size); `TimelineLog` (the
+  opt-in log of the message list's placement, `defaults write dev.peel.mac
+  PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
+  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
+- `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
+  (`Platform.mac`: `MacPresence`, `MacPasteboard`, `LiveKitCalls`, and
+  `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
+  `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
+  (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
+  automations, which `AppModel` reaches as `macAgent`; opening the
+  account's `AgentSession`, its tools and
   system prompt through `AgentSetup`, the key kept through `Profile.agentCredential`, the tool
   rows' titles, and the memory tools once its strut is running: Peel's
   own (`BundledStrut`), started with the agent and started again before
   a reply if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
-  experiment, `docs/agent-brain.md`);
+  experiment, `docs/agent-brain.md`) and `AppModel+Automations`;
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
-  list, its header button, stepping through matches with
-  `focus(on:inThread:)`, the highlight in message text);
-  `FilePicking` (the open and save panels and Show in Finder, the only
+  list, its header button, the highlight in message text);
+  `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
-  `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
-  (`ImageCache`, bounded: attachments, and photos apart, and `animations`: GIFs' frames and sizes, Giphy's bytes; `MediaInfoCache`),
+  `Avatar` (people's and tribes' icons, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
-  `Formatting` (counts and their nouns, times and dates), `ConversationView` (with the tribe header and
+  `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `TimelineLog` (the opt-in log of the message list's placement, `defaults write dev.peel.mac PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log"), `LinkCards` (the tribe and contact link
+  for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
   `ComposerField` (the message field: Return sends, `@` mentions),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
-  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
+  `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, and the shared `PaymentPanes`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
   view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor` with the written Escape order and `KeyCode`, the named key codes, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
   `.hiddenShortcut`, `SettingDropdown`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
-  `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
+  `CopyButton` (`CopyButton`, `CopyLabel` and the menu's "Copied" pill, for every copy, over `CopyFeedback`);
   the agent chat: `AgentViews` (`PeelLogo`, `AgentTag`, the sidebar's
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
   card, the turn rows, tool rows (an acting tool's outcome and View) and
@@ -308,9 +335,10 @@ is a short plan. Update the status and the journal when you finish something.
   own data store, its toolbar and address field, the routing of http and
   https links, Browser and a tribe's pages as More menu items, and
   `WebPane.open(_ page:)`, the one way a tribe's page opens);
-  `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
-  sats received: the header's count-up, the Payments row's "+350", one
-  notification per arrival; `CallTestRoom`, the development-only LiveKit
+  `NotificationOffer` (the bar offering notifications);
+  `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
+  count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
+  `CallTestRoom`, the development-only LiveKit
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
@@ -885,7 +913,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   its redirects go anywhere): fetch with `Web.get` (size-limited; a public
   https host, or loopback http for the local test stack), or through the memes
   server. A photo someone else chose goes through `Web.photo`.
-- Swift 6 language mode with strict concurrency in `PeelCore` and `PeelApp`.
+- Swift 6 language mode with strict concurrency in `PeelCore`, `PeelUI` and `PeelApp`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Tom works on this Mac while agents run. Run builds, tests and test

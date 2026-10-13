@@ -4,11 +4,42 @@ import Testing
 @testable import AgentKit
 
 /// A stream from `Fixtures/`, written by hand from each provider's
-/// streaming docs (never recorded): the decoders' logic on documented
-/// shapes. The real wire shape is `LiveProviderTests`' to prove.
+/// streaming docs: the decoders' logic on documented shapes, pinned event
+/// by event. Real streams, once Tom has recorded them, are in
+/// `Fixtures/recorded/` (see `StreamCase`).
 func fixture(_ name: String) throws -> String {
     let url = try #require(Bundle.module.url(forResource: name, withExtension: "sse", subdirectory: "Fixtures"))
     return try String(contentsOf: url, encoding: .utf8)
+}
+
+/// One provider's streamed reply of one kind: the one recorded from the
+/// real API (`scripts/record-agent-fixtures.sh`) when
+/// `Fixtures/recorded/<provider>-<kind>.sse` exists, else the hand-written
+/// one (OpenRouter's falls back to OpenAI's, the same wire shape). Never
+/// the network.
+struct StreamCase: CustomTestStringConvertible, Sendable {
+    enum Kind: String, CaseIterable, Sendable { case text, tool }
+
+    let provider: AgentProvider
+    let kind: Kind
+
+    static let all = AgentProvider.allCases.flatMap { provider in Kind.allCases.map { StreamCase(provider: provider, kind: $0) } }
+
+    /// Anthropic's own API, or OpenAI's Chat Completions (OpenAI, OpenRouter).
+    private var isAnthropic: Bool { provider == .anthropic }
+
+    var recorded: URL? {
+        Bundle.module.url(forResource: "\(provider.rawValue)-\(kind.rawValue)", withExtension: "sse", subdirectory: "Fixtures/recorded")
+    }
+
+    var testDescription: String { "\(provider.rawValue)-\(kind.rawValue) (\(recorded == nil ? "written" : "recorded"))" }
+
+    func stream() throws -> String {
+        if let recorded { return try String(contentsOf: recorded, encoding: .utf8) }
+        return try fixture("\(isAnthropic ? "anthropic" : "openai")-\(kind.rawValue)")
+    }
+
+    var decoder: any StreamDecoder { isAnthropic ? AnthropicDecoder(secret: "key") : OpenAIDecoder(secret: "key") }
 }
 
 extension SSEParser {
@@ -24,18 +55,23 @@ extension SSEParser {
     }
 }
 
-/// A fixture run through the SSE parser and `decoder`: the events, and the
-/// error that ended them, if any.
-func decode(_ name: String, with decoder: some StreamDecoder) throws -> (events: [ModelEvent], error: ModelError?) {
+/// A stream's text run through the SSE parser and `decoder`: the events,
+/// and the error that ended them, if any.
+func decode(stream text: String, with decoder: some StreamDecoder) throws -> (events: [ModelEvent], error: ModelError?) {
     var decoder = decoder
     var events: [ModelEvent] = []
     do {
-        for event in SSEParser.events(in: try fixture(name)) { events += try decoder.decode(event) }
+        for event in SSEParser.events(in: text) { events += try decoder.decode(event) }
         events += try decoder.finish()
         return (events, nil)
     } catch let error as ModelError {
         return (events, error)
     }
+}
+
+/// A hand-written fixture, decoded.
+func decode(_ name: String, with decoder: some StreamDecoder) throws -> (events: [ModelEvent], error: ModelError?) {
+    try decode(stream: try fixture(name), with: decoder)
 }
 
 /// A provider that plays scripted replies, one per call, and records what it

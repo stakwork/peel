@@ -29,6 +29,31 @@ struct SSEParserTests {
     }
 }
 
+/// What every provider's stream must decode to, recorded from the real
+/// API or written by hand: a text reply in more than one piece, with its
+/// usage, ending its turn; tool calls whose input parses, one with
+/// arguments, ending for the tools.
+struct StreamCaseTests {
+    @Test(arguments: StreamCase.all)
+    func decodes(_ stream: StreamCase) throws {
+        let (events, error) = try decode(stream: try stream.stream(), with: stream.decoder)
+        #expect(error == nil)
+        switch stream.kind {
+        case .text:
+            let deltas = events.compactMap { if case .textDelta(let text) = $0 { text } else { nil } }
+            let usage = events.compactMap { if case .usage(let usage) = $0 { usage } else { nil } }.last
+            #expect(deltas.count > 1, "the reply came in one piece: not streamed")
+            #expect((usage?.inputTokens ?? 0) > 0 && (usage?.outputTokens ?? 0) > 0)
+            #expect(events.last == .finished(.endTurn))
+        case .tool:
+            let calls = events.compactMap { if case .toolCallCompleted(let call) = $0 { call } else { nil } }
+            #expect(calls.contains { $0.input != [:] }, "no call with arguments")
+            for call in calls { #expect(!call.id.isEmpty && !call.name.isEmpty && call.malformedInput == nil, "\(call)") }
+            #expect(events.last == .finished(.toolUse))
+        }
+    }
+}
+
 struct AnthropicDecoderTests {
     @Test func text() throws {
         let (events, error) = try decode("anthropic-text", with: AnthropicDecoder(secret: "key"))

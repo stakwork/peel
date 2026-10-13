@@ -44,9 +44,11 @@ extension AppModel {
 
     /// While the agent chat is open with a strut found: listens for strut
     /// with the profile's token (made on first use), and points strut's
-    /// `peel-automation` workflow here.
+    /// `peel-automation` workflow here. A development profile listens only
+    /// with an `automationPort` of its own, never on the app's.
     func startAutomations(_ profile: Profile, engine: Engine) {
-        guard automationsClient != nil else { return }
+        guard let memory = memoryServer,
+              profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
         let port = Self.automationPort
         let stopping = automationStopping
         Task {
@@ -58,8 +60,10 @@ extension AppModel {
                 let server = try await AutomationServer.start(port: port, token: token) { request in
                     await self.runAutomation(request)
                 }
-                // Closed, or another account opened, while it started.
-                guard self.engine === engine, automationServer == nil else { return await server.stop() }
+                // Closed, another account opened, or the strut changed or stopped while it started.
+                guard self.engine === engine, memoryServer == memory, automationServer == nil else {
+                    return await server.stop()
+                }
                 automationServer = server
                 automationToken = token
                 await installAutomations()

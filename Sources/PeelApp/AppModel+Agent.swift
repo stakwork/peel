@@ -70,7 +70,7 @@ extension AppModel {
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
-            removeOldMemoryKey(profile)
+            profile.removeOldMemoryKey()
             let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
                 tools: Self.agentTools(engine, memory: nil), systemPrompt: Self.agentSystemPrompt(remembers: false)
@@ -107,22 +107,12 @@ extension AppModel {
     }
 
     /// Where `profile` finds strut: its connection file for an app profile;
-    /// for a development one only a file named with
-    /// `-memoryConnection <path>`, so a test account never writes to the
-    /// real graph.
+    /// for a development one only a file named by the `memoryConnection`
+    /// default (`-memoryConnection <path>`), so a test account never writes
+    /// to the real graph.
     private static func memoryConnection(_ profile: Profile) -> URL? {
         profile.kind == .app ? MemoryServer.connectionFile
             : UserDefaults.standard.string(forKey: "memoryConnection").map { URL(filePath: $0) }
-    }
-
-    /// #219 kept strut's key in the Keychain; nothing reads it since Peel
-    /// finds strut's own file. Removed once per profile; drop this once no
-    /// Mac can still have one.
-    private func removeOldMemoryKey(_ profile: Profile) {
-        let done = "removedOldMemoryKey." + profile.name
-        guard profile.kind == .app, !UserDefaults.standard.bool(forKey: done) else { return }
-        profile.removeOldMemoryKey()
-        UserDefaults.standard.set(true, forKey: done)
     }
 
     /// The model client for `credential`; a development profile may name a

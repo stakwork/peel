@@ -814,6 +814,18 @@ a home server strut's graph is Neo4j, next to stakgraph and Jarvis.
   prompt in PeelAgent, shared by the app, the CLI and the journeys
   (today each builds its own).
 
+**Jobs and connections: architecture proposed (2026-10-13, docs only).**
+In `../jobs-architecture.md`, for Tom's review. A job is any job to be
+done that Peel's agent hands to Strut with `start_job` / `continue_job`,
+matching Hive's tools; Peel mints the id, keeps a Job record outside
+compaction, and gets the result by Strut's callback to `AutomationServer`. Connectors are Strut steps a job
+is granted (`slack/*`, `gdrive/*` …), with tokens in Strut's store;
+Calendar stays in Peel over EventKit. A job's `ask` becomes a Needs you
+card; a write needs a new `effect` label on Strut's steps so the job stops
+with `ask.approval` and Peel's card decides (Allow runs the exact step).
+The first draft (a Swift sub-agent per connector over MCP) is kept as
+"Considered". Build order J1–J2 in strut, P1–P6 in Peel.
+
 **Tests: no real keys; recorded streams (2026-10-13).** Tom decided no
 test may call a model provider or use a real API key, even opt-in: a key
 in a test's environment is a key an agent can be handed, and a suite that
@@ -862,7 +874,7 @@ Mastra. Have = built, Partial = some of it, Missing = not built.
 | | Sphinx read tools | Have | Five, PR 4 |
 | | Approval gate | Have | PR 6: once, always per tool and chat, deny; a cost always asks; Account revokes |
 | | Sphinx send and pay | Partial | Send (PR 6), price capped at the card's; pay missing |
-| | Connectors (MCP) | Missing | Use the official MCP Swift SDK, not our own |
+| | Connectors | Missing | Proposed: Strut steps that jobs are granted, tokens in Strut (`../jobs-architecture.md`) |
 | | Calendar | Missing | EventKit, read only first |
 | | Web search | Missing | |
 | State | Persistent conversation, tool calls recorded | Have | `agent.sqlite` |

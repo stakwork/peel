@@ -98,6 +98,9 @@ by code and pinned outside compaction.
 
 ### Front agent tools
 
+The job tools and how a job's questions and writes reach Peel are worked
+out in [jobs-architecture.md](jobs-architecture.md) (2026-10-13).
+
 The current Sphinx tools and approval gate stay. Added:
 
 | Tool | Does |

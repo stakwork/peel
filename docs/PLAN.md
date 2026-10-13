@@ -149,7 +149,7 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, self-hosted certificates | payment templates built (2026-10-10); the rest planned, findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, certificates in 05 |
 | 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
-| — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Later" |
+| — | Agent jobs and connections: Peel's agent hands any job to Strut with `start_job` / `continue_job` (Hive's pattern); connectors are Strut steps a job may use, tokens in Strut; Calendar stays in Peel (EventKit); writes in a job reach Peel's approval card | architecture proposed 2026-10-13, for Tom's review; PRs J1–J2 (strut), P1–P6 (peel) | [jobs-architecture.md](jobs-architecture.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 What is left for parity with the official Mac app, and what to do before

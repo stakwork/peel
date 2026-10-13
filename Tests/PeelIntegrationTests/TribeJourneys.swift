@@ -85,6 +85,17 @@ extension Journeys {
                 try carol.messages(in: paid.pubkey).contains { $0.type == MessageType.boost && $0.replyUUID == target.uuid }
             }
 
+            // Her file is boosted the same way, as the Mac app allows.
+            let fileTarget = try #require(try bob.messages(in: paid.pubkey).first { $0.type == MessageType.attachment })
+            try await bob.engine.boost(messageID: try #require(fileTarget.id), amountMsat: 20_000)
+            let seen8 = try await bob.balance(settlingAt: b1 - 60)
+            #expect(seen8 == b1 - 60)
+            let seen9 = try await carol.balance(settlingAt: c1 + 60)
+            #expect(seen9 == c1 + 60)
+            try await eventually("Carol to see the boost on her file") {
+                try carol.messages(in: paid.pubkey).contains { $0.type == MessageType.boost && $0.replyUUID == fileTarget.uuid }
+            }
+
             for person in [alice, bob, carol] { await person.close() }
         }
 

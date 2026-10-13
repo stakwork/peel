@@ -556,6 +556,7 @@ quitting before any window opens.
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
+  {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}

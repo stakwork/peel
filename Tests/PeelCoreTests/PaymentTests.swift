@@ -306,13 +306,6 @@ struct PaymentTests {
         #expect(!payment(1, sats: 1).isRetryable())
     }
 
-    @Test func onlySomeoneElsesTextIsBoostable() {
-        #expect(text(1).isBoostable)
-        #expect(!text(1, fromMe: true).isBoostable)
-        #expect(!payment(1, sats: 1).isBoostable)
-        #expect(!Message.fixture(uuid: nil).isBoostable)
-    }
-
     @Test func aLongNoteWouldBeSplit() {
         #expect(!Engine.wouldBeSplit(#"{"content":"lunch"}"#, alias: "alice", photoURL: ""))
         let long = #"{"content":"\#(String(repeating: "x", count: 500))"}"#

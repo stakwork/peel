@@ -73,6 +73,15 @@ public struct CallLink: Sendable, Equatable {
         return CallLink(in: message, server: server) != nil
     }
 
+    /// Words the Mac app takes for a call link (`isCallLink`), a text's or
+    /// an attachment's caption: a link to a call room on any host, old
+    /// Jitsi ones included, whether or not Peel can join it. Unlike
+    /// `init(in:server:)`, nothing is checked.
+    static func isLink(_ content: String) -> Bool {
+        content.range(of: "/" + roomPrefix, options: .caseInsensitive) != nil
+            && content.trimmingCharacters(in: .whitespacesAndNewlines).range(of: "http", options: [.anchored, .caseInsensitive]) != nil
+    }
+
     /// What a call message's content links to, unchecked: the `call::`
     /// form's link, or the content itself. A call message that is not a
     /// valid call shows this as plain text.

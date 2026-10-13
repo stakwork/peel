@@ -212,12 +212,20 @@ struct MoneyRefusalTests {
 
     // MARK: Boosts
 
-    @Test func onlySomeoneElsesTextCanBeBoosted() async throws {
-        let (engine, storage) = try engine(messages: [
-            text(1, chat: person, fromMe: true), ownPayment(2, status: .delivered, msat: 1_000),
+    @Test func onlySomeoneElsesTextOrAttachmentCanBeBoosted() async throws {
+        var callLink = text(3, chat: person)
+        callLink.content = "https://chat.sphinx.chat/rooms/sphinx.call.1"
+        var image = text(4, chat: person)
+        image.type = MessageType.attachment
+        let (engine, storage) = try engine(balanceMsat: 999, messages: [
+            text(1, chat: person, fromMe: true), ownPayment(2, status: .delivered, msat: 1_000), callLink, image,
         ])
-        for id in [try id(1, storage), try id(2, storage), 999] {
+        for id in [try id(1, storage), try id(2, storage), try id(3, storage), 999] {
             await #expect(throws: Engine.Failure.notBoostable) { try await engine.boost(messageID: id, amountMsat: 1_000) }
+        }
+        // Someone else's image passes to the balance check.
+        await #expect(throws: Engine.Failure.insufficientBalance) {
+            try await engine.boost(messageID: try id(4, storage), amountMsat: 1_000)
         }
     }
 

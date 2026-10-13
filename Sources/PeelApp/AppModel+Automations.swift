@@ -43,17 +43,16 @@ extension AppModel {
     }
 
     /// While the agent chat is open with a strut found: listens for strut
-    /// with the profile's token (made on first use), and points strut's
-    /// `peel-automation` workflow here. A development profile listens only
+    /// with the token made when the agent opened, hands it to strut's secret store
+    /// and points strut's `peel-automation` workflow here. A development profile listens only
     /// with an `automationPort` of its own, never on the app's.
     func startAutomations(_ profile: Profile, engine: Engine) {
-        guard let memory = memoryServer,
+        guard let memory = memoryServer, let token = automationToken,
               profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
         let port = Self.automationPort
         let stopping = automationStopping
         Task {
             do {
-                let token = try AutomationServer.token(in: profile.automationToken)
                 // The last server lets go of the port first (an account switched).
                 await stopping?.value
                 // Stopped with the agent chat (`closeAgent`), so holding the model is bounded.
@@ -65,7 +64,6 @@ extension AppModel {
                     return await server.stop()
                 }
                 automationServer = server
-                automationToken = token
                 await installAutomations()
             } catch {
                 automations.problem = PeelError.problem(error, couldNot: "listen for automations on port \(port)")
@@ -75,18 +73,17 @@ extension AppModel {
 
     func stopAutomations() {
         automations = AutomationsState()
-        automationToken = nil
         guard let server = automationServer else { return }
         automationServer = nil
         automationStopping = Task { await server.stop() }
     }
 
-    /// Points strut's workflow at the listening server; says why when it cannot.
+    /// Points strut's workflow at the listening server; says why when it
+    /// cannot, and then nothing fires (no token but strut's store's).
     private func installAutomations() async {
-        guard let client = automationsClient, let server = automationServer, let token = automationToken,
-              let peel = URL(string: "http://127.0.0.1:\(server.port)") else { return }
+        guard let client = automationsClient, let server = automationServer else { return }
         do {
-            try await client.install(peel: peel, token: token)
+            try await client.install(port: server.port, token: server.token)
             guard automationServer === server else { return }
             automations.installed = true
         } catch {

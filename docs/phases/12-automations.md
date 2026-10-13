@@ -77,11 +77,20 @@ strut tick ── Fri 17:00 ──► run workflow `peel-automation`
 ```
 
 - **One workflow, `peel-automation`, that Peel installs itself.** It holds
-  one `http` step, with Peel's address and token in its params. Every Peel
+  one step, `peel/run-automation`, a custom step Peel publishes with it:
+  it reads the token and Peel's port from strut's encrypted secret store
+  in code (`PEEL_AUTOMATION_TOKEN`, `PEEL_AUTOMATION_PORT`) and posts to
+  127.0.0.1 at that port through `ctx.services.http`. Its config is only
+  the run (name, prompt, since), so the workflow says nothing about Peel
+  and its config can neither carry the token nor change where Peel's step
+  sends it. (strut's own `exec` and `agent` steps can still read any stored
+  secret by name with `secretsEnv`: strut's to tighten. The store's
+  encryption protects copies and backups, not against a process running as
+  the same user.) Every Peel
   automation is an automation on this workflow: `GET
-  /automations?workflow=peel-automation` lists them all. The `http` step's
-  response becomes the run output, so strut's run history holds what each
-  run said. strut needs no code change. On opening the agent chat, Peel
+  /automations?workflow=peel-automation` lists them all. The step's
+  reply from Peel becomes the run output, so strut's run history holds what each
+  run said. On opening the agent chat, Peel
   reads the workflow's active version and publishes a new one only when
   its content changed: each version is labelled `p-` plus a hash of it
   (`AutomationsClient.install`).
@@ -91,8 +100,11 @@ strut tick ── Fri 17:00 ──► run workflow `peel-automation`
 - **Peel listens on loopback only.** `AutomationServer` is a swift-nio
   HTTP server bound to 127.0.0.1, port 4778 unless `defaults write
   dev.peel.mac automationPort` says otherwise. It needs a bearer token,
-  made on first use and kept in the Keychain (`Profile.automationToken`),
-  and rejects anything else. It runs while Peel's strut is running (the
+  made when the agent chat opens and kept only in memory; Peel puts it and
+  its port in strut's secret store before installing the workflow, so it is never in a workflow file. strut encrypts that store
+  with `STRUT_SECRET_KEY`, a key the profile keeps (`Profile.strutKey`,
+  `BundledStrut`). If Peel cannot store them, the Automations view
+  says so, and fires fail with 401 until it can. It rejects anything else. It runs while Peel's strut is running (the
   one it ships, `BundledStrut`), the same strut as the memory. This is the "channel from
   strut back into the app" that agent-brain.md says Option B lacked. The
   same endpoint later lets strut jobs reach Sphinx tools.

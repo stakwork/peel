@@ -65,14 +65,16 @@ struct AuditSecretsTests {
         #expect(throws: SecretStoreFailure.noAccount) { try store.loadMnemonic(pin: "") }
     }
 
-    /// The agent's model key on a development profile: an owner-only
-    /// file, and gone with the profile.
-    @Test func theAgentsKeyIsOwnerOnlyAndGoesWithTheProfile() throws {
+    /// The agent's model key and strut's secret store key on a development
+    /// profile: owner-only files, and gone with the profile.
+    @Test func theAgentsKeysAreOwnerOnlyAndGoWithTheProfile() throws {
         let dev = Profile(developmentAt: profile.url.appendingPathComponent("agent-secrets"))
         try dev.agentCredential.write(Data("model key".utf8))
+        try dev.strutKey.write(Data("strut key".utf8))
         #expect(try permissions(dev.directory.appendingPathComponent("agent-credential")) == 0o600)
+        #expect(try permissions(dev.directory.appendingPathComponent("strut-key")) == 0o600)
         try dev.delete()
-        #expect(try dev.agentCredential.read() == nil)
+        #expect(try dev.agentCredential.read() == nil && dev.strutKey.read() == nil)
         #expect(!FileManager.default.fileExists(atPath: dev.directory.path))
     }
 

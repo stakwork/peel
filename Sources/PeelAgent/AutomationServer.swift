@@ -7,22 +7,27 @@ import PeelCore
 
 /// Where strut reaches Peel when an automation fires
 /// (`docs/phases/12-automations.md`): `POST /automations/run` on this Mac
-/// only, with the bearer token strut was given. Each request is one run,
+/// only, with the bearer token it is given (one per account open, in memory
+/// only), which strut keeps in its encrypted secret store
+/// (`AutomationsClient.install`). Each request is one run,
 /// answered when it ends; runs of different automations may overlap
 /// (strut never overlaps two of the same one).
 public final class AutomationServer: Sendable {
     public typealias Handler = @Sendable (AutomationRequest) async -> AutomationReply
 
     public let port: Int
+    /// What strut must send as `Authorization: Bearer …`.
+    public let token: String
     private let channel: any Channel
 
     /// The most a request may be: a prompt and a few short fields.
     static let requestLimit = 64_000
     static let path = "/automations/run"
 
-    private init(channel: any Channel, port: Int) {
+    private init(channel: any Channel, port: Int, token: String) {
         self.channel = channel
         self.port = port
+        self.token = token
     }
 
     /// Listens on 127.0.0.1 at `port` (0 for any free one) until `stop`.
@@ -37,23 +42,15 @@ public final class AutomationServer: Sendable {
                 }
             }
             .bind(host: "127.0.0.1", port: port).get()
-        return AutomationServer(channel: channel, port: channel.localAddress?.port ?? port)
+        return AutomationServer(channel: channel, port: channel.localAddress?.port ?? port, token: token)
     }
 
     public func stop() async {
         try? await channel.close()
     }
 
-    /// The token kept in `item`, or a new random one kept there.
-    public static func token(in item: any SecretItem) throws -> String {
-        if let kept = try item.read(), let token = String(data: kept, encoding: .utf8), token.count >= 32 { return token }
-        let token = try newKey()
-        try item.write(Data(token.utf8))
-        return token
-    }
-
-    /// 32 random bytes as hex: a token, or a strut's key (`BundledStrut`).
-    static func newKey() throws -> String {
+    /// 32 random bytes as hex: a token, or a strut's keys (`BundledStrut`).
+    public static func newKey() throws -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             throw PeelError("could not make a key")

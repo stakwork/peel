@@ -70,7 +70,7 @@ enum AgentCommand {
     /// staged (the CLI is not inside Peel.app), its data in the profile's
     /// own folder, never the app account's memory.
     @MainActor static func strut(for profile: Profile) throws -> BundledStrut {
-        guard let strut = BundledStrut(folder: BundledStrut.staged, data: BundledStrut.dataFolder(for: profile)) else {
+        guard let strut = BundledStrut(folder: BundledStrut.staged, data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) else {
             throw PeelError("no strut staged at \(BundledStrut.staged.path); run scripts/stage-strut.sh <strut checkout>")
         }
         return strut

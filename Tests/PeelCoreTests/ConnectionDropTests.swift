@@ -507,9 +507,74 @@ struct ConnectionDropTests {
             #expect(await engine.isSyncingHistory)
         }
     }
+
+    /// Resume after a stall (`resumeHistory`, what coming online also does)
+    /// asks the server again: a restore for its counts, its plan starting
+    /// over (which the app's progress follows), a catch-up for the page
+    /// where history stands.
+    @Test(arguments: [true, false]) func resumeAfterAStallAsksTheServerAgain(restoring: Bool) async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.stall(HistoryCursor.Run(phase: .messages, next: 5, end: 10), restoring: restoring)
+            #expect(await !engine.isSyncingHistory)
+            let before = writes.count
+            try await engine.resumeHistory()
+            #expect(writes.count == before + 1)
+            #expect(await engine.isSyncingHistory)
+            #expect(await engine.history.awaitingCounts == restoring)
+            await engine.close()
+            var restarts: [Bool] = []
+            for await case .historyResumed(let restart) in engine.events { restarts.append(restart) }
+            #expect(restarts == [restoring])
+        }
+    }
+
+    /// Coming online with a page in flight (the connection went before its
+    /// answer) asks for that page again, and a restore does not start over.
+    @Test func resumeWithAPageInFlightAsksForItAgain() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.setRestoring(true)
+            let before = writes.count
+            try await engine.resumeHistory()
+            #expect(writes.count == before + 1)
+            #expect(await engine.history.active?.next == 5)
+            #expect(await !engine.history.awaitingCounts)
+            await engine.close()
+            var restarts: [Bool] = []
+            for await case .historyResumed(let restart) in engine.events { restarts.append(restart) }
+            #expect(restarts == [false])
+        }
+    }
+
+    /// An ask that does not leave pauses history again, so Resume is
+    /// offered for it, rather than leaving a restore waiting on counts it
+    /// never asked for.
+    @Test func aResumeThatCannotSendPausesAgain() async throws {
+        let (transport, _) = cutTransport(accepting: 0, then: cutShort)
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.stall(HistoryCursor.Run(phase: .messages, next: 5, end: 10), restoring: true)
+            await #expect(throws: (any Error).self) { try await engine.resumeHistory() }
+            #expect(await !engine.isSyncingHistory)
+            await engine.close()
+            var failures = 0
+            for await case .historyFailed in engine.events { failures += 1 }
+            #expect(failures == 1)
+        }
+    }
 }
 
 private extension Engine {
+    func setRestoring(_ value: Bool) { restoring = value }
+
+    /// A run whose page never came: its watchdog gave up on it.
+    func stall(_ run: HistoryCursor.Run, restoring: Bool) {
+        self.restoring = restoring
+        _ = history.start([run])
+        _ = history.stalled(at: run.next)
+    }
+
     /// As `request` leaves it: a run in flight and its watchdog waiting.
     func awaitPage(of run: HistoryCursor.Run) -> Task<Void, Never> {
         _ = history.start([run])

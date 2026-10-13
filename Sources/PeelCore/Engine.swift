@@ -1383,16 +1383,7 @@ public actor Engine {
             } catch {
                 emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
             }
-            if let run = history.active {
-                try await request(run)
-            } else if restoring {
-                history.awaitingCounts = true
-                try await self.run { time, state in
-                    try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
-                }
-            } else {
-                try await syncMessages()
-            }
+            try await resumeHistory()
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }

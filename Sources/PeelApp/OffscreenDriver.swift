@@ -160,7 +160,8 @@ final class OffscreenDriver {
     /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
-    /// in the newest memory row (its panel beside the chat).
+    /// in the newest memory row (its panel beside the chat); `resume-history`,
+    /// Resume on the sidebar's paused restore.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -195,6 +196,9 @@ final class OffscreenDriver {
         case "agent-retry":
             // The agent chat's Retry under a failed reply.
             model.agent?.retry()
+        case "resume-history":
+            // Resume on the sidebar's "Restore paused".
+            Task { await model.resumeHistory() }
         case "agent-view":
             // A click on the first View in the agent's newest reply.
             let reply = model.agent?.turns.last { $0.author == .agent }?.text ?? ""

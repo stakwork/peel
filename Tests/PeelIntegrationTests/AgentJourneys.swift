@@ -210,12 +210,11 @@ extension Journeys {
         /// the read tools and the send tool over its engine) and their
         /// prompts; `model` in place of the provider.
         static func session(for person: Person, model: ScriptedModel) throws -> AgentSession {
-            let tools = SphinxTools(storage: person.storage)
+            let setup = AgentSetup(sending: person.engine)
             let credentials = KeptInMemory(AgentCredential(provider: .anthropic, model: "scripted", apiKey: "unused"))
             return AgentSession(
                 store: try SQLiteAgentStore.open(for: person.profile, storage: person.storage), credentials: credentials,
-                tools: ToolRegistry([.currentTime] + tools.tools + [tools.send(through: person.engine)]),
-                systemPrompt: SphinxTools.systemPrompt + " " + SphinxTools.sendPrompt, makeClient: { _ in model })
+                tools: setup.tools, systemPrompt: setup.systemPrompt(), makeClient: { _ in model })
         }
     }
 }

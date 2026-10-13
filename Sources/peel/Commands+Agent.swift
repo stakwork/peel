@@ -4,14 +4,17 @@ import PeelAgent
 import PeelCore
 import Synchronization
 
-/// `peel agent`: a streamed conversation with a model in the terminal, with
-/// one built-in tool (`current_time`) and, given a profile's storage, the
-/// Sphinx read tools over it (`SphinxTools`). With `--send`, a connected
-/// engine and the send tool too, each send asked about in the terminal
-/// (y, a for always, n), the "always" answers kept in the profile's
-/// agent store as the app keeps them. The API key comes from the
-/// environment only; it is never written anywhere or printed. Nothing a
-/// tool reads is printed beyond the one-line summary of its result.
+/// `peel agent`: a streamed conversation with a model in the terminal,
+/// with the app's tools and system prompt (`AgentSetup`): the time and,
+/// given a profile's storage, the Sphinx read tools over it. With `--send`,
+/// a connected engine and the send tool too, each send asked about in the
+/// terminal (y, a for always, n), the "always" answers kept in the
+/// profile's agent store as the app keeps them. With `--memory`, Peel's
+/// strut (the staged one) for that profile, as the app's `-strut YES` runs
+/// it, and the memory tools; the automation tools stay the app's, which
+/// runs them. The API key comes from the environment only; it is never
+/// written anywhere or printed. Nothing a tool reads is printed beyond the
+/// one-line summary of its result.
 enum AgentCommand {
     /// What `--send` adds: the engine to send through, and the account's rules.
     struct Sending {
@@ -27,15 +30,58 @@ enum AgentCommand {
 
     static let keyVariable = "PEEL_AGENT_API_KEY"
 
-    static let systemPrompt = """
-        You are Peel's assistant, talking with the user in a terminal. Answer plainly and briefly. \
-        Use a tool when it would give a better answer than guessing.
-        """
+    /// The agent's arguments after `agent`, and the `--profile` given:
+    /// `--send` and `--memory` need one. Nothing starts or connects before
+    /// `chat` has checked the rest and the key.
+    @MainActor static func run(_ arguments: Arguments, profile name: String?) async throws {
+        var arguments = arguments
+        let sends = arguments.flag("--send"), remembers = arguments.flag("--memory")
+        if sends || remembers, name == nil {
+            throw PeelError("agent \(sends ? "--send" : "--memory") needs --profile <name>")
+        }
+        let profile = try name.map { try Profile(name: $0, kind: .development) }
+        // Opened before the strut is looked for, so a missing profile says so first.
+        let storage = sends ? nil : try profile.map { profile in
+            guard Storage.exists(in: profile.directory) else { throw PeelError("no development profile named \(profile.name)") }
+            return try Storage(directory: profile.directory, readOnly: true)
+        }
+        let strut = try remembers ? profile.map(strut(for:)) : nil
+        if sends, let profile {
+            let invocation = try Invocation(profile: profile, arguments: arguments)
+            return try await chat(invocation.arguments, strut: strut) {
+                let engine = try await invocation.load()
+                do {
+                    try await engine.connect(allowUntrustedCertificate: invocation.insecure)
+                } catch {
+                    print("not connected: \(PeelError.readable(error)); sends are kept as failed")
+                }
+                do {
+                    return try Sending(engine: engine, profile: invocation.profile)
+                } catch {
+                    await engine.disconnect()
+                    throw error
+                }
+            }
+        }
+        try await chat(arguments, storage: storage, strut: strut)
+    }
 
-    /// `sending` connects the account for `--send`; it is called once the
-    /// arguments and the key have been checked, and disconnected after.
-    static func run(
-        _ arguments: Arguments, storage: Storage? = nil, sending connect: (() async throws -> Sending)? = nil
+    /// The strut `--memory` starts for `profile`: the one stage-strut.sh
+    /// staged (the CLI is not inside Peel.app), its data in the profile's
+    /// own folder, never the app account's memory.
+    @MainActor static func strut(for profile: Profile) throws -> BundledStrut {
+        guard let strut = BundledStrut(folder: BundledStrut.staged, data: BundledStrut.dataFolder(for: profile)) else {
+            throw PeelError("no strut staged at \(BundledStrut.staged.path); run scripts/stage-strut.sh <strut checkout>")
+        }
+        return strut
+    }
+
+    /// `sending` connects the account for `--send` and `strut` is started
+    /// for `--memory`, each once the arguments and the key have been
+    /// checked, and disconnected or stopped after.
+    @MainActor static func chat(
+        _ arguments: Arguments, storage: Storage? = nil, strut: BundledStrut? = nil,
+        sending connect: (() async throws -> Sending)? = nil
     ) async throws {
         var arguments = arguments
         let providerName = arguments.option("--provider") ?? "anthropic"
@@ -71,24 +117,23 @@ enum AgentCommand {
         guard let model else { throw PeelError("--provider \(providerName) needs --model <id>") }
 
         let sending = try await connect?()
-        let input = TerminalLines()
-        let sphinx = (sending?.engine.storage ?? storage).map(SphinxTools.init(storage:))
-        var tools = [Tool.currentTime] + (sphinx?.tools ?? [])
-        var prompt = sphinx == nil ? systemPrompt : systemPrompt + " " + SphinxTools.systemPrompt
-        if let sphinx, let sending {
-            tools.append(sphinx.send(through: sending.engine))
-            prompt += " " + SphinxTools.sendPrompt
-        }
-        var loop = AgentLoop(provider: provider, tools: ToolRegistry(tools), model: model, systemPrompt: prompt)
-        loop.approver = sending.map { ApprovalGate(rules: $0.rules) { await ask($0, input: input) } }
-        if let maxSteps { loop.maxSteps = maxSteps }
-        do {
-            try await converse(with: loop, input: input, describing: "\(providerName), \(model)")
-        } catch {
+        func finish() async {
             await sending?.engine.disconnect()
+            await strut?.stop()
+        }
+        do {
+            let memory = try await strut?.start()
+            let input = TerminalLines()
+            let setup = AgentSetup(storage: storage, sending: sending?.engine, memory: memory)
+            var loop = AgentLoop(provider: provider, tools: setup.tools, model: model, systemPrompt: setup.systemPrompt())
+            loop.approver = sending.map { ApprovalGate(rules: $0.rules) { await ask($0, input: input) } }
+            if let maxSteps { loop.maxSteps = maxSteps }
+            try await converse(with: loop, input: input, describing: "\(providerName), \(model)\(memory == nil ? "" : ", memory")")
+        } catch {
+            await finish()
             throw error
         }
-        await sending?.engine.disconnect()
+        await finish()
     }
 
     /// Asks about one tool call in the terminal: what it will do, its exact

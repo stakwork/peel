@@ -27,16 +27,39 @@ public final class BundledStrut {
     static let readyTimeout: Duration = .seconds(30)
 
     /// The strut in `bundle`, if it has one.
-    public init?(in bundle: Bundle = .main, data: URL = BundledStrut.dataFolder) {
-        folder = bundle.bundleURL.appending(path: "Contents/Strut")
+    public convenience init?(in bundle: Bundle = .main, data: URL = BundledStrut.dataFolder) {
+        self.init(folder: bundle.bundleURL.appending(path: "Contents/Strut"), data: data)
+    }
+
+    /// The strut package in `folder` (its `desktop.js` and `native/node`),
+    /// if there is one: for `peel agent`, which is not inside Peel.app, the
+    /// one `stage-strut.sh` staged (`staged`).
+    public init?(folder: URL, data: URL) {
         guard FileManager.default.isExecutableFile(atPath: folder.appending(path: "native/node").path),
               FileManager.default.fileExists(atPath: folder.appending(path: "desktop.js").path) else { return nil }
+        self.folder = folder
         self.data = data
     }
 
     /// Where its workspace and the memory graph live: beside the profiles, in Peel's folder.
     public nonisolated static let dataFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appending(path: "Peel/Strut")
+
+    /// The data folder `profile`'s agent uses: the app account's in Peel's
+    /// folder, a development profile's inside its own, so a test account
+    /// never writes to the real memory.
+    public nonisolated static func dataFolder(for profile: Profile) -> URL {
+        switch profile.kind {
+        case .app: dataFolder
+        case .development: profile.directory.appending(path: "strut")
+        }
+    }
+
+    /// The strut `scripts/stage-strut.sh` staged once for this Mac, which
+    /// every checkout's `bundle-app.sh` copies into `Contents/Strut`.
+    public nonisolated static let staged = ProcessInfo.processInfo.environment["PEEL_STRUT_STAGE"].map { URL(filePath: $0) }
+        .map { $0.appending(path: "strut") }
+        ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/dev.peel.build/strut/strut")
 
     /// Stops it and removes its workspace and memory graph: what the agent
     /// remembered and the automations it ran, so a later account starts empty.
@@ -162,7 +185,8 @@ public final class BundledStrut {
 
     /// Peel's own environment without anything that would change how Node,
     /// strut or its OpenSSL runs (`DYLD_*`, `NODE_*`, `STRUT_*`, `OPENSSL_*`,
-    /// `SSL_CERT_*`), and then strut's: this Mac only, a port the OS picks,
+    /// `SSL_CERT_*`) or that is Peel's own (`PEEL_*`, the CLI's model key
+    /// among them), and then strut's: this Mac only, a port the OS picks,
     /// Peel's key and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
     /// configuration and loads no engine or provider: it was built for
     /// Homebrew's folders, which another user may own.
@@ -170,7 +194,7 @@ public final class BundledStrut {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
             name == "NODE_EXTRA_CA_CERTS"
-                || !["DYLD_", "NODE_", "STRUT_", "OPENSSL_", "SSL_CERT_"].contains { name.hasPrefix($0) }
+                || !["DYLD_", "NODE_", "STRUT_", "OPENSSL_", "SSL_CERT_", "PEEL_"].contains { name.hasPrefix($0) }
         }
         environment.merge([
             "STRUT_HOST": "127.0.0.1",

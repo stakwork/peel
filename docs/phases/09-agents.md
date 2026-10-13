@@ -301,11 +301,11 @@ Memory stays its own Ladybug file beside strut's graph (Evan, 2026-10-13:
 "ladybug as their own file is fine"); on a home server strut's graph is
 Neo4j, next to stakgraph and Jarvis.
 
-1. **Next up: one tool builder for the app and the CLI.** The tools and system
-   prompt are put together twice (`AppModel+Agent`, `peel`'s
-   `Commands+Agent`); one PeelAgent builder taking storage, an optional
-   engine and an optional `MemoryServer` gives `peel agent` memory
-   (`--memory`), so memory can be tried and tested from the terminal.
+1. **Done: one tool builder for the app and the CLI.** `AgentSetup`
+   (PeelAgent) takes storage, an optional engine and an optional
+   `MemoryServer`; the app, its automations and `peel agent` all use it.
+   `peel agent --profile <dev> --memory` starts the staged strut with its
+   data in that profile's folder and stops it on exit; memory tools only.
 2. **Encrypted backup.** The memes server holds one preferences file per
    account and no other named files (stakwork/sphinx-meme router.go), so:
    strut's `memory/export` makes a snapshot; Peel encrypts it with

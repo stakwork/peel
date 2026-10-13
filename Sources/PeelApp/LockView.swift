@@ -65,13 +65,6 @@ struct LockView: View {
     }
 }
 
-extension PIN {
-    /// What to show when a PIN was not accepted.
-    static func problem(_ error: any Error) -> String {
-        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
-    }
-}
-
 /// Removes the account from this Mac (`AppModel.forgetAccount`), confirmed in
 /// place next to the trigger with what is deleted, never in a dialog: a
 /// text button on the lock screen, the last section of the Account screen

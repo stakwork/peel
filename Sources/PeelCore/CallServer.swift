@@ -167,8 +167,8 @@ actor CallServer {
         return (try? encoder.encode(["profilePictureUrl": photoURL])).map { String(decoding: $0, as: UTF8.self) }
     }
 
-    /// The ticket in a reply, checked: the media server must be `wss://` on
-    /// the call server's own host or one recorded for it in `mediaHosts`
+    /// The ticket in a reply, checked: the media server must be `wss://`
+    /// (or `https://`, read as it) on the call server's own host or one recorded for it in `mediaHosts`
     /// (`ws://` only when the call server is this machine), and the token
     /// must be for `room` and not yet expired. Its signature is the media
     /// server's to check.
@@ -186,10 +186,15 @@ actor CallServer {
     }
 
     static func mediaURL(_ text: String, callServer: URL) throws -> URL {
-        guard text.utf8.count <= 2048, let parts = URLComponents(string: text), let url = parts.url,
-              let scheme = parts.scheme?.lowercased(), let host = parts.percentEncodedHost?.lowercased(),
+        guard text.utf8.count <= 2048, var parts = URLComponents(string: text),
+              let given = parts.scheme?.lowercased(), let host = parts.percentEncodedHost?.lowercased(),
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil
         else { throw Failure.mediaHostNotAllowed(nil) }
+        // LiveKit reads `https://` as `wss://` and `http://` as `ws://`; the
+        // official call server has answered with `https://` since 2026-10-13.
+        let scheme = ["https": "wss", "http": "ws"][given] ?? given
+        parts.scheme = scheme
+        guard let url = parts.url else { throw Failure.mediaHostNotAllowed(nil) }
         let named = endpoint(host, parts.port, secure: scheme != "ws")
         let loopback = callServer.scheme == "http"
         let ownHost = callServer.host?.lowercased() ?? ""

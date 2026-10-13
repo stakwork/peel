@@ -159,7 +159,7 @@ extension AppModel {
             let ticket = try await engine.callTicket(for: link, in: chat)
             guard self.engine === engine else { return false }
             leaveCall()
-            call = CallSession(ticket: ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
+            call = platform.calls.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
             return true
         } catch {
             if failureInChat {

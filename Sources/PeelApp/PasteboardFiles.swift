@@ -143,4 +143,24 @@ enum PasteboardFiles {
         return (files, refused)
     }
 }
+
+extension AppModel {
+    /// Files dropped or pasted, into the tray in their order; what could not
+    /// be had is said in the conversation.
+    func attach(_ items: [PasteboardFiles.Item], to composer: ComposerID) {
+        let account = engine
+        Task {
+            let (files, refused) = await PasteboardFiles.files(from: items)
+            // The account closed or changed while they were written.
+            guard let account, account === engine else {
+                files.forEach { IncomingFiles.discard($0) }
+                return
+            }
+            addFiles(files, to: composer)
+            if !refused.isEmpty, let chat = composer.chat {
+                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
+            }
+        }
+    }
+}
 #endif

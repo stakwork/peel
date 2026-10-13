@@ -104,10 +104,7 @@ extension AppModel {
     /// Escape in a composer: stops replying, else closes its thread panel.
     /// Returns whether it was taken.
     func escape(in composer: ComposerID) -> Bool {
-        if composer == .agent, memoryPanel != nil {
-            closeMemory()
-            return true
-        }
+        if composer == .agent, agentHost?.closeMemory(in: self) == true { return true }
         if replyTargets[composer] != nil {
             replyTargets[composer] = nil
             return true
@@ -307,30 +304,10 @@ extension AppModel {
         composerFocus[composer, default: 0] += 1
     }
 
-    #if os(macOS)
-    /// Files dropped or pasted, into the tray in their order; what could not
-    /// be had is said in the conversation.
-    func attach(_ items: [PasteboardFiles.Item], to composer: ComposerID) {
-        let account = engine
-        Task {
-            let (files, refused) = await PasteboardFiles.files(from: items)
-            // The account closed or changed while they were written.
-            guard let account, account === engine else {
-                files.forEach { IncomingFiles.discard($0) }
-                return
-            }
-            addFiles(files, to: composer)
-            if !refused.isEmpty, let chat = composer.chat {
-                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
-            }
-        }
-    }
-
     /// Shows or clears the drop overlay over `composer`'s conversation.
     func dropTargeted(_ targeted: Bool, composer: ComposerID) {
         if targeted { dropTarget = composer } else if dropTarget == composer { dropTarget = nil }
     }
-    #endif
 
     func removeFile(_ url: URL, from composer: ComposerID) {
         pendingFiles[composer]?.removeAll { $0 == url }
@@ -347,7 +324,7 @@ extension AppModel {
 
     /// Picks files to attach, beside the window.
     func chooseFiles(for composer: ComposerID) {
-        addFiles(FilePicking.open(prompt: "Attach", multiple: true) ?? [], to: composer)
+        addFiles(platform.files.open(prompt: "Attach", multiple: true, directories: false, types: []) ?? [], to: composer)
     }
 
     // MARK: Attachments
@@ -399,7 +376,7 @@ extension AppModel {
     func save(_ message: Message) async {
         await download(message)
         guard let id = message.id, let file = attachment(id).file,
-              let target = FilePicking.saveLocation(named: fileName(of: message) ?? file.lastPathComponent) else { return }
+              let target = platform.files.saveLocation(named: fileName(of: message) ?? file.lastPathComponent) else { return }
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
@@ -422,7 +399,7 @@ extension AppModel {
 
     /// Shows a saved file in the Finder, selected. Never opens it.
     func showInFinder(_ file: URL) {
-        FilePicking.reveal(file)
+        platform.files.reveal(file)
     }
 
     private func fileName(of message: Message) -> String? {
@@ -441,7 +418,7 @@ extension AppModel {
         await download(message)
         guard let id = message.id, let file = attachment(id).file, opensAsPage(message) else { return }
         do {
-            try await web.openDocument(file, named: fileName(of: message) ?? "Page")
+            try await webPresenter.openDocument(file, named: fileName(of: message) ?? "Page")
         } catch {
             conversationNotices[message.chat] = PeelError.problem(error, couldNot: "open the page")
         }
@@ -466,13 +443,13 @@ extension AppModel {
         await download(message)
         guard let id = message.id, let file = attachment(id).file,
               attachmentKind(of: message) == message.attachmentKind else { return }
-        MediaPlayback.shared.play(id, file: file)
+        platform.playback.play(id, file: file)
     }
 
     /// Puts an image on the clipboard; false when it is not downloaded or cannot be read.
     func copyImage(_ message: Message) -> Bool {
         guard let id = message.id, let file = attachment(id).file else { return false }
-        return Clipboard.copyImage(at: file)
+        return platform.pasteboard.copyImage(at: file)
     }
 
     func showImages(_ messages: [Message], at index: Int) {

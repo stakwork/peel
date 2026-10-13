@@ -7,10 +7,10 @@ import AppKit
 /// The system's file panels and the Finder, in one place: picking files to
 /// open, where to save one, and showing one. No panels offscreen.
 @MainActor
-enum FilePicking {
+struct FilePanels: FilePicking {
     /// Files picked in an open panel beside the window, of the given types
     /// if any; nil when the panel was cancelled.
-    static func open(
+    func open(
         prompt: String? = nil, multiple: Bool, directories: Bool = false, types: [UTType] = []
     ) -> [URL]? {
         #if os(macOS)
@@ -28,7 +28,7 @@ enum FilePicking {
 
     /// Where to save a file, picked in a save panel that starts with `name`;
     /// nil when it was cancelled.
-    static func saveLocation(named name: String) -> URL? {
+    func saveLocation(named name: String) -> URL? {
         #if os(macOS)
         guard !Offscreen.refuses("a save panel") else { return nil }
         let panel = NSSavePanel()
@@ -40,7 +40,7 @@ enum FilePicking {
     }
 
     /// Shows a file in the Finder, selected. Never opens it.
-    static func reveal(_ file: URL) {
+    func reveal(_ file: URL) {
         #if os(macOS)
         NSWorkspace.shared.activateFileViewerSelecting([file])
         #endif

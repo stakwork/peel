@@ -11,10 +11,10 @@ struct ConversationView: View {
     /// Dragged on its divider; remembered on this Mac (a convenience).
     @AppStorage("threadWidth") private var threadWidth: Double = ThreadPanel.width
 
-    /// The narrowest the conversation gets beside a thread.
-    private static let minimumWidth: CGFloat = 380
-    /// How narrow and how wide the thread may be dragged.
-    private static let threadRange = 300.0...560.0
+    /// The narrowest the conversation (or the agent chat) gets beside a panel.
+    static let minimumWidth: CGFloat = 380
+    /// How narrow and how wide the thread (or a memory) may be dragged.
+    static let threadRange = 300.0...560.0
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }

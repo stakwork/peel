@@ -37,13 +37,22 @@ public struct Tool: Sendable {
     public enum Output: Sendable, Hashable {
         case text(String)
         case json(JSONValue)
+        /// The text the model is sent, and what the tool's row keeps to
+        /// show when it is opened. Only for a result worth keeping apart
+        /// from what the app already stores (a chat read keeps none).
+        case kept(String, row: JSONValue)
 
         /// As the model is sent it.
         public var text: String {
             switch self {
-            case .text(let text): text
+            case .text(let text), .kept(let text, _): text
             case .json(let value): value.jsonString
             }
+        }
+
+        /// What the tool's row keeps, if anything.
+        public var row: JSONValue? {
+            if case .kept(_, let row) = self { row } else { nil }
         }
     }
 

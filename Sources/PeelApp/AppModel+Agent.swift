@@ -49,8 +49,22 @@ extension AppModel {
             try profile.memoryServer.delete()
         }
         memoryServer = server
+        closeMemory()
         agent.tools = Self.agentTools(engine, memory: server)
         agent.systemPrompt = Self.agentSystemPrompt(remembers: server != nil)
+    }
+
+    /// Opens one memory beside the agent chat: a fact or a name a memory
+    /// row shows. From the panel itself it goes on from there, with Back.
+    func openMemory(_ ref: MemoryRef) {
+        guard let server = memoryServer else { return }
+        if memoryPanel == nil { memoryPanel = MemoryPanel(server: server) }
+        memoryPanel?.open(ref)
+    }
+
+    func closeMemory() {
+        memoryPanel?.close()
+        memoryPanel = nil
     }
 
     /// Opens the message an agent's link names (`AgentMessageLink`), as a
@@ -100,6 +114,7 @@ extension AppModel {
     func closeAgent() {
         agent?.close()
         agent = nil
+        closeMemory()
         memoryServer = nil
         agentConnectFrom = nil
     }
@@ -169,5 +184,64 @@ enum AgentToolTitle {
         let seconds = duration / .seconds(1)
         if seconds < 0.05 { return "<0.1 s" }
         return seconds < 10 ? String(format: "%.1f s", seconds) : "\(Int(seconds.rounded())) s"
+    }
+}
+
+/// One memory beside the agent chat, read from strut when it opens
+/// (`MemoryServer.node`), so it shows what memory holds now. A fact or a
+/// name in it opens that one in its place; Back goes to the one before.
+@MainActor @Observable
+final class MemoryPanel {
+    let server: MemoryServer
+    /// What was opened, the newest last.
+    private(set) var trail: [MemoryRef] = []
+    /// What each memory read as, so Back shows it again without a call.
+    private var read: [String: MemoryNode] = [:]
+    /// Why the newest could not be read.
+    private(set) var problem: String?
+    private var loading: Task<Void, Never>?
+
+    init(server: MemoryServer) {
+        self.server = server
+    }
+
+    var current: MemoryRef? { trail.last }
+    var node: MemoryNode? { current.flatMap { read[$0.id] } }
+    var canGoBack: Bool { trail.count > 1 }
+
+    /// The one showing again is read again: after a failure, or to see it as it is now.
+    func open(_ ref: MemoryRef) {
+        if ref.id == current?.id {
+            read[ref.id] = nil
+        } else {
+            trail.append(ref)
+        }
+        load()
+    }
+
+    func back() {
+        guard canGoBack else { return }
+        trail.removeLast()
+        load()
+    }
+
+    func close() {
+        loading?.cancel()
+    }
+
+    private func load() {
+        loading?.cancel()
+        problem = nil
+        guard let ref = current, read[ref.id] == nil else { return }
+        loading = Task {
+            do {
+                let node = try await server.node(ref.id)
+                guard !Task.isCancelled else { return }
+                if let node { read[ref.id] = node } else { problem = "This is no longer in memory." }
+            } catch {
+                guard !Task.isCancelled else { return }
+                problem = PeelError.problem(error, couldNot: "read this memory")
+            }
+        }
     }
 }

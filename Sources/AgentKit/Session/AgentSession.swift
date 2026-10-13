@@ -50,9 +50,12 @@ public struct ToolActivity: Identifiable, Sendable, Equatable {
     public var failed = false
     /// For a tool that acts: what it asked to do and how the person answered.
     public var approval: ToolApproval?
+    /// What it returned, kept for its row when the tool says so
+    /// (`Tool.Output.kept`); nil for the rest.
+    public var row: JSONValue?
 
     public init(id: String, name: String, input: JSONValue, summary: String? = nil, duration: Duration? = nil,
-                failed: Bool = false, approval: ToolApproval? = nil) {
+                failed: Bool = false, approval: ToolApproval? = nil, row: JSONValue? = nil) {
         self.id = id
         self.name = name
         self.input = input
@@ -60,6 +63,7 @@ public struct ToolActivity: Identifiable, Sendable, Equatable {
         self.duration = duration
         self.failed = failed
         self.approval = approval
+        self.row = row
     }
 
     public var isRunning: Bool { duration == nil }
@@ -379,9 +383,10 @@ public final class AgentSession {
         case .toolStarted(let id, let name, let input):
             paragraphDue = reply?.text.isEmpty == false
             reply?.tools.append(ToolActivity(id: id, name: name, input: input))
-        case .toolFinished(let id, _, let summary, let duration, let failed):
+        case .toolFinished(let id, _, let summary, let row, let duration, let failed):
             updateTool(id) {
                 $0.summary = summary
+                $0.row = row
                 $0.duration = duration
                 $0.failed = failed
             }
@@ -789,19 +794,20 @@ extension ToolActivity {
     /// A `ToolCall` record: the tool's name, the summary of its result as
     /// the body, what it was asked, how long it took and whether it failed.
     /// What it returned in full is not kept: it is a copy of chats Peel
-    /// already stores.
+    /// already stores. Only a row a tool chose to keep is (`row`).
     init(record: Record) {
         let props = JSONValue.object(record.props)
         let ms: Double? = if case .number(let ms)? = props["ms"] { ms } else { nil }
         self.init(id: props["call_id"]?.string ?? record.refId, name: record.name, input: props["input"] ?? .object([:]),
                   summary: record.body, duration: .milliseconds(Int64(ms ?? 0)), failed: props["failed"] == .bool(true),
-                  approval: props["approval"].flatMap { try? $0.decoded(as: ToolApproval.self) })
+                  approval: props["approval"].flatMap { try? $0.decoded(as: ToolApproval.self) }, row: props["row"])
     }
 
     var props: [String: JSONValue] {
         var props: [String: JSONValue] = ["call_id": .string(id), "input": input, "failed": .bool(failed)]
         if let duration { props["ms"] = .number((duration / .milliseconds(1)).rounded()) }
         if let approval, let json = try? JSONValue(encoding: approval) { props["approval"] = json }
+        if let row { props["row"] = row }
         return props
     }
 }

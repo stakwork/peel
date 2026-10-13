@@ -188,7 +188,7 @@ enum AgentCommand {
             fflush(stdout)
         case .toolStarted(_, let name, let input):
             print("\n[\(name) \(input.jsonString)]")
-        case .toolFinished(_, let name, let summary, let duration, let failed):
+        case .toolFinished(_, let name, let summary, _, let duration, let failed):
             let seconds = duration / .seconds(1)
             print("[\(name) \(failed ? "failed" : "done") in \(String(format: "%.2f", seconds)) s: \(summary)]")
         case .retrying(let delay, let reason):

@@ -344,7 +344,7 @@ struct AgentLoopConcurrencyTests {
         #expect(turn.toolsRun == ["h1", "h2"])
         #expect(turn.toolsNotRun == ["send"])
         // Every row that opened is closed (failed); the send never opened one.
-        #expect(log.all.allSatisfy { if case .toolFinished(_, _, _, _, let failed) = $0 { failed } else { true } })
+        #expect(log.all.allSatisfy { if case .toolFinished(_, _, _, _, _, let failed) = $0 { failed } else { true } })
         let opened = log.opened
         let closed = log.closed
         #expect(opened == ["c0", "c1"])

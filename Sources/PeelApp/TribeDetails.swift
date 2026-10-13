@@ -328,39 +328,3 @@ struct TagChips: View {
         }
     }
 }
-
-/// Lays its views out in lines, left to right, starting a new line when
-/// the next would not fit.
-private struct ChipFlow: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let frames = place(subviews, width: proposal.width ?? .infinity)
-        let width = frames.map(\.maxX).max() ?? 0
-        return CGSize(width: proposal.width ?? width, height: frames.map(\.maxY).max() ?? 0)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (subview, frame) in zip(subviews, place(subviews, width: bounds.width)) {
-            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                          proposal: ProposedViewSize(frame.size))
-        }
-    }
-
-    private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
-        var frames: [CGRect] = []
-        var point = CGPoint.zero
-        var lineHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if point.x > 0, point.x + size.width > width {
-                point = CGPoint(x: 0, y: point.y + lineHeight + spacing)
-                lineHeight = 0
-            }
-            frames.append(CGRect(origin: point, size: size))
-            point.x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-        }
-        return frames
-    }
-}

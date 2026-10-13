@@ -266,6 +266,11 @@ final class AppModel {
     var agent: AgentSession?
     /// The agent's memory server, as `Profile.memoryServer` keeps it (read once per open).
     var memoryServer: MemoryServer?
+    /// The one memory open beside the agent chat (`openMemory`), if any.
+    var memoryPanel: MemoryPanel?
+    /// Bumped to open every tool row in the agent chat, as clicks on their
+    /// chevrons would (the offscreen driver's `agent-rows`).
+    var agentRowsOpened = 0
     /// Where the Connect panel is open from, if it is.
     var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).

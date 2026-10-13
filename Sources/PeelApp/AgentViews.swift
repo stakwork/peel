@@ -72,6 +72,38 @@ struct AgentLink: View {
 struct AgentChatView: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    /// Dragged on its divider; remembered on this Mac (a convenience).
+    @AppStorage("memoryPanelWidth") private var memoryWidth: Double = ThreadPanel.width
+
+    var body: some View {
+        // One memory a row opened, beside the chat as a thread is.
+        SidePanelSplit(isOpen: model.memoryPanel != nil, width: $memoryWidth, range: ConversationView.threadRange,
+                       standard: ThreadPanel.width, minimumMain: ConversationView.minimumWidth) {
+            AgentChatColumn(agent: agent)
+        } panel: { _ in
+            if let panel = model.memoryPanel { MemoryPanelView(panel: panel) }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.memoryPanel != nil)
+        // A card waiting on the person must be in view: on a narrow window
+        // the memory would hide it.
+        .onChange(of: agent.waiting != nil) { _, waiting in
+            if waiting { model.closeMemory() }
+        }
+        // Here, not on the column: a memory in the chat's place on a narrow
+        // window is still the agent chat, shown.
+        .onAppear { agent.isShown = true }
+        .onDisappear {
+            agent.isShown = false
+            model.closeMemory()
+        }
+    }
+}
+
+/// The agent chat's header, conversation and composer. Its own view, so
+/// resizing the window or the memory beside it does not redraw it.
+private struct AgentChatColumn: View {
+    @Environment(AppModel.self) private var model
+    let agent: AgentSession
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,12 +125,10 @@ struct AgentChatView: View {
             return .handled
         })
         .onAppear {
-            agent.isShown = true
             // After this layout pass, once the chat it replaced has let go
             // of the keyboard (Tom: back from a View, the cursor was lost).
             if !model.sidebarHasKeys { Task { model.composerFocus[.agent, default: 0] += 1 } }
         }
-        .onDisappear { agent.isShown = false }
         // Connected: the cursor goes to the field, ready for the first question.
         .onChange(of: agent.connection) { _, connection in
             if connection != nil { model.composerFocus[.agent, default: 0] += 1 }
@@ -435,6 +465,7 @@ private struct AgentToolRow: View {
             AgentApprovalCard(agent: agent, intent: approval.intent)
         } else {
             row
+                .onChange(of: model.agentRowsOpened) { open = true }
         }
     }
 
@@ -466,11 +497,20 @@ private struct AgentToolRow: View {
                     .fixedSize()
             }
         } detail: {
-            VStack(alignment: .leading, spacing: 4) {
-                if let content = tool.approval?.intent.content { detail("Content", content) }
-                detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
-                if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
+            if let row = tool.row, MemoryResult.tools.contains(tool.name) {
+                MemoryRowDetail(tool: tool.name, input: tool.input, row: row)
+            } else {
+                facts
             }
+        }
+    }
+
+    /// What it was asked and answered, for a tool whose row keeps nothing more.
+    private var facts: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let content = tool.approval?.intent.content { detail("Content", content) }
+            detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
+            if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
         }
     }
 

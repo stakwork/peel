@@ -234,9 +234,31 @@ In Peel:
 - Memory text goes to strut as the run's `input`, never as config,
   which strut templates (`{{ … }}` would be evaluated).
   Without it the tools are absent.
-- No memory UI yet (Tom, 2026-10-13: a first side panel drawing the
-  graph was taken out): memory shows only as the tools' quiet rows.
-  Later, a row such as "Remembered" opens that one memory in a panel.
+- Memory shows as the tools' quiet rows (Tom, 2026-10-13: a first side
+  panel drawing the whole graph was taken out). Opened, a row reads in
+  sentences, not JSON (variation A of three prototyped, Tom, 2026-10-13):
+  Remembered lists the facts written, each over the fact it replaced
+  (struck through), the entities as chips ("new" when made) and any
+  proposed words; Searched memory the results with their types; Read
+  memory the node's name and current facts. A memory tool's result
+  carries its step JSON for the row (`Tool.Output.kept`, kept on the
+  tool call's record); other tools keep only their first line, as their
+  results copy chats. A fact or a name opens that one memory beside the
+  chat (`MemoryPanel`, `SidePanelSplit` as a thread): read from strut when
+  it opens; an entity with what it knows now, a fact with who it is
+  about, since when, what it replaced and the words it came from. Its
+  facts and names open in its place, with Back; Escape closes it.
+  Strut is asked to return a replaced fact's text in `superseded`; a bare
+  ref_id reads "An earlier fact". Reviews' findings not applied, with
+  why: a fact forgotten later still shows in the row that wrote it (the
+  row is a record of what was done, and its first line already held the
+  sentence); every kept row loads with the chat (each is capped at 12,000
+  characters, and only remember, recall and read_memory keep one);
+  `AppModel.agentRowsOpened` is the offscreen driver's alone (a tool-call
+  id may repeat across steps, so open rows cannot be keyed by it); a
+  fact's link rests in the text's colour, not the link's (quiet rows);
+  aliases show as strut keeps them, lowercased; the panel opening
+  animates the chat's reflow, as a thread's does.
 
 Done when "Remember: my name is Tom" stores Self and a fact, "call me
 Thomas" supersedes it, and a cleared conversation answers "What's my

@@ -325,7 +325,8 @@ enum KeyCode {
 /// 4. The search bar, while its field has the cursor: the search closes.
 /// 5. The sidebar, while it has focus: the arrow keys' highlight clears.
 /// 6. No monitor: the view with the keyboard. The composer closes its
-///    mention list, else stops replying, else closes its thread
+///    mention list, else (the agent's) closes the memory beside it, else
+///    stops its reply, else stops replying, else closes its thread
 ///    (`AppModel.escape(in:)`); the web pane's
 ///    address field puts the address back; the Payments pane closes; the
 ///    call window, its own window, goes back to the grid.

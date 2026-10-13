@@ -131,7 +131,7 @@ final class EventLog: Sendable {
 
     /// The tool rows opened and closed, by call id, in order.
     var opened: [String] { all.compactMap { if case .toolStarted(let id, _, _) = $0 { id } else { nil } } }
-    var closed: [String] { all.compactMap { if case .toolFinished(let id, _, _, _, _) = $0 { id } else { nil } } }
+    var closed: [String] { all.compactMap { if case .toolFinished(let id, _, _, _, _, _) = $0 { id } else { nil } } }
 }
 
 /// Waits a loop was asked to make.

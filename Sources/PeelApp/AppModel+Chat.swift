@@ -104,6 +104,10 @@ extension AppModel {
     /// Escape in a composer: stops replying, else closes its thread panel.
     /// Returns whether it was taken.
     func escape(in composer: ComposerID) -> Bool {
+        if composer == .agent, memoryPanel != nil {
+            closeMemory()
+            return true
+        }
         if replyTargets[composer] != nil {
             replyTargets[composer] = nil
             return true

@@ -78,6 +78,10 @@ struct Composer: View {
             focusesOnAppear: !(model.sidebarHasKeys && composer.thread == nil), submit: send,
             mention: $mention, insertion: insertion, suggestionKey: handle,
             escape: {
+                // The memory beside the agent chat first: the least to lose.
+                if composer == .agent, model.memoryPanel != nil {
+                    return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+                }
                 if let stop {
                     stop()
                     return true

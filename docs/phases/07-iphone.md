@@ -9,6 +9,56 @@ The research behind it was read on 2026-10-13 from Peel's `main` (6da14aa),
 `~/Documents/strut`, `~/Documents/hive`, `~/Documents/sphinx` and
 `~/Documents/sphinx-ios-v2`.
 
+## The big picture
+
+**The brain** is one machine that runs the agents, Strut and memory: Tom's
+Mac today, then a home server (an old Mac or a Mac mini), and later perhaps a
+brain Sphinx hosts. **Every other device is a remote.** The iPhone, and the
+laptop once the brain moves off it, reach the brain by sending Sphinx
+messages to the agent, as to any contact. Nothing on a remote runs the agent.
+
+Making each agent a **real Sphinx contact** gives four things for free: an
+address any device or Sphinx app can reach, encryption, a queue when the
+brain is asleep or down, and push for its replies.
+
+**What an agent is.** Five parts, each with one owner:
+
+| Part | What it is | Owned by |
+|---|---|---|
+| Identity | A real Sphinx key: name, photo, an address people can message | Sphinx |
+| Persona | Its system prompt ("Peel", "Chief of staff") | The brain (the `Agent` record) |
+| Budget | What it may spend on models | Bifrost or Mothership virtual keys |
+| Tools | Which connectors and workflows it may use | Strut (its grants) |
+| Memory | What it knows | Strut's graph |
+
+Budgets are model spend, not Sphinx sats: messages between Tom and an agent
+are free. The contact gives an agent an address; the virtual key gives it a
+budget. The first agent is agent 1 of this model, and more agents are more
+rows.
+
+**The path:**
+
+1. **Today.** The agent is not a contact. It lives inside the Mac app, and
+   only that Mac can talk to it.
+2. **v1: one agent as its own account.** Its words are derived from Tom's,
+   so the backup is still one set of twelve words. No server change. The
+   cost is a second connection on the brain.
+3. **Later: agents as children of one account.** One account, one
+   connection, one set of words, each agent an identity under Tom's root,
+   perhaps with its own balance. The server has some of the pieces (balances
+   per scid, routing to yourself); the core and every Sphinx app would need
+   "an identity that is not a contact". A protocol change for the Sphinx
+   team ("Later, and considered" below).
+4. **Hosted.** The brain runs in Sphinx's cloud. Devices talk to the agents
+   exactly as before, because they are contacts either way.
+
+Separate accounts do not mean more backups, because they are derived. They
+mean one connection, registration and balance per agent, which step 3
+removes. And an agent that reads Tom's Sphinx chats needs his keys: on a
+home server they stay on hardware he owns. A hosted brain's first version
+should see only its own conversations and connectors, not Tom's inbox, unless
+he chooses otherwise.
+
 ## In one paragraph
 
 Peel on iPhone is two things in one app. It is a full Sphinx client, built
@@ -132,9 +182,38 @@ was dropped as too much too early. This is a smaller version: the identity,
 but no separate host. It runs inside the brain's Peel.
 
 **Setting it up.** In Account › Agent on the Mac: "Give your agent a Sphinx
-account". Peel makes the agent's account from an invite (Peel already makes
-invites, `invite` table), stores its words in the Keychain as a second
-profile, and adds it to Tom's contacts. That costs a few sats once: the key
+account". Peel derives the agent's words from Tom's (below), signs the
+agent's account up with an invite (Peel already makes invites, `invite`
+table), keeps its words in the Keychain as a second profile, and adds it to
+Tom's contacts.
+
+**One set of words: the agent's are derived from Tom's.** The server knows an
+account by its root key: the core makes it from the seed as `m/42'/42'` over
+`hkdf(seed, "bip32 seed")` (`sphinx/src/signer/my_keys_manager.rs:130-137`),
+and every contact already gets its own child key under that root
+(`auth_secret_from_idx`). Those children are still Tom's account to the
+mixer, which routes and pushes by root, so a child key cannot be the agent's
+address. What can be done is to derive a whole second seed from Tom's,
+one way:
+
+- `agent seed n = HKDF-SHA256(Tom's seed, info: "peel agent <n>")`, cut to
+  16 bytes of entropy and turned into words with the core's
+  `mnemonicFromEntropy`. CryptoKit only, no core change. BIP85 (child
+  mnemonics from a master key) is the standard form of the same idea, and
+  worth using instead if the core exposes BIP32 derivation to Swift.
+- To the server the agent is a separate account with an unrelated key; it
+  cannot be linked back to Tom's.
+- **Backup is Tom's twelve words.** A restore derives agent 1, 2, … and
+  restores each one the server knows, stopping at the first it does not.
+- One way only: the agent's words do not reveal Tom's.
+- If the agent's words leak, the agent moves to the next index; the old
+  index is retired in the `Agent` record.
+- Only Peel knows to derive them. The official apps restore Tom's account
+  and never see the agent's words, which is fine: they reach the agent as a
+  contact.
+
+This is the "Create from my seed … until child derivation lands" step that
+[../design/agents.md](../design/agents.md) left greyed in 2026-10-08. That costs a few sats once: the key
 exchange is 5 sats (`Engine+Messages.swift:8`). After that, **messages
 between Tom and the agent are free**: a direct message is sent with 0 msat
 unless it carries a payment (`Engine+Messages.swift:300`). The agent needs no
@@ -185,10 +264,11 @@ work is real:
   messages as a contact, beside today's Agent chat. On the Mac its row
   opens the Agent chat, as [../design/agents.md](../design/agents.md)
   decided ("one agent contact"). The two must not show as separate chats.
-- **Another set of words to keep safe.** They live on the brain's Keychain,
-  have to move with the brain to a home server, and need a backup. Whoever
-  holds them can read the agent's side of the conversation. They cannot
-  command the brain, because the brain takes commands only from Tom's key.
+- **The agent's key lives on the brain.** It is derived from Tom's words, so
+  there is nothing new to back up, but the brain's Keychain holds it, and a
+  home server needs it (or Tom's words, to derive it). Whoever holds it can
+  read the agent's side of the conversation. It cannot command the brain,
+  because the brain takes commands only from Tom's key.
 - **Round trips, not streaming.** A reply goes through the broker: about a
   second, and the phone sees whole messages, not tokens arriving.
 - **It is visible everywhere Tom is.** The official apps show the agent's
@@ -483,6 +563,30 @@ last     B7  B5 (when jobs land)
   conversation and memory in two. A home server fixes the same problem
   without the split, so H1 is the better spend. Revisit only if a brain
   that sleeps turns out to be common.
+- **Sub-identities on one account** (Tom, 2026-10-13). Instead of a derived
+  second account, the agent would be an identity under Tom's own root: one
+  account, one connection, its own key, maybe its own balance. Read in
+  `~/Documents/sphinx` on 2026-10-13, not tried:
+  - The mixer already keeps **balances per scid**, and every child index
+    gets its own scid (`mixer/src/db/balances.rs:19`,
+    `get_scid_for_child_idx`). Today a client uses one; a second could hold
+    the agent's budget.
+  - It already routes an onion from an account to itself: `sendself`
+    (`mixer/src/handler.rs:192-227`), used for async payments, with push
+    skipped.
+  - Missing: in the core, an identity that is not a contact. A message from
+    Tom's root to his own child key reads as "ours" today (#207), so it
+    would need to read as inbound to that identity. Every client of the
+    account (the official apps too) would also have to know an identity
+    from a contact, or show the agent's chat as messages to yourself. Push
+    is per root and skipped for self-sends, so the phone would need it back
+    for the agent's replies.
+  - This is a protocol change for the Sphinx team, not Peel's alone. v1
+    uses the derived account, which needs no server change. The `Agent`
+    record and the remote protocol do not change either way: only how the
+    agent's identity is made, and which engine receives its messages. A
+    spike on the local stack (a message from an account to its own second
+    scid) would show how far the existing pieces go.
 - **Where the brain can live.** The same protocol serves every option, so
   people can choose later:
   - A Mac kept awake: Tom's own, set to stay on. The phone reaches it from

@@ -20,6 +20,13 @@ final class ImageCache {
     /// large GIFs never push the still images out.
     static let animations = ImageCache(costLimit: 160 * 1024 * 1024)
 
+    /// The longest side an image in a chat is drawn at, in points
+    /// (`ImageTile.maxSide`).
+    nonisolated static let tileSide: CGFloat = 320
+    /// Twice it, for a Retina screen: a Giphy GIF's frames (its 200 px
+    /// variant is never scaled up to this) and a video's poster.
+    nonisolated static let tilePixels = Int(tileSide * 2)
+
     /// Images, or animations.
     private let cache = NSCache<NSString, AnyObject>()
     /// Loads running now.
@@ -94,7 +101,7 @@ final class ImageCache {
                 await keep(fetched, giphy: url)
                 data = fetched
             }
-            return await ImageDecoding.oneAtATime { ImageDecoding.animation(data, maxPixels: GiphyTile.maxPixels) }
+            return await ImageDecoding.oneAtATime { ImageDecoding.animation(data, maxPixels: Self.tilePixels) }
         }
     }
 
@@ -206,7 +213,7 @@ final class MediaInfoCache {
         return cache
     }()
 
-    static let posterPixels = Int(ImageTile.maxSide * 2)
+    static let posterPixels = ImageCache.tilePixels
 
     /// Already read, to lay a row out at once when it scrolls back.
     func cached(_ file: URL?) -> MediaInfo?? {

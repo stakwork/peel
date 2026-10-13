@@ -138,7 +138,7 @@ struct ImageTile: View {
     /// Downloaded but not drawn, and why (`AttachmentFormat.notShown`).
     @State private var notShown: String?
 
-    static let maxSide: CGFloat = 320
+    static let maxSide = ImageCache.tileSide
 
     /// Pixels for the size drawn on a Retina screen: a grid tile's side, or
     /// the largest an image on its own is drawn.
@@ -235,7 +235,7 @@ struct GiphyTile: View {
     @State private var failed = false
 
     /// The 200 px variant is never scaled up to this.
-    static let maxPixels = Int(ImageTile.maxSide * 2)
+    static let maxPixels = ImageCache.tilePixels
 
     var body: some View {
         let animation = loaded ?? giphy.url.flatMap { ImageCache.animations.cached(giphy: $0) }

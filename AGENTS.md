@@ -232,7 +232,8 @@ is a short plan. Update the status and the journal when you finish something.
   once per change); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
-  title, Leave and Remove's words); `MoneyArrivals` (`Receipt`, the
+  title, Leave and Remove's words, a tribe's membership notes, a refused
+  PIN's words); `WordCheck` (three of the twelve words asked back); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -342,6 +343,28 @@ is a short plan. Update the status and the journal when you finish something.
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
+- `iOS/` — the iPhone app (phase 7, I2), the only thing outside SwiftPM:
+  `Peel.xcodeproj` (hand-written; target `Peel`, iOS 26, iPhone only, over
+  the package's `PeelUI` and `PeelCore` through a local package reference
+  to the repo root; its `Package.resolved` is a copy of the root's, copy it
+  again when the pins move), `Signing.xcconfig` (bundle ID `dev.peel.ios`,
+  no team: a team goes in the ignored `Local.xcconfig`, see
+  `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
+  in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase,
+  `MainTabs`: Chats and Account), `PhonePlatform` (`Platform.phone`:
+  `UIApplication` presence and badge, `Clipboard`; files, playback and the
+  web pane do nothing and are never offered; the web pane and calls throw
+  their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
+  `WordEntry`, `WordCheckBoxes`, `CountBadge`, the button styles),
+  `LockScreen` (with `ForgetAccount`), `Onboarding` (invite or restore,
+  pushed steps, `RestoreProgress`), `ChatsTab` (`AppModel.sidebarSections`,
+  search, the connection bolt and subtitle), `ConversationScreen` (the
+  newest page of `chatRows`, read only, text without its marks) and
+  `AccountTab` (name, balance, server, Change PIN, the words, Forget). It
+  also compiles `Theme`, `Avatar` and `Clipboard` from `Sources/PeelApp`
+  (the project's "Shared with the Mac" group) and takes its icon from
+  `Assets/AppIcon.icon`; `Peel/Assets.xcassets` holds `Logo`, a link to
+  `Assets/peel.svg`, for `AppIcon` on the phone
 - `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
   and iOS; the plan is `docs/agent-architecture.md`, the phase
   `docs/phases/09-agents.md`)
@@ -618,9 +641,32 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 core, check out the new commits in sibling `sphinx-rs` and `sphinx-mac-v2`
 checkouts, push them, and run `scripts/build-ffi.sh --update`.
 
-The app bundle is assembled by hand in `scripts/bundle-app.sh`; there is no
-Xcode project for the app itself. To check a build without replacing the
+The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
+is no Xcode project for it. To check a build without replacing the
 installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+
+### The iPhone app
+
+```sh
+SPHINX_IOS_LIB=<sphinx-rs-ios>/out/ios-arm64/libsphinxrs.a \
+SPHINX_IOS_SIM_LIB=<sphinx-rs-ios>/out/ios-arm64-simulator/libsphinxrs.a \
+  ./scripts/build-ffi.sh                      # the core with its iOS slices
+xcodebuild -project iOS/Peel.xcodeproj -scheme Peel \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -derivedDataPath .build/xcode build
+xcrun simctl boot 'iPhone 18 Pro'
+xcrun simctl install booted .build/xcode/Build/Products/Debug-iphonesimulator/Peel.app
+xcrun simctl launch booted dev.peel.ios
+xcodebuild -project iOS/Peel.xcodeproj -scheme Peel -destination 'generic/platform=iOS' \
+  -derivedDataPath .build/xcode CODE_SIGNING_ALLOWED=NO build   # device, unsigned
+```
+
+Or open `iOS/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
+`Peel` scheme and a simulator, and Run. A simulator needs no team; for a
+phone, copy `iOS/Local.xcconfig.example` to `iOS/Local.xcconfig` and set
+the team. The phone's profile is `default` in the app's own container,
+its words in the app's Keychain; agents never put an account's words,
+an invite or the throwaway account into it (Tom does that himself).
 
 ## Checking the app
 
@@ -718,6 +764,11 @@ overrides it), with its own, empty Keychain. So:
   the Keychain. (Before calls, an ad-hoc bundle ran without the Keychain.)
 - A free team may register at most 10 App IDs in 7 days; do not change the
   bundle ID casually.
+- The iPhone app is `dev.peel.ios` under the team in `iOS/Local.xcconfig`
+  (ignored; `PEEL_BUNDLE_ID = dev.peel.ios.<team>` for any team but
+  Peel's). It keeps the words in its own Keychain, with no access group
+  until the notification extension needs one (I5). A Personal Team build
+  on a phone also lasts 7 days.
 
 ## Tests
 

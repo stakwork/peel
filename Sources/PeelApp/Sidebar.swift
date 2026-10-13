@@ -30,6 +30,7 @@ struct Sidebar: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
                         VStack(spacing: 1) {
+                            AutomationsLink()
                             let unreadThreads = model.unreadThreads
                             SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
                                 Image(systemName: "bubble.left").font(.system(size: 13))
@@ -711,6 +712,22 @@ struct SidebarRowStyle: ButtonStyle {
                 )
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// Automations, first in the sidebar, with a quiet count of those whose last
+/// run did not finish (not an alarm). Its own view, so the list's refreshes
+/// redraw this row and not the sidebar.
+private struct AutomationsLink: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let failed = model.automations.failed
+        SidebarLink("Automations", to: .automations) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
+        } accessory: {
+            if failed > 0 { Badge(count: failed, .outline) }
         }
     }
 }

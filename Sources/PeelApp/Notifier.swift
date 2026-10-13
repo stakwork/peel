@@ -58,6 +58,8 @@ final class Notifier {
     private static let hiddenText = "New message"
     /// The thread of money notifications; a click opens Payments.
     static let paymentsThread = "payments"
+    /// The thread of automation results; a click opens the agent chat.
+    static let agentThread = "agent"
 
     init() {
         guard Bundle.main.bundleURL.pathExtension == "app", !Offscreen.isOn else {
@@ -205,6 +207,27 @@ final class Notifier {
             }
             chatsShown.insert(chat)
         }
+    }
+
+    // MARK: Automations
+
+    /// A scheduled automation's result, delivered to the agent chat: one
+    /// notification under the automation's name, quiet while that chat is
+    /// in front of you. A click opens the agent chat.
+    func automationDelivered(name: String, text: String, chatShown: Bool) {
+        guard let center, permission == .allowed, let model, storage != nil, !chatShown else { return }
+        let (_, locked) = policy(model)
+        post(center, id: "automation-\(UUID().uuidString)", chat: Self.agentThread, message: nil, locked: locked,
+             title: name, subtitle: nil, body: String(Self.plain(text).prefix(300)), hidden: "Automation ran")
+        chatsShown.insert(Self.agentThread)
+    }
+
+    /// Markdown as a notification shows it: the words, without the marks.
+    static func plain(_ markdown: String) -> String {
+        guard let parsed = try? AttributedString(
+            markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else { return markdown }
+        return String(parsed.characters)
+            .replacingOccurrences(of: #"(?m)^\s{0,3}(#{1,6}|[-*+]|>)\s+"#, with: "", options: .regularExpression)
     }
 
     // MARK: Contacts

@@ -21,7 +21,7 @@ enum JWT {
 
 extension Sequence<UInt8> {
     /// Lowercase hex, two characters a byte.
-    var hex: String { map { String(format: "%02x", $0) }.joined() }
+    public var hex: String { map { String(format: "%02x", $0) }.joined() }
 }
 
 extension Data {

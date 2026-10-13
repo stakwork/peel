@@ -43,7 +43,15 @@ let package = Package(
         // GRDB only, so it builds for macOS and iOS without the core.
         .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
         // The Sphinx tools over the engine's storage; no AppKit or UIKit.
-        .target(name: "PeelAgent", dependencies: ["AgentKit", "PeelCore"]),
+        .target(
+            name: "PeelAgent",
+            dependencies: [
+                "AgentKit", "PeelCore",
+                // The loopback server strut calls when an automation fires.
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ]
+        ),
         .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
         // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
         .executableTarget(

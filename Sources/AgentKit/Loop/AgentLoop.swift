@@ -30,7 +30,7 @@ public struct AgentLoop: Sendable {
     /// The most characters of a tool's result the model is sent.
     public var maxToolResultCharacters = 50_000
     /// Asked before every call of a tool whose effect asks (`Tool.Effect.asks`);
-    /// with none, such calls are refused.
+    /// with none, such tools are not offered to the model and any call is refused.
     public var approver: (any ToolApprover)?
     /// When a failed model call is made again on its own.
     public var retry = RetryPolicy()
@@ -71,7 +71,7 @@ public struct AgentLoop: Sendable {
         let steps = max(maxSteps, 1)
         for step in 1...steps {
             let request = ModelRequest(
-                model: model, system: systemPrompt, messages: earlier + turn.messages, tools: tools.definitions,
+                model: model, system: systemPrompt, messages: earlier + turn.messages, tools: offered,
                 maxTokens: maxTokens)
             let (reply, usage, finish, failure) = await modelCall(request, onEvent: onEvent)
             if let failure {
@@ -259,6 +259,11 @@ public struct AgentLoop: Sendable {
         } catch {
             return (error.localizedDescription, true, nil)
         }
+    }
+
+    /// The tools the model is told of: without an approver, none that ask.
+    private var offered: [ToolDefinition] {
+        approver == nil ? tools.tools.filter { !$0.effect.asks }.map(\.definition) : tools.definitions
     }
 
     /// The summary as the conversation's first exchange, marked as notes

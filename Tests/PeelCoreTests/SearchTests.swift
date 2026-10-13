@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private let tribe = "02tribe"
 

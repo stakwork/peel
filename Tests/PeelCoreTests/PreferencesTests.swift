@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The preferences layer (`Preferences.swift`): the registry, the official
 /// apps' encodings, and how a value is stored and dated.

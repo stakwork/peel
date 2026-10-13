@@ -3,6 +3,7 @@ import Sphinxrs
 import Synchronization
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The writes a `cutTransport` was asked for, in order, those refused too.
 private final class Writes: Sendable {

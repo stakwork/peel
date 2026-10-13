@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// A contact the core has finished the key exchange with, and a tribe.
 private let person = keyG

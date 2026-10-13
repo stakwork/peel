@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Which undelivered messages a reconnect sends again by itself
 /// (`Message.isAutoResendable`, `Storage.undeliveredSends`): recent ones

@@ -2,6 +2,7 @@ import Foundation
 import Sphinxrs
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 struct MnemonicTests {
     @Test func wordsSplitOnWhitespaceAndCommasAndLowercase() {

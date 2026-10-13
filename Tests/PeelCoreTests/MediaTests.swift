@@ -3,6 +3,7 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// How many source pixels a still is decoded from (`ImageDecoding.isTooLarge`).
 /// ImageIO reports no size for a header that claims more than its bytes

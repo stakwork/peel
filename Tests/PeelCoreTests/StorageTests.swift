@@ -2,35 +2,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import PeelCore
-
-/// A fresh profile directory per test, removed afterwards.
-final class TempProfile {
-    let url: URL
-
-    init() {
-        url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PeelCoreTests-\(UUID().uuidString)", isDirectory: true)
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    func storage(readOnly: Bool = false) throws -> Storage {
-        try Storage(directory: url, readOnly: readOnly)
-    }
-
-    /// The database file, opened directly, bypassing Storage.
-    func queue() throws -> DatabaseQueue {
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return try DatabaseQueue(path: url.appendingPathComponent("peel.sqlite").path)
-    }
-}
-
-/// Reads rows straight from the database file, bypassing Storage.
-func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
-    try profile.queue().read { try Row.fetchAll($0, sql: sql) }
-}
+@testable import PeelTestSupport
 
 func first<S: AsyncSequence>(_ sequence: S) async throws -> S.Element? {
     var iterator = sequence.makeAsyncIterator()

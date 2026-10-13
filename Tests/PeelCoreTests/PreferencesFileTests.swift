@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The official apps' reader and writer, ported from
 /// `sphinx-mac-v2/.../Managers/Data Sync Manager/DataSyncModels.swift`

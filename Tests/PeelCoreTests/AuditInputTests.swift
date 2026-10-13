@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 // The 2026-10-08 audit of untrusted input (docs/reviews/2026-10-08-audit-input-web-media.md):
 // everything a stranger can send or show, fed malformed, huge and adversarial

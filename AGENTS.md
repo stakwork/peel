@@ -478,21 +478,28 @@ is a short plan. Update the status and the journal when you finish something.
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
   `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
-  `SphinxToolsTests` (PeelAgent's, here for the storage fixtures: name
-  resolution, each tool on a seeded profile, caps, unseen grouping, message
-  text that tries to end the data block) and `SendToolTests` (the send
+  the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
+  `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
+  so they also run on iOS
+- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests
+  and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
+  `Message.fixture`, `sender`, the keys, `registeredStorage`,
+  `withTestEngine`); a library target, since a test target cannot depend on
+  another, imported `@testable`
+- `Tests/PeelAgentTests/` — offline tests for PeelAgent, Mac-only like it:
+  `AutomationTests`, `AutomationsClientTests`, `BundledStrutTests`,
+  `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
+  text that tries to end the data block), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the
   tool (a price raised while the card waits is refused in the engine's
-  words), threads and replies, hidden characters) and
+  words), threads and replies, hidden characters),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged
   strut `--memory`'s remember and recall, the model scripted) and
   `MemoryToolsTests` (this Mac only, the POST included; the key never
   printed; strut's replies and refusals; which tools write; the rows'
-  lines; the markers; `created_by`); the audits'
-  `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
-  `AuditSecretsTests`; `TestSupport` (shared fixtures)
+  lines; the markers; `created_by`)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
   the clock, apply order, idempotency, per-field last write wins, forget
   and unlink, rebuild, search, walk and ontology); streams in `Fixtures/`

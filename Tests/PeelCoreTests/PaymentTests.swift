@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private let other = "02bb"
 /// A photo URL too long to go with any payment.

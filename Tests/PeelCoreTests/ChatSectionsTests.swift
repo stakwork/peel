@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The sidebar's sections: Unread first, then the recent tribes and direct
 /// messages, trimmed, with the open chat always shown.

@@ -24,7 +24,7 @@ area before judging anything.
 
 | Layer | Where | Runs | Owns |
 | --- | --- | --- | --- |
-| Unit | `Tests/PeelCoreTests` | `swift test`, offline | parsers, codecs, storage, migrations, engine helpers and refusals that need no server |
+| Unit | `Tests/PeelCoreTests`, `Tests/PeelAgentTests` | `swift test`, offline | parsers, codecs, storage, migrations, engine helpers and refusals that need no server |
 | Integration | `Tests/PeelIntegrationTests` | opt-in, `PEEL_INTEGRATION=1`, local stack from `scripts/test-stack.sh` | anything protocol-level: journeys through the real core and broker |
 | Benchmarks | `Tests/PeelBenchmarks` | opt-in, `PEEL_BENCH=1` | timing of hot paths; never correctness |
 | App check | `scripts/check-app.sh` | offscreen drive file on a dev profile | UI flows; see "Checking the app" in `AGENTS.md` |
@@ -44,7 +44,8 @@ add it yet:
 3. Why does existing coverage not already catch that failure? Check the
    file for the area (`AGENTS.md` lists one per area) and the journeys.
    Prefer a new row in a parameterized `@Test(arguments:)` or a shared
-   fixture in `TestSupport.swift` over a near-duplicate test.
+   fixture in `TestSupport.swift` (or `Tests/PeelTestSupport` when the
+   PeelAgent tests need it too) over a near-duplicate test.
 4. Does it need a seam no production caller needs (a `#if DEBUG` hook like
    `Engine.useTransportForTesting`, a widened access level, an injection
    parameter)? If so, prefer the real boundary. `@testable import PeelCore`

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// What the web pane opens (`WebPage`), the tribe records that give it a
 /// tribe's app and second brain, and each profile's own store.

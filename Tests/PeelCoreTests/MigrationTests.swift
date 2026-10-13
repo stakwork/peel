@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The schema every real database has after v17, as SQLite keeps it. A failure
 /// against this means a shipped migration was edited; later migrations do not

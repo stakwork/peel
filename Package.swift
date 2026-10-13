@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "PeelCore", targets: ["PeelCore"]),
+        .library(name: "AgentKit", targets: ["AgentKit"]),
         .executable(name: "peel", targets: ["peel"]),
         .executable(name: "PeelApp", targets: ["PeelApp"]),
     ],
@@ -37,23 +38,44 @@ let package = Package(
                 .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
             ]
         ),
-        .executableTarget(name: "peel", dependencies: ["PeelCore"]),
+        // The agent: its records and event log, the model clients and the turn loop
+        // (docs/agent-architecture.md, docs/phases/09-agents.md);
+        // GRDB only, so it builds for macOS and iOS without the core.
+        .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
+        // The Sphinx tools over the engine's storage; no AppKit or UIKit.
+        .target(
+            name: "PeelAgent",
+            dependencies: [
+                "AgentKit", "PeelCore",
+                // The loopback server strut calls when an automation fires.
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ]
+        ),
+        .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
         // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
         .executableTarget(
             name: "PeelApp",
-            dependencies: ["PeelCore", .product(name: "LiveKit", package: "client-sdk-swift")],
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "LiveKit", package: "client-sdk-swift")],
             // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(
             name: "PeelCoreTests",
-            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+            // PeelAgent's tests live here too, to share the storage fixtures.
+            dependencies: ["PeelCore", "PeelAgent", "AgentKit", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
+        .testTarget(
+            name: "AgentKitTests",
+            dependencies: ["AgentKit", .product(name: "GRDB", package: "GRDB.swift")],
+            resources: [.copy("Fixtures")]
         ),
         // Journeys through the real core against a local stack
-        // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1.
+        // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1. The
+        // agent's journeys drive AgentKit and PeelAgent with a scripted model.
         .testTarget(
             name: "PeelIntegrationTests",
-            dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
         .testTarget(

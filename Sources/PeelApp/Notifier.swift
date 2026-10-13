@@ -58,6 +58,8 @@ final class Notifier {
     private static let hiddenText = "New message"
     /// The thread of money notifications; a click opens Payments.
     static let paymentsThread = "payments"
+    /// The thread of automation results; a click opens the agent chat.
+    static let agentThread = "agent"
 
     init() {
         guard Bundle.main.bundleURL.pathExtension == "app", !Offscreen.isOn else {
@@ -194,16 +196,38 @@ final class Notifier {
                 single = shown.filter { $0.type == MessageType.call }
                 let (name, place) = names(chat, sender: others.last?.senderAlias)
                 post(center, id: "summary-\(chat)", chat: chat, message: others.first?.id, locked: locked,
-                     title: place ?? name, subtitle: nil, body: "\(others.count) new messages")
+                     title: place ?? name, subtitle: nil, body: Formatting.count(others.count, "new message"))
             }
             for message in single {
-                let (name, place) = names(chat, sender: message.senderAlias)
+                let member = Sender(member: message)
+                let (name, place) = names(chat, sender: member.alias)
                 post(center, id: message.uuid ?? UUID().uuidString, chat: chat, message: message.id, locked: locked,
-                     title: place == nil ? name : message.senderAlias ?? Sender.unnamed,
+                     title: place == nil ? name : member.name,
                      subtitle: place, body: body(of: message))
             }
             chatsShown.insert(chat)
         }
+    }
+
+    // MARK: Automations
+
+    /// A scheduled automation's result, delivered to the agent chat: one
+    /// notification under the automation's name, quiet while that chat is
+    /// in front of you. A click opens the agent chat.
+    func automationDelivered(name: String, text: String, chatShown: Bool) {
+        guard let center, permission == .allowed, let model, storage != nil, !chatShown else { return }
+        let (_, locked) = policy(model)
+        post(center, id: "automation-\(UUID().uuidString)", chat: Self.agentThread, message: nil, locked: locked,
+             title: name, subtitle: nil, body: String(Self.plain(text).prefix(300)), hidden: "Automation ran")
+        chatsShown.insert(Self.agentThread)
+    }
+
+    /// Markdown as a notification shows it: the words, without the marks.
+    static func plain(_ markdown: String) -> String {
+        guard let parsed = try? AttributedString(
+            markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else { return markdown }
+        return String(parsed.characters)
+            .replacingOccurrences(of: #"(?m)^\s{0,3}(#{1,6}|[-*+]|>)\s+"#, with: "", options: .regularExpression)
     }
 
     // MARK: Contacts
@@ -268,9 +292,9 @@ final class Notifier {
     /// invoice (a request's chat names who paid it).
     private func source(_ receipt: Receipt) -> String {
         guard let chat = receipt.chat else { return "an invoice" }
-        let (name, place) = names(chat, sender: receipt.senderAlias)
+        let (name, place) = names(chat, sender: receipt.member?.alias)
         guard let place else { return name }
-        return "\(receipt.senderAlias ?? Sender.unnamed) in \(place)"
+        return "\(receipt.member?.name ?? Sender.unnamed) in \(place)"
     }
 
     private func describe(_ receipt: Receipt, from source: String) -> String {
@@ -290,7 +314,7 @@ final class Notifier {
 
     private func body(of message: Message) -> String {
         if message.type == MessageType.memberRequest {
-            return "\(message.senderAlias ?? Sender.unnamed) wants to join"
+            return "\(Sender(member: message).name) wants to join"
         }
         // The title names who, the subtitle the tribe.
         if message.type == MessageType.call { return "Started a call" }
@@ -378,15 +402,15 @@ private final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unche
     }
 }
 
-/// Offers notifications once the account is open, saying what they are for.
+/// Offers notifications once the account is open.
 struct NotificationOffer: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             Image(systemName: "bell")
                 .foregroundStyle(Theme.secondaryText)
-            Text("Peel can show a notification when a message arrives while you're in another app or another chat.")
+            Text("Get notified about new messages?")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -399,7 +423,7 @@ struct NotificationOffer: View {
             }
             .fixedSize()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Theme.Space.lg)
         .padding(.vertical, 10)
         .background(Theme.panel)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }

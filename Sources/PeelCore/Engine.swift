@@ -15,6 +15,9 @@ public actor Engine {
 
     let seed: String
     let network: String
+    /// This account's key (child index 0, hex), which signs every message we
+    /// send, signs in to the memes server and names our preferences file there.
+    let accountKey: String
     private let deviceID: String
     var alias: String
     var photoURL: String
@@ -32,11 +35,15 @@ public actor Engine {
     private(set) var closed = false
     /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
     private var cameOnlineHere = false
+    /// A register naming an invite may have reached the server: the account
+    /// may exist and hold the invite's sats (`Account.signup`).
+    private(set) var inviteMayBeRedeemed = false
     /// This connection's pings (`keepAlive`), and the system's network
     /// changes while the engine keeps connected (`watchNetwork`).
     private var keepAliveTask: Task<Void, Never>?
     private var networkWatch: Task<Void, Never>?
-    /// The sends a reconnect makes again by itself (`resendRecent`).
+    /// The sends a reconnect makes by itself: its resends (`resendRecent`),
+    /// then the keys purchases are still owed (`answerOwedPurchases`).
     private var resendTask: Task<Void, Never>?
     /// The tags of the reconnect's candidates that `checkPendingSends` asked
     /// the server about on this connection, and the tags its records named
@@ -79,14 +86,32 @@ public actor Engine {
         var toRecheck: Set<String> = []
         /// When each tribe's last read record was asked for, this session.
         var readAt: [String: ContinuousClock.Instant] = [:]
+        /// What this device heard in a tribe another device of this account
+        /// joined, before its core knew the tribe (`unfiled`), oldest first,
+        /// with our own tribes host once our join or an approval naming us
+        /// came: replayed once our registry lists the tribe (`confirmTribes`).
+        var held: [String: HeldTribe] = [:]
+        /// The chats in `held`, oldest first: the first to go when it is full.
+        var heldOrder: [String] = []
+        /// Chats our tribes registry did not list, this session: never asked again.
+        var notListed: Set<String> = []
     }
+    struct HeldTribe {
+        var host: String?
+        var msgs: [Msg] = []
+    }
+    /// How many unfiled chats, and messages in each, are held at most.
+    static let heldTribes = 20, heldPerTribe = 500
     var tribeWork = TribeWork()
     static let tribeRecheck: Duration = .seconds(5 * 60)
     /// Chats whose read marker was sent since `getReads` was last asked: its
     /// answer may predate the marker, so it is not applied to them.
     var readsSentSinceGetReads: Set<String> = []
-    /// The highest server index of a message dropped unstored; see `Setting.droppedIndex`.
-    private(set) var droppedIndex: Int64
+    /// The same for mutes and `getMutes`.
+    var mutesSetSinceGetMutes: Set<String> = []
+    /// When `getReads` and `getMutes` were last asked, until the reads are
+    /// answered: a refresh waits for an answer rather than ask again.
+    var readsAskedAt: ContinuousClock.Instant?
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
     var restoring: Bool
     /// Whether `recoverOwnPhoto` has run for this engine.
@@ -137,6 +162,7 @@ public actor Engine {
     var memesToken: (host: String, token: MemesServer.Token)?
     /// The memes server's payment templates, fetched once a session (`paymentTemplates`).
     var templateList: (host: String, templates: [PaymentTemplate])?
+    var preferencesWork = PreferencesWork()
     /// The call server's ticket endpoint and presence feed; see `callConnection`.
     var calls: CallServer?
     /// Largest attachment sent or downloaded, and the most the cache keeps.
@@ -149,7 +175,7 @@ public actor Engine {
     static let defaultMemesHost = "memes.sphinx.chat"
     static let defaultCallServer = "chat.sphinx.chat"
 
-    /// History fetches: the run in flight and those queued behind it.
+    /// History fetches and where history stands (`HistoryCursor`).
     var history = HistoryCursor()
     var historyWatchdog: Task<Void, Never>?
     /// Each `poll` waiting to check again.
@@ -161,7 +187,7 @@ public actor Engine {
     static let registerSettle: Duration = .milliseconds(750)
 
     public init(mnemonic: String, storage: Storage) throws {
-        seed = try Sphinxrs.mnemonicToSeed(mnemonic: Self.normalise(mnemonic: mnemonic))
+        seed = try Self.seed(of: mnemonic)
         self.storage = storage
         network = try storage.value(for: .network) ?? "bitcoin"
         state = try storage.loadCoreState()
@@ -175,13 +201,13 @@ public actor Engine {
         photoURL = try storage.value(for: .photoURL) ?? ""
         server = try storage.value(for: .server).flatMap(ServerAddress.init)
         clock = UniqueClock(last: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0)
+        accountKey = try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
         let contacts = try Self.contacts(in: state)
         contactsByChildIndex = Self.index(contacts)
         tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
-        droppedIndex = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
         restoring = try storage.value(for: .needsRestore) == "1"
         echoedAliases = try storage.echoedOwnAliases()
         media = MediaStore(profile: storage.directory)
@@ -190,19 +216,33 @@ public actor Engine {
         try storage.failInterruptedUploads()
         let stored = try storage.highestMessageID() ?? 0
         money.judgedThrough = stored
+        history.from = try Self.historyFrom(storage)
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
+    }
+
+    /// Where history stands (`HistoryCursor.from`), read before any
+    /// connection could store a live message above messages not fetched
+    /// yet. A profile from before it was kept starts after its newest
+    /// message stored (or dropped from a left tribe), as it did then.
+    private static func historyFrom(_ storage: Storage) throws -> UInt64 {
+        if let kept = try storage.value(for: .historyFrom) { return UInt64(kept) ?? 0 }
+        let dropped = try storage.value(for: .droppedIndex).flatMap { Int64($0) } ?? -1
+        let highest = max(try storage.highestServerIndex() ?? -1, dropped)
+        let from = highest < 0 ? 0 : UInt64(highest) + 1
+        try storage.set(String(from), for: .historyFrom)
+        return from
     }
 
     // MARK: - Connection
 
-    /// Connects once and returns when the account is online. Pass the invite code
-    /// only when creating the account. A dropped connection stays dropped.
-    public func connect(inviteCode: String? = nil, allowUntrustedCertificate: Bool = false) async throws {
+    /// Connects once and returns when the account is online. A dropped
+    /// connection stays dropped.
+    public func connect(allowUntrustedCertificate: Bool = false) async throws {
         keepConnected = false
         reconnectTask?.cancel()
         reconnectTask = nil
         self.allowUntrustedCertificate = allowUntrustedCertificate
-        try await establish(inviteCode: inviteCode)
+        try await establish()
         try await waitUntilRegistered()
     }
 
@@ -245,13 +285,18 @@ public actor Engine {
     /// go of this engine. For an account being closed: it does not connect again.
     public func close() async {
         closed = true
+        preferencesWork.scheduled?.cancel()
         await disconnect()
         await calls?.close()
         emit.finish()
     }
 
-    private func establish(inviteCode: String?) async throws {
+    private func establish() async throws {
         guard let server else { throw Failure.noServer }
+        // A signup whose registration was never confirmed registers with
+        // its invite again: the server answers `already_registered` if the
+        // first register landed, and needs the invite if it did not.
+        let inviteCode = try isRegistered ? nil : storedInvite()?.code
         await teardown()
         setConnection(.connecting)
         do {
@@ -259,7 +304,7 @@ public actor Engine {
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
             let loginTime = clock.next()
             let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Transport(
+            let transport = Self.connectingForTesting ?? Transport(
                 server: server, clientID: xpub, username: loginTime, password: signature,
                 allowUntrustedCertificate: allowUntrustedCertificate
             )
@@ -278,11 +323,16 @@ public actor Engine {
                 }
                 await self?.connectionClosed(transport)
             }
-            try await run { time, state in
-                try Sphinxrs.initialSetup(
-                    seed: seed, uniqueTime: time, state: state, device: deviceID, inviteCode: inviteCode
-                )
-            }
+            // How far the register got, as for a money send: only `.none`
+            // says it never left.
+            let time = clock.next()
+            let setup = try Sphinxrs.initialSetup(
+                seed: seed, uniqueTime: time, state: StateCodec.encode(state), device: deviceID, inviteCode: inviteCode
+            )
+            let published = try await commitAndPublish(setup, time: time)
+            if case .none = published { throw Failure.notConnected }
+            if inviteCode != nil { inviteMayBeRedeemed = true }
+            if case .unknown(let error) = published { throw error }
             let tribeTopic = try Sphinxrs.getTribeManagementTopic(
                 seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state)
             )
@@ -364,7 +414,7 @@ public actor Engine {
                 if !keepConnected || Task.isCancelled { break }
             }
             do {
-                try await establish(inviteCode: nil)
+                try await establish()
                 // Dropped again while coming online (`connectionClosed`
                 // leaves the reconnect to this loop): go again, backing off.
                 if transport != nil { break }
@@ -495,6 +545,12 @@ public actor Engine {
     /// Tests only: a transport that never connected stands for one whose
     /// connection has just gone (its publishes throw `notConnected`).
     func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+
+    /// Tests only: the connection every connect in this task makes, such
+    /// as `Transport(publishing:)`, in place of one to the server.
+    @TaskLocal static var connectingForTesting: Transport?
+    #else
+    static var connectingForTesting: Transport? { nil }
     #endif
 
     private func setConnection(_ state: ConnectionState) {
@@ -508,16 +564,24 @@ public actor Engine {
     /// Runs one core call against the current state. The returned state is
     /// committed before this function first suspends, so no other call can ever
     /// run against stale state. For what the server sent (`receive`), a
-    /// payment counts for no more than `arrived` says came (`cappedToArrived`).
+    /// payment counts for no more than `arrived` says came (`cappedToArrived`),
+    /// the message `indices` it carried move where history stands
+    /// (both from `arrived(kind:topic:page:)`), and a `live` message's contact
+    /// record only when this account signed it (`isForeignContactRecord`, which
+    /// may make the call a second time).
     @discardableResult
     func run(
-        expectedSender: String? = nil, arrived: [String: UInt64]? = nil,
+        expectedSender: String? = nil, arrived: [String: UInt64]? = nil, indices: [UInt64]? = nil,
+        live: Bool = false,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
         let time = clock.next()
         var result = try call(time, StateCodec.encode(state))
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
-        let followUps = try commit(result, time: time, expectedSender: expectedSender)
+        // Nothing of it is committed or published, not even the message, and
+        // sats it carries are not settled.
+        if live, try isForeignContactRecord(result, again: call) { return result }
+        let followUps = try commit(result, time: time, expectedSender: expectedSender, indices: indices)
         try await complete(result, followUps)
         return result
     }
@@ -528,12 +592,17 @@ public actor Engine {
         var restorePlan: MessageCounts?
         /// Tribes first seen in this call, whose names are still to be looked up.
         var discoveredTribes = false
+        /// A tribe another device of this account joined is to be asked of
+        /// our own tribes registry (`TribeWork.held`, `confirmTribes`).
+        var confirmTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
         /// The balance went up (or changed at all with an invoice open,
         /// `balanceCallsForReconcile`), or someone's payment came: the server's
         /// history may now settle an invoice made here or confirm the sats.
         var reconcile = false
+        /// What follows a page of history, the cursor already moved (`HistoryCursor.advance`).
+        var historyPage: HistoryCursor.Page?
     }
 
     /// What received payments brought, as Peel takes it: never more than the
@@ -554,22 +623,47 @@ public actor Engine {
         }
     }
 
-    /// What arrived with a live message or a page of history, by message
-    /// index, as the server sent it: a live payment's topic ends with its
-    /// index, time, payment hash and amount
+    /// Whether a live message's result is a contact record (type 33) that
+    /// would write contacts though this account did not sign it. The core
+    /// Peel links (`bd9e140`) takes one from anyone (`handle_msg.rs`; upstream
+    /// checks the signer since SR-017): it writes the record's route and
+    /// contact key over the contact it names, with the topic's child index,
+    /// and gives that contact as the message's sender, so the result does not
+    /// say who signed it. Against the state the record would leave, the same
+    /// call writes nothing and gives the signer (`overwrite_incoming_type_33`
+    /// returns early), so it is made once more there. Only this account's own
+    /// key, which its other devices sign with, may have signed one. History
+    /// pages need none of this: the core checks the signer there itself.
+    private func isForeignContactRecord(
+        _ result: RunReturn, again call: (_ time: String, _ state: Data) throws -> RunReturn
+    ) throws -> Bool {
+        let isRecord = { (msg: Msg) in msg.type == UInt8(MessageType.contactKeyRecord) }
+        guard result.msgs.contains(where: isRecord),
+              let updates = try result.stateMp.map(StateCodec.decode),
+              updates.keys.contains(where: { $0.hasPrefix("c/") }) else { return false }
+        let again = try call(clock.next(), StateCodec.encode(state.merging(updates) { _, new in new }))
+        let signer = again.msgs.first(where: isRecord).flatMap { JSON.decode(SenderInfo.self, from: $0.sender)?.pubkey }
+        return signer != accountKey
+    }
+
+    /// The topics a live message comes on: pushed (`stream`), or asked for.
+    static let liveKinds: Set<String> = ["msg", "msgs", "stream"]
+
+    /// What the server says it sent, beside what the core reads, by message
+    /// index: what arrived with each payment (`cappedToArrived`), and every
+    /// message's index, those the core cannot read too, which moves where
+    /// history stands. A live message's topic ends with its index, time and,
+    /// for a payment, its hash and amount
     /// (`{root}/{pk}/{idx}/res/{device}/{kind}/{index}/{ts}/{hash}/{msat}`,
-    /// the mixer's `stream_res_topic`); a page carries each payment's amount
-    /// beside its onion (`StateCodec.paymentAmounts`).
-    static func arrivedMsat(kind: String, topic parts: [Substring], payload: Data) -> [String: UInt64] {
-        switch kind {
-        case "batch":
-            return StateCodec.paymentAmounts(inBatch: payload) ?? [:]
-        case "msg", "msgs", "stream":
-            guard parts.count > 9, let msat = UInt64(parts[9]) else { return [:] }
-            return [String(parts[6]): msat]
-        default:
-            return [:]
-        }
+    /// the mixer's `stream_res_topic`); a page of history carries each
+    /// beside its onion (`page`, from `StateCodec.onions`).
+    static func arrived(
+        kind: String, topic parts: [Substring], page: [Data]?
+    ) -> (msat: [String: UInt64], indices: [UInt64]?) {
+        if let page { return (StateCodec.paymentAmounts(of: page), page.map(StateCodec.index(of:))) }
+        guard liveKinds.contains(kind), parts.count > 6 else { return ([:], nil) }
+        let msat = parts.count > 9 ? UInt64(parts[9]).map { [String(parts[6]): $0] } : nil
+        return (msat ?? [:], UInt64(parts[6]).map { [$0] })
     }
 
     /// Whether a new balance calls for the server's history: sats came in,
@@ -595,7 +689,7 @@ public actor Engine {
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
-        invites: [InviteRecord] = []
+        invites: [InviteRecord] = [], indices: [UInt64]? = nil, keepMembership: Bool = false
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -605,7 +699,7 @@ public actor Engine {
         commit.resend = resend
         commit.reads = Self.reads(result.lastRead).filter { !readsSentSinceGetReads.contains($0.key) }
         if let json = result.muteLevels, let mutes = JSON.decode([String: Int].self, from: json) {
-            commit.mutes = mutes
+            commit.mutes = mutes.filter { !mutesSetSinceGetMutes.contains($0.key) }
         }
 
         let updates = try result.stateMp.map(StateCodec.decode) ?? [:]
@@ -678,23 +772,44 @@ public actor Engine {
         }
         var landedPings: [String] = []
         var knownTribes = tribes
-        var droppedIndex = self.droppedIndex
+        var held: [(chat: String, msg: Msg, host: String?)] = []
         var notTribes: Set<String> = []
         var echoedAliases = self.echoedAliases
+        // The tags of our copies taken in this call, with their uuids (`isReplay`).
+        var tagged: [String: String] = [:]
         for msg in result.msgs {
             if let hash = msg.paymentHash, let pingTime = pingsByHash[hash] {
                 followUps.acknowledgedPings.append(pingTime)
                 landedPings.append(hash)
             }
-            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState) else { continue }
+            guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState, accountKey: accountKey) else { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
+            // A member's replay of our tag: dropped before it can name a
+            // tribe, change our membership or aliases, or be stored.
+            if try isReplay(message, original: decoded.fields?.originalUuid, state: newState, taken: &tagged) {
+                continue
+            }
+            // Filed under its signer, which this device's core does not know:
+            // a tribe joined on another device. Held, not stored, until the
+            // tribe is known; our join, or the owner's approval naming us,
+            // makes it one to ask our own tribes registry about.
+            if decoded.unfiled, knownTribes[message.chat] == nil {
+                let host = tribeToConfirm(message, state: newState)
+                if host != nil { followUps.confirmTribes = true }
+                held.append((message.chat, msg, host))
+                continue
+            }
             if knownTribes[message.chat] == nil, !notTribes.contains(message.chat),
                let found = try discoveredTribe(message, trustSender: trustSender, state: newState, notTribes: &notTribes) {
                 knownTribes[found.pubkey] = found
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
             }
-            if let tribe = knownTribes[message.chat],
+            // Ours signed by the chat itself is a tribe's forward or forged. The
+            // core files any signer as a contact at the index it wrote to, so
+            // a contact without a contact key is no proof of a tribe.
+            if decoded.signedByChat, knownTribes[message.chat] == nil { continue }
+            if !keepMembership, let tribe = knownTribes[message.chat],
                let changed = Self.membership(
                    after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
                    replaying: restoring) {
@@ -703,10 +818,15 @@ public actor Engine {
             }
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
+                // Left: what the tribe still sends is dropped, but for our own
+                // leave (or a join stored without changing membership,
+                // `keepMembership`), kept so its tag is held: a later copy of
+                // it (the tribe's replay to a re-join, or a member's) is then
+                // a replay (`isReplay`), not our leave or join again.
                 if tribe.left {
-                    if let index = message.serverIndex, index > droppedIndex {
-                        droppedIndex = index
-                        commit.settings[.droppedIndex] = String(index)
+                    if message.fromMe, message.tag != nil,
+                       [MessageType.groupLeave, MessageType.groupJoin].contains(message.type) {
+                        commit.messages.append((message, false, decoded.fields?.originalUuid))
                     }
                     continue
                 }
@@ -762,10 +882,24 @@ public actor Engine {
             }
         }
 
+        // What the server sent moves where history stands, written with it:
+        // a page of history by every index on it, a live message by its own.
+        var cursor = history
+        if arrival != .live {
+            let indices = indices ?? result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
+            followUps.historyPage = cursor.advance(indices: indices, total: result.msgsTotal)
+        } else {
+            for index in indices ?? [] { cursor.cameLive(index) }
+        }
+        if cursor.from != history.from {
+            commit.settings[.historyFrom] = String(cursor.from)
+        }
+
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let applied = try storage.apply(commit)
         removeFiles(of: applied.purged)
         state = newState
+        history = cursor
         if let records {
             unrecordedPayments = []
             // Merged: a record once heard stays heard.
@@ -779,12 +913,12 @@ public actor Engine {
             contactsByChildIndex = Self.index(contacts)
         }
         tribes = knownTribes
+        hold(held)
         if echoedAliases != self.echoedAliases {
             self.echoedAliases = echoedAliases
             emit.yield(.echoedAliases(echoedAliases))
             checkMentionsIfNeeded()
         }
-        self.droppedIndex = droppedIndex
         if let members {
             tribeWork.memberLists[members.pubkey] = members
         }
@@ -877,6 +1011,7 @@ public actor Engine {
         state = newState
         contactsByChildIndex = Self.index(contacts)
         readsSentSinceGetReads.remove(pubkey)
+        mutesSetSinceGetMutes.remove(pubkey)
         removeFiles(of: attachments.compactMap(\.body), outgoing: attachments.compactMap(\.id))
     }
 
@@ -1013,9 +1148,10 @@ public actor Engine {
         }
     }
 
-    /// What a money send whose publish ended `.unknown` reports.
-    static func mayHaveGone(_ error: any Error) -> String {
-        "The connection failed while sending; the payment may have gone. "
+    /// What a money send whose publish ended `.unknown` reports: `what`
+    /// went, a payment, or a message that paid a tribe's price.
+    static func mayHaveGone(_ error: any Error, what: String = "payment") -> String {
+        "The connection failed while sending; the \(what) may have gone. "
             + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
     }
 
@@ -1044,6 +1180,23 @@ public actor Engine {
         }
     }
 
+    /// Messages already read by the core, committed as if the core had just
+    /// returned them (a held tribe's, once the tribe is known); with
+    /// `keepMembership`, stored without changing the tribe's membership.
+    func replay(_ msgs: [Msg], keepMembership: Bool = false) async throws {
+        let result = RunReturn(
+            msgs: msgs, msgsTotal: nil, msgsCounts: nil, subscriptionTopics: [], settleTopic: nil, settlePayload: nil,
+            asyncpayTopic: nil, asyncpayPayload: nil, registerTopic: nil, registerPayload: nil, topics: [], payloads: [],
+            stateMp: nil, stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil, settledStatus: nil,
+            registerResponse: nil, asyncpayTag: nil, error: nil, newTribe: nil, tribeMembers: nil, newInvite: nil,
+            inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil, lspHost: nil, invoice: nil, route: nil,
+            node: nil, lastRead: nil, muteLevels: nil, payments: nil, paymentsTotal: nil, tags: nil, deletedMsgs: nil,
+            newChildIdx: nil, ping: nil
+        )
+        let followUps = try commit(result, time: clock.next(), expectedSender: nil, keepMembership: keepMembership)
+        try await complete(result, followUps)
+    }
+
     private func followUp(_ result: RunReturn, _ followUps: FollowUps) async throws {
         for pingTime in followUps.acknowledgedPings {
             try await run { time, state in
@@ -1051,6 +1204,7 @@ public actor Engine {
             }
         }
         if followUps.discoveredTribes { refreshTribesInBackground() }
+        if followUps.confirmTribes { confirmTribesInBackground() }
         if followUps.reconcile { reconcileInBackground() }
         for purchase in followUps.purchases {
             do {
@@ -1065,9 +1219,8 @@ public actor Engine {
         if let counts = followUps.restorePlan {
             try await startRestore(counts)
         }
-        // Only batch responses carry a total.
-        if result.msgsTotal != nil {
-            try await advanceHistory(with: result)
+        if let page = followUps.historyPage {
+            try await advanceHistory(page)
         }
     }
 
@@ -1075,26 +1228,46 @@ public actor Engine {
     /// belongs to. The core recovers a message's sender from its signature, so a
     /// sender can only ever name themself; for a live message the child index in
     /// the topic names the contact as well and the two must agree. Contact
-    /// records (type 33) are honoured by the core only when signed by this
-    /// account. Messages from senders the core does not know are dropped.
+    /// records (type 33) count only when this account signed them: the core
+    /// checks those in history, `run` live ones (`isForeignContactRecord`);
+    /// they come back with no `sentTo`, so never as ours.
+    /// Messages from senders the core does not know are dropped.
+    /// The core calls a message ours by a tag or a date a contact can
+    /// arrange, so a copy of ours is kept only when signed by this account
+    /// or by the chat it is filed under, which `commit` then requires to be
+    /// a tribe (docs/phases/04-money.md, "Who may write ours").
+    /// On another device of this account, a tribe joined elsewhere is not in
+    /// the core yet: its forward of ours comes with no `sentTo`, and the
+    /// owner's approval from a sender the core does not know. Each is filed
+    /// under its signer as `unfiled`, which `commit` keeps only once the
+    /// tribe is known.
     private static func message(
-        from msg: Msg, expectedSender: String?, state: [String: Data]
-    ) -> (message: Message, trustSender: Bool, fields: BodyFields?)? {
+        from msg: Msg, expectedSender: String?, state: [String: Data], accountKey: String
+    ) -> (message: Message, trustSender: Bool, signedByChat: Bool, unfiled: Bool, fields: BodyFields?)? {
         guard let type = msg.type else { return nil }
         let fromMe = msg.fromMe ?? false
-        let claimed = JSON.decode(SenderInfo.self, from: msg.sender)?.pubkey
+        let sender = JSON.decode(SenderInfo.self, from: msg.sender)
+        let claimed = sender?.pubkey
         let chat: String
         var trustSender = false
+        var unfiled = false
         if fromMe {
-            guard let to = msg.sentTo else { return nil }
+            // Ours signed by our own key with no `sentTo` (a contact record) is never filed.
+            guard let to = msg.sentTo ?? claimed.flatMap({ $0 == accountKey ? nil : $0 }) else { return nil }
+            guard claimed == accountKey || claimed == to else { return nil }
             chat = to
+            unfiled = msg.sentTo == nil
         } else if let expectedSender {
             chat = expectedSender
             trustSender = claimed == expectedSender
-        } else {
-            guard let claimed, state["c/\(claimed)"] != nil else { return nil }
+        } else if let claimed, state["c/\(claimed)"] != nil {
             chat = claimed
             trustSender = true
+        } else if let claimed, Int(type) == MessageType.memberApprove, sender?.host?.nilIfEmpty != nil {
+            chat = claimed
+            unfiled = true
+        } else {
+            return nil
         }
         let fields = BodyFields.decode(msg.message)
         let msat = msg.msat.map { Int64(clamping: $0) }
@@ -1132,10 +1305,10 @@ public actor Engine {
         default:
             break
         }
-        return (message, trustSender, fields)
+        return (message, trustSender, fromMe && claimed != accountKey, unfiled, fields)
     }
 
-    private func receive(_ inbound: Inbound) async {
+    func receive(_ inbound: Inbound) async {
         let parts = inbound.topic.split(separator: "/", omittingEmptySubsequences: false)
         let kind = parts.count > 5 ? String(parts[5]) : inbound.topic
 
@@ -1148,19 +1321,30 @@ public actor Engine {
 
         // The child index in a live message's topic names the contact whose key
         // decrypted it; index 0 is the account key used for key exchange.
+        let live = Self.liveKinds.contains(kind)
         var expectedSender: String?
-        if ["msg", "msgs", "stream"].contains(kind), parts.count > 2, let index = UInt64(parts[2]), index > 0 {
+        if live, parts.count > 2, let index = UInt64(parts[2]), index > 0 {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            let arrived = Self.arrivedMsat(kind: kind, topic: parts, payload: inbound.payload)
-            try await run(expectedSender: expectedSender, arrived: arrived) { time, state in
-                try Sphinxrs.handle(
-                    topic: inbound.topic, payload: inbound.payload, seed: seed, uniqueTime: time,
-                    state: state, myAlias: alias, myImg: photoURL
-                )
+            let page = kind == "batch" ? StateCodec.onions(inBatch: inbound.payload) : nil
+            let arrived = Self.arrived(kind: kind, topic: parts, page: page)
+            try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices, live: live) { time, state in
+                let handle = { (payload: Data) in
+                    try Sphinxrs.handle(
+                        topic: inbound.topic, payload: payload, seed: self.seed, uniqueTime: time,
+                        state: state, myAlias: self.alias, myImg: self.photoURL
+                    )
+                }
+                do {
+                    return try handle(inbound.payload)
+                } catch let refusal {
+                    guard let page else { throw refusal }
+                    return try Self.readablePart(of: page, refusal: refusal, handle: handle)
+                }
             }
             if kind == "getreads" {
+                readsAskedAt = nil
                 try await publishPendingReads()
             }
         } catch {
@@ -1175,12 +1359,19 @@ public actor Engine {
     /// Runs once per connection, as soon as the account is registered. Decides
     /// what history to fetch: resume a run a dropped connection interrupted, do
     /// the full restore an account brought back from its words still needs, or
-    /// catch up from the newest message stored.
+    /// catch up from where history stands (`syncMessages`). Then, in the
+    /// background, it sends again what a reconnect sends by itself
+    /// (`resendRecent`) and answers purchases still owed their key
+    /// (`answerOwedPurchases`).
     private func cameOnline() async {
         let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
         refreshTribesInBackground()
+        if tribeWork.held.values.contains(where: { $0.host != nil }) { confirmTribesInBackground() }
         reconcileInBackground()
+        // The account's preferences, a restore's included: applied as soon
+        // as it is online, and anything changed here offline goes up.
+        schedulePreferencesSync(after: .zero)
         do {
             try await run { time, state in
                 try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
@@ -1205,13 +1396,17 @@ public actor Engine {
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }
+        addInviterIfPending()
         cameOnlineHere = true
         wakeWaiters()
         // Only on the connection this ran for: one that went meanwhile has
         // its own `cameOnline` to come.
         guard let connection, transport === connection else { return }
         resendTask?.cancel()
-        resendTask = Self.background { [weak self] in await self?.resendRecent(on: connection) }
+        resendTask = Self.background { [weak self] in
+            await self?.resendRecent(on: connection)
+            await self?.answerOwedPurchases(on: connection)
+        }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out
@@ -1233,9 +1428,10 @@ public actor Engine {
     /// Asks the server what became of sends still pending here, as the Mac
     /// app does on start: a status published while this device was offline
     /// (an async payment redeemed later, say) is not sent again.
-    /// A payment the server has no record of this long after it was sent
-    /// never reached it (the mixer records every send it handles, an async
-    /// one as pending), so it is marked failed and may be sent again.
+    /// A payment (or a message that paid a tribe's price) the server has no
+    /// record of this long after it was sent never reached it (the mixer
+    /// records every send it handles, an async one as pending), so it is
+    /// marked failed and may be sent again.
     /// Also asks about every message a reconnect may send again by itself
     /// (`autoResendCandidates`), failed ones too, as a send can fail here
     /// after it left: `resendRecent` sends only those the records do not name.
@@ -1259,9 +1455,30 @@ public actor Engine {
         }
     }
 
+    /// Asks again for the markers and mutes the account's other devices set,
+    /// as the official apps do each time they come to the front: the server
+    /// pushes neither (mixer `READ` and `MUTE` answer nothing). Only once
+    /// `cameOnline` has asked on this connection, and not while an ask is
+    /// still unanswered (`readsRefreshWait`). A failure is left to the next
+    /// connect, which asks again.
+    public func refreshReadsAndMutes() async {
+        guard transport != nil, cameOnlineHere else { return }
+        if let asked = readsAskedAt, ContinuousClock.now - asked < Self.readsRefreshWait { return }
+        try? await fetchReadsAndMutes()
+    }
+
+    /// How long a refresh waits for an unanswered `getReads` before asking again.
+    static let readsRefreshWait: Duration = .seconds(30)
+
     /// Read markers and mutes live on the server, shared by every device.
     func fetchReadsAndMutes() async throws {
-        readsSentSinceGetReads = []
+        // With an ask still unanswered, its late answer may predate what
+        // was sent since: keep guarding those chats until one is answered.
+        if readsAskedAt == nil {
+            readsSentSinceGetReads = []
+            mutesSetSinceGetMutes = []
+        }
+        readsAskedAt = .now
         try await run { time, state in
             try Sphinxrs.getReads(seed: seed, uniqueTime: time, state: state)
         }

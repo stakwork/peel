@@ -18,8 +18,27 @@ notified (#51). Storage was at v13 then; it is at v21 now.
   F1, F3 (Peel's half), F6 and F7 fixed ("Payments review, first set");
   F2, F4 and F8 fixed, and stale pending rows settled ("Payments review,
   reconciliation"); F5's words, F9 and three of F11's four edges fixed
+  ("Payments review, waiting words and the async pay"); F5's cancel, F10
+  and F3's core half open. F11's tribe-text Retry fixed ("Tribe messages
+  held like payments"), its trade-offs for Tom's sign-off.
+- Paid attachments: a key still owed after a stop is sent on the next
+  connection (bug hunt N3, "A paid attachment's key owed after a stop");
+  the key still goes before the history confirms the sats (the payments
+  review's follow-up, open).
+
   ("Payments review, waiting words and the async pay"); F5's cancel, F10,
   F11's tribe-text Retry (needs Tom) and F3's core half open.
+- Our tag replayed in a tribe: dropped before it can change membership,
+  the timeline, payments or aliases ("Our tag replayed in a tribe"); our
+  own join and leave from another device count once past it. Open: a long
+  message's earlier chunks carry tags Peel never stores (needs the core to
+  return them); a member racing our own forward with a copy of the same
+  type and words (either can still change membership here); on a
+  restore, a seller's payment-type copy with our purchase's tag (our
+  purchase never comes back) is listed as a payment of ours, display only;
+  rows
+  stored from a replay before the fix; a DM forged with a third key
+  (branch `fix/forged-from-me`).
 
 **Decided:** msat end to end; one confirmation rule in `Engine.checkPayment`
 (100 sats by default, 0 asks every time); nothing that may have paid is sent
@@ -1721,3 +1740,676 @@ small edges that need no decision are closed.
   the review doc's rows synced. Tracked, not built: re-sending the ping
   for our pending async pays on the next connect, for a ping that never
   left.
+
+### A forged "ours" copy of a request (2026-10-11)
+
+Found by the independent review of #154 (Low). The core takes a message
+for ours by its date (`dec_ts_matches`, a secret the sender shares with
+us) or by its encrypted tag (`dec_tag`). The tag travels with every
+message we send, opens with our key whoever sends it, and is bound to
+neither the uuid nor the content. So a contact who had a request from us
+could send a type 2 "ours", signed by any key they like, with our
+request's uuid or a fresh one and a co-server neighbour's invoice. With
+our uuid the upsert gave our row its hash; either way `isOurRequest`,
+which asked only for a tag, then refused the neighbour's invoice as
+`.ownInvoice`, and our request lost its hash. No sats moved.
+
+- **Done.** Two rules. The upsert keeps a request's hash from the first
+  copy, as it keeps the body the hash comes from: no later copy, whoever
+  signed it (the contact, a key they made, or our own signed request
+  spliced under another of our uuids, since the core never checks a uuid
+  against what was signed), moves it. And `isOurRequest(paymentHash:signedBy:)`
+  counts only a request signed by this account's key, which the core
+  recovers from the signature into the sender's `pubkey`: ours from any
+  device are, a forged one under a fresh uuid is not, nor a tribe's
+  forward.
+- **Tried and dropped.** An upsert rule that an untagged copy leaves a
+  tagged row alone (a replayed tag passes it); dropping in
+  `Engine.message(from:)` a fromMe copy signed by the chat's own person
+  (`sentTo` is the key index the onion went to, not the signer, so a
+  throwaway key passes, and a pending contact has no contact key); and
+  one signer per uuid in the upsert (the splice above passes it, and a
+  forged copy that beat our echo would have locked the echo out). The
+  adversarial reviews found each.
+- **Verified.** Unit: `ourRequestFromHistoryMarksItsInvoiceOurs` (signed
+  by the contact, by a throwaway key with our tag, and by us) and
+  `aForgedCopyCannotMoveOurRequestsHash` (all three signers; fails
+  without the upsert rule); full `swift test`; the integration journeys
+  (see the PR).
+- **Reviews.** `/code-review`, `/simplify` (one `madeInvoice` fixture in
+  `TestSupport` for `InvoiceTests` and `ConnectionDropTests`; skipped:
+  caching the test seed), `/security-review` and two adversarial reviews,
+  whose findings shaped the fix above.
+- **Known gaps.** A row already forged the same-uuid way before this keeps
+  the victim's hash with our signer, so that invoice stays refused until
+  the row goes; none is known, and recomputing hashes from bodies would
+  need a migration that parses invoices. Other fromMe readers (payments
+  listed as ours, threads you are in, our photo on a restore) still trust
+  the core's "ours"; tracked separately.
+
+## Tribe messages held like payments (2026-10-11, branch `fix/tribe-text-retry`)
+
+Bug hunt N7 (`../reviews/2026-10-11-bug-hunt.md`) and the payments
+review's last F11 edge. Every tribe message carries the tribe's price (at
+least 3 sats; the core refuses one without), yet a tribe text whose
+publish was cut short (`.unknown`) was marked failed, and any text still
+unconfirmed after 30 s offered Retry: both roads paid and posted again
+if the first had gone. Tom (2026-10-11): fix it, so a message that may
+have paid gets no quick Retry. Done means: nothing that may have paid is
+sent again while the server may have it, and nothing is left pending with
+no way out.
+
+- **The rule.** `Message.mayHavePaid`, with its SQL twin
+  `Storage.mayHavePaidSQL`: ours, with a tag (written before anything is
+  published, so one without never left), carrying sats (`msat`, or a
+  money type). `isRetryable` gives a pending row that may have paid no
+  Retry or Discard; the resend take-over in `Storage.apply` holds the same
+  rule; `pendingSendTags` asks about it as money, so one the server never
+  recorded fails after 30 minutes. `deliver` keeps a `.unknown` send
+  pending when it carried sats (`sats > 0`, was `amountMsat != nil`):
+  payments, and every tribe send, text, files, deletes and calls. A
+  direct message's text carries none and still fails at once.
+- **A tribe file's first send.** `sendAttachment` writes its draft with
+  the price before the upload, and `uploadAndDeliver` sends it through the
+  take-over, which admits a draft (no tag: it never left). The branch's
+  first version refused it, so every tribe file was published and paid
+  while its row kept no tag (shown twice, one copy faint for good); the
+  review caught it. A take-over the rule refuses now throws, so the commit
+  and the publish are abandoned (it used to be skipped while the send went
+  out untracked), and a Retry racing the first send loses there.
+- **Nothing stuck.** A draft refused before it left (tribe not joined yet,
+  a core error, Peel quit after the upload) has no tag, so past the usual
+  wait it offers Retry and Discard, as before.
+- **The words.** A held message past 30 s says "Message waiting for the
+  server…" (a call "Call waiting…"; `WaitingForServer`, the payments'
+  owner of that line) instead of a silent faint row. The notice for a send
+  cut short says "the message may have gone" for a message
+  (`mayHaveGone(_:what:)`). The CLI's `resend` help says what carried sats
+  goes again only once failed.
+- **Tests.** `ConnectionDropTests`: a priced tribe text cut short stays
+  pending and is not retried; one unconfirmed past the wait is refused by
+  Retry with nothing sent; one the server never recorded fails after 30
+  minutes; a tribe file's first send takes over its draft; one that never
+  left may go again; a send whose row went meanwhile publishes nothing.
+  Journey: `Tribes` sends a paid file (one row, the tribe's copy finds it,
+  10 sats once).
+- **Verified.** The regression tests fail on the code before the fix:
+  the three tribe-text tests and the race test on `main` (`9e96d95`),
+  and the file, never-left and race tests on the branch's first version.
+  Offline suite: 623 passed (the known IPv6 issue). Journeys `Tribes`
+  and `Reconnects` on the local stack: 6 passed. Offscreen check on a
+  new development profile on the local stack, deleted afterwards: a tribe
+  with one delivered message and one held two minutes, faint, "Message
+  waiting for the server…", no Retry or Discard.
+- **Reviews.** `/code-review` (15 findings), `/simplify` (four
+  angles), `/security-review` (no findings) and an independent review.
+  Applied: the first-send take-over of a tribe file (above); the
+  take-over throwing when refused; tag-less drafts not stuck; the
+  waiting line and its owner; one named rule (`mayHavePaid` and its SQL
+  twin) for `isRetryable`, the take-over, `pendingSendTags` and the row;
+  "message" in the cut-short notice; the CLI help; doc comments that said
+  the rule twice; tests (one that waited on a record that changed
+  nothing, a direct message fixture posing as a tribe's, a shared
+  recording transport and `pending` fixture); these docs and the review
+  doc's F11 row.
+- **Not applied, with reasons.**
+  - Release only on a reconnect: a held message the server never
+    recorded fails only when a reconnect at least 30 minutes after it
+    was sent asks (`checkPendingSends` runs on connect). Payments wait
+    the same way; a timed re-check while connected would change every
+    money send, so it is left for its own change.
+  - Calls and deletes are held too: a tribe call or delete cut short
+    stays pending (a call no longer reads "Not sent" at once). Neither is
+    ever retried, so holding costs only that; it is honest, since either
+    may have gone. The rule stays "the send carried sats".
+  - A tribe message whose server status is PENDING (the tribes server
+    down while the mixer is up) stays held until the tribe's copy comes
+    back; it never becomes "not settled" as a payment would (only money
+    types do). The waiting line says what is happening.
+  - Payments' list shows a cut-short tribe text that did reach the
+    server as pending until the reconnect's records settle it; tribe
+    messages carry no payment hash, so the history cannot settle them.
+  - A typed refusal for "held, may have paid" (the CLI and agents get
+    `notRetryable`, as for a pending payment): a new `Failure` case,
+    for payments too, left for its own change.
+  - Shared attachment fixtures across suites, and a helper for the
+    journeys' test files: separate test-support cleanups.
+- **For Tom.** A tribe message unconfirmed after 30 s no longer offers
+  Retry or Discard; it reads "Message waiting for the server…" until the
+  server confirms it, the tribe's copy comes back, or a later reconnect
+  finds no record (then it fails, with Retry). The trade-offs above (the
+  reconnect-only release; calls and deletes held) are his to sign off.
+- **Follow-up: a resend's sats (2026-10-12).** The resend take-over
+  kept the row's old `msat`, so a tribe text first sent free (from
+  before the tribe charged) and sent again once it did kept `msat`
+  empty: cut short, `mayHavePaid` said no, and Retry paid a second time.
+  The take-over now writes the sats the new send carries (`Resend.msat`,
+  as `deliver` writes a new row's). Test:
+  `aRetriedTribeTextTakesTheSatsItNowCarries`, which fails without it.
+
+## A paid attachment's key owed after a stop (bug hunt N3, 2026-10-11)
+
+- **Problem.** The seller answered a purchase only as a follow-up of the
+  commit that stored it. A Peel that stopped in between, or whose answer
+  failed, never answered: the buyer read "Processing" for ever and could
+  not buy again. A failed type 8 also counted as answered.
+- **Fix.** Each connection, after a reconnect's resends (which wait for
+  the server's records of our pending sends), answers every purchase in a
+  direct message still owed its key (`Engine.answerOwedPurchases` over
+  `Storage.receivedPurchases`), through `answerPurchase` and its rules
+  (the price less min(3 sats, a tenth); tribes are not answered here;
+  skipped while a restore is filling in history). An answer that failed,
+  or that is still pending past `Message.inFlightLimit` (cut short by the
+  app stopping, or written into a connection already dead), no longer
+  counts (`Storage.isAnswered`), so the key goes again; it moves no sats.
+  The sweep is quiet (`auto`, as a reconnect's resends): an underpaid
+  purchase is reported only as it arrives, and a send that fails goes
+  again with the next connection. The arrival and the sweep cannot both
+  answer one purchase: the answer is stored, pending, before anything
+  waits.
+- **Tests.** `AuditMoneyTests.aPurchaseOwedItsKeyIsAnsweredOnceByTheNextConnection`
+  (never answered, failed, pending past the limit, still on its way,
+  underpaid); the payments review's journey 4,
+  `Journeys.Attachments.aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops`
+  (the price and the ping once per purchase, answers that move no sats
+  and are delivered).
+- **Left.** A second key can go: when another device of the account
+  answered while this one was away (the sweep does not wait for the
+  catch-up), when a publish failed after it left, or when two devices
+  sweep at once. Each is a message with no sats and the same key. An
+  owed purchase found by a restore is answered on the connection after
+  it. Every send moves the chat's read marker on the server, so an
+  answer sent by a connection's sweep marks that chat read.
+- **Independent review**, applied: an answer still pending past
+  `Message.inFlightLimit` no longer counts (above), and the journey checks
+  that answers are delivered, which that rule relies on; the sweep is
+  quiet (`auto` replaces `reportsShortfall`, and its copy of the arrival
+  path's error handling went); the in-flight key in `sendsInFlight` went,
+  since it could never fire; `receivedPurchases` reads through
+  `message_purchase` and the shared `tribeChats`; the journey checks the
+  sats each purchase moves and that an answer moves none; a relaunch in
+  the journeys is `Person.relaunched()`. Not applied: waiting for the
+  catch-up before sweeping, or a time limit on old purchases (a second
+  key costs nothing, an owed key is owed however old); one query for
+  owed purchases instead of two reads each (a second owner of
+  `isAnswered`'s rule, for well under a millisecond); sweeping at a
+  restore's end (the next connection does). `/security-review`: no
+  findings.
+
+## Who may write "ours" (2026-10-11, branch `fix/forged-from-me`)
+
+The forged request (Payments review F11's S1, and the branch on the hash a
+request keeps) was one reader of a wider hole. Checked against the core
+(`sphinx` at `caa76a12`, and again at `bd9e140`, the core Peel links)
+and the tribes server before any code.
+
+**The premise holds.** The core sets `fromMe` when a message's
+`encrypted_tag` opens with our account key (`dec_tag`) or its
+`encrypted_date` opens with the secret the signer shares with our key and
+matches the date (`dec_ts_matches`), both in `bindings/handle_msg.rs` and
+`handle_batch.rs`. Every message we send carries the tag, sealed under our
+key alone and bound to nothing else (`create_sphinx_msg`), so the
+recipient holds it; and any contact can make the date secret. `sentTo`
+comes from the key index the onion reached (`add_sent_to`), not from the
+signer, and `parse_sphinx_msg` takes the uuid from the bytes unchecked.
+So a contact (with their own key or any throwaway) can get a message
+stored as ours in their chat, with our uuids or new ones; a member of a
+tribe can do the same through the tribe's forward. The one fact nobody
+can forge is the signer: `parse_sphinx_msg` recovers `sender.pubkey` from
+the signature.
+
+**Who really signs ours**, every path checked:
+
+| Path | Signer |
+|---|---|
+| Our DM send, its copy to self, the server's echo to our other devices, the same in history (`send`, `make_msg` sets child index 0) | our account key (index 0) |
+| Our key exchange (`make_keyx_msg`), tribe join (`make_tribe_join_msg`) | our account key |
+| Our tribe message forwarded back by the tribe, live and in history (`mutate_msg_to_forward`) | the tribe |
+| A purchase answer the tribes server makes for the seller, the owner's notices from `manager.rs` (the date path, `create_sphinx_msg_with_enc_ts`) | the tribe |
+| Our contact record (type 33) from another device | our key; the core returns it without `sentTo` (and `fromMe: false` when it overwrites), so it is never stored as ours |
+
+So "ours" can be genuine only when signed by our account key, or by the
+tribe whose chat it is. A copy the core calls ours with any other signer
+is forged; signed by the person whose chat it is, it is theirs. Signed by
+us is necessary, not enough: see the replay under Residual.
+
+**What a forged row did, reader by reader** (DM unless said):
+
+| Reader | Abuse |
+|---|---|
+| `PaymentHistory` (`moneyMessagesSQL`, `unlisted`) | A payment or boost of "ours" with any declared amount listed as sent; with a real hash of ours it could pair with our payment row. Balance untouched. |
+| `Storage.reconcile`, statuses by tag (`applyStatus`), `pendingSendTags` | A copy with our replayed tag or hash moves with our send: a status of ours, or a server record, makes it COMPLETE, PENDING or FAILED. |
+| `waiting()` / `spendableMsat` | A forged money send moved to PENDING holds its declared amount (any figure) back from what can be spent for a week: our payments refused. |
+| `undeliveredSends`, Retry | A forged text moved to PENDING or FAILED could be sent again by a reconnect as ours. |
+| `newestOwnPhotoURL` + `recoverOwnPhoto` | On a restore, the newest "ours" names our photo: a contact's forged copy sets our profile photo, which then goes out on every message. |
+| `Storage+Threads` (threads you are in), `boostedByMe`, `isOurRequest` | A reply or boost of "ours" puts a thread in the list, marks a message boosted, and (fixed separately) blocks paying an invoice. |
+| Timeline, notifications, unread | Their words shown as ours, never notified. |
+| Upsert by uuid | A copy with one of our uuids in the same chat fills in its index, time, sats and hash (the request branch's case). |
+| Tribes: `membership`, `echoedAliases`, the tribe readers above | Only through a tribe's forward: see the tag-replay branch. |
+
+**A second finding, in the core.** The core adds the signer of a message
+as a contact at the child index the onion reached, whoever that index
+belongs to: live for a message not ours at a non-zero index
+(`sync_incoming_contact`), in history for any signer but us (`save_them`),
+with the contact key only if the sender names one. So a contact can mint
+core contacts at their own index, with no contact key: shaped like a
+tribe (`isPerson` false). In history the minted contact is also what
+`add_sent_to` finds for the index (the page's new state is read last), so
+a forged "ours" there is filed under the minted key. "A core contact with
+no contact key" is therefore no proof of a tribe. To raise with the core
+(Peel cannot undo it: the state is the core's).
+
+**A third, in the core Peel links.** At `bd9e140` the live
+`ContactKeyRecord` arm has no `sent_by_me` check (`caa76a12` added one):
+anyone who can reach one of our keys can rewrite a contact's index, LSP
+and contact key through a type 33 record. AGENTS.md said otherwise; it
+is corrected. Not this branch's to fix (the signer rule still keeps such
+a row out of the chats), but it outranks it: tracked separately.
+
+**Rule.** One check where messages come in, so every reader is covered
+rather than each patched. A copy the core calls ours is kept only when
+**its signer is this account's key** (`Sphinxrs.pubkeyFromSeed(idx: 0)`,
+kept as `Engine.accountKey`), **or its signer is the chat it is filed in
+and that chat is a tribe Peel knows**, counting one this very message
+introduces (`discoveredTribe`, our own join forwarded back with the
+tribe's host). Anything else is dropped unstored, as a message from an
+unknown sender already is. `Engine.message(from:)` checks the signer
+before tribe discovery (so a copy signed by someone else cannot introduce
+a tribe either); `commit` checks the tribe after it. Checked against:
+
+- restore and history: our DM history is signed by us; our tribe history
+  by the tribe, and our join, oldest first, introduces it;
+- other devices: the server's echo of a DM is our own signed send (a
+  copy we signed is kept in any chat, known tribe or not); a tribe's
+  forward of ours reaches them signed by the tribe, with no `sentTo`
+  before their core knows it (below);
+- tribe forwards and the tribes server's date-path notices: signed by the
+  tribe, filed in the tribe's chat;
+- type 33 records: `fromMe` false, not touched by the rule;
+- not-ours copies: unchanged (`trustSender` already needs the signer).
+
+**Residual, documented not built:**
+
+- Our own signed bytes, replayed. The signature covers the message but
+  not its uuid (read unchecked after it) nor whom it went to, and every
+  contact holds the bytes of what we sent them. So a contact can send one
+  back to us under another uuid (a second "sent" row with our real tag
+  and declared amount, or our uuid of another row in their chat, whose
+  index, time, sats and hash the upsert then fills in), or at another
+  contact's index (filed in that chat). It is signed by `accountKey`, so
+  this rule keeps it, as before. The rule of the tag-replay branch closes
+  it in DMs too: a copy whose tag we already hold under another uuid is a
+  replay. The core should check the uuid (`uuid == lightning_hash(msg)`
+  in `parse_sphinx_msg`); raise with the minted-contact finding.
+- A tribe's forward is signed by the tribe whoever wrote it, so a member
+  who replays our tag still gets an "ours" row in that tribe. That is the
+  tag-replay branch (`fix/tribe-fromme-replay`), not this one.
+- Tribe discovery itself: a minted, tribe-shaped contact that signs a
+  join with a host (as theirs, or as ours) is taken for a tribe, as it
+  was before this change; from then on its chat counts as a tribe here
+  too. Telling a real tribe needs the registry or the core.
+- A tribe joined live on another device: **built (2026-10-12, Tom chose
+  to follow the official apps).** Checked on the local stack first: the
+  other device gets only the tribe's forward of our join, signed by the
+  tribe and ours by our tag; never a copy signed by our account key (the
+  tribes server re-signs it, `mutate_msg_to_forward`); and its core has no
+  contact for the tribe, so no `sentTo`. The official apps take a tribe
+  from any join or approval forward (`fetchMissingTribesFor`), check no
+  signer, and never sync a leave. Peel now:
+  - files a forward of ours with no `sentTo` under the tribe that signed
+    it (`message(from:)`, `unfiled`), and the owner's approval from a
+    signer the core does not know the same way;
+  - stores nothing of such a chat until the tribe is known; our join
+    there, or an approval naming us with the owner's role, on our own
+    tribes host only (`tribeToConfirm`), names a tribe to confirm;
+  - holds what it hears there meanwhile, in memory (`TribeWork.held`, at
+    most 20 tribes and 500 messages each), and asks our own tribes host;
+  - once the registry lists it, not deleted (`confirmTribes`), records it
+    and commits what was held as if just heard, oldest first: our join
+    makes it joined (owned, with the owner's role), the approval naming
+    us lets us in, our leave after it leaves, our posts are ours. A key
+    the registry does not list (a throwaway that signed a forged "ours"
+    join) is dropped and not asked about again this session. Nothing is
+    paid or sent;
+  - from then on keeps our posts from the other device there as ours, and
+    takes our leave there as leaving (`membership`), which goes further
+    than the official apps (they never sync a leave).
+  Journey `Tribes.aTribeJoinedAndLeftOnOneDeviceFollowsOnTheOther`: the
+  second device shows the tribe joined, the first's post (sent before the
+  second asked the registry) as hers, then the tribe left, and sends
+  nothing. Left open: what is held is lost if Peel quits before the
+  registry answers (a restore brings it back); an approval is matched by
+  the account's alias, so one for an alias set for that tribe on the other
+  device is missed, and another member with the same alias (or it plus
+  `_2`) could bring back a tribe never joined here; the second device's
+  core still has no contact for the tribe, so posting from it there fails
+  until a restore; a member's replay of our tag is the tag-replay
+  branch's to drop (`fix/tribe-fromme-replay`). Review (independent,
+  2026-10-12): applied the owner's role, a leave heard before the
+  registry answers, posts held rather than dropped, a session cache of
+  keys the registry does not list, and unit tests for `confirmTribes`;
+  then (re-review) only a 404 counts as not listed, any other failure is
+  tried again on the next connection, a tribe known meanwhile gets what
+  was held (its posts, not its older joins and leaves), and a full hold
+  lets the oldest go.
+- A contact we added who never confirmed has no contact key either, so
+  `discoveredTribe` takes their chat for a tribe when their own message
+  names a host; from then on their forged "ours" (by the date) is kept
+  there, and a role-0 join makes us its owner. As before this change;
+  the doc first named only minted contacts.
+- Our own tribe messages that a restore meets before anything introduces
+  the tribe are dropped. History comes oldest first and we join before we
+  post, so only a history cut short of our join loses them, or a tribes
+  server run without `HOST` (its joins then name no host). Before this
+  change they were stored, under a chat with no tribe record. Accepted:
+  a fallback on "no contact key" would let minted contacts back in.
+- Rows stored before this change stay (no cleanup migration: a migration
+  cannot know the account key, and the real account is days old).
+- A dropped copy does not move the history cursor, like any other drop;
+  a newest forged copy is fetched again and dropped again on catch-up.
+
+**Done looks like:** the rule in `Engine.message(from:)` and `commit`,
+with `accountKey`; unit tests through `commit` for our copy, a known
+tribe's forward, our join introducing a tribe, a copy signed by the
+chat's person, by another key in a DM and in a tribe, in a minted
+tribe-shaped contact, and someone else's message unchanged; full `swift
+test`; the message, tribe, payment and history journeys on the local
+stack.
+
+**Built.** `Engine.accountKey` (index 0, derived once in `init`; the memes
+sign-in and the preferences file's name use it too, in place of
+`memesPubkey`, which derived it again on each call). `message(from:)` drops a copy of ours signed by
+neither our key nor its chat, and returns `signedByChat`; `commit` drops
+one signed by its chat unless, after `discoveredTribe`, the chat is a
+known tribe. `OursTests` (in `EngineTests`) runs each case through
+`commit`, through `TestSupport`'s `coreResult` (now with messages and
+state changes).
+
+**Verified.** Unit: full `swift test` (the one known issue is older);
+without the rule the drop tests fail. Local stack: all 22 journeys
+pass, among them the restore in `HistoryJourneys`, which checks our own
+DM history comes back as ours (so `accountKey` matches the signer the
+core recovers) and our tribe post comes back as ours once our join
+introduces the tribe. After the rebase and review fixes, two more full
+runs on a machine running other sessions' stacks failed 4 journeys each,
+different ones each time, all on timeouts, registration or connect
+(attachments, invites, payments, history, tribes); every journey passed
+in at least one of the three runs. Rebased on the preferences sync
+(#145): 582 unit tests pass; 29 of 30 journeys pass, the preferences
+ones among them (they use `accountKey` now); the one failure,
+`twoDevicesPayAnOfflineContact`, timed out in its setup (the bank's key
+exchange) and passed in the third run.
+
+**Reviews.** `/code-review`: the signer was decoded twice (now a flag
+from `message(from:)`); our tribe messages before the tribe is known are
+dropped (accepted, under Residual, with the tribes server's `HOST`).
+Not applied: one check instead of two (the signer must be checked before
+discovery, the tribe after), a unit test of the key's format (the
+restore journey covers it). `/simplify`: the shared `coreResult` instead of
+a second `RunReturn` builder, the engine's own key in the tests and the memes sign-in, fewer
+comments. Not applied: narrowing `discoveredTribe` to `trustSender`
+(our own key's join may carry a host; out of scope), `ownKeys` in
+`Engine+Payments` (the request branch is changing it).
+Independent review (merge after fixes), applied: the live other-device
+tribe case and the unconfirmed contact (both under Residual), the type 33
+claim checked against `bd9e140`, the wording on which signers the core
+files, two more tests (our copy in a tribe-shaped chat Peel does not
+know is kept; a copy with no sender is dropped), the join test asserts
+the tribe it introduces. Not applied: a cleanup of rows stored before
+(Residual), the registry check (follow-up above).
+`/security-review`: one finding, older than this change and not closed
+by it, the replay of our own signed bytes (under Residual).
+
+### Our tag replayed in a tribe (2026-10-11)
+
+The known gap above, checked against the core and the tribes server
+(`sphinx` at `caa76a12`) before any code.
+
+**The premise holds.** The core calls a message ours when its
+`encrypted_tag` opens with our account key (`dec_tag` in
+`bindings/handle_msg.rs`) or its `encrypted_date` matches (`dec_ts_matches`,
+a secret shared with the signer). The tag is sealed under our key alone and
+bound to nothing else in the message (`create_sphinx_msg`, `msg/mod.rs`).
+The tribes server keeps it on every forward, on purpose ("dont overwrite
+encrypted tag (so sender can tell they sent it)", `finalize_msg` in
+`tribes/src/forward.rs`), so **every member of a tribe receives our tag on
+every message we post there**. A member copies one into a message of their
+own and posts it; the tribe re-signs and forwards it to everyone, us
+included, and our core returns it `fromMe` with our real tag. The tribe
+sets `originalUuid` to the uuid bytes the member's message carries (which
+nothing checks against its content) and `date` to its clock
+(`mutate_msg_to_forward`), so only the tag path is open to a member;
+the date path in a tribe is the tribes server's own (the seller's purchase
+accept). Our DM signer check cannot help: the signer is always the tribe.
+
+**What a member can do with it**, reader by reader, today:
+
+| Reader | Abuse | How bad |
+|---|---|---|
+| `Engine.membership` (not in the brief's list) | A GroupLeave carrying our tag: free (no price per message on a leave), forwarded to every member, and replayed to new joiners. Peel sets `left`, then drops every later message of that tribe unstored and moves the cursor past them. A MemberRequest with our tag to a private tribe we own (the server sends requests to the owner alone) turns our own tribe `pending`. A join with our tag brings back a tribe we left (the server never removes a leaver). | **High**: one free message silences a tribe for us, without a sign. |
+| Timeline (every fromMe reader in the chat) | Any text, attachment or boost of theirs shows as written by us, on our screen only (others see their alias). No notification and no mention for it (`!fromMe` checks). | Medium: impersonation to ourselves. |
+| `PaymentHistory` (`tribeMessagesSQL`, `moneyMessagesSQL`) | A boost or payment with our tag lists as ours: "unlisted" sends show their declared amount (any figure), and one can take the tribe's keysend row to us by its hash. Balance untouched. | Medium-low: a false "you sent N sats". |
+| `echoedAliases` / `echoedOwnAliases` | Their alias joins the aliases that name us: their @mentions notify us, and an owner's approval naming them could flip a pending or removed tribe of ours to active (only locally). | Low-medium. |
+| Statuses by tag (`applyStatus`), the delete on a delivered status | The copy shares our real tag, so our send's later statuses (and a delete's) move it too. A copy moved to `PENDING` or `FAILED` would be resent as ours by Retry or the reconnect resend. Needs a status for an old tag after the replay: unlikely. | Low in practice, bad if hit. |
+| `Storage+Threads` "threads I'm in" | A reply with our tag puts any thread in our list. | Low: noise. |
+| `newestOwnPhotoURL` | Already leaves tribe chats out. | None. |
+| `reconcile` by hash | Matches `PENDING`/`UNSETTLED` sends only; a received copy has no status until a tag status moves it (row above). | Low. |
+
+**Rule.** One check where messages come in, so every reader above is
+covered at once rather than each patched: **a copy the core calls ours by a
+tag is dropped when a different message we already hold carries that
+tag.** Different means a uuid other than the copy's own (the same forward
+again, live and from history; the tribe hashes what it sends, so the member
+cannot choose it), except the one row a genuine copy takes over: our send
+in the same chat, named by `originalUuid`, with that tag and no server
+index yet. The member chooses `originalUuid` (see the security review
+below), so it excuses nothing else. It holds because a tag reaches a
+member only after the tribe has forwarded our message to us too, so the
+genuine copy is always stored first:
+
+- live: our own row has the tag from the send; on another device the
+  tribe's copy reaches us in index order before any replay of it;
+- restore: history comes oldest first (`HistoryCursor`, `reverse: false`),
+  and the batch is checked in order (tags seen earlier in the same core
+  reply count, not only stored rows);
+- a tag copied from a DM we sent is held by that DM's row (ours, or its
+  self-copy in history).
+
+Nothing in a tribe forward can bind a copy to us when we hold no row for it
+(the tribe strips the member's key; the tag and the uuid are unrelated;
+the original `date` is gone), so a first-seen tag is the best a client can
+do, and enough: the attacker cannot see a tag before we do. `tag` has been
+indexed since v1, so no migration. Untagged copies (the tribes server's own,
+by date) are unchanged. Not for a person's chat: there the sender
+chooses the uuid itself, so a replay under our row's uuid would pass;
+DMs need the signer (see the security review below).
+
+Side effect, wanted: the tribe replaying our old messages to a device that
+rejoins (new forward uuid, same tag) no longer makes a second row.
+
+Not done: rows already stored from a replay before this change stay (no
+cleanup migration; Peel's real account is days old). A genuine copy whose
+forward to us failed (`send_to_single` error) loses to a later replay of
+its tag.
+
+**Done looks like:** `Engine.commit`'s message loop drops such a copy
+(`Engine.isReplay`) before tribe discovery, membership and storage; unit tests for a replayed tag in a
+tribe (text, GroupLeave, boost, a tag from a DM), the genuine echo of our
+send, the same forward twice, two copies in one history page, and an
+untagged copy; full `swift test`; the tribe integration journeys.
+
+**Reviews.** `/code-review high`: added `ourDirectMessagesEchoIsKept` (the
+rule runs on DMs too; our echo keeps its uuid and tag) and the open edges
+to the status. Not applied: storing a replay as the member's message
+instead of dropping it. Others in the tribe may reply to it and we see a
+gap, but storing it would let a copy made from our tag into the incoming
+money and notification paths; dropping matches the DM fix. Not applied:
+one tag query per page instead of one per tagged message of ours (an
+indexed read each; revisit if restores ever show it).
+
+`/simplify`: the rule named and moved beside `membership`
+(`Engine.isReplay`), its two checks one, left out of person chats (the
+signer check covers them, and there `originalUuid` is the sender's); the
+DM echo test shares the `Msg` fixture; `isOurRequest`'s comment names
+both checks. Skipped: one `Msg` fixture shared with `InvoiceTests` (that
+file's tests belong to the previous fix); one tag query per page (above).
+
+`/security-review` found two holes, both checked against the core:
+
+- **Fixed: `originalUuid` is the member's.** `parse_sphinx_msg` takes a
+  message's uuid from its last 32 bytes and never checks it against the
+  content, and the tribes server copies it into `originalUuid`. A member
+  replaying our tag could name our row (after the echo took it over, its
+  uuid is the forward's, which every member saw) and the first version
+  excused it. Now only our send not yet given a server index, in the same
+  chat with the same tag, is excused, and within one core call only the
+  copy's own uuid. Tests: the replays naming our row, an earlier forward
+  in the page and a DM row.
+- **Open, owned by the branch `fix/forged-from-me`:** the DM check above
+  drops a copy signed by the chat's person, but a contact can sign with
+  any other key (`sentTo` comes from the key index the onion reached, not
+  the signer) and pass it. The core's date path also calls a message ours
+  when it carries no `date` and no `encrypted_date` (`dec_ts` gives `None`,
+  and `None == None`), so no tag is needed. The sound rule is "signed by
+  our key", which that branch builds; the date path is a core bug to
+  raise upstream.
+
+**Independent review** (an agent that did not write the change, briefed
+to find problems). It found the first-copy rule weaker than this plan
+claimed, all confirmed in the code:
+
+- A reassembled chunk takes its uuid from the sender's `chunk_id`
+  (`sphinx-ffi/src/chunk.rs`), so "the tribe hashes what it sends" is
+  false for chunks: a one-fragment chunk under our row's uuid passed as
+  the same copy. **Fixed:** one copy is its uuid at its server index.
+- Our purchase (to the seller alone) and our join request (to the owner
+  alone) never come back, so their rows keep no server index and the
+  takeover excuse never closed: the seller could name the row and post a
+  leave. **Fixed:** the excuse needs the same type and words too.
+- A long message of ours goes out in chunks, each with its own tag, and
+  Peel keeps only the last: a member holds tags we never see, so a first
+  copy can be theirs. And the tribes server forwards concurrently, so a
+  fast member could race our own forward. The first version of this
+  branch therefore stopped taking our leave from the network, and our
+  join except on a restore. **Superseded (2026-10-12, Tom):** membership
+  follows the account across devices, as in the official apps, so our
+  own join and leave that arrive (on a restore, or from another device)
+  count again once past `isReplay`; our request still counts only when
+  sent from here (the tribe forwards a request to the owner alone, so a
+  copy reaches us only to forge our own tribe's status). Open, accepted
+  by Tom: a member who replays a tag from one of our long message's
+  earlier chunks, or races our own forward with a copy of ours, can still
+  make us leave a tribe here (or rejoin one we left). Nothing is paid
+  either way; a leave only hides the tribe, and leaving or joining again
+  is in the person's hands.
+- Tests: the takeover clause and the person gate were not exercised.
+  Now a replay naming our taken-over row and the chunk-uuid copy run in
+  their own core calls, and the purchase row has its own test; the DM
+  echo test says what it covers (a chat not held as a person).
+- Pending contact (a `c/` entry without a contact key yet): neither the
+  signer check nor this rule fits; it belongs with `fix/forged-from-me`.
+- A re-join's replay of the tribe's last messages comes newest first
+  (`reverse: true`, `replay_batch_req` in the tribes server), our old
+  leave among them at a new index. With leaves counted again (Tom,
+  2026-10-12), our leave is now kept though the tribe is left, so its tag
+  is held and the replayed copy is a replay; the joins and leaves held
+  for a tribe known meanwhile (`replayHeld`) are stored for the same
+  reason, without changing membership. Test
+  `ourOldLeaveReplayedAfterARejoinIsNotALeave` (fails without it).
+  A copy of our join or leave never takes over our row by its words
+  (every one has none), so the tribe's own forward of a join sent here is
+  dropped too: the row is settled by the server's tag records, and an
+  alias the tribe gave us on that join (`name_2`) is learnt only from our
+  first post that comes back. Noted, not changed.
+
+Still open, for the timeline, payments and aliases (not membership): the
+chunk tags, and the race above. Both need more than a client rule: the
+core returning every chunk's tag, and binding the tag to the message
+(the core's `encrypted_tag` carries nothing of the uuid).
+
+**Re-review** (the same reviewer, on the fixes). Merge verdict: fine once
+Tom accepts the restore change below. Applied: a join of ours that
+arrives counts only on a restore (a forged one could bring back a tribe
+we left, or turn `.removed` and `.rejected` back to active); our unsent
+row matches a copy under its own uuid only with its type and words too
+(a chunk under our purchase's uuid could take it over); test
+`aCopyWithOtherWordsTakesOverNothing`. Checked sound: our row's words are
+the body's (`BodyFields`) and the tribe keeps them, so a genuine forward
+always matches.
+
+**Tom's decision (2026-10-12):** a tribe left on another device, or
+before a restore, stays left, and one joined on another device is joined
+here (`fix/forged-from-me`, "A tribe joined live on another device"),
+with the two gaps above open. Journey
+`Tribes.aTribeJoinedAndLeftOnOneDeviceFollowsOnTheOther`.
+
+Still open, noted: a first-seen chunk tag (or the seller's copy of our
+purchase) still adds the member's alias to our echoed aliases, so their
+@mentions notify us; a long message of ours seen live and then from
+history can come at two indices (the completing chunk's) and the second
+is skipped, losing nothing.
+
+## Boost on attachments (2026-10-13, branch `boost-attachments`)
+
+Done means: someone else's attachment (type 6: an image with or without a
+caption, a run of images, a paid attachment, a file) offers Boost on its
+hover bar and ••• menu as text does, a boost on it shows its chip and
+summary under its row, and the engine takes it.
+
+Found: `Message.isBoostable` allowed only type 0, while its comment said
+"as the Mac app allows it". The Mac app's `isBoostActionAllowed` is any
+incoming message with a uuid that is not an invoice, a direct payment or
+a call link (`isCallLink`: type 32, or content, a text's or a caption,
+that starts with `http` and contains `/sphinx.call`, on any host; Peel's `CallLink.isLink` asks for `/sphinx.call.`, the room prefix, which every room link has). In
+Peel's terms: text or an attachment (payments, requests and calls are not
+content), someone else's, not deleted, with a non-empty uuid, and not a
+call link. Text in the `call::` form, which Peel draws as a call card,
+still offers Boost, as in the Mac app (iOS and Android send that form as
+type 32). One rule, so the hover bar's
+bolt, the ••• menu (`ChatRow.canBoost`), the engine's `boostTarget`
+(`quickBoost`, `boost`, a retry) and the CLI all follow it. Boost totals
+were already read by `replyUUID` whatever the boosted type, and
+`BoostLine` already sat under every message row.
+
+**A run of images boosts its newest image**, the row's own message, as
+every action on the row does (Reply, the bolt, the row's •••); a tile's
+own menu offers Copy and Save, no Boost. One boost per row, the one that
+pays someone; the Mac app has no grid, so a boost there is always on one
+image. To keep every boost visible and on its own image, a boosted image never
+joins a run: it has a row of its own with its chip under it, and the
+images before and after it make their own runs. Boosting a grid takes its
+newest image out of the grid as the boost lands. Before, a boost (from the Mac app,
+or on our own image) on any but the newest image of a run was summed
+nowhere.
+
+The CLI's `boost` and the engine refused an attachment as `notBoostable`;
+they now take it, like the Mac app. A paid attachment can be boosted
+before it is bought, as there.
+
+A drive step `{"open": "message-menu"}` opens the open chat's newest row
+from someone else's ••• menu, as its More does (no key opens it).
+
+Tests: `MessageTests.someoneElsesTextOrAttachmentIsBoostable` (moved from
+`PaymentTests`, which only had the text case), checked failing on the old
+rule for the attachment and call-link cases; the engine's gate in
+`MoneyRefusalTests.onlySomeoneElsesTextOrAttachmentCanBeBoosted` (a call
+link refused, an image through to the balance check). The run rule lives
+in `ChatRow` (PeelApp), which no test target reaches; the app check
+covers it.
+
+Review (independent agent): nothing on the money path (recipient, amount,
+purchases kept apart by type). Applied: a caption that is a call link,
+an empty uuid, a boosted image out of grids entirely, the drive step
+skipping deleted rows, the engine test. Not applied: a failed boost of
+ours on a text call link, made under the old rule, now refuses Retry with
+`notBoostable`'s generic words; Discard still clears it.
+
+Checked offscreen (`scripts/check-app.sh`, profiles `ba-app` and `ba-bob`
+on the local stack, in a tribe at 3 sats a message): bob sent a captioned
+image, a text file, a paid image (5 sats) and a run of images. The grid
+row's ••• (`message-menu`) offers "Boost 100 sats" (B) with the bolt on
+its hover bar; B boosted its newest image (balance down by 100 plus the
+tribe's price), which then left the grid with its chip under it, the
+older image staying a row of its own. The CLI's `boost` took the
+captioned image, the file and the paid image (locked), and each row shows
+its "⚡ 100 sats" chip. Idle CPU over a minute on the chat: 0.0-0.2%.

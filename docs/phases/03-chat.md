@@ -138,8 +138,8 @@ messages, payments and boosts are separate tasks and not listed.
   to a tribe through the shared `deliver` (sats, tribe alias, `isTribe`).
   A send to a left tribe throws `notInTribe`. In `commit`, a message whose
   chat is a tribe does not rename the contact, takes its time from the
-  tribe's `date`, and is dropped if the tribe was left (the sync cursor still
-  advances past it, `Setting.droppedIndex`, cached in the engine). Our own
+  tribe's `date`, and is dropped if the tribe was left (history still
+  moves past it, `HistoryCursor.from`; phase 2, item 13). Our own
   message coming back from a tribe takes over the row written at send
   (matched on `originalUuid`, decided in the engine and passed to storage as
   `replaces`) and is marked delivered. Our own join or leave (replayed on a
@@ -377,7 +377,8 @@ by `TribeInfo.fetch` (only from a host already trusted for that tribe).
 `/code-review high`, all fixed: `read`/`mute` lost their wait before exit
 (merge slip); a tribe found on another host could never be named (pasting its
 link now looks it up); a restore replaying our leave brought the tribe back
-(own join/leave now set membership); a joined link could set the account's
+(own join/leave now set membership, once past the check for a member's
+replay of our tag: `04-money.md`, "Our tag replayed in a tribe"); a joined link could set the account's
 tribes host (now config or flag only); a tribe's echo of our message did not
 mark it delivered (Retry would have paid twice); a join/leave note could hide
 the time under the message before it; `tribeSenders` counted joins/leaves and
@@ -619,7 +620,7 @@ aliases unique within a tribe).
 `/simplify` (reuse, simplification, efficiency, altitude), applied: one
 `InlineConfirm` for the five confirm-in-place controls (leave, delete,
 remove member, remove from Peel); `TribeServerProgress`, `panelBoxed()`,
-one `SectionLabel`; `MentionsView` reuses `EmptyPlace` and observes only
+one `SectionLabel`; `MentionsView` reuses `EmptyPlace` (since design batch 13, `EmptyState`) and observes only
 while open; `Tribe.canManage`; `String.isPubkey` shared with `TribeLink` and
 the CLI; `changeOwnedTribe` for update and delete, and `poll` takes an async
 check; one `seenInTribe` query behind the members list and mention
@@ -2435,6 +2436,148 @@ or logging.
 
 No unit test: the rule lives in `PeelApp`, which has no test target.
 
+## Blank on opening at "New messages" (branch `fix/blank-timeline-on-open`, 2026-10-12)
+
+From Tom on his build of main (2071689, and 002d77d before it): opening
+"Sphinx & Stak", then "hive", showed the header and composer over an empty
+list, no rows and no day divider, until one scroll brought every row back.
+Both had one or two unread messages at the end (the newest arrived
+overnight); sending in Hive cleared it, which also drops "New messages".
+
+Done means: a chat opening at "New messages" never sits past its drawn
+rows, near the end or far up, and the plain open and a far-up divider
+behave as before. Plus an opt-in log Tom can turn on in his real app
+(`TimelineLog`, `docs/testing.md`, "Timeline log").
+
+Found with the new log on a local stack (dev profiles `tlog-alice-1012`
+and `tlog-bob-1012`, a tribe of 95 to 120 rows with text, wrapped text,
+lists, code, link cards and images; opened from another chat six times
+per run in `check-app.sh`, the offscreen app never marks a chat read):
+
+- Opening with "New messages" set `following = false` and waited 100 ms
+  before its scroll to the divider, so it skipped the bottom scroll the
+  plain open makes. In those 100 ms the initial anchor kept the offset at
+  the lazy stack's estimated end while its estimate swung (5 154, 2 616,
+  then 13 872 pt for 95 rows measured at about 9 500): the rows in view
+  dropped to none (`visible NONE with rows`) on 6 of 6 opens with two
+  unread at the end, and on 1 of 2 with 31 unread. Offscreen the scroll
+  view clamped each time and the rows came back; a divider a row or two
+  from the end then asks for an offset past the end, and with `following`
+  false no re-pin runs, so a list left past its rows stays there. That is
+  the state Tom saw; it was not seen to persist offscreen.
+- The plain open (no divider) scrolls to the end marker in `onAppear` and
+  showed no blank in 6 of 6.
+
+Changed: `MessageList.onAppear` scrolls the chat's list to its end first
+on every open, then (100 ms later, as before) to "New messages" or a
+message asked for. After: two unread at the end, 1 transient blank in 6
+opens (mid-way through the divider pass, recovered within the pass), every
+open ending flush on the newest with the divider in view; 25 unread, 0 of
+6, every open with "New messages" at the top as before; plain opens
+unchanged.
+
+Not changed: a list reported past its end (`below < 0`) counts as at its
+end (`atEnd`, since #134); a scroll back to the end there is left until the
+log shows it in Tom's app, since steering the offset back to the end once
+opened chats blank (#84's branch).
+
+Reviews. Independent review (agent, foreground), applied: the bottom
+scroll is skipped when opening at a message asked for, since reaching the
+bottom there would reset a timeline grown to reach an older message
+(`chatListAtBottom`) before the jump; one `ChatRow.holds(_:)` for the row a
+jump goes to, shared by `go(to:)` and the log; the chat tag is keyed afresh
+at each launch (HMAC), so a pasted log cannot be matched to a tribe's key;
+the log's different configuration with it on is noted in `docs/testing.md`;
+`realised` (rows the lazy stack has made) added, so the log tells a drawing
+problem from a placement one. Not applied: leaving `following` true until
+the first divider pass, so re-pins would hold the end for those 100 ms; it
+changes the jump button's count rules and is left until the log shows it
+is needed. Security: nothing sent, one `UserDefaults` bool read, the log
+at debug level with counts, indices, phases and points only.
+
+Confidence: moderate. It removes the only state the log caught that
+matches Tom's, but the blank never persisted offscreen. If it comes back,
+the log on his account says which placement left it there.
+
+## Blank on opening with nothing made (branch `fix/blank-timeline-unrealised`, 2026-10-12)
+
+From Tom on his build of main (e28e764, with #196): "Sphinx & Stak" still
+opened blank, now with the timeline log on. The log for that chat (200
+messages, 199 rows, no divider, no focus): `place: appear scrollTo
+bottom`, then the estimated content shrank in steps (65 097, 37 629,
+26 647, 22 986 pt) and each time the offset was clamped back to the end;
+`atEnd`, `following` true, no re-pin (the list was always at its end),
+`realised=0` and no "visible rows" report for 5 s, until his first scroll,
+when rows 198 and 195 to 198 appeared at once. Chats that drew showed the
+same shrinking with rows reported within 20 ms, two of them after a
+`repin: resized`. So the placement was right and the lazy stack made no
+row there: an offset reached only by clamping, and a scroll to the end
+marker (an overlay outside the lazy rows) that moved nothing, are not
+drawn for. Also from his log (94acf4): every step of the composer growing
+re-estimated the content about 7 500 pt taller and back within a frame,
+the likely Shift-Return blank (#134) when that lands at the end.
+
+Done means: a chat that opens at its end has rows made there without a
+scroll by hand, and a list at its end with no row made after any height
+change goes to its last row; thread lists, "New messages", jump to a
+message, the composer and search bar resizes behave as before.
+
+Changed, in `MessageList`:
+
+- Rows made are tracked always (`ListTracking.made`, the ids of rows
+  appeared and not gone, in a reference so writing it redraws nothing);
+  the log's `realised` reads it. The log-only counter in `TimelineLog` is
+  gone.
+- The re-pin runs once no further request has come for 20 ms (at most
+  100 ms late while they keep coming) rather than on the next turn, so it
+  does not act on a transient estimate; so it is up to 20 ms later than
+  before after each line the composer grows. With no row made, or on
+  opening, it scrolls to the last row (anchor bottom) first, then 20 ms
+  later to the end marker below its padding, unless a request came in
+  between (which goes instead). Not otherwise: the last row stops 12 pt
+  short of the end, and doing it on every composer line moved the rows
+  12 pt for a frame each time. With none made after three such scrolls
+  it stops trying until a row is made or you scroll.
+- Opening a chat at its end asks for that re-pin by the last row after
+  the scroll to the marker.
+- A height change at the end while following, idle, with rows and none
+  made, re-pins. Not in a thread's list, which reads from its top, nor
+  while opening at a message asked for.
+
+Offscreen (`check-app.sh`, dev profiles `bfx-owner` and `bfx-app` on a
+local stack, a tribe of 200 rows: short and long texts with lists and
+code, five sizes of image, tribe link cards, collapsed threads, boosts):
+the estimate starts too tall (16 224 pt for about 9 000) and shrinks with
+the offset clamped, as in Tom's log, but before the change rows were made
+within milliseconds on all 7 opens: the blank did not reproduce. The
+composer growing by Shift-Return (no text, nothing sent) showed the same
+transient as Tom's 94acf4 (8 995 to 19 780 and back at each line), with
+rows made throughout, before and after. After: 7 of 7 opens end at the
+end with rows in view, the last-row scroll once per open, none during
+the composer's growth, every step of which ends flush (below 0). Idle on
+the chat for a minute: 0.0% with the log off; with it on, 0.0 to 0.4%
+after one 13% sample 25 s in.
+
+The log on adds `.scrollTargetLayout` and the visibility probe; Tom's
+first reports were with it off, so the blank does not depend on it, and
+the fix reads only the always-on count.
+
+Independent review (agent, foreground), applied: the count kept as a set
+of ids, so a doubled appear or disappear cannot switch the fix off; the
+last-row scroll capped (a stack that never makes a row would otherwise be
+scrolled every 40 ms); the wait capped at 100 ms; the second stage gives
+way to a later request or a new last row; the blank re-pin not while
+opening at a message asked for; the request counter moved out of
+`@State`. A first version of the second-stage check compared against the
+task's own request and left six of seven opens 12 pt short; it compares
+against the latest request when the task ran. Not applied: dropping the
+last-row scroll on opening (`made` empty covers a blank); kept so the
+opening is placed by a row, as asked.
+
+Confidence: moderate. It acts on the exact state Tom's log shows
+(at the end, nothing made), but that state never persisted offscreen;
+Tom's build with the log on says whether the last-row scroll draws it.
+
 ## Hover cards and menus at their trigger (branch `fix/hover-card-anchor`, 2026-10-10)
 
 Tom's report: in a tribe, after tapping and hovering several boost chips,
@@ -2526,3 +2669,128 @@ coordinate space, the screen, for anchors, clicks and floating windows.
 Security: layout only, no input, storage, network or logging.
 
 No unit test: the rule lives in `PeelApp`, which has no test target.
+
+### The "1 new message" pill staying at the bottom (2026-10-11)
+
+Tom: a notification for #hive, opened the chat, the new message was the
+last row and fully in view, and the blue "1 new message" pill stayed.
+
+What drives the pill: `MessageList`'s `seenUpTo`, set when the list leaves
+the bottom (more than 24 pt from its end), and the count of unread messages
+after it. Only a crossing back into the bottom, seen as `old` not at the
+bottom and `new` at it, cleared it. Two ways that crossing never shows:
+- The re-pin's early return skips the crossing code. The line that put
+  `farFromBottom` back was added for this same skip, but it left `seenUpTo`
+  alone.
+- Reports are coalesced. In the offscreen runs, an action's `old` was not
+  always the previous action's `new` (for example `old` 1476 pt after a
+  report of 1505 pt). A return to the bottom can then arrive with `old`
+  already at the bottom.
+In both cases the list sits at the bottom with a stale `seenUpTo`, and the
+pill counts every later incoming message, visible ones included, until you
+scroll away and back.
+
+Fix: at the bottom, `seenUpTo` is cleared on every report, before the
+re-pin's early return, not only on a crossing. `following`, the
+`chatListAtBottom` reset and the read-on-reach stay on the crossing, as
+before. The scroll anchors (#134), "New messages" and opening at it are
+unchanged.
+
+Proven vs inferred:
+- Proven by `scripts/check-app.sh` logs: reports are coalesced; after
+  opening at "New messages" or at a notification's message, the list sits
+  at its bottom with `following` false. In one Next Unread run the pill
+  counted the new message while it was on screen ("1 new message", list
+  more than 24 pt from its end), and openAtDivider's second pass happened to take
+  it back.
+- Not reproduced: the pill staying. Offscreen, animated scrolls do not
+  finish (the phase stays `.animating`), and the local stack's tribes server
+  kept losing messages to the CLTV error, so the full sequence could not be
+  driven.
+- Inferred and not fixed: after opening at "New messages" or at a focused
+  message that is already at the bottom, `following` stays false. A row
+  that grows later (a link card, an image) or a new message can leave the
+  list short of its end with `dividerUnread` set, and the pill counts rows
+  in view. A first attempt set `following` once `openAtDivider` ended at the
+  end. It was dropped after review: a large backlog arriving would then
+  scroll past the unread rows, and the check depended on timing.
+
+Checked offscreen with `scripts/check-app.sh` on new development profiles
+funded by the stack's Bank: a notification click, a sidebar select and
+Next Unread (⌥⇧↓) into a chat with one new message, with Lounge open
+first. None showed a stuck pill before or after the fix. Idle on the chat
+for a minute: 0.0–0.2% CPU.
+
+Driving it: a `{"notification": "<chat>"}` drive step clicks the
+notification for the chat's newest message from someone else. Offscreen
+mode now refuses `NSApplication.activate` for every caller, so nothing
+brings the check app to the front.
+
+Reviews (inline). Code review: the `following` change was dropped (above).
+The activate guard moved from `openFromNotification` into `Offscreen.start`.
+The drive steps share the chat lookup. The step is documented in AGENTS.md.
+Simplify: the crossing's own `seenUpTo = nil` was redundant and is removed.
+Security: no new input, storage, network or logging. The drive step runs
+only in offscreen mode.
+
+No unit test: the rule lives in `PeelApp`, which has no test target.
+Extracting the scroll bookkeeping into PeelCore to test one line would
+move the high-risk state machine for no proof of the view's ordering.
+
+### Arrivals that move the list off its bottom (follow-up, 2026-10-11)
+
+From the independent review of the change above. After opening from a
+notification or a search, the list sits at its bottom with `following`
+false. If "New messages" was marked afterwards (`dividerUnread`), an
+arrival that pushed the list off the bottom made the pill count every
+unread row since the divider, including rows that were on screen. If it
+was not marked, the arrival itself went uncounted.
+
+The bookkeeping now lives in `ListBottom` (PeelCore, tested):
+- At the bottom, once the list is still after opening and not scrolling,
+  everything down to the newest message has been in view: `seenAtBottom`.
+  It is noted on every such report, when a scroll phase ends (no report
+  comes while nothing moves), when the list has opened, and when a jump to
+  a message ends.
+- When the list leaves the bottom by itself (not by hand, and not on its
+  way back down while following), only what came after `seenAtBottom`
+  counts. By hand, or while following, the count is as before.
+- Crossings are judged against the last one taken, not against a report's
+  `old`, so `following = true`, the timeline-limit reset and read-on-reach
+  fire even when reports were coalesced. The re-pin's "was at the bottom"
+  test uses the same state.
+
+Not taken from the review's suggestion: clearing `dividerUnread` on an
+at-bottom report. Inserting the divider after "Mark unread" changes the
+list's height, and the report that follows would have dropped the hold.
+It was not needed: a leave by hand already clears it, and a leave by
+itself now counts from `seenAtBottom`.
+
+Checked offscreen (`scripts/check-app.sh`) on new development profiles:
+- After a notification click, a long message arrived and moved the list
+  off its bottom. The pill said "1 new message", counting only the arrival
+  and not the unread message above it that was on screen.
+- After a sidebar select at "New messages", the same arrival counted 1.
+  Main's code would have counted 2 (the divider's row, which was on
+  screen, and the arrival). That is read from the code, not observed: in
+  the run on main the arrival did not move the list off its bottom.
+- Next Unread: no pill. Idle on the chat for a minute: 0.0% CPU.
+
+## Recent calls with a plain loop (2026-10-11, branch `idle/rows-once-per-message`, #138)
+
+Found while measuring idle CPU (`04-money.md`, "Idle CPU"), first written
+on 2026-10-09 with a second change: the conversations list rebuilding the
+open chat's rows on every newest message. #158 fixed that one on main
+(the rebuild now waits for a change of the contact's alias or photo, or
+of whether the chat is a tribe), so the rebased branch keeps only this.
+
+The header's recent calls (`refreshRecentCalls`) run on every rebuild of
+the rows, and since #158 also when the rows come out the same. They
+walked a chain of lazy collections, unspecialized, over every row under
+12 hours old; a plain loop that stops at three calls gives the same
+calls. Busy tribe on a local stack, about one message a second, debug
+build through `scripts/check-app.sh`: `sample` over 25 seconds put 296
+main-thread samples in `refreshRecentCalls` before and 35 after; CPU per
+arriving message 152, 149, 148 ms before and 130, 143, 129 ms after
+(alternating runs, load average near 60). Idle on the tribe for a minute
+afterwards: 0.15%, the main thread waiting in `mach_msg`.

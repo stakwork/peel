@@ -68,40 +68,28 @@ struct PaymentListRow: View {
     var lit = false
     let action: () -> Void
 
-    @State private var hovering = false
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                PaymentAvatar(item: item, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(Theme.font(14, .semibold))
-                        .foregroundStyle(model.nameColour(of: item))
-                    Text(item.subtitle)
-                        .font(Theme.font(12.5))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+        ListRow(size: .md, selected: selected, tint: lit ? Theme.confirmed.opacity(0.14) : nil, action: action) {
+            PaymentAvatar(item: item, size: Theme.AvatarSize.lg)
+        } title: {
+            Text(item.title)
+                .font(Theme.font(14, .semibold))
+                .foregroundStyle(model.nameColour(of: item))
                 .lineLimit(1)
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 2) {
-                    SignedAmount(msat: item.amountMsat, incoming: item.incoming, status: item.status)
-                    Text(time)
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                }
+        } detail: {
+            Text(item.subtitle)
+                .font(Theme.font(12))
+                .lineLimit(1)
+        } trailing: {
+            VStack(alignment: .trailing, spacing: 2) {
+                SignedAmount(msat: item.amountMsat, incoming: item.incoming, status: item.status)
+                    .fixedSize()
+                Text(time)
+                    .font(Theme.font(12))
+                    .monospacedDigit()
+                    .fixedSize()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                selected ? Theme.accent.opacity(0.14) : lit ? Theme.confirmed.opacity(0.14) : hovering ? Theme.hover : .clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 
     private var time: String {
@@ -126,8 +114,7 @@ struct PaymentDetailPane: View {
         PaneFrame(title: "Payment", close: close) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.headline)
-                    .font(Theme.font(12.5))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                 BigAmount(
                     amount: Sats.signed(msat: item.amountMsat, incoming: item.incoming),
                     color: item.status != .complete ? Theme.secondaryText : item.incoming ? Theme.confirmed : Theme.text,
@@ -136,19 +123,17 @@ struct PaymentDetailPane: View {
             }
             who
             if let quoted {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(quoted.label)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                     QuotedMessage(message: quoted.message)
                 }
             } else if let note = item.note {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.kind == .invoice ? "Memo" : "Note")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                     Text(note)
-                        .font(Theme.font(13.5))
+                        .font(Theme.font(13))
                         .textSelection(.enabled)
                 }
             }
@@ -156,27 +141,26 @@ struct PaymentDetailPane: View {
                 Button {
                     model.destination = .chat(chat)
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.Space.xs) {
                         Text(item.isTribe ? "Open in #\(item.chatName ?? "")" : "Open chat with \(item.chatName ?? "them")")
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     }
                 }
                 .buttonStyle(.peel(.link))
             }
-            KeyValues(rows: facts)
+            facts
         }
     }
 
     @ViewBuilder private var who: some View {
         HStack(spacing: 10) {
-            PaymentAvatar(item: item, size: 36)
+            PaymentAvatar(item: item, size: Theme.AvatarSize.lg)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(model.nameColour(of: item))
                 Text(context)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             }
             .lineLimit(1)
         }
@@ -199,41 +183,41 @@ struct PaymentDetailPane: View {
     }
 
     private var pendingStatus: String {
-        guard item.isToContact else { return "Pending: not confirmed by the server yet" }
-        return "Waiting for \(item.chatName ?? "them") to come online. \(WaitingForServer.waitsForPerson(item.chatName))"
+        guard item.isToContact else { return "Pending" }
+        return "Waiting for \(item.chatName ?? "them") to come online, can't be cancelled"
     }
 
-    private var facts: [KeyValues.Row] {
-        var rows: [KeyValues.Row] = []
-        switch item.status {
-        case .complete:
-            rows.append(.init(key: "Status", value: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed))
-        case .pending:
-            rows.append(.init(key: "Status", value: pendingStatus, symbol: "clock"))
-        case .unsettled:
-            rows.append(.init(key: "Status", value: NotSettled.explanation, symbol: "questionmark.circle"))
-        case .failed where item.incoming:
-            rows.append(.init(key: "Status", value: item.error ?? "Not received", symbol: "xmark"))
-        case .failed:
-            rows.append(.init(key: "Status", value: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark"))
+    private var facts: some View {
+        FactList {
+            switch item.status {
+            case .complete:
+                Fact("Status", text: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed)
+            case .pending:
+                Fact("Status", text: pendingStatus, symbol: "clock")
+            case .unsettled:
+                Fact("Status", text: NotSettled.explanation, symbol: "questionmark.circle")
+            case .failed where item.incoming:
+                Fact("Status", text: item.error ?? "Not received", symbol: "xmark")
+            case .failed:
+                Fact("Status", text: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark")
+            }
+            Fact("When", text: Formatting.moment(item.date, seconds: true))
+            Fact("Amount", text: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
+            if let fee = item.feeMsat {
+                Fact("Routing fee", text: fee == 0 ? "None" : Sats.format(msat: fee))
+            }
+            if let why = item.keyExchangeNote {
+                Fact("Why", text: why)
+            }
+            if let ping = item.pingMsat {
+                Fact("Ping", text: Sats.format(msat: ping))
+            }
+            if let hash = item.paymentHash {
+                Fact("Payment hash", text: Formatting.shortKey(hash), monospaced: true) {
+                    CopyButton("Copy", text: hash).buttonStyle(.peel(.outline, size: .sm))
+                }
+            }
         }
-        rows.append(.init(key: "When", value: item.date.formatted(
-            .dateTime.weekday(.wide).day().month(.wide).hour().minute().second()
-        )))
-        rows.append(.init(key: "Amount", value: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
-        if let fee = item.feeMsat {
-            rows.append(.init(key: "Routing fee", value: fee == 0 ? "None" : Sats.format(msat: fee)))
-        }
-        if let why = item.keyExchangeNote {
-            rows.append(.init(key: "Why", value: why))
-        }
-        if let ping = item.pingMsat {
-            rows.append(.init(key: "Ping", value: "\(Sats.format(msat: ping)), sent with it to reach them"))
-        }
-        if let hash = item.paymentHash {
-            rows.append(.init(key: "Payment hash", value: Formatting.shortKey(hash), monospaced: true, copy: hash))
-        }
-        return rows
     }
 }
 
@@ -247,17 +231,16 @@ private struct QuotedMessage: View {
             let sender = model.sender(of: message)
             (Text(sender.label).fontWeight(.semibold).foregroundColor(sender.hue.name)
                 + Text(" · \(Formatting.when(message.date))"))
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
             Text(message.preview)
-                .font(Theme.font(13.5))
+                .font(Theme.font(13))
                 .lineSpacing(3)
                 .lineLimit(6)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.quote, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
     }
 }

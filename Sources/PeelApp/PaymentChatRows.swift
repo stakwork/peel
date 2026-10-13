@@ -15,7 +15,7 @@ struct BoostLine: View {
     var showsChip = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             if showsChip, boosts.count > 0 {
                 BoostChip(boosts: boosts, chat: chat, inTribe: inTribe)
             }
@@ -47,12 +47,11 @@ private struct BoostChip: View {
     let inTribe: Bool
 
     @State private var showing = false
-    @State private var hovering = false
 
     static let shownBoosters = 3
     /// A booster without a photo shows their initial on their colour, as
     /// everywhere else.
-    private static let avatarSize: CGFloat = 16
+    private static let avatarSize = Theme.AvatarSize.xs
     private static let overlap: CGFloat = 5
 
     /// One per person, first boost first: by alias, as the Mac app keeps
@@ -69,14 +68,8 @@ private struct BoostChip: View {
         let people = boosters
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
-        let fill = mine ? Theme.boostMineFill : Theme.quote
-        // The hairline keeps the chip's edge on a tinted, hovered or
-        // selected row; it firms up under the pointer.
-        let edge = hovering ? Theme.secondaryText.opacity(0.4) : mine ? Theme.accent.opacity(0.25) : Theme.divider
-        Button {
-            showing = true
-        } label: {
-            HStack(spacing: 4) {
+        Chip(.inset, lit: mine, action: { showing = true }) {
+            HStack(spacing: Theme.Space.xs) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
@@ -89,7 +82,7 @@ private struct BoostChip: View {
                                                   chat: chat, inTribe: inTribe)
                         Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Self.avatarSize, hue: avatar.hue)
                             .padding(1)
-                            .background(fill, in: Circle())
+                            .background(ChipStyle.inset.fill(lit: mine), in: Circle())
                             .zIndex(Double(Self.shownBoosters - index))
                     }
                 }
@@ -105,24 +98,22 @@ private struct BoostChip: View {
             .padding(.leading, 7)
             .padding(.trailing, people.count > Self.shownBoosters ? 7 : 2)
             .padding(.vertical, 1)
-            // Circular ends: the default (continuous) capsule's stroke
-            // draws square stubs past its ends at this height.
-            .background(fill, in: Capsule(style: .circular))
-            .overlay(Capsule(style: .circular).strokeBorder(edge))
-            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help(help)
         .peelPopover(isPresented: $showing) {
-            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe)
+            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe) { showing = false }
         }
     }
 
     private var help: String {
-        let count = boosts.count == 1 ? "1 boost" : "\(boosts.count) boosts"
-        return "\(Sats.format(msat: boosts.totalMsat)) from \(count)"
-            + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
+        boosts.summaryLine + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
+    }
+}
+
+private extension BoostSummary {
+    /// "1,210 sats from 3 boosts".
+    var summaryLine: String {
+        "\(Sats.format(msat: totalMsat)) from \(Formatting.count(count, "boost"))"
     }
 }
 
@@ -132,83 +123,72 @@ private struct BoostersPanel: View {
     let boosts: BoostSummary
     let chat: String
     let inTribe: Bool
+    let done: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Boosts")
-                    .font(Theme.font(14, .bold))
-                Spacer()
-                Text(Sats.format(msat: boosts.totalMsat))
-                    .font(Theme.font(13, .semibold))
-                    .monospacedDigit()
-            }
+        Panel("Boosts", compact: true, close: done) {
+            Text(boosts.summaryLine)
+                .monospacedDigit()
+                .muted()
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
                                                   chat: chat, inTribe: inTribe)
-                        HStack(spacing: 8) {
-                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: 22, hue: avatar.hue)
+                        ListRow {
+                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Theme.AvatarSize.md, hue: avatar.hue)
+                        } title: {
                             Text(avatar.label)
-                                .font(Theme.font(13))
                                 .foregroundStyle(avatar.hue.name)
                                 .lineLimit(1)
-                            Spacer(minLength: 8)
-                            if boost.pendingSince != nil || boost.unsettled {
-                                Text(boost.unsettled ? "not settled" : "sending")
-                                    .font(Theme.font(12))
+                        } trailing: {
+                            HStack(spacing: Theme.Space.sm) {
+                                if boost.pendingSince != nil || boost.unsettled {
+                                    Text(boost.unsettled ? "not settled" : "sending")
+                                        .font(Theme.font(12))
+                                        .foregroundStyle(Theme.secondaryText)
+                                        .fixedSize()
+                                }
+                                Text(Sats.format(msat: boost.amountMsat))
+                                    .font(Theme.font(13))
+                                    .monospacedDigit()
                                     .foregroundStyle(Theme.secondaryText)
+                                    .fixedSize()
                             }
-                            Text(Sats.format(msat: boost.amountMsat))
-                                .font(Theme.font(13))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.secondaryText)
                         }
                     }
                 }
             }
+            // The rows' own inset lines their text up with the panel's.
+            .padding(.horizontal, -8)
             .frame(maxHeight: 240)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .frame(width: 260)
     }
 }
 
-/// "Waiting for the server…" once our payment or boost has gone unconfirmed
-/// past the usual wait; to a person (`person`, a direct message's chat)
+/// "Waiting for the server…" once our payment or boost, or a message that
+/// paid a tribe's price, has gone unconfirmed past the usual wait; for a
+/// payment to a person (`person`, a direct message's chat)
 /// "Waiting for Bob to come online", since their server holds the sats
 /// until their app answers. It may have paid, so there is no Discard or
 /// Retry until the engine marks it failed; Peel has no way to cancel it
-/// and the server no expiry for it, so it says so (`waitsForPerson`,
-/// payments review F5).
+/// and the server no expiry for it, so it says so (payments review F5).
 struct WaitingForServer: View {
     @Environment(AppModel.self) private var model
     let since: Date
     let what: String
     var person: String?
 
-    /// What a payment of ours waiting for `name` (nil: unnamed) to come
-    /// online will do, here and in Payments' detail.
-    /// Hedged: a ping that never left (the connection went, or the app
-    /// quit, during the wait for the server) means nothing wakes the
-    /// payment, and one the server never recorded fails later.
-    static func waitsForPerson(_ name: String?) -> String {
-        let when = name.map { "\($0) next opens" } ?? "they next open"
-        return "It should pay when \(when) Sphinx, however long that takes. It can't be cancelled from here"
-    }
-
     var body: some View {
         TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
                 let words = person.map { person in
                     let name = model.contactName(person)
-                    let days = Int(Message.waitingLimit / 86_400)
-                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled from here",
-                            help: "\(Self.waitsForPerson(name)). Their server holds it until then. For \(days) days it is kept out of what you can spend; after that the sats count as spendable again, but it may still go through if your balance covers it.")
+                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled",
+                            help: "It pays when \(name.map { "\($0) next opens" } ?? "they next open") Sphinx.")
                 } ?? (label: "\(what) waiting for the server…",
-                      help: "It may already have paid, so it cannot be sent again until the server says it failed.")
+                      help: "It may have paid already, so it can't be resent.")
                 Text(words.label)
                     .font(Theme.font(11, .medium))
                     .foregroundStyle(Theme.secondaryText)
@@ -225,7 +205,7 @@ struct NotSettled: View {
     let what: String
 
     /// The same words in Payments' detail.
-    static let explanation = "Not settled: the server passed it on but never confirmed the sats moved; your balance shows whether they did"
+    static let explanation = "Unconfirmed. Check your balance to see if it went"
 
     var body: some View {
         Text("\(what) not settled")
@@ -281,14 +261,14 @@ struct PaymentRow: View {
                     Text("Not received")
                         .font(Theme.font(11, .medium))
                         .foregroundStyle(Theme.secondaryText)
-                        .help(PaymentItem.notArrived + ". The message came; the sats did not.")
+                        .help("The message came, but the sats did not.")
                 }
             }
             .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
             .opacity(message.isSending() ? 0.6 : 1)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 6)
         .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
@@ -342,7 +322,7 @@ struct PaymentRequestRow: View {
         HStack(alignment: .top, spacing: MessageRow.gutterSpacing) {
             Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: MessageRow.avatarSize,
                    hue: row.sender.hue)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 RunHeader(row: row)
                 card
                 if message.fromMe, message.delivery == .failed {
@@ -351,7 +331,7 @@ struct PaymentRequestRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 6)
         .rowChrome(row, lit: flashed, hovering: hovering)
         .contentShape(Rectangle())
@@ -362,49 +342,49 @@ struct PaymentRequestRow: View {
 
     @ViewBuilder private var card: some View {
         let invoice = request?.invoice
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt")
-                    .font(.system(size: 11))
-                Text("\(row.sender.label) requested")
-                Spacer(minLength: 8)
-                if case .paid = request?.state {
-                    Label("Paid", systemImage: "checkmark")
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(Theme.text)
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt")
+                        .font(.system(size: 11))
+                    Text("\(row.sender.label) requested")
+                    Spacer(minLength: 8)
+                    if case .paid = request?.state {
+                        Label("Paid", systemImage: "checkmark")
+                            .font(Theme.font(12, .semibold))
+                            .foregroundStyle(Theme.text)
+                    }
+                }
+                .muted()
+                if let invoice {
+                    BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 22, unitSize: 14, spacing: 5)
+                    if !invoice.memo.isEmpty {
+                        Text(invoice.memo).font(Theme.font(14)).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !message.fromMe, request?.paysRequester == false {
+                        Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.attention)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    footer(invoice)
+                } else {
+                    Text("Can't read this invoice, so it can't be paid.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
                 }
             }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
-            if let invoice {
-                BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 22, unitSize: 14, spacing: 5)
-                if !invoice.memo.isEmpty {
-                    Text(invoice.memo).font(Theme.font(13.5)).fixedSize(horizontal: false, vertical: true)
-                }
-                if !message.fromMe, request?.paysRequester == false {
-                    Text("This invoice pays \(Formatting.shortKey(invoice.payee)), not \(row.sender.name).")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.attention)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                footer(invoice)
-            } else {
-                Text("This request's invoice cannot be read, so it cannot be paid.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Theme.Space.md)
+            .frame(width: 320, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: 320, alignment: .leading)
-        .cardBoxed()
         .padding(.top, 2)
     }
 
     @ViewBuilder private func footer(_ invoice: Invoice) -> some View {
         switch request?.state ?? .open {
         case .underpaid(let msat):
-            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount") came; this invoice cannot take the rest.")
+            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount"). This invoice can't take the rest.")
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.attention)
@@ -412,41 +392,36 @@ struct PaymentRequestRow: View {
         case .paid(let at):
             Text(message.fromMe ? "Paid\(at.map { " · \(Formatting.when($0))" } ?? "")"
                  : "You paid\(at.map { " · \(Formatting.when($0))" } ?? "")")
-                .font(Theme.font(12))
                 .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
         case .paying:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text("Paying; it stays pending until the server confirms.")
+                Text("Paying…")
             }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
+            .muted()
         case .open, .failed:
             UntilExpiry(invoice: invoice) { expired in
                 if expired {
                     Text("Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 } else if message.fromMe {
                     Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         if case .failed(let reason) = request?.state {
                             Text("Not paid\(reason.map { ": \($0)" } ?? ""). Nothing was sent.")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
                         PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                             await model.payRequest(message, invoice: invoice, confirmedMsat: confirmed)
                         }, sent: {}, isDefault: false, namesAmount: false)
                         if let problem = attempt.problem { ProblemText(problem) }
                     }
-                    .padding(.top, 4)
+                    .padding(.top, Theme.Space.xs)
                 }
             }
         }

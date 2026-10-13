@@ -49,11 +49,20 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
+    - `Engine+Preferences.swift` — `set`, every change to a user setting
+      through `Preferences`; the sync with the official apps' encrypted
+      `/preferences` file (`syncPreferences`, one at a time; on connect, 2 s
+      after a change, `refreshPreferences` when the app comes to the
+      front), `.preferencesChanged`
     - `Engine+History.swift` — restore and catch-up: asks for the pages
-      `HistoryCursor` names, the stall watchdog, recovering the account's
-      own photo
+      `HistoryCursor` names, the stall watchdog, a page the core refuses
+      whole read again without what it cannot read (`readablePart`, found
+      by halves in `readable`), recovering the account's own photo
     - `HistoryCursor.swift` — the history machine without the network: the
-      run in flight, the queue, a restore's plan, paging and stalls (tested)
+      run in flight, the queue, a restore's plan, paging and stalls, and
+      where history stands, every message below it handled by a page or
+      live (`from`, kept as `Setting.historyFrom`), where every catch-up
+      starts (tested)
   - `Account.swift` — load, signup, create and restore: the one place that
     decides where the mnemonic, the server and the tribes host come from
   - `Storage.swift` — SQLite via GRDB for one profile: init, the profile lock,
@@ -65,11 +74,16 @@ is a short plan. Update the status and the journal when you finish something.
     messages, then tribes that mention you, then other tribes), the five
     most recent tribes and direct messages with "Show all", the open chat
     always shown, the search, and the next unread chat (tested)
+  - `ListBottom.swift` — a message list against its bottom, for its jump
+    button's "N new messages": what counts as seen at the bottom and when
+    the list leaves it, crossings judged against the last one taken (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
-    states, tribes and their senders, mentions, payments, the shared SQL
+    states and the unread messages behind them, tribes and their senders,
+    mentions, payments, the shared SQL
     (`tribeChats`, `chatsSQL`, `countsAsUnreadSQL`)
   - `Storage+Threads.swift` — replies and threads: `timeline(in:)` (tribe
-    threads collapsed), `thread(_:in:)`, `threads()`, parents, boosts and
+    threads collapsed), `thread(_:in:)`, `threads()`, `threads(in:limit:)`
+    (one chat's, whoever wrote), parents, boosts and
     thread summaries
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
@@ -88,11 +102,16 @@ is a short plan. Update the status and the journal when you finish something.
   - `Sats.swift` — amounts as people see and type them (display and input
     only; money is kept in msat): `format` drops the rest of a sat as the
     official apps do, `exact` keeps it for a tribe's prices
-  - `PeelError.swift` — `PeelError`, a failure worded for the person
+  - `PeelError.swift` — `PeelError`, a failure worded for the person:
+    `readable` (an error's words, mid-sentence) and `problem` (the one
+    way the app shows a failure, as a sentence, after "Could not …"
+    when needed; tested)
   - `Tribe.swift` — tribe records, tribe links, the tribes server's
     registry, and `TribePrice`: what a member pays to join or per message
     (the amount the engine sends, and why it is more than the owner's
-    price), the only price shown to someone who will pay it
+    price), the only price shown to someone who will pay it; `Tribe.exit`
+    (leave, remove from Peel, or neither) and `Tribe.pages` (its app and
+    second brain, in their one order)
   - `NotificationPolicy.swift` — what notifies (messages, payment
     requests, announced calls, join requests to owned tribes) and the one
     "quiet here" rule (the chat in view, its mute level) that messages,
@@ -143,24 +162,45 @@ is a short plan. Update the status and the journal when you finish something.
     line that previews show
   - `TimeZones.swift` — time zones: the offset in a message's `metadata`
     (sent unless the chat's switch is off, never to a public tribe; read
-    with Peel's own parser), the per-chat `chatTimeZone` rows, `localTime(of:)`
-  - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`
+    with Peel's own parser), the per-chat switch (a `timezone`
+    preference), `localTime(of:)`
+  - `Preferences.swift` — the one owner of every user setting: the
+    registry (`Preference`: the preferences file's key, account or device
+    scope, the official encoding), `JSONValue`, the official reader's
+    rewrite rules (`isOfficialFixedPoint`), the `preference` table's
+    reads and dated writes (phase 11)
+  - `PreferencesFile.swift` — the preferences file without the network:
+    read as the official apps read it (refused whole if they could not),
+    the merge per item by date, everything else copied through untouched,
+    and the conditional apply
+  - `Transport.swift` — one MQTT connection (mqtt-nio); `ServerAddress`;
+    in debug builds `init(publishing:)`, the tests' broker that answers
+    pings, takes every connect and subscribe, and takes or refuses each
+    write (`Engine.connectingForTesting` puts it under a connect)
   - `StateCodec.swift` — the MessagePack shape the core uses for its state,
-    and the amounts beside the onions of a history page
-    (`paymentAmounts`, what really arrived)
+    and a history page's onions (`onions`, `batch` to frame some again)
+    with each one's index and, for a payment, what really arrived
+    (`paymentAmounts`)
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
     claims, unchecked) and `.hex` for bytes
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
     the words in the data-protection Keychain sealed under a six-digit PIN
     (moved there from the login Keychain on first unlock), `.development`
-    profiles in a plain file with no PIN (CLI only)
+    profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
+    data-protection Keychain item, which the words and the agent's key
+    share) and `FileItem` (an owner-only file) behind `SecretItem`; the
+    profile's `agentCredential` (the agent's provider, model and API key)
+    and `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
     size-limited `Transfer` (also the memes and call servers') and its
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
-    "public https, or http to this machine" (`isAllowed`, `isThisMac`)
+    "public https, or http to this machine" (`isAllowed`, `isThisMac`);
+    `postToThisMac`, a JSON POST with an optional bearer key to a server on
+    this Mac only, following no redirect and through no proxy (the
+    agent's memory)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -173,33 +213,48 @@ is a short plan. Update the status and the journal when you finish something.
   calls; the view passes the call window's opening in), `AppModel+Payments`
   (`PaymentOutcome`, boosts, sends, history, invoices, buying an
   attachment), `AppModel+Contacts` (adding by code, invites) and
-  `AppModel+TimeZones` (sender zones, local times, the zone setting);
+  `AppModel+TimeZones` (sender zones, local times, the zone setting) and
+  `AppModel+Agent` (opening the account's `AgentSession`, its tools and
+  system prompt, the key kept through `Profile.agentCredential`, the tool
+  rows' titles, and the memory tools once its strut is running: Peel's
+  own (`BundledStrut`), started with the agent and started again before
+  a reply if it stopped; a development profile's only with `-strut YES`,
+  its data in the profile's folder: an experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
   shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus,
-  `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
+  and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`), `ImageCaches`
   (`ImageCache`, bounded: attachments, and photos apart, and `animations`: GIFs' frames and sizes, Giphy's bytes; `MediaInfoCache`),
-  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers), `Clipboard`,
-  `Formatting`, `ConversationView` (with the tribe header and
+  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
+  `Formatting` (counts and their nouns, times and dates), `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
+  for the chat: `MessageViews`, `TimelineLog` (the opt-in log of the message list's placement, `defaults write dev.peel.mac PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log"), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
   `ComposerField` (the message field: Return sends, `@` mentions),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PaymentAttempt`, `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, the shared `PaymentPanes` and `PaymentItem+Display`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
-  view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor`, `RightClickCatcher`, `WindowReader`), with
+  view modifiers with `.menuAnchor` and its `MenuAnchor`, `KeyMonitor` with the written Escape order and `KeyCode`, the named key codes, `RightClickCatcher`, `WindowReader`), with
   `MenuPresenter` (the presenter and the menu's own views, `MenuPanel` and
-  `MenuRow`), `Controls` (`MenuButton`, `HoverIconButton`, `PeelDropdown`,
-  `UnreadBadge`, `.hiddenShortcut`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
+  `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
+  `.hiddenShortcut`, `SettingDropdown`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyFeedback` (`CopyButton` and the menu's "Copied" pill, for every copy);
+  the agent chat: `AgentViews` (`PeelLogo`, `AgentTag`, the sidebar's
+  `AgentLink`, `AgentChatView` with Peel's first message and its Connect
+  card, the turn rows, tool rows (an acting tool's outcome and View) and
+  the failure row, `AgentApprovalCard` (a send waiting on you, where its
+  row will be), `AgentConnectButton`), `AgentMemoryViews` (a memory
+  tool's opened row in sentences, and `MemoryPanelView`, one memory beside
+  the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
+  model and the test call) and `AgentSettings` (Account › Peel agent, with
+  the "Always allowed" rules and Revoke);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
@@ -207,12 +262,34 @@ is a short plan. Update the status and the journal when you finish something.
   keep on top and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
-  `UI/`, the component library over `Theme` (`docs/design/README.md`,
+  `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
   "Component library"): `PeelButton`, shadcn's button (variants primary,
   secondary, outline, ghost, destructive, link; sizes sm, md, lg;
-  `.buttonStyle(.peel(...))`; every text button but the call header's split
-  Join and the small ones inside rows), with `buttonProgress`, the spinner inside a running button;
-  `FormKit` (the form system, shadcn's conventions: `FormPopover`, `FormSection`,
+  `.buttonStyle(.peel(...))`; every text button but the small ones inside
+  rows), with `buttonProgress`, the spinner inside a running button;
+  `IconButton`, shadcn's icon button (ghost or outline, 28 or 24 square,
+  `lit`, `working`; every icon button but the call window's control bar,
+  controls over media and the composer's);
+  `Panel`, shadcn's card in a popover (title, actions top right, close,
+  body, footer; 372 or 320 `compact`; the only box a popover has; every
+  popover), and `PanelHero`, the top of a details panel;
+  `Section` (`SectionHeader`, every heading over a group but the
+  sidebar's) and `Card` (`Card`, raised or inset, every card and the
+  boxes in a chat; `Callout`, shadcn's alert: a chat's and the window's
+  notices, a tribe you cannot post in, an amber note, a download, the
+  words reminder);
+  `Badge` (`Badge`, a word or count in a capsule: unread counts, gold
+  when it mentions you, "New", Payments' "+350", the day divider; `Chip`,
+  a tag on and off, and a message's boosts);
+  `Rows` (`ListRow`, shadcn's item: hover and the one selected fill,
+  `Theme.selection`; search results, time zones, members, boosters,
+  Payments' rows, mentions; `FactList` and `Fact`, a description list on
+  a card: tribe details, a payment, an invoice, the Account's sections);
+  `EmptyState` (shadcn's empty: the words a screen, pane or list shows
+  with nothing in it, an optional title and actions: the start screen,
+  Threads, Mentions, Payments, the web pane's failed page; `.sm` in a
+  panel's list: no time zone matches);
+  `FormKit` (the form system, shadcn's conventions: `FormSection`,
   `FormItem`, `FormTextField`, `FormNumberField`, `FormSwitchRow`,
   `FormDestructiveSection`, `FieldChrome`,
   `endsEditingOnClick` and `InlineConfirm`, the one in-place confirm, over
@@ -224,14 +301,119 @@ is a short plan. Update the status and the journal when you finish something.
   and for a contact their key, its QR code and Remove);
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
   own data store, its toolbar and address field, the routing of http and
-  https links, Browser and a tribe's second brain and app as More menu
-  items);
+  https links, Browser and a tribe's pages as More menu items, and
+  `WebPane.open(_ page:)`, the one way a tribe's page opens);
   `Notifier` for local notifications and the Dock badge; `MoneyArrivals` for
   sats received: the header's count-up, the Payments row's "+350", one
   notification per arrival; `CallTestRoom`, the development-only LiveKit
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
   and WebRTC)
+- `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
+  and iOS; the plan is `docs/agent-architecture.md`, the phase
+  `docs/phases/09-agents.md`)
+  - `JSONValue.swift` — any JSON value (props, event fields, tool schemas
+    and arguments, the model clients' bodies) and `StableJSON`, the one
+    encoding AgentKit writes (keys sorted); `JSONValue+Access.swift` — its
+    literals, `init(parsing:)`, `jsonString` and accessors
+  - `HLC.swift` — the hybrid logical clock: `tick` for a local event,
+    `receive` for a remote one
+  - `Event.swift` — `Event`, the only write: its JSON (the contract with
+    the official apps, versioned by `v`) and what each op's fields mean
+  - `AgentStore.swift` — `Record`, `Link`, the read results, the
+    `AgentStore` protocol, and `add`/`update`/`link`/`unlink`/`forget`/
+    `restore`, which build the events so callers never do
+  - `SQLiteAgentStore.swift` — the event log and applying it: idempotent
+    by event_id, last write wins per field (`field_clock`), `rebuild`
+  - `SQLiteAgentStore+Reads.swift` — `read`, `search` (FTS5 over name and
+    body), `walk` (depth at most 2), `ontology`, `records(type:)` (oldest first)
+  - `SQLiteAgentStore+Migrations.swift` — its own schema, append-only
+  - `Model/` — the model clients: `ModelProvider` (a `ModelRequest` in, a
+    stream of `ModelEvent`s out, cancelled with its task), `ModelMessage`
+    and its content blocks, `ModelError` (the failures worded plainly,
+    keys scrubbed from provider messages), `AnthropicProvider` (Messages),
+    `OpenAICompatibleProvider` (Chat Completions: OpenAI, OpenRouter),
+    `ModelHTTP` (the one shared session, no cookies, cache or redirects;
+    https only; `Secret`, a key that prints as "[key]"; the streamed body) and `ServerSentEvents` (the SSE parser)
+  - `Loop/` — `Tool` (with its read, send or write effect, whose `asks`
+    and `runsSideBySide` are exhaustive so a new effect must decide: only
+    send asks, only read runs beside others; and `Plan`: a result at once
+    or an action to approve) and `ToolRegistry`,
+    `ContextWindow` (the recent turns that fit a budget, tokens estimated
+    at three UTF-8 bytes each), `RetryPolicy` (when a failed model call is
+    made again on its own, and how long it waits), `Compaction` (when older
+    turns are summarised, where the cut falls, the one summarising call),
+    `AgentLoop` (one turn: stream, run tools, repeat; reads next to each
+    other side by side, any other call alone, in order; Stop is cancelling
+    its task; every action asks its approver)
+    and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
+    card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
+    the person, shared by the app and the CLI; `ApprovalRules`, the
+    "always" rules as records, per tool and target, never for a cost)
+  - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
+    key pages, the picker's models, the client), `AgentCredential` (prints
+    without its key) and `AgentCredentialStore`; `AgentSession`, the agent
+    chat's model: the conversation as `Conversation`, `Turn`,
+    `ToolCall` and `Summary` records (the summary sent in place of older
+    turns), the streaming reply (shown every 50 ms), Stop,
+    failures and Retry, connecting with a test call, the model, removing
+    the key, Clear, the agent's name and `close`; the approval card of its
+    run (`waiting`, `answer`, the outcome kept on the tool's row) and the
+    rules (`approvalRules`, `revoke`)
+- `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
+  and PeelCore; no AppKit or UIKit)
+  - `SphinxTools.swift` — the read tools under the official Mac app's names
+    (`get_contacts_and_tribes`, `read_recent_messages`,
+    `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
+    each through the reads the app's views use; the system prompt that
+    goes with them
+  - `ChatDirectory.swift` — a chat by the name the model gives: chat id,
+    exact, normalised, without spaces, part of a name, then typos;
+    ambiguous rather than a guess
+  - `ChatData.swift` — a tool's result: header, the chats' data between
+    markers that say other people wrote it, one cleaned line per message in
+    the official format (`[sender] date (uuid=… thread=… reply=…): text`)
+    under a heading with the chat id, capped and cut by whole lines
+  - `SendTool.swift` — `send_sphinx_message`, effect send: the chat by
+    the read tools' resolver, thread and reply by `Engine.checkLinks`, the
+    card's words and a tribe's price, then `Engine.sendText` capped at
+    that price; its row's line ends with the sent message's ids
+  - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
+    the account's `agent.sqlite` as the app and the CLI open it
+  - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut`:
+    started when an app account opens its agent (and again before a reply
+    if it stopped), erased with the account (`erase`: what the agent
+    remembered and its automations), its key made by Peel for
+    this launch and kept only in memory, its port the OS's, read from its
+    ready line (only `127.0.0.1` with Peel's key is trusted); the caller's
+    `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
+    `SSL_CERT_*` dropped, and
+    its OpenSSL (Ladybug's, built for Homebrew's folders) given no
+    configuration, engines or providers; its workspace and memory
+    graph in `~/Library/Application Support/Peel/Strut`; its log read and
+    dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
+    two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
+  - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
+    strut on this Mac owns (`docs/agent-brain.md`): its address and
+    `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`;
+    looked at again by `AppModel.lookForMemory` before each reply, which
+    drops a strut that stopped; the key never printed, dumped or
+    reflected); one memory
+    step run by
+    `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
+    arguments as the run's `input` under the config `{{ input }}` (strut
+    templates any config, so memory text never goes as one), strut's reply
+    read back, a step's own refusal as the failure, cleaned to one line
+  - `MemoryTools.swift` — `remember`, `forget_memory`, `merge_memory`
+    (effect write: never asks) and `recall`, `read_memory`,
+    `memory_ontology` (reads), each one strut step; the vocabulary is only
+    strut's; `created_by` is set here, never by the model; a result is one
+    cleaned line (the row's summary) then the JSON between the chat-data
+    markers
+  - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
+    message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
+    model is told to write it, and the one at the end of a send row's
+    line; the app opens it in place of the web
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -239,49 +421,105 @@ is a short plan. Update the status and the journal when you finish something.
   - `Commands+Account.swift`, `Commands+Contacts.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
+  - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
+    the terminal (the key from `PEEL_AGENT_API_KEY` only); with
+    `--profile`, the Sphinx read tools over that profile, read-only; with
+    `--send`, connected, and the send tool, each send asked in the
+    terminal (`TerminalLines`, stdin shared by the prompt and the question)
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `ChatSectionsTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
-  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`,
-  `ServerAddressTests`, `WebTests`, `WebPageTests`, `GiphyTests`; the audits'
+  `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
+  `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
+  `SphinxToolsTests` (PeelAgent's, here for the storage fixtures: name
+  resolution, each tool on a seeded profile, caps, unseen grouping, message
+  text that tries to end the data block) and `SendToolTests` (the send
+  tool over a real engine: the card's words, the price cap through the
+  tool (a price raised while the card waits is refused in the engine's
+  words), threads and replies, hidden characters) and
+  `AgentMessageLinkTests` (the agent's message links and a send row's
+  link, only the one at the end) and `MemoryToolsTests` (this Mac only,
+  the POST included; the key never printed; strut's replies and refusals; which tools write; the
+  rows' lines; the markers; `created_by`); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
+- `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
+  the clock, apply order, idempotency, per-field last write wins, forget
+  and unlink, rebuild, search, walk and ontology); streams in `Fixtures/`
+  (written by hand from the providers' docs) through both decoders, and
+  each provider's text and tool stream (`StreamCaseTests`: the one in
+  `Fixtures/recorded/` when Tom has recorded it with
+  `scripts/record-agent-fixtures.sh`, else the hand-written one), HTTP
+  statuses to `ModelError` (a bad key per provider), the
+  request bodies over an in-process `URLProtocol` stub, the loop with
+  a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
+  caps, Stop during a wait, read tools side by side and in order, an
+  action between reads; `CompactionTests`: the trigger, the cut, the
+  summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
+  failures and Retry, connecting, the key, reopening, Clear) and
+  `ApprovalTests` (the loop with a scripted approver, the gate's rules,
+  the session's card, writes that never ask and finish before a later read starts); `TestSupport` (the scripted provider and approver,
+  the in-memory credential, a connected session, `StreamCase`). No test
+  calls a model provider or uses a real key
+- `scripts/record-agent-fixtures.sh` — records one provider's real streams
+  into `Tests/AgentKitTests/Fixtures/recorded/` (ids scrubbed; refuses
+  anything holding a key); Tom runs it by hand with his own key, never an
+  agent or a test (docs/testing.md, "Recorded streams")
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
   come from), `Journeys` (runs them one at a time) and the journeys by area,
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
-  `ReconnectJourneys`
+  `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`, `AgentJourneys`
+  (the agent's tools and approval gate over a real account, the model
+  scripted); `FundDev` (the bank's half of
+  `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
-  wire tap down, up, or freezes it (a dead connection that looks open)
+  wire tap down, up, or freezes it (a dead connection that looks open),
+  or deafens it (the broker's replies lost after a register)
+- `scripts/fund-dev.sh` — the only allowed way to give a development profile
+  sats: a real payment from the bank on a local stack ("Checking the app")
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
-- `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
-  `sphinx-mac-v2` checkouts
+- `scripts/build-ffi.sh` — assembles the bindings: downloads the pinned
+  `sphinx-rs` and `sphinx-mac-v2` files from GitHub, or with `--update` takes
+  them from sibling checkouts
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
-  `LiveKitWebRTC.framework`) in `Contents/Frameworks`
+  `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
+  `stage-strut.sh` staged in `Contents/Strut` (without one it warns: that
+  Peel's agent has no memory or automations)
+- `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
+  once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
+  which every checkout's `bundle-app.sh` copies: strut's desktop package
+  (`package-desktop.mjs --no-stt`, with Ladybug and the `memory/*` steps)
+  and Node, a pinned release checked against its SHA-256 (cached in
+  `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
+  Run it once, after strut changes, and again if macOS clears Caches
 - `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
   (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
   development profile (see "Checking the app")
-- `scripts/run-app.sh` — `bundle-app.sh`, then installs to
+- `scripts/run-app.sh` — refuses without a staged strut (`PEEL_ALLOW_NO_STRUT=1`
+  to go on), `bundle-app.sh`, then installs to
   `~/Applications/Peel.app` and opens it from there (so a Dock pin survives rebuilds)
 - `scripts/signing-identity.sh` — the identity both signing scripts use
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
-  microphone, camera), frameworks first (see Signing)
+  microphone, camera), frameworks and the strut's Node and native
+  libraries first (Node with `scripts/strut-node.entitlements`:
+  allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon
@@ -297,9 +535,12 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 .build/debug/peel --profile <dev> listen             # CLI
 ```
 
-`scripts/build-ffi.sh` checks the static library against `Vendor/sphinxrs.lock`
-(sha256 plus the `sphinx-rs` commit); pass `--update` after deliberately taking a
-new build of the core.
+`Vendor/sphinxrs.lock` pins the core: the static library's sha256, the
+`sphinx-rs` commit and the `sphinx-mac-v2` commit that ships the library.
+`scripts/build-ffi.sh` downloads exactly those files (cached in
+`.build/sphinx-core`) and refuses a library with another hash. To move to a new
+core, check out the new commits in sibling `sphinx-rs` and `sphinx-mac-v2`
+checkouts, push them, and run `scripts/build-ffi.sh --update`.
 
 The app bundle is assembled by hand in `scripts/bundle-app.sh`; there is no
 Xcode project for the app itself. To check a build without replacing the
@@ -335,7 +576,9 @@ quitting before any window opens.
   {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
   {"open": "send-sats"}                   // the open chat's Send sats panel, as its bolt opens it
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
+  {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
+  {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"type": "green"}
   {"wait": 0.5}
@@ -343,19 +586,32 @@ quitting before any window opens.
   ```
 
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own
-  event queue, so key monitors and shortcuts see them as typed; `keyCode`
+  event queue, so key monitors and shortcuts see them as typed (a key
+  with ⌘ is offered to the window's views first, as AppKit does for a key
+  window, which an app never active has none of); `keyCode`
   is real only for the US-layout letters, digits, punctuation and named
   keys above (other characters are sent with code 0). There is
   no mouse step: posted clicks do not reach SwiftUI's buttons in an app
   that is never active, so reach a control by its shortcut or add a
   named step like `select`.
+- A new development profile on the local stack starts with 0 sats, and
+  adding a contact needs 6. **The only allowed way to fund one** is
+  `scripts/fund-dev.sh <stack dir> <dev profile> <sats>`: the
+  integration tests' bank adds the profile as a contact (named "bank")
+  and pays it, a real payment on that stack (`docs/testing.md`, "Funding a
+  development profile"). It refuses `default`, `throwaway`, and any server
+  that is not the named stack's loopback broker. Never write a balance,
+  setting or any other value into a profile's database, and never write a
+  throwaway test that calls `Bank` to do this instead.
 
 ## Signing and the weekly re-sign
 
 The app keeps the words in the data-protection Keychain, which needs the
 `keychain-access-groups` entitlement, which needs a provisioning profile. Tom
 has a free Personal Team (team `T3M78XC3UV`, bundle ID `dev.peel.mac`, access
-group `T3M78XC3UV.dev.peel.mac`), so:
+group `T3M78XC3UV.dev.peel.mac`). A bundle ID belongs to one team, so a build
+signed by any other team is `dev.peel.mac.<team>` instead (`PEEL_BUNDLE_ID`
+overrides it), with its own, empty Keychain. So:
 
 - `scripts/sign-app.sh` builds `scripts/provision` (an empty app, same bundle
   ID) with `xcodebuild -allowProvisioningUpdates` into `.build/provision`,
@@ -393,14 +649,24 @@ group `T3M78XC3UV.dev.peel.mac`), so:
 swift test      # needs the generated bindings, like swift build
 ```
 
+Before writing, changing, reviewing or auditing a test, read
+`.claude/skills/test-audit/SKILL.md` (Claude loads it as the `test-audit`
+skill): the four questions every new test must answer, the patterns that
+fail them, the contracts never to drop, and how to sweep for gaps and
+low-value tests.
+
 `Tests/PeelCoreTests` uses Swift Testing and runs offline, each storage test in
 its own temporary profile directory. It covers `StateCodec` round-trips and
 malformed input; `Storage` commits (atomic state and settings), message upsert
-(uuid dedupe, server fields from the later copy, cross-chat uuid rejection),
-status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
+(uuid dedupe, server fields from the later copy, cross-chat uuid rejection,
+a deleted message kept empty when its copy comes again), status by tag, read markers (server truth, pending, mark unread), contact alias/photo rules, the `conversations()` and
 `timeline(in:)` first emission, and the profile lock; `Message` helpers;
 `ServerAddress` parsing; and the `Engine` helpers that need no server
-(mnemonics, invites, a fresh account); attachment encryption against an
+(mnemonics, invites, a fresh account, the words check: which
+accounts start checked, wrong words named by place, nothing kept on a mismatch); who a message from the core is
+from (`SenderTests`: a live sender believed only when the topic agrees,
+history from strangers dropped, our own copy in the chat it went to and a
+tribe's copy of it taking over its row, a member's replay of our tag dropped, a request's amount from its invoice); attachment encryption against an
 independent RNCryptor vector, media tokens, file kinds and names, the media
 cache, and the attachment columns; dropped and pasted files (`IncomingFiles`); person colours (`PersonHue`: the key
 format and a stable hash) and the gold chip's mention of you or @all; mention matching, the aliases that name
@@ -420,10 +686,23 @@ search, or refused), the per-profile store identifier and a tribe's app and seco
 (`ContactCode` parsing and its refusals, tribe and contact links found
 in message text (`MessageLink`), QR codes read from a picture,
 invite statuses by tag, an invite marked used by the key exchange that
-names it, new contacts, the invite and add refusals, the price to join
-held to the balance and the threshold); refusals as typed
+names it, new contacts, live contact records (type 33) kept only when
+this account signed them, the invite and add refusals, the price to join
+held to the balance and the threshold); money when the connection goes
+(`ConnectionDropTests`: a send that never left fails and may go again, one
+cut short or dropped after a write stays pending, a tribe text (which pays
+the tribe's price) waits like a payment and is never sent again while the
+server may have it, a tribe file's first send takes over its draft and one
+that never left may go again, a send whose row went meanwhile is never
+published, two Retries at once pay once, only a payment over half an hour
+old that the server never recorded fails, a signup cut short after its
+register keeps its words and registers again with the invite while one
+whose register never left leaves nothing, and a new account's inviter is
+added at most once);
+refusals as typed
 `Engine.Failure` cases with their words; and the whole migration chain from a v1
-database, with the literals frozen into shipped migrations; and the audit's
+database, with the schema frozen after v17 and after v23 and the literals
+frozen into shipped migrations; and the audit's
 adversarial inputs (`Audit*.swift`: seeded random and huge input to the
 parsers, markup in linear time against a reference, link labels, names,
 hosts, codes and the attachment cipher). Nothing talks to
@@ -436,6 +715,15 @@ or 8000); opt-in, see `docs/testing.md`:
 
 ```sh
 PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
+```
+
+No test calls a model provider or uses a real API key, opt-in or not. The
+providers' real streams reach the tests as files Tom records by hand with
+his own key; agents never run the recorder (docs/testing.md, "Recorded
+streams"):
+
+```sh
+PEEL_AGENT_PROVIDER=anthropic PEEL_AGENT_API_KEY=<key> scripts/record-agent-fixtures.sh
 ```
 
 `Tests/PeelBenchmarks` times the hot paths on a synthetic account (50
@@ -500,10 +788,20 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   same transaction as the state. The server echoes sent messages to all of the
   account's devices.
 - The core recovers a message's sender from its signature, so a sender can
-  only ever name themself. For a live message the child index in the topic
+  only ever name themself. "Ours" is weaker: the core also takes a message
+  for ours by a replayed tag or a shared date, either of which a contact
+  can arrange, so `Engine` keeps one only when signed by our own key
+  (`accountKey`) or by a known tribe in its own chat. The core also files
+  a signer as a contact at the index it wrote to, so a core contact
+  without a contact key is no proof of a tribe. For a live message the child index in the topic
   names the contact as well and `Engine` requires the two to agree. History
   (`batch`) messages are accepted only from contacts the core knows. Contact
-  records (type 33) are honoured by the core only when signed by this account.
+  records (type 33) in history are honoured by the core only when signed by
+  this account; the core Peel links (`bd9e140`, before upstream's SR-017)
+  takes a live one from anyone, so `Engine.run` keeps a live record only
+  when this account signed it (`isForeignContactRecord`).
+  `scripts/build-ffi.sh` warns while the linked core lacks upstream's client
+  security fixes.
 - Names and photos are not core state; they arrive with messages and invites.
   A contact is a conversation only once the core holds their key (`ready`).
 
@@ -543,10 +841,15 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Tom works on this Mac while agents run. Run builds, tests and test
-  servers at background priority so his work always comes first:
-  `taskpolicy -b swift build`, `taskpolicy -b swift test`,
-  `taskpolicy -b scripts/bundle-app.sh`, `taskpolicy -b scripts/test-stack.sh`.
-  Delete your worktree's `.build` when you finish.
+  servers at normal priority (`taskpolicy -b` keeps them on the efficiency
+  cores and made builds several times slower), with at most three agents
+  building at once. Iterate with `swift test --filter`; run the full suite
+  once before the PR. Delete your worktree's `.build` when you finish.
+- Work in your own worktree (`git worktree add .claude/worktrees/<name>
+  <branch>`), never in a shared checkout. `~/Documents/peel` is where other
+  sessions run: never switch its branch or edit files there.
+  `~/Documents/peel-main` is Tom's build folder, kept at `origin/main` for
+  `scripts/run-app.sh`: never commit, edit, check out or build anything there.
 - Do not add a dependency for something under a hundred lines.
 - Keep the engine agent-ready (`docs/agent-native.md`): no UI types, global
   state or single-account assumptions in `PeelCore`; every user action is an
@@ -557,7 +860,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   decoration; no red for ordinary failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
-  FormKit, `PeelButton`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
+  FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `MenuPresenter`, `PictureField`, `.menuAnchor`,
   `.hiddenShortcut`, `Formatting`) and use it. If two places need the same
   thing and no shared piece exists, make one and move both onto it; never
   write a second copy. Each behaviour has one owner: one place that handles

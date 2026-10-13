@@ -26,12 +26,15 @@ extension Storage {
         /// (marked unread on another device), except where ours is pending.
         var reads: [String: Int64] = [:]
         var mutes: [String: Int] = [:]
-        /// An outgoing row sent again: it takes the new send's uuid, tag and
-        /// payment hash, keeps when it was first sent, and with `auto` notes
-        /// that a reconnect sent it (`Message.autoResentAt`).
+        /// An outgoing row sent again: it takes the new send's uuid, tag,
+        /// payment hash and sats (`msat`, what this send carries, so a row
+        /// first sent free that now paid a tribe's price may have paid),
+        /// keeps when it was first sent, and with `auto` notes that a
+        /// reconnect sent it (`Message.autoResentAt`).
         var resend: Resend?
         typealias Resend = (
-            id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, timestamp: Int64, auto: Bool
+            id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, msat: Int64?,
+            timestamp: Int64, auto: Bool
         )
         var tribes: [Tribe] = []
         /// Rows of the server's payment history.
@@ -116,7 +119,8 @@ extension Storage {
                 let addsUs = commit.marksNewContacts && trustSender && !message.fromMe
                     && message.type == MessageType.contactKey
                 let isNew = try (money || addsUs) && !(Bool.fetchOne(
-                    db, sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)", arguments: [message.uuid]
+                    db.cachedStatement(sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)"),
+                    arguments: [message.uuid]
                 ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 applied.stored.append(row)
@@ -201,29 +205,36 @@ extension Storage {
             for (chat, level) in commit.mutes {
                 try Self.setMute(db, chat: chat, level: level)
             }
-            // The rule of `Message.isRetryable`, held here too: text again once
-            // failed or unconfirmed, a payment or boost only once it failed.
+            // The rule of `Message.isRetryable`, held here too: a row that
+            // failed, or one unconfirmed that cannot have paid (it carried no
+            // sats, or never left, as an attachment's draft before its first
+            // send); a payment or boost only once it failed. A row the rule
+            // refuses throws, so the whole commit, and with it the publish,
+            // is abandoned.
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,
                     sql: """
                         UPDATE message SET uuid = ?, tag = ?,
                             paymentHash = CASE WHEN type = \(MessageType.invoice) THEN COALESCE(?, paymentHash) ELSE ? END,
-                            status = ?, timestamp = ?, firstSentAt = COALESCE(firstSentAt, timestamp),
+                            msat = ?, status = ?, timestamp = ?, firstSentAt = COALESCE(firstSentAt, timestamp),
                             autoResentAt = COALESCE(?, autoResentAt)
                         WHERE id = ? AND chat = ? AND fromMe = 1 AND deleted = 0
                             AND type IN (\(MessageType.sqlList(MessageType.resendable + MessageType.payments)))
-                            AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))))
+                            AND (status = ? OR (status = ? AND type IN (\(MessageType.sqlList(MessageType.resendable)))
+                                AND NOT \(Self.mayHavePaidSQL)))
                         RETURNING *
                         """,
                     arguments: [
-                        resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, Message.Delivery.pending.rawValue,
+                        resend.uuid, resend.tag, resend.paymentHash, resend.paymentHash, resend.msat,
+                        Message.Delivery.pending.rawValue,
                         resend.timestamp, resend.auto ? resend.timestamp : nil,
                         resend.id, resend.chat,
                         Message.Delivery.failed.rawValue, Message.Delivery.pending.rawValue,
                     ]
                 )
-                if let row { applied.stored.append(row) }
+                guard let row else { throw PeelError("that message is no longer waiting to be sent") }
+                applied.stored.append(row)
             }
             return applied
         }
@@ -232,8 +243,12 @@ extension Storage {
     /// A message can arrive more than once: live, as the server's echo of our own
     /// send, and again from history. Rows are matched on uuid. Server-side facts
     /// (index, time, amount, hash) are filled in from the later copy; what the
-    /// message says is kept from the first. A uuid already used in another
-    /// conversation is rejected, so no contact can rewrite another's messages.
+    /// message says is kept from the first, and with it a request's hash: the
+    /// core takes a contact's message for ours by a replayed tag or its date,
+    /// and parses a uuid without checking it, so a later "ours" with our
+    /// request's uuid could carry any invoice (`isOurRequest`). A uuid already
+    /// used in another conversation is rejected, so no contact can rewrite
+    /// another's messages.
     ///
     /// A tribe gives each message it forwards a new uuid and keeps the sender's
     /// as `originalUuid`, so our own message coming back from the tribe takes
@@ -241,8 +256,7 @@ extension Storage {
     private static func store(_ message: Message, replacing original: String?, in db: Database) throws -> Message? {
         if let original, let uuid = message.uuid,
            let merged = try Message.fetchOne(
-               db,
-               sql: """
+               db.cachedStatement(sql: """
                    UPDATE message SET
                        uuid = ?,
                        serverIndex = COALESCE(?, serverIndex),
@@ -252,7 +266,7 @@ extension Storage {
                    WHERE uuid = ? AND chat = ? AND fromMe = 1
                        AND NOT EXISTS (SELECT 1 FROM message WHERE uuid = ?)
                    RETURNING *
-                   """,
+                   """),
                // The tribe forwarding it proves the server took it.
                arguments: [
                    uuid, message.serverIndex, message.timestamp, message.sender, Message.Delivery.delivered.rawValue,
@@ -262,8 +276,7 @@ extension Storage {
             return merged
         }
         return try Message.fetchOne(
-            db,
-            sql: """
+            db.cachedStatement(sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
                      mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat, noWords)
@@ -273,7 +286,10 @@ extension Storage {
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
                     timestamp = COALESCE(excluded.timestamp, message.timestamp),
                     msat = COALESCE(excluded.msat, message.msat),
-                    paymentHash = COALESCE(excluded.paymentHash, message.paymentHash),
+                    -- A request's hash is its invoice's, which goes with the body kept.
+                    paymentHash = CASE WHEN message.type = \(MessageType.invoice)
+                        THEN COALESCE(message.paymentHash, excluded.paymentHash)
+                        ELSE COALESCE(excluded.paymentHash, message.paymentHash) END,
                     tag = COALESCE(message.tag, excluded.tag),
                     sender = COALESCE(message.sender, excluded.sender),
                     -- A deleted message stays empty whatever copy comes again.
@@ -289,7 +305,7 @@ extension Storage {
                         THEN excluded.amountMsat ELSE COALESCE(message.amountMsat, excluded.amountMsat) END
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
-                """,
+                """),
             arguments: [
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
@@ -446,15 +462,12 @@ extension Storage {
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
     private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
         let photo = photoURL?.httpsOnly
-        try db.execute(
-            sql: """
-                INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
-                ON CONFLICT(pubkey) DO UPDATE SET
-                    alias = COALESCE(NULLIF(excluded.alias, ''), alias),
-                    photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
-                """,
-            arguments: [pubkey, alias, photo]
-        )
+        try db.cachedStatement(sql: """
+            INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
+            ON CONFLICT(pubkey) DO UPDATE SET
+                alias = COALESCE(NULLIF(excluded.alias, ''), alias),
+                photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
+            """).execute(arguments: [pubkey, alias, photo])
     }
 
     /// `chatState.readPending`: a marker moved here and not yet sent.
@@ -709,7 +722,8 @@ extension Storage {
         } update: { db, row in
             let noWords = Message.hasNoWords(type: row["type"], content: row["content"])
             if noWords != row["noWords"] {
-                try db.execute(sql: "UPDATE message SET noWords = ? WHERE id = ?", arguments: [noWords, row["id"] as Int64])
+                try db.cachedStatement(sql: "UPDATE message SET noWords = ? WHERE id = ?")
+                    .execute(arguments: [noWords, row["id"] as Int64])
             }
         }
         try set(Self.noWordsVersion, for: .noWordsScan)
@@ -804,9 +818,11 @@ extension Storage {
 
     /// Removes a contact and their chat in one transaction: the core's
     /// `c/` entry, every message in the chat, the contact row, the read
-    /// marker and mute level, and the time zone switch. The money tables
-    /// (payments, invoices, pings, invites) stay: they are history, and
-    /// what is still settling keeps its record. Returns the removed
+    /// marker and mute level. The money tables (payments, invoices, pings,
+    /// invites) stay: they are history, and what is still settling keeps
+    /// its record. The time zone switch stays too: it is the account's
+    /// preference, on its other devices and in the preferences file, and
+    /// comes back if the contact is added again. Returns the removed
     /// attachments, so their files can go too.
     func deleteContact(_ pubkey: String) throws -> [Message] {
         try pool.write { db in
@@ -814,7 +830,7 @@ extension Storage {
                 db, sql: "SELECT * FROM message WHERE chat = ? AND type = ?", arguments: [pubkey, MessageType.attachment]
             )
             try CoreStateRow.deleteAll(db, keys: ["c/\(pubkey)"])
-            for table in ["message", "chatState", "chatTimeZone"] {
+            for table in ["message", "chatState"] {
                 try db.execute(sql: "DELETE FROM \(table) WHERE chat = ?", arguments: [pubkey])
             }
             try db.execute(sql: "DELETE FROM contact WHERE pubkey = ?", arguments: [pubkey])

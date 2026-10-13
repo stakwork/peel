@@ -24,64 +24,63 @@ struct CallCard: View {
         let presence = model.presence(of: link.room)
         let onIt = model.isOnCall(link.room)
         let notSent = message.notSent
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Image(systemName: link.audioOnly ? "phone" : "video")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.secondaryText)
-                        Text(link.audioOnly ? "Audio call" : "Video call")
-                            .font(Theme.font(14, .semibold))
-                    }
-                    if notSent {
-                        line("Not sent")
-                    } else if onIt {
-                        who(presence.people ?? [], "You're on this call")
-                    } else {
-                        switch presence {
-                        case .live(let people) where !people.isEmpty:
-                            who(people, "\(people.count) on the call")
-                        case .live: line("No one on the call")
-                        case .ended: line("Call ended")
-                        case .unknown:
-                            // So the card does not grow under the reader when it does.
-                            if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                HStack(spacing: Theme.Space.md) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            Image(systemName: link.audioOnly ? "phone" : "video")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.secondaryText)
+                            Text(link.audioOnly ? "Audio call" : "Video call")
+                                .font(Theme.font(14, .semibold))
+                        }
+                        if notSent {
+                            line("Not sent")
+                        } else if onIt {
+                            who(presence.people ?? [], "You're on this call")
+                        } else {
+                            switch presence {
+                            case .live(let people) where !people.isEmpty:
+                                who(people, "\(people.count) on the call")
+                            case .live: line("No one on the call")
+                            case .ended: line("Call ended")
+                            case .unknown:
+                                // So the card does not grow under the reader when it does.
+                                if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
+                            }
                         }
                     }
+                    Spacer(minLength: 0)
+                    if notSent {
+                        // Never sent again: its room would be stale. Start a new one.
+                        Button("Discard") { Task { await model.discard(message) } }
+                            .buttonStyle(.peel(.outline, size: .sm))
+                            .help("Remove this call, which was never sent")
+                    } else if leaving == nil {
+                        button(onIt)
+                    }
                 }
-                Spacer(minLength: 0)
-                if notSent {
-                    // Never sent again: its room would be stale. Start a new one.
-                    Button("Discard") { Task { await model.discard(message) } }
-                        .buttonStyle(.peel(.outline, size: .sm))
-                        .help("Remove this call, which was never sent")
-                } else if leaving == nil {
-                    button(onIt)
+                if let leaving {
+                    VStack(spacing: 0) {
+                        Theme.divider.frame(height: 1).padding(.bottom, 10)
+                        CallSwitchConfirm(
+                            other: leaving, joining: true, working: model.joiningRoom == link.room,
+                            cancel: { self.leaving = nil }, confirm: join
+                        )
+                    }
+                    .padding(.top, 2)
+                }
+                if let failure = model.callFailures[link.room] {
+                    Text(failure)
+                        .muted()
+                        .textSelection(.enabled)
                 }
             }
-            if let leaving {
-                VStack(spacing: 0) {
-                    Theme.divider.frame(height: 1).padding(.bottom, 10)
-                    CallSwitchConfirm(
-                        other: leaving, joining: true, working: model.joiningRoom == link.room,
-                        cancel: { self.leaving = nil }, confirm: join
-                    )
-                }
-                .padding(.top, 2)
-            }
-            if let failure = model.callFailures[link.room] {
-                Text(failure)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Theme.Space.md)
+            .frame(width: Self.width, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: Self.width, alignment: .leading)
-        .cardBoxed()
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
@@ -94,17 +93,17 @@ struct CallCard: View {
 
     private func line(_ text: String) -> some View {
         Text(text)
-            .font(Theme.font(12.5))
+            .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(minHeight: Self.lineHeight)
     }
 
     private func who(_ people: [CallParticipant], _ text: String) -> some View {
         HStack(spacing: 7) {
-            if !people.isEmpty { CallPeopleStack(people: people, size: 24, border: Theme.quote) }
+            if !people.isEmpty { CallPeopleStack(people: people, size: Theme.AvatarSize.md, border: Theme.quote) }
             OnlineDot()
             Text(text)
-                .font(Theme.font(12.5))
+                .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
         }
@@ -207,7 +206,9 @@ struct CallHeaderButton: View {
     @Environment(\.openWindow) private var openWindow
     let chat: String
 
+    /// The phone button's, and the split Join's chevron's: one per trigger.
     @State private var anchor = MenuAnchor()
+    @State private var chevron = MenuAnchor()
     /// What waits for "Leave and join" (or start), and the call it leaves.
     @State private var pending: (action: Pending, other: String)?
 
@@ -224,7 +225,7 @@ struct CallHeaderButton: View {
     @ViewBuilder private var content: some View {
         let recent = model.recentCalls
         let live = recent.first { model.presence(of: $0.room).isLive }
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             if let pending {
                 let joining: Bool = if case .join = pending.action { true } else { false }
                 CallSwitchConfirm(
@@ -233,18 +234,9 @@ struct CallHeaderButton: View {
                     cancel: { self.pending = nil }, confirm: { run(pending.action) }
                 )
             } else if let live {
-                if let failure = model.callFailures[live.room] {
-                    Text(failure)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 260, alignment: .trailing)
-                        .help(failure)
-                }
                 pill(live)
             } else {
-                HeaderButton(systemImage: "phone", help: "Start a call", working: model.startingCallIn == chat) {
+                IconButton("phone", help: "Start a call", lit: menuOpen, working: model.startingCallIn == chat) {
                     showMenu(header: false)
                 }
                 .menuAnchor(anchor)
@@ -275,6 +267,9 @@ struct CallHeaderButton: View {
         let count = model.presence(of: live.room).people?.count ?? 0
         let onIt = model.isOnCall(live.room)
         let joining = model.joiningRoom == live.room
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        // One outline box split in two: Join as a ghost `.sm` button, the
+        // chevron as a ghost icon button.
         return HStack(spacing: 0) {
             Button {
                 ask(.join(live), leaving: model.otherCall(than: live.room))
@@ -282,41 +277,37 @@ struct CallHeaderButton: View {
                 HStack(spacing: 7) {
                     OnlineDot()
                     Text("\(onIt ? "Open" : "Join") · \(count)")
-                        .font(Theme.font(13, .semibold))
                         .monospacedDigit()
                 }
                 .buttonProgress(joining || model.startingCallIn == chat)
-                .foregroundStyle(Theme.text)
-                .padding(.horizontal, 10)
-                .frame(height: 28)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.peel(.ghost, size: .sm))
             .disabled(model.joiningRoom != nil && !joining)
             .help(onIt ? "Bring the call window forward" : "Join the newest live call")
             .accessibilityLabel(onIt ? "Open the call, \(count) on it" : "Join the call, \(count) on it")
-            Theme.divider.frame(width: 1, height: 28)
-            Button { showMenu(header: true) } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 24, height: 28)
-                    .contentShape(Rectangle())
+            Theme.inputBorder.frame(width: 1, height: PeelButton.Size.sm.height)
+            IconButton(help: "Start a new call", lit: menuOpen) {
+                showMenu(header: true)
+            } label: {
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .help("Start a new call")
-            .accessibilityLabel("More call options")
+            .menuAnchor(chevron)
         }
-        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
-        .menuAnchor(anchor)
+        .background(Theme.fieldFill, in: shape)
+        .overlay { shape.strokeBorder(Theme.inputBorder) }
     }
+
+    private var menuSource: AnyHashable { "call-\(chat)" }
+
+    /// Its menu is open: the button that opened it is lit.
+    private var menuOpen: Bool { presenter?.isOpen(from: menuSource) == true }
 
     private func showMenu(header: Bool) {
         let items: [MenuEntry] = [
             .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: anchor, source: "call-\(chat)")
+        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: header ? chevron : anchor, source: menuSource)
     }
 
     private func start(audioOnly: Bool) {
@@ -331,7 +322,7 @@ struct CallHeaderButton: View {
     private func run(_ action: Pending) {
         model.openingCallWindow({ openWindow(id: CallWindow.id) }) {
             let done = switch action {
-            case .join(let link): await model.joinCall(link, in: chat)
+            case .join(let link): await model.joinCall(link, in: chat, failureInChat: true)
             case .start(let audioOnly): await model.startCall(in: chat, audioOnly: audioOnly)
             }
             pending = nil
@@ -358,7 +349,7 @@ struct CallSwitchConfirm: View {
         let text = Text("Leave the call in ") + Text(other).fontWeight(.semibold)
             + Text(joining ? " and join?" : " and start a new one?")
         let commit = joining ? "Leave and join" : "Leave and start"
-        let buttons = HStack(spacing: 8) {
+        let buttons = HStack(spacing: Theme.Space.sm) {
             Button("Cancel", action: cancel)
                 .buttonStyle(.peel(.outline, size: .sm))
             Button(action: confirm) { Text(commit).buttonProgress(working) }
@@ -378,7 +369,7 @@ struct CallSwitchConfirm: View {
                 }
             }
         }
-        .font(Theme.font(13.5))
+        .font(Theme.font(13))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Switch calls")
     }
@@ -395,52 +386,46 @@ struct OnCallBar: View {
 
     var body: some View {
         let people = call.people
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
-                OnlineDot(color: call.state == .connected ? Theme.confirmed : Theme.secondaryText)
-                ChatTitle(title: call.title)
-                    .font(Theme.font(13, .bold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                CallStatusText(call: call, size: 12)
-            }
-            HStack(spacing: 7) {
-                CallPeopleStack(people: people, size: 20, border: Theme.quote)
-                Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
-                    .font(Theme.font(12.5))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
-            .frame(minHeight: 20)
-            HStack(spacing: 6) {
-                let label = call.micOn ? "Mute" : "Unmute"
-                Button(action: call.toggleMicrophone) {
-                    Image(systemName: call.micOn ? "mic" : "mic.slash")
-                        .font(.system(size: 13))
-                        .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
-                        .frame(width: 30, height: 30)
-                        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.divider) }
-                        .contentShape(Rectangle())
+        Card(.inset) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 7) {
+                    OnlineDot(color: call.state == .connected ? Theme.confirmed : Theme.secondaryText)
+                    ChatTitle(title: call.title)
+                        .font(Theme.font(13, .bold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    CallStatusText(call: call, size: 12)
                 }
-                .buttonStyle(.plain)
-                .disabled(call.micAccess == .refused)
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-                .help("\(label) (⌘⇧A)")
-                .accessibilityLabel(label)
-                Button { openWindow(id: CallWindow.id) } label: {
-                    Label("Return to call", systemImage: "arrow.up.forward.square")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 7) {
+                    CallPeopleStack(people: people, size: Theme.AvatarSize.sm, border: Theme.quote)
+                    Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
+                        .font(Theme.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.peel(.outline, size: .sm))
-                .help("Bring the call window forward")
+                .frame(minHeight: 20)
+                HStack(spacing: 6) {
+                    let label = call.micOn ? "Mute" : "Unmute"
+                    IconButton(help: "\(label) (⌘⇧A)", variant: .outline, action: call.toggleMicrophone) {
+                        Image(systemName: call.micOn ? "mic" : "mic.slash")
+                            .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
+                    }
+                    .disabled(call.micAccess == .refused)
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    Button { openWindow(id: CallWindow.id) } label: {
+                        Label("Return to call", systemImage: "arrow.up.forward.square")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.peel(.outline, size: .sm))
+                    .help("Bring the call window forward")
+                }
             }
+            .padding(.vertical, 10)
+            .padding(.leading, Theme.Space.md)
+            .padding(.trailing, 10)
         }
-        .padding(.vertical, 10)
-        .padding(.leading, 12)
-        .padding(.trailing, 10)
-        .cardBoxed()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("On a call in \(call.title)")
     }

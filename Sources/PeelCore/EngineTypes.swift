@@ -19,6 +19,9 @@ extension Engine {
         case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
+        /// A background check with the server failed: shown as `coreError`
+        /// is, and gone once connected again.
+        case serverCheckError(String)
         /// The name or photo this account sends changed (by the user, or
         /// filled in by a restore).
         case profile(alias: String, photoURL: String?)
@@ -45,6 +48,8 @@ extension Engine {
         /// contact is marked new until their chat is opened. Follows its
         /// `.message`.
         case contactAdded(Message)
+        /// A sync applied preferences set on another device: read them again.
+        case preferencesChanged
 
         public enum Direction: Sendable {
             case upload, download
@@ -128,7 +133,16 @@ extension Engine {
         /// unusable muid, or bytes that are no image.
         case noPaymentTemplate
         case uploadInProgress
+        /// The preferences file on the memes server did not decrypt, or
+        /// holds an item the official apps could not read: left alone.
+        case unreadablePreferences
+        /// The memes server says there is no preferences file, though this
+        /// device has seen one: it says so for storage errors too, so
+        /// nothing is changed or written.
+        case preferencesMissing
         case invalidAmount
+        /// A boost amount is whole sats, as the official apps keep it.
+        case partSat
         case balanceUnknown
         case insufficientBalance
         /// Over the confirmation threshold (an invite, always): show the
@@ -208,6 +222,11 @@ extension Engine {
         case nicknameTooLong
         case inviteMessageTooLong
         case cancelInProgress
+        /// Words typed back that differ from the account's, by position
+        /// (1 to 12). Never the words.
+        case wrongWords(positions: [Int])
+        /// Words to check against that are not this account's.
+        case notThisAccountsWords
 
         public var description: String {
             switch self {
@@ -218,7 +237,12 @@ extension Engine {
             case .invoiceWithoutAmount: "that invoice names no amount; Peel only pays invoices that say how much"
             case .serverTimedOut: "the server did not answer in time"
             case .noInvoiceFromServer: "the server made no invoice (its Lightning node may be down); try again later"
+            case .unreadablePreferences:
+                "the preferences file on the memes server could not be read, so settings are not synced and the file is left as it is"
+            case .preferencesMissing:
+                "the memes server did not return the preferences file this account has, so settings are not synced and nothing is written"
             case .invalidAmount: "the amount must be more than nothing"
+            case .partSat: "a boost amount is a whole number of sats"
             case .balanceUnknown: "the balance is not known yet; connect first"
             case .insufficientBalance: "the balance is not enough for that"
             case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) needs confirming first"
@@ -310,6 +334,11 @@ extension Engine {
             case .nicknameTooLong: "the nickname is too long"
             case .inviteMessageTooLong: "the message is too long"
             case .cancelInProgress: "an invite is already being cancelled"
+            case .wrongWords(let positions):
+                positions.count == 1
+                    ? "word \(positions[0]) does not match"
+                    : "words \(positions.map(String.init).formatted(.list(type: .and))) do not match"
+            case .notThisAccountsWords: "those are not this account's twelve words"
             }
         }
     }
@@ -333,7 +362,7 @@ extension Engine {
     }
 
     /// What an invite code carries: where to connect and who sent it.
-    public struct Invite: Sendable, Equatable {
+    public struct Invite: Sendable, Equatable, Codable {
         public let code: String
         public let server: String?
         public let inviterContactInfo: String?

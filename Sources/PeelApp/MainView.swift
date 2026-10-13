@@ -1,3 +1,4 @@
+import AgentKit
 import SwiftUI
 import PeelCore
 
@@ -17,9 +18,9 @@ struct MainView: View {
             VStack(spacing: 0) {
                 Detail()
                 if let notice = model.notice {
-                    NoticeBar(text: notice) { model.notice = nil }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
+                    Callout(detail: notice, icon: .problem, dismiss: { model.notice = nil })
+                        .padding(.horizontal, Theme.Space.xl)
+                        .padding(.vertical, Theme.Space.sm)
                         .background(Theme.background)
                 }
                 if model.usesFileSecrets {
@@ -158,7 +159,7 @@ private struct ResizeHandle: NSViewRepresentable {
 /// Shown on development profiles, whose words are not in the Keychain.
 struct FileSecretsBanner: View {
     var body: some View {
-        Text("Development profile: its twelve words are in a plain file. Throwaway accounts only.")
+        Text("Development profile. Throwaway accounts only.")
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(maxWidth: .infinity)
@@ -180,22 +181,38 @@ struct Detail: View {
                 if let conversation = model.selectedConversation {
                     ConversationView(conversation: conversation)
                 } else {
-                    EmptyPlace(title: "Peel", message: "Pick a conversation.")
+                    start("Pick a conversation.")
                 }
             case .threads:
                 ThreadsView()
             case .mentions:
                 MentionsView()
+            case .automations:
+                AutomationsView()
             case .payments:
                 PaymentsView()
             case .account:
                 AccountView()
+            case .agent:
+                if let agent = model.agent {
+                    AgentChatView(agent: agent)
+                } else {
+                    start("The agent chat could not be opened.")
+                }
             case nil:
-                EmptyPlace(title: "Peel", message: "Pick a conversation, or add a contact.")
+                start("Pick a conversation, or add a contact.")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background.ignoresSafeArea())
+    }
+
+    /// No chat open: the app's name over what to do.
+    private func start(_ message: String) -> some View {
+        VStack(spacing: 0) {
+            DetailHeader(title: "Peel")
+            EmptyState(message)
+        }
     }
 }
 
@@ -206,6 +223,8 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
     /// A click on the icon or the title: the chat's details, which open
     /// below More (`HeaderMoreButton`), not here.
     var onTitle: (() -> Void)?
+    /// Beside the title: the agent chat's AGENT.
+    var showsAgentTag = false
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -221,7 +240,7 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
             Spacer()
             trailing
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .frame(height: 60)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
     }
@@ -230,9 +249,12 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
         HStack(spacing: 10) {
             leading
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Theme.font(16, .bold))
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(Theme.font(16, .bold))
+                        .lineLimit(1)
+                    if showsAgentTag { AgentTag() }
+                }
                 if let subtitle {
                     Text(subtitle)
                         .font(Theme.font(12))
@@ -258,17 +280,3 @@ extension DetailHeader where Trailing == EmptyView {
     }
 }
 
-struct EmptyPlace: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 0) {
-            DetailHeader(title: title)
-            Text(message)
-                .font(Theme.font(14))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}

@@ -32,9 +32,10 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                DetailHeader(title: "Payments", subtitle: "Amounts in sats" + (model.waitingText.map { " · \($0)" } ?? ""),
+                DetailHeader(title: "Payments",
+                             subtitle: model.waitingMsat > 0 ? "\(Sats.format(msat: model.waitingMsat)) waiting" : nil,
                              leading: { EmptyView() }) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.sm) {
                         HeaderAction(title: "Receive", systemImage: "arrow.down.left", active: pane == .receive) {
                             pane = pane == .receive ? nil : .receive
                         }
@@ -64,7 +65,7 @@ struct PaymentsView: View {
                     lightArrived()
                 }
             } catch {
-                problem = PeelError.readable(error)
+                problem = PeelError.problem(error, couldNot: "load payments")
             }
         }
         // Connecting brings the balance a moment later, so changes within
@@ -142,27 +143,21 @@ struct PaymentsView: View {
             let count = try await model.fetchOlderPayments()
             hasMore = count >= page
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: "load older payments")
         }
     }
 
     @ViewBuilder private var list: some View {
         if items.isEmpty {
-            Text(problem ?? (model.connection == .connected ? "Payments you send and receive show up here."
-                : "Payments show up here once Peel is connected."))
-                .font(Theme.font(14))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyState(problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     let sections = Dictionary(grouping: items) { PaymentSection($0.date) }
                     ForEach(PaymentSection.allCases, id: \.self) { section in
                         if let rows = sections[section] {
-                            Text(section.rawValue)
-                                .font(Theme.font(12, .semibold))
-                                .foregroundStyle(Theme.secondaryText)
-                                .padding(.horizontal, 12)
+                            SectionHeader(section.rawValue)
+                                .padding(.horizontal, Theme.Space.md)
                                 .padding(.top, 18)
                                 .padding(.bottom, 6)
                             ForEach(rows) { item in
@@ -175,18 +170,17 @@ struct PaymentsView: View {
                         }
                     }
                     if loadingOlder || (problem != nil && hasMore) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: Theme.Space.sm) {
                             if loadingOlder { ProgressView().controlSize(.small) }
                             Text(loadingOlder ? "Loading older payments" : problem ?? "")
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
+                                .muted()
                         }
-                        .padding(12)
+                        .padding(Theme.Space.md)
                     }
                 }
                 .frame(maxWidth: 720, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 16)
+                .padding(.horizontal, Theme.Space.sm)
+                .padding(.bottom, Theme.Space.lg)
             }
             .overlay(alignment: .bottom) {
                 // More below: the list fades out rather than stopping at an edge.
@@ -204,7 +198,7 @@ struct PaymentsView: View {
                 PaymentDetailPane(item: item) { self.pane = nil }
             } else {
                 PaneFrame(title: "Payment", close: { self.pane = nil }) {
-                    Text("This payment is no longer in the list.")
+                    Text("This payment is gone.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)
                 }

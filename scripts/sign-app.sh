@@ -17,8 +17,10 @@
 # or certificate, or lacks an entitlement scripts/provision/Provision.entitlements
 # now asks for. Re-signing with a new profile keeps the Keychain items.
 #
-# Frameworks in Contents/Frameworks (LiveKit's WebRTC) are signed first with the
-# same identity, so hardened runtime's library validation accepts them.
+# Frameworks in Contents/Frameworks (LiveKit's WebRTC) and the strut in
+# Contents/Strut (Node, its native addons and their libraries) are signed first
+# with the same identity, so hardened runtime's library validation accepts
+# them. Node alone gets an entitlement: allow-jit, which V8 needs.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:?usage: sign-app.sh path/to/Peel.app}"
@@ -39,6 +41,13 @@ CERT_SHA1="$(printf '%s\n' "$CERT" | fingerprint)"
 # The team is the certificate's organisational unit.
 TEAM="$(printf '%s\n' "$CERT" | openssl x509 -noout -subject -nameopt multiline | sed -n 's/^ *organizationalUnitName *= *//p' | head -1)"
 [ -n "$TEAM" ] || { echo "cannot read the team ID from the signing certificate" >&2; exit 1; }
+# A bundle ID belongs to one team, and dev.peel.mac to Peel's (T3M78XC3UV), so
+# anyone signing with their own Apple ID gets dev.peel.mac.<team> unless
+# PEEL_BUNDLE_ID chose one.
+if [ -z "${PEEL_BUNDLE_ID:-}" ] && [ "$BUNDLE_ID" = dev.peel.mac ] && [ "$TEAM" != T3M78XC3UV ]; then
+  BUNDLE_ID="dev.peel.mac.$(printf '%s' "$TEAM" | tr '[:upper:]' '[:lower:]')"
+  plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$APP/Contents/Info.plist"
+fi
 APP_ID="$TEAM.$BUNDLE_ID"
 
 STUB="$ROOT/.build/provision/Debug/Provision.app"
@@ -52,6 +61,7 @@ build_stub() {
       DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" build >"$WORK/xcodebuild.log" 2>&1 && return
   cat "$WORK/xcodebuild.log" >&2
   echo "Xcode could not provide a profile. Open Xcode > Settings > Accounts, sign in to the Apple ID for team $TEAM, then run this again." >&2
+  echo "If the log says $BUNDLE_ID is not available, another team owns it: set PEEL_BUNDLE_ID to another." >&2
   return 1
 }
 
@@ -103,6 +113,15 @@ for framework in "$APP"/Contents/Frameworks/*.framework; do
   [ -d "$framework" ] || continue
   sign "$framework"
 done
+if [ -d "$APP/Contents/Strut/native" ]; then
+  for code in "$APP"/Contents/Strut/native/*; do
+    case "$(basename "$code"):$(file -b "$code")" in
+      node:*) ;;
+      *:Mach-O*) sign "$code" ;;
+    esac
+  done
+  sign --entitlements "$ROOT/scripts/strut-node.entitlements" "$APP/Contents/Strut/native/node"
+fi
 # The stub's entitlements are what the profile grants; the stub sets
 # CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO, so there is no get-task-allow.
 sign --entitlements "$WORK/entitlements.plist" "$APP"

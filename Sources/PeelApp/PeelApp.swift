@@ -43,7 +43,13 @@ struct PeelApp: App {
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.lockIfDue()
-                    model.markSelectedChatRead()
+                    // Asked first, so the open chat's `read` goes after the
+                    // ask and its answer is not applied over it.
+                    Task {
+                        await model.engine?.refreshReadsAndMutes()
+                        model.markSelectedChatRead()
+                    }
+                    Task { await model.engine?.refreshPreferences() }
                     Task { await model.notifier.refreshPermission() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -60,11 +66,13 @@ struct PeelApp: App {
             CommandGroup(replacing: .newItem) {
                 MainWindow.MenuItem()
             }
-            // The account screen stands in for Settings.
+            // The account screen stands in for Settings. Guarded in the
+            // action, not `.disabled`: a command does not follow the model.
             CommandGroup(replacing: .appSettings) {
-                Button("Account…") { model.destination = .account }
-                    .keyboardShortcut(",", modifiers: .command)
-                    .disabled(model.phase != .ready)
+                Button("Account…") {
+                    if model.phase == .ready { model.destination = .account }
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
             // ⌘F from wherever the cursor is (`AppModel.find`). Never
             // `.disabled` by the model: a command does not follow it.

@@ -16,7 +16,7 @@ struct QRCodeTile: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8).fill(.white)
+            RoundedRectangle(cornerRadius: Theme.Radius.card).fill(.white)
             if let code, text != nil {
                 Image(decorative: code, scale: 1)
                     .interpolation(.none)

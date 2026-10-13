@@ -2,11 +2,6 @@ import Foundation
 import PeelCore
 
 extension CallPresence {
-    /// Who is on it, when the call server has said.
-    var people: [CallParticipant]? {
-        if case .live(let people) = self { people } else { nil }
-    }
-
     /// Someone is on it.
     var isLive: Bool { !(people ?? []).isEmpty }
 }
@@ -52,7 +47,7 @@ extension AppModel {
                 refreshCallWatches()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load recent calls") }
         }
     }
 
@@ -98,8 +93,13 @@ extension AppModel {
         let now = Date.now
         // A row's date is its newest message's, never older than its call.
         // Presence is asked only for calls that may be live (`CallLink.mayBeLive`).
-        let recent = chatRows.reversed().lazy.prefix { now.timeIntervalSince($0.date) < CallLink.liveAge }
-        let calls = Array(recent.filter { CallLink.mayBeLive($0.message, now: now) }.compactMap(\.call).prefix(3))
+        // A plain loop, run on every change of the rows: a chain of lazy
+        // collections here costs a busy chat milliseconds per message.
+        var calls: [CallLink] = []
+        for row in chatRows.reversed() {
+            guard calls.count < 3, now.timeIntervalSince(row.date) < CallLink.liveAge else { break }
+            if let call = row.call, CallLink.mayBeLive(row.message, now: now) { calls.append(call) }
+        }
         if calls != recentCalls { recentCalls = calls }
     }
 
@@ -141,14 +141,20 @@ extension AppModel {
     /// Joins a call: a ticket from the call server, then the call window's
     /// room, with the microphone on and the camera off unless `camera`.
     /// Returns whether there is a call to show; on failure the reason shows
-    /// beside Join. The call you were on (its leaving already confirmed)
-    /// goes only once the ticket has come, so a failed join leaves you on it.
-    func joinCall(_ link: CallLink, in chat: String, camera: Bool = false) async -> Bool {
+    /// beside the card's Join, or as the chat's notice for a join or start
+    /// from the header (`failureInChat`), whose card may be out of sight. The call
+    /// you were on (its leaving already confirmed) goes only once the
+    /// ticket has come, so a failed join leaves you on it.
+    func joinCall(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
         guard joiningRoom == nil, let engine else { return false }
         joiningRoom = link.room
         defer { joiningRoom = nil }
         callFailures[link.room] = nil
+        // Only a failure of its own: the chat may be showing another notice.
+        if failureInChat, conversationNotices[chat]?.hasPrefix("Could not join the call") == true {
+            conversationNotices[chat] = nil
+        }
         do {
             let ticket = try await engine.callTicket(for: link, in: chat)
             guard self.engine === engine else { return false }
@@ -156,7 +162,11 @@ extension AppModel {
             call = CallSession(ticket: ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
             return true
         } catch {
-            callFailures[link.room] = PeelError.readable(error).capitalizedFirst
+            if failureInChat {
+                conversationNotices[chat] = PeelError.problem(error, couldNot: "join the call")
+            } else {
+                callFailures[link.room] = PeelError.problem(error)
+            }
             return false
         }
     }
@@ -170,9 +180,9 @@ extension AppModel {
         defer { startingCallIn = nil }
         do {
             let link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
-            return await joinCall(link, in: chat, camera: !audioOnly)
+            return await joinCall(link, in: chat, camera: !audioOnly, failureInChat: true)
         } catch {
-            conversationNotices[chat] = "Could not start the call: \(PeelError.readable(error))"
+            conversationNotices[chat] = PeelError.problem(error, couldNot: "start the call")
             return false
         }
     }

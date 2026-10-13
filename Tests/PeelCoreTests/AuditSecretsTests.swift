@@ -65,6 +65,17 @@ struct AuditSecretsTests {
         #expect(throws: SecretStoreFailure.noAccount) { try store.loadMnemonic(pin: "") }
     }
 
+    /// The agent's model key on a development profile: an owner-only
+    /// file, and gone with the profile.
+    @Test func theAgentsKeyIsOwnerOnlyAndGoesWithTheProfile() throws {
+        let dev = Profile(developmentAt: profile.url.appendingPathComponent("agent-secrets"))
+        try dev.agentCredential.write(Data("model key".utf8))
+        #expect(try permissions(dev.directory.appendingPathComponent("agent-credential")) == 0o600)
+        try dev.delete()
+        #expect(try dev.agentCredential.read() == nil)
+        #expect(!FileManager.default.fileExists(atPath: dev.directory.path))
+    }
+
     /// A profile folder made readable by others before is closed again.
     @Test func theProfileFolderIsOwnerOnly() throws {
         try FileManager.default.createDirectory(
@@ -75,24 +86,26 @@ struct AuditSecretsTests {
     }
 
     /// Neither the words nor the seed derived from them reach the profile's
-    /// files: the engine holds the seed in memory only. Any two neighbouring
+    /// files: the engine holds the seed in memory only, and the words check
+    /// (finding N5) keeps only that it passed. Any two neighbouring
     /// words, in order, count as a leak, so a torn page or a cut-off line is
     /// still caught. A single word is not: the schema's own SQL holds words
     /// of the list (" invite ", " message ", " payment "), which made a check
     /// for one word fail about once in 57 runs.
     @Test func theProfileFilesNeverHoldTheWordsOrTheSeed() async throws {
         let words = try Engine.generateMnemonic()
+        let list = Engine.words(in: words)
         let seed: String
         do {
             let engine = try Engine(mnemonic: words, storage: profile.storage())
             seed = await engine.seed
             try await engine.setAlias("audit")
             try await engine.setServer(#require(ServerAddress("127.0.0.1:1883")))
+            try await engine.confirmWords([0: list[0], 1: list[1], 2: list[2]], mnemonic: words)
         }
         let files = try FileManager.default.subpathsOfDirectory(atPath: profile.url.path)
             .map { profile.url.appendingPathComponent($0) }
             .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true }
-        let list = Engine.words(in: words)
         var read = 0
         for file in files {
             let bytes = try Data(contentsOf: file)
@@ -112,8 +125,10 @@ struct AuditSecretsTests {
     /// error shown, printed or reported never carries the account.
     @Test(arguments: [
         Array(abandon.dropLast()) + ["peelauditword"],
-        Array(repeating: "abandon", count: 12),
+        Array(repeating: "abandon", count: 12),  // bad checksum
         Array(abandon.dropLast()),
+        Array(repeating: "abandon", count: 5),
+        [],
     ])
     func refusedWordsAreNeverRepeated(words: [String]) {
         let text = words.joined(separator: " ")

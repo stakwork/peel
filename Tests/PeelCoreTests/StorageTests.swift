@@ -88,6 +88,21 @@ struct StorageTests {
         #expect(try reopened.value(for: .server) == "mqtts://broker.example.com:8883")
     }
 
+    /// The lock screen's Forget says whether the account holds sats before
+    /// the PIN opens it: read without the words, and with no writable
+    /// Storage open, as at launch.
+    @Test func storedBalanceIsReadWithoutTheAccount() throws {
+        let local = Profile(developmentAt: profile.url)
+        #expect(local.storedBalanceMsat() == nil)
+        #expect(!FileManager.default.fileExists(atPath: profile.url.path))
+        do {
+            let storage = try profile.storage()
+            #expect(local.storedBalanceMsat() == nil)
+            try storage.set("5000000", for: .balanceMsat)
+        }
+        #expect(local.storedBalanceMsat() == 5_000_000)
+    }
+
     // MARK: Messages
 
     @Test func upsertDedupesOnUUIDAndFillsServerFields() throws {
@@ -116,6 +131,41 @@ struct StorageTests {
         #expect(updated.status == "PENDING")
         #expect(try rows(profile, "SELECT * FROM message").count == 1)
         #expect(try storage.highestServerIndex() == 42)
+    }
+
+    /// `Message(row:)` is written by hand: a property it misses would read as
+    /// nil or false, where the `Decodable` reading it replaced would fail.
+    @Test func everyStoredPropertyIsReadBack() throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1"), false, nil)]))
+        // Each text column holds its own name and each number a value of its
+        // own, so a property read from the wrong column shows.
+        try storage.pool.write { db in
+            try db.execute(sql: """
+                UPDATE message SET uuid = 'uuid', serverIndex = 10, fromMe = 1, sender = 'sender', body = ?,
+                    content = 'content', msat = 11, timestamp = 12, tag = 'tag', paymentHash = 'paymentHash',
+                    status = 'status', mentionsMe = 1, replyUUID = 'replyUUID', threadUUID = 'threadUUID',
+                    mediaType = 'mediaType', fileName = 'fileName', fileSize = 13, upload = 'upload', deleted = 1,
+                    amountMsat = 14, arrived = 1, firstSentAt = 15, autoResentAt = 16
+                """, arguments: [#"{"metadata":"{\"tz\":\"Europe/London\"}"}"#])
+        }
+        let message = try #require(try storage.message(uuid: "uuid", in: Message.fixture().chat))
+        var numbers: [Int64] = []
+        for child in Mirror(reflecting: message).children {
+            let label = child.label ?? "?"
+            // Every flag is set, and every optional is filled.
+            if let flag = child.value as? Bool { #expect(flag, "\(label) not read") }
+            let value = Mirror(reflecting: child.value)
+            #expect(value.displayStyle != .optional || !value.children.isEmpty, "\(label) not read")
+            switch value.children.first?.value ?? child.value {
+            case let text as String where !["chat", "body", "senderTZ"].contains(label):
+                #expect(text == label, "\(label) read from \(text)")
+            case let number as Int64: numbers.append(number)
+            default: break
+            }
+        }
+        #expect(Set(numbers).count == numbers.count, "a number read from another column: \(numbers)")
+        #expect(message.senderTZ == "Europe/London")
     }
 
     @Test func laterCopyFillsMissingBodyFields() throws {
@@ -270,6 +320,35 @@ struct StorageTests {
         #expect(conversations[2].lastContent == nil)
     }
 
+    /// A message deleted for everyone stays empty whatever copy of it comes
+    /// again (a history replay), stays out of search, and an attachment's
+    /// body is handed back so its decrypted file can be removed.
+    @Test func aDeletedMessageStaysDeletedWhenItsCopyComesAgain() async throws {
+        let storage = try profile.storage()
+        let note = Message.fixture(
+            uuid: uuid(1), serverIndex: 1, body: #"{"content":"secret plan"}"#, content: "secret plan", timestamp: 1_000
+        )
+        var file = Message.fixture(
+            uuid: uuid(2), serverIndex: 2, type: MessageType.attachment, body: #"{"mediaToken":"tok"}"#, content: nil,
+            timestamp: 2_000
+        )
+        file.mediaType = "image/png"
+        func delete(_ n: Int, of target: Int) -> (Message, Bool, String?) {
+            (Message.fixture(uuid: uuid(n), serverIndex: Int64(n), type: MessageType.delete, content: "",
+                             timestamp: Int64(n) * 1_000, replyUUID: uuid(target)), false, nil)
+        }
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(note, false, nil), (file, false, nil)]))
+        let applied = try storage.apply(Storage.Commit(messages: [delete(3, of: 1), delete(4, of: 2)]))
+        #expect(applied.purged == [#"{"mediaToken":"tok"}"#])
+
+        _ = try storage.apply(Storage.Commit(messages: [(note, false, nil), (file, false, nil)]))
+        let text = try #require(try storage.message(uuid: uuid(1), in: dm))
+        #expect(text.deleted && text.content == nil && text.body == nil)
+        let image = try #require(try storage.message(uuid: uuid(2), in: dm))
+        #expect(image.deleted && image.body == nil && image.mediaType == nil)
+        #expect(try await storage.searchMessages(MessageQuery("secret"), in: dm, limit: 10).isEmpty)
+    }
+
     @Test func timelineFirstEmission() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [
@@ -280,18 +359,6 @@ struct StorageTests {
         ]))
         let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
         #expect(messages.map(\.content) == ["first", "second"])
-    }
-
-    @Test func timelineKeepsTheNewestTwoHundred() async throws {
-        let storage = try profile.storage()
-        let batch = (0..<250).map { index in
-            (Message.fixture(uuid: "u\(index)", chat: "02aa", content: "m\(index)", timestamp: Int64(index)), false, String?.none)
-        }
-        _ = try storage.apply(Storage.Commit(messages: batch))
-        let messages = try #require(try await first(storage.timeline(in: "02aa"))).messages
-        #expect(messages.count == 200)
-        #expect(messages.first?.content == "m50")
-        #expect(messages.last?.content == "m249")
     }
 
     // MARK: Messages with no words

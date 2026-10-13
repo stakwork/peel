@@ -20,7 +20,7 @@ struct AttachmentView: View {
         } else if row.images.count > 1 {
             ImageGrid(images: row.images, tileMenu: tileMenu)
         } else {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 // What the bytes turned out to be once downloaded: a fake video is a file.
                 switch model.attachmentKind(of: row.message) {
                 case .image: ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
@@ -98,8 +98,8 @@ struct ImageGrid: View {
     var body: some View {
         let shown = Array(images.prefix(4))
         // Up to 148 pt a tile, narrower in a narrow column (the thread panel).
-        let columns = Array(repeating: GridItem(.flexible(minimum: 60, maximum: Self.tile), spacing: 4), count: 2)
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
+        let columns = Array(repeating: GridItem(.flexible(minimum: 60, maximum: Self.tile), spacing: Theme.Space.xs), count: 2)
+        LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Space.xs) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
                 ImageTile(message: message, group: images, index: index, size: Self.tile)
                     .peelMenu(source: "m\(message.id ?? 0)") { tileMenu?(message) ?? [] }
@@ -111,7 +111,7 @@ struct ImageGrid: View {
                                     .font(Theme.font(20, .bold))
                                     .foregroundStyle(.white)
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                             .allowsHitTesting(false)
                         }
                     }
@@ -200,12 +200,10 @@ struct ImageTile: View {
                 Theme.quote.overlay {
                     if let notShown {
                         Label(notShown, systemImage: "photo")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                     } else if handle.failureReason != nil {
                         Label("Image not available", systemImage: "photo")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                     } else {
                         ProgressView().controlSize(.small)
                     }
@@ -248,8 +246,7 @@ struct GiphyTile: View {
                 Theme.quote.overlay {
                     if failed || giphy.url == nil {
                         Label("GIF not available", systemImage: "photo")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                     } else {
                         ProgressView().controlSize(.small)
                     }
@@ -309,7 +306,7 @@ struct TransferBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Theme.input.opacity(0.92), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background(Theme.input.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
     }
 }
 
@@ -324,7 +321,7 @@ struct FileCard: View {
     var body: some View {
         let handle = model.attachment(message.id ?? 0)
         let name = handle.downloaded?.fileName ?? message.fileName
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             AttachmentMark(message: message, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 // The name comes with the download; until then, what it says it is.
@@ -334,9 +331,8 @@ struct FileCard: View {
                     .truncationMode(.middle)
                 Text([AttachmentFormat.size(handle.downloaded.map { Int64($0.size) } ?? message.fileSize),
                       AttachmentFormat.kind(name)].compactMap { $0 }.joined(separator: " · "))
-                    .font(Theme.font(12))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
                 AttachmentStatus(message: message, handle: handle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -345,7 +341,7 @@ struct FileCard: View {
         }
         // The name truncates in the middle.
         .attachmentCard()
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .onTapGesture { if model.opensAsPage(message) { openPage() } }
     }
 
@@ -364,10 +360,10 @@ struct FileCard: View {
                 EmptyView()
             case .idle, .held, .failed, .ready:
                 if model.opensAsPage(message) {
-                    HoverIconButton(systemImage: "globe", help: "Open in Peel", action: openPage)
+                    IconButton("globe", help: "Open in Peel", action: openPage)
                 }
                 if handle.savedTo == nil {
-                    HoverIconButton(systemImage: "arrow.down.to.line", help: "Download to Downloads") {
+                    IconButton("arrow.down.to.line", help: "Download to Downloads") {
                         Task { await model.saveToDownloads(message) }
                     }
                 }
@@ -407,10 +403,9 @@ struct SavedNote: View {
     let file: URL
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Text("Saved to Downloads")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+                .muted()
                 .help(file.lastPathComponent)
             Button("Show in Finder") { model.showInFinder(file) }.buttonStyle(.peel(.link, size: .sm))
         }
@@ -420,8 +415,8 @@ struct SavedNote: View {
 extension View {
     /// An image or video tile's corners and edge.
     func attachmentTile() -> some View {
-        clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.divider))
+        clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.divider))
     }
 
     /// An image or video tile filled by this view: at `size`'s shape, as
@@ -430,7 +425,7 @@ extension View {
     func attachmentTile(fitted size: CGSize, message: Message, handle: AttachmentHandle) -> some View {
         overlay(alignment: .bottom) {
             if message.fromMe, message.uploadState == .pending {
-                TransferBar(label: "Uploading", progress: handle.progress).padding(8)
+                TransferBar(label: "Uploading", progress: handle.progress).padding(Theme.Space.sm)
             }
         }
         .attachmentTile(fitted: size)
@@ -451,13 +446,15 @@ extension View {
         modifier(AutoDownload(message: message))
     }
 
-    /// A file or audio card: as wide as a column allows, up to 300 pt.
+    /// A file or audio card: an inset `Card`, as wide as a column allows,
+    /// up to 300 pt.
     func attachmentCard() -> some View {
-        padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 300, alignment: .leading)
-            .background(Theme.quote, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .foregroundStyle(Theme.text)
+        Card(.inset) {
+            padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, 10)
+                .frame(maxWidth: 300, alignment: .leading)
+        }
+        .foregroundStyle(Theme.text)
     }
 }
 
@@ -519,7 +516,7 @@ struct PendingFilesTray: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ForEach(files, id: \.self) { file in
                     PendingFile(file: file)
                         .overlay(alignment: .topTrailing) {
@@ -543,14 +540,14 @@ struct PendingFilesTray: View {
                         .font(.system(size: 16))
                         .foregroundStyle(Theme.secondaryText)
                         .frame(width: 64, height: 64)
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.divider, style: StrokeStyle(dash: [4, 3])))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(Theme.divider, style: StrokeStyle(dash: [4, 3])))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Add files")
                 AttachmentPriceField(composer: composer)
             }
-            .padding(.top, 8)
+            .padding(.top, Theme.Space.sm)
             .padding(.horizontal, 2)
         }
         .scrollIndicators(.never)
@@ -578,17 +575,17 @@ private struct PendingFile: View {
                     }
                 }
                 .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .task(id: file) { image = await ImageCache.shared.image(file, maxPixels: 128) }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.sm) {
                     Theme.selection
                         .overlay {
                             Text(AttachmentFormat.badge(file.lastPathComponent))
                                 .font(Theme.font(10, .bold))
                         }
                         .frame(width: 34, height: 34)
-                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(file.lastPathComponent)
                             .font(Theme.font(13, .medium))
@@ -603,7 +600,7 @@ private struct PendingFile: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 64)
-                .background(Theme.quote, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             }
         }
         .help(file.lastPathComponent)
@@ -616,15 +613,14 @@ private struct PendingFile: View {
 
 extension View {
     /// Files dropped here wait in `composer` until it sends.
-    func fileDrop(into composer: ComposerID, for conversation: Conversation) -> some View {
-        modifier(FileDrop(composer: composer, conversation: conversation))
+    func fileDrop(into composer: ComposerID) -> some View {
+        modifier(FileDrop(composer: composer))
     }
 }
 
 private struct FileDrop: ViewModifier {
     @Environment(AppModel.self) private var model
     let composer: ComposerID
-    let conversation: Conversation
 
     func body(content: Content) -> some View {
         content
@@ -640,8 +636,7 @@ private struct FileDrop: ViewModifier {
             #endif
             .overlay {
                 if model.dropTarget == composer {
-                    DropTarget(name: conversation.title,
-                               inThread: composer.thread != nil)
+                    DropTarget()
                 }
             }
     }
@@ -675,9 +670,6 @@ extension FileDrop {
 
 /// Over a conversation while files are dragged onto it.
 private struct DropTarget: View {
-    let name: String
-    let inThread: Bool
-
     var body: some View {
         ZStack {
             Theme.background.opacity(0.82)
@@ -688,15 +680,11 @@ private struct DropTarget: View {
                     .background(Theme.selection, in: Circle())
                 Text("Drop to attach")
                     .font(Theme.font(16, .bold))
-                Text("For \(inThread ? "this thread in " : "")\(name). They wait in the composer until you send.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
             }
             .padding(24)
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
                 .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
                 .padding(10)
         )

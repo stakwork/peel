@@ -3,6 +3,8 @@ import Observation
 #if os(macOS)
 import AppKit
 #endif
+import AgentKit
+import PeelAgent
 import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
@@ -35,13 +37,20 @@ final class AppModel {
 
     /// What the sidebar has selected.
     enum Destination: Hashable {
-        case threads, mentions, payments, account
+        case threads, mentions, automations, payments, account
+        /// The agent chat, Peel's own row in Direct messages.
+        case agent
         case chat(String)
     }
 
     var phase: Phase = .loading {
         // Locked, no call is watched.
-        didSet { if phase != oldValue { refreshCallWatches() } }
+        didSet {
+            if phase != oldValue {
+                TimelineLog.log("app phase \(oldValue) -> \(phase)")
+                refreshCallWatches()
+            }
+        }
     }
     var connection: Engine.ConnectionState = .offline(retryIn: nil)
     var conversations: [Conversation] = []
@@ -181,6 +190,9 @@ final class AppModel {
     /// Sats promised to people still offline (`Storage.waitingMsat`): still
     /// in the balance, but not to be spent again.
     var waitingMsat: UInt64 = 0
+    /// Whether the account's twelve words were checked (`Engine.wordsConfirmed`);
+    /// true until the account loads, so nothing asks before it is known.
+    var wordsConfirmed = true
     /// "4,000 waiting", shown beside the balance; nil when nothing waits.
     var waitingText: String? { waitingMsat > 0 ? "\(Sats.number(msat: waitingMsat)) waiting" : nil }
     /// "4,996 sats · 4,000 waiting"; nil until the server reports a balance.
@@ -192,6 +204,10 @@ final class AppModel {
     @ObservationIgnored var moneyInFlight: Set<String> = []
     /// What the one-tap Boost tips (the engine's boost amount).
     var boostAmountMsat = Engine.defaultBoostAmountMsat
+    /// A one-tap boost amount from another device the last Boost asked to
+    /// confirm (`quickBoost`), and the notice that asked: the next Boost of
+    /// that message sends it while the notice is still shown.
+    @ObservationIgnored var boostToConfirm: (messageID: Int64, msat: UInt64, notice: String)?
     /// Run headers' looked-up sender zones (nil: none), by chat, then
     /// alias and moment; see `withSenderZones`.
     @ObservationIgnored var senderZoneCache: [String: [String: TimeZone?]] = [:]
@@ -200,6 +216,9 @@ final class AppModel {
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     var notice: String?
+    /// The notice a failed background check with the server put up
+    /// (`Engine.Event.serverCheckError`): dismissed by itself once connected.
+    @ObservationIgnored private var serverCheckNotice: String?
     /// The latest error that belongs to a conversation, shown inside it.
     var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
@@ -251,6 +270,31 @@ final class AppModel {
     /// a plain file; the window says so.
     private(set) var profile: Profile?
     private(set) var engine: Engine?
+    /// The account's agent chat (`AppModel+Agent`), open with the account.
+    var agent: AgentSession?
+    /// The agent's memory: the running strut's address and key (`lookForMemory`).
+    var memoryServer: MemoryServer?
+    /// The strut Peel ships, if this build has one, for this launch's
+    /// profile (`strut(for:)`): started when its agent opens, stopped when
+    /// Peel quits.
+    @ObservationIgnored var strut: BundledStrut?
+    /// The one memory open beside the agent chat (`openMemory`), if any.
+    var memoryPanel: MemoryPanel?
+    /// Bumped to open every tool row in the agent chat, as clicks on their
+    /// chevrons would (the offscreen driver's `agent-rows`).
+    var agentRowsOpened = 0
+    /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
+    @ObservationIgnored var automationServer: AutomationServer?
+    /// The last server's close, which a new one waits for before taking its port.
+    @ObservationIgnored var automationStopping: Task<Void, Never>?
+    /// The token the listening server checks, for installing its workflow again.
+    @ObservationIgnored var automationToken: String?
+    /// The Automations view's list, read from strut.
+    var automations = AutomationsState()
+    /// Where the Connect panel is open from, if it is.
+    var agentConnectFrom: AgentConnectSource?
+    /// Account opens at the Peel agent section (`openAgentSettings`).
+    var showsAgentSettings = false
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -263,9 +307,9 @@ final class AppModel {
     @ObservationIgnored private var lastActiveAt: Date?
 
     /// Hours without use after which the app asks for the PIN again, in
-    /// front or not; 0 means only at launch. Kept with the account; an account that
-    /// has never set it here takes the `pinTimeoutHours` default earlier
-    /// builds read, which is left in place.
+    /// front or not; 0 means only at launch. A preference of this device
+    /// (the PIN is this device's); one never set here takes the
+    /// `pinTimeoutHours` default earlier builds read, which is left in place.
     private(set) var pinTimeoutHours = 0
 
     init() {
@@ -276,7 +320,7 @@ final class AppModel {
                 profile = try Profile(name: "default", kind: .app)
             }
         } catch {
-            notice = PeelError.readable(error)
+            notice = PeelError.problem(error)
         }
         notifier.model = self
         money.arrived = { [weak self] receipts in
@@ -365,7 +409,7 @@ final class AppModel {
             try await open(profile, pin: "")
             enterApp()
         } catch {
-            notice = PeelError.readable(error)
+            notice = PeelError.problem(error, couldNot: "open the account")
             phase = .onboarding
         }
     }
@@ -394,12 +438,18 @@ final class AppModel {
         resetAccountState()
         await web.forgetWebsiteData()
         do {
+            // What the agent remembered and the automations it ran go too.
+            // The app account's memory is erased even if its strut never
+            // started this launch (forgotten from the lock screen) or this
+            // build ships none; a development profile's is in its folder.
+            strut?.stop(quietly: true)
+            if profile.kind == .app { try BundledStrut.erase() }
             try profile.delete()
             phase = .onboarding
         } catch {
             phase = .loading
             await start()
-            notice = "Could not forget the account: \(PeelError.readable(error))"
+            notice = PeelError.problem(error, couldNot: "forget the account")
             throw error
         }
     }
@@ -432,6 +482,8 @@ final class AppModel {
         ), in: chat)
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.
+        TimelineLog.log("\(TimelineLog.tag(chat)) rows built: \(rows.count) (changed \(rows != chatRows)), "
+            + "new messages at \(rows.firstIndex(where: \.startsNew).map { "\($0)" } ?? "none")")
         if rows != chatRows { chatRows = rows } else { refreshRecentCalls() }
     }
 
@@ -499,6 +551,22 @@ final class AppModel {
         return try await Task.detached { try profile.words(pin: pin) }.value
     }
 
+    /// Records that the words were written down when `answers` (typed back,
+    /// by position) match `words`, the account's own as shown. Throws
+    /// `Engine.Failure.wrongWords` naming the positions that differ.
+    func confirmWords(_ answers: [Int: String], of words: [String]) async throws {
+        try await signedIn().confirmWords(answers, mnemonic: words.joined(separator: " "))
+        wordsConfirmed = true
+    }
+
+    /// What the account holds, for Forget on the lock screen: the open
+    /// account's balance, or before it opens the one last stored.
+    func balanceBeforeForget() async -> UInt64? {
+        if engine != nil { return balanceMsat }
+        guard let profile else { return nil }
+        return await Task.detached { profile.storedBalanceMsat() }.value
+    }
+
     /// Reseals the words under a new PIN, typed twice.
     func changePIN(from oldPIN: String, to newPIN: String, confirmation: String) async throws {
         guard let profile else { throw PeelError("no profile") }
@@ -545,6 +613,7 @@ final class AppModel {
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
     func willTerminate() {
+        strut?.stop(quietly: true)
         Clipboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
     }
@@ -620,6 +689,8 @@ final class AppModel {
         guard phase == .ready || phase == .locked else { return }
         if chat == Notifier.paymentsThread {
             destination = .payments
+        } else if chat == Notifier.agentThread {
+            destination = .agent
         } else if let message = messageID.flatMap({ try? engine?.storage.message(id: $0) }), message.chat == chat {
             focus(on: message)
         } else {
@@ -713,7 +784,7 @@ final class AppModel {
             try await action(engine)
             return true
         } catch {
-            conversationNotices[chat] = "Could not \(what): \(PeelError.readable(error))"
+            conversationNotices[chat] = PeelError.problem(error, couldNot: what)
             return false
         }
     }
@@ -737,12 +808,13 @@ final class AppModel {
         noteNewMessages(in: chat)
         guard isFrontmost, phase == .ready, keepsUnread != chat else { return }
         notifier.removeDelivered(in: [chat])
-        guard let engine, let state = readStates[chat], state.unread > 0 || state.isNew else { return }
+        // Behind, not only unread: the official apps count what Peel does not.
+        guard let engine, let state = readStates[chat], state.isBehind || state.isNew else { return }
         Task {
             do {
                 try await engine.markRead(chat)
             } catch {
-                conversationNotices[chat] = "Could not mark as read: \(PeelError.readable(error))"
+                conversationNotices[chat] = PeelError.problem(error, couldNot: "mark as read")
             }
         }
     }
@@ -813,7 +885,7 @@ final class AppModel {
         } catch Engine.Failure.tribeDeleted {
             read = .deleted
         } catch {
-            read = .failed(Formatting.sentence(error))
+            read = .failed(PeelError.problem(error))
         }
         // Not for an account switched to meanwhile.
         if self.engine === engine { linkedTribes[link] = read }
@@ -826,12 +898,6 @@ final class AppModel {
             let tribe = try await $0.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat, confirmedMsat: confirmedMsat)
             destination = .chat(tribe.pubkey)
         }
-    }
-
-    func leaveTribe(_ pubkey: String) async throws {
-        guard let engine else { return }
-        try await engine.leaveTribe(pubkey)
-        if selectedChat == pubkey { destination = nil }
     }
 
     func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
@@ -977,6 +1043,7 @@ final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
+        closeAgent()
         Clipboard.clearSecret()
         // Players are keyed by message id, which the next account reuses.
         MediaPlayback.shared.closeFullScreen()
@@ -1029,10 +1096,12 @@ final class AppModel {
         leaveCall()
         money.reset()
         balanceMsat = nil
+        wordsConfirmed = true
         waitingMsat = 0
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        boostToConfirm = nil
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
         senderZoneCache = [:]
@@ -1055,6 +1124,7 @@ final class AppModel {
         callServer = settings.callServer
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
+        wordsConfirmed = settings.wordsConfirmed ?? false
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
@@ -1062,6 +1132,7 @@ final class AppModel {
         connection = settings.connection
         // Forgotten while loading.
         guard self.engine === engine else { return }
+        if let profile { openAgent(profile, engine: engine) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
@@ -1083,16 +1154,19 @@ final class AppModel {
             switch event {
             case .connection(let state):
                 connection = state
-                if state == .connected { connectionError = nil }
+                if state == .connected {
+                    connectionError = nil
+                    if notice != nil, notice == serverCheckNotice { notice = nil }
+                }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
                 } else {
                     reconnectAt = nil
                 }
             case .conversationError(let chat, let message):
-                conversationNotices[chat] = message
+                conversationNotices[chat] = PeelError.problem(message)
             case .connectionError(let message):
-                connectionError = message
+                connectionError = PeelError.problem(message)
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
                 // Your key keys your colour.
@@ -1100,7 +1174,10 @@ final class AppModel {
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
-                notice = message
+                notice = PeelError.problem(message)
+            case .serverCheckError(let message):
+                notice = PeelError.problem(message)
+                serverCheckNotice = notice
             case .history(let phase, let reached, let end):
                 switch phase {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
@@ -1118,7 +1195,7 @@ final class AppModel {
                 echoedAliases = echoed
                 refreshMentionAliases()
             case .historyFailed(let reason):
-                restoreProgress.outcome = .failed(reason)
+                restoreProgress.outcome = .failed(PeelError.problem(reason))
                 notifier.historyEnded()
             case .transfer(let id, _, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
@@ -1133,6 +1210,12 @@ final class AppModel {
                 money.received(Receipt(invoice))
             case .contactAdded(let message):
                 notifier.contactAdded(message)
+            case .preferencesChanged:
+                // The time zones are read where they are shown.
+                let settings = await engine.settings()
+                guard self.engine === engine else { break }
+                paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
+                boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
             case .sendStatus:
                 break
             }
@@ -1155,7 +1238,7 @@ final class AppModel {
                 }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the chats") }
         }
     }
 
@@ -1168,7 +1251,7 @@ final class AppModel {
                 markSelectedChatRead()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load unread counts") }
         }
     }
 
@@ -1183,7 +1266,7 @@ final class AppModel {
                 if selectedChat.map(me(in:)) != before { rebuildRows() }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load tribes") }
         }
     }
 
@@ -1193,7 +1276,7 @@ final class AppModel {
                 waitingMsat = msat
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load waiting payments") }
         }
     }
 
@@ -1204,7 +1287,7 @@ final class AppModel {
                 pendingInvites = list.filter(\.isPending)
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load invites") }
         }
     }
 
@@ -1222,16 +1305,20 @@ final class AppModel {
         }
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         let window = timelineWindow
+        let limit = window?.limit ?? Storage.pageSize
+        TimelineLog.log("\(TimelineLog.tag(chat)) timeline reset, limit \(limit)")
         messagesTask = Task {
             do {
                 for try await timeline in storage.timeline(
-                    in: chat, from: window?.start, limit: window?.limit ?? Storage.pageSize
+                    in: chat, from: window?.start, limit: limit
                 ) where !Task.isCancelled {
+                    TimelineLog.log("\(TimelineLog.tag(chat)) timeline loaded: \(timeline.messages.count) messages, "
+                        + "\(timeline.threads.count) threads, limit \(limit)")
                     self.timeline = timeline
                     rebuildChatRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load this chat's messages") }
             }
         }
         // The same chat's pin, still followed.
@@ -1242,7 +1329,7 @@ final class AppModel {
                     pinnedMessage = pinned
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the pinned message") }
             }
         }
     }
@@ -1260,7 +1347,7 @@ final class AppModel {
                     rebuildThreadRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.readable(error) }
+                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the thread") }
             }
         }
     }
@@ -1271,7 +1358,7 @@ final class AppModel {
                 threads = rows
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.readable(error) }
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load threads") }
         }
     }
 }

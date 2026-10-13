@@ -1,5 +1,7 @@
 #if os(macOS)
+import PeelAgent
 import AppKit
+import PeelCore
 
 /// Runs a check script against Peel's own windows, offscreen only
 /// (`Offscreen.drive`): events go into this app's own queue for its own
@@ -11,11 +13,12 @@ import AppKit
 /// `{"select": "a chat's name"}` (sets the destination a click on its
 /// sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
-/// `{"snapshot": "name"}`.
+/// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
+/// the notification for its newest message from someone else).
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
-        var select, open, key, type, snapshot: String?
+        var select, open, notification, key, type, snapshot: String?
         var mods: [String]?
         var wait: Double?
     }
@@ -27,6 +30,8 @@ final class OffscreenDriver {
 
     private let output: URL
     private let model: @MainActor () -> AppModel?
+    /// See `offerKeyEquivalents`.
+    private var keyEquivalents: Any?
 
     private init(output: URL, model: @escaping @MainActor () -> AppModel?) {
         self.output = output
@@ -73,8 +78,13 @@ final class OffscreenDriver {
     private var main: NSWindow? { NSApp.windows.first { $0.isVisible && $0.canBecomeMain } }
 
     /// Where keys go now and the text there, so a key that did nothing shows.
+    /// An open panel or menu that takes keys, as after the click that opened it.
+    private var keyPanel: NSWindow? {
+        NSApp.windows.first { $0 is FloatingWindow && $0.isVisible && $0.canBecomeKey }
+    }
+
     private var focus: String {
-        guard let responder = (NSApp.keyWindow ?? main)?.firstResponder else { return "none" }
+        guard let responder = (keyPanel ?? NSApp.keyWindow ?? main)?.firstResponder else { return "none" }
         // Never what a secure field holds.
         if "\(type(of: responder))".contains("Secure") { return "\(type(of: responder))" }
         let text = (responder as? NSText)?.string ?? (responder as? NSControl)?.stringValue
@@ -88,6 +98,8 @@ final class OffscreenDriver {
             try select(name)
         } else if let name = step.open {
             try open(name)
+        } else if let name = step.notification {
+            try await notification(name)
         } else if let key = step.key {
             try post(key, modifiers: try modifiers(step.mods ?? []))
         } else if let text = step.type {
@@ -101,17 +113,54 @@ final class OffscreenDriver {
 
     /// The selection a click on the chat's sidebar row makes.
     private func select(_ name: String) throws {
-        guard let model = model() else { throw Failure(description: "no account open") }
-        guard let chat = model.conversations.first(where: { $0.name == name })?.chat else {
-            throw Failure(description: "no chat named \(name)")
+        if let model = model(), name == model.agent?.name {
+            // The agent's own row in Direct messages.
+            model.destination = .agent
+            Offscreen.log("drive: selected the agent chat")
+            return
         }
+        let (model, chat) = try chat(named: name)
         model.destination = .chat(chat)
         Offscreen.log("drive: selected \(chat.prefix(12))")
     }
 
+    /// The open account and the chat with this name, as its sidebar row shows it.
+    private func chat(named name: String) throws -> (AppModel, String) {
+        guard let model = model() else { throw Failure(description: "no account open") }
+        guard let chat = model.conversations.first(where: { $0.name == name })?.chat else {
+            throw Failure(description: "no chat named \(name)")
+        }
+        return (model, chat)
+    }
+
+    /// A click on the notification for the newest message someone else sent
+    /// in the chat's timeline, as `Notifier` passes it on (offscreen, Peel
+    /// does not come to the front).
+    private func notification(_ name: String) async throws {
+        let (model, chat) = try chat(named: name)
+        guard let storage = model.engine?.storage else { throw Failure(description: "no account open") }
+        var newest: Message?
+        for try await timeline in storage.timeline(in: chat) {
+            newest = timeline.messages.last { !$0.fromMe }
+            break
+        }
+        model.openFromNotification(chat, messageID: newest?.id)
+        Offscreen.log("drive: notification for \(chat.prefix(12)), message \(newest?.id.map(String.init) ?? "none")")
+    }
+
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
-    /// Account screen (the menu's Account…); `payments`, the Payments screen.
+    /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
+    /// the open chat's newest row from someone else; `payments`, the Payments screen;
+    /// `automations`, the Automations page; `automations-setup`, its Set up
+    /// (the Connect panel) while no model is connected; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// its gear (Account at Peel agent); `agent-retry`, its
+    /// Retry; `agent-view`, the first View in its newest reply;
+    /// `agent-sent-view`, View on its newest send row; `agent-always`, the
+    /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
+    /// `agent-remove-key`, Account's Remove key once confirmed;
+    /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
+    /// in the newest memory row (its panel beside the chat).
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -124,6 +173,69 @@ final class OffscreenDriver {
         case "payments":
             // What the sidebar's Payments row sets.
             model.destination = .payments
+        case "automations":
+            // What the sidebar's Automations row sets.
+            model.destination = .automations
+        case "automations-setup":
+            // The Automations page's Set up, while no model is connected.
+            model.agentConnectFrom = .automations
+        case "message-menu":
+            // A click on More over the open chat's newest row from someone else.
+            guard case .chat(let chat) = model.destination, let presenter = model.mainPresenter, let window = main,
+                  let row = model.chatRows.last(where: { $0.kind == .message && !$0.message.fromMe && !$0.message.deleted })
+            else { throw Failure(description: "no message from someone else in an open chat") }
+            let entries = MessageMenu.entries(for: row, composer: .chat(chat), model: model, offersBoost: row.canBoost)
+            presenter.show(entries, at: CGPoint(x: window.frame.midX, y: window.frame.midY), in: window, source: row.id)
+        case "agent-connect":
+            // The agent chat's Connect, on its card or its error row.
+            model.agentConnectFrom = .chat
+        case "agent-settings":
+            // The agent chat header's gear.
+            model.openAgentSettings()
+        case "agent-retry":
+            // The agent chat's Retry under a failed reply.
+            model.agent?.retry()
+        case "agent-view":
+            // A click on the first View in the agent's newest reply.
+            let reply = model.agent?.turns.last { $0.author == .agent }?.text ?? ""
+            let link = MessageMarkup.spans(in: reply).lazy.compactMap { span -> URL? in
+                guard case .namedLink(let url) = span.kind, AgentMessageLink(url) != nil else { return nil }
+                return url
+            }.first
+            guard let link else { throw Failure(description: "no View link in the agent's reply") }
+            _ = model.openAgentLink(link)
+        case "agent-sent-view":
+            // A click on View in the newest tool row that sent a message.
+            let summaries = model.agent?.turns.flatMap(\.tools).compactMap(\.summary) ?? []
+            guard let url = summaries.lazy.reversed().compactMap({ AgentMessageLink(summary: $0)?.url }).first else {
+                throw Failure(description: "no sent message in the agent chat")
+            }
+            _ = model.openAgentLink(url)
+        case "agent-always":
+            // A click on the waiting card's "Always allow for …".
+            guard model.agent?.waiting != nil else { throw Failure(description: "no card waiting") }
+            model.agent?.answer(.alwaysAllow)
+        case "agent-revoke":
+            // Account › Peel agent: the first "Always allowed" row's Revoke.
+            guard let agent = model.agent, let rule = agent.approvalRules.first else {
+                throw Failure(description: "no always-allowed rule")
+            }
+            try agent.revoke(rule)
+        case "agent-remove-key":
+            // Account › Peel agent: Remove, then its confirm.
+            try model.agent?.removeKey()
+        case "agent-rows":
+            // A click on every tool row's chevron.
+            model.agentRowsOpened += 1
+        case "agent-memory":
+            // A click on the first fact the newest Remembered row shows.
+            let rows = model.agent?.turns.flatMap(\.tools).compactMap { tool in
+                tool.row.flatMap { MemoryResult(tool: tool.name, row: $0) }
+            } ?? []
+            guard case .remembered(let remembered)? = rows.last(where: { if case .remembered = $0 { true } else { false } }),
+                  let fact = remembered.facts.first?.fact
+            else { throw Failure(description: "no Remembered row with a fact") }
+            model.openMemory(fact)
         default:
             throw Failure(description: "nothing to open named \(name)")
         }
@@ -135,9 +247,10 @@ final class OffscreenDriver {
     /// real one for these keys; any other character is sent with code 0.
     private static let keyCodes = Array("asdfhgzxcv\u{0}bqweryt123465=97-80]ou[ip\u{0}lj'k;\\,/nm.\u{0} `")
     private static let named: [String: (code: UInt16, character: Int)] = [
-        "return": (36, 0x0D), "tab": (48, 0x09), "space": (49, 0x20), "delete": (51, 0x7F), "escape": (53, 0x1B),
-        "left": (123, NSLeftArrowFunctionKey), "right": (124, NSRightArrowFunctionKey),
-        "down": (125, NSDownArrowFunctionKey), "up": (126, NSUpArrowFunctionKey),
+        "return": (KeyCode.return, 0x0D), "tab": (KeyCode.tab, 0x09), "space": (KeyCode.space, 0x20),
+        "delete": (KeyCode.delete, 0x7F), "escape": (KeyCode.escape, 0x1B),
+        "left": (KeyCode.left, NSLeftArrowFunctionKey), "right": (KeyCode.right, NSRightArrowFunctionKey),
+        "down": (KeyCode.down, NSDownArrowFunctionKey), "up": (KeyCode.up, NSUpArrowFunctionKey),
     ]
 
     private func modifiers(_ names: [String]) throws -> NSEvent.ModifierFlags {
@@ -155,9 +268,9 @@ final class OffscreenDriver {
     /// Keys go where they would with Peel in front: its key window, else a
     /// menu or panel it has open, else the main window, made key within Peel.
     private func post(_ key: String, modifiers: NSEvent.ModifierFlags) throws {
-        // An open panel that takes keys has them, as after the click that opened it.
-        if NSApp.keyWindow == nil { (NSApp.windows.first { $0.isVisible && !$0.canBecomeMain && $0.canBecomeKey } ?? main)?.makeKey() }
-        guard let window = NSApp.keyWindow ?? main else { throw Failure(description: "no window") }
+        let panel = keyPanel
+        if NSApp.keyWindow == nil { (panel ?? main)?.makeKey() }
+        guard let window = panel ?? NSApp.keyWindow ?? main else { throw Failure(description: "no window") }
         var modifiers = modifiers
         let characters: String
         let code: UInt16
@@ -179,7 +292,31 @@ final class OffscreenDriver {
                 charactersIgnoringModifiers: modifiers.contains(.shift) ? characters : characters.lowercased(),
                 isARepeat: false, keyCode: code
             ) else { throw Failure(description: "cannot make key \(key)") }
+            // Only a panel: an open menu takes its keys through Peel's key monitor.
+            if let panel, NSApp.keyWindow !== panel, model()?.mainPresenter?.isOpen != true {
+                // Never active, Peel gets no key window, and a posted key goes
+                // to the main window: the panel is handed its keys itself.
+                panel.sendEvent(event)
+                continue
+            }
+            if type == .keyDown { offerKeyEquivalents() }
             NSApp.postEvent(event, atStart: false)
+        }
+    }
+
+    /// AppKit offers a key with ⌘ to the key window's views
+    /// (`performKeyEquivalent`) before the menu bar and the view with the
+    /// keyboard. Offscreen, Peel is never active, so no window is key and
+    /// that pass never runs: a shortcut on a view (`.hiddenShortcut`, such
+    /// as ⌘I) then reached only the focused view's `keyDown`, and a text
+    /// field or the composer took it as nothing. So the driver offers it,
+    /// as the key window would have, after Peel's own key monitors: they
+    /// run in the order they started, so this one starts again for each key.
+    private func offerKeyEquivalents() {
+        if let keyEquivalents { NSEvent.removeMonitor(keyEquivalents) }
+        keyEquivalents = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.contains(.command), let window = event.window else { return event }
+            return MainActor.assumeIsolated { !window.isKeyWindow && window.performKeyEquivalent(with: event) } ? nil : event
         }
     }
 

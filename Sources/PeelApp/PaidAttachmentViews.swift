@@ -26,7 +26,7 @@ struct LockedAttachment: View {
                 Veil(seed: message.uuid ?? "")
                     .frame(width: 320, height: 200)
                     .overlay {
-                        VStack(spacing: 8) {
+                        VStack(spacing: Theme.Space.sm) {
                             lockMark(size: 40)
                             Text(kind == .video ? "Paid video" : "Paid photo")
                                 .font(Theme.font(13, .semibold))
@@ -39,19 +39,20 @@ struct LockedAttachment: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(kind == .text ? "Paid message" : "Paid file")
                             .font(Theme.font(13, .semibold))
-                        Text(kind == .text ? "Opens once bought" : AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                        if kind != .text {
+                            Text(AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
+                                .muted()
+                        }
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
                 .frame(width: 320)
             }
             Theme.divider.frame(height: 1)
             footer
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 9)
                 .frame(width: 320, alignment: .leading)
         }
@@ -77,23 +78,21 @@ struct LockedAttachment: View {
         let seller = row.sender.name
         switch state {
         case .processing:
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ProgressView().controlSize(.small)
-                Text("Unlocking: waiting for \(seller) to send the key")
+                Text("Waiting for \(seller)…")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(2)
             }
         case .denied:
-            Text("\(seller) turned the purchase down and sent the sats back.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            Text("\(seller) declined. Your sats were returned.")
+                .muted()
         case .unlocked, .forSale:
             // Never shown: an unlocked one or our own is drawn as the attachment itself.
             EmptyView()
         case .locked, .failed:
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 HStack(alignment: .top) {
                     Text(Sats.format(msat: price))
                         .font(Theme.font(14, .semibold))
@@ -107,7 +106,7 @@ struct LockedAttachment: View {
                 if let problem = attempt.problem {
                     ProblemText(problem)
                 } else if state == .failed {
-                    ProblemText("The last try did not go through; nothing was paid.")
+                    ProblemText("Didn't go through. Nothing was paid.")
                 }
             }
         }
@@ -119,17 +118,12 @@ struct LockedAttachment: View {
 private struct Veil: View {
     let seed: String
 
-    private static let tones: [Color] = [
-        Color(light: 0x8E969C, dark: 0x3E6189), Color(light: 0xB08B7E, dark: 0x5B4A6E),
-        Color(light: 0x7E9A8C, dark: 0x2F5D55), Color(light: 0x9B8BB0, dark: 0x6B5A3E),
-    ]
-
     var body: some View {
         let value = seed.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
         ZStack {
             Theme.quote
             ForEach(0..<3, id: \.self) { index in
-                let tone = Self.tones[(value >> (index * 3)) % Self.tones.count]
+                let tone = Theme.veilTones[(value >> (index * 3)) % Theme.veilTones.count]
                 Circle()
                     .fill(tone.opacity(0.75))
                     .frame(width: 180, height: 180)
@@ -149,13 +143,12 @@ struct ForSaleNote: View {
     var body: some View {
         Label {
             Text("For sale at \(Sats.format(msat: priceMsat)) · "
-                + (purchases == 0 ? "not bought yet" : purchases == 1 ? "bought once" : "bought \(purchases) times"))
+                + (purchases == 0 ? "not bought yet" : purchases == 1 ? "bought once" : "bought \(Formatting.count(purchases, "time"))"))
         } icon: {
             Image(systemName: "lock")
         }
-        .font(Theme.font(12))
         .monospacedDigit()
-        .foregroundStyle(Theme.secondaryText)
+        .muted()
     }
 }
 
@@ -179,6 +172,6 @@ struct AttachmentPriceField: View {
             FormNumberField(label: "Price", text: text, unit: "sats", prompt: "Free")
                 .frame(width: 120)
         }
-        .help("Sell these files: buyers pay this many sats each to open one. Leave empty to send them free.")
+        .help("Price per file. Empty sends them free.")
     }
 }

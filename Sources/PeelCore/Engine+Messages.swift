@@ -11,7 +11,8 @@ extension Engine {
     public static let priceToMeetMsat: UInt64 = 3_000
 
     /// Starts a key exchange with a contact given as `pubkey_lsp_scid`,
-    /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks.
+    /// paying `keyExchangeMsat` with no checks: `addContact(code:)` checks,
+    /// and only a new account's inviter (`addInviterIfPending`) is added unchecked.
     public func addContact(_ contactInfo: String, alias theirAlias: String? = nil, inviteCode: String? = nil) async throws {
         guard let parts = Self.contactInfoParts(contactInfo) else { throw Failure.invalidContactInfo }
         try await run { time, state in
@@ -31,16 +32,18 @@ extension Engine {
     /// set as the Mac app sets them: a reply joins its parent's thread, or
     /// starts one at the parent; `inThread` may name any message of the
     /// thread, and a reply given with it must be in that thread. Returns the
-    /// tag the server will confirm.
+    /// tag the server will confirm. With `priceAtMost` (msat), a tribe whose
+    /// price is now above it is refused (`tribePriceRose`) rather than paid:
+    /// the price someone agreed to is the most the send pays.
     @discardableResult
     public func sendText(
-        _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil
+        _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil, priceAtMost: UInt64? = nil
     ) async throws -> String? {
         let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
         var fields = ["content": text]
         fields["replyUuid"] = links.replyTo
         fields["threadUuid"] = links.thread
-        return try await deliver(body: try Self.json(fields), to: pubkey, replacing: nil)
+        return try await deliver(body: try Self.json(fields), to: pubkey, priceAtMost: priceAtMost, replacing: nil)
     }
 
     /// `replyUuid` and `threadUuid` for a message to `chat`, as the Mac app
@@ -67,6 +70,12 @@ extension Engine {
             thread = parentThread
         }
         return (replyTo, thread)
+    }
+
+    /// Throws what `sendText` would refuse about `replyTo` and `inThread`
+    /// in `chat`, without sending: for asking before a send.
+    public func checkLinks(replyTo: String?, inThread: String?, in chat: String) throws {
+        _ = try links(replyTo: replyTo, inThread: inThread, in: chat)
     }
 
     /// A stored text message or attachment of `chat` that others hold under
@@ -107,9 +116,13 @@ extension Engine {
     /// and tag, so the same row takes them over and moves to now; the server's
     /// echo then matches that row rather than adding a second one. A tribe
     /// message pays the tribe's current price, as a first send would, but
-    /// never more than the price it was first sent at: a raise since then
-    /// shows in the tribe's header, and the message must be sent anew.
-    /// A payment or boost goes again only once it failed (`isRetryable`), for
+    /// never more than the price it last went at (the row takes each send's
+    /// sats): a raise since then shows in the tribe's header, and the
+    /// message must be sent anew. One that went free (no sats) has no price
+    /// to hold to, and goes at the current one.
+    /// Anything that carried sats (a payment, a boost, or a tribe message,
+    /// which paid the price) goes again only once it failed (`isRetryable`):
+    /// an unconfirmed one may have paid. A payment or boost goes again for
     /// the same amount, within the balance and, like a new one, confirmed
     /// when over the threshold; a boost in a tribe only if that amount still
     /// covers the tribe's price, and only while its message can be boosted.
@@ -246,6 +259,13 @@ extension Engine {
     /// A tribe this account knows, as last stored.
     func knownTribe(_ pubkey: String) -> Tribe? { tribes[pubkey] }
 
+    /// What a text message to `pubkey` pays now: a tribe's price
+    /// (`Tribe.messagePrice`), nil for a contact. Throws as a send would
+    /// for a tribe that takes no messages from this account.
+    public func messagePrice(to pubkey: String) throws -> TribePrice? {
+        try openTribe(pubkey)?.messagePrice
+    }
+
     /// One message through the core: text, an attachment, a delete, a
     /// payment or a boost. A text message to a tribe carries sats (the
     /// tribe's current price, at least 3); a payment or boost carries
@@ -254,15 +274,21 @@ extension Engine {
     /// local row is written in the same transaction as the state, before
     /// publishing. If the publish fails the row is marked failed, ready to send
     /// again, and the failure is reported as a send status rather than thrown.
-    /// A payment is marked failed only when nothing was published
-    /// (`commitAndPublish`'s `.none`): once anything went out it may have
-    /// paid, so it stays pending, never to be sent again, until the server says.
+    /// Anything that carries sats (a payment, or a tribe's price) is marked
+    /// failed only when nothing was published (`commitAndPublish`'s `.none`):
+    /// once anything went out it may have paid, so it stays pending, never to
+    /// be sent again, until the server says.
     /// `auto` (a reconnect's own resend) leaves a failure to the row alone.
+    /// `priceAtMost` (msat) refuses a tribe's price above it
+    /// (`tribePriceRose`) rather than pay it.
     func deliver(
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
-        replacing id: Int64?, auto: Bool = false
+        priceAtMost: UInt64? = nil, replacing id: Int64?, auto: Bool = false
     ) async throws -> String? {
         let tribe = try openTribe(pubkey)
+        if let priceAtMost, amountMsat == nil, let tribe, tribe.messageAmountMsat(type: type) > priceAtMost {
+            throw Failure.tribePriceRose(boost: false)
+        }
         // By what is stored: a send never waits on the network, so sends go
         // at once and in order (`TimeZones.swift`).
         let offset = try offsetShared(in: pubkey, type: type)
@@ -282,13 +308,14 @@ extension Engine {
         let now = Date().millisecondsSince1970
         var outgoing: Message?
         var resend: Storage.Commit.Resend?
+        let msat = sats > 0 ? Int64(clamping: sats) : nil
         if let id {
-            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, now, auto)
+            resend = (id, pubkey, sent?.uuid, sent?.tag, sent?.paymentHash, msat, now, auto)
         } else {
             let fields = BodyFields.decode(body)
             outgoing = Message(
                 uuid: sent?.uuid, type: type, chat: pubkey, fromMe: true, body: body,
-                content: fields?.content, msat: sats > 0 ? Int64(clamping: sats) : nil,
+                content: fields?.content, msat: msat,
                 timestamp: now, tag: sent?.tag, paymentHash: sent?.paymentHash,
                 status: Message.Delivery.pending.rawValue,
                 replyUUID: fields?.replyUuid, threadUUID: fields?.threadUuid,
@@ -305,8 +332,9 @@ extension Engine {
             failure = nil
         case .none:
             failure = Failure.notConnected
-        case .unknown(let error) where amountMsat != nil:
-            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error)))
+        case .unknown(let error) where sats > 0:
+            let what = amountMsat == nil ? "message" : "payment"
+            emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error, what: what)))
             return sent?.tag
         case .unknown(let error):
             failure = error
@@ -379,6 +407,7 @@ extension Engine {
         try await run { time, state in
             try Sphinxrs.mute(seed: seed, uniqueTime: time, state: state, pubkey: chat, muteLevel: UInt8(level.rawValue))
         }
+        mutesSetSinceGetMutes.insert(chat)
         try storage.setMute(chat: chat, level: level)
     }
 }

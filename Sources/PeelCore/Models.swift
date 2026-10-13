@@ -1,6 +1,10 @@
 import Foundation
 import GRDB
 
+/// The account's own state and configuration. What the person chooses
+/// (boost amount, thresholds, time zones, notifications) is a `Preference`;
+/// window state (the sidebar's layout) stays here, as pane widths stay in
+/// `UserDefaults`.
 public enum Setting: String, Sendable {
     case network
     case server
@@ -12,36 +16,39 @@ public enum Setting: String, Sendable {
     case clock
     /// "1" while an account brought back from its words still needs its history.
     case needsRestore
-    /// Hours before the app asks for the PIN again; "0" means only at launch.
-    case pinTimeoutHours
     /// The tribes server this account's own tribes are listed on, as `host[:port]`.
     case tribeHost
     /// The memes server attachments go to, as `host[:port]`; `memes.sphinx.chat` when unset.
     case memesHost
     /// The highest server index of a message dropped unstored (from a left
-    /// tribe), so catching up does not fetch it again.
+    /// tribe) by a build from before `historyIndex`: read once, with the
+    /// newest stored message, for where such a profile starts catching up.
     case droppedIndex
-    /// "0" when notifications should say only "New message"; text is shown otherwise.
-    case notificationText
+    /// Where history stands (`HistoryCursor.from`), written with what
+    /// moves it.
+    case historyFrom
     /// The aliases stored tribe messages were last checked for mentions of
     /// this account (`MentionScan`); a change checks them again.
     case mentionScan
     /// The `Storage.noWordsVersion` stored messages were last checked by
     /// for having no words; a new version checks them again.
     case noWordsScan
-    /// Payments and boosts over this many msat need the person's confirmation.
-    case paymentConfirmationMsat
-    /// What a one-tap boost tips, in msat (the official apps' "Default tip amount").
-    case boostAmountMsat
     /// The call server calls are started on and links are checked against,
     /// as `host[:port]`; `chat.sphinx.chat` when unset.
     case callServer
-    /// The zone this account's offset comes from, an IANA name; unset or ""
-    /// means this Mac's.
-    case timeZone
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout
+    /// The invite a new account signed up with (`Engine.Invite`, as JSON):
+    /// every register names its code until the server confirms one, and
+    /// once online the inviter is added (`Engine.addInviterIfPending`); ""
+    /// after. Never logged or shown.
+    case invite
+
+    /// "1" once the twelve words were checked: three of them typed back
+    /// (`Engine.confirmWords`), or all twelve to restore. Never the words
+    /// themselves. An account with no record has not been checked.
+    case wordsConfirmed
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.
@@ -96,6 +103,11 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
     /// whose chat has not been read on this Mac since. The core accepts them
     /// at once: there is no request to answer.
     public var isNew = false
+    /// Someone else's message past the marker, of any type: the server's
+    /// badge count and the official apps' unread take every one (joins,
+    /// others' boosts), where `unread` takes only what Peel counts. Our own
+    /// need no marker: the server moves it to each one we send.
+    public var isBehind = false
 
     public var mute: MuteLevel { MuteLevel(rawValue: muteLevel) ?? .all }
 
@@ -117,6 +129,7 @@ public struct ChatReadState: Codable, Sendable, Equatable, FetchableRecord {
 
     /// In the sidebar's Unread section (`ChatSections`).
     public var isUnread: Bool { sidebarCount > 0 || isNew }
+
 }
 
 /// Where a timeline that does not end at the newest message starts: a

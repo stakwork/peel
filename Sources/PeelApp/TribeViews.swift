@@ -58,7 +58,7 @@ struct TribeSettingsForm: View {
 
     var body: some View {
         // Its own buttons do not close it while a save or delete runs.
-        FormPopover(title: editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
+        Panel(editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
             if loaded {
                 fields
                 if let editing {
@@ -70,7 +70,7 @@ struct TribeSettingsForm: View {
                     .disabled(working == .save)
                 }
             } else if problem == nil {
-                TribeServerProgress().padding(.vertical, 12)
+                TribeServerProgress().padding(.vertical, Theme.Space.md)
             }
         } footer: {
             FormFooter(problem: problem) {
@@ -98,21 +98,21 @@ struct TribeSettingsForm: View {
             FormItem(label: "Name", problem: problem(.name)) {
                 FormTextField(label: "Name", prompt: "Required", text: $name, problem: problem(.name) != nil)
             }
-            FormItem(label: "What it is about", helper: "Shown in the tribes directory and the header.") {
+            FormItem(label: "What it is about") {
                 FormTextField(label: "What it is about", text: $summary, axis: .vertical)
             }
             FormItem(label: "Image", problem: problem(.photo)) {
                 PictureField(
                     picture: TribeIcon(
                         name: name.trimmed.nilIfEmpty ?? "?", url: photoURL.nilIfEmpty,
-                        pubkey: editing?.pubkey ?? "", size: 40
+                        pubkey: editing?.pubkey ?? "", size: Theme.AvatarSize.xl
                     ).avatar,
                     upload: { photoURL = try await model.uploadPicture($0) },
                     remove: photoURL.isEmpty ? nil : .now { photoURL = "" },
                     uploading: $uploadingImage
                 )
             }
-            FormItem(label: "Tags", helper: "The tribes directory lists tribes by tag.") {
+            FormItem(label: "Tags") {
                 // The official apps' set, and any other the tribe already has.
                 TagChips(tags: TribeSettings.tagChoices + (original?.tags ?? []).filter { !TribeSettings.tagChoices.contains($0) },
                          selection: $tags)
@@ -121,18 +121,18 @@ struct TribeSettingsForm: View {
         FormSection("Pricing") {
             // Two to a line. Under a price, what members actually pay when it is more.
             let typed = try? settings()
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 amountItem("Price to join", helper: membersPay(typed?.joinPrice), text: $priceToJoin, unit: "sats", field: .priceToJoin)
                 amountItem("Price per message", helper: membersPay(typed?.messagePrice), text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
             }
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
                 amountItem("Escrow per message", helper: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
                 amountItem("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
             }
         }
         FormSection("Access") {
-            FormSwitchRow(label: "Private", detail: "People ask to join and you approve them.", isOn: $isPrivate)
-            FormSwitchRow(label: "Unlisted", detail: "Not shown in the tribes directory; joined by link only.", isOn: $unlisted)
+            FormSwitchRow(label: "Private", detail: "You approve who joins.", isOn: $isPrivate)
+            FormSwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $unlisted)
         }
     }
 
@@ -171,7 +171,7 @@ struct TribeSettingsForm: View {
             tags = settings.tags
             original = settings
         } catch {
-            problem = "Could not load the tribe: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "load the tribe")
         }
     }
 
@@ -186,7 +186,7 @@ struct TribeSettingsForm: View {
             do {
                 return try Sats.parse(text, unit: unit, of: field.rawValue)
             } catch {
-                throw FieldProblem(field: field, text: Formatting.sentence(error))
+                throw FieldProblem(field: field, text: PeelError.problem(error))
             }
         }
         return TribeSettings(
@@ -216,12 +216,12 @@ struct TribeSettingsForm: View {
             fieldProblem = error
         } catch let failure as Engine.Failure {
             if let field = Field(failure) {
-                fieldProblem = FieldProblem(field: field, text: Formatting.sentence(failure))
+                fieldProblem = FieldProblem(field: field, text: PeelError.problem(failure))
             } else {
-                problem = PeelError.readable(failure)
+                problem = PeelError.problem(failure, couldNot: editing == nil ? "create the tribe" : "save the tribe")
             }
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: editing == nil ? "create the tribe" : "save the tribe")
         }
     }
 
@@ -233,21 +233,8 @@ struct TribeSettingsForm: View {
             try await model.deleteTribe(editing.pubkey)
             done()
         } catch {
-            problem = "Could not delete: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "delete the tribe")
         }
-    }
-}
-
-/// A small secondary label: a heading inside a popover list, or a field's name.
-struct SectionLabel: View {
-    let text: String
-
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.font(12, .medium))
-            .foregroundStyle(Theme.secondaryText)
     }
 }
 
@@ -256,9 +243,8 @@ struct TribeServerProgress: View {
     var body: some View {
         HStack {
             ProgressView().controlSize(.small)
-            Text("Asking the tribes server…")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+            Text("Loading…")
+                .muted()
         }
     }
 }
@@ -305,13 +291,15 @@ struct JoinRequestButtons: View {
 struct JoinRequestNote: View {
     @Environment(AppModel.self) private var model
     let message: Message
+    /// Who asks (the row's sender).
+    let sender: Sender
     /// Whether the owner approved, once answered.
     let approved: Bool?
     let canAnswer: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("\(message.senderAlias ?? Sender.unnamed) wants to join")
+        HStack(spacing: Theme.Space.sm) {
+            Text("\(sender.name) wants to join")
             if let approved {
                 Text(approved ? "· Approved" : "· Declined")
             } else if canAnswer {
@@ -334,11 +322,11 @@ struct PinnedMessageBar: View {
     let tribe: Tribe
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             Image(systemName: "pin.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
-            Text(message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed)
+            Text(model.sender(of: message).label)
                 .font(Theme.font(12, .medium))
             Text(message.preview)
                 .font(Theme.font(12))
@@ -353,7 +341,7 @@ struct PinnedMessageBar: View {
                     .foregroundStyle(Theme.secondaryText)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, 7)
         .background(Theme.panel)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
@@ -377,47 +365,33 @@ struct PinnedMessageBar: View {
 
 /// In place of the composer when this account cannot post: waiting for
 /// approval, declined, removed, or the tribe deleted. Removing it from Peel
-/// is confirmed in place.
+/// is confirmed in place; a failure shows in the chat's notice above.
 struct TribeStatusBar: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let tribe: Tribe
 
-    @State private var problem: String?
-
     private var text: String {
         switch tribe.status {
-        case .pending: "Waiting for the owner to approve your request to join."
-        case .rejected: "The owner declined your request to join."
-        case .removed: "The owner removed you from this tribe."
+        case .pending: "Waiting for the owner to approve you."
+        case .rejected: "The owner declined your request."
+        case .removed: "The owner removed you."
         case .deleted: "The owner deleted this tribe."
         case .active: "You are not in this tribe."
         }
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            if tribe.status == .pending {
-                ProgressView().controlSize(.small)
-            }
-            Text(problem ?? text)
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-            Spacer(minLength: 8)
-            InlineConfirm(trigger: "Remove from Peel", prompt: "Remove #\(conversation.name) from Peel?", confirm: "Remove") {
-                do {
-                    try await model.leaveTribe(tribe.pubkey)
-                } catch {
-                    problem = "Could not remove: \(PeelError.readable(error))"
+        Callout(detail: text, icon: tribe.status == .pending ? .progress : nil) {
+            if let exit = tribe.exit {
+                InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
+                    await model.leave(tribe.pubkey)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .panelBoxed()
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Theme.Space.xl)
         .padding(.top, 6)
-        .padding(.bottom, 16)
+        .padding(.bottom, Theme.Space.lg)
     }
 }
 
@@ -429,22 +403,20 @@ struct MentionsView: View {
     @State private var problem: String?
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            DetailHeader(title: "Mentions")
             if mentions.isEmpty {
-                EmptyPlace(title: "Mentions", message: problem ?? "Messages that mention you show up here.")
+                EmptyState(problem ?? "No mentions yet.")
             } else {
                 let names = Dictionary(model.conversations.map { ($0.chat, $0.name) }, uniquingKeysWith: { $1 })
-                VStack(spacing: 0) {
-                    DetailHeader(title: "Mentions")
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(mentions) { message in
-                                MentionRow(message: message, tribeName: names[message.chat])
-                            }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(mentions) { message in
+                            MentionRow(message: message, tribeName: names[message.chat])
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
                     }
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.vertical, 10)
                 }
             }
         }
@@ -453,7 +425,7 @@ struct MentionsView: View {
                 guard let updates = model.mentionUpdates() else { return }
                 for try await rows in updates { mentions = rows }
             } catch {
-                problem = PeelError.readable(error)
+                problem = PeelError.problem(error, couldNot: "load mentions")
             }
         }
     }
@@ -465,39 +437,32 @@ private struct MentionRow: View {
     let tribeName: String?
 
     var body: some View {
-        let details = message.senderDetails, alias = details.alias
-        Button {
-            model.focus(on: message)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                let hue = model.hue(pubkey: message.chat, alias: alias, inTribe: true)
-                Avatar(name: alias ?? "?", url: details.photoURL, size: 28, hue: hue)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(alias ?? Sender.unnamed)
-                            .font(Theme.font(13, .medium))
-                            .foregroundStyle(hue.name)
-                        Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                        Spacer(minLength: 8)
-                        Text(message.date, format: .dateTime.month(.abbreviated).day().hour().minute())
-                            .font(Theme.font(11))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
-                    }
-                    Text(LinkText.attributed(message.shownText, myAliases: model.mentionAliases(in: message.chat)))
-                        .font(Theme.font(14))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(4)
-                        .multilineTextAlignment(.leading)
-                }
+        let sender = Sender(member: message)
+        ListRow(size: .md, alignment: .top, action: { model.focus(on: message) }) {
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.lg, hue: sender.hue)
+        } title: {
+            HStack(spacing: 6) {
+                Text(sender.name)
+                    .font(Theme.font(13, .medium))
+                    .foregroundStyle(sender.hue.name)
+                Text("in #\(tribeName ?? String(message.chat.prefix(12)))")
+                    .muted()
+                Spacer(minLength: 8)
+                Text(Formatting.dateAndTime(message.date))
+                    .font(Theme.font(11))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.secondaryText)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+        } detail: {
+            Text(LinkText.attributed(message.shownText, myAliases: model.mentionAliases(in: message.chat)))
+                .font(Theme.font(14))
+                .foregroundStyle(Theme.text)
+                .lineLimit(4)
+                .multilineTextAlignment(.leading)
+                .padding(.top, 1)
+        } trailing: {
+            EmptyView()
         }
-        .buttonStyle(SidebarRowStyle(selected: false))
         .peelMenu {
             var entries: [MenuEntry] = [.button("Open in #\(tribeName ?? "tribe")", systemImage: "number") {
                 model.focus(on: message)

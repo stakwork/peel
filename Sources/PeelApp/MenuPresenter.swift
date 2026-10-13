@@ -33,6 +33,11 @@ final class MenuPresenter {
     private(set) var isOpen = false
     private(set) var source: AnyHashable?
 
+    /// The open menu was opened from `source`: the button that opened it is lit.
+    func isOpen(from source: AnyHashable?) -> Bool {
+        source != nil && isOpen && self.source == source
+    }
+
     /// A short note at the bottom of the host window, such as "Copied".
     struct Toast: Equatable {
         let id = UUID()
@@ -72,6 +77,15 @@ final class MenuPresenter {
         open != nil
         #endif
     }
+
+    #if os(macOS)
+    /// Whether a key monitor below the menus and panels may take `event`:
+    /// it is for this presenter's window and no menu or panel is up
+    /// (`KeyMonitor`'s Escape order).
+    func takesKeys(_ event: NSEvent) -> Bool {
+        event.window === hostWindow && !anythingOpen
+    }
+    #endif
 
     /// Opens a menu below a button (`anchor`), moving with it while its
     /// list moves and closing once it is out of sight, unless it has
@@ -115,11 +129,11 @@ final class MenuPresenter {
         #endif
     }
 
-    /// Shows a panel (a form or a card) below `anchor`, in place of any other
-    /// panel. `closed` runs when it goes away by a click elsewhere or Escape.
-    /// It moves with its trigger and, unlike a menu or a card, stays at the
-    /// list's edge while the trigger is out of sight; it goes only with the
-    /// trigger's row (`PopoverModifier`).
+    /// Shows a panel (a `Panel`, which draws its own box) below `anchor`, in
+    /// place of any other panel. `closed` runs when it goes away by a click
+    /// elsewhere or Escape. It moves with its trigger and, unlike a menu or a
+    /// card, stays at the list's edge while the trigger is out of sight; it
+    /// goes only with the trigger's row (`PopoverModifier`).
     func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, closed: @escaping @MainActor () -> Void) {
         #if os(macOS)
         // A trigger inside the open panel (none today) would name it; the host otherwise.
@@ -128,7 +142,7 @@ final class MenuPresenter {
         if panelID != id { closePanel() }
         panelID = id
         panelClosed = closed
-        panelWindow.present(environment(AnyView(PanelBox(content: content))), anchor: anchor.screenRect, from: host,
+        panelWindow.present(environment(content), anchor: anchor.screenRect, from: host,
                             following: anchor)
         startMonitoring()
         #endif
@@ -246,7 +260,7 @@ final class MenuPresenter {
         guard let host = hostWindow, anchor.isVisible else { return }
         cardSource = source
         let card = content
-            .menuBoxed(cornerRadius: 10)
+            .menuBoxed(cornerRadius: Theme.Radius.panel)
             .onHover { [weak self] over in
                 self?.cardTimer?.cancel()
                 if !over { self?.hideCardSoon() }
@@ -319,27 +333,27 @@ final class MenuPresenter {
     private func handle(_ event: NSEvent) -> Bool {
         guard let open else {
             // A panel: Escape closes it; every other key is its own.
-            if event.keyCode == 53, panelID != nil {
+            if event.keyCode == KeyCode.escape, panelID != nil {
                 closePanel()
                 return true
             }
             return false
         }
         switch event.keyCode {
-        case 53: // Escape
+        case KeyCode.escape:
             if open.confirming != nil { cancelConfirmation() } else if open.back != nil { goBack() } else { dismiss() }
             return true
-        case 123: // Left: out of a submenu
+        case KeyCode.left: // out of a submenu
             goBack()
             return true
-        case 124: // Right: into one
+        case KeyCode.right: // into one
             if let index = open.highlighted, open.entries[index].item?.submenu != nil { choose(index) }
             return true
-        case 36, 76: // Return, Enter
+        case KeyCode.return, KeyCode.enter:
             if let index = open.confirming ?? open.highlighted { choose(index) }
             return true
-        case 125: move(1); return true
-        case 126: move(-1); return true
+        case KeyCode.down: move(1); return true
+        case KeyCode.up: move(-1); return true
         default:
             break
         }
@@ -381,12 +395,12 @@ private struct MenuPanel: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let back = open.back {
                     MenuBackRow(title: back.title) { presenter.goBack() }
-                    Theme.divider.frame(height: 1).padding(.vertical, 4).padding(.horizontal, 6)
+                    Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs).padding(.horizontal, 6)
                 }
                 ForEach(Array(open.entries.enumerated()), id: \.offset) { index, entry in
                     switch entry {
                     case .divider:
-                        Theme.divider.frame(height: 1).padding(.vertical, 4).padding(.horizontal, 6)
+                        Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs).padding(.horizontal, 6)
                     case .view(let view):
                         view
                     case .header(let title):
@@ -394,7 +408,7 @@ private struct MenuPanel: View {
                             .font(Theme.font(11, .medium))
                             .foregroundStyle(Theme.secondaryText)
                             .padding(.horizontal, 10)
-                            .padding(.top, 4)
+                            .padding(.top, Theme.Space.xs)
                             .padding(.bottom, 2)
                     case .item(let item):
                         MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index)
@@ -406,7 +420,7 @@ private struct MenuPanel: View {
             .padding(5)
             .frame(minWidth: max(220, open.minWidth), alignment: .leading)
             .fixedSize()
-            .menuBoxed()
+            .menuBoxed(cornerRadius: Theme.Radius.panel)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
         }
@@ -437,14 +451,13 @@ private struct MenuRow: View {
             Spacer(minLength: 16)
             if confirming {
                 Text("Click again")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+                    .muted()
             } else if let shortcut = item.shortcut {
                 Text(shortcut.label)
                     .font(Theme.font(12))
                     .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
             } else if item.detail != nil || item.detailSystemImage != nil || item.submenu != nil {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.xs) {
                     if let detail = item.detail { Text(detail).font(Theme.font(12)) }
                     if let image = item.detailSystemImage ?? (item.submenu != nil ? "chevron.right" : nil) {
                         Image(systemName: image).font(.system(size: 9, weight: .semibold))
@@ -454,9 +467,9 @@ private struct MenuRow: View {
             }
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.sm)
         .frame(height: 28)
-        .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -481,32 +494,14 @@ private struct MenuBackRow: View {
             Spacer(minLength: 16)
         }
         .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.sm)
         .frame(height: 28)
-        .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(perform: action)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Back to the menu")
         .accessibilityAddTraits(.isButton)
-    }
-}
-
-/// A panel in the menu box, unless it draws its own (`DrawsOwnPanelBox`).
-/// The box goes behind the content, so finding out never rebuilds the panel.
-private struct PanelBox: View {
-    private static let radius: CGFloat = 8
-    let content: AnyView
-    @State private var ownBox = false
-
-    var body: some View {
-        content
-            .onPreferenceChange(DrawsOwnPanelBox.self) { ownBox = $0 }
-            .background { if !ownBox { Color.clear.menuBoxed(cornerRadius: Self.radius) } }
-            // The border again over the content, where `content.menuBoxed()` drew it.
-            .overlay {
-                if !ownBox { RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Theme.divider) }
-            }
     }
 }

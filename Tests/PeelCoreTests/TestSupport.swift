@@ -1,4 +1,6 @@
 import Foundation
+import Sphinxrs
+import Testing
 @testable import PeelCore
 
 // Fixtures shared by the PeelCore tests. `TempProfile` lives in
@@ -35,8 +37,8 @@ let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c7
 /// A contact record as the core stores it (`rmp_utils::serialize_contact`):
 /// version, child index, LSP key, scid and, once the key exchange is done,
 /// the contact key. A person has one; a tribe never does.
-func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G) -> [String: Data] {
-    ["c/\(pubkey)": Data([0]) + be64(1) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
+func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G, index: UInt64 = 1) -> [String: Data] {
+    ["c/\(pubkey)": Data([0]) + be64(index) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
 }
 
 /// Sender details as the core and a tribes server put them on a message.
@@ -82,6 +84,18 @@ let registeredState: [String: Data] = [
     "my_scid": be64(1), "server_pubkey": hex(key3G), "blockheight": be64(800_000), "device": Data("dev".utf8),
 ]
 
+/// An invoice the core makes for another account (payee and server alike,
+/// `registeredState`), valid for an hour.
+func madeInvoice(msat: UInt64 = 10_000) throws -> Invoice {
+    let seed = try Sphinxrs.mnemonicToSeed(
+        mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
+    )
+    return try Invoice(try #require(try Sphinxrs.makeInvoice(
+        seed: seed, uniqueTime: String(Date().millisecondsSince1970), state: StateCodec.encode(registeredState),
+        amtMsat: msat, description: "test"
+    ).invoice))
+}
+
 /// A transport that never connected: to the engine, a connection that has
 /// just gone, so every publish throws `notConnected`. Nothing dials it.
 func goneTransport() -> Transport {
@@ -89,4 +103,81 @@ func goneTransport() -> Transport {
         server: ServerAddress("mqtt://127.0.0.1:1")!, clientID: "test", username: "test", password: "test",
         allowUntrustedCertificate: false
     )
+}
+
+/// A core result with only the publish fields, the messages (with a total,
+/// a page of history), a page of payment history, the server's records and state set.
+func coreResult(
+    settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
+    asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
+    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil
+) -> RunReturn {
+    RunReturn(
+        msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
+        settleTopic: settle, settlePayload: settle.map { _ in Data([1]) },
+        asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
+        registerTopic: register, registerPayload: register.map { _ in Data() },
+        topics: topics, payloads: topics.map { _ in Data([3]) },
+        stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
+        settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: nil,
+        tribeMembers: nil, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
+        lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,
+        paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
+    )
+}
+
+extension Msg {
+    /// A message as the core reports one.
+    static func fixture(
+        type: UInt8? = 0, message: String? = nil, uuid: String? = nil, index: String? = nil, sender: String? = nil,
+        msat: UInt64? = nil, timestamp: UInt64? = nil, sentTo: String? = nil, fromMe: Bool? = false
+    ) -> Msg {
+        Msg(message: message, type: type, uuid: uuid, tag: nil, index: index, sender: sender, msat: msat,
+            timestamp: timestamp, sentTo: sentTo, fromMe: fromMe, paymentHash: nil, error: nil)
+    }
+}
+
+/// A registered account (`registeredState`) on a server nothing dials, with
+/// `contact` as a ready contact at child index 1, and what else `commit` holds.
+func registeredStorage(
+    _ profile: TempProfile, contact: String? = nil, _ commit: Storage.Commit = Storage.Commit()
+) throws -> Storage {
+    let storage = try profile.storage()
+    var commit = commit
+    commit.state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
+    commit.settings[.server] = "mqtt://127.0.0.1:1"
+    commit.contacts = contact.map { [($0, true)] }
+    _ = try storage.apply(commit)
+    return storage
+}
+
+/// Runs `body` on an engine for `storage` on `transport`, and disconnects
+/// after, even when it throws: that shuts the transport's client down,
+/// which mqtt-nio requires before one is freed.
+func withTestEngine(_ storage: Storage, on transport: Transport, _ body: (Engine) async throws -> Void) async throws {
+    let engine = try testEngine(storage)
+    await engine.useTransportForTesting(transport)
+    do {
+        try await body(engine)
+    } catch {
+        await engine.disconnect()
+        throw error
+    }
+    await engine.disconnect()
+}
+
+/// One onion of a page of history as the server frames it (`encode_onion`):
+/// the onion (`data`, zeros by default), then its index, time and child
+/// index 1, and for a payment its amount and payment hash.
+func batchOnion(index: UInt64, paidMsat: UInt64? = nil, data: Data? = nil) -> Data {
+    var onion = (data ?? Data(count: paidMsat == nil ? 1401 : 1366)) + be64(index) + be64(7) + be64(1)
+    if let paidMsat { onion += be64(paidMsat) + Data(repeating: 0xAB, count: 32) }
+    return onion
+}
+
+/// A page of history: a MessagePack fixarray of bin16 onions.
+func batchPage(_ onions: [Data]) -> Data {
+    var out = Data([0x90 | UInt8(onions.count)])
+    for onion in onions { out += Data([0xC5, UInt8(onion.count >> 8), UInt8(onion.count & 0xFF)]) + onion }
+    return out
 }

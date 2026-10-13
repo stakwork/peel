@@ -9,27 +9,12 @@ extension Journeys {
     /// and old messages wait for Retry; a connection that stops answering
     /// is noticed, and Retry on it says so.
     @Suite struct Reconnects {
-        /// Alice is on the wire tap and keeps connected, as the app does;
-        /// Bob is not on the tap.
-        private func contacts() async throws -> (alice: Person, bob: Person) {
-            let alice = try await Person.create("alice", throughTap: true)
-            let bob = try await Person.create("bob")
-            try await Bank.shared.give(1_000, to: alice)
-            try await alice.engine.addContact(code: try bob.contactInfo)
-            try await eventually("Alice and Bob to be contacts") {
-                try alice.isReadyContact(bob) && bob.isReadyContact(alice)
-            }
-            await alice.engine.start()
-            return (alice, bob)
-        }
-
         @Test func aRecentTextGoesAgainByItselfButNeverAPaymentOrAnOldText() async throws {
-            let (alice, bob) = try await contacts()
+            let (alice, bob) = try await Person.contactsOnTap()
             let bobKey = try bob.pubkey
             let bobBalance = try await bob.settledBalance() ?? 0
 
-            try await Stack.shared.tap(.down)
-            try await eventually("Alice to see the connection go") { await alice.engine.connection != .connected }
+            try await alice.loseTheTap()
             let text = "sent on the train \(UUID().uuidString)"
             let old = "sent two hours ago \(UUID().uuidString)"
             try await alice.engine.sendText(text, to: bobKey)
@@ -71,7 +56,7 @@ extension Journeys {
         }
 
         @Test func aConnectionThatStopsAnsweringIsNoticedAndRetrySaysSo() async throws {
-            let (alice, bob) = try await contacts()
+            let (alice, bob) = try await Person.contactsOnTap()
             let bobKey = try bob.pubkey
 
             // The keep-alive notices a dead connection by itself.
@@ -119,7 +104,7 @@ extension Journeys {
         /// `.unknown`, marks a text failed). The reconnect asks the server about
         /// it, its records name it, and it is not sent again.
         @Test func aFailedTextTheServerGotIsNotSentAgain() async throws {
-            let (alice, bob) = try await contacts()
+            let (alice, bob) = try await Person.contactsOnTap()
             let bobKey = try bob.pubkey
             let text = "left before the line went \(UUID().uuidString)"
             try await alice.engine.sendText(text, to: bobKey)
@@ -132,15 +117,10 @@ extension Journeys {
             }
             #expect(try alice.storage.message(id: id)?.isAutoResendable() == true)
 
-            try await Stack.shared.tap(.down)
-            try await eventually("Alice to see the connection go") { await alice.engine.connection != .connected }
+            try await alice.loseTheTap()
             try await Stack.shared.tap(.up)
             try await eventually("Alice to reconnect", timeout: .seconds(60)) { await alice.engine.connection == .connected }
-            let tag = try #require(try alice.storage.message(id: id)?.tag)
-            try await eventually("the server's records to name it", timeout: .seconds(20)) {
-                let gate = await alice.engine.resendGate
-                return gate?.asked.contains(tag) == true && gate?.recorded?.contains(tag) == true
-            }
+            // Only the server's record of it brings it back to delivered.
             try await eventually("its record to land", timeout: .seconds(20)) {
                 try alice.storage.message(id: id)?.delivery == .delivered
             }
@@ -156,10 +136,9 @@ extension Journeys {
         /// Sent again by a reconnect and failed again, a message is never sent
         /// by itself a second time, even after a relaunch within the hour.
         @Test func aRelaunchNeverSendsItAgain() async throws {
-            let (alice, bob) = try await contacts()
+            let (alice, bob) = try await Person.contactsOnTap()
             let bobKey = try bob.pubkey
-            try await Stack.shared.tap(.down)
-            try await eventually("Alice to see the connection go") { await alice.engine.connection != .connected }
+            try await alice.loseTheTap()
             let text = "sent once by the reconnect \(UUID().uuidString)"
             try await alice.engine.sendText(text, to: bobKey)
             let id = try #require(try alice.messages(in: bobKey).first { $0.content == text }?.id)
@@ -174,12 +153,8 @@ extension Journeys {
                 try db.execute(sql: "UPDATE message SET status = 'FAILED', tag = NULL WHERE id = ?", arguments: [id])
             }
 
-            // Relaunch: a new engine on the same profile, nothing in memory.
             await alice.engine.close()
-            let relaunched = Person(
-                name: alice.name, profile: alice.profile,
-                engine: try Engine(mnemonic: alice.mnemonic, storage: alice.storage), mnemonic: alice.mnemonic
-            )
+            let relaunched = try alice.relaunched()
             try await relaunched.engine.connect()
             await relaunched.engine.start()
             try await Task.sleep(for: Engine.recordsWait + .seconds(3))

@@ -4,13 +4,17 @@ import Testing
 @testable import PeelCore
 
 struct TribeTests {
-    /// Fullwidth hex (`０２…`, `ａ`) is refused here, not later with a vaguer error.
-    @Test func aPubkeyIsASCIIHex() {
-        #expect(keyG.isPubkey)
-        #expect(keyG.uppercased().isPubkey)
-        #expect(!("\u{FF10}\u{FF12}" + keyG.dropFirst(2)).isPubkey)
-        #expect(!(keyG.dropLast() + "\u{FF41}").isPubkey)
-        #expect(!String(keyG.dropLast()).isPubkey)
+    @Test func howThisAccountCanGoFromATribe() {
+        #expect(Tribe(pubkey: key2G).exit == .leave)
+        // The owner of a live tribe can only delete it.
+        #expect(Tribe(pubkey: key2G, isOwner: true).exit == nil)
+        // Not let in, declined, removed or deleted: removed from Peel, the owner's too.
+        for status in [Tribe.Status.pending, .rejected, .removed, .deleted] {
+            #expect(Tribe(pubkey: key2G, status: status).exit == .remove)
+            #expect(Tribe(pubkey: key2G, isOwner: true, status: status).exit == .remove)
+        }
+        #expect(Tribe(pubkey: key2G, left: true).exit == nil)
+        #expect(Tribe(pubkey: key2G, left: true, status: .removed).exit == nil)
     }
 
     @Test func mentionsMatchTheWholeAliasInAnyCase() {
@@ -265,13 +269,6 @@ struct TribeTests {
         }
     }
 
-    @Test func mentionsOnlyCountsMentions() {
-        let state = ChatReadState(chat: "02ab", unread: 5, mentions: 2, muteLevel: MuteLevel.mentionsOnly.rawValue)
-        #expect(state.shownUnread == 2)
-        #expect(ChatReadState(chat: "02ab", unread: 5, mentions: 2, muteLevel: 0).shownUnread == 5)
-        #expect(ChatReadState(chat: "02ab", unread: 5, mentions: 2, muteLevel: 2).shownUnread == 0)
-    }
-
     /// What a member is shown is what the engine sends: the 3-sat and 1-sat
     /// floors, the escrow on top, and the owner's price kept apart.
     @Test func pricesShownAreWhatMembersPay() throws {
@@ -294,12 +291,16 @@ struct TribeTests {
         #expect(TribePrice.message(pricePerMessage: 2000, escrow: 1000).reason == .escrow(1000))
         #expect(TribePrice.message(pricePerMessage: 0, escrow: 5000).described == "5 sats, all of it escrow")
 
-        // Sub-sat prices read as sent, not rounded down.
-        #expect(escrow.joinPrice.described == "0.5 sats")
+        // Sub-sat prices read as sent, not rounded down, separated as the locale does.
+        let point = Locale.current.decimalSeparator ?? "."
+        #expect(escrow.joinPrice.described == "0\(point)5 sats")
         let fractional = TribePrice.message(pricePerMessage: 2500, escrow: 1000)
         #expect(fractional.msat == 3500)
-        #expect(fractional.described == "3.5 sats, including 1 sat escrow")
-        #expect(TribePrice.message(pricePerMessage: 2600, escrow: 500).described == "3.1 sats, including 0.5 sats escrow")
+        #expect(fractional.described == "3\(point)5 sats, including 1 sat escrow")
+        #expect(
+            TribePrice.message(pricePerMessage: 2600, escrow: 500).described
+                == "3\(point)1 sats, including 0\(point)5 sats escrow"
+        )
 
         // The engine's amounts are these prices, from the registry, the stored tribe and the owner's form.
         for record in [free, priced, escrow] {

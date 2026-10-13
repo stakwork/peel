@@ -93,12 +93,46 @@ enum Theme {
     /// Lifts a section off the popover in light; nothing in dark.
     static let sectionShadow = Color(light: 0x141E2D, lightOpacity: 0.04, dark: 0x000000, darkOpacity: 0)
 
-    /// Corner radii: a control (a button, a field), a card inside a form,
-    /// a panel. Chips are capsules.
+    /// Under a menu, a suggestion list and the jump to newest button: softer
+    /// than `popoverShadow` in dark.
+    static let menuShadow = Color.black.opacity(0.25)
+    /// A paid picture's veil (`PaidAttachmentViews`): soft fields of colour
+    /// picked from the message, so locked pictures do not all look alike.
+    static let veilTones: [Color] = [
+        Color(light: 0x8E969C, dark: 0x3E6189), Color(light: 0xB08B7E, dark: 0x5B4A6E),
+        Color(light: 0x7E9A8C, dark: 0x2F5D55), Color(light: 0x9B8BB0, dark: 0x6B5A3E),
+    ]
+
+    /// Corner radii: a control (a button, a field, a row's fill), a card (a
+    /// box in a form or a chat, a picture), a panel (a popover, a menu).
+    /// Chips, badges and pills are capsules.
     enum Radius {
         static let control: CGFloat = 7
         static let card: CGFloat = 9
         static let panel: CGFloat = 12
+    }
+
+    /// Padding and the gaps in stacks, on a 4 pt grid. Values off it remain
+    /// where a layout was tuned by eye (docs/design/README.md, "Component
+    /// library", Tokens).
+    enum Space {
+        static let xs: CGFloat = 4
+        static let sm: CGFloat = 8
+        static let md: CGFloat = 12
+        static let lg: CGFloat = 16
+        static let xl: CGFloat = 20
+    }
+
+    /// A person's or a tribe's picture: 16 inline in a line of text and in
+    /// chips, 20 in a small row, 24 in a panel's list, 32 beside a message
+    /// and in a header, 48 at the top of a panel, 64 for your own photo.
+    enum AvatarSize {
+        static let xs: CGFloat = 16
+        static let sm: CGFloat = 20
+        static let md: CGFloat = 24
+        static let lg: CGFloat = 32
+        static let xl: CGFloat = 48
+        static let xxl: CGFloat = 64
     }
 
     /// The system font (SF Pro), Tom's choice for readability on 2026-10-07.

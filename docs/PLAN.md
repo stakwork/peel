@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-10. This is the architecture and the phase index. Each phase
+Last updated 2026-10-11. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -80,8 +80,13 @@ One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
 `Storage+Migrations.swift` (`v1` on, append-only). Eleven tables:
 
 - `coreState`: opaque key/value owned by the core.
-- `setting`: the account's own values (server, name, photo, balance,
-  clock, tribes and memes hosts, payment thresholds and more).
+- `setting`: the account's own state and configuration (server, name,
+  photo, balance, clock, tribes, memes and call servers and more).
+- `preference`: every user setting (`Preferences.swift`), each row the
+  official preferences file's item for its key and identifier, with its
+  date (phase 11): the boost amount, the confirmation threshold, time
+  zones (the account's, and the switch per chat), and this device's PIN
+  timeout and notification text.
 - `message`: upsert on uuid; raw sender and body JSON kept alongside
   extracted columns (replies and threads, attachments, mentions, amounts,
   deleted).
@@ -94,7 +99,6 @@ One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
 - `payment`: the server's payment history (`fetch_payments`).
 - `invoice`: invoices made or paid here.
 - `paymentPing`: the 1-sat pings that belong to an asynchronous payment.
-- `chatTimeZone`: whether this account shares its time zone in each chat.
 - `invite`: invites made here with sats (the core keeps none), by code.
 
 The money tables' records are in `Invoice.swift` and their joined history in
@@ -111,9 +115,10 @@ child-key indices; it is sensitive but not the seed. Limits are in phase 2.
 
 ### Platform
 
-macOS 15+, Swift 6 strict concurrency in PeelCore and PeelApp. The generated
+macOS 15+ for the core and CLI, macOS 26+ for the app (the agent's memory: Ladybug's addon is built for 26), Swift 6 strict concurrency in PeelCore and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
-the Mac app's repo and is pinned by hash in `Vendor/sphinxrs.lock`; building
+the Mac app's repo, is pinned by hash and commit in `Vendor/sphinxrs.lock`
+and is downloaded by `scripts/build-ffi.sh`; building
 it from source needs Rust 1.88.0. Xcode is installed and the app is signed
 with Tom's Apple Development identity and a Personal Team provisioning
 profile that lasts 7 days (`scripts/sign-app.sh`; see "Signing and the weekly
@@ -142,13 +147,17 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 9 | 4. The Sphinx agent: AgentKit first (models, the Agent chat, Sphinx tools, compaction), then the graph shared with the official apps and synced as a change log, once agreed with Tom T; always-on, ACP, Strut and the Inbox later | replanned 2026-10-10; v1 planned in phase 9; 09b predates the replan and is kept for its research | [agent-architecture.md](agent-architecture.md); [phases/09-agents.md](phases/09-agents.md); Inbox: [phases/09b-inbox.md](phases/09b-inbox.md) |
 | 11 | Preferences and their sync (before the iPhone): one `Preferences` layer owning every setting, the account-wide ones synced through the official apps' encrypted `/preferences` file | planned 2026-10-10: research and architecture; three PRs (plan, layer and migration, sync) | [phases/11-preferences-sync.md](phases/11-preferences-sync.md) |
 | 10 | 5. The rest of the v1 extras: search and ⌘K, voice messages, Giphy, payment templates, self-hosted certificates | payment templates built (2026-10-10); the rest planned, findings from the official app recorded | [phases/10-v1-extras.md](phases/10-v1-extras.md); templates in 04, certificates in 05 |
-| 7 | 6. iPhone | paused (2026-10-08); push notifications ignored for now | [phases/07-iphone.md](phases/07-iphone.md) |
+| 7 | 6. iPhone: a full Sphinx client in Liquid Glass (iOS 26), and the remote for the brain through the agent's own Sphinx identity; queues, a Mac mini home server, push via the hub | resumed 2026-10-13: architecture and build order proposed, for Tom's review; spikes S1–S4 first | [phases/07-iphone.md](phases/07-iphone.md) |
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
-| — | Later: agent Connections (calendar first, then email, contacts, files and notes) | ideation | [agent-architecture.md](agent-architecture.md), "Later" |
+| — | Agent jobs and connections: Peel's agent hands any job to Strut with `start_job` / `continue_job` (Hive's pattern); connectors are Strut steps a job may use, tokens in Strut; Calendar stays in Peel (EventKit); writes in a job reach Peel's approval card | architecture proposed 2026-10-13, for Tom's review; PRs J1–J2 (strut), P1–P6 (peel) | [jobs-architecture.md](jobs-architecture.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 What is left for parity with the official Mac app, and what to do before
 the agent: [reviews/2026-10-09-parity-sweep.md](reviews/2026-10-09-parity-sweep.md) (2026-10-09).
+
+How we find the bugs we have not seen yet, before the team relies on
+Peel: [finding-bugs.md](finding-bugs.md) (2026-10-11, proposed). What its
+first pass found: [reviews/2026-10-11-bug-hunt.md](reviews/2026-10-11-bug-hunt.md).
 
 ### Refactor plan status
 

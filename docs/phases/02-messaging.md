@@ -10,6 +10,7 @@ failures, the composer, contacts the other side started surviving a
 restore, and `run-app.sh` quitting Peel first ("Still open in this phase",
 items 0 and 6–11, all done). Item 12, sends across a dropped connection
 (resend on reconnect, a keep-alive that notices, network changes), is
+built on its branch. Item 13, the twelve words checked (finding N5), is
 built on its branch.
 
 **Open:**
@@ -198,9 +199,9 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    the same chunk id and merges into its row. Nothing to build. Caveats:
    every fragment carries the send's full amount, so in a tribe a long
    message pays the price once per fragment (as the official apps do) and a
-   payment must never be split (phase 4 refuses such notes); a history page
-   made only of fragments of an unfinished message would end catch-up early
-   (needs 100 fragments in a row, not seen).
+   payment must never be split (phase 4 refuses such notes). A history page
+   made only of fragments of an unfinished message no longer ends catch-up
+   early: the cursor moves by the indices the server sent (item 13).
 7. **Read markers and mutes.** Done 2026-10-07 (branch
    `phase2/status-and-composer`). The engine asks for `getReads` and
    `getMutes` each time it comes online; the replies land in a new
@@ -273,6 +274,43 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    `ur-alice`: the divider, the message menu and the sidebar menu
    (screenshots in the session). Not exercised by hand: clicking the menu
    items in the app, the hold on the open chat and its release at the bottom.
+
+   **Reads across clients** (2026-10-12, `fix/read-sync`). Tom: a chat
+   read on the iPhone reads in Peel, one read in Peel stays unread in
+   Sphinx. Found: the mixer stores a `read` (inclusive server index, as
+   Peel and the official apps send it) and pushes nothing to the other
+   devices but a badge count to the one push token; each client asks with
+   `getreads`/`getmutes`. The official apps ask on every coming to the
+   front (Mac `applicationWillBecomeActive` → `reconnectToServer` →
+   `startNewMsgsSync` and `refreshUnreadStatus`; iOS
+   `applicationWillEnterForeground`, pull to refresh, after each history
+   page); Peel asked only once per connection. And Peel sent `read` for the
+   open chat only when its own unread count was above 0, which leaves out
+   joins, leaves, other members' boosts and blank messages; the server's
+   badge and the official apps count every message past the marker, so a
+   tribe whose newest messages were such stayed unread there.
+   Now: `ChatReadState.isBehind` (someone else's message past the marker,
+   of any type; our own need none, the server moves the marker to each we
+   send) gates marking the open chat read instead of `unread > 0`
+   (`readStates` now also re-emits on an uncounted message, which is what
+   triggers it); `Engine.refreshReadsAndMutes` asks again each time the
+   app comes to the front, unless an ask is still unanswered (30 s), and
+   before the open chat is marked read, so that `read` goes after the ask
+   and `readsSentSinceGetReads` keeps the answer off it. Mutes have the
+   same guard now (`mutesSetSinceGetMutes`). Both sets empty only on an
+   ask with none outstanding, so a late answer to an earlier ask cannot
+   lower a marker sent since. Journey `Reads.markersAndMutesAcrossDevices`.
+   Review, not applied: the sidebar's and thread rows' "Mark as read" still
+   show only with Peel's unread (offering it on a chat Peel shows read would
+   confuse; opening the chat now reads it); no floor between answered asks
+   (one getReads and getMutes per activation, as the official Mac app);
+   activation's mark read waits behind the ask's publish (local, short);
+   the gate itself lives in `AppModel` and is covered by the storage test
+   of `isBehind`, not by a journey; no unit test of the mute guard (needs
+   the core).
+   Left: nothing is live while both apps stay in front (the server has no
+   push for it); a delivered notification on the iPhone is not taken
+   away by a read in Peel (the server sends only the badge count).
 
    **Jump to a message** (same branch). `AppModel.focus(on:inThread:)` opens
    a message's chat scrolled to it (anchor centre) and lights the row (the
@@ -663,6 +701,187 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    - On thaw a frozen tap (like a real link that comes back) may still
      deliver the copy written into it, so that journey checks delivery,
      not a single copy: the accepted Retry duplicate of item 8.
+
+13. **History gaps** (bug hunt N4, 2026-10-11, branch `fix/history-gaps`).
+   A catch-up asked for everything above the newest stored message, and
+   the cursor lived only in memory. A live message stored during a
+   catch-up raised that index, so a quit, a 30 s stall or a page the core
+   could not read left the messages below it unfetched for good. Pages
+   carry no request ID either, so the same page twice (a reconnect asks for
+   the page in flight again) ended the run, and a restore with it.
+   - Where history stands is kept in the `setting` table
+     (`Setting.historyFrom`, `HistoryCursor.from`): every message below it
+     has been handled, written in the same transaction as what moves it.
+     Every catch-up starts there.
+   - A messages page that starts no further than it moves it (a restore's
+     contacts pages skip messages), by the indices in the page's own frame
+     (`StateCodec.onions`), the ones the core could not read included.
+   - A live message moves it when its index (from its topic) is the next
+     one; one above a gap is held in memory until the gap fills. So a
+     catch-up fetches again only what came live above a gap that a quit or
+     a stall left, not everything since the last one.
+   - A page the core refuses whole (one malformed chunk fails the whole
+     call in sphinx-ffi's `handle_chunks`, and any contact or tribe member
+     can send one) is read again without the messages it refuses, found
+     by halves (`Engine.readablePart`, `readable`); a core error names
+     their indices. History moves past the whole page.
+   - A page behind the cursor (a duplicate or a stale reply) is ignored and
+     the watchdog keeps waiting for the page asked for. An empty page still
+     ends the run.
+   - Where history stands is read when the engine is made, before any
+     connection can store a live message: a profile from before starts
+     after its newest message stored, or dropped from a left tribe
+     (`Setting.droppedIndex`, read only then), as it did.
+
+   Review (2026-10-12): an independent review, `/code-review`, `/simplify`
+   and `/security-review`. The first version had a regression: one message
+   the core cannot read (a malformed chunk, which any contact or tribe
+   member can send) failed its whole page, so the index never moved past
+   it and every catch-up stopped there for good, where before the next
+   live message moved the start past it. Closed by reading the page again
+   without what the core refuses (`readablePart`). Also fixed:
+   - A catch-up fetched again everything that came live since the last
+     one, which brought back Retry's first copy as a second row, a
+     discarded send, a tribe removed from Peel, and notifications for
+     unread messages; now it fetches only what came live above a gap.
+   - The start for a profile from before was read at the first catch-up,
+     after live messages on that connection could already be stored; it is
+     read when the engine is made.
+   - The journey passed without testing anything when the catch-up ended
+     before the live message landed, as it did in four runs of four here.
+     It now waits for the server to hold every message, sends the live one
+     as soon as Alice is back, and requires the catch-up to be cut short.
+   - The engine tests could crash the test process on a failure (no
+     disconnect); they share `withTestEngine` and `registeredStorage` with
+     `ConnectionDropTests`.
+   - Each page is read once (`Engine.arrived`, both the amounts and the
+     indices), not twice.
+
+   The security review found nothing. Not applied, with reasons:
+   - Matching each page to its request (`req_id`). A duplicate of a
+     restore's last contacts page that lands after its messages run began
+     at 0, or a page meant for another Mac with the same device ID, is
+     still taken as a messages page, and moves the index past messages
+     never fetched. The mixer echoes a `req_id` in the reply topic, but the
+     core never sets one, so Peel would edit the core's request. Before
+     this change the same page skipped those messages too. For Tom: it
+     changes what Peel sends the server, and production's mixer version is
+     unknown (bug hunt N6).
+   - A tribe removed from Peel, or a request to join asked again, can still
+     come back when a catch-up after a quit or a stall fetches its own join,
+     or the rejection, again. That is now only what came live above a gap.
+     Skipping membership for stored messages was tried and dropped: a leave
+     is never stored (the tribe is left when it lands), so leave then
+     rejoin fetched again would hide a tribe the person is in, and drop its
+     messages. The fix is the index each tribe was hidden at: a column and
+     a migration.
+   - A live message the core refuses does not move the index. The next
+     catch-up asks for it again and reads it as history, or leaves it out
+     like any refused page message. Until then the live messages after it
+     wait in memory, and a relaunch fetches them again.
+   - The cursor moves in `commit`, and the next page is asked for at the
+     end of `followUp`. A follow-up that throws first (a `pingDone` on a
+     connection that just went) leaves the run with no request and no
+     watchdog until the next connection asks again.
+   - What the core refuses only for the moment (a payment against a stale
+     block height), or drops for a sender not yet known, is moved past for
+     good. So did the old start above the newest stored message. A restore
+     still fetches everything from the first, which keeps phase 3's "must
+     stay re-fetchable" for restores.
+   - Seeding the index in a migration, not in `Engine.init`: the guarantee
+     is the same (before any connection), and migration numbers are
+     contended across open branches (v22 to v24).
+   - One helper for "Alice and Bob as contacts" shared with the payments
+     journeys' `pair()`, and one recorder of test writes shared with
+     `ConnectionDropTests`: outside this change.
+
+14. **The twelve words checked (finding N5).** Built 2026-10-11 (branch
+   `fix/words-backup`). The words step's checkbox lived in view state:
+   nothing recorded, or tested, that the words were written down, and
+   every way of losing the Keychain item (Forget after a lost PIN, a new
+   Mac, a change of signing team) then lost the account
+   (`../reviews/2026-10-11-bug-hunt.md`, N5).
+
+   Built:
+   - **Stored, never the words.** `Setting.wordsConfirmed`, "1" or "0".
+     `Account.open` writes "1" for a restore (all twelve were typed) and
+     "0" for a new account. An account from before has no row and counts
+     as not checked: Tom's `default` shows the reminder until he checks
+     his words once.
+   - **The check is the engine's.** `Engine.wordsToCheck()` picks three
+     places at random; `confirmWords(_:mnemonic:)` refuses words whose
+     seed is not this account's (`Engine.seed(of:)`, the one derivation
+     `init` uses too), needs three answers, and stores "1" only when every
+     answer is the word at its place (any case, stray spaces). A mismatch
+     throws `wrongWords(positions:)`, which names places, never a word,
+     and stores nothing.
+   - **Onboarding.** "I've written them down" leads to "Check what you
+     wrote": three numbered boxes (`WordCheck`, `WordCheckGrid`), then
+     "Open Peel" once they match. Back returns to the words, never before
+     them.
+   - **Account.** The Twelve words row says whether the written copy is
+     checked; while it is not, Check words asks for the PIN as Show words
+     does, then shows three boxes. The words are read but never shown.
+   - **The reminder.** While the account holds sats and is unchecked, a
+     neutral `Callout` at the foot of the sidebar, "Check your twelve
+     words", whose link opens the check on Account (not shown beside it).
+   - **Forget on the lock screen** says first that the account holds sats
+     when its balance says so (the open account's, or before the PIN the
+     one last stored, read-only: `Profile.storedBalanceMsat`), then that
+     without the words it and its sats cannot be brought back. Never how
+     many before the PIN, as a locked notification says only "Sats
+     received", and never "no sats": a stored balance can predate sats
+     received since.
+   - **Driver.** `{"open": "check-words"}`, what the reminder's link does.
+
+   Tests: `WordsConfirmationTests` (which accounts start checked, the
+   right words kept across a reopen, wrong words named by place with
+   nothing stored, another account's words refused), `StorageTests`'
+   balance read with no writer open, and the words check inside
+   `AuditSecretsTests`' scan of the profile's files (S14). With the two
+   writes removed, the restore row and `rightWordsConfirmAndAreKept`
+   fail; with places ignored, the wrong-words test fails.
+
+   Review (2026-10-11): an independent review, `/code-review`, `/simplify`
+   and `/security-review`. Fixed: the branch no longer built on `main`
+   (#184 removed `cardBoxed`; the problem lines moved to
+   `PeelError.problem`); the lock screen named the balance before the PIN;
+   `confirmingForget` and the driver's `lock` and `forget` steps existed
+   only for the drive; a check finishing after Cancel left its problem
+   under the closed row; the reminder hand-drew a card where `Callout`
+   exists, and its balance redrew the whole sidebar; two wordings of a
+   wrong word; the balance test read beside an open writer, not as at
+   launch; the wrong-words test passed a check that ignores places; the
+   lock screen said "no sats" from a stored balance that can predate sats
+   received.
+   `/simplify` then folded the places and answers into `WordCheck`, the
+   grid's two parameters into `places`, the typed box's look into
+   `wordBox`, the database's file name into `Storage.exists(in:)`. The
+   app check then crashed on the first successful check from Account: the
+   box being edited read its answer once more after the row had dropped
+   the check (a nil one there; emptied arrays before). A check is now
+   never nil or emptied, only replaced, so every box always has its
+   answer. `/security-review`: no finding at confidence 8 or above. Not
+   applied:
+   - The check is required to open Peel at onboarding, with no skip, as
+     the checkbox was; a quit there leaves the account unchecked, and the
+     reminder then asks.
+   - While a check is open on Account the words stay in view state with
+     no 30-second limit: they are never drawn, and they go on Cancel,
+     success, leaving the screen, Peel leaving the front or the lock. A
+     limit would cut short someone fetching their paper, and would not
+     take them out of memory (Swift strings are never zeroed; the seed
+     stays all session, S20).
+   - A wrong-words problem stays until the next try, as the PIN's does.
+   - The words pasted into a check box are not cleared from the clipboard
+     (S19 covers the restore boxes): nothing offers a paste there, and
+     twelve words in one box never match.
+   - The scroll to the words row waits 100 ms for the screen's layout, as
+     the PIN field waits 150 ms for focus.
+   - `WordCheck` stays in the app: it is what is being typed; the engine
+     takes answers by place, as the CLI or an agent would pass them.
+   - Read-only `Storage` still creates and sets 0700 on the folder;
+     `Storage.exists(in:)` keeps it from being called without a database.
 
 ## Done criteria
 

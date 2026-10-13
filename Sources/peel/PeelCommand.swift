@@ -15,6 +15,16 @@ struct PeelCommand {
           whoami                      this account's contact info, balance, name and photo
           rename <name>               the name others see on messages sent from now on
           upload-photo <picture>      upload a picture to the memes server and make it this account's photo
+          prefs                       every preference stored: its key, chat, value as the preferences file
+                                      holds it, when it was chosen, and whether it follows the account
+          prefs-sync                  sync the account's preferences with the encrypted file on its memes
+                                      server now (the app also syncs on connect and after each change; a
+                                      CLI change goes up with the next prefs-sync or connect); --dry-run
+                                      prints which keys and chats it would apply and upload, without
+                                      values, and changes nothing
+          pref <name> [value]         read or set one: \(Invocation.prefNames)
+                                      (the boost amount is boost-amount, a chat's time zone switch
+                                      share-timezone)
           contacts                    contacts known to the core
           add <code|picture> [name]   start a key exchange with someone: their contact info, a
                                       sphinx.chat share_contact link, an invite (adds its inviter), or a
@@ -33,8 +43,9 @@ struct PeelCommand {
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages
           threads                     threads (tribes and contacts) this account started or wrote in, newest first
-          resend <id>                 send an undelivered message again (a failed payment: --yes over
-                                      the confirmation threshold)
+          resend <id>                 send an undelivered message again; one that carried sats (a payment,
+                                      a tribe message) only once failed (a payment: --yes over the
+                                      confirmation threshold)
           discard <id>                drop an undelivered message
           delete <id>                 delete a message for everyone (yours, or any in a tribe you own)
           unread                      unread counts and mute levels by chat
@@ -80,7 +91,8 @@ struct PeelCommand {
           boost <id> [sats]           boost someone else's message (row id from messages); in a tribe the
                                       tribe's price per message and escrow are added; without an
                                       amount, the one-tap boost with the account's boost amount,
-                                      sent with no confirmation, as in the official apps
+                                      sent with no confirmation, as in the official apps (one set on
+                                      another device and over the threshold takes --yes once)
           pay <pubkey> <sats>         send sats to a contact in their chat (--text <note>)
                                       (both refuse more than the balance, and over the confirmation
                                       threshold without --yes)
@@ -100,6 +112,17 @@ struct PeelCommand {
           call-ticket <id|link>       ask the call server for a ticket to join a call: prints the media server,
                                       room, identity, expiry and whether a token came (never the token)
           call-who <id|link>          who is on a call, from the call server's presence feed, for --wait seconds
+
+          agent                       talk with a model in the terminal, with one built-in tool (current_time),
+                                      and with --profile the Sphinx read tools over that profile's chats
+                                      (read-only: contacts and tribes, recent and unseen messages, threads,
+                                      search). With --send it connects and may also send messages, each one
+                                      asked about first (y = once, a = always for that chat, n = no; the
+                                      "always" answers are the app's, Account › Peel agent revokes them).
+                                      The key comes from PEEL_AGENT_API_KEY only.
+                                      --provider anthropic|openai|openrouter (default anthropic), --model <id>
+                                      (needed but for anthropic), --base-url <url>, --max-steps <n>.
+                                      Ctrl-C stops a reply, Ctrl-D quits
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -138,9 +161,41 @@ struct PeelCommand {
         var arguments = Arguments(CommandLine.arguments.dropFirst())
         // The app's own profile holds the real account; the CLI only ever opens
         // development profiles, and never one called "default" so the two cannot be confused.
-        guard let name = arguments.option("--profile"), name.lowercased() != "default" else {
-            throw PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
+        let name = arguments.option("--profile")
+        let reserved = PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
+        if name?.lowercased() == "default" { throw reserved }
+        // The agent needs no profile; with one it reads its chats, read-only;
+        // with --send it connects and may send, each send asked about.
+        if arguments.first == "agent" {
+            _ = arguments.next()
+            if arguments.flag("--send") {
+                guard let name else { throw PeelError("agent --send needs --profile <name>") }
+                let invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
+                return try await AgentCommand.run(invocation.arguments) {
+                    let engine = try await invocation.load()
+                    do {
+                        try await engine.connect(allowUntrustedCertificate: invocation.insecure)
+                    } catch {
+                        print("not connected: \(PeelError.readable(error)); sends are kept as failed")
+                    }
+                    do {
+                        return try AgentCommand.Sending(engine: engine, profile: invocation.profile)
+                    } catch {
+                        await engine.disconnect()
+                        throw error
+                    }
+                }
+            }
+            let storage = try name.map { name in
+                let directory = try Profile(name: name, kind: .development).directory
+                guard Storage.exists(in: directory) else {
+                    throw PeelError("no development profile named \(name)")
+                }
+                return try Storage(directory: directory, readOnly: true)
+            }
+            return try await AgentCommand.run(arguments, storage: storage)
         }
+        guard let name else { throw reserved }
         var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
         guard let command = invocation.arguments.next() else {
             print(usage)
@@ -180,6 +235,7 @@ struct Invocation {
     let audioOnly: Bool
     let nickname: String?
     let inviteMessage: String?
+    let dryRun: Bool
 
     /// Takes the options out of `arguments`, in this order; what is left is
     /// the command and its own arguments.
@@ -207,6 +263,7 @@ struct Invocation {
         audioOnly = arguments.flag("--audio")
         nickname = arguments.option("--nickname")
         inviteMessage = arguments.option("--message")
+        dryRun = arguments.flag("--dry-run")
         self.arguments = arguments
     }
 
@@ -227,12 +284,13 @@ struct Invocation {
 
 /// A payment over the confirmation threshold: with `--yes`, sent again for
 /// the amount the engine names (and printed); without, the refusal stands.
-func confirming(_ yes: Bool, _ send: (UInt64?) async throws -> Void) async throws {
+@discardableResult
+func confirming<T>(_ yes: Bool, _ send: (UInt64?) async throws -> T) async throws -> T {
     do {
-        try await send(nil)
+        return try await send(nil)
     } catch Engine.Failure.needsConfirmation(let msat) where yes {
         print("confirmed \(Sats.format(msat: msat)) (\(msat) msat)")
-        try await send(msat)
+        return try await send(msat)
     }
 }
 
@@ -250,6 +308,8 @@ struct Arguments {
     init(_ items: some Sequence<String>) { self.items = Array(items) }
 
     var isEmpty: Bool { items.isEmpty }
+
+    var first: String? { items.first }
 
     mutating func next() -> String? {
         items.isEmpty ? nil : items.removeFirst()

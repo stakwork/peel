@@ -14,22 +14,42 @@ A native Sphinx chat client, written from scratch on the shared Rust core.
 
 ## Build
 
-Needs sibling checkouts of `sphinx-rs` and `sphinx-mac-v2` (the bindings and the
-prebuilt library come from them).
+Needs macOS 15 or later and Xcode 27 or later (Swift 6.4).
 
 ```sh
 ./scripts/build-ffi.sh
 swift build
+swift test --filter PeelCoreTests
 ```
 
-## Try it
+`build-ffi.sh` downloads the Sphinx core Peel links: the same prebuilt Rust
+library the official Mac app ships (from
+[sphinx-mac-v2](https://github.com/stakwork/sphinx-mac-v2)) and its Swift
+bindings (from [sphinx-rs](https://github.com/stakwork/sphinx-rs)), at the
+commits pinned in `Vendor/sphinxrs.lock`, and checks the library's hash. Run it
+again whenever the lock changes.
 
-The app is signed with a free Personal Team profile that lasts 7 days; run
-`./scripts/run-app.sh` at least weekly to re-sign it (see `AGENTS.md`).
+## Run the app
 
-```sh
-./scripts/run-app.sh -profile throwaway
-```
+The app keeps the account's words in the Keychain, which needs it signed with
+an Apple Development certificate. A free Apple ID is enough:
+
+1. In Xcode > Settings > Accounts, add your Apple ID. Select its team, choose
+   Manage Certificates, and add an Apple Development certificate.
+2. Build, sign and open it (installed in `~/Applications`):
+
+   ```sh
+   ./scripts/run-app.sh -profile throwaway
+   ```
+
+`-profile` keeps a separate account per name; leave it out to use the app's
+main account. A free team's provisioning profile lasts 7 days, after which the
+app won't launch: run `./scripts/run-app.sh` again to re-sign it. If you have
+several Apple Development certificates, set `PEEL_SIGN_IDENTITY` to the one to
+use.
+
+A bundle ID belongs to one team, so the app is signed as `dev.peel.mac.<your
+team ID>`; set `PEEL_BUNDLE_ID` to choose another.
 
 Or from the command line:
 

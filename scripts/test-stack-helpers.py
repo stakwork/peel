@@ -3,15 +3,18 @@
   python3 test-stack-helpers.py tap <port> <broker port> <file>
       A TCP proxy in front of the broker that appends every byte it carries,
       both ways, to <file>: what a client puts on the wire, for tests to
-      search for plain text.
+      search for plain text. While tap.deafen exists beside <file>, a
+      connection that sends a register gets nothing more from the broker.
   python3 test-stack-helpers.py memes <port> <data dir>
       A stand-in for the memes server (stakwork/sphinx-meme) with the
       endpoints the official apps use: GET /ask, POST /verify (checks the
       Lightning signed-message signature against the given pubkey), POST
       /file (multipart, bearer), GET /file/<media token> (bearer, host and
       expiry checked), GET /media/<muid>, GET /templates and GET
-      /template/<muid> (bearer; three solid-colour payment templates).
-      Uploads are kept in <data dir>/files
+      /template/<muid> (bearer; three solid-colour payment templates), GET
+      and POST /preferences (bearer; the POST's pubkey field must name the
+      token's key; kept as uploaded in <data dir>/preferences/<pubkey>;
+      "not found" is a 404). Uploads are kept in <data dir>/files
       as they arrived. Never logs tokens or keys.
 """
 import asyncio, base64, hashlib, json, os, secrets, struct, sys, time, zlib
@@ -21,13 +24,19 @@ from urllib.parse import urlparse, parse_qs
 
 def tap(port, broker_port, path):
     out = open(path, "ab", buffering=0)
+    # While this file exists, a connection that sends a register hears
+    # nothing more from the broker (`test-stack.sh tap <dir> deafen`).
+    deafen = os.path.join(os.path.dirname(path), "tap.deafen")
 
-    async def pipe(reader, writer):
+    async def pipe(reader, writer, deaf, upstream):
         try:
             while data := await reader.read(65536):
                 out.write(data)
-                writer.write(data)
-                await writer.drain()
+                if upstream and b"/register" in data and os.path.exists(deafen):
+                    deaf[0] = True
+                if upstream or not deaf[0]:
+                    writer.write(data)
+                    await writer.drain()
         except (ConnectionError, asyncio.CancelledError):
             pass
         finally:
@@ -39,7 +48,10 @@ def tap(port, broker_port, path):
         except OSError:
             client_writer.close()
             return
-        await asyncio.gather(pipe(client_reader, broker_writer), pipe(broker_reader, client_writer))
+        deaf = [False]
+        await asyncio.gather(
+            pipe(client_reader, broker_writer, deaf, True), pipe(broker_reader, client_writer, deaf, False)
+        )
 
     async def main():
         server = await asyncio.start_server(handle, "127.0.0.1", port)
@@ -57,6 +69,8 @@ def memes(port, data_dir):
     host = f"127.0.0.1:{port}"
     files = os.path.join(data_dir, "files")
     os.makedirs(files, exist_ok=True)
+    prefs = os.path.join(data_dir, "preferences")
+    os.makedirs(prefs, exist_ok=True)
     challenges, tokens = {}, {}
 
     def b64url_decode(s):
@@ -141,6 +155,15 @@ def memes(port, data_dir):
                 if not template:
                     return self.json({"error": "not found"}, 404)
                 return self.reply(200, template[2], {"Content-Type": "image/png"})
+            if url.path == "/preferences":
+                pubkey = self.bearer()
+                if not pubkey:
+                    return self.json({"error": "unauthorized"}, 401)
+                path = os.path.join(prefs, pubkey)
+                if not os.path.exists(path):
+                    # A 404, as sphinx-meme answers (for a storage error too).
+                    return self.json({"success": False, "error": "Preferences not found"}, 404)
+                return self.reply(200, open(path, "rb").read(), {"Content-Type": "application/octet-stream"})
             if url.path.startswith("/media/"):
                 path = stored(url.path[len("/media/"):])
                 if not self.bearer() or not os.path.exists(path):
@@ -166,7 +189,7 @@ def memes(port, data_dir):
                 token = "eyJhbGciOiJub25lIn0." + payload + "." + secrets.token_urlsafe(16)
                 tokens[token] = pubkey
                 return self.json({"token": token})
-            if url.path in ("/file", "/public"):
+            if url.path in ("/file", "/public", "/preferences"):
                 pubkey = self.bearer()
                 if not pubkey:
                     return self.json({"error": "unauthorized"}, 401)
@@ -188,6 +211,16 @@ def memes(port, data_dir):
                         fields[name] = content.decode()
                 if data is None:
                     return self.json({"error": "no file"}, 400)
+                if url.path == "/preferences":
+                    # The official apps send the account's pubkey, base64url.
+                    try:
+                        named = b64url_decode(fields.get("pubkey", "")).hex()
+                    except Exception:
+                        named = None
+                    if named != pubkey:
+                        return self.json({"success": False, "error": "pubkey"}, 400)
+                    open(os.path.join(prefs, pubkey), "wb").write(data)
+                    return self.json({"success": True})
                 muid = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
                 path = stored(muid)
                 open(path, "wb").write(data)

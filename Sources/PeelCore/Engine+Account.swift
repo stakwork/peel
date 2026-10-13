@@ -26,6 +26,12 @@ extension Engine {
         words(in: mnemonic).joined(separator: " ")
     }
 
+    /// The seed the words make, as the engine holds it: one derivation for
+    /// opening an account and for checking words against it.
+    static func seed(of mnemonic: String) throws -> String {
+        try Sphinxrs.mnemonicToSeed(mnemonic: normalise(mnemonic: mnemonic))
+    }
+
     public static func parseInvite(_ text: String) throws -> Invite {
         let parsed = try Sphinxrs.parseInvite(inviteQr: text.trimmingCharacters(in: .whitespacesAndNewlines))
         return Invite(
@@ -54,9 +60,76 @@ extension Engine {
         state["my_scid"] != nil && state["server_pubkey"] != nil
     }
 
+    // MARK: - The words written down
+
+    /// How many of the twelve words a check asks back.
+    private static let wordsChecked = 3
+
+    /// Positions (0 to 11, in order) of the words a check asks back,
+    /// chosen at random.
+    public static func wordsToCheck() -> [Int] {
+        (0..<12).shuffled().prefix(wordsChecked).sorted()
+    }
+
+    /// Whether this account's words were checked, here or by restoring
+    /// from them. Accounts from before the check have no record: not checked.
+    public func wordsConfirmed() throws -> Bool {
+        try storage.value(for: .wordsConfirmed) == "1"
+    }
+
+    /// Records that the words were written down, if each of `answers`
+    /// (typed back, by position 0 to 11; at least `wordsChecked`) matches
+    /// the word there. `mnemonic` is the words as shown (just made, or read
+    /// with the PIN); another account's are refused. A mismatch throws
+    /// `wrongWords` with the positions, never the words, and records nothing.
+    public func confirmWords(_ answers: [Int: String], mnemonic: String) throws {
+        let words = Self.words(in: mnemonic)
+        guard words.count == 12, (try? Self.seed(of: mnemonic)) == seed else { throw Failure.notThisAccountsWords }
+        guard answers.count >= Self.wordsChecked, answers.keys.allSatisfy(words.indices.contains) else {
+            throw PeelError("three of the twelve words are needed")
+        }
+        let wrong = answers.filter { Self.words(in: $0.value) != [words[$0.key]] }.keys.sorted()
+        guard wrong.isEmpty else { throw Failure.wrongWords(positions: wrong.map { $0 + 1 }) }
+        try storage.set("1", for: .wordsConfirmed)
+    }
+
     // MARK: - Account
 
     public var isRegistered: Bool { Self.isRegistered(state) }
+
+    /// The invite this account signed up with (`Setting.invite`).
+    func storedInvite() throws -> Invite? {
+        JSON.decode(Invite.self, from: try storage.value(for: .invite))
+    }
+
+    func storeInvite(_ invite: Invite) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(invite), as: UTF8.self), for: .invite)
+    }
+
+    /// Adds whoever sent the invite this account signed up with as its
+    /// first contact, as the official apps do, once the account is online
+    /// (`cameOnline`): in the background, paying `keyExchangeMsat` from the
+    /// invite's sats with no checks, with the invite's code so their app
+    /// sees it used. The invite is forgotten as the key exchange starts, so
+    /// it goes at most once; one that never left (`notConnected`) keeps it
+    /// for the next connection, and any other failure is reported.
+    @discardableResult
+    func addInviterIfPending() -> Task<Void, Never>? {
+        guard let invite = try? storedInvite() else { return nil }
+        do { try storage.set("", for: .invite) } catch { return nil }
+        guard let inviter = invite.inviterContactInfo else { return nil }
+        return Self.background { [weak self] in await self?.addInviter(inviter, of: invite) }
+    }
+
+    private func addInviter(_ inviter: String, of invite: Invite) async {
+        do {
+            try await addContact(inviter, alias: invite.inviterAlias, inviteCode: invite.code)
+        } catch Failure.notConnected {
+            try? storeInvite(invite)
+        } catch {
+            emit.yield(.coreError("adding your inviter as a contact: \(PeelError.readable(error))"))
+        }
+    }
 
     /// The name and photo this account sends with its messages.
     public var myAlias: String { alias }
@@ -153,21 +226,21 @@ extension Engine {
     /// Hours after which an app asks for the PIN again; 0 means only at
     /// launch, nil that this account has never set it.
     public func pinTimeoutHours() throws -> Int? {
-        try storage.value(for: .pinTimeoutHours).flatMap { Int($0) }
+        try storage.preference(.pinTimeoutHours)
     }
 
     public func setPINTimeout(hours: Int) throws {
-        try storage.set(String(max(0, hours)), for: .pinTimeoutHours)
+        try set(.pinTimeoutHours, hours)
     }
 
     /// Whether an app's notifications may show what a message says; on
     /// unless turned off.
     public func notificationShowsText() throws -> Bool {
-        try storage.value(for: .notificationText) != "0"
+        try storage.preference(.notificationText) ?? true
     }
 
     public func setNotificationShowsText(_ shows: Bool) throws {
-        try storage.set(shows ? "1" : "0", for: .notificationText)
+        try set(.notificationText, shows)
     }
 
     /// Which sidebar sections are open and shown in full; the defaults
@@ -197,6 +270,7 @@ extension Engine {
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
         public let sidebarLayout: ChatSections.Layout?
+        public let wordsConfirmed: Bool?
         public let connection: ConnectionState
     }
 
@@ -208,7 +282,7 @@ extension Engine {
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
             notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
-            connection: connection
+            wordsConfirmed: try? wordsConfirmed(), connection: connection
         )
     }
 

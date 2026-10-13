@@ -14,6 +14,13 @@ public struct Profile: Sendable {
     public let kind: Kind
     public let directory: URL
     public let secrets: any SecretStore
+    /// The agent's connected model and its API key: in the Keychain for an
+    /// app profile, in an owner-only file beside the words for a
+    /// development one. Never in a database (docs/phases/09-agents.md).
+    public let agentCredential: any SecretItem
+    /// The token strut sends when an automation fires, made on first use
+    /// (`docs/phases/12-automations.md`).
+    public let automationToken: any SecretItem
 
     /// Names are path components, so only plain characters are allowed.
     public init(name: String, kind: Kind) throws {
@@ -30,9 +37,11 @@ public struct Profile: Sendable {
         case .app:
             directory = root.appendingPathComponent(name)
             secrets = KeychainSecretStore(account: name)
+            agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
+            automationToken = KeychainItem(service: "dev.peel.automations", account: name)
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            secrets = FileSecretStore(file: directory.appendingPathComponent("mnemonic"))
+            (secrets, agentCredential, automationToken) = Self.files(in: directory)
         }
     }
 
@@ -42,8 +51,19 @@ public struct Profile: Sendable {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        secrets = FileSecretStore(file: directory.appendingPathComponent("mnemonic"))
+        (secrets, agentCredential, automationToken) = Self.files(in: directory)
     }
+
+    /// A development profile's words, agent key and automation token, in
+    /// files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem) {
+        (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
+         FileItem(file: directory.appendingPathComponent("agent-credential")),
+         FileItem(file: directory.appendingPathComponent("automation-token")))
+    }
+
+    /// Where the agent's database lives, beside the account's.
+    public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
     public var hasAccount: Bool { secrets.hasMnemonic }
 
@@ -64,6 +84,14 @@ public struct Profile: Sendable {
         Engine.words(in: try secrets.loadMnemonic(pin: pin))
     }
 
+    /// The balance the server last reported, read without the PIN, for
+    /// before the account is open (the lock screen's Forget); nil if none
+    /// was recorded or there is no database to read.
+    public func storedBalanceMsat() -> UInt64? {
+        guard Storage.exists(in: directory) else { return nil }
+        return try? Storage(directory: directory, readOnly: true).balanceMsat()
+    }
+
     /// Reseals the words under a new PIN. A wrong old PIN throws
     /// `SecretStoreFailure.wrongPIN` and changes nothing. Slow, like `words`.
     public func changePIN(from oldPIN: String, to newPIN: String) throws {
@@ -71,9 +99,14 @@ public struct Profile: Sendable {
         try secrets.changePIN(from: oldPIN, to: newPIN)
     }
 
-    /// Removes the words and everything stored with them. A failure to remove
-    /// the words is reported, and the database is then kept with them.
+    /// Removes the words and everything stored with them, the agent's key
+    /// and automation token first. A failure to remove any is reported, and
+    /// the database is then kept with them.
     public func delete() throws {
+        try agentCredential.delete()
+        // The memory server #219 kept (an old strut key), if this Mac has it still.
+        try? KeychainItem(service: "dev.peel.memory", account: name).delete()
+        try automationToken.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

@@ -66,6 +66,56 @@ Status on 2026-10-07: done; the Mac app is in its first daily-use trial.
   key from the client side, so a contact could file a history message under
   another known contact's name. The clean fix is one field in the core's batch
   result (`key_idx`); until then history never renames contacts.
+- (2026-10-11, bug hunt N2) The mixer redeems an invite and credits the
+  new account before it answers the register, and a register it already
+  knows is answered `already_registered`. So a signup whose reply is lost
+  or late no longer deletes the profile: only when no register can have
+  gone (`Engine.inviteMayBeRedeemed`). The invite is kept
+  (`Setting.invite`) until the registration is confirmed, and every
+  connect until then registers with its code. Such an account opens on
+  the words step with a line saying the server has not confirmed it.
+- (2026-10-11, N2 review) Once the account is online, during the signup
+  or on a later connect, the engine adds the inviter as the first contact
+  in the background (`Engine.addInviterIfPending`). The invite is
+  forgotten as that key exchange starts, so it goes at most once; it is
+  kept for the next connection only when nothing of it left
+  (`notConnected`), and any other failure is reported. Signup no longer
+  adds the inviter itself, so it no longer throws once the account
+  exists. It used to when that add failed: the app stayed on the PIN
+  step, trying again failed with "an account is already stored here",
+  and the words were never shown.
+- Review findings not applied (N2):
+  - A refused register (an invite used or cancelled, on a mixer with
+    `INVITE_PRICE` above 0) gets no answer at all: the mixer at `caa76a1`
+    logs "failed to route" and replies nothing. Peel cannot tell it from a
+    lost reply or a mixer that is down, so it keeps the account and asks
+    again on each connect, and the words step says what a wait that never
+    ends may mean. Deleting on a timeout is what lost funded accounts.
+  - No register again on a timer while connected and unconfirmed: a timer
+    could not tell a refusal from an outage either, and would add timing
+    to the connection loop. A reconnect or a relaunch asks again.
+  - The local stack leaves `INVITE_PRICE` unset (0), so no register is
+    ever refused there and no journey covers that case.
+  - Not seen in the app: an offscreen drive cannot reach the words step
+    (onboarding's first buttons have no shortcut, its steps are view
+    state, and the signup would need a deafened stack).
+  - An unconfirmed account's connection still reads Connected (the
+    sidebar bolt) while nothing works. A "registration pending" state
+    would have to be read by every view that shows the connection; the
+    state is rare, and Tom should decide whether it earns that.
+  - Never deleting once the words are saved (every connect now registers
+    with the stored invite, so even a register that never left would
+    recover) would put an unreachable server on the words step rather
+    than an error: a product call, left as it was.
+  - The words step reads `myContactInfo == nil` as "not confirmed", as
+    the Account screen does: the core sets the contact info in the reply
+    that registers, committed with it before `connect` returns.
+  - Signup keeps `registered ||` beside the flag: a registered account is
+    never deleted, whatever the flag says.
+  - The deafened journey ends on the tribe topic's subscribe timeout
+    (20 s, its acknowledgement is lost too), not the 30 s registration
+    wait. Closing the connection after the register instead would be the
+    cut-short case the unit test already covers.
 
 ## In progress
 

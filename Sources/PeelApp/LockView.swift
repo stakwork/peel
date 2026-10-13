@@ -7,17 +7,22 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
+    /// Whether the account is known to hold sats, for Forget; never how
+    /// many (`AppModel.balanceBeforeForget`).
+    @State private var holdsSats = false
 
     var body: some View {
         OnboardingPage {
             VStack(spacing: 24) {
                 AppIcon(size: 72)
-                VStack(spacing: 8) {
+                VStack(spacing: Theme.Space.sm) {
                     Text("Enter your PIN")
                         .font(Theme.font(24, .bold))
-                    Text(problem ?? "It unlocks your account on this Mac.")
-                        .font(Theme.font(14))
-                        .foregroundStyle(Theme.secondaryText)
+                    if let problem {
+                        Text(problem)
+                            .font(Theme.font(14))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                 }
                 PinField(pin: $pin) { Task { await unlock() } }
                     .disabled(working)
@@ -28,11 +33,22 @@ struct LockView: View {
                 // For a lost PIN.
                 ForgetAccountControl(
                     trigger: "Forgot your PIN? Forget this account on this Mac",
-                    explanation: "This removes the account's words and messages from this Mac. You can restore it later with your twelve words."
+                    explanation: forgetExplanation
                 )
                 .frame(maxWidth: 360)
             }
         }
+        .task { holdsSats = await (model.balanceBeforeForget() ?? 0) > 0 }
+    }
+
+    /// What is lost without the words: Forget asks for no proof of them, so
+    /// a lost PIN can start again. Never how many sats: the PIN guards that,
+    /// as a locked notification says only "Sats received". Never "no sats"
+    /// either: the balance stored before the PIN may predate sats received since.
+    private var forgetExplanation: String {
+        holdsSats
+            ? "It holds sats. Without your twelve words, they're lost for good."
+            : "Without your twelve words, it can't be brought back."
     }
 
     private func unlock() async {
@@ -51,7 +67,7 @@ struct LockView: View {
 extension PIN {
     /// What to show when a PIN was not accepted.
     static func problem(_ error: any Error) -> String {
-        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.readable(error)
+        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
     }
 }
 
@@ -68,7 +84,7 @@ struct ForgetAccountControl: View {
     @State private var problem: String?
 
     var body: some View {
-        VStack(alignment: section ? .leading : .center, spacing: 8) {
+        VStack(alignment: section ? .leading : .center, spacing: Theme.Space.sm) {
             if section {
                 FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
             } else {
@@ -85,6 +101,6 @@ struct ForgetAccountControl: View {
 
     private func forget() async {
         problem = nil
-        do { try await model.forgetAccount() } catch { problem = PeelError.readable(error) }
+        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: "forget the account") }
     }
 }

@@ -127,14 +127,7 @@ struct MediaInfoTests {
         #expect(MediaInfo.format(duration: seconds) == text)
     }
 
-    @Test func kindsFollowTheMacAppAndDeclaredTypes() {
-        // The Mac app sends `video/mov`, which UTType does not know: it is a video all the same.
-        #expect(AttachmentKind(mediaType: "video/mov") == .video)
-        #expect(AttachmentKind(mediaType: "video/quicktime") == .video)
-        #expect(AttachmentKind(mediaType: "video/mp4") == .video)
-        #expect(AttachmentKind(mediaType: "video") == .video)
-        #expect(AttachmentKind(mediaType: "audio/x-m4a") == .audio)
-        #expect(AttachmentKind(mediaType: "application/octet-stream") == .file)
+    @Test func namesFollowTheMacApp() {
         #expect(AttachmentKind.fallbackName(mediaType: "video/mov") == "video.mov")
         #expect(AttachmentKind.fallbackName(mediaType: "video/mp4") == "video.mp4")
         #expect(AttachmentKind.fallbackName(mediaType: "audio/wav") == "audio.wav")

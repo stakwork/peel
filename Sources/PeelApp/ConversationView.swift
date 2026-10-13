@@ -1,3 +1,4 @@
+import PeelAgent
 import SwiftUI
 import PeelCore
 
@@ -10,10 +11,10 @@ struct ConversationView: View {
     /// Dragged on its divider; remembered on this Mac (a convenience).
     @AppStorage("threadWidth") private var threadWidth: Double = ThreadPanel.width
 
-    /// The narrowest the conversation gets beside a thread.
-    private static let minimumWidth: CGFloat = 380
-    /// How narrow and how wide the thread may be dragged.
-    private static let threadRange = 300.0...560.0
+    /// The narrowest the conversation (or the agent chat) gets beside a panel.
+    static let minimumWidth: CGFloat = 380
+    /// How narrow and how wide the thread (or a memory) may be dragged.
+    static let threadRange = 300.0...560.0
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
@@ -113,7 +114,7 @@ private struct ChatColumn: View {
                 paysTo: conversation.isTribe ? nil : conversation.name
             )
         }
-        .fileDrop(into: composer, for: conversation)
+        .fileDrop(into: composer)
         .onAppear {
             // Opened from the sidebar's keys, the keys stay there.
             if !model.sidebarHasKeys { model.composerFocus[composer, default: 0] += 1 }
@@ -136,8 +137,8 @@ struct ChatFooter: View {
 
     var body: some View {
         if showsNotice, let notice = model.conversationNotices[conversation.chat] {
-            NoticeBar(text: notice) { model.dismissNotice(in: conversation.chat) }
-                .padding(.horizontal, 20)
+            Callout(detail: notice, icon: .problem, dismiss: { model.dismissNotice(in: conversation.chat) })
+                .padding(.horizontal, Theme.Space.xl)
                 .padding(.top, 6)
         }
         if let tribe, !tribe.canPost {
@@ -153,38 +154,6 @@ struct ChatFooter: View {
     }
 }
 
-/// An error to show until dismissed: one that belongs to a conversation,
-/// such as a send the server refused, or the engine's own across the main
-/// window. Quiet, not red: nothing was destroyed.
-struct NoticeBar: View {
-    let text: String
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(Theme.attention)
-            Text(text)
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .textSelection(.enabled)
-                .lineLimit(3)
-            Spacer(minLength: 8)
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-            }
-            .buttonStyle(.plain)
-            .help("Dismiss")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .panelBoxed()
-    }
-}
-
-
 /// A tribe's name, what it is about and what a message costs, then Call
 /// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
 /// Tribe details (⌘I), the link, Notifications, Edit tribe for the owner and
@@ -192,13 +161,13 @@ struct NoticeBar: View {
 /// More, the details from a click on the tribe's name or icon too.
 struct TribeHeader: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
     let conversation: Conversation
     let tribe: Tribe?
 
-    @State private var panel: Panel?
+    @State private var panel: HeaderPanel?
 
-    private enum Panel: Equatable { case members, details, edit }
+    /// Which of the tribe's panels is open below More.
+    private enum HeaderPanel: Equatable { case members, details, edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -210,9 +179,9 @@ struct TribeHeader: View {
 
     var body: some View {
         DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details }) {
-            ConversationIcon(conversation: conversation, size: 32)
+            ConversationIcon(conversation: conversation, size: Theme.AvatarSize.lg)
         } trailing: {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 SearchHeaderButton(chat: conversation.chat)
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
@@ -248,7 +217,7 @@ struct TribeHeader: View {
             edit.append(.button("Edit tribe…", systemImage: "slider.horizontal.3") { panel = .edit })
         }
         return .sections(
-            WebMenuEntries.entries(for: tribe, pane: model.web, open: openURL),
+            WebMenuEntries.entries(for: tribe, pane: model.web),
             [.button("Members", systemImage: "person.2") { panel = .members },
              details]
                 + (tribe.map(ConversationMenu.link) ?? [])
@@ -257,35 +226,10 @@ struct TribeHeader: View {
         )
     }
 
-    private func shows(_ which: Panel) -> Binding<Bool> {
+    private func shows(_ which: HeaderPanel) -> Binding<Bool> {
         Binding { panel == which } set: { shown in
             if shown { panel = which } else if panel == which { panel = nil }
         }
-    }
-}
-
-/// An icon button in the conversation header; `lit` while what it opened is open.
-struct HeaderButton: View {
-    let systemImage: String
-    let help: String
-    /// Its action is running: the spinner takes the icon's place.
-    var working = false
-    var lit = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14))
-                .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
-                .buttonProgress(working)
-                .frame(width: 28, height: 28)
-                .background(lit ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
     }
 }
 
@@ -294,7 +238,6 @@ struct HeaderButton: View {
 /// (handed to `entries` to place), ⌘I from anywhere in the chat, or a click
 /// on the header's name or icon (the header sets `showsDetails`).
 struct HeaderMoreButton<Details: View>: View {
-    @Environment(\.menuPresenter) private var presenter
     let chat: String
     /// "Details" for a contact, "Tribe details" for a tribe.
     var detailsTitle = "Details"
@@ -303,19 +246,11 @@ struct HeaderMoreButton<Details: View>: View {
     let entries: @MainActor (_ details: MenuEntry) -> [MenuEntry]
     @ViewBuilder let details: () -> Details
 
-    @State private var anchor = MenuAnchor()
-
-    private var source: AnyHashable { "more-\(chat)" }
-
     var body: some View {
-        HeaderButton(systemImage: "ellipsis", help: "More", lit: presenter?.isOpen == true && presenter?.source == source) {
-            let open = $showsDetails
-            let details = MenuEntry.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) {
-                open.wrappedValue = true
-            }
-            presenter?.show(entries(details), at: anchor, source: source)
+        let open = $showsDetails
+        MenuButton(systemImage: "ellipsis", help: "More", source: "more-\(chat)") {
+            entries(.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) { open.wrappedValue = true })
         }
-        .menuAnchor(anchor)
         .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { showsDetails = true }
         .peelPopover(isPresented: $showsDetails, content: details)
     }
@@ -333,36 +268,25 @@ struct TribeMembersPanel: View {
     @State private var problem: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(members?.complete == false ? "Seen in #\(conversation.name)" : "Members")
-                    .font(Theme.font(15, .bold))
-                if members?.complete == false {
-                    Text("Only the tribe's owner gets the full member list.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                }
-            }
+        Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
             memberList
-            Theme.divider.frame(height: 1)
-            HStack(spacing: 8) {
-                if let link = tribe?.link {
-                    CopyButton("Copy link", text: link, systemImage: "link")
-                }
-                Spacer()
-                // The owner cannot leave, only delete the tribe (under Edit tribe).
-                if tribe?.isOwner != true {
-                    InlineConfirm(trigger: "Leave tribe", prompt: "Leave #\(conversation.name)?", confirm: "Leave") {
-                        await leave()
+        } actions: {
+            if let link = tribe?.link {
+                CopyButton("Copy link", text: link, systemImage: "link", iconOnly: true)
+            }
+        } footer: {
+            let exit = tribe?.exit
+            if exit != nil || problem != nil {
+                FormFooter(problem: problem) {
+                    if let exit {
+                        InlineConfirm(trigger: exit.title, confirm: exit.confirm(conversation.name)) {
+                            await model.leave(conversation.chat)
+                            done()
+                        }
                     }
                 }
             }
-            if let problem {
-                ProblemText(problem)
-            }
         }
-        .padding(16)
-        .frame(width: 300)
         .task(id: conversation.chat) { await load() }
     }
 
@@ -373,13 +297,16 @@ struct TribeMembersPanel: View {
             let me = model.myPubkey
             let canManage = tribe?.canManage == true
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
                     // Requests to join a private tribe come first, as in the Mac app.
                     if !pending.isEmpty {
-                        SectionLabel("Waiting for approval")
+                        SectionHeader("Waiting for approval")
+                            .padding(.horizontal, Theme.Space.sm)
+                            .padding(.bottom, Theme.Space.xs)
                         ForEach(pending) { member in
                             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member), note: nil) {
                                 JoinRequestButtons { approve in await answer(member, approve: approve) }
+                                    .fixedSize()
                             }
                             .peelMenu {
                                 .sections(
@@ -395,7 +322,10 @@ struct TribeMembersPanel: View {
                                 )
                             }
                         }
-                        SectionLabel("Members")
+                        SectionHeader("Members")
+                            .padding(.horizontal, Theme.Space.sm)
+                            .padding(.top, Theme.Space.xs)
+                            .padding(.bottom, Theme.Space.xs)
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
@@ -428,6 +358,8 @@ struct TribeMembersPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // The rows' own inset lines their text up with the panel's.
+            .padding(.horizontal, -8)
             .frame(maxHeight: 320)
             .fixedSize(horizontal: false, vertical: true)
         } else if problem == nil {
@@ -439,7 +371,7 @@ struct TribeMembersPanel: View {
         do {
             members = try await model.tribeMembers(conversation.chat)
         } catch {
-            problem = "Could not load members: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "load the members")
         }
     }
 
@@ -451,7 +383,7 @@ struct TribeMembersPanel: View {
                 in: conversation.chat, .member(pubkey: pubkey, alias: member.alias), approve: approve
             )
         } catch {
-            problem = "Could not \(approve ? "approve" : "decline"): \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: approve ? "approve" : "decline")
             return false
         }
         await load()
@@ -464,21 +396,12 @@ struct TribeMembersPanel: View {
             try await model.kick(pubkey, from: conversation.chat)
             await load()
         } catch {
-            problem = "Could not remove: \(PeelError.readable(error))"
-        }
-    }
-
-    private func leave() async {
-        do {
-            try await model.leaveTribe(conversation.chat)
-            done()
-        } catch {
-            problem = "Could not leave: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "remove the member")
         }
     }
 }
 
-struct MemberRow<Actions: View>: View {
+private struct MemberRow<Actions: View>: View {
     let alias: String
     let photoURL: String?
     let hue: PersonHue
@@ -486,18 +409,19 @@ struct MemberRow<Actions: View>: View {
     @ViewBuilder var actions: Actions
 
     var body: some View {
-        HStack(spacing: 9) {
-            Avatar(name: alias, url: photoURL, size: 24, hue: hue)
-            Text(alias)
-                .font(Theme.font(13))
-                .foregroundStyle(hue.name)
-                .lineLimit(1)
-            if let note {
-                Text(note)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
+        ListRow {
+            Avatar(name: alias, url: photoURL, size: Theme.AvatarSize.md, hue: hue)
+        } title: {
+            HStack(spacing: Theme.Space.sm) {
+                Text(alias)
+                    .foregroundStyle(hue.name)
+                    .lineLimit(1)
+                if let note {
+                    Text(note)
+                        .muted()
+                }
             }
-            Spacer(minLength: 6)
+        } trailing: {
             actions
         }
     }
@@ -513,15 +437,17 @@ extension MemberRow where Actions == EmptyView {
 /// messages of a tribe, worded as the Mac app words them.
 struct MembershipNote: View {
     let message: Message
+    /// The row's sender (`People.sender(of:inTribe:)`).
+    let sender: Sender
 
     private var text: String {
-        let who = message.fromMe ? "You" : message.senderAlias ?? Sender.unnamed
+        let who = sender.label
         switch message.type {
         case MessageType.groupLeave: return "\(who) left"
         case MessageType.groupKick: return "The owner removed you from this tribe"
         case MessageType.memberRequest: return "You asked to join"
         // The tribe names the approved member as the sender.
-        case MessageType.memberApprove: return "\(message.senderAlias ?? Sender.unnamed) was approved"
+        case MessageType.memberApprove: return "\(Sender(member: message).name) was approved"
         case MessageType.memberReject:
             return message.fromMe ? "You declined a request to join" : "The owner declined your request to join"
         case MessageType.tribeDelete: return "The owner deleted this tribe"
@@ -542,20 +468,12 @@ struct DayDivider: View {
     let date: Date
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             Theme.divider.frame(height: 1)
-            Text(Formatting.dayHeading(date))
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
-                // Circular ends: the continuous capsule's stroke draws square
-                // stubs past its ends at this height.
-                .overlay(Capsule(style: .circular).strokeBorder(Theme.divider))
-                .fixedSize()
+            Badge(Formatting.dayHeading(date), .outline)
             Theme.divider.frame(height: 1)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Theme.Space.sm)
     }
 }
 
@@ -660,7 +578,9 @@ enum LinkText {
     /// colour, as `MessageMarkup.linkLabel` words them (the host always
     /// whole; the full address is what opens); a `[text](https://…)` link as
     /// its text with its host beside it, so where it goes is never hidden.
-    static func attributed(_ text: String, myAliases: Set<String>) -> AttributedString {
+    /// With `agentLinks`, in the agent's replies, a link to a message
+    /// (`AgentMessageLink`) shows its text alone: it opens in Peel.
+    static func attributed(_ text: String, myAliases: Set<String>, agentLinks: Bool = false) -> AttributedString {
         var result = AttributedString()
         for inline in MessageMarkup.inlines(text) {
             var shown = AttributedString(inline.text)
@@ -679,6 +599,9 @@ enum LinkText {
                 shown = AttributedString(MessageMarkup.linkLabel(inline.text, url: url))
                 shown.link = url
                 shown.foregroundColor = Theme.link
+            case .namedLink(let url) where agentLinks && AgentMessageLink(url) != nil:
+                shown.foregroundColor = Theme.link
+                shown.link = url
             case .namedLink(let url):
                 shown.foregroundColor = Theme.link
                 // Isolated left to right, so a direction override in the

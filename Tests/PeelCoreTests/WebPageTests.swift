@@ -101,6 +101,18 @@ struct WebPageTests {
         #expect(tribe.secondBrainURL == nil)
     }
 
+    @Test func aTribesPagesComeInOneOrder() {
+        var tribe = Tribe(pubkey: "02ab")
+        #expect(tribe.pages.isEmpty)
+        tribe.secondBrainURL = "https://brain.example.com/graph"
+        #expect(tribe.pages.map(\.kind) == [.secondBrain])
+        tribe.appURL = "https://app.example.com"
+        #expect(tribe.pages == [
+            TribePage(kind: .app, url: URL(string: "https://app.example.com")!),
+            TribePage(kind: .secondBrain, url: URL(string: "https://brain.example.com/graph")!),
+        ])
+    }
+
     @Test func anEditSendsTheAddressesBackAsTheServerHadThem() throws {
         let record: [String: Any] = [
             "pubkey": "02ab", "name": "Old", "app_url": "https://app.example.com",

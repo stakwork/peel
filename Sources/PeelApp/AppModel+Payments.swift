@@ -20,16 +20,28 @@ extension AppModel {
     /// confirmation. The row shows it pending, then the bolt or Retry,
     /// through storage; the engine ignores a second tap within a second. A
     /// refusal (the balance) shows in the chat, as the official apps' alert.
+    ///
+    /// A boost amount set on another device and over the threshold takes a
+    /// second click, as a payment does: the first one names the amount, the
+    /// next Boost of the same message sends it and confirms it for this Mac,
+    /// while that notice is still shown (dismissed or replaced, it asks again).
     func quickBoost(_ message: Message) async {
         guard let id = message.id else { return }
-        switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id) }) {
-        case .refused(let reason): conversationNotices[message.chat] = "Could not boost: \(reason)"
+        let asking = boostToConfirm.flatMap { $0.messageID == id && conversationNotices[message.chat] == $0.notice ? $0 : nil }
+        let confirmed = asking?.msat
+        switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id, confirmedMsat: confirmed) }) {
+        case .refused(let reason): conversationNotices[message.chat] = PeelError.problem(reason, couldNot: "boost")
         case .sent:
+            boostToConfirm = nil
             sent(in: message.chat)
-            if conversationNotices[message.chat]?.hasPrefix("Could not boost") == true {
+            if let notice = conversationNotices[message.chat], notice == asking?.notice || notice.hasPrefix("Could not boost") {
                 conversationNotices[message.chat] = nil
             }
-        case .needsConfirmation, .busy: break
+        case .needsConfirmation(let msat):
+            let notice = "Your boost amount, \(Sats.format(msat: msat)), was set on another device. Boost this message again to send it."
+            boostToConfirm = (id, msat, notice)
+            conversationNotices[message.chat] = notice
+        case .busy: break
         }
     }
 
@@ -48,7 +60,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.readable(error))
+            return .refused(PeelError.problem(error))
         }
     }
 
@@ -108,7 +120,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.readable(error))
+            return .refused(PeelError.problem(error))
         }
     }
 

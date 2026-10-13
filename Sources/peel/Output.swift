@@ -68,6 +68,8 @@ struct Session {
             "connecting: \(message)"
         case .coreError(let message):
             "core error: \(message)"
+        case .serverCheckError(let message):
+            "server check: \(message)"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
         case .echoedAliases(let echoed):
@@ -80,6 +82,8 @@ struct Session {
             "invoice paid \(invoice.paymentHash) (\(invoice.status.rawValue), \(Sats.format(msat: invoice.paidMsat ?? 0)))"
         case .contactAdded(let message):
             "new contact: \(message.senderAlias ?? "someone") (\(message.chat)) added this account"
+        case .preferencesChanged:
+            "preferences changed on another device"
         }
     }
 }

@@ -10,8 +10,9 @@ struct AccountView: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: "Account")
+            ScrollViewReader { proxy in
             ScrollView {
-                // Settings, not a form: rows of what is set on cards
+                // Settings, not a form: facts of what is set on cards
                 // (`SettingsSection`); a text field, when one opens, is a
                 // `FormItem`.
                 VStack(alignment: .leading, spacing: 18) {
@@ -19,28 +20,31 @@ struct AccountView: View {
                     ContactInfoSection()
                     SettingsSection("Account") {
                         NameRow()
-                        SettingsRow("Balance") {
-                            Text(model.balanceText ?? "Known once connected")
+                        Fact("Balance") {
+                            Text(model.balanceText ?? "–")
                                 .monospacedDigit()
                                 .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                         }
-                        SettingsRow("Confirm payments") {
+                        Fact("Confirm payments") {
                             PaymentConfirmationRow()
                         }
-                        SettingsRow("Boost amount") {
+                        Fact("Boost amount") {
                             BoostAmountRow()
                         }
-                        SettingsRow("Server") {
+                        TimeZoneRow()
+                        Fact("Server") {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(model.myServer ?? "None")
                                     .textSelection(.enabled)
                                 Text(model.connection.label)
-                                    .font(Theme.font(12))
-                                    .foregroundStyle(Theme.secondaryText)
+                                    .muted()
                             }
                         }
                     }
-                    TimeZoneSection()
+                    if let agent = model.agent {
+                        AgentSettingsSection(agent: agent)
+                            .id(AgentSettingsSection.id)
+                    }
                     SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {
                             ChangePINRow()
@@ -55,7 +59,7 @@ struct AccountView: View {
                     }
                     ForgetAccountControl(
                         trigger: "Forget this account on this Mac…",
-                        explanation: "This deletes from this Mac your twelve words and every message, contact and tribe stored here. The account itself is not closed: to use it again, here or on any device, you need your twelve words. Make sure you have them written down.",
+                        explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                         section: true
                     )
                 }
@@ -67,9 +71,19 @@ struct AccountView: View {
                 // In the scroll view as well: a click there never reaches a gesture outside it.
                 .endsEditingOnClick()
             }
+            // Opened from the agent chat's settings: at its section.
+            .onAppear { showAgentSettings(proxy) }
+            .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
+            }
         }
         .endsEditingOnClick()
         .font(Theme.font(13))
+    }
+
+    private func showAgentSettings(_ proxy: ScrollViewProxy) {
+        guard model.showsAgentSettings else { return }
+        model.showsAgentSettings = false
+        proxy.scrollTo(AgentSettingsSection.id, anchor: .top)
     }
 }
 
@@ -82,11 +96,11 @@ private struct IdentitySection: View {
 
     var body: some View {
         PictureField(
-            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 88, hue: model.myHue),
+            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.xxl, hue: model.myHue),
             upload: { try await model.uploadPhoto($0) },
             remove: model.myPhotoURL == nil ? nil : .confirmed("Remove photo") { try await model.removePhoto() }
         ) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(model.me.name)
                     .font(Theme.font(24, .bold))
                     .lineLimit(1)
@@ -97,7 +111,7 @@ private struct IdentitySection: View {
                         .help(key)
                 }
             }
-            .padding(.leading, 8)
+            .padding(.leading, Theme.Space.sm)
             Spacer(minLength: 12)
         }
     }
@@ -108,28 +122,28 @@ private struct ContactInfoSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(alignment: .center, spacing: 20) {
-            QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Your contact info")
-                    .font(Theme.font(15, .bold))
-                Text(model.myContactInfo == nil
-                     ? "Available once the server has registered this account."
-                     : "Someone scans this code or pastes your contact info to add you. It holds your public key and how to reach you, nothing secret.")
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let info = model.myContactInfo {
-                    CopyButton("Copy contact info", text: info)
-                        .buttonStyle(.peel(.outline))
-                        .id(info)
-                        .padding(.top, 4)
+        Card {
+            HStack(alignment: .center, spacing: Theme.Space.xl) {
+                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    Text("Your contact info")
+                        .font(Theme.font(15, .bold))
+                    if model.myContactInfo == nil {
+                        Text("Not ready yet")
+                            .font(Theme.font(13))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                    if let info = model.myContactInfo {
+                        CopyButton("Copy contact info", text: info)
+                            .buttonStyle(.peel(.outline))
+                            .id(info)
+                            .padding(.top, Theme.Space.xs)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(Theme.Space.lg)
         }
-        .padding(16)
-        .formCard()
     }
 }
 
@@ -145,10 +159,7 @@ private struct NameRow: View {
     var body: some View {
         if editing {
             VStack(alignment: .leading, spacing: 14) {
-                FormItem(
-                    label: "Name",
-                    helper: "Contacts and tribes see it on the messages you send from now on. Messages already sent keep the old name."
-                ) {
+                FormItem(label: "Name") {
                     FormTextField(label: "Name", text: $draft)
                         .onSubmit { Task { await save() } }
                         .disabled(working)
@@ -168,7 +179,7 @@ private struct NameRow: View {
                 .padding([.horizontal, .bottom], settingsRowPadding)
             }
         } else {
-            SettingsRow("Name") {
+            Fact("Name") {
                 Text(model.myAlias ?? "")
             } trailing: {
                 Button("Edit") {
@@ -189,7 +200,7 @@ private struct NameRow: View {
             try await model.setName(draft)
             editing = false
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error, couldNot: "save your name")
         }
     }
 }
@@ -208,13 +219,12 @@ private struct ChangePINRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsRow("PIN") {
+            Fact("PIN") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Six digits")
                     if let note, step == .closed {
                         Text(note)
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
+                            .muted()
                     }
                 }
             } trailing: {
@@ -228,7 +238,7 @@ private struct ChangePINRow: View {
                 }
             }
             if step != .closed {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
                     Text(prompt)
                         .font(Theme.font(13))
                         .foregroundStyle(note == nil ? Theme.secondaryText : Theme.text)
@@ -245,7 +255,7 @@ private struct ChangePINRow: View {
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
                 .padding(.horizontal, settingsRowPadding)
-                .padding(.bottom, 8)
+                .padding(.bottom, Theme.Space.sm)
             }
         }
     }
@@ -274,43 +284,26 @@ private struct ChangePINRow: View {
         defer { working = false }
         do {
             try await model.changePIN(from: old, to: new, confirmation: confirmation)
-            reset(to: .closed, note: "Changed. Use the new PIN from now on.")
+            reset(to: .closed, note: "PIN changed")
         } catch SecretStoreFailure.wrongPIN {
-            reset(to: .old, note: "That was not your current PIN. Enter it again.")
+            reset(to: .old, note: "Wrong PIN. Try again.")
         } catch {
-            reset(to: .new, note: "Could not change the PIN: \(PeelError.readable(error)). Choose the new PIN again.")
+            reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
         }
     }
 }
 
 private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
-    @State private var problem: String?
 
     private static let choices = [0, 1, 4, 12, 24]
 
     var body: some View {
-        SettingsRow("Ask for the PIN") {
-            VStack(alignment: .leading, spacing: 2) {
-                PeelDropdown(
-                    selection: model.pinTimeoutHours,
-                    options: presets(Self.choices, including: model.pinTimeoutHours)
-                        .map { ($0, Self.label($0)) }
-                ) { hours in
-                    Task {
-                        do {
-                            try await model.setPINTimeout(hours: hours)
-                            problem = nil
-                        } catch {
-                            problem = PeelError.readable(error)
-                        }
-                    }
-                }
-                .fixedSize()
-                Text(problem ?? "After this long without use, Peel asks again.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+        Fact("Ask for the PIN") {
+            SettingDropdown(
+                selection: model.pinTimeoutHours,
+                options: presets(Self.choices, including: model.pinTimeoutHours).map { ($0, Self.label($0)) }
+            ) { try await model.setPINTimeout(hours: $0) }
         }
     }
 
@@ -337,6 +330,12 @@ private struct WordsRow: View {
     @State private var working = false
     @State private var problem: String?
     @State private var words: [String] = []
+    /// Checking the words rather than showing them (Check words): three
+    /// typed back from paper, the words read with the PIN but never shown.
+    @State private var checking = false
+    /// Never nil and never fewer answers, even once closed: a box being
+    /// edited as the row closes still reads its answer.
+    @State private var check = WordCheck()
     @State private var hideAt = Date.distantPast
     @State private var visible = false
     @State private var confirmingCopy = false
@@ -348,36 +347,35 @@ private struct WordsRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsRow("Twelve words") {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.usesFileSecrets ? "In a plain file (development profile)" : "In the Keychain on this Mac")
-                    Text(model.profile?.requiresPIN == true ? "Asks for your PIN first" : "No PIN on a development profile")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+            Fact("Twelve words") {
+                Text(model.wordsConfirmed ? "Checked" : "Not checked yet")
             } trailing: {
                 if words.isEmpty, !askingPIN {
-                    Button("Show words") { start() }
-                        .buttonStyle(.peel(.outline))
+                    HStack(spacing: 8) {
+                        if !model.wordsConfirmed {
+                            Button("Check words") { start(checking: true) }
+                                .buttonStyle(.peel(.outline))
+                        }
+                        Button("Show words") { start(checking: false) }
+                            .buttonStyle(.peel(.outline))
+                    }
                 } else {
-                    Button(words.isEmpty ? "Cancel" : "Hide") { hide() }
+                    Button(words.isEmpty || checking ? "Cancel" : "Hide") { hide() }
                         .buttonStyle(.peel(.outline))
                 }
             }
             if askingPIN {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(problem ?? "Enter your PIN to show your twelve words.")
-                        .font(Theme.font(13))
-                        .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
+                    prompt("Enter your PIN")
                     PinField(pin: $pin) { Task { await reveal() } }
                         .frame(maxWidth: 360)
                         .disabled(working)
                     ProgressView().controlSize(.small).opacity(working ? 1 : 0)
                 }
                 .padding(.horizontal, settingsRowPadding)
-                .padding(.bottom, 8)
+                .padding(.bottom, Theme.Space.sm)
             } else if !words.isEmpty {
-                shown
+                if checking { boxes } else { shown }
             } else if let problem {
                 ProblemText(problem)
                     .padding([.horizontal, .bottom], settingsRowPadding)
@@ -391,23 +389,23 @@ private struct WordsRow: View {
 
     private var shown: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Anyone who has these words controls your account and its sats. Write them on paper; never type them into a website or a chat.")
+            Text("Anyone with these words controls your account. Keep them on paper.")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-            NumberedWordGrid(count: words.count) { index in
+            NumberedWordGrid(places: Array(words.indices)) { index in
                 Text(visible ? words[index] : "••••••")
                     .font(Theme.font(15))
                     .foregroundStyle(visible ? Theme.text : Theme.secondaryText)
                 Spacer(minLength: 0)
             }
             .privacySensitive()
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Button(visible ? "Mask" : "Reveal") { visible.toggle() }
                     .buttonStyle(.peel(.outline))
                 // Not a loss, so the second click is the commit button, not red.
                 InlineConfirm(
-                    prompt: "Other apps can read the clipboard. Peel clears it after a minute.", confirm: "Copy words",
+                    prompt: "Other apps can see the clipboard.", confirm: "Copy words",
                     confirmKind: .primary, confirming: $confirmingCopy
                 ) {
                     Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
@@ -416,17 +414,11 @@ private struct WordsRow: View {
                 } trigger: {
                     CopyLabel("Copy", copiedAt: copiedAt)
                 }
-                if !confirmingCopy, copiedAt != nil {
-                    Text("Cleared from the clipboard in a minute")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                }
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text("Hides in \(max(0, Int(hideAt.timeIntervalSince(context.date).rounded(.up)))) s")
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
             }
         }
@@ -437,7 +429,47 @@ private struct WordsRow: View {
         }
     }
 
-    private func start() {
+    /// Three words typed back; the words themselves stay off the screen.
+    private var boxes: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            prompt("Type these three words from your paper")
+            WordCheckGrid(check: $check) { Task { await confirm() } }
+            FormFooter(problem: nil) {
+                Button { Task { await confirm() } } label: { Text("Check").buttonProgress(working) }
+                    .buttonStyle(.peel(.primary))
+                    .disabled(!check.isFilled)
+            }
+        }
+        .padding([.horizontal, .bottom], settingsRowPadding)
+    }
+
+    /// The line over the PIN or the boxes: what to do, or why it was not
+    /// accepted.
+    private func prompt(_ text: String) -> some View {
+        Text(problem ?? text)
+            .font(Theme.font(13))
+            .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func confirm() async {
+        guard !working, check.isFilled else { return }
+        working = true
+        defer { working = false }
+        let started = generation
+        do {
+            try await model.confirmWords(check.byPosition, of: words)
+            hide()
+        } catch {
+            // Cancelled meanwhile: nothing to say under a closed row.
+            guard generation == started else { return }
+            problem = PeelError.problem(error)
+        }
+    }
+
+    private func start(checking: Bool) {
+        self.checking = checking
+        check = WordCheck()
         problem = nil
         if model.profile?.requiresPIN == true {
             pin = ""
@@ -470,6 +502,8 @@ private struct WordsRow: View {
         generation += 1
         problem = nil
         words = []
+        checking = false
+        check = WordCheck()
         pin = ""
         askingPIN = false
         visible = false
@@ -480,71 +514,48 @@ private struct WordsRow: View {
 
 // MARK: - Time zone
 
-/// The zone your offset comes from (this Mac's, or one chosen from a
-/// searchable list, `ZonePicker`), and how many chats it goes to.
-private struct TimeZoneSection: View {
+/// The zone your time is shown in: this Mac's, or one chosen from a
+/// searchable list (`ZonePicker`).
+private struct TimeZoneRow: View {
     @Environment(AppModel.self) private var model
     @State private var chosen: String?
     @State private var picking = false
     @State private var hovering = false
     @State private var problem: String?
-    @State private var shared: Int?
 
     /// What is sent: the chosen zone, else this Mac's.
     private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
 
     var body: some View {
-        SettingsSection("Time zone") {
-            SettingsRow("Time zone") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Button { picking = true } label: {
-                        HStack(spacing: 8) {
-                            Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
-                                .lineLimit(1)
-                            Text(TimeZoneOffset.format(zone))
-                                .foregroundStyle(Theme.secondaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                        .font(Theme.font(13))
-                        .monospacedDigit()
-                        .dropdownBoxed(hovering: hovering)
+        Fact("Time zone") {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Button { picking = true } label: {
+                    HStack(spacing: Theme.Space.sm) {
+                        Text(chosen.map(ZonePicker.label) ?? ZonePicker.automatic)
+                            .lineLimit(1)
+                        Text(TimeZoneOffset.format(zone))
+                            .foregroundStyle(Theme.secondaryText)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
                     }
-                    .buttonStyle(.plain)
-                    .onHover { hovering = $0 }
-                    .fixedSize()
-                    .peelPopover(isPresented: $picking) {
-                        ZonePicker(chosen: chosen) { identifier in
-                            picking = false
-                            Task { await choose(identifier) }
-                        }
-                    }
-                    note(problem ?? "Used in every chat you share with. Follows this Mac; choose one when you are travelling but want to keep home hours.")
+                    .font(Theme.font(13))
+                    .monospacedDigit()
+                    .dropdownBoxed(hovering: hovering)
                 }
-            }
-            SettingsRow("Shared in") {
-                VStack(alignment: .leading, spacing: 2) {
-                    switch shared {
-                    case nil: EmptyView()
-                    case 0: Text("No chats")
-                    case let count?:
-                        Text("\(count == 1 ? "1 chat" : "\(count) chats") \(Text("· as \(TimeZoneOffset.format(zone))").foregroundStyle(Theme.secondaryText))")
-                            .monospacedDigit()
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+                .fixedSize()
+                .peelPopover(isPresented: $picking) {
+                    ZonePicker(chosen: chosen, close: { picking = false }) { identifier in
+                        picking = false
+                        Task { await choose(identifier) }
                     }
-                    note("Every direct message and private tribe, unless you turn it off in that chat's details. Never in public tribes. Each message carries the offset of the moment it is sent, so it follows summer time. You see other people's local time either way.")
                 }
+                if let problem { ProblemText(problem) }
             }
         }
         .task { chosen = try? await model.engine?.chosenTimeZone() }
-        .task(id: model.conversations.count) { await countShared() }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func choose(_ identifier: String?) async {
@@ -553,18 +564,8 @@ private struct TimeZoneSection: View {
             chosen = identifier
             problem = nil
         } catch {
-            problem = "Could not change it: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "change the time zone")
         }
-    }
-
-    /// Every chat whose messages carry the offset now.
-    private func countShared() async {
-        guard let engine = model.engine else { return }
-        var count = 0
-        for conversation in model.conversations {
-            if (try? await engine.offsetShared(in: conversation.chat)) != nil { count += 1 }
-        }
-        shared = count
     }
 }
 
@@ -572,6 +573,7 @@ private struct TimeZoneSection: View {
 /// or an offset.
 private struct ZonePicker: View {
     let chosen: String?
+    let close: () -> Void
     let choose: (String?) -> Void
 
     struct Zone: Identifiable {
@@ -596,38 +598,34 @@ private struct ZonePicker: View {
     var body: some View {
         let query = query.trimmed.lowercased()
         let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
-        VStack(alignment: .leading, spacing: 4) {
+        Panel("Time zone", compact: true, close: close) {
             FormTextField(
                 label: "Search time zones", prompt: "Search cities or GMT+…", text: $query,
                 systemImage: "magnifyingglass", focusOnAppear: true
             )
             .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
-            .padding(.bottom, 4)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if query.isEmpty {
                         ZoneRow(title: "Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
                                 checked: chosen == nil) { choose(nil) }
-                        Theme.divider.frame(height: 1).padding(.vertical, 4)
-                        SectionLabel("All time zones")
-                            .padding(.horizontal, 8)
+                        Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs)
+                        SectionHeader("All time zones")
+                            .padding(.horizontal, Theme.Space.sm)
                             .padding(.vertical, 2)
                     }
                     ForEach(matches) { zone in
                         ZoneRow(title: zone.label, detail: zone.offset, checked: zone.id == chosen) { choose(zone.id) }
                     }
                     if matches.isEmpty {
-                        Text("No time zone matches.")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                            .padding(8)
+                        EmptyState("No time zone matches.", size: .sm)
                     }
                 }
             }
             .frame(height: 300)
+            // The rows' own inset lines their text up with the field's.
+            .padding(.horizontal, -8)
         }
-        .padding(8)
-        .frame(width: 320)
         .onAppear {
             zones = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
                 TimeZone(identifier: id).map { zone in
@@ -639,37 +637,29 @@ private struct ZonePicker: View {
     }
 }
 
+/// A zone: ticked when it is the one chosen.
 private struct ZoneRow: View {
     let title: String
     let detail: String
     let checked: Bool
     let action: () -> Void
 
-    @State private var hovering = false
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12))
-                    .opacity(checked ? 1 : 0)
-                    .frame(width: 16)
-                Text(title)
-                    .lineLimit(1)
-                Spacer(minLength: 12)
-                Text(detail)
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
-            .font(Theme.font(13))
-            .monospacedDigit()
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(hovering ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 5))
-            .contentShape(Rectangle())
+        ListRow(action: action) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 12))
+                .opacity(checked ? 1 : 0)
+                .frame(width: 16)
+        } title: {
+            Text(title).lineLimit(1)
+        } trailing: {
+            Text(detail)
+                .font(Theme.font(13))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(1)
+                .fixedSize()
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }
@@ -681,13 +671,8 @@ private struct NotificationsRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SettingsRow("Notifications") {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state)
-                Text(note)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+        Fact("Notifications") {
+            Text(state)
         } trailing: {
             switch model.notifier.permission {
             case .notAsked:
@@ -706,46 +691,21 @@ private struct NotificationsRow: View {
         switch model.notifier.permission {
         case .allowed: "On"
         case .notAsked: "Off"
-        case .denied: "Turned off in System Settings"
+        case .denied: "Off in System Settings"
         case .unavailable: "Unavailable"
-        }
-    }
-
-    private var note: String {
-        switch model.notifier.permission {
-        case .allowed: "For new messages while you're elsewhere, by each chat's notification level. Sounds and Focus follow System Settings."
-        case .notAsked: "Peel asks macOS once; you can change it later in System Settings."
-        case .denied: "Allow Peel under Notifications in System Settings to get them."
-        case .unavailable: "Only when Peel runs as an app."
         }
     }
 }
 
 private struct NotificationTextRow: View {
     @Environment(AppModel.self) private var model
-    @State private var problem: String?
 
     var body: some View {
-        SettingsRow("Message text") {
-            VStack(alignment: .leading, spacing: 2) {
-                PeelDropdown(
-                    selection: model.notifier.showsText,
-                    options: [(true, "Show message text"), (false, "Say only \"New message\"")]
-                ) { shows in
-                    Task {
-                        do {
-                            try await model.setNotificationShowsText(shows)
-                            problem = nil
-                        } catch {
-                            problem = PeelError.readable(error)
-                        }
-                    }
-                }
-                .fixedSize()
-                Text(problem ?? "What a notification shows of a message. It always names the sender; while Peel is locked it shows neither.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+        Fact("Message text") {
+            SettingDropdown(
+                selection: model.notifier.showsText,
+                options: [(true, "Show"), (false, "Hide")]
+            ) { try await model.setNotificationShowsText($0) }
         }
     }
 }
@@ -757,10 +717,9 @@ private struct WebsiteDataRow: View {
     @State private var cleared = false
 
     var body: some View {
-        SettingsRow("Website data") {
-            Text(cleared ? "Cleared." : "Sign-ins, cookies and storage of pages opened in Peel, kept for this account only.")
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.secondaryText)
+        Fact("Website data") {
+            Text(cleared ? "Cleared" : "Sign-ins from pages opened in Peel")
+                .muted()
         } trailing: {
             InlineConfirm(trigger: "Clear…", prompt: "Sign out of every site?", confirm: "Clear") {
                 await model.web.clearWebsiteData()
@@ -772,12 +731,11 @@ private struct WebsiteDataRow: View {
 
 // MARK: - Building blocks
 
-private let settingsLabelWidth: CGFloat = 150
-private let settingsRowPadding: CGFloat = 12
-private let settingsRowSpacing: CGFloat = 12
+let settingsRowPadding: CGFloat = 12
 
-/// A titled group of Account rows on a raised card, a hairline between rows.
-private struct SettingsSection<Content: View>: View {
+/// A titled group of Account rows: a `FactList` with the page's wider
+/// label column.
+struct SettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
 
@@ -788,54 +746,10 @@ private struct SettingsSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(Theme.font(11, .semibold))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 4)
-            Group(subviews: content) { rows in
-                VStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        if row.id != rows.first?.id { Theme.divider.frame(height: 1) }
-                        row
-                    }
-                }
-            }
-            .formCard()
+            SectionHeader(title)
+                .padding(.horizontal, Theme.Space.xs)
+            FactList(labelWidth: 150) { content }
         }
-        .padding(.top, 12)
-    }
-}
-
-/// A row of an Account section: the label column (`FormLabel`), the value
-/// beside it, and an optional action on the right. The page is wider than
-/// a popover, so its value reads left, by its notes.
-private struct SettingsRow<Value: View, Trailing: View>: View {
-    let label: String
-    @ViewBuilder let value: Value
-    @ViewBuilder let trailing: Trailing
-
-    init(_ label: String, @ViewBuilder value: () -> Value, @ViewBuilder trailing: () -> Trailing) {
-        self.label = label
-        self.value = value()
-        self.trailing = trailing()
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: settingsRowSpacing) {
-            FormLabel(label)
-                .frame(width: settingsLabelWidth, alignment: .leading)
-            value
-                .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
-        }
-        .padding(.horizontal, settingsRowPadding)
-        .padding(.vertical, 9)
-        .frame(minHeight: 44)
-    }
-}
-
-extension SettingsRow where Trailing == EmptyView {
-    init(_ label: String, @ViewBuilder value: () -> Value) {
-        self.init(label, value: value, trailing: { EmptyView() })
+        .padding(.top, Theme.Space.md)
     }
 }

@@ -22,7 +22,7 @@ struct JoinTribeForm: View {
 
     var body: some View {
         // The compact form (one field): the link, then the tribe.
-        FormPopover(title: "Join a tribe", compact: true, close: done) {
+        Panel("Join a tribe", compact: true, close: done) {
             FormItem(label: "Tribe link") {
                 FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
             }
@@ -35,28 +35,28 @@ struct JoinTribeForm: View {
                 attempt.problem = nil
             }
             if let info {
-                HStack(alignment: .top, spacing: 10) {
-                    TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: 36)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(info.name)
-                            .font(Theme.font(14, .semibold))
-                        if let summary = info.summary?.trimmed.nilIfEmpty {
-                            Text(summary)
-                                .font(Theme.font(12))
-                                .foregroundStyle(Theme.secondaryText)
-                                .lineLimit(3)
+                Card {
+                    HStack(alignment: .top, spacing: 10) {
+                        TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: Theme.AvatarSize.lg)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(info.name)
+                                .font(Theme.font(14, .semibold))
+                            if let summary = info.summary?.trimmed.nilIfEmpty {
+                                Text(summary)
+                                    .font(Theme.font(12))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .lineLimit(3)
+                            }
+                            Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
+                                .monospacedDigit()
+                                .muted()
                         }
-                        Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
-                            .font(Theme.font(12))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .formCard()
             }
         } footer: {
             FormFooter(problem: problem ?? attempt.problem) {
@@ -101,7 +101,7 @@ struct JoinTribeForm: View {
             info = found
             problem = nil
         } catch {
-            if link == looked { problem = PeelError.readable(error) }
+            if link == looked { problem = PeelError.problem(error) }
         }
     }
 

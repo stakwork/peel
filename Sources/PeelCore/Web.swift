@@ -25,8 +25,12 @@ public enum Web {
     typealias RedirectPolicy = @Sendable (_ request: URLRequest, _ original: URLRequest?) -> URLRequest?
 
     /// No cookies and no URL cache; every redirect passes `redirect`.
-    static func session(requestTimeout: TimeInterval, resourceTimeout: TimeInterval, redirect: @escaping RedirectPolicy) -> URLSession {
+    /// `direct`: no proxy either, for a request that must stay on this Mac.
+    static func session(
+        requestTimeout: TimeInterval, resourceTimeout: TimeInterval, direct: Bool = false, redirect: @escaping RedirectPolicy
+    ) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
+        if direct { configuration.connectionProxyDictionary = [:] }
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
         configuration.urlCache = nil
@@ -54,6 +58,8 @@ public enum Web {
     }
 
     private static let session = session(requestTimeout: 30, resourceTimeout: 60, redirect: publicOnly)
+    /// For a server on this Mac: no redirect is followed, anywhere.
+    private static let thisMacSession = session(requestTimeout: 30, resourceTimeout: 60, direct: true) { _, _ in nil }
 
     /// Bytes moved so far and in all, reported at most every 5% or 250 ms
     /// (and always at the end).
@@ -74,12 +80,15 @@ public enum Web {
         private let limit: Int
         private let what: String
         private let progress: Progress?
+        /// The statuses whose body is the answer; any other is a refusal.
+        private let accepted: Set<Int>
         private let state = Mutex(State())
 
-        init(limit: Int, what: String, progress: Progress?) {
+        init(limit: Int, what: String, progress: Progress?, accepting accepted: Set<Int> = [200]) {
             self.limit = limit
             self.what = what
             self.progress = progress
+            self.accepted = accepted
         }
 
         func run(_ task: URLSessionTask) async throws -> (Data, HTTPURLResponse) {
@@ -115,7 +124,7 @@ public enum Web {
             completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
         ) {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let failure: (any Error)? = status != 200 ? Failure.refused(what, status)
+            let failure: (any Error)? = !accepted.contains(status) ? Failure.refused(what, status)
                 : response.expectedContentLength > Int64(limit)
                     ? TooLarge(limit: limit, size: response.expectedContentLength) : nil
             state.withLock { state in
@@ -168,13 +177,48 @@ public enum Web {
         return try await Transfer(limit: limit, what: what, progress: nil).run(session.dataTask(with: url)).0
     }
 
+    /// `POST url` with a JSON body to a server on this Mac (the agent's
+    /// memory, a local strut): its reply if the answer is 200 and at most
+    /// `limit` bytes. Anywhere else is refused before anything is sent, and
+    /// a redirect is never followed. `bearer` is the server's key: anything
+    /// on this Mac can reach a loopback port, so the key is what makes it
+    /// Peel's.
+    public static func postToThisMac(_ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String) async throws -> Data {
+        let request = try thisMacRequest("POST", url, json: body, bearer: bearer)
+        return try await Transfer(limit: limit, what: what, progress: nil).run(thisMacSession.dataTask(with: request)).0
+    }
+
+    /// One request to a server on this Mac, as `postToThisMac` makes it,
+    /// with its status: a 2xx or 4xx reply comes back with its body, so a
+    /// refusal's own words reach the caller; anything else throws.
+    public static func requestThisMac(
+        _ method: String, _ url: URL, json body: Data? = nil, bearer: String? = nil, limit: Int, what: String
+    ) async throws -> (status: Int, data: Data) {
+        let request = try thisMacRequest(method, url, json: body, bearer: bearer)
+        let (data, response) = try await Transfer(limit: limit, what: what, progress: nil, accepting: Set(200..<500))
+            .run(thisMacSession.dataTask(with: request))
+        return (response.statusCode, data)
+    }
+
+    private static func thisMacRequest(_ method: String, _ url: URL, json body: Data?, bearer: String?) throws -> URLRequest {
+        guard isThisMac(url) else { throw PeelError("\(url.host ?? "the host") is not this Mac") }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
+        if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        return request
+    }
+
     /// A public https host, or this machine over http (the local test stack).
     static func isAllowed(_ url: URL) -> Bool {
         isThisMac(url) || isPublic(url)
     }
 
     /// Plain http to this machine: the local test stack.
-    static func isThisMac(_ url: URL?) -> Bool {
+    public static func isThisMac(_ url: URL?) -> Bool {
         url?.scheme == "http" && url?.host.map(ServerAddress.isLoopback) == true
     }
 

@@ -26,9 +26,9 @@ struct AuditMoneyTests {
         var settings: [Setting: String] = [.memesHost: memesHost]
         settings[.balanceMsat] = balanceMsat.map(String.init)
         settings[.server] = server
+        let state = registeredState.merging(coreContact(seller, contactKey: key3G)) { $1 }
         _ = try storage.apply(Storage.Commit(
-            state: coreContact(seller, contactKey: key3G), settings: settings, contacts: [(seller, true)],
-            messages: messages.map { ($0, false, nil) }
+            state: state, settings: settings, contacts: [(seller, true)], messages: messages.map { ($0, false, nil) }
         ))
         return (try testEngine(storage), storage)
     }
@@ -37,10 +37,12 @@ struct AuditMoneyTests {
         try #require(try storage.message(uuid: uuid(n), in: chat)?.id)
     }
 
-    private func attachment(_ n: Int, token: String, fromMe: Bool = false) -> Message {
-        .fixture(
+    /// An attachment in the seller's chat; one of ours carries its `key`.
+    private func attachment(_ n: Int, token: String, fromMe: Bool = false, key: String? = nil) -> Message {
+        let key = key.map { #","mediaKeyForSelf":"\#($0)""# } ?? ""
+        return .fixture(
             uuid: uuid(n), type: MessageType.attachment, chat: seller, fromMe: fromMe,
-            body: #"{"content":"","mediaToken":"\#(token)","mediaType":"image/jpg"}"#, content: "",
+            body: #"{"content":"","mediaToken":"\#(token)","mediaType":"image/jpg"\#(key)}"#, content: "",
             timestamp: Int64(n) * 1_000
         )
     }
@@ -112,6 +114,65 @@ struct AuditMoneyTests {
         await #expect(throws: Engine.Failure.alreadyBought) {
             try await engine.buyAttachment(messageID: id, confirmedMsat: 50_000)
         }
+    }
+
+    /// The seller's side (bug hunt N3): a purchase stored but never
+    /// answered (Peel stopped), whose answer failed, or whose answer is
+    /// still pending long after it went (it never left), is answered by the
+    /// next connection, once; one whose answer may still be on its way, or
+    /// that brought too little, is not.
+    @Test func aPurchaseOwedItsKeyIsAnsweredOnceByTheNextConnection() async throws {
+        let owed = mediaToken(amt: "50"), stuck = mediaToken(amt: "40"), going = mediaToken(amt: "30")
+        let dear = mediaToken(amt: "200")
+        // The core sends a key only as 32 bytes of hex.
+        let key = String(repeating: "42", count: 32)
+        func bought(_ n: Int, _ token: String, msat: Int64) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.purchase, chat: seller,
+                     body: #"{"content":"","mediaToken":"\#(token)"}"#, msat: msat, timestamp: Int64(n) * 1_000)
+        }
+        /// Our answer with the key, pending since `sent` (ms).
+        func answer(_ n: Int, _ token: String, sent: Int64) -> Message {
+            .fixture(uuid: uuid(n), type: MessageType.purchaseAccept, chat: seller, fromMe: true,
+                     body: #"{"content":"","mediaKey":"\#(key)","mediaToken":"\#(token)"}"#, timestamp: sent,
+                     tag: "answer \(n)", status: Message.Delivery.pending.rawValue)
+        }
+        let (engine, _) = try engine(messages: [
+            attachment(1, token: owed, fromMe: true, key: key), bought(2, owed, msat: 50_000),
+            attachment(3, token: stuck, fromMe: true, key: key), bought(4, stuck, msat: 40_000),
+            answer(5, stuck, sent: 5_000),
+            attachment(6, token: going, fromMe: true, key: key), bought(7, going, msat: 30_000),
+            answer(8, going, sent: Date.now.millisecondsSince1970),
+            attachment(9, token: dear, fromMe: true, key: key), bought(10, dear, msat: 100_000),
+        ])
+        /// Our answers' statuses by the token they answer, oldest first.
+        func answers() throws -> [String: [String?]] {
+            var answers: [String: [String?]] = [:]
+            for row in try rows(profile, "SELECT status, body FROM message WHERE type = \(MessageType.purchaseAccept) ORDER BY id") {
+                let fields = AttachmentFields.decode(row["body"])
+                #expect(fields?.mediaKey == key)
+                answers[fields?.mediaToken ?? "", default: []].append(row["status"])
+            }
+            return answers
+        }
+        let (pending, failed) = (Message.Delivery.pending.rawValue, Message.Delivery.failed.rawValue)
+
+        // A connection that goes as it answers: the answers fail.
+        let gone = goneTransport()
+        await engine.useTransportForTesting(gone)
+        await engine.answerOwedPurchases(on: gone)
+        let first = try answers()
+        #expect(first == [owed: [failed], stuck: [pending, failed], going: [pending]])
+        await engine.disconnect()
+
+        // The next answers each again, once; never the one still on its
+        // way, or the one that brought too little.
+        let taking = Transport(publishing: { _, _ in })
+        await engine.useTransportForTesting(taking)
+        await engine.answerOwedPurchases(on: taking)
+        await engine.answerOwedPurchases(on: taking)
+        let next = try answers()
+        #expect(next == [owed: [failed, pending], stuck: [pending, failed, pending], going: [pending]])
+        await engine.disconnect()
     }
 
     // MARK: Tribe prices
@@ -186,13 +247,18 @@ struct AuditMoneyTests {
         #expect(Engine.needsConfirmation(1, confirmedMsat: nil, thresholdMsat: 0))
     }
 
-    /// What a person types for sats: whole, above zero, ASCII, and small
-    /// enough to count in msat.
+    /// What a person types for sats, in every amount field and the CLI:
+    /// whole, above zero, ASCII, commas and surrounding spaces allowed, and
+    /// small enough to count in msat.
     @Test func typedSatsAreWholeASCIIAndCountable() {
         #expect(Sats.msat("1") == 1_000)
         #expect(Sats.msat(" 2,500 ") == 2_500_000)
+        #expect(Sats.msat("1,000") == 1_000_000)
         #expect(Sats.msat(String(UInt64.max / 1000)) == UInt64.max / 1000 * 1000)
-        for text in ["0", "-1", "", "1.5", "1e3", "0x10", "１２", "٣", String(UInt64.max / 1000 + 1), String(UInt64.max)] {
+        for text in [
+            "0", "0,000", "-1", "", " ", "1.5", "1e3", "0x10", "abc", "1 000", "\t5\n", "１２", "٣",
+            String(UInt64.max / 1000 + 1), String(UInt64.max),
+        ] {
             #expect(Sats.msat(text) == nil, "\(text)")
         }
     }

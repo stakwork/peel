@@ -380,6 +380,90 @@ extension Storage {
                 WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 32) AND deleted = 0))
                 """)
         }
+        // v24 runs after any v22 and v23 or none: development builds of this
+        // work registered it as "v22" or "v23", so on their databases the
+        // real v22 or #158's v23 never ran. It puts their effects back (the
+        // same literals as v22 and v23, which stay their source).
+        migrator.registerMigration("v24") { db in
+            // Every user setting in one table, each row the preferences
+            // file's item for its key and identifier (`Preferences.swift`,
+            // `docs/phases/11-preferences-sync.md`). Settings from before
+            // sync get date 0, so the file wins wherever it has the key.
+            // The per-chat time zone rows keep their dates. Keys: 'tip_amount'
+            // is `Preference.boostAmountMsat` (in sats), 'timezone'
+            // `.timeZoneSharing`, 'peel.payment_confirmation_msat',
+            // 'peel.time_zone', 'device.pin_timeout_hours' and
+            // 'device.notification_text' the others; the old ones are
+            // `Setting` cases. A boost amount is whole sats in the file (no
+            // input of Peel's makes a part sat): a part sat is dropped, and
+            // one under a sat becomes one sat. It
+            // was confirmed when it was set here ('device.boost_confirmed_msat',
+            // `Preference.boostConfirmedMsat`), and 'device.preferences_since'
+            // (`.preferencesSince`) records when this ran.
+            //
+            // Development builds of this work registered it as "v22" or
+            // "v23", so a database may already hold `preference` (and no
+            // `chatTimeZone`), may lack the real v22's columns, or may have
+            // skipped #158's v23 indexes. Each step here tolerates that, and
+            // what those names skipped is put back (the same literals).
+            let columns = Set(try db.columns(in: "message").map(\.name))
+            if !columns.contains("firstSentAt") || !columns.contains("autoResentAt") {
+                try db.alter(table: "message") { t in
+                    if !columns.contains("firstSentAt") { t.add(column: "firstSentAt", .integer) }
+                    if !columns.contains("autoResentAt") { t.add(column: "autoResentAt", .integer) }
+                }
+            }
+            try db.execute(sql: """
+                DROP INDEX IF EXISTS message_serverIndex;
+                CREATE INDEX IF NOT EXISTS message_preview ON message (chat, timestamp)
+                WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 32) AND deleted = 0));
+                CREATE TABLE IF NOT EXISTS preference (
+                    key TEXT NOT NULL,
+                    identifier TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    updatedAt REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (key, identifier)
+                );
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'tip_amount', '0', json_quote(CAST(max(1, CAST(value AS INTEGER) / 1000) AS TEXT))
+                    FROM setting WHERE key = 'boostAmountMsat' AND CAST(value AS INTEGER) > 0;
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'device.boost_confirmed_msat', '0',
+                        json_quote(CAST(max(1, CAST(value AS INTEGER) / 1000) * 1000 AS TEXT))
+                    FROM setting WHERE key = 'boostAmountMsat' AND CAST(value AS INTEGER) > 0;
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    VALUES ('device.preferences_since', '0', json_quote(CAST(CAST(strftime('%s', 'now') AS INTEGER) AS TEXT)));
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'peel.payment_confirmation_msat', '0', json_quote(value)
+                    FROM setting WHERE key = 'paymentConfirmationMsat' AND value = CAST(CAST(value AS INTEGER) AS TEXT)
+                        AND CAST(value AS INTEGER) >= 0;
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'peel.time_zone', '0', json_quote(value) FROM setting WHERE key = 'timeZone' AND value != '';
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'device.pin_timeout_hours', '0', json_quote(value)
+                    FROM setting WHERE key = 'pinTimeoutHours' AND value = CAST(CAST(value AS INTEGER) AS TEXT)
+                        AND CAST(value AS INTEGER) >= 0;
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'device.notification_text', '0', json_quote(CASE value WHEN '0' THEN 'false' ELSE 'true' END)
+                    FROM setting WHERE key = 'notificationText';
+                INSERT OR IGNORE INTO preference (key, identifier, value)
+                    SELECT 'device.boost_confirmed_msat', '0',
+                        json_quote(CAST(CAST(json_extract(value, '$') AS INTEGER) * 1000 AS TEXT))
+                    FROM preference WHERE key = 'tip_amount' AND identifier = '0';
+                DELETE FROM setting WHERE key IN
+                    ('boostAmountMsat', 'paymentConfirmationMsat', 'timeZone', 'pinTimeoutHours', 'notificationText');
+                """)
+            if try db.tableExists("chatTimeZone") {
+                try db.execute(sql: """
+                    INSERT OR IGNORE INTO preference (key, identifier, value, updatedAt)
+                        SELECT 'timezone', chat, json_object(
+                            'timezone_enabled', CASE WHEN enabled THEN 'true' ELSE 'false' END,
+                            'timezone_identifier', coalesce(identifier, '')), updatedAt
+                        FROM chatTimeZone;
+                    DROP TABLE chatTimeZone;
+                    """)
+            }
+        }
         return migrator
     }
 }

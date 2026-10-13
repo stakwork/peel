@@ -1,6 +1,8 @@
 import SwiftUI
+import PeelCore
 
-/// An icon button that opens a menu below it, such as a message's More.
+/// An icon button that opens a menu below it, such as a message's More; lit
+/// while its menu is open.
 struct MenuButton<Label: View>: View {
     @Environment(\.menuPresenter) private var presenter
     let help: String
@@ -11,7 +13,7 @@ struct MenuButton<Label: View>: View {
     @State private var anchor = MenuAnchor()
 
     var body: some View {
-        HoverIconButton(help: help) {
+        IconButton(help: help, lit: presenter?.isOpen(from: source) == true) {
             presenter?.show(entries(), at: anchor, source: source)
         } label: {
             label()
@@ -23,37 +25,6 @@ struct MenuButton<Label: View>: View {
 extension MenuButton where Label == Image {
     init(systemImage: String, help: String, source: AnyHashable? = nil, entries: @escaping @MainActor () -> [MenuEntry]) {
         self.init(help: help, source: source, entries: entries) { Image(systemName: systemImage) }
-    }
-}
-
-/// A small icon button that lights up under the pointer: an SF Symbol, or
-/// any label (`CopyButton`'s icon).
-struct HoverIconButton<Label: View>: View {
-    let help: String
-    let action: () -> Void
-    @ViewBuilder let label: () -> Label
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            label()
-                .font(.system(size: 13))
-                .foregroundStyle(hovering ? Theme.text : Theme.secondaryText)
-                .frame(width: 28, height: 26)
-                .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(help)
-        .accessibilityLabel(help)
-    }
-}
-
-extension HoverIconButton where Label == Image {
-    init(systemImage: String, help: String, action: @escaping () -> Void) {
-        self.init(help: help, action: action) { Image(systemName: systemImage) }
     }
 }
 
@@ -77,7 +48,7 @@ struct PeelDropdown<Value: Hashable>: View {
                 at: anchor, minWidth: anchor.screenRect.width, highlightChecked: true
             )
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 Text(options.first { $0.value == selection }?.label ?? "")
                     .font(Theme.font(13))
                     .lineLimit(1)
@@ -90,6 +61,37 @@ struct PeelDropdown<Value: Hashable>: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .menuAnchor(anchor)
+    }
+}
+
+/// A setting chosen from a `PeelDropdown` and saved at once, with its help
+/// (if any) muted under it, or what went wrong saving it.
+struct SettingDropdown<Value: Hashable>: View {
+    let selection: Value
+    let options: [(value: Value, label: String)]
+    var help: String?
+    let save: @MainActor (Value) async throws -> Void
+
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            PeelDropdown(selection: selection, options: options) { value in
+                Task {
+                    do {
+                        try await save(value)
+                        problem = nil
+                    } catch {
+                        problem = PeelError.problem(error, couldNot: "change the setting")
+                    }
+                }
+            }
+            .fixedSize()
+            if let text = problem ?? help {
+                Text(text)
+                    .muted()
+            }
+        }
     }
 }
 
@@ -106,39 +108,6 @@ extension View {
                     .accessibilityHidden(true)
             }
         }
-    }
-}
-
-/// A sidebar row's badge: an unread count, or what else the row counts
-/// (Payments' "+350").
-struct UnreadBadge: View {
-    let text: String
-    var foreground = Theme.buttonText
-    var fill = Theme.accent
-
-    init(count: Int) {
-        text = Self.text(count)
-    }
-
-    init(text: String, foreground: Color, fill: Color) {
-        self.text = text
-        self.foreground = foreground
-        self.fill = fill
-    }
-
-    /// A count as badges show it, capped at "99+".
-    static func text(_ count: Int) -> String { count > 99 ? "99+" : "\(count)" }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.font(11, .bold))
-            .monospacedDigit()
-            .lineLimit(1)
-            .fixedSize()
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(fill, in: Capsule())
     }
 }
 

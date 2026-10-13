@@ -151,7 +151,7 @@ extension View {
         modifier(HoverCardModifier(source: source, card: card))
     }
 
-    /// Peel's popover: `content` in a Peel panel below this view while
+    /// Peel's popover: `content`, a `Panel`, below this view while
     /// `isPresented` is true; a click elsewhere or Escape sets it false.
     func peelPopover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
         modifier(PopoverModifier(isPresented: isPresented, content: content))
@@ -171,7 +171,8 @@ extension View {
 /// it, asked for its frame when the menu opens and as its list scrolls
 /// while it is open, never a frame kept from an earlier layout. Not state,
 /// so following it redraws nothing. Hold one in `@State` and pass it to
-/// `.menuAnchor`.
+/// `.menuAnchor`, one per trigger: two triggers on screen at once must not
+/// share one.
 @MainActor
 final class MenuAnchor {
     #if os(macOS)
@@ -296,7 +297,45 @@ private struct PopoverModifier<Panel: View>: ViewModifier {
 // MARK: - AppKit
 
 #if os(macOS)
-/// Keys while a menu or the image viewer is open, whichever view has focus.
+/// The key codes the monitors read: a key's place on the keyboard, the
+/// same whatever the layout.
+enum KeyCode {
+    static let `return`: UInt16 = 36
+    static let tab: UInt16 = 48
+    static let space: UInt16 = 49
+    static let delete: UInt16 = 51
+    static let escape: UInt16 = 53
+    static let enter: UInt16 = 76
+    static let left: UInt16 = 123
+    static let right: UInt16 = 124
+    static let down: UInt16 = 125
+    static let up: UInt16 = 126
+}
+
+/// Keys before any view sees them, whichever view has focus: a menu, a
+/// panel, the image viewer, the search field and the sidebar each run
+/// one while they are up.
+///
+/// Escape goes to the first of these that is open, and to no other:
+///
+/// 1. A menu (`MenuPresenter`): out of an armed confirm, else back out of
+///    a submenu, else the menu closes.
+/// 2. A panel (`MenuPresenter`): it closes.
+/// 3. The image viewer, in the main window: it closes.
+/// 4. The search bar, while its field has the cursor: the search closes.
+/// 5. The sidebar, while it has focus: the arrow keys' highlight clears.
+/// 6. No monitor: the view with the keyboard. The composer closes its
+///    mention list, else (the agent's) closes the memory beside it, else
+///    stops its reply, else stops replying, else closes its thread
+///    (`AppModel.escape(in:)`); the web pane's
+///    address field puts the address back; the Payments pane closes; the
+///    call window, its own window, goes back to the grid.
+///
+/// Monitors run in the order they started, not this one, so each defers
+/// to those above it itself: one below 2 takes only its own window's keys
+/// with no menu or panel up (`MenuPresenter.takesKeys`), one below 3 none
+/// while `AppModel.viewer` is set. The arrows and Return follow the same
+/// order.
 @MainActor
 final class KeyMonitor {
     private var token: Any?
@@ -365,13 +404,27 @@ private struct AnchorView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: PassThroughView, context: Context) {
-        anchor.view = view
+        view.anchor = anchor
+        // A view on its way out (the other side of an `if`) is still
+        // updated after the one that replaced it, and must not take the
+        // anchor back: only a view joining a window takes it from another
+        // that is in one.
+        if view.window != nil, anchor.view?.window == nil { anchor.view = view }
     }
 }
 
-/// Draws nothing and takes no clicks.
+/// Draws nothing and takes no clicks. Takes its anchor when it joins a
+/// window (the newest wins) and lets go when it leaves, unless another has
+/// taken it.
 private final class PassThroughView: NSView {
+    weak var anchor: MenuAnchor?
+
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { anchor?.view = self } else if anchor?.view === self { anchor?.view = nil }
+    }
 }
 
 /// Tells which window a view is in, once it is in one.

@@ -281,7 +281,7 @@ struct PaymentTests {
         let storage = try storage([failed])
         let id = try #require(try storage.message(uuid: uuid(1), in: dm)?.id)
         let rows = try storage.apply(Storage.Commit(
-            resend: (id, dm, uuid(2), "t2", "hash2", 5_000, false)
+            resend: (id, dm, uuid(2), "t2", "hash2", 10_000, 5_000, false)
         )).stored
         let row = try #require(rows.first)
         #expect(row.uuid == uuid(2))
@@ -289,6 +289,7 @@ struct PaymentTests {
         #expect(row.paymentHash == "hash2")
         #expect(row.delivery == .pending)
         #expect(row.amountMsat == 10_000)
+        #expect(row.msat == 10_000)
     }
 
     @Test func onlyAFailedPaymentIsRetryable() {
@@ -303,13 +304,6 @@ struct PaymentTests {
         row.msat = 1_000
         #expect(row.isRetryable())
         #expect(!payment(1, sats: 1).isRetryable())
-    }
-
-    @Test func onlySomeoneElsesTextIsBoostable() {
-        #expect(text(1).isBoostable)
-        #expect(!text(1, fromMe: true).isBoostable)
-        #expect(!payment(1, sats: 1).isBoostable)
-        #expect(!Message.fixture(uuid: nil).isBoostable)
     }
 
     @Test func aLongNoteWouldBeSplit() {
@@ -345,17 +339,6 @@ struct PaymentTests {
         #expect(throws: Engine.Failure.nameTooLong) {
             try Engine.fittingPayment(#"{"content":"hi"}"#, alias: String(repeating: "a", count: 600), photoURL: "")
         }
-    }
-
-    /// The threshold rule for the custom boost, payments and saving a boost
-    /// amount (a one-tap boost is never asked): over it asks, a confirmation
-    /// covers exactly its amount, and 0 asks for everything.
-    @Test func overTheThresholdAsksForThatAmount() {
-        #expect(!Engine.needsConfirmation(10_000, confirmedMsat: nil, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(10_001, confirmedMsat: nil, thresholdMsat: 10_000))
-        #expect(!Engine.needsConfirmation(10_001, confirmedMsat: 10_001, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(10_002, confirmedMsat: 10_001, thresholdMsat: 10_000))
-        #expect(Engine.needsConfirmation(1_000, confirmedMsat: nil, thresholdMsat: 0))
     }
 
     /// The double-tap guard reads our newest boost on a message, failed ones too.

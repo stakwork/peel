@@ -36,7 +36,7 @@ struct PictureField<Label: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
+            HStack(spacing: Theme.Space.md) {
                 picture
                     .overlay {
                         if working {
@@ -85,7 +85,7 @@ struct PictureField<Label: View>: View {
                 do {
                     try await action()
                 } catch {
-                    problem = "Could not remove the picture: \(PeelError.readable(error))"
+                    problem = PeelError.problem(error, couldNot: "remove the picture")
                 }
             }
         case nil:
@@ -104,7 +104,7 @@ struct PictureField<Label: View>: View {
         let (files, refused) = await PasteboardFiles.files(from: items)
         defer { files.forEach { IncomingFiles.discard($0) } }
         guard let file = files.first else {
-            problem = refused.first.map { "Could not use that picture: \($0)" } ?? "That is not a picture."
+            problem = refused.first.map { PeelError.problem($0, couldNot: "use that picture") } ?? "That is not a picture."
             return
         }
         await send(file)
@@ -119,7 +119,7 @@ struct PictureField<Label: View>: View {
         do {
             try await upload(file)
         } catch {
-            problem = "Could not upload the picture: \(PeelError.readable(error))"
+            problem = PeelError.problem(error, couldNot: "upload the picture")
         }
     }
 }

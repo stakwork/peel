@@ -14,17 +14,24 @@ struct FocusTarget: Equatable {
     let inThread: Bool
 }
 
-/// Which composer: a chat's own, or a thread panel's.
+/// Which composer: a chat's own, a thread panel's, or the agent chat's.
 enum ComposerID: Hashable {
     case chat(String)
     case thread(ThreadRef)
+    /// The agent chat's: text only, to the agent (`AppModel.sendDraft`).
+    case agent
 
-    var chat: String {
+    /// The Sphinx chat it writes in; nil for the agent's.
+    var chat: String? {
         switch self {
         case .chat(let chat): chat
         case .thread(let thread): thread.chat
+        case .agent: nil
         }
     }
+
+    /// Whether files can go with what it sends.
+    var takesFiles: Bool { self != .agent }
 
     var thread: String? {
         if case .thread(let thread) = self { thread.uuid } else { nil }
@@ -97,6 +104,10 @@ extension AppModel {
     /// Escape in a composer: stops replying, else closes its thread panel.
     /// Returns whether it was taken.
     func escape(in composer: ComposerID) -> Bool {
+        if composer == .agent, memoryPanel != nil {
+            closeMemory()
+            return true
+        }
         if replyTargets[composer] != nil {
             replyTargets[composer] = nil
             return true
@@ -168,13 +179,17 @@ extension AppModel {
         openThread = nil
     }
 
-    /// Leaves a tribe, or removes one this account can no longer post in;
-    /// a failure shows in that chat.
+    /// Leaves a tribe, or removes one this account can no longer post in
+    /// (`Tribe.exit`): the one way the menu, the members panel, the details
+    /// and the status bar go. A failure shows in that chat.
     func leave(_ pubkey: String) async {
+        guard let engine else { return }
+        let exit = tribes[pubkey]?.exit
         do {
-            try await leaveTribe(pubkey)
+            try await engine.leaveTribe(pubkey)
+            if selectedChat == pubkey { destination = nil }
         } catch {
-            conversationNotices[pubkey] = "Could not leave: \(PeelError.readable(error))"
+            conversationNotices[pubkey] = PeelError.problem(error, couldNot: (exit ?? .leave).failure)
         }
     }
 
@@ -204,6 +219,10 @@ extension AppModel {
     func sendDraft(from composer: ComposerID) async {
         let text = (drafts[composer] ?? "").trimmed
         drafts[composer] = nil
+        if composer == .agent {
+            agent?.send(text)
+            return
+        }
         if await !send(text, from: composer), (drafts[composer] ?? "").isEmpty, !text.isEmpty {
             drafts[composer] = text
         }
@@ -217,8 +236,7 @@ extension AppModel {
     /// (`Engine.sendAttachments`).
     @discardableResult
     func send(_ text: String, from composer: ComposerID) async -> Bool {
-        guard let engine else { return false }
-        let chat = composer.chat
+        guard let engine, let chat = composer.chat else { return false }
         let files = pendingFiles[composer] ?? []
         let priceText = attachmentPrices[composer]
         let priceSats = priceText.flatMap { UInt64($0) }
@@ -235,7 +253,7 @@ extension AppModel {
                 sent(in: chat)
                 return true
             } catch {
-                conversationNotices[chat] = "Could not send: \(PeelError.readable(error))"
+                conversationNotices[chat] = PeelError.problem(error, couldNot: "send")
                 replyTargets[composer] = reply
                 return false
             }
@@ -259,11 +277,11 @@ extension AppModel {
                 }
                 sent(in: chat)
             case .failure(let error):
-                refused.append((file, "\(file.lastPathComponent): \(PeelError.readable(error))"))
+                refused.append((file, PeelError.problem(error, couldNot: "send \(file.lastPathComponent)")))
             }
         }
         if !refused.isEmpty {
-            conversationNotices[chat] = "Could not send " + refused.map(\.reason).joined(separator: "; ")
+            conversationNotices[chat] = refused.map(\.reason).joined(separator: " ")
             // What did not go waits in the composer again, with the reply it was for.
             pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
             // With their price: a refused paid file must never go again free.
@@ -302,8 +320,8 @@ extension AppModel {
                 return
             }
             addFiles(files, to: composer)
-            if !refused.isEmpty {
-                conversationNotices[composer.chat] = "Could not attach: " + refused.joined(separator: "; ")
+            if !refused.isEmpty, let chat = composer.chat {
+                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
             }
         }
     }
@@ -367,7 +385,7 @@ extension AppModel {
             } catch Engine.Failure.largeAttachment(let size) {
                 handle.state = .held(size)
             } catch {
-                handle.state = .failed(PeelError.readable(error))
+                handle.state = .failed(PeelError.problem(error, couldNot: "download"))
             }
             handle.progress = nil
             handle.download = nil
@@ -385,7 +403,7 @@ extension AppModel {
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
-            conversationNotices[message.chat] = "Could not save: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save the file")
         }
     }
 
@@ -398,7 +416,7 @@ extension AppModel {
         do {
             attachment(id).savedTo = try await UserFiles.saveToDownloads(file, named: fileName(of: message) ?? file.lastPathComponent)
         } catch {
-            conversationNotices[message.chat] = "Could not save to Downloads: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save to Downloads")
         }
     }
 
@@ -425,7 +443,7 @@ extension AppModel {
         do {
             try await web.openDocument(file, named: fileName(of: message) ?? "Page")
         } catch {
-            conversationNotices[message.chat] = "Could not open: \(PeelError.readable(error))"
+            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "open the page")
         }
     }
 

@@ -17,16 +17,6 @@ struct ContactsSidebarRows: View {
     }
 }
 
-/// "New" on a direct message whose contact added this account and that has
-/// not been read since. The core accepts someone who adds us at once, so
-/// there is no request to answer: this only says they are new.
-struct NewContactBadge: View {
-    var body: some View {
-        UnreadBadge(text: "New", foreground: Theme.buttonText, fill: Theme.accent)
-            .help("Added you as a contact")
-    }
-}
-
 private struct PendingInviteRows: View {
     @Environment(AppModel.self) private var model
 
@@ -48,8 +38,8 @@ private struct InviteRow: View {
             showing = true
         } label: {
             HStack(spacing: 9) {
-                InviteIcon(size: 18)
-                    .frame(width: 18)
+                InviteIcon(size: Theme.AvatarSize.sm)
+                    .frame(width: Theme.AvatarSize.sm)
                 Text(invite.nickname ?? "Invite")
                     .lineLimit(1)
                 Spacer(minLength: 4)
@@ -125,13 +115,13 @@ struct AddContactForm: View {
     }
 
     var body: some View {
-        FormPopover(title: "Add contact", close: done) {
+        Panel("Add contact", close: done) {
             if let sentTo {
-                Text("Sent to \(sentTo). They show under Direct messages once their app answers.")
+                Text("Sent to \(sentTo). They appear once they accept.")
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                    .padding(.top, Theme.Space.sm)
             } else {
                 form
             }
@@ -184,7 +174,7 @@ struct AddContactForm: View {
                     codeProblem = nil
                 } catch {
                     code = nil
-                    codeProblem = Formatting.sentence(error)
+                    codeProblem = PeelError.problem(error)
                 }
             }
         scanZone
@@ -223,13 +213,13 @@ struct AddContactForm: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .strokeBorder(dropTargeted ? Theme.accent : Theme.divider, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
     }
 
     private var tribeProblem: String? {
-        if case .tribe = code { Formatting.sentence(Engine.Failure.tribeLinkNotContact) } else { nil }
+        if case .tribe = code { PeelError.problem(Engine.Failure.tribeLinkNotContact) } else { nil }
     }
 
     /// Puts the first code that names someone into the field; else says
@@ -247,7 +237,7 @@ struct AddContactForm: View {
             scannedText = chosen
             text = chosen
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error)
         }
     }
 }
@@ -260,30 +250,29 @@ private struct CodePreview: View {
     let pubkey: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            Avatar(
-                name: code.inviterName ?? "", url: nil, size: 28,
-                hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(code.inviterName ?? Formatting.shortKey(pubkey))
-                    .font(Theme.font(13, .medium))
-                    .foregroundStyle(Theme.text)
-                Text(detail)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+        Card {
+            HStack(spacing: 10) {
+                Avatar(
+                    name: code.inviterName ?? "", url: nil, size: Theme.AvatarSize.lg,
+                    hue: model.hue(pubkey: pubkey, alias: code.inviterName, inTribe: false)
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(code.inviterName ?? Formatting.shortKey(pubkey))
+                        .font(Theme.font(13, .medium))
+                        .foregroundStyle(Theme.text)
+                    Text(detail)
+                        .muted()
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, Theme.Space.md)
+            .padding(.vertical, 9)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .formCard()
     }
 
     private var detail: String {
         switch code {
-        case .invite: "An invite for a new account. Peel adds who sent it; its sats stay in the invite."
+        case .invite: "Adds whoever sent this invite."
         default: "Contact info"
         }
     }
@@ -368,9 +357,7 @@ struct InviteForm: View {
         if let made {
             InviteDetail(code: made.code, done: done)
         } else {
-            FormPopover(title: "Invite someone", close: done) {
-                note("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.")
-                    .padding(.top, 6)
+            Panel("Invite someone", close: done) {
                 FormSection {
                     FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
                 }
@@ -382,7 +369,7 @@ struct InviteForm: View {
                         FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
                     }
                 }
-                note("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest. Only this Mac keeps the invite, so only here can it be cancelled.")
+                Text("The sats leave your balance now. Cancel to get them back.").muted()
                     .padding(.top, 10)
             } footer: {
                 HStack(alignment: .top) {
@@ -406,13 +393,6 @@ struct InviteForm: View {
             }
         }
     }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
-    }
 }
 
 /// One invite: its QR code and link to copy or share once the server holds
@@ -428,11 +408,11 @@ private struct InviteDetail: View {
     private var invite: InviteRecord? { model.invites[code] }
 
     var body: some View {
-        FormPopover(title: invite?.nickname ?? "Invite", close: done) {
+        Panel(invite?.nickname ?? "Invite", close: done) {
             if let invite {
                 content(invite)
             } else {
-                ProgressView().controlSize(.small).padding(.vertical, 12)
+                ProgressView().controlSize(.small).padding(.vertical, Theme.Space.md)
             }
         } footer: {
             if let invite { footer(invite) }
@@ -440,36 +420,33 @@ private struct InviteDetail: View {
     }
 
     @ViewBuilder private func content(_ invite: InviteRecord) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Sats.format(msat: invite.amountMsat))
-                    .font(Theme.font(15, .semibold))
-                    .monospacedDigit()
-                Text(Self.statusLine(invite))
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let message = invite.message {
-                    Text(message)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(4)
-                        .padding(.top, 4)
+        Card {
+            HStack(alignment: .top, spacing: 14) {
+                QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(Sats.format(msat: invite.amountMsat))
+                        .font(Theme.font(15, .semibold))
+                        .monospacedDigit()
+                    Text(Self.statusLine(invite))
+                        .muted()
+                    if let message = invite.message {
+                        Text(message)
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(4)
+                            .padding(.top, Theme.Space.xs)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(Theme.Space.md)
         }
-        .padding(12)
-        .formCard()
-        .padding(.top, 12)
+        .padding(.top, Theme.Space.md)
         if invite.status == .ready {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Send it to them yourself: whoever has it can sign up with its sats.")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
+                Text("Anyone with this invite can claim its sats.")
+                    .muted()
+                HStack(spacing: Theme.Space.sm) {
                     CopyButton("Copy invite", text: invite.link)
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
                     // The system's share menu would hand it to another app.
@@ -481,7 +458,7 @@ private struct InviteDetail: View {
                 }
                 .buttonStyle(.peel(.outline))
             }
-            .padding(.top, 12)
+            .padding(.top, Theme.Space.md)
         }
     }
 
@@ -498,7 +475,7 @@ private struct InviteDetail: View {
                             try await model.forgetInvite(invite.code)
                             done()
                         } catch {
-                            problem = Formatting.sentence(error)
+                            problem = PeelError.problem(error)
                         }
                     }
                 }
@@ -513,7 +490,7 @@ private struct InviteDetail: View {
                         try await model.cancelInvite(invite.code)
                         done()
                     } catch {
-                        problem = Formatting.sentence(error)
+                        problem = PeelError.problem(error)
                     }
                 }
                 .disabled(invite.status == .sending)
@@ -524,14 +501,14 @@ private struct InviteDetail: View {
     }
 
     static func statusLine(_ invite: InviteRecord) -> String {
-        let made = "Made \(invite.created.formatted(date: .abbreviated, time: .shortened))"
+        let made = "Made \(Formatting.dateAndTime(invite.created))"
         return switch invite.status {
-        case .sending: "Waiting for the server to confirm"
+        case .sending: "Setting up…"
         case .ready: "\(made) · waiting to be used"
-        case .cancelling: "Cancelling: the server has not sent the sats back"
-        case .cancelled: "Cancelled; the sats came back"
+        case .cancelling: "Cancelling, sats not back yet"
+        case .cancelled: "Cancelled, sats returned"
         case .used: "Used"
-        case .failed: "Not made: the payment failed"
+        case .failed: "Payment failed"
         }
     }
 }

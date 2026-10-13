@@ -105,23 +105,9 @@ struct MemesServer: Sendable {
     func upload(
         _ sealed: Data, as file: OutgoingFile, token: Token, route: String = "file", progress: Progress? = nil
     ) async throws -> String {
-        let boundary = "peel-\(UUID().uuidString)"
-        var body = Data()
-        body.reserveCapacity(sealed.count + 1024)
-        func part(_ headers: String, _ content: Data) {
-            body.append(Data("--\(boundary)\r\n\(headers)\r\n\r\n".utf8))
-            body.append(content)
-            body.append(Data("\r\n".utf8))
-        }
-        part("Content-Disposition: form-data; name=\"name\"", Data(file.field.utf8))
-        // A file name can hold quotes and line breaks; neither may reach the part headers.
-        let fileName = file.fileName.withoutControlCharacters.replacingOccurrences(of: "\"", with: "'")
-        part("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: \(file.mediaType)", sealed)
-        body += Data("--\(boundary)--\r\n".utf8)
-        var request = URLRequest(url: base.appendingPathComponent(route))
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
+        let (request, body) = multipart(
+            route, token: token, field: ("name", file.field), file: sealed, fileName: file.fileName, type: file.mediaType
+        )
         let transfer = Web.Transfer(limit: 1_000_000, what: "the upload", progress: progress)
         let (data, _) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -130,6 +116,80 @@ struct MemesServer: Sendable {
             throw Failure.unreadableReply("the upload")
         }
         return muid
+    }
+
+    /// A multipart `POST` to `route` with the bearer token: one text field,
+    /// then the file.
+    private func multipart(
+        _ route: String, token: Token, field: (name: String, value: String), file: Data, fileName: String, type: String
+    ) -> (URLRequest, Data) {
+        let boundary = "peel-\(UUID().uuidString)"
+        var body = Data()
+        body.reserveCapacity(file.count + 1024)
+        func part(_ headers: String, _ content: Data) {
+            body.append(Data("--\(boundary)\r\n\(headers)\r\n\r\n".utf8))
+            body.append(content)
+            body.append(Data("\r\n".utf8))
+        }
+        part("Content-Disposition: form-data; name=\"\(field.name)\"", Data(field.value.utf8))
+        // A file name can hold quotes and line breaks; neither may reach the part headers.
+        let fileName = fileName.withoutControlCharacters.replacingOccurrences(of: "\"", with: "'")
+        part("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: \(type)", file)
+        body += Data("--\(boundary)--\r\n".utf8)
+        var request = URLRequest(url: base.appendingPathComponent(route))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
+        return (request, body)
+    }
+
+    /// The largest preferences file read or written, encrypted; the
+    /// official apps set none, the file is a few kilobytes.
+    static let preferencesLimit = 5_000_000
+
+    /// `GET /preferences`: the account's encrypted preferences file (base64
+    /// text), or nil when the server says it has none, as the official apps
+    /// read the answer (`API+AttachmentsExtension.swift:252-296`): a JSON
+    /// `success: false` with "Preferences not found" is none, any other
+    /// `success: false` a refusal, anything else the file. The status of
+    /// "not found" is unknown, so a 404 is read the same way.
+    func preferences(token: Token) async throws -> String? {
+        var request = URLRequest(url: base.appendingPathComponent("preferences"))
+        request.setValue("Bearer \(token.value)", forHTTPHeaderField: "Authorization")
+        let transfer = Web.Transfer(
+            limit: Self.preferencesLimit, what: "the preferences file", progress: nil, accepting: [200, 404]
+        )
+        let (data, response) = try await Self.run(transfer, Self.session.dataTask(with: request))
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            guard Self.success(json["success"]) == false, json["error"] as? String == "Preferences not found" else {
+                throw Failure.refused("the preferences file", response.statusCode)
+            }
+            return nil
+        }
+        guard response.statusCode == 200, let text = String(data: data, encoding: .utf8) else {
+            throw Failure.refused("the preferences file", response.statusCode)
+        }
+        return text
+    }
+
+    /// `POST /preferences`: the whole encrypted file, with the account's
+    /// pubkey as base64url (`API+AttachmentsExtension.swift:298-345`).
+    func uploadPreferences(_ sealed: String, pubkey: String, token: Token) async throws {
+        let (request, body) = multipart(
+            "preferences", token: token, field: ("pubkey", pubkey), file: Data(sealed.utf8), fileName: "preferences",
+            type: "application/octet-stream"
+        )
+        let transfer = Web.Transfer(limit: 64_000, what: "the preferences file", progress: nil)
+        let (data, response) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], Self.success(json["success"]) == true else {
+            throw Failure.refused("the preferences file", response.statusCode)
+        }
+    }
+
+    /// `success` as the official apps read it: a bool, or a number (not 0
+    /// is true); nil when it is neither.
+    private static func success(_ value: Any?) -> Bool? {
+        (value as? Bool) ?? (value as? Int).map { $0 != 0 }
     }
 
     /// Where an image uploaded to `/public` is served.

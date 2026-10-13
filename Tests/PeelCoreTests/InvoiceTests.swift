@@ -249,7 +249,10 @@ struct InvoiceTests {
     @Test func aPaymentInTheHistoryFromAnotherDeviceCountsAsPaid() throws {
         let storage = try profile.storage()
         var commit = Storage.Commit()
-        commit.payments = PaymentRecord.decode(#"[{"amt_msat":1,"rhash":"\#(coffeeHash)","ts":5}]"#)
+        commit.payments = PaymentRecord.decode(#"""
+            [{"amt_msat":1,"rhash":"\#(coffeeHash)","ts":5},
+             {"amt_msat":1,"rhash":"\#(hash(4))","ts":6,"error":"no route"}]
+            """#)
         _ = try storage.apply(commit)
         #expect(try storage.paidState(paymentHash: coffeeHash) == .paid(at: Date(millisecondsSince1970: 5)))
         // A failed attempt in the history is not a payment.
@@ -268,12 +271,10 @@ struct InvoiceTests {
         #expect(try storage.paidState(paymentHash: coffeeHash) == .own)
     }
 
-    /// On another device the invoice table is empty, but our request came
-    /// back from history: its invoice is ours, never paid from here.
-    /// Theirs is not (payments review F11).
-    /// Only for an invoice our own server made, and only a request that is
-    /// ours by its tag: a forged "ours" cannot block paying an invoice.
-    @Test func ourRequestFromHistoryMarksItsInvoiceOurs() throws {
+    /// What else stops paying an invoice: a balance that covers its amount
+    /// but not the fee reserve (10 sats at least), this account's own key
+    /// as the payee, and a payment of it in the history from another device.
+    @Test func anInvoiceShortOfItsFeeOwnOrPaidIsNotPaid() throws {
         let seed = try Sphinxrs.mnemonicToSeed(
             mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow"
         )
@@ -284,25 +285,105 @@ struct InvoiceTests {
         let invoice = try Invoice(bolt11)
         let storage = try profile.storage()
         let engine = try testEngine(storage)
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+
+        try storage.set("19999", for: .balanceMsat)
+        #expect(try engine.invoiceProblem(invoice) == .insufficientBalance)
+        try storage.set("20000", for: .balanceMsat)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+
+        try storage.set("\(invoice.payee)_\(key3G)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+
+        var commit = Storage.Commit()
+        commit.payments = PaymentRecord.decode(#"[{"amt_msat":10000,"rhash":"\#(invoice.paymentHash)","ts":5}]"#)
+        _ = try storage.apply(commit)
+        #expect(try engine.invoiceProblem(invoice) == .invoiceAlreadyPaid)
+    }
+
+    /// On another device the invoice table is empty, but our request came
+    /// back from history: its invoice is ours, never paid from here.
+    /// Theirs is not (payments review F11).
+    /// Only for an invoice our own server made, and only a request signed by
+    /// our key: a forged "ours" cannot block paying an invoice.
+    @Test func ourRequestFromHistoryMarksItsInvoiceOurs() throws {
+        let invoice = try madeInvoice()
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
         try storage.set("100000000", for: .balanceMsat)
-        func ourRequest(_ n: Int, fromMe: Bool, tag: String? = nil) -> Message {
+        func ourRequest(_ n: Int, fromMe: Bool, signedBy signer: String, tag: String? = nil) -> Message {
             .fixture(
-                uuid: uuid(n), type: MessageType.invoice, chat: dm, fromMe: fromMe,
-                body: #"{"invoice":"\#(bolt11)"}"#, tag: tag, paymentHash: invoice.paymentHash, amountMsat: 10_000
+                uuid: uuid(n), type: MessageType.invoice, chat: dm, fromMe: fromMe, sender: sender(signer),
+                body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: tag, paymentHash: invoice.paymentHash, amountMsat: 10_000
             )
         }
-        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(ourRequest(1, fromMe: false), false, nil)]))
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [
+            (ourRequest(1, fromMe: false, signedBy: dm), false, nil),
+        ]))
         try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
         #expect(try engine.invoiceProblem(invoice) == nil)
-        // Taken for ours by its date alone (`dec_ts_matches`), with no tag:
-        // a contact on our server could forge it, so it does not count.
-        _ = try storage.apply(Storage.Commit(messages: [(ourRequest(2, fromMe: true), false, nil)]))
+        // Taken for ours by its date, or by our tag replayed, but signed by
+        // someone else: the contact, or a key they made for it.
+        _ = try storage.apply(Storage.Commit(messages: [
+            (ourRequest(2, fromMe: true, signedBy: dm), false, nil),
+            (ourRequest(3, fromMe: true, signedBy: strangerKey, tag: "aa"), false, nil),
+        ]))
         #expect(try engine.invoiceProblem(invoice) == nil)
-        // Ours by its tag, as every send of ours comes back from history.
-        _ = try storage.apply(Storage.Commit(messages: [(ourRequest(3, fromMe: true, tag: "aa"), false, nil)]))
+        // Ours, signed by our key, as every send of ours comes back from history.
+        _ = try storage.apply(Storage.Commit(messages: [(ourRequest(4, fromMe: true, signedBy: keyG, tag: "aa"), false, nil)]))
         #expect(try engine.invoiceProblem(invoice) == .ownInvoice)
         // Another server's invoice is paid whatever our messages claim.
         try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+        #expect(try engine.invoiceProblem(invoice) == nil)
+    }
+
+    /// A contact who had a request from us knows its uuid and can make the
+    /// core take their message for ours: signed by them, by a key they made,
+    /// or our own signed request spliced under this uuid. None moves our
+    /// request's hash to another invoice. Our own copy from history still
+    /// fills in the server's facts.
+    @Test func aForgedCopyCannotMoveOurRequestsHash() throws {
+        let ours = try madeInvoice()
+        let victims = try madeInvoice(msat: 20_000)
+        #expect(ours.paymentHash != victims.paymentHash && ours.payee == victims.payee)
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("100000000", for: .balanceMsat)
+        try storage.set("\(keyG)_\(ours.payee)_1", for: .contactInfo)
+        func copy(of invoice: Invoice, signedBy signer: String, serverIndex: Int64? = nil) -> Message {
+            .fixture(
+                uuid: uuid(1), serverIndex: serverIndex, type: MessageType.invoice, chat: dm, fromMe: true,
+                sender: sender(signer), body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: "aa",
+                paymentHash: invoice.paymentHash, amountMsat: Int64(invoice.amountMsat)
+            )
+        }
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [(copy(of: ours, signedBy: keyG), false, nil)]))
+        #expect(try engine.invoiceProblem(ours) == .ownInvoice)
+
+        for forger in [dm, strangerKey, keyG] {
+            _ = try storage.apply(Storage.Commit(messages: [(copy(of: victims, signedBy: forger), false, nil)]))
+        }
+        #expect(try engine.invoiceProblem(victims) == nil)
+        #expect(try engine.invoiceProblem(ours) == .ownInvoice)
+
+        let echo = try storage.apply(Storage.Commit(messages: [(copy(of: ours, signedBy: keyG, serverIndex: 7), false, nil)]))
+        #expect(echo.stored.first?.serverIndex == 7)
+        #expect(echo.stored.first?.paymentHash == ours.paymentHash)
+    }
+
+    /// No request of ours goes to a tribe (`requestToTribe`), so a tagged one
+    /// there, a member's replay of our tag, never makes an invoice ours.
+    @Test func aRequestInATribeIsNeverOurs() throws {
+        let invoice = try madeInvoice()
+        let storage = try profile.storage()
+        let engine = try testEngine(storage)
+        try storage.set("100000000", for: .balanceMsat)
+        try storage.set("\(keyG)_\(invoice.payee)_1", for: .contactInfo)
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(
+            uuid: uuid(1), type: MessageType.invoice, chat: strangerKey, fromMe: true, sender: sender(strangerKey),
+            body: #"{"invoice":"\#(invoice.bolt11)"}"#, tag: "aa", paymentHash: invoice.paymentHash
+        ), false, nil)], tribes: [Tribe(pubkey: strangerKey)]))
         #expect(try engine.invoiceProblem(invoice) == nil)
     }
 
@@ -407,12 +488,9 @@ struct InvoiceTests {
         #expect(try storage.openInvoices(among: [coffeeHash, hash(2)]) == [coffeeHash])
         #expect(try storage.openInvoices(among: []) == [])
 
-        // As `Engine.commit` turns a history page into settles.
-        let page = PaymentRecord.decode(#"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#)
-        let paid = Engine.invoicePayments(in: page, open: try storage.openInvoices(among: page.map(\.rhash)))
-        _ = try storage.apply(Storage.Commit(
-            payments: page, settling: paid.map { ($0.rhash, $0.amountMsat) }, settled: paid.map { ($0.rhash, $0.ts) }
-        ))
+        // The server's history page, through `Engine.commit`.
+        let page = #"[{"amt_msat":250000000,"rhash":"\#(coffeeHash)","ts":42,"msg_idx":0}]"#
+        _ = try await testEngine(storage).commit(coreResult(payments: page), time: "1", expectedSender: nil)
         let record = try #require(try storage.invoice(paymentHash: coffeeHash, incoming: true))
         #expect(record.status == .paid && record.paidAt == 42 && record.paidMsat == 250_000_000)
         #expect(try storage.openInvoices(among: [coffeeHash]).isEmpty)

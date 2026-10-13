@@ -83,8 +83,7 @@ struct TribeLinkCard: View {
         if deleted { return "This tribe has been deleted." }
         if let problem = read?.problem { return problem }
         if let summary = (info?.summary ?? known?.summary)?.trimmed.nilIfEmpty { return summary }
-        if read == .elsewhere, known == nil { return "Listed on another tribes server. Join looks it up there." }
-        return read == nil || read == .loading ? "Reading the tribe from your tribes server" : link.host
+        return read == nil || read == .loading ? "Loading…" : link.host
     }
 
     @ViewBuilder private func facts(
@@ -174,7 +173,7 @@ struct ContactLinkCard: View {
 }
 
 /// The photo or icon on a link card.
-private let linkCardIconSize: CGFloat = 44
+private let linkCardIconSize = Theme.AvatarSize.xl
 
 /// The frame both link cards share: an icon, a title, a few lines about it,
 /// and a line of facts with the action beside it. One size whatever is
@@ -193,38 +192,39 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
     @ViewBuilder let action: Action
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            icon
-                .frame(width: linkCardIconSize, height: linkCardIconSize)
-                .opacity(faded ? 0.5 : 1)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(Theme.font(14, .semibold))
-                    .foregroundStyle(faded ? Theme.secondaryText : Theme.text)
-                    .lineLimit(1)
-                    .redacted(reason: placeholder ? .placeholder : [])
-                Text(detail ?? " ")
-                    .font(monospacedDetail ? Theme.code(12) : Theme.font(12.5))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(detailLines, reservesSpace: true)
-                    .redacted(reason: placeholder ? .placeholder : [])
-                HStack(spacing: 8) {
-                    facts
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.tertiaryText)
+        Card(.inset) {
+            HStack(alignment: .top, spacing: Theme.Space.md) {
+                icon
+                    .frame(width: linkCardIconSize, height: linkCardIconSize)
+                    .opacity(faded ? 0.5 : 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(Theme.font(14, .semibold))
+                        .foregroundStyle(faded ? Theme.secondaryText : Theme.text)
                         .lineLimit(1)
-                    Spacer(minLength: 0)
-                    action
+                        .redacted(reason: placeholder ? .placeholder : [])
+                    Text(detail ?? " ")
+                        .font(monospacedDetail ? Theme.code(12) : Theme.font(12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(detailLines, reservesSpace: true)
+                        .redacted(reason: placeholder ? .placeholder : [])
+                    HStack(spacing: Theme.Space.sm) {
+                        facts
+                            .font(Theme.font(12))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.tertiaryText)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        action
+                    }
+                    .frame(height: 28)
+                    .padding(.top, 3)
                 }
-                .frame(height: 28)
-                .padding(.top, 3)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Theme.Space.md)
+            .frame(width: CallCard.width, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: CallCard.width, alignment: .leading)
-        .cardBoxed()
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
     }

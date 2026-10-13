@@ -256,7 +256,7 @@ and `ConnectionCard`.
 
 | Kind | Where |
 |---|---|
-| `UnreadBadge` (count, accent capsule) | `Controls.swift:134-163`; also "New" (`ContactsViews.swift:23-28`) and "+350" (`MoneyArrivals.swift:239-240`) |
+| `UnreadBadge` (count, accent capsule; now `Badge`, batch 11) | `Controls.swift:134-163`; also "New" (`ContactsViews.swift:23-28`) and "+350" (`MoneyArrivals.swift:239-240`) |
 | Tag chip (capsule, selectable) | `TribeDetails.swift:381-397` |
 | Boost chip (capsule, bolt, avatars) | `PaymentChatRows.swift:43-120` |
 | Day divider label (outline capsule) | `ConversationView.swift:547-555` |
@@ -280,6 +280,9 @@ picker (`AccountView.swift:668`).
 (`TribeDetails.swift:251-278`), `SettingsRow` (`AccountView.swift:812-841`)
 and `KeyValues` (`PaymentPanes.swift:54-95`).
 
+(Batch 12: the seven are on `ListRow` and the three on `FactList`, with
+`Theme.selection` the one selected fill; see Progress.)
+
 ### Empty states
 
 `EmptyPlace` (`MainView.swift:261-274`, used for the start screen and
@@ -288,6 +291,8 @@ Mentions, `TribeViews.swift:427`) and two copies of its body:
 ones: "No time zone matches." (`AccountView.swift:619-624`) and
 the web pane's failed page with Try Again (`WebPane.swift:802-824`; its
 sibling in a link card says "Try again", `LinkCards.swift:110`).
+
+(Batch 13: all five are on `EmptyState`; see Progress.)
 
 ### Inline confirms
 
@@ -335,7 +340,7 @@ uses). Their sizes are not: 16, 18, 20, 22, 24, 28, 30, 32, 34, 36, 48,
 | A sender's name | `Sender` and `model.sender(of:)`; 8 sites write `message.senderAlias ?? Sender.unnamed` (`ConversationView.swift:518`, `:524`, `Notifier.swift:202`, `:263`, `:273`, `:293`, `TribeViews.swift:307`, `:334`) | `Sender` (first review row 6, still open) | 8 |
 | A tribe's pages (app, second brain) | `WebMenuEntries` (`WebPane.swift:501-517`: Second brain first, opened through `openURL`) and `TribeDetails.swift:162-182` (Tribe app first, `model.web.open`) | One list in `WebMenuEntries`, used by both | 8 |
 | Leave a tribe | The menu calls `model.leave` (`AppModel+Chat.swift:173`), which words its own failure; the members panel (`ConversationView.swift:471-478`) and the details (`TribeDetails.swift:212-219`) call `leaveTribe` and word theirs; three confirm wordings | `model.leave` and one confirm wording | 8 (wording), 4b (place) |
-| Error lines | `PeelError.readable` at 62 sites: bare at about 30, after "Could not …: " at 22, capitalised by hand once (`AppModel+Calls.swift:159`); `Formatting.sentence` at 8 more; "Couldn't open" once (`WebPane.swift:809`) | One `Formatting.problem` | 7 |
+| Error lines | `PeelError.readable` at 62 sites: bare at about 30, after "Could not …: " at 22, capitalised by hand once (`AppModel+Calls.swift:159`); `Formatting.sentence` at 8 more; "Couldn't open" once (`WebPane.swift:809`) | One `Formatting.problem` (built as `PeelError.problem`, batch 7) | 7 |
 | Plurals | `Formatting.replies`, `people`; inline at `PaymentChatRows.swift:123`, `ChatSearch.swift:36`, `CallViews.swift:410`, `AccountView.swift:532`, `TribeDetails.swift:159`, `:246`, `MessageViews.swift:584`, `PaidAttachmentViews.swift:152` | `Formatting` | 14 |
 | Dates | `Formatting` owns times and relative dates; inline at `TribeDetails.swift:103`, `TimeZoneViews.swift:203`, `ContactsViews.swift:526`, `PayInvoicePane.swift:156`, `:161`, `ReceivePane.swift:118` | `Formatting` | 14 |
 | Escape | `MenuPresenter.swift:302`, `:309`, `ChatSearch.swift:250`, `ImageViewer.swift:115`, `Sidebar.swift:164`, `CallWindow.swift:74`, `WebPane.swift:669`, `PaymentsView.swift:92`, the composer (`ComposerField.swift:166`) | One written order, named key codes | 9 |
@@ -407,6 +412,9 @@ text style replaces the 58 hand-set captions:
 `Text(note).muted()` is 12 pt `secondaryText`, wrapping (shadcn's
 `text-muted-foreground text-sm`). Avatars take a size scale: 16, 20, 24,
 32, 48, 64.
+
+Done (batch 14, 2026-10-12): as sketched, plus `Theme.AvatarSize`
+(`xs` 16 to `xxl` 64), `menuShadow` and `veilTones`; see Progress.
 
 ### `PeelButton` (batches 1–2)
 
@@ -596,11 +604,15 @@ EmptyState("Could not load the page.", systemImage: "wifi.slash") {
 shadcn's `Empty`. Replaces `EmptyPlace` and the four other empty states
 listed above.
 
+(Batch 13: built without `systemImage:`, as no site uses an icon; the
+web pane keeps its words, "Could not open <host>" over the problem, as
+`title:` and the message. See Progress.)
+
 ## 5. Bugs, not style
 
 1. **Copy link is the system button** in the members panel
-   (`ConversationView.swift:350`): no style is set. Batch 4b. (Not
-   rendered.)
+   (`ConversationView.swift:350`): no style is set. Batch 4b. Fixed in
+   4b (rendered before and after).
 2. **"Per message: Free" for a 3-sat message, and "Price to join: Free"
    for 1 sat** (`TribeDetails.swift:115-116`). Batch 6.
 3. **Lowercase fragments as sentences.** `PeelError.readable` returns
@@ -614,7 +626,8 @@ listed above.
    `SidebarForms.swift:104`, `TribeViews.swift:217`, `:449`), the
    window's notices (`AppModel.swift:1078-1187`, nine of them, and
    `AppModel+Calls.swift:55`), and money refusals shown under a Pay
-   button (`AppModel+Payments.swift:50`, `:81`). Batch 7.
+   button (`AppModel+Payments.swift:50`, `:81`). Batch 7. Fixed in 7
+   (rendered before and after).
 4. **Header icons have no hover state** (`HeaderButton`,
    `ConversationView.swift:268-290`), while every other icon button
    lights up. Batch 3.
@@ -629,7 +642,9 @@ reading raw key codes, and eight places handle Escape. Each guards its own
 case today (the sidebar defers to an open menu or the viewer,
 `Sidebar.swift:136`; the viewer ignores the call window,
 `ImageViewer.swift:113`). Nothing written down says who wins when two
-want the same key, so the next one added can break it.
+want the same key, so the next one added can break it. Fixed in 9: the
+order is written in `KeyMonitor`'s doc comment, and it was already broken
+for the search bar under a menu or the viewer (see Progress).
 
 ## What is healthy
 
@@ -706,3 +721,813 @@ library outside forms.
     themselves need a chat with cards, a call, Payments or the web pane,
     which the loopback stack was not run for. Hover and pressed were not
     rendered (the offscreen app is never active).
+- **Batch 3, `IconButton` (2026-10-11).** Built as
+  `PeelApp/UI/IconButton.swift`. `HoverIconButton` (`Controls`) and
+  `HeaderButton` (`ConversationView`) are gone, and so is the web pane's
+  `ToolbarIcon` wrapper. Their call sites use `IconButton`: the chat
+  header's search, call and More, the search bar's newer, older and close,
+  the thread and Payments panes' close, `FormPopover`'s close, the image
+  viewer's close, the web pane's toolbar and download bar, a file card's
+  globe and download, the hover bar's Reply and Boost, `MenuButton` (so
+  every message and web More), `CopyButton`'s icon-only form and the call
+  window's keep-on-top pin. Moved from hand-drawn: the notice bar's
+  dismiss (`.sm`), the sidebar's connection bolt (`.sm`, lit while its
+  card is open) and the sidebar call bar's microphone (`.outline`). The
+  call header's split Join is one outline box (`fieldFill`,
+  `inputBorder`, radius `control`) holding a `.peel(.ghost, size: .sm)`
+  Join and a ghost `IconButton` chevron, with an `inputBorder` line between.
+  `HeaderMoreButton` is a `MenuButton` with its details popover and ⌘I.
+  - The bug: header icons now light under the pointer. Every icon button
+    that opens a menu is lit while it is open (`MenuButton` reads the
+    presenter's source, as `HeaderButton` did for More): a message's
+    More, the web pane's ⋮ and the header's call button and chevron gain
+    it.
+  - Not 1:1, the closest chosen: header icons were 14 pt and are 13, as
+    every other icon button was. The hover square is 28 × 28 at radius 7
+    (was 28 × 26 at radius 5 for the hover buttons, 28 × 28 at radius 6
+    for the header), so `FormPopover`'s title row and the hover bar are 2
+    pt taller. Disabled is 50% opacity everywhere (the search bar's arrows
+    were 40%, the web toolbar's 35%). The notice bar's dismiss was a bare
+    10 pt semibold cross; it is the 13 pt regular cross on a 24 square,
+    and the bar keeps its height to within a point. The split Join's text was 13 semibold
+    and is 12 medium, its border `divider` and now `inputBorder` on
+    `fieldFill`, its chevron cell 24 wide and now 28, and each half has a
+    hover. The microphone was 30 square with a `divider` border and no
+    fill; it is 28, the height of Return to call beside it, as an outline.
+    The bolt gains a hover fill. VoiceOver now reads the tooltip as the
+    label where the two differed: "Mute (⌘⇧A)" for "Mute", "Start a new
+    call" for "More call options".
+  - Review, applied: a disabled button never draws lit, and drops a hover
+    it may never hear end. Not applied: the split Join's halves draw their
+    hover on their own rounded shape, so it does not meet the divider
+    square (a group variant with inner corners squared waits for a second
+    split button); its outline box is drawn by hand from the same tokens
+    as `.outline`, for the same reason; VoiceOver's "Mute (⌘⇧A)" (one
+    label for tooltip and VoiceOver keeps `IconButton` simple, and the
+    header buttons already read their shortcuts). `/simplify`, applied:
+    one `MenuPresenter.isOpen(from:)` for "this button opened the open
+    menu" (`MenuButton`, the call header), `.md` reads `PeelButton`'s `.sm`
+    height. Not applied: folding `IconButton`'s chrome into `PeelButton` as
+    an icon size, so hover, pressed and disabled have one owner (it
+    changes `PeelButton`, which this batch leaves as batch 2 shipped it;
+    worth doing with the focus styling); a disabled `PeelButton` keeps a
+    stale hover as `IconButton` did before its fix, for the same reason.
+  - Stay apart, as section 4 says: the call window's control bar,
+    controls over a picture or video, the jump to newest button, and the
+    composer's attach, bolt, send, reply close and file tray (batch 5).
+  - Renders: a new development profile with a contact and a tribe seeded
+    as local rows (no server), before (`origin/main`) and after: the main
+    window, a contact's chat, the search bar, Send sats, a tribe's chat;
+    and a temporary gallery (not committed) of the icon buttons at rest,
+    lit, working and disabled, the notice bar and a live call's split
+    Join, in light and dark, with hover forced through the real drawing
+    code after. Not rendered at their sites: the hover bar, a file card,
+    the web pane, the image viewer, the thread and Payments panes, the
+    call window and the sidebar call bar (they need media, a thread, a
+    page or a call). Hover and pressed were not rendered in the app (the
+    offscreen app is never active).
+- **Batch 4a, the `Panel` shell (2026-10-11).** Built as
+  `PeelApp/UI/Panel.swift`: `FormPopover` moved out of `FormKit` and
+  renamed, `Panel("Title", compact:, close:) { body } footer: { … }`
+  (the title unlabelled, as SwiftUI's own views take theirs). Its
+  drawing is unchanged, and `DrawsOwnPanelBox` moved with it. The seven
+  `FormPopover` users are on it: Add contact, Invite someone and an
+  invite (`ContactsViews`), Send or request sats (`PaymentViews`), Tribe
+  details (`TribeDetails`), Join a tribe (`SidebarForms`), Create and
+  Edit tribe (`TribeViews`). `MenuPresenter` changed only in `PanelBox`'s
+  comment.
+  - Left for 4b, which needs them: the `actions` slot (no panel in 4a
+    has a top-right action yet), and retiring `DrawsOwnPanelBox` and the
+    presenter's menu box, which the five hand-drawn panels still use
+    until they move onto `Panel`. `FormFooter` stays a separate piece: it
+    is also the footer of Receive, Pay an invoice and the Account's name,
+    none of them panels. The tribe header in `ConversationView` has a
+    `private enum Panel` (members, details, edit) that hides the struct
+    inside that type; 4b renames it when it puts a `Panel` there. 4b
+    also adds a `Panel` with no footer, for the panels that have none.
+    (The review asked for both now; left, since 4b owns those files.)
+  - Renders: a new development profile on the loopback stack (a contact
+    and a tribe of its own, an invite of 500 sats, funded by the Bank),
+    before (`origin/main`) and after, offscreen, the same drive file:
+    the main window, Send sats, Tribe details, Edit #Hive, Add contact,
+    Invite someone, the invite's detail, Create a tribe and Join a tribe.
+    All 19 snapshots (ten of the main window, nine of the panel's own
+    window) match pixel for pixel. A temporary driver step (not
+    committed) opened the panels with no shortcut. Not rendered: Add
+    contact's "Sent to" state, Request sats (its title is the call
+    site's only other string), an invite still loading.
+  - Seen while checking, not changed: ⌘I (Tribe details) opened the
+    panel on the first run of a fresh profile, then did nothing on later
+    runs in both builds (the composer held the keyboard; the cause was
+    not looked into). The title click's path (`panel = .details`)
+    opened it each time. Worth a look with batch 9 (keys).
+- **Batch 4b, the five panels onto `Panel` (2026-10-11).** The members
+  panel, a contact's Details, Boosts, Connection and the Account's Time
+  zone picker are `Panel`s, so every popover is one box. `Panel` gained
+  the `actions` slot (top right, before the close button) and inits with
+  no actions, or none and no footer; a footer whose condition is false
+  takes no room. `PanelHero` (picture, name, muted lines) is the top of
+  both details panels. `DrawsOwnPanelBox` and the presenter's `PanelBox`
+  are gone. `TribeHeader`'s `private enum Panel` is `HeaderPanel`.
+  - The bug: the members panel's Copy link (not Tribe details' footer, as
+    the brief said: that footer never had one) was the system button,
+    confirmed in the before render. It is now an icon `CopyButton` top
+    right. Tribe details keeps Copy link and Copy QR image in its share
+    card, beside the QR code, rather than a second Copy link top right;
+    a contact's Copy key and Copy QR stay in their key card likewise.
+  - The placement rule, applied: Tribe details' Edit tribe… moves left,
+    beside Members; Leave tribe stays right. Remove contact… leaves the
+    body for the footer's right, an outline button (red only once
+    confirming, as Leave tribe), its explanation above Cancel and Remove.
+    Reconnect now is the Connection footer's outline button. Edit tribe's
+    Delete stays the last card of its body, since Save holds the footer.
+  - Every visual difference, before (`origin/main`) to after: all five
+    gain the panel box (radius 12 not 8, `sidebar` fill not `menu`,
+    `formEdge` hairline, `popoverShadow`), a 15 pt bold title and a ✕.
+    Widths: members 300 to 320, Boosts 260 to 320, Connection 260 to 320,
+    Details 300 to 372, Time zone 320 (unchanged). Members: Copy link from
+    the system button bottom left to an icon top right; no divider over
+    the footer; the owner's panel has no footer (it had a divider and Copy
+    link); a problem shows in the footer's left. Details: titled
+    "Details"; the hero is left-aligned with a 56 pt picture (was centred,
+    64), the name may wrap to two lines; the switch is `FormSwitchRow`
+    (Peel's switch in a card, its note inside the card at 11 pt, was the
+    system switch with a 12 pt note under it). Boosts: title 15 bold (was
+    14), the total moves from top right (13 semibold) to a muted line
+    under the title, "63 sats from 3 boosts". Connection: titled
+    "Connection"; the state is 13 regular (was 14 medium) and 4 pt
+    further from the error line; Reconnect now is an outline `.md` button
+    at the footer's right (was a `.link` under the error). Time zone:
+    titled, the field 10 pt below the title and 12 pt above the list (8
+    before), the field inset 18 (was 8); the rows keep their old place
+    against the field. A title's minimum gap to the buttons beside it is
+    16 pt (about 24 before), which a long title in Edit #… may use. Main windows: unchanged (the renders differ only in a
+    time-stamped error notice).
+  - Renders: new development profiles b4b-alice and b4b-bob on the
+    loopback stack, funded by the Bank (a temporary test, not committed),
+    a DM, a tribe each owns and has joined, and Bob's boosts on Alice's
+    post (forwarded boosts failed on the stack with a CLTV error, so the
+    Boosts panel is drawn from Bob's side, his own). Before and after,
+    offscreen, the same drive file: Connection, Details, Boosts, Members
+    as owner and member, Tribe details as owner and member, Time zone.
+    Tribe details as a member matches pixel for pixel; as owner only the
+    footer differs. Remove contact's confirm drawn once after. A
+    temporary driver step and hooks (not committed) opened the panels.
+  - Idle: Connection open for a minute, 0.0 to 0.2% CPU.
+  - Not rendered: Connection offline (countdown and Reconnect now), the
+    members panel's problem line, Leave's confirm, Light mode. Hover and
+    clicks were not driven (the offscreen app is never active).
+  - Independent review, not applied: a click on the zone picker's list
+    outside a row (the divider, the heading, "No time zone matches.") now
+    ends editing in its search field, through `Panel`'s
+    `endsEditingOnClick` (a row click is unaffected); a tribe header
+    with no stored tribe can open an empty, now boxless, popover; the
+    members footer can crowd when a problem shows while Leave asks; Remove
+    contact leaves the panel to close with its chat, as before.
+- **Batch 5, the composer (2026-10-10).** Attach, the bolt (a direct
+  message's Send or request sats) and send are inside the one rounded
+  field, on a row under the text: attach and the bolt at the left, send at
+  the right. The reply bar and the file tray stay at the field's top, as
+  before. Only `ComposerView` changed; the tray's padding in
+  `AttachmentViews` did not need to.
+  - Attach and the bolt are ghost `IconButton`s (28 square); the bolt is
+    `lit` while its panel is open, drawn as under the pointer, where it
+    was `attention` amber before. Send is `PeelButton` `.sm`, a
+    28 pt square: `.primary` when there is something to send, `.ghost`
+    and disabled otherwise (a half-opacity arrow, no fill). The old one
+    was a 28 pt `accent` circle, muted grey when empty; the new one is
+    `button` blue in a rounded square. Its label is framed to `.sm`'s
+    height less its padding, so it is square: `IconButton` has no primary
+    variant, so send stays a `PeelButton` until a second filled icon
+    button wants one.
+  - New: a click anywhere in the field that no button or the text takes
+    puts the cursor in the text (a tap on its background, hidden from
+    VoiceOver), and so does a click on the reply bar outside its ✕.
+    Before, only a click on the text itself did.
+  - The field keeps radius 18 but is now `.continuous`, like the reply
+    bar's top corners: with the button row it is always taller than twice
+    the radius, which was the reason for `.circular`.
+  - The mention suggestions line up with the field's left edge (the
+    composer's 20 pt inset) instead of a fixed 62 that assumed the
+    buttons outside.
+  - Unchanged: Return sends, Shift- and Option-Return add a line, Escape
+    stops replying then closes the thread, the `@` keys, focus, drafts,
+    the paid attachment's price, the eight-line limit and the
+    placeholder. `ComposerField` is untouched. There is no edit banner
+    in Peel to keep (editing a sent message is not built).
+  - Renders: before (`origin/main`) and after, offscreen on new
+    development profiles on the loopback stack (a DM with Bob, a tribe
+    at 3 sats a message), drawn at the same window width: empty, one
+    line, several lines, a picture in the tray with a 50-sat price,
+    replying, Send sats open, and the narrowest window (760, the
+    window's minimum). A temporary driver step (not committed) set the
+    reply, the tray and the width, which no key reaches.
+  - Real keys: typing, Shift-Return for a new line, Return sending (one
+    two-line message, confirmed by the server, and the field cleared) and
+    Escape ending the reply, in both builds. The timeline stayed drawn
+    while Shift-Return grew the field, its last message moving up with
+    the field's top, with no blank or jump. Idle with the
+    composer focused and text in it: 0.0% CPU over 40 seconds (before:
+    0 to 1.4%).
+  - Not checked: the pointer (hover, the click in the field's empty
+    part), since the offscreen app is never active and has no mouse
+    step; the thread composer; light mode.
+- **Batch 7, problem lines (2026-10-11).** One helper,
+  `PeelError.problem(_:couldNot:)`, in `PeelCore/PeelError.swift` beside
+  `readable` rather than `Formatting` (so `PeelCoreTests` can test it,
+  and `PeelApp` has no test target). It makes the error's words a
+  sentence (a capital unless the first word is a name: "photo.jpg",
+  "SQLite", "iCloud"; a full stop unless one is there) and, given an
+  action, puts "Could not <action>." first: "Could not leave the tribe.
+  The server could not be reached." It takes an error or words already in
+  hand, and a sentence passes through unchanged, so a reason worded where
+  it fails can be shown where it lands. Two sentences rather than "Could
+  not …: reason" so no reason has its case changed (a lowercased file
+  name or host would be wrong). `Formatting.sentence` and
+  `capitalizedFirst` are gone; every `PeelError.readable` and
+  `Formatting.sentence` in `PeelApp` (the 62 and 8 of section 3, in the
+  20 files) uses it, and so do the four places the app shows the
+  engine's own words (a chat's notice, the window's notice, the
+  connection error, a restore's failure), which were fragments too
+  ("Not delivered: not connected to the server" now ends in a full
+  stop). The web pane's "Couldn't open" is "Could not open".
+  - Wording: an action is named where the words alone would not say what
+    failed (the window's notices now name what could not load: "Could
+    not load the chats." and the rest); a refusal under the button or
+    field that caused it stands alone ("The balance is not enough for
+    that."). Vague actions became specific: "Could not change it" is
+    "Could not change the time zone" or "… time zone sharing", "Could
+    not leave" is "Could not leave the tribe", "Could not remove" is "…
+    the member" or "… the tribe", "Could not delete" "… the tribe",
+    "Could not save" "… the file" or "… how you appear". Several files
+    refused at once read one sentence pair each ("Could not send a.png.
+    a.png is too large."), where they were joined with semicolons.
+  - Tests: `PeelErrorTests` (capitals, names at the start, full stops
+    and closing brackets, "Could not", empty words, idempotence).
+  - Review (independent agent: correctness, simplify, security),
+    applied: a web download's failure keeps `localizedDescription` (its
+    WebKit errors would reach `readable`'s `"\(error)"` fallback, an
+    NSError dump that can carry the failing URL); a trailing comma,
+    colon or semicolon becomes the full stop, and a full stop inside a
+    closing quote counts. Not applied: `readable`'s `"\(error)"`
+    fallback for other domains (a risk before this batch, now on more
+    sites; worth its own change in `PeelCore`); the engine's notices
+    are still worded as fragments and made sentences in the app (moving
+    them is engine work outside this batch); "Could not send photo.jpg.
+    photo.jpg is too large." names the file twice, since a network
+    reason would not name it at all; a leading "ß" capitalises as "SS";
+    empty words give an empty line, as before.
+  - Renders: new development profiles b7-alice (a tribe of its own) and
+    b7-carol (funded by `scripts/fund-dev.sh`, so a DM with "bank") on
+    the loopback stack with its wire tap down, before (`origin/main`) and
+    after, offscreen: a tribe and a DM after a send that could not go
+    (the chat's notice), Payments and Account. The notice gains its full
+    stop; the rest is unchanged. Not rendered: a "Could not …" line from
+    the app itself. Offline, a send or payment is stored and marked
+    "Not delivered" or "Not sent" rather than refused, so none of the
+    app's own problem lines shows, and the panels and forms that have
+    them have no driver step or need a failing server the stack does
+    not give. The helper's tests cover their wording instead. The first
+    after run's typing did not reach the composer (the drive's timing);
+    the second did.
+- **Readable errors without the dump (2026-10-11).** Batch 7's review
+  left `readable`'s `"\(error)"` fallback, an NSError dump (its
+  userInfo, a failing URL) on every problem line. What can reach it:
+  GRDB (`DatabaseError`, now also `RowDecodingError` and
+  `PersistenceError`, which printed rows and keys), `URLError`,
+  `CocoaError`, POSIX, the connection's `NWError`, `MQTTError` and
+  `ChannelError` (the reconnect loop's `connectionError`), `DecodingError`
+  (a coding path), `CancellationError`, WebKit's NSErrors (a download),
+  the core's `SphinxError`, and Peel's own. The common ones are short
+  sentences ("the server's address could not be found", "not connected
+  to the internet", "the file was not found", "Peel is not allowed to
+  use the file", "a secure connection to the server could not be
+  made"); the rest give their localized description, or "something went
+  wrong (<domain> error <code>)" when that names the failing URL or its
+  host (a certificate error's does) or holds "://". Peel's own errors
+  and the core's keep their words. The web download's failure goes
+  through `problem(error)` again, now safe. The web pane's own page
+  error still shows `localizedDescription` beside the address, which
+  that pane shows anyway.
+  - Tests: `PeelErrorTests` (a URLError with a failing URL, an unmapped
+    NSError with a userInfo, the mapped cases as sentences, Peel's own
+    words).
+- **Batch 9, keys (2026-10-11).** `KeyCode` (beside `KeyMonitor` in
+  `PeelMenu`) names every key code the monitors read: `MenuPresenter`,
+  `ChatSearch`, `ImageViewer`, `Sidebar` and the offscreen driver's key
+  table have no numbers left. `KeyMonitor`'s doc comment holds the one
+  Escape order: a menu (confirm, submenu, menu), a panel, the image
+  viewer, the search bar while its field has the cursor, the sidebar's
+  highlight, then the view with the keyboard (the composer's mention
+  list, reply, thread; the web pane's address; the Payments pane; the
+  call window's grid). Local monitors run in the order they started, and
+  the presenter's starts again with each menu or panel, so it is often
+  the last: each monitor below it now checks
+  `MenuPresenter.takesKeys(_:)` (its own window, no menu or panel up),
+  which the sidebar, the search bar and the viewer share, and the search
+  bar also defers to the viewer.
+  - Bugs the order fixed, seen in the before drive: with the search field
+    focused, Escape closed the search and left an open menu up (and Down
+    stepped the search, not the menu; seen in one of two before runs,
+    depending on which monitor started first), and Escape closed the
+    search and left the image viewer up (every run). The search bar's
+    monitor had no window check, so it could also take Return, the arrows
+    and Escape typed in a panel's field or the call window while its
+    field kept focus (found in review; not driven).
+  - The ⌘I bug from 4a: the cause was the offscreen driver, not the app.
+    AppKit offers a key with ⌘ to the key window's views
+    (`performKeyEquivalent`) before the menu bar and the focused view.
+    The offscreen app is never active, so no window is key and that pass
+    never ran: menu commands (⌘F, ⌥⇧↓) still worked through the menu bar,
+    but a shortcut on a view (`.hiddenShortcut`: ⌘I, ⌥⌘A, ⌥⌘V, ⌘↓)
+    reached only the focused view's `keyDown`. A text view (the composer,
+    a search field) takes ⌘I as `noop:`, so it did nothing; with no text
+    view focused (a fresh profile's first run, where nothing had the
+    cursor yet) `keyDown` reached SwiftUI, which ran it. Confirmed by
+    logging the composer's `keyDown` (⌘I arrived, `noop:`, no key
+    equivalent pass) and by calling the window's `performKeyEquivalent`
+    directly, which opened Tribe details over a focused composer. The
+    driver now offers each ⌘ key to its window's views when that window
+    is not key, from a monitor it starts again before each key so it
+    runs after Peel's own. The title click always worked because it sets
+    the state directly. In the daily app (active, key window) ⌘I goes
+    through AppKit's own pass; that could not be driven here.
+  - Other shortcuts failing with the composer focused: in the drive,
+    every ⌘ shortcut on a view (above), fixed by the same change. In the
+    app, none found: ⌘ shortcuts take AppKit's key-equivalent pass ahead
+    of the composer. End (jump to newest, an empty composer only) has no
+    ⌘ and was not driven.
+  - Before and after, every existing shortcut: menu commands ⌘, ⌘F ⌘N
+    ⌥⇧↓ ⌥⇧↑ unchanged; ⌘I (details, tribe and contact) unchanged in the
+    app, now driven from the composer and the search field; ⌥⌘A ⌥⌘V
+    (start a call), End and ⌘↓ (jump to newest), ⌘W (web pane), the
+    call window's ⌘⇧A ⌘⇧S ⌘⇧ letters and Escape, `.defaultAction` Return
+    in forms, the payment template picker's ← →, the web address field's
+    and Payments pane's Escape, the composer's Return, Shift- and
+    Option-Return, `@` keys and Escape unchanged; the menu's keys
+    (Escape, ← →, ↑ ↓, Return and Enter, item letters, typing closes) and
+    the sidebar's (↑ ↓, Return, Escape, type-ahead) unchanged; the
+    viewer's (Escape, ← →, Space) and the search bar's (↑ ↓, Return,
+    Escape) now defer to an open menu or panel, the search bar's to the
+    viewer too.
+  - Drive, before (`origin/main`) and after, offscreen on a new
+    development profile (b9-alice, funded by `fund-dev.sh`, a tribe of
+    its own with two messages and a picture), with the composer focused
+    and with nothing focused: Escape closing a menu, a panel (⌘I), the
+    search (⌘F, typing, ↓), a reply, the viewer (→); a reply under ⌘I's
+    panel under a menu, then Escape three times (menu, panel, reply); the
+    search under ⌘I's panel (panel, then search); the search under a
+    menu and under the viewer; ⌥⇧↓ to the next unread chat. After, all
+    as the order says; before, ⌘I did nothing from the composer or the
+    search field, and the two search cases above failed. Every other
+    snapshot matched pixel for pixel but for the search results' "n min
+    ago". A temporary driver step (not committed) opened the menu (the
+    sidebar row's), a reply, the viewer, and put the cursor in the
+    composer or nowhere. Not driven: the sidebar's keys (they need a
+    click on a row; Tab goes to its search field), a menu's confirm and
+    submenu, End, the call window and ⌥⌘A/⌥⌘V (they start a call), ⌘W
+    and the web pane, the Payments pane, a thread's composer.
+  - Review (independent agent: correctness, simplify, security), applied:
+    `MenuPresenter.takesKeys` as the one "my window, nothing open" rule
+    for the three monitors; the mention list in the composer's Escape;
+    the README's "⌘ shortcut on a view" (a key without ⌘ reaches a view
+    shortcut only when the focused view does not take it). Not applied:
+    removing the driver's last monitor when the run ends (the app quits
+    then). No security findings: the driver runs only in the check
+    bundle's offscreen mode.
+  - Tests: nothing new in `PeelCoreTests`. The order is a few guards on
+    AppKit events in `PeelApp`, which has no test target; the drive above
+    covers it. `swift test`: 591 passed (one known issue, IPv6 hosts, as on `main`).
+- **Batch 8, one owner each: a sender's name, a tribe's pages, Leave
+  (2026-10-11).** Each duplication of section 3 was read before it was
+  folded.
+  - A sender's name: the eight `message.senderAlias ?? Sender.unnamed`
+    sites were real (now in `MembershipNote`, `JoinRequestNote`,
+    `PinnedMessageBar`, the mentions list's `MentionRow`, and three in
+    `Notifier`), all naming a tribe member by their message. `Sender`
+    owns them: `Sender(member:)` (`MessageViews.swift`) is the decode
+    `People.sender(of:inTribe:)` already did for a tribe, now its own
+    initialiser; the membership and join-request notes take the row's
+    `sender` (its `label` gives "You" for yours), the pinned bar asks
+    `model.sender(of:)`, the mentions list, the notifications and a
+    money arrival's `Receipt.member` use `Sender(member:)`. Words are
+    unchanged in a tribe; a note in a direct message (rare: a join or
+    leave type there) now names the contact as its rows do. Left as they
+    are: `Notifier.names`' `Sender.unnamed`, which names a chat when
+    nothing is stored, and `PaymentItem.title`'s, which names a payment's
+    chat and is not reached by any kind that has one (a payment's
+    `counterpart` is the member, from `PaymentHistory`).
+  - A tribe's pages: the bug's root was two lists, each with its own
+    order (the More menu's `WebMenuEntries`: Second brain, then Tribe
+    app; the details' `pages`: Tribe app, then Second brain), and two
+    ways to open one (the window's link router, `model.web.open`). One
+    list now: `Tribe.pages` in `PeelCore`, the app first as the official
+    apps prefer it (the Mac app opens `appURL` before `secondBrainUrl`),
+    each a `TribePage`; `TribePage.title` and `systemImage` beside
+    `WebMenuEntries`, and `WebPane.open(_ page:)`, the one way both open
+    one. A page from the menu no longer falls to the system browser with
+    ⌘ held, as the details' buttons never did.
+  - Leave: three rules for who may go (the menu: Remove from Peel for a
+    tribe you cannot post in, nothing for the owner, else Leave; the
+    members panel: anyone but the owner, so "Leave tribe" for a request
+    still waiting; the details: only a member who can post), three
+    confirm wordings, and two ways to run it (`model.leave`, which words
+    its failure as the chat's notice, and `leaveTribe` with the failure in
+    the panel). Now `Tribe.exit` in `PeelCore` (leave, remove, or nil for
+    the owner of a live tribe and a tribe already left) is the rule, and
+    `Engine.leaveTribe` uses it too; `Tribe.Exit` words it once
+    (`Sidebar.swift`: "Leave tribe", then "Leave #tribe"; "Remove from
+    Peel", then "Remove #tribe"; "Could not leave the tribe" or "… remove
+    the tribe"); every Leave (the sidebar's and the header's menus, the
+    members panel, the details, the status bar) runs `AppModel.leave`
+    (it absorbed `AppModel.leaveTribe`), and a panel closes after it so
+    a failure shows in the chat's notice. Changes: the panels' confirm
+    reads "Leave #tribe" (was "Leave", with "Leave #tribe?" before it in
+    the members panel); the members panel and details offer Remove from
+    Peel for a tribe you can no longer post in (the details offered
+    nothing, the members panel "Leave tribe"); the status bar's confirm
+    is "Remove #tribe" (was "Remove #tribe from Peel?" and "Remove").
+  - Renders, before (`origin/main`) and after, offscreen on new
+    development profiles on the loopback stack: b8-alice owns "Pages
+    Club", created with an app and a second brain address (a temporary,
+    uncommitted CLI change put `app_url` and `second_brain_url` in the
+    create); b8-bob (the app, funded by `fund-dev.sh`) joined it and has
+    alice as a contact. Temporary driver steps (not committed) opened the
+    header's More menu and the members panel and put every inline
+    confirm in its asking state, and logged what `Notifier` would post.
+    The More menu went from Second brain, Tribe app to Tribe app, Second
+    brain, now the details' order; the members panel's and details'
+    Leave confirm became "Leave #Pages Club"; the menu's Leave confirm
+    ("Leave #Pages Club", "Click again") is unchanged. Sender names in
+    the tribe ("alice", "bob", "You joined"), the DM, the Payments rows
+    ("alice", "bank") and the notifications ("alice" in "#Pages Club",
+    "alice", "From alice: notified") are the same before and after. Not
+    driven: the sidebar row's menu (it shares `ConversationMenu.leave`
+    with More), the status bar's Remove, a failing leave, a tribe
+    payment row from a member (the boost did not go through on the
+    stack), a page opening in the pane.
+  - Review (independent agent: correctness, simplify, security). No
+    bugs; `Engine.leaveTribe`'s behaviour checked unchanged. Applied: one
+    decode per notification; the failure words in `Tribe.Exit`;
+    `Receipt.member`'s comment. Not applied: reading `Tribe.pages`
+    through `WebPage.address` (stored addresses already went through it,
+    and `WebPane.open` checks again).
+  - Tests: `TribeTests` (`exit` for each status, owner and left),
+    `WebPageTests` (`pages`: none, one, both in order),
+    `EngineFailureTests` (a deleted tribe of your own is removed, offline,
+    sending nothing). `swift test`: 594 passed (one known issue, IPv6
+    hosts, as on `main`).
+- **Batch 10, `SectionHeader`, `Card` and `Callout` (2026-10-11).**
+  `UI/Section.swift` (`SectionHeader`, 12 semibold, secondary) and
+  `UI/Card.swift` (`Card`, `.raised` and `.inset`; `Callout`, `.neutral`
+  and `.attention`, icons `.problem`, `.progress` and `.symbol`).
+  `formCard`, `cardBoxed`, `panelBoxed`, `SectionLabel`, `NoticeBar` and
+  `AttentionNote` are gone; `menuBoxed` stays. `SectionHeader`'s
+  `trailing:` slot (section 4) is not built: nothing uses it yet.
+  - Changes, before → after: the link and call cards' corners (and the
+    payment request's, the sidebar's on-a-call bar's) 10 → 9; section
+    headers are 12 semibold (`SectionLabel` was 12 medium), and the
+    Account's headers 11 → 12; the tribe status bar's words 13 → 12, its
+    padding 14 → 12 across and the spinner's gap 10 → 8, on the first
+    line's baseline, three lines at most; a chat's and the window's
+    notice 4 pt taller (10 of padding, was 8), radius 8 → 9, monospaced
+    digits; an `AttentionNote` (Not enough sats, an expired invoice, a
+    payment that cannot be made) draws its icon at 13 (was 14) on the
+    first line's baseline (was the top), 8 from the words (was 10),
+    padding 12 by 10 (was 12), its words 12 (was 13), now selectable.
+    Every `Callout`'s words are selectable with monospaced digits. The web
+    pane's download is a boxed callout in its strip; under way and saved
+    keep one line, now both cut in the middle (Downloading was cut at the
+    end), its ✕ the small one.
+  - Review (independent agent), applied: the payment request's `Card`
+    had been opened inside its header row, so the amount, memo and footer
+    laid out in that row; the whole card is now in `Card(.inset)`, its
+    padding and width inside, as the call and link cards are. `Callout`
+    takes `oneLine` for the download's file names, a note's words wrap
+    in full (a long payment error in Pay an invoice or Receive is no
+    longer cut at three lines; a bar keeps three), and `.problem` draws
+    through the same symbol as `.symbol`.
+  - Renders, before (`origin/main`) and after, offscreen on development
+    profile b10-alice on the loopback stack, with temporary driver hooks
+    (not committed) for the link card's join form, the members panel,
+    Edit tribe, an invite, the sidebar forms and the zone picker: only
+    the differences above. The payment request (no Lightning on the
+    stack) through a temporary gallery (not committed) of six states:
+    open and expired, paid, yours waiting, paying someone else, partly
+    paid, unreadable; only the corners differ. The callouts (a long
+    note, a long bar, both download bars with a long file name) through
+    the same gallery, after only. Not rendered: the sidebar's on-a-call
+    bar, the restore progress card in onboarding, the window's notice, a
+    real download in the web pane.
+  - Deferred, still hand-drawn boxes: the file card in `AttachmentViews`,
+    `ThreadCard`, `QuotedMessage`, `ConnectionCard` (batch 14 or their
+    own).
+  - Tests: nothing new (`PeelApp` has no test target). `swift test`: 618
+    passed in the main run, 107 in the other three (one known issue, IPv6
+    hosts, as on `main`).
+- **Batch 11, `Badge` and `Chip` (2026-10-11).** `UI/Badge.swift`:
+  `Badge` (`.default`, `.mention`, `.success`, `.outline`; `Badge(count:)`
+  and `Badge.text`, the "99+" cap) and `Chip` (`ChipStyle` `.field` or
+  `.inset`, `lit`, an optional action; `Chip(_:selected:)` and `Chip(_:)`
+  for a tag). `UnreadBadge` (Controls) and `NewContactBadge`
+  (ContactsViews) are gone. On them: the sidebar's Threads and Mentions
+  counts, a chat row's count (blue; gold with `.mention` when it
+  mentions you, as before), "New", Payments' "+350" (`.success`, its pop
+  and roll unchanged), the day divider (`.outline`), a tribe's tags in
+  its details and the edit form (`TagChips`), and the boost chip (its
+  bolt, total and faces inside `Chip(.inset)`; the faces' ring takes
+  `ChipStyle`'s fill). The jump pill's "N new messages" uses
+  `Badge.text` (one line in `MessageViews`). The video's duration in
+  `MediaViews` stays as section 4 says, on the picture: not moved.
+  - Changes, before → after: the filled badges' ends (unread counts,
+    "New", gold, "+350") were the continuous capsule and are the circular
+    one the day divider and boost chip already used, so every capsule has
+    one shape: a few antialiased pixels at each end differ, nothing moves.
+    A tag in the edit form now firms its hairline under the pointer, as
+    the boost chip did (not rendered: hover never shows offscreen). A
+    tag's hairline is drawn over its label rather than behind it (the
+    label is inset 10, so they never meet).
+  - Review (independent agent), applied: `Chip` marked a lit boost
+    chip "selected" for VoiceOver (the old one had no trait); only the
+    tag toggle carries it now. `Badge` gave the day divider monospaced
+    digits, which would have widened a dated divider's ("Monday 5
+    October"); only the filled badges have them, as before. Also: the
+    doc comment no longer calls every chip a toggle, `Badge` says it is
+    for the app's own short words (never cut), and the inventory row
+    above points at `Badge`.
+  - Renders, before (`origin/main`) and after, offscreen on development
+    profile b11a on the loopback stack (Carol and Bob seeded from the CLI,
+    "+350" a real payment from Carol during the drive), with a temporary
+    ⇧⌘E hook for Edit tribe (not committed): sidebar with blue, gold,
+    "New" and "+350" badges, Badge Club with both boost chips (yours and
+    Carol's) and the day divider, tribe details' tags, the edit form's
+    selected and unselected tags. Pixel diff: the details and the edit
+    form identical; the chat's boost chips and day divider identical; the
+    sidebar's badges differ only at their ends (up to 44 of 255 on the
+    end pixels); the balance line and Carol's chat differ by the run's
+    data. Not rendered: the Threads count (no unread thread was seeded;
+    same `Badge(count:)` as Mentions), "99+", a boost chip with "+N", a
+    dated day divider (only "Today").
+- **Batch 12, `ListRow` and `FactList` (2026-10-11).** `UI/Rows.swift`:
+  `ListRow` (sizes `.sm` and `.md`; `selected`, `tint`, `alignment`,
+  `minHeight`, an optional action; a start, a title over a detail, an
+  end that the title gives way to) and `FactList` with `Fact` (a muted name in a
+  column, 100 or 150 wide, the value, an optional action; on the first
+  baseline; `Fact(_:text:symbol:tint:monospaced:)` for words, as
+  `KeyValues` drew them). `DetailRow` (TribeDetails), `SettingsRow`
+  (AccountView; `SettingsSection` is now a `SectionHeader` over a
+  `FactList(labelWidth: 150)`) and `KeyValues` (PaymentPanes) are gone; a
+  payment's detail, Pay an invoice and Receive's paid invoice use
+  `FactList`. On `ListRow`: `SearchResultRow`, `ZoneRow`, `MemberRow`
+  (still the members panel's helper, its shell `ListRow`), the boosters'
+  rows, `MentionRow` (which wore `SidebarRowStyle` outside the sidebar)
+  and `PaymentListRow`'s shell.
+  - The bug, three selected fills: the doc's one, `Theme.selection`, is
+    now the only selected fill a row has. Payments' selected row was the
+    accent at 14% and is `selection` (a firmer blue, the sidebar's); the
+    zone picker lit `selection` under the pointer, which read as
+    selected, and now lights `hover`, its chosen zone keeping the tick.
+    Search results already used `selection`: unchanged. Every row's
+    corners are 6, the sidebar's.
+  - After the independent review (no must-fix items): the end is no
+    longer `fixedSize` as a whole, which let the members panel's
+    InlineConfirm "Remove <long alias>" squeeze the title to nothing and
+    spill past the panel; the title column is `.layoutPriority(-1)`
+    instead, the times and amounts in an end are `.fixedSize()` each (as
+    `SearchResultRow`'s time was), and a row's buttons wrap. Rendered with
+    a 46-character alias: the confirm wraps onto three lines inside the
+    panel (the title is then cut to its first letter, the avatar's
+    initials still naming the row). The end keeps a gap of at least
+    twice the spacing (16 in `.sm`, 24 in `.md`: padding before the end,
+    not a `Spacer`, which would outbid the title's low priority); the old
+    rows had 24 (search, members, boosters), 36 (Payments) and 30
+    (zones). On `selection` the detail and the end are `selectionText`
+    at 80%, the sidebar's pairing: 4.83:1 light and 7.07:1 dark, where
+    `secondaryText` was 4.28 and 3.91 (under 4.5). A row with no action
+    has a rectangular hit shape, so a right click on its padding opens
+    its menu. `Fact(text:tint:)` colours the text as well as the icon:
+    Pay an invoice's "Expired at …" is `attention` again (it was on
+    `origin/main` only as a tint with no icon, so nothing showed) and a
+    payment's "Received" or "Settled" is `confirmed` green with its tick.
+    Tabular digits: `FactText` and Tribe details' list (as `KeyValues`
+    and `DetailRow` had them), not every Account value (whose numbers
+    already set their own). `MemberRow` is private.
+  - Left as they are, deliberately: `InviteRow` (ContactsViews) is one of
+    the sidebar's own rows, between its chats and Add contact, and keeps
+    `SidebarRowStyle` (14 pt, the sidebar's padding and colours) so it
+    matches them; it already had `selection` and `hover`. The sidebar's
+    rows and `MenuRow` are untouched. The name-over-muted-line rows in
+    `Sidebar` and `ThreadViews` (section 1) are outside this batch's
+    files. The small text actions in rows (Approve, Decline, Remove,
+    Unpin, Retry) sit in `ListRow`'s end as they were; no variant yet.
+  - Every visual difference, before (`origin/main`) → after:
+    - Payments: the selected row's fill accent 14% → `selection`, radius
+      8 → 6 (the lit "just received" row keeps `confirmed` at 14%); its
+      detail and time `secondaryText` → `selectionText` at 80%. The
+      unselected list matches for titles that fit; a long one now
+      truncates 24 from the amount (was 36).
+    - A payment's facts: on a card (were bare two columns, 10 apart),
+      a hairline between them, the name column 100 wide (was as wide as
+      the longest name, so a long "When" now wraps onto two lines), rows
+      36 tall at least; Copy beside the payment hash moves to the row's
+      end; "Received" or "Settled" green (was `text`). Pay an invoice's facts the same (the Fee note wraps a word
+      earlier); an expired invoice's "Expired at …" amber (was `text`). Receive's paid invoice: the same, and the divider above
+      its facts is gone (the card separates them); not rendered (no
+      Lightning on the stack, so no invoice is ever paid).
+    - Tribe details' facts: the hairlines are full width (were inset 12)
+      and take a point each, so the card is 4 pt taller; text and
+      columns unchanged.
+    - Account: every label is the muted 13 pt name (was `FormLabel`'s 13
+      pt `text`); name, value and button sit on the first line's
+      baseline (were centred), so a dropdown or button with a note under
+      it lines up with its name, and a label beside a two-line value
+      reads at the top; a one-line row with no button is 36 tall (was
+      44: Balance); rows with a button or a note are unchanged in
+      height. No tabular digits added: the values that are numbers set
+      their own, as before.
+    - Time zone picker: under the pointer `hover` (was `selection`, not
+      rendered: the offscreen app never hovers); radius 5 → 6; the tick
+      1 pt closer to the name (8 apart, was 9); a long name keeps 16
+      from the offset (was 30; the rendered names fit either way).
+    - Members: rows 8 apart → 8 of padding in the row (the same 32 pt
+      pitch); the list 4 pt further from what is above and below it (the
+      rows' own padding); a note 8 from the name (was 9). Boosts: each
+      row 30 tall (was 22, 6 apart), so the panel is 8 pt taller for one
+      booster. In both, a long name keeps 16 from the end (was 24), and
+      the list's scroll indicator sits about 2 pt from the panel's edge
+      (the list is outdented 8 to line the rows' text up).
+    - Mentions: the row's padding 12 by 8 (was 20 by 13 with
+      `SidebarRowStyle`'s on top of its own), avatar to text 12 (was 10);
+      its hover is `hover` at radius 6 as before.
+    - Search results: the selected row's time `secondaryText` →
+      `selectionText` at 80%; the rest the same for names that fit (a
+      long snippet keeps 16 from the time, was 24).
+  - Renders: new development profiles b12-app (the app), b12-bob and
+    b12-carol on the loopback stack, all funded by `scripts/fund-dev.sh`;
+    seeded from the CLI: Bob's tribe Rows Club (both joined; messages,
+    one mentioning app, app's 20-sat boost), app's private App Club (Bob
+    approved, Carol waiting), payments both ways with Bob, an invite of
+    300 for "Dana". The same drive file before and after, offscreen, with
+    temporary driver hooks (not committed) to open the invite, Boosts, the
+    members panel, Mentions, a payment's detail, Receive, Pay an invoice
+    (the BOLT 11 test vector "coffee", expired) and the zone picker:
+    23 snapshots, pixel-diffed. Identical with this data (short names,
+    so no title reached the end): the main windows with Rows Club, the
+    sidebar's invite row and its panel, Payments' unselected list,
+    Receive's form. Differing only as above: the rest. Not
+    rendered: hover anywhere, light mode, Receive's paid invoice, a
+    payment with a routing fee or a ping, a booster still sending.
+    After the review's fixes the drive ran again with a fourth
+    profile, b12-dave (alias "Bartholomew Montgomery-Fitzwilliam of
+    Llandaff", in App Club as Bartholomew_MontgomeryFitzwilliam_of_Llandaff,
+    funded by `fund-dev.sh`, approved by app, and paying app 42 sats),
+    plus a temporary hook opening his Remove confirm: the panels with
+    short names (Boosts, the Rows Club members, a member's tribe
+    details, the invite, the zone picker) are pixel-identical to the
+    first after renders; the owner's tribe details differ only in the
+    member count.
+- **Batch 13, `EmptyState` (2026-10-11).** `UI/EmptyState.swift`,
+  shadcn's `Empty`: `EmptyState(message, title:, size:) { actions }`,
+  the words centred and selectable in the room they are given, an
+  optional 15 pt semibold title above and actions below, 10 apart. Sizes:
+  `.md` (14 pt alone, 13 under a title, 24 of padding) and `.sm` (12 pt,
+  8 of padding, a list in a panel). `EmptyPlace` (MainView) and the web
+  pane's `LoadProblem` are gone. On it: the start screen ("Pick a
+  conversation." and "Pick a conversation, or add a contact.", under the
+  "Peel" header, through `Detail.start`), Threads, Mentions (its header
+  now always drawn above the list or the empty state, rather than the
+  whole screen swapped), Payments, the Account's "No time zone matches."
+  (`.sm`) and the web pane's failed page (title "Could not open <host>"
+  or "that address", Try again `.peel(.outline, size: .sm)` only when
+  there is an address to try). No words changed. Left out of the doc's
+  sketch: `systemImage:` (no site has an icon; it comes with the first
+  one).
+  - Every visual difference, before (`origin/main`) → after:
+    - The zone picker's "No time zone matches." is centred across the
+      list (was leading, lined up with the rows' text); same size,
+      colour and padding.
+    - Every message is selectable (only the web pane's was) and centred
+      if it wraps (only the web pane's was); the web pane's title also
+      centres when a long host wraps (was leading). The screens' messages
+      gain 24 of padding, which only matters where one would wrap.
+    - Rendered, nothing moves: the text sits at the same pixel bounds
+      in every snapshot. Single-line text drawn with
+      `multilineTextAlignment` or `textSelection` now set is
+      antialiased slightly differently (edge pixels up to 69–127 of 255
+      apart in the pixel diff, no whole-pixel shift); the web pane's
+      message, which had both before, is identical.
+  - Review (an independent agent; `/code-review`, `/simplify` and
+    `/security-review` passes): no code must-fix. Applied: this entry,
+    the section 4 note, AGENTS.md's wording and indent, the README's
+    lead-in, the message size as a `switch`. Security: none (the host in
+    the title is plain text, as before).
+  - Renders: new development profile b13-empty on the loopback stack (no
+    sats, nothing seeded), the same drive file before and after,
+    offscreen, with temporary driver hooks (not committed) for Threads,
+    Mentions, an unknown chat, the start screen, the zone picker and the
+    web pane: start, no chat, Threads, Mentions, Payments (connected),
+    the zone picker searching "zzqq", the web pane failing on a closed
+    loopback port (with Try again) and refusing an ftp address (without).
+    Not rendered: Payments while offline ("…once Peel is connected.") or
+    with a problem, Mentions with a problem, light mode.
+- **Batch 14, the tokens sweep (2026-10-12).** `Theme.Space` (`xs` 4,
+  `sm` 8, `md` 12, `lg` 16, `xl` 20) on every padding and stack gap that
+  was one of those numbers (227 sites, no value changed; off-grid values
+  stay as numbers). `Theme.Radius` on every corner: no literal radius is
+  left in `PeelApp`. `Theme.AvatarSize` (16, 20, 24, 32, 48, 64) on every
+  avatar but the call window's tiles. `Theme.font` sizes lose 12.5 and
+  13.5 (12.5 → 12, 13.5 → 13, an invoice's memo in a chat → 14, a key in
+  the hover card 11.5 mono → `Theme.code(12)`). `View.muted()` in
+  `Styles` (12 pt `secondaryText`, wrapping) replaces 64 hand-set muted
+  lines and the three `note(_:)` helpers; one-line muted text with its
+  own `lineLimit` keeps the modifiers by hand. `SettingDropdown`
+  (`Controls`) replaces the three dropdown rows that saved a setting and
+  showed its help or problem (section 1's `SettingRow` row). Counts go
+  through `Formatting.count` (chats, matches, "N new messages", boosts,
+  members, payments, "bought N times"; `replies` and `people` call it),
+  dates and times through `Formatting.time` (moved from `TimeZoneViews`,
+  with a zone and seconds), `date`, `dateAndTime` (also behind `expiry`)
+  and `moment`. `menuBoxed` takes any shape; `menuShadow` and
+  `veilTones` moved into `Theme`. File and audio cards are `Card(.inset)`.
+  - Every visual difference, before (`origin/main`) → after:
+    - Corners: menus 8 or 10 → 12 (`panel`), their rows 5 → 7, the
+      mention suggestions' box 8 → 9 and rows 5 → 7; row fills 6 → 7
+      (the sidebar's rows and highlight ring, `ListRow`, a thread
+      summary's hover, the sidebar's account button, `dropdownBoxed`);
+      the hover card 10 → 12; quotes 8 → 9, code blocks 6 → 9, the file
+      and audio card 14 → 9 with a new `divider` hairline, a picture
+      grid's tiles and the tray's 8 or 10 → 9, the image viewer's 8 → 9;
+      Payments' quoted message 10 → 9; the QR code's tile 8 → 9; the call
+      window's control bar 10 → 9 (tiles 12 and tags 6 → 7). The
+      "Copied" pill (16 on a 31 pt pill) is a circular capsule and the
+      jump button (18 on 36) a circle: the same shapes.
+    - Avatars: the sidebar's chat and invite icons 18 → 20, and the
+      sidebar's icon column 18 → 20 wide (every row's text 2 pt further
+      right, each chat row 2 pt taller); your photo in the sidebar 30 →
+      32; the Account's photo 88 → 64 (everything under it 24 pt higher);
+      details panels' hero 56 → 48; the hover card 48 (unchanged); tribe
+      details' owner and you 18 → 20; boosters 22 → 24; Mentions 28 → 32;
+      a payment's detail 36 → 32; Join a tribe's and an invite's previews
+      36 and 28 → 32; the account menu's identity 34 → 32; link cards 44
+      → 48; a picture field in a form (a tribe's image, your photo in a
+      tribe) 40 → 48.
+    - Type: Payments' row subtitles, a payment's headline, call card
+      lines, link card details, Receive's expiry and the call window's
+      tags 12.5 → 12; Receive's "Waiting for payment", a payment's note
+      and quoted message, the call switch, the call window's pills and
+      the hover card's local time 13.5 → 13; an invoice's memo in a chat
+      13.5 → 14. Muted lines with no `fixedSize` before (a few notes and
+      captions) now wrap rather than truncate when squeezed; none was
+      seen squeezed.
+    - Words: "Contact since 12 October 2026" → "12 Oct 2026"; a payment's
+      "When" and "You already paid … On …" gain the year; an invite's
+      "Made …" and an expired invoice's "It ran out …" drop the year
+      when it is this one ("12 Oct, 00:14", was "12 Oct 2026 at 00:14");
+      Mentions' time is the same day-and-time form, with the year only
+      when not this one; counts group thousands ("1,200 replies"); the
+      image viewer's and message rows' times are unchanged.
+  - Renders: new development profiles b14-app (the app) and b14-bob on
+    the loopback stack, both funded by `scripts/fund-dev.sh`; seeded from
+    Bob's CLI: a DM (messages both ways, 350 sats, a file, a code block, a
+    reply) and his tribe Token Club (app joined; a thread of two, a boost,
+    a mention). The same drive before (`origin/main`) and after, offscreen,
+    with temporary driver hooks (not committed) for Threads, Mentions, a
+    thread, the members panel, Tribe details, Receive and Pay: the
+    sidebar, the DM with its details and Send sats, the tribe with Tribe
+    details and Members, a thread, Threads, Mentions, Account, Payments,
+    Receive, Pay an invoice, and onboarding's welcome on a new profile.
+    Pixel diff: identical: the welcome screen, Send sats, Members, and the
+    chat column of the DM and the tribe before the file seed; differing
+    only as listed above (and in relative times like "9 min ago").
+    Idle: the tribe open for a minute, 0.0% CPU. Not rendered: menus (no
+    mouse step), the hover card, the "Copied" pill, the jump button, a
+    picture grid, the call window and call cards, a paid attachment's
+    veil, light mode, Mentions' rows (the seeded mention did not match).
+  - Review (an independent agent on the diff; the skills ran against
+    another checkout). Applied: `veilTones` was copied, not moved; the
+    sidebar's icon column stayed 18 wide around 20 pt icons; Mentions lost
+    the time on older rows (now `dateAndTime`); Receive's "Received" grew
+    to a full date (now `time` with seconds); the README's type list and
+    muted wording; doubled blank lines. Not applied: the ternaries the
+    script skipped (`multiline ? 8 : 0` and the like) and `Spacer`
+    minimums, left as numbers; the one-line muted lines with a
+    `lineLimit`. Security: none (styling and wording only).
+  - Left for later, and why:
+    - The small text actions in rows (Approve and Decline, a member's
+      Remove, Unpin, a failed message's Retry, Cancel and Discard,
+      `InlineConfirm`'s `.text`): a variant needs Tom's call on colour
+      (muted, or `link` blue as every other text action, where Retry is
+      `accent` today) and hover, and Retry sits in the message list.
+    - Focus styling for `PeelButton` and `IconButton`, and folding
+      `IconButton`'s chrome into `PeelButton`: needs keyboard navigation
+      checked in an active app, which the offscreen check cannot do.
+    - `ThreadCard` and `QuotedMessage` stay hand-drawn boxes on the
+      tokens: one has a hover fill and the other is a quote, not a card.
+    - The call window's tile avatars (96, 52, by height) stay off the
+      scale: its own board (C3).
+    - The 20 or so ad-hoc opacities of tokens, and the off-grid spacing
+      (2, 6, 10, 14 and others): changing them moves layouts everywhere,
+      a taste pass rather than a sweep.
+  - Tests: nothing new (`PeelApp` has no test target). `swift test`: 618
+    passed in the main run, 107 in the other three (one known issue, IPv6
+    hosts, as on `main`).

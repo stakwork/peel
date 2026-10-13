@@ -12,7 +12,9 @@ struct Receipt: Sendable {
     let chat: String?
     let messageID: Int64?
     let paymentHash: String?
-    let senderAlias: String?
+    /// Who sent it, as the message names them (`Sender(member:)`; only its
+    /// name is read, the member's in a tribe); nil for an invoice.
+    let member: Sender?
     /// A payment's note or an invoice's memo.
     let note: String?
 
@@ -22,7 +24,7 @@ struct Receipt: Sendable {
         chat = message.chat
         messageID = message.id
         paymentHash = message.paymentHash
-        senderAlias = message.senderAlias
+        member = Sender(member: message)
         note = message.preview.nilIfEmpty
     }
 
@@ -34,7 +36,7 @@ struct Receipt: Sendable {
         chat = invoice.chat
         messageID = nil
         paymentHash = invoice.paymentHash
-        senderAlias = nil
+        member = nil
         note = invoice.memo.nilIfEmpty
     }
 
@@ -50,7 +52,7 @@ struct Receipt: Sendable {
     /// "+350 sats", with "· 3 payments" for more than one.
     static func label(_ receipts: [Receipt]) -> String {
         let total = "+\(Sats.format(msat: totalMsat(receipts)))"
-        return receipts.count > 1 ? "\(total) · \(receipts.count) payments" : total
+        return receipts.count > 1 ? "\(total) · \(Formatting.count(receipts.count, "payment"))" : total
     }
 }
 
@@ -195,7 +197,7 @@ struct BalanceLabel: View {
                         HStack(spacing: 0) { balance(shown); Text(" · ") + clock + Text(" \(Sats.number(msat: waitingMsat))") }
                         HStack(spacing: 0) { balance(shown); Text(" · ") + clock }
                     }
-                    .help("\(Sats.format(msat: waitingMsat)) waiting for people to come online: their server takes it then, so it is not yours to spend.")
+                    .help("\(Sats.format(msat: waitingMsat)) held for people who are offline")
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(Sats.format(msat: shown)), \(Sats.format(msat: waitingMsat)) waiting")
                 } else {
@@ -236,8 +238,7 @@ struct PaymentsLink: View {
             Image(systemName: "bolt").font(.system(size: 13))
         } accessory: {
             if msat > 0 {
-                UnreadBadge(text: Sats.signed(msat: msat, incoming: true),
-                            foreground: Theme.confirmed, fill: Theme.confirmed.opacity(0.16))
+                Badge(Sats.signed(msat: msat, incoming: true), .success)
                     .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
                     .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
                     .accessibilityLabel("Received \(Sats.format(msat: msat)), not seen yet")

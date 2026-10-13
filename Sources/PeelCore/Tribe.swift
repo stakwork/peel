@@ -57,6 +57,32 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     /// Whether this account can run the tribe: its owner, and still in it.
     public var canManage: Bool { isOwner && canPost }
 
+    /// How this account can go from a tribe (`Engine.leaveTribe`).
+    public enum Exit: Sendable {
+        /// Leave a tribe it is in: the tribe is told.
+        case leave
+        /// Remove from Peel a tribe it can no longer post in (waiting,
+        /// declined, removed, deleted): nothing is sent.
+        case remove
+    }
+
+    /// How this account can go from this tribe; nil for one already left,
+    /// and for the owner of a live tribe, who can only delete it.
+    public var exit: Exit? {
+        guard !left else { return nil }
+        if status != .active { return .remove }
+        return isOwner ? nil : .leave
+    }
+
+    /// The tribe's web pages, the app first as the official apps prefer it,
+    /// then the second brain: only those it has, in the one order every
+    /// list of them shows.
+    public var pages: [TribePage] {
+        [(TribePage.Kind.app, appURL), (.secondBrain, secondBrainURL)].compactMap { kind, address in
+            address.flatMap(URL.init(string:)).map { TribePage(kind: kind, url: $0) }
+        }
+    }
+
     public var id: String { pubkey }
 
     public var displayName: String {
@@ -129,6 +155,13 @@ public struct Tribe: Codable, Sendable, Identifiable, Equatable, FetchableRecord
     func sentPhoto(account: String) -> String {
         myPhotoURL ?? account
     }
+}
+
+/// One of a tribe's web pages (`Tribe.pages`), opened in the web pane.
+public struct TribePage: Sendable, Equatable {
+    public enum Kind: Sendable { case app, secondBrain }
+    public let kind: Kind
+    public let url: URL
 }
 
 /// A tribe's registry record as its details show it, with the owner's

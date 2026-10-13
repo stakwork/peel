@@ -54,7 +54,7 @@ struct CopyButton: View {
 
     var body: some View {
         if iconOnly {
-            HoverIconButton(help: title, action: run) { label }
+            IconButton(help: title, action: run) { label }
         } else {
             Button(action: run) { label }
                 .accessibilityLabel(title)
@@ -152,7 +152,7 @@ struct ToastView: View {
                 .foregroundStyle(Theme.text)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .menuBoxed(cornerRadius: 16)
+                .menuBoxed(in: Capsule(style: .circular))
                 .transition(
                     reduceMotion
                         ? .opacity

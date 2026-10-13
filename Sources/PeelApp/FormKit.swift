@@ -3,57 +3,8 @@ import SwiftUI
 // Peel's form system: shadcn's conventions in SwiftUI (Tom, 2026-10-09),
 // replacing direction A's label-left, value-right rows for text. Each field
 // is a `FormItem`, its label above a bordered input that reads left; switches
-// keep their label on the left. See docs/design/README.md, "Forms".
-
-/// A form in a popover: the title with a close button, the sections, then
-/// the footer (`FormFooter`). `compact` is for a form of one or two fields,
-/// such as Join a tribe: narrower, with no sections.
-struct FormPopover<Content: View, Footer: View>: View {
-    let title: String
-    var compact = false
-    let close: () -> Void
-    @ViewBuilder let content: Content
-    @ViewBuilder let footer: Footer
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(title).font(Theme.font(15, .bold))
-                Spacer(minLength: 8)
-                HoverIconButton(systemImage: "xmark", help: "Close", action: close)
-            }
-            .padding(.leading, 18)
-            .padding(.trailing, 10)
-            .padding(.top, 10)
-            VStack(alignment: .leading, spacing: compact ? 12 : 0) {
-                content
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, compact ? 10 : 2)
-            .padding(.bottom, 4)
-            footer
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-        }
-        .frame(width: compact ? 320 : 372)
-        // The shadow on the box alone: on the whole view every label would cast one.
-        .background {
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .fill(Theme.sidebar)
-                .shadow(color: Theme.popoverShadow, radius: 10, y: 4)
-        }
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous).strokeBorder(Theme.formEdge))
-        .endsEditingOnClick()
-        .preference(key: DrawsOwnPanelBox.self, value: true)
-    }
-}
-
-/// Set by a panel that draws its own box (`FormPopover`), so the presenter
-/// leaves out the menu box it gives every other panel.
-struct DrawsOwnPanelBox: PreferenceKey {
-    static let defaultValue = false
-    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
-}
+// keep their label on the left. A form in a popover is a `Panel` (UI/Panel.swift).
+// See docs/design/README.md, "Forms".
 
 extension View {
     /// A click on the form anywhere but a field or a control ends editing:
@@ -70,17 +21,6 @@ extension View {
                 #endif
             }
     }
-
-    /// A raised card with a hairline: a switch row, a form's previews (a
-    /// tribe, a contact), the Account screen's sections and boxes.
-    func formCard() -> some View {
-        background {
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.menu)
-                .shadow(color: Theme.sectionShadow, radius: 1, y: 1)
-        }
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.formEdge))
-    }
 }
 
 /// A group of fields under a heading ("Basics", "Pricing"), stacked.
@@ -94,15 +34,11 @@ struct FormSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let title {
-                Text(title)
-                    .font(Theme.font(12, .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-            }
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            if let title { SectionHeader(title) }
             content
         }
-        .padding(.top, 16)
+        .padding(.top, Theme.Space.lg)
     }
 }
 
@@ -202,12 +138,14 @@ struct FormTextField: View {
     var monospaced = false
     var focusOnAppear = false
     var focusRequest = 0
+    /// Dots for what is typed (an API key); one line.
+    var secure = false
 
     @FocusState private var focused: Bool
     @State private var hovering = false
 
     var body: some View {
-        let multiline = axis == .vertical
+        let multiline = axis == .vertical && !secure
         HStack(alignment: multiline ? .firstTextBaseline : .center, spacing: 7) {
             if let systemImage {
                 Image(systemName: systemImage)
@@ -215,14 +153,21 @@ struct FormTextField: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             // No prompt is an empty one: the label above already names the field.
-            TextField(label, text: $text, prompt: Text(prompt ?? "").foregroundStyle(Theme.tertiaryText), axis: axis)
-                .textFieldStyle(.plain)
-                .font(Theme.font(13))
-                .fontDesign(monospaced ? .monospaced : nil)
-                .lineLimit(multiline ? 3...6 : 1...1)
-                .focused($focused)
+            let prompt = Text(prompt ?? "").foregroundStyle(Theme.tertiaryText)
+            Group {
+                if secure {
+                    SecureField(label, text: $text, prompt: prompt)
+                } else {
+                    TextField(label, text: $text, prompt: prompt, axis: axis)
+                        .lineLimit(multiline ? 3...6 : 1...1)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(Theme.font(13))
+            .fontDesign(monospaced ? .monospaced : nil)
+            .focused($focused)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, multiline ? 8 : 0)
         .frame(maxWidth: .infinity, minHeight: 32, alignment: multiline ? .topLeading : .leading)
         .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
@@ -256,7 +201,7 @@ struct FormNumberField: View {
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.md)
         .frame(maxWidth: .infinity, minHeight: 32)
         .modifier(FieldChrome(focused: focused, hovering: hovering, problem: problem))
         .focusesOnClick($focused)
@@ -281,11 +226,12 @@ struct FormSwitchRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
-            .toggleStyle(FormSwitchStyle())
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .formCard()
+        Card {
+            Toggle(isOn: $isOn) { FormLabel(label, detail: detail) }
+                .toggleStyle(FormSwitchStyle())
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, 10)
+        }
     }
 }
 
@@ -294,7 +240,7 @@ private struct FormSwitchStyle: ToggleStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.md) {
             configuration.label.frame(maxWidth: .infinity, alignment: .leading)
             Button { configuration.isOn.toggle() } label: {
                 Capsule()
@@ -330,9 +276,10 @@ struct FormDestructiveSection: View {
     let action: () async -> Void
 
     var body: some View {
-        InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
-            .formCard()
-            .padding(.top, 16)
+        Card {
+            InlineConfirm(trigger: trigger, prompt: prompt, explanation: explanation, confirm: confirm, style: .section, action: action)
+        }
+        .padding(.top, Theme.Space.lg)
     }
 }
 
@@ -414,9 +361,7 @@ struct InlineConfirm<Trigger: View>: View {
                     Text(prompt).foregroundStyle(Theme.secondaryText)
                 } else {
                     Text(prompt)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .muted()
                 }
             }
             if style == .section { Spacer(minLength: 8) }
@@ -474,7 +419,7 @@ private struct SectionTrigger<Label: View>: View {
             label
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.destructive)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                 .background(hovering ? Theme.fieldFill : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .contentShape(Rectangle())

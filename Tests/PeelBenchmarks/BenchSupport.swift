@@ -33,8 +33,15 @@ enum Bench {
 
 /// A profile directory removed with the object.
 final class BenchProfile {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PeelBench-\(UUID().uuidString)", isDirectory: true)
+    let url: URL
+
+    /// A `name` gives a directory each run reuses, cleared first: for the
+    /// shared profile, which is never released to remove its own.
+    init(name: String? = nil) {
+        url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PeelBench-\(name ?? UUID().uuidString)", isDirectory: true)
+        if name != nil { try? FileManager.default.removeItem(at: url) }
+    }
 
     func storage() throws -> Storage { try Storage(directory: url) }
 
@@ -103,7 +110,7 @@ enum Seed {
 
     static func large() throws -> Storage {
         if let shared { return shared.1 }
-        let profile = BenchProfile()
+        let profile = BenchProfile(name: "large")
         let storage = try profile.storage()
         _ = try storage.apply(chats())
         var n = 0

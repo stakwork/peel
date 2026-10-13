@@ -71,6 +71,10 @@ actor Stack {
         /// Stops it in place: connections stay open and carry nothing.
         case freeze
         case thaw
+        /// A connection that sends a register hears nothing more from the
+        /// broker: the server's reply is lost. `hear` ends it for new ones.
+        case deafen
+        case hear
     }
 
     /// The network between the clients on the wire tap and the broker.
@@ -89,6 +93,11 @@ actor Stack {
         return try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension.isEmpty }
             .map { try Data(contentsOf: $0) }
+    }
+
+    /// Where the memes stub keeps an account's preferences file, as uploaded.
+    func preferencesFile(of pubkey: String) throws -> URL {
+        try current().directory.appendingPathComponent("memes/preferences/\(pubkey)")
     }
 
     private static func parse(_ text: String) -> [String: String] {

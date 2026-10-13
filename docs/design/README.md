@@ -21,7 +21,7 @@ layout, a conversation with an inspector panel, an agent inbox home) were
 mocked and rejected on 2026-10-07.
 
 Colours and type are Sphinx's, because Peel is meant to replace the official
-apps. The sidebar header is you (photo, name, balance) and Peel's menu since
+apps. The sidebar header is you (photo, name, balance), opening Account, since
 option S2; the Peel logo shows only on the lock and welcome screens.
 
 ## Layout
@@ -33,11 +33,9 @@ then the sidebar collapses; panels never overlay the conversation.
 
 Top to bottom:
 
-1. **You, on top** (option S2, Tom, 2026-10-07: like a workspace
-   switcher). Your photo, your name with a chevron, and the balance in sats
-   under it. Clicking it opens Peel's menu: your name, short key and balance,
-   then "Account…" (⌘,) and "Copy contact info". "Receive sats" and "Invite
-   someone" join it when they are built. On the right, Sphinx's connection
+1. **You, on top** (option S2, Tom, 2026-10-07). Your photo, your name,
+   and the balance in sats under it. Clicking it opens the Account screen,
+   as Account… (⌘,) does; no menu (Tom, 2026-10-12). On the right, Sphinx's connection
    bolt: green when connected, orange otherwise; clicking it shows the state,
    the retry countdown and the last connection error.
 2. **Search.** One field over every conversation.
@@ -142,9 +140,11 @@ and the arrows go on from it.
   sit in the row. Hovering lights the row and shows Reply, Boost (others'
   messages) and More at its top-right, over its top edge, as in Slack. Joins and leaves are a quiet
   centred line ("carol joined"). Someone who sent no name is "Someone"
-  everywhere (rows, quotes, notifications), with "?" as their initials.
+  everywhere (rows, quotes, notes, mentions, notifications), with "?" as
+  their initials: one owner, `Sender` (`People.sender(of:inTribe:)`, and
+  `Sender(member:)` for a tribe member named by their own message).
   Payments and payment requests share the rows' chrome (`rowChrome`) and
-  run header; cards in a chat are `cardBoxed`.
+  run header; cards in a chat are `Card(.inset)`.
 - **Link cards:** the first tribe or contact link in a message gets a 320 pt
   card under the text, at one height whatever is known yet (lines
   reserved; soft bars while loading). A tribe: its image, name, two lines
@@ -211,10 +211,14 @@ and the arrows go on from it.
   replies" as a link (bold, with "N new", when unread) and "Last reply
   <sender> <time>". Clicking it opens the thread panel. DMs never collapse:
   replies show inline with their quote (Tom, 2026-10-07).
-- **Composer.** A rounded text field ("Message #Tribe" or "Message Name")
-  and a round send arrow beside it, not a "Send" button (Tom, 2026-10-07).
-  Attach, send sats and mention join it with their phases; no control appears
-  before it works. In a DM a round bolt beside the paperclip opens Send sats.
+- **Composer.** One rounded field ("Message #Tribe" or "Message Name")
+  that holds everything (Tom, 2026-10-10: "the send button should be
+  inside the input field"): the reply bar and the file tray at its top,
+  the text, then a row under the text with the paperclip (and in a DM the
+  bolt, which opens Send sats) at the left and a small send arrow at the
+  right, not a "Send" button (Tom, 2026-10-07). The arrow is filled when
+  there is something to send and muted otherwise. Attach, send sats and
+  mention joined it with their phases; no control appears before it works.
 
 ### Thread panel (360 pt)
 
@@ -255,7 +259,19 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
   Notifications; and "Remove this account from this Mac", the only red text.
 - **New account:** Welcome (invite or restore), then four steps: invite,
   name and photo, a six-digit PIN with an optional Touch ID unlock, and the
-  twelve words with an "I've written them down" check before Peel opens.
+  twelve words. "I've written them down" then asks for three of them, at
+  random places, typed back; Peel opens once they match (finding N5,
+  2026-10-11). A wrong word is named by its place, never shown.
+- **The words checked** are a setting of the account (`wordsConfirmed`),
+  never the words: set by that check, by the same check from Account's
+  "Twelve words" row (after the PIN), or by a restore. Accounts from
+  before it count as not checked.
+  Forget on the lock screen says first that the account holds sats, when
+  its last balance says so, and that without the words it and its sats
+  cannot be brought back; otherwise "this account and any sats it holds".
+  Never how many before the PIN, as a locked notification says only "Sats
+  received", and never "no sats": the stored balance may be older than
+  sats received since.
 - **Restore:** twelve word fields (paste fills all twelve, suggestions as you
   type), then a progress page: account, contacts, messages with a count,
   tribes. "Open Peel" works before history finishes.
@@ -281,6 +297,17 @@ Review notes left open:
   official app clears its context.
 - If `Account.restore` fails after the words are saved, a retry reports that an
   account already exists until the app is relaunched.
+
+## Words
+
+Secondary text is the exception, not the default (Tom, 2026-10-13). A
+label, its value and its control usually say enough; a helper line, a
+switch's description, a header's subtitle or a caption under a row is
+added only when someone would otherwise make a mistake: money moving or
+held, something that cannot be undone, the twelve words, a state they
+must act on, or an error. When one earns its place it is one short
+sentence in everyday words: no "server", "offset", "Keychain", "macOS",
+no edge cases, no account of how Peel works inside.
 
 ## Colour
 
@@ -468,18 +495,216 @@ checked under its field) stays where it is.
 The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over
 `Theme` alone. The review
 [../reviews/2026-10-09-design-library.md](../reviews/2026-10-09-design-library.md)
-inventories what is still drawn by hand and plans the rest in batches:
-`IconButton`, `Panel` (with the placement rule for its actions), the
-composer with its buttons inside the field, `SectionHeader`, `Card`,
-`Callout`, `Badge`, `Chip`, `ListRow`, `FactList` and `EmptyState`. Its
-batch plan comes before the payments fixes and the personal agent. Until
-a batch lands, new UI uses the pieces that exist (`PeelButton`, `FormKit`,
-`Controls`, `CopyButton`) and adds no new variant.
+inventories what was drawn by hand and planned the library in batches,
+all fifteen now done (the tokens sweep, batch 14, last); its Progress
+lists what was left for later. New UI uses the pieces that exist (`PeelButton`, `IconButton`, `Panel`,
+`SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `FormKit`, `Controls`, `CopyButton`) and the tokens below, and adds no new variant.
 
 Built so far:
 
-- **Tokens.** `Theme.Radius`: `control` 7 (buttons, fields), `card` 9
-  (a form's cards), `panel` 12 (the popover).
+- **Tokens** (batches 1 and 14, in `Theme.swift`). No layout number is
+  written where a token says it:
+  - `Theme.Radius`: `control` 7 (buttons, fields, a row's hover or
+    selected fill, a menu's rows, the call window's name tags), `card` 9
+    (every `Card` and `Callout`, file and audio cards, quotes and code
+    blocks, pictures, a QR code's white tile, the call window's control
+    bar), `panel` 12 (the popover, a menu, a hover card, a call tile).
+    Chips, badges, the "Copied" pill and the jump button are capsules or
+    circles. A box inside another takes the outer radius less the inset
+    (the segmented choice's 5 inside its 7: `control - 2`).
+  - `Theme.Space`: `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 20, for padding
+    and the gaps in stacks. Values off the grid (1–3, 5–7, 9, 10, 14, 18)
+    stay as numbers where a layout was tuned by eye.
+  - `Theme.AvatarSize`: `xs` 16 (inline, a thread's latest reply, the
+    boost chip's faces), `sm` 20 (the sidebar's chats, search results,
+    the composer's mentions, a fact's owner; the sidebar's icon column is
+    this wide), `md` 24 (a panel's list:
+    members, boosters; a call card's faces), `lg` 32 (beside a message, a
+    header, Payments, Mentions, the Join and Add previews), `xl` 48 (the
+    top of a details panel, a link card, a picture field in a form), `xxl`
+    64 (your photo on the Account page). The call window's tiles size their
+    own.
+  - Type: the sizes are 10, 11, 12, 13, 14, 15, 16, 17 (a message's
+    second heading), 20, 24 and 28 (no half points). `Text(…).muted()`
+    (`Styles.swift`) is the muted line: 12 pt `secondaryText`, wrapping,
+    for a note, a caption and the help under a control. A muted line held
+    to one line (a row's detail, a preview) sets its own `lineLimit` and
+    keeps the font and colour by hand.
+  - Shadows: `popoverShadow` under a panel, `menuShadow` (black 25%)
+    under a menu, a suggestion list and the jump button.
+  - Words: counts go through `Formatting.count` ("1 member", "5
+    replies", "99+ new messages"), times and dates through
+    `Formatting.time` ("14:32"), `date` ("2 Oct 2026"), `dateAndTime`
+    ("2 Oct, 14:32", the year when not this one), `moment` ("Monday 5 October 2026 at
+    14:32:05", a payment's facts), `relative`, `when` and `expiry`.
+  - `SettingDropdown` (`Controls.swift`): a setting chosen from a
+    dropdown and saved at once, its help muted under it or what went
+    wrong (the PIN timeout, notification text, payment confirmation).
+- **Panel** (batches 4a and 4b). `Panel("Members", compact:, close:) { body } actions: { … } footer: { … }`
+  in `UI/Panel.swift`, shadcn's `Card` in a popover, used by every
+  popover: a 15 pt bold title, the panel's own actions and an
+  `IconButton` close, the body, the footer. The actions may be left out,
+  or the actions and the footer; a footer whose condition is false takes
+  no room. 372 wide, or 320 with `compact` (a short form with no
+  sections, or a short list). Radius `panel` 12 on `sidebar`, a
+  `formEdge` hairline, `popoverShadow` on the box only (so the labels
+  cast none). A click outside a field ends editing. It is the only box a
+  popover has: the presenter adds none. `PanelHero` is the top of a
+  details panel (the picture, the name in 16 bold, muted lines), shared
+  by a contact's and a tribe's details. The placement rule:
+  - A panel's own utility actions (the members panel's Copy link) go top
+    right, beside the title, as icon buttons. Copy buttons that belong to
+    a card in the body (a QR code's Copy link, Copy key) stay with it.
+  - Navigation (Members, Edit tribe…) goes bottom left.
+  - The commit (Save, Send, Join, Reconnect now) or the destructive
+    action (Leave tribe, Remove contact…) goes bottom right, one of them,
+    never both. A form with a commit keeps its destructive action as the
+    last card of its body (Delete tribe).
+  - Every panel has a title and a close button, the same box, and one of
+    the two widths: 372 for the forms, Tribe details and a contact's
+    Details; 320 for Join a tribe, Members, Boosts, Connection and the
+    Account's Time zone.
+- **Section headers** (batch 10). `SectionHeader("Members")` in
+  `UI/Section.swift`: 12 pt semibold in `secondaryText`, placed by its
+  caller. Every heading over a group is one: a form's sections
+  (`FormSection`), the Account's (`SettingsSection`), the Payments list's
+  days, a panel's lists (Waiting for approval, Members, All time zones)
+  and a label over a card's value (Public key). The sidebar's sections
+  keep their own, 13 medium and collapsible.
+- **Cards** (batch 10). `Card { … }` and `Card(.inset) { … }` in
+  `UI/Card.swift`, shadcn's `Card`, at radius `Theme.Radius.card` 9;
+  the content brings its own padding. `.raised` (the default) is `menu`
+  with a `formEdge` hairline and `sectionShadow` in light: a switch row,
+  `FormDestructiveSection`, the tribe's facts and share card, a contact's
+  key, previews in Add contact, an invite and Join a tribe, the Account's
+  sections and contact info, onboarding's restore rows. `.inset` is
+  `quote` with a `divider` hairline, for cards in a chat: the call card,
+  link cards, a payment request, a file or audio card, the sidebar's
+  on-a-call bar.
+  `menuBoxed` stays for menus, suggestion lists and the hover bar.
+- **Callouts** (batch 10). `Callout` in `UI/Card.swift`, shadcn's
+  `Alert`: an icon, the words, actions, and an optional dismiss, in a box
+  at radius 9 with 12 by 10 of padding. The words are 12 pt
+  `secondaryText` with monospaced digits, selectable: a bar's take three
+  lines at most, or one with `oneLine` (cut in the middle, so a file name
+  keeps its extension), and a note's wrap in full; a title above them
+  is 13 semibold. With a title it is a note, its actions (a link) under
+  the words; without one it is a bar, its actions and its ✕ (a `.sm`
+  `IconButton`) at the end. Tones: `.neutral` (`panel`, `divider`; the
+  icon carries any colour) and `.attention` (`attention` at 7% under a
+  28% hairline, `.problem`'s icon by default: something blocks the next
+  step, never red). Icons: `.problem` (amber `exclamationmark.circle`),
+  `.progress` (the small spinner), `.symbol(name, colour)`.
+  - A chat's notice and the window's: `Callout(detail:, icon: .problem, dismiss:)`.
+  - A tribe you cannot post in: the words, the spinner while waiting,
+    and Leave or Remove from Peel at the end.
+  - Not enough sats and an expired invoice: `.attention` with a title
+    and a link.
+  - The web pane's download (under way, saved with Show in Finder, or
+    failed): a bar in the strip along the pane's foot, under way and
+    saved on one line.
+- **Badges** (batch 11). `Badge("New")`, `Badge(count: 12)` in
+  `UI/Badge.swift`, shadcn's `Badge`: a word or count in a circular
+  capsule, 11 pt bold with monospaced digits, 6 by 1 of padding;
+  `Badge.text` caps a count at "99+" (the jump pill's "N new messages"
+  uses it too). Styles: `.default` (white on the accent: a sidebar row's
+  unread count, "New" on a contact who added you), `.mention` (gold,
+  `mentionYouText` on `mentionYouFill`: the row's chat mentions you;
+  blue never does), `.success` (Payments' "+350", `confirmed` on 16% of
+  it) and `.outline` (the day divider: 12 pt regular `secondaryText`
+  inside a `divider` hairline, 10 by 2, no fill). The video's duration
+  over its picture is not a badge and stays as it is.
+- **Chips** (batch 11). `Chip` in `UI/Badge.swift`, shadcn's `Toggle` in
+  a circular capsule: a fill and a hairline set by where it sits
+  (`ChipStyle`, as `Card`'s are) and whether it is lit. `.field`, in a
+  form or panel: `fieldFill` inside `inputBorder`, lit `selection` inside
+  the accent at 60%. `.inset`, in a chat: `quote` inside `divider`, lit
+  (yours) `boostMineFill` inside the accent at 25%. With an action it is
+  a plain button whose hairline firms to `secondaryText` at 40% under the
+  pointer. The label brings its own padding. `Chip("Bitcoin", selected:)`
+  is a tribe's tag (12 medium, 24 tall, a tick while on) in the edit
+  form, `Chip("Bitcoin")` the same shown in its details; a message's
+  boosts are `Chip(.inset, lit: mine, action:)` around the bolt, the
+  total and the faces.
+- **List rows** (batch 12). `ListRow` in `UI/Rows.swift`, shadcn's
+  `Item`: a start (avatar, tick), a title over an optional muted detail
+  (13 pt `text` over 12 pt `secondaryText` unless the caller sets its
+  own), and an end (a time, an amount, a row's own buttons; the end's
+  text is `secondaryText` too); the title column takes what the end
+  leaves and truncates, at least twice the spacing from the end. A time
+  or an amount in the end is `.fixedSize()` so it never truncates; a
+  row's buttons wrap first. On the selected fill the detail and the end
+  are `selectionText` at 80%, the sidebar's pairing (`secondaryText`
+  there is under 4.5:1). Sizes: `.sm` (8 apart, 8 by 4 of padding, 28
+  tall at least: a time zone, a member, a booster; a search result 36)
+  and `.md` (12 apart, 12 by 8: a payment, a mention). With an action it is a plain button: `hover` under the
+  pointer and **`selection` when selected, the one selected fill** (the
+  sidebar's, search results', a payment's), at radius 6; `tint` is a
+  fill of the row's own when not selected (a payment just received,
+  `confirmed` at 14%). Without an action it only lays out and never
+  lights (members, boosters: their menu is a right click). A list of
+  rows in a panel is outdented 8 so their text lines up with the
+  panel's; its headings take the same 8 back. The sidebar's rows (its
+  chats, Add contact, pending invites) keep `SidebarRowStyle`, 14 pt
+  with their unread and keyboard states, on the same two fills; the
+  menu's rows keep `MenuRow`.
+- **Facts** (batch 12). `FactList { Fact("Owner") { … } }` in
+  `UI/Rows.swift`, a description list on a `Card`: each `Fact` a muted
+  13 pt name in a column (100 wide, 150 on the Account page with
+  `labelWidth`), its value beside it and an optional action at the end
+  (Edit, Copy), on the first line's baseline, 12 by 9 of padding, 36
+  tall at least, a full-width hairline between facts.
+  `Fact("Amount", text: …, symbol:, tint:, monospaced:)` is a value in
+  words, selectable and wrapping, with an icon; `tint` colours both
+  (a payment's green Received, an invoice's amber Expired). Tribe
+  details, a payment, Pay an invoice, a paid invoice in Receive and
+  every Account section (`SettingsSection` is a `SectionHeader` over a
+  `FactList`).
+- **Empty states** (batch 13). `EmptyState("Threads you start or reply
+  to show up here.")` in `UI/EmptyState.swift`, shadcn's `Empty`: what a
+  screen, pane or list shows when it has nothing (or could not load it),
+  centred in the room it is given. The words are `secondaryText`,
+  centred and selectable (they may be a problem worth copying): 14 pt
+  alone, or 13 under a `title` (15 semibold); actions go below, 10
+  apart (the web pane's Try again, `.peel(.outline, size: .sm)`); 24 of
+  padding. `.sm` is a list in a panel: 12 pt, 8 of padding (the
+  Account's "No time zone matches."). The start screen ("Pick a
+  conversation…", under the "Peel" header), Threads, Mentions, Payments
+  and the web pane's failed page use it; a screen keeps its own
+  `DetailHeader` above it.
+- **Problem lines** (batch 7). Every failure the app shows goes through
+  `PeelError.problem(error, couldNot:)` in `PeelCore`: the error's words
+  as a sentence (a capital, unless the first word is a name such as a
+  file name or host, and a full stop), after "Could not <action>." when
+  the words alone would not say what failed: "Could not leave the
+  tribe. The server could not be reached." A refusal under the button
+  that caused it stands alone: "The balance is not enough for that." It
+  takes words already in hand too (a reason a view was given, the
+  engine's notices), and a sentence passes through unchanged. The colour
+  is `secondaryText` or `attention`, never red. Never show
+  `PeelError.readable` bare, and never write "Could not …: " by hand.
+- **Composer** (batch 5). Its buttons sit inside the field: attach and
+  the bolt are ghost `IconButton`s at the bottom left, send a `PeelButton`
+  `.sm` square at the bottom right (`.primary`, or `.ghost` and disabled
+  with nothing to send). Radius `Theme.Radius.control` plus the buttons'
+  6 pt inset (13), `.continuous`, so its corners and theirs are concentric.
+- **Keys** (batch 9). A key read before the views see it goes through a
+  `KeyMonitor` (`PeelMenu.swift`) and names its code with `KeyCode`
+  (`.escape`, `.return`, `.down`…), never a number. Escape has one
+  written order, in `KeyMonitor`'s doc comment: a menu (its confirm, then
+  its submenu, then the menu), a panel, the image viewer, the search bar
+  while its field has the cursor, the sidebar's highlight, then the view
+  with the keyboard (the composer's mention list, then its reply, then
+  its thread; the web
+  pane's address; the Payments pane; the call window's grid). Only the
+  first that is open takes it, and the arrows and Return follow the same
+  order. Monitors run in the order they started, not this one, so a new
+  one defers to those above it itself (`MenuPresenter.takesKeys`: its
+  own window, no menu or panel; `AppModel.viewer`). A ⌘ shortcut on a
+  view (`.hiddenShortcut`: ⌘I, ⌥⌘A) works with the cursor in any text
+  field, the composer included, as AppKit offers ⌘ keys to the window's
+  views first; a key without ⌘ (End, the call window's Escape) reaches
+  it only when the focused view does not take the key.
 
 ### Buttons (`PeelButton`)
 
@@ -535,12 +760,51 @@ Button("Pay") { … }.buttonStyle(.peel(.primary, fill: Theme.attention))   // a
   `.sm`; panels and forms `.md`; onboarding `.lg`, its Back `.ghost`.
   The Payments header's buttons are `.outline`, `.secondary` while their
   pane is open.
-- Still drawn by hand, for later batches: icon buttons (batch 3), the
-  call header's split Join and its chevron (batch 3), and the small text
-  actions inside rows (a join request's Approve and Decline, a pinned
-  message's Unpin, a failed message's Retry and Cancel), which are muted or
+- The call header's split Join is one outline box (`fieldFill`,
+  `inputBorder`, `Theme.Radius.control`) holding a ghost `.sm` Join and a
+  ghost `IconButton` chevron, split by a 1 pt `inputBorder` line.
+- Still drawn by hand: the small text actions inside rows (a join
+  request's Approve and Decline, a member's Remove, a pinned message's
+  Unpin, a failed message's Retry and Cancel), which are muted or
   `accent` 11–12 pt text with a mini spinner, and `InlineConfirm`'s
-  `.text` style that draws them (batch 12, `ListRow`).
+  `.text` style that draws them. `ListRow` holds them in its end slot as
+  they are; a text-action variant was left by the tokens sweep for
+  Tom's call (muted or `link` blue, and its hover).
+
+### Icon buttons (`IconButton`)
+
+shadcn's `<Button variant="ghost" size="icon">`, in `UI/IconButton.swift`.
+`HoverIconButton` and `HeaderButton` are gone: every icon button is one.
+
+```swift
+IconButton("xmark", help: "Close", action: close)
+IconButton("magnifyingglass", help: "Search in chat (⌘F)", lit: open) { … }
+IconButton("phone", help: "Start a call", working: starting) { … }
+IconButton(help: title, action: copy) { CopyLabel(…) }        // any label
+```
+
+- `help` is the tooltip and the accessibility label, always.
+- The icon is 13 pt, `secondaryText` at rest and `text` under the pointer,
+  pressed or `lit`, on a `hover` fill at `Theme.Radius.control`. A label
+  that sets its own colour keeps it (the connection bolt, the call
+  window's pin, the copy check).
+- `lit`: what it opened is open (a menu, the details, the search, the
+  connection card). `MenuButton` is lit while its menu is open, so every
+  More (•••) is.
+- `working` puts the spinner in the icon's place (`buttonProgress`).
+- Disabled is half opacity with no hover and never lit, as `PeelButton`; no call site
+  dims it again.
+- Variants: `.ghost` (default) and `.outline` (`fieldFill` and
+  `inputBorder`, beside an outline button: the sidebar call bar's
+  microphone). Sizes: `.md` 28 square (default; the height of a `.sm`
+  `PeelButton`) and `.sm` 24 (the connection bolt, a notice's dismiss).
+- Stay apart: the call window's control bar (its own `segment` and
+  `pill`), controls drawn over a picture or video (the viewer's arrows,
+  a video's full-screen button, the audio card's play), the jump to newest
+  button, the composer's send (a `PeelButton` `.sm` square: `IconButton`
+  has no primary variant) and the file tray's remove and "+". The
+  composer's attach and bolt are ghost `IconButton`s, the bolt `lit`
+  while Send sats is open.
 
 ## Forms (shadcn's conventions)
 
@@ -618,13 +882,8 @@ The surfaces are the existing tokens:
 
 ### Components
 
-- **`FormPopover(title:compact:close:content:footer:)`.**
-  - The full form is 372 wide with a corner radius of 12. It has a 15 pt bold title, a close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
-  - It draws its own box. The `DrawsOwnPanelBox` preference tells the presenter (`MenuPresenter.showPanel`) to leave out the menu box it gives other panels.
-  - The shadow sits on the box only, so the labels cast none. It fits inside the 14 pt margin that `FloatingWindow` leaves.
-  - `compact: true` (320 wide) is for Join, with no sections.
-  - A click anywhere on it outside a field ends editing.
-- **`FormSection("Basics") { items }`.** A 12 pt semibold heading in the secondary colour, then its items 12 pt apart. It has no card.
+- **The popover is a `Panel`** (see Component library): the title and close button, the sections, then `FormFooter` (the problem, then Cancel and the commit button).
+- **`FormSection("Basics") { items }`.** Its heading is a `SectionHeader`, then its items 12 pt apart. It has no card.
 - **`FormItem(label:helper:problem:) { field }`.**
   - The label is 13 pt medium. The field sits 6 pt under it, and the 12 pt help under that is in the secondary colour.
   - `problem` takes the help's place in `attention`.
@@ -646,7 +905,7 @@ The surfaces are the existing tokens:
   - when disabled, at 50% opacity.
   It is also the chrome of the PIN's and the twelve words' cells.
 - **`FormSwitchRow(label:detail:isOn:)` and `FormSwitchStyle`.**
-  - The row is a card (`formCard`), with the label and its description on the left and the switch on the right.
+  - The row is a `Card`, with the label and its description on the left and the switch on the right.
   - The switch is 30 by 18: `switchOff` when off, `button` when on, with a 14 pt knob.
   - The knob moves with a short spring (0.22 s).
   - VoiceOver reads it as a toggle.
@@ -716,7 +975,7 @@ The layout can be built before the features behind it, with empty states:
   bold with a blue count, muted ones dimmed with a crossed-out bell (Mute / Unmute in the row's context menu). Times
   show under the last message of a run and beside any bubble on hover.
 - Conversation: header with the name and short key, day dividers, bubbles,
-  the composer with the round send arrow. A banner at the bottom on
+  the composer with the send arrow (inside the field since 2026-10-10). A banner at the bottom on
   development profiles says the twelve words are in a plain file.
 
 Verified on the throwaway profile: messages both ways render, the layout holds
@@ -754,19 +1013,25 @@ messages that mention you. Details in `../phases/03-chat.md`.
 
 **The header's right side (H1, Tom, 2026-10-08).** Two buttons: Call
 (with its live "Join · N") and More (•••). A tribe's More holds, in
-order: Second brain and Tribe app (each only when the tribe has one,
-opening in the web pane, marked ↗); Members, Details (⌘I, also from
+order: Tribe app and Second brain (each only when the tribe has one,
+opening in the web pane, marked ↗; `Tribe.pages`, the one list and order
+the details' buttons use too); Members, Details (⌘I, also from
 anywhere in the chat), Copy tribe link and Notifications; then Edit
 tribe… (owners) and Leave tribe (or Remove from Peel for a tribe you can
 no longer post in), confirmed by a second click in the menu. A DM's More
 is Details and Notifications. Notifications is a submenu opened in the
 menu's place (‹ back, Left or Escape) with the sidebar's levels, the
 current one beside it ("All"). Members, Details and Edit open below
-More. The members panel keeps its own Copy link and Leave.
+More. The members panel keeps its own Copy link (top right, an icon) and
+Leave (its footer). Every Leave (the menus, the members panel, the
+details, the status bar's Remove from Peel) is offered by `Tribe.exit`,
+worded by `Tribe.Exit` ("Leave tribe", then "Leave #tribe"; "Remove from
+Peel", then "Remove #tribe") and run by `AppModel.leave`, whose failure
+shows as the chat's notice.
 
 **Tribe details (2026-10-09, branch `feat/tribe-details`).** In a tribe,
 More's Details is "Tribe details" (⌘I); a click on the tribe's name or
-icon opens the same panel in the same place, below More (a DM's name opens its details there too). It is a `FormPopover`, scrolling
+icon opens the same panel in the same place, below More (a DM's name opens its details there too). It is a `Panel`, scrolling
 under a fade above its footer: the image, name, public or private and
 "Created 9 Oct 2026", the description, the tags as chips, a card of facts
 (owner, members as "2 members" for the owner or "3 seen" for a member, price to join, per message, escrow; a dash until the
@@ -774,8 +1039,9 @@ registry answers), Tribe app and Second brain as buttons into the web
 pane, the link's QR with Copy link and Copy QR image, "How you appear in
 #tribe" (a name whose helper shows the alias members will read, and a
 `PictureField`; Save and Revert appear once something changed), and the
-time zone switch. Its footer: Members, then Edit tribe… for the owner or
-Leave tribe, confirmed in place. Tags in the edit form are the same chips,
+time zone switch. Its footer: Members, and Edit tribe… for the owner, on
+the left; Leave tribe (or Remove from Peel) on the right for a member,
+confirmed in place. Tags in the edit form are the same chips,
 toggled, the selected ones in `selection` with a tick.
 
 The rejected native-sidebar variant and the first Slack-skin build are kept in
@@ -1004,10 +1270,15 @@ Built 2026-10-08 (`ContactsViews.swift`); details in
 - **An invite:** the QR tile (the Account screen's, shared), nickname,
   amount, when it was made and its state, the private message; Copy invite,
   Copy QR, Share; Cancel invite confirmed in place.
-- **New contacts:** someone who added you shows "New" (accent capsule, the
-  unread badge's shape) in their row until their chat is read; a
+- **New contacts:** someone who added you shows "New" (`Badge("New")`, the
+  unread count's look) in their row until their chat is read; a
   notification says "Added you as a contact". There is no request to
   accept: the core accepts at once, as in the official apps.
+- **A contact's details** (More › Details, ⌘I, or a click on the name),
+  a `Panel` like Tribe details: the picture, name, "Contact since" and
+  their local time (`PanelHero`), their key with its QR, Copy key and Copy
+  QR, the time zone switch, and Remove contact… in the footer, confirmed
+  in place with what it deletes.
 
 ## Time zones
 
@@ -1200,11 +1471,10 @@ What that gives:
   you send here. Turning it off stops sending; Evan keeps the last one you
   sent." A public tribe's panel has no switch, only the line "Your time zone
   is never sent in public tribes."
-- **Account › Time zone** (T4): "Time zone: Automatic · Europe/London
-  (GMT+1)", or one chosen from a searchable Peel menu, and "Shared in",
-  which counts the chats you share with ("12 chats · as GMT+1" or "No
-  chats"): every direct message and private tribe except those turned
-  off, with "Never in public tribes" in its note.
+- **Account › Time zone** (T4): a row of Account's first section, "Time
+  zone: Automatic · Europe/London (GMT+1)", or one chosen from a
+  searchable Peel menu. No count of the chats it goes to and no note
+  (removed 2026-10-13 as noise; see "Words").
 - **No account-wide "new chats share" setting.** Every new chat shares,
   as in the official apps, whose file has no such key, so it would never
   sync. Turning it off per chat is one click in the chat's info.
@@ -1231,6 +1501,10 @@ and the hover card alone. Board T5 shows the edge cases: a contact who
 shares nothing and an agent. The late-hours hint is dropped.
 
 ### Stored per chat, in the file's shape
+
+Since v24 (phase 11, `../phases/11-preferences-sync.md`) the row below is
+the chat's `timezone` preference, the file's item itself; the meanings
+are unchanged.
 
 So that sync can slot in without changing what anything means, Peel keeps
 one row per chat with exactly the fields of the official apps' `timezone`
@@ -1538,8 +1812,8 @@ writes no rows for chats nobody touched; turning a chat off writes
   sent in public tribes." and no switch.
 - **Account › Time zone** (T4): the zone (Automatic · this Mac's, or a chosen
   name) opening a searchable `ZonePicker` panel (a `peelPopover`, since the
-  menu's keys would swallow typing); "Shared in" counts the chats
-  `offsetShared` says go out ("2 chats · as GMT+1" or "No chats").
+  menu's keys would swallow typing). The "Shared in" count was removed
+  on 2026-10-13.
 - **Verified** on the local stack with three development profiles (London,
   TZ=America/Chicago, TZ=Asia/Kolkata): run labels in a private tribe and a
   DM, the fallback for a message sent with sharing off, the thread panel,

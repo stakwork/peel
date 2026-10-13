@@ -1,3 +1,4 @@
+import AgentKit
 import SwiftUI
 import PeelCore
 
@@ -22,23 +23,24 @@ struct Sidebar: View {
         // Read here, where the mentions count already reads them all, and
         // passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             SidebarHeader()
             SearchField(text: $model.searchQuery, focusRequest: model.sidebarSearchFocus)
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Space.lg) {
                         VStack(spacing: 1) {
+                            AutomationsLink()
                             let unreadThreads = model.unreadThreads
                             SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
                                 Image(systemName: "bubble.left").font(.system(size: 13))
                             } accessory: {
-                                if unreadThreads > 0 { UnreadBadge(count: unreadThreads) }
+                                if unreadThreads > 0 { Badge(count: unreadThreads) }
                             }
                             SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
                                 Image(systemName: "at").font(.system(size: 13))
                             } accessory: {
-                                if unreadMentions > 0 { UnreadBadge(count: unreadMentions) }
+                                if unreadMentions > 0 { Badge(count: unreadMentions) }
                             }
                             PaymentsLink(money: model.money)
                         }
@@ -65,6 +67,9 @@ struct Sidebar: View {
                         }
                         SidebarSection("Direct messages",
                                        expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                            if let agent = shownAgent(sections) {
+                                AgentLink(agent: agent)
+                            }
                             ForEach(sections.direct) { conversation in
                                 ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                             }
@@ -77,7 +82,7 @@ struct Sidebar: View {
                             }
                         }
                     }
-                    .padding(.bottom, 12)
+                    .padding(.bottom, Theme.Space.md)
                 }
                 .scrollIndicators(.automatic)
                 .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
@@ -137,9 +142,22 @@ struct Sidebar: View {
     /// "+" or "Show all" rows or invites.
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
-        let chats = sections.unread + sections.tribes + sections.direct
+        let agent = shownAgent(sections).map { [(AppModel.Destination.agent, $0.name)] } ?? []
         return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
-            + chats.map { (.chat($0.chat), $0.name) }
+            + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
+            + agent
+            + sections.direct.map { (.chat($0.chat), $0.name) }
+    }
+
+    /// The agent's row, first in Direct messages: while the section is open
+    /// or the chat is, and matching the search.
+    private func shownAgent(_ sections: ChatSections) -> AgentSession? {
+        // Like a chat: always while open or unread, in a closed section too.
+        guard let agent = model.agent,
+              sections.directOpen || sections.searching || model.destination == .agent || agent.unread > 0
+        else { return nil }
+        let query = model.searchQuery.trimmed
+        return query.isEmpty || agent.name.localizedCaseInsensitiveContains(query) ? agent : nil
     }
 
     /// The row `offset` from `current` (the selection when nothing is
@@ -156,9 +174,9 @@ struct Sidebar: View {
     /// menu, panel or viewer up: Down and Up move the highlight, Return
     /// opens it, Escape clears it. Typing goes to the open chat.
     private func handle(_ event: NSEvent, responder: NSResponder?) -> Bool {
-        guard model.phase == .ready, !model.isLockDue, let window = presenter?.hostWindow, event.window === window,
-              responder != nil, !(responder is NSText), window.firstResponder === responder,
-              presenter?.anythingOpen != true, model.viewer == nil, !event.modifierFlags.contains(.control)
+        guard model.phase == .ready, !model.isLockDue, let presenter, presenter.takesKeys(event), model.viewer == nil,
+              responder != nil, !(responder is NSText), event.window?.firstResponder === responder,
+              !event.modifierFlags.contains(.control)
         else { return false }
         // Typing ahead: the keys after the first go the same way, in order,
         // for the second a composer has to take the cursor.
@@ -172,21 +190,21 @@ struct Sidebar: View {
         let rows = rows
         let plain = event.modifierFlags.isDisjoint(with: [.command, .option, .shift])
         switch event.keyCode {
-        case 125 where plain, 126 where plain: // Down, Up
+        case KeyCode.down where plain, KeyCode.up where plain:
             let next = Self.step(rows.map(\.destination), from: highlighted ?? model.destination,
-                                 by: event.keyCode == 125 ? 1 : -1)
+                                 by: event.keyCode == KeyCode.down ? 1 : -1)
             highlighted = next
             if let title = rows.first(where: { $0.destination == next })?.title {
                 AccessibilityNotification.Announcement(title).post()
             }
-        case 36 where plain, 76 where plain:
-            // Return, Enter: taken even with nothing highlighted, so a
+        case KeyCode.return where plain, KeyCode.enter where plain:
+            // Taken even with nothing highlighted, so a
             // second press never reaches a pane's default button (Pay).
             if let highlighted, rows.contains(where: { $0.destination == highlighted }) {
                 model.destination = highlighted
                 self.highlighted = nil
             }
-        case 53 where plain: // Escape
+        case KeyCode.escape where plain:
             guard highlighted != nil else { return false }
             highlighted = nil
         default:
@@ -204,11 +222,15 @@ struct Sidebar: View {
         let printable = event.characters?.unicodeScalars.allSatisfy {
             !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value)
         } ?? false
-        guard command ? event.charactersIgnoringModifiers == "v" : printable,
-              case .chat(let chat) = model.destination, model.tribes[chat]?.canPost ?? true
-        else { return false }
+        guard command ? event.charactersIgnoringModifiers == "v" : printable else { return false }
+        let composer: ComposerID
+        switch model.destination {
+        case .chat(let chat) where model.tribes[chat]?.canPost ?? true: composer = .chat(chat)
+        case .agent where model.agent != nil: composer = .agent
+        default: return false
+        }
         typedAhead.append(event)
-        model.composerFocus[.chat(chat), default: 0] += 1
+        model.composerFocus[composer, default: 0] += 1
         return true
     }
 
@@ -236,94 +258,39 @@ extension EnvironmentValues {
     @Entry var sidebarClicked: @MainActor () -> Void = {}
 }
 
-/// You, at the top of the sidebar like a workspace switcher: your photo,
-/// name and balance, opening a menu with the account screen and your
-/// contact info; the connection bolt beside it.
+/// You, at the top of the sidebar: your photo, name and balance, opening
+/// the Account screen; the connection bolt beside it.
 struct SidebarHeader: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.menuPresenter) private var presenter
 
-    @State private var anchor = MenuAnchor()
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                presenter?.show(entries, at: anchor, source: "you")
+                model.destination = .account
             } label: {
                 HStack(spacing: 9) {
-                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 30, hue: model.myHue)
+                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.lg, hue: model.myHue)
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Text(model.me.name)
-                                .font(Theme.font(15, .bold))
-                                .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
+                        Text(model.me.name)
+                            .font(Theme.font(15, .bold))
+                            .lineLimit(1)
                         BalanceLabel(money: model.money, waitingMsat: model.waitingMsat)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .background(hovering || presenter?.source == AnyHashable("you") ? Theme.hover : .clear,
-                            in: RoundedRectangle(cornerRadius: 6))
+                .padding(.vertical, Theme.Space.xs)
+                .background(hovering || model.destination == .account ? Theme.hover : .clear,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .menuAnchor(anchor)
-            .help("You")
+            .help("Account")
             ConnectionBolt()
         }
-    }
-
-    /// Who you are (name, short key, balance), the account screen and your
-    /// contact info. Receiving sats and invites join it when they are built.
-    private var entries: [MenuEntry] {
-        let detail = [model.myPubkey.map { "\($0.prefix(6))…\($0.suffix(4))" },
-                      model.balanceText].compactMap { $0 }.joined(separator: " · ")
-        var actions: [MenuEntry] = [
-            .button("Account…", systemImage: "person", shortcut: .command(",")) { model.destination = .account },
-        ]
-        if let info = model.myContactInfo {
-            actions.append(.copy("Copy contact info", text: info))
-        }
-        return .sections(
-            [.view(AnyView(MenuIdentity(name: model.me.name, detail: detail, photoURL: model.myPhotoURL,
-                                        hue: model.myHue)))],
-            actions
-        )
-    }
-}
-
-/// The header of the "you" menu: photo, name, short key and balance.
-private struct MenuIdentity: View {
-    let name: String
-    let detail: String
-    let photoURL: String?
-    let hue: PersonHue
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Avatar(name: name, url: photoURL, size: 34, hue: hue)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                    .font(Theme.font(14, .bold))
-                    .lineLimit(1)
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
 }
 
@@ -384,7 +351,7 @@ struct SidebarSection<Content: View>: View {
         }
         .foregroundStyle(Theme.secondaryText)
         .padding(.horizontal, 10)
-        .padding(.bottom, 4)
+        .padding(.bottom, Theme.Space.xs)
         .contentShape(Rectangle())
     }
 }
@@ -419,7 +386,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
             clicked()
         } label: {
             HStack(spacing: 9) {
-                icon.frame(width: 18)
+                icon.frame(width: Theme.AvatarSize.sm)
                 Text(title).lineLimit(1)
                 Spacer(minLength: 4)
                 accessory
@@ -451,7 +418,7 @@ struct ConversationLink: View {
         // A muted chat that mentions you is in Unread at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
                     dimmed: level == .muted && unread == 0) {
-            ConversationIcon(conversation: conversation, size: 18)
+            ConversationIcon(conversation: conversation, size: Theme.AvatarSize.sm)
         } accessory: {
             if onCall > 0 {
                 let people = Formatting.people(onCall)
@@ -463,14 +430,17 @@ struct ConversationLink: View {
             }
             if unread > 0 {
                 if state?.mentions ?? 0 > 0 {
-                    UnreadBadge(text: UnreadBadge.text(unread), foreground: Theme.mentionYouText, fill: Theme.mentionYouFill)
+                    Badge(count: unread, .mention)
                         .help("Mentions you")
                         .accessibilityLabel("\(unread) unread, mentions you")
                 } else {
-                    UnreadBadge(count: unread)
+                    Badge(count: unread)
                 }
             } else if state?.isNew == true {
-                NewContactBadge()
+                // Someone who added you: the core accepts them at once, so
+                // there is no request to answer; this only says they are new.
+                Badge("New")
+                    .help("Added you as a contact")
             } else if level == .muted {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 11))
@@ -483,7 +453,7 @@ struct ConversationLink: View {
         }
         .overlay {
             if presenter?.source == AnyHashable(conversation.chat) {
-                RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.accent, lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
             }
         }
         .peelMenu(source: conversation.chat) { ConversationMenu.entries(for: conversation, model: model) }
@@ -541,20 +511,48 @@ enum ConversationMenu {
     }
 
     /// Leave, or Remove from Peel for a tribe this account can no longer
-    /// post in; each confirmed by a second click.
+    /// post in (`Tribe.exit`); confirmed by a second click. The owner of a
+    /// live tribe gets neither: they can only delete it (under Edit tribe).
     static func leave(_ conversation: Conversation, _ tribe: Tribe, model: AppModel) -> [MenuEntry] {
+        guard let exit = tribe.exit else { return [] }
         let chat = conversation.chat
-        if tribe.status != .active {
-            return [.destructive("Remove from Peel", systemImage: "trash", confirm: "Remove #\(conversation.name)") {
-                Task { await model.leave(chat) }
-            }]
-        }
-        // The owner cannot leave, only delete the tribe (under Edit tribe).
-        guard !tribe.isOwner else { return [] }
-        return [.destructive("Leave tribe", systemImage: "rectangle.portrait.and.arrow.right",
-                             confirm: "Leave #\(conversation.name)") {
+        return [.destructive(exit.title, systemImage: exit.systemImage, confirm: exit.confirm(conversation.name)) {
             Task { await model.leave(chat) }
         }]
+    }
+}
+
+/// Leave and Remove from Peel as every place that offers them words them:
+/// the menu, the members panel, the details and the status bar.
+extension Tribe.Exit {
+    var title: String {
+        switch self {
+        case .leave: "Leave tribe"
+        case .remove: "Remove from Peel"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .leave: "rectangle.portrait.and.arrow.right"
+        case .remove: "trash"
+        }
+    }
+
+    /// The second click's words.
+    func confirm(_ tribeName: String) -> String {
+        switch self {
+        case .leave: "Leave #\(tribeName)"
+        case .remove: "Remove #\(tribeName)"
+        }
+    }
+
+    /// What could not be done, after "Could not".
+    var failure: String {
+        switch self {
+        case .leave: "leave the tribe"
+        case .remove: "remove the tribe"
+        }
     }
 }
 
@@ -567,32 +565,31 @@ struct ConnectionBolt: View {
     private var connected: Bool { model.connection == .connected }
 
     var body: some View {
-        Button {
+        IconButton(help: model.connection.label, size: .sm, lit: showing) {
             showing.toggle()
         } label: {
             Image(systemName: "bolt.fill")
-                .font(.system(size: 13))
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
                 .receivedGlow(model.money)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(model.connection.label)
-        .accessibilityLabel(model.connection.label)
         .peelPopover(isPresented: $showing) {
-            ConnectionCard()
+            ConnectionCard { showing = false }
         }
     }
 }
 
 struct ConnectionCard: View {
     @Environment(AppModel.self) private var model
+    let done: () -> Void
+
+    private var offline: Bool {
+        if case .offline = model.connection { true } else { false }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Panel("Connection", compact: true, close: done) {
             // Ticks only while counting down to a retry.
-            if case .offline = model.connection, let at = model.reconnectAt {
+            if offline, let at = model.reconnectAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     label(Self.countdown(to: at, now: context.date))
                 }
@@ -606,18 +603,19 @@ struct ConnectionCard: View {
                     .textSelection(.enabled)
                     .lineLimit(4)
             }
-            if case .offline = model.connection {
-                Button("Reconnect now") { Task { await model.reconnectNow() } }
-                    .buttonStyle(.peel(.link, size: .sm))
+        } footer: {
+            if offline {
+                FormFooter(problem: nil) {
+                    Button("Reconnect now") { Task { await model.reconnectNow() } }
+                        .buttonStyle(.peel(.outline))
+                }
             }
         }
-        .padding(14)
-        .frame(width: 260, alignment: .leading)
     }
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(Theme.font(14, .medium))
+            .font(Theme.font(13))
             .monospacedDigit()
     }
 
@@ -677,7 +675,7 @@ private struct SidebarActionLabel: View {
         HStack(spacing: 9) {
             Image(systemName: systemImage)
                 .font(.system(size: 12))
-                .frame(width: 18)
+                .frame(width: Theme.AvatarSize.sm)
             Text(title)
         }
     }
@@ -709,11 +707,27 @@ struct SidebarRowStyle: ButtonStyle {
                 .padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control)
                         .fill(selected ? Theme.selection : hovering || highlighted ? Theme.hover : .clear)
                 )
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// Automations, first in the sidebar, with a quiet count of those whose last
+/// run did not finish (not an alarm). Its own view, so the list's refreshes
+/// redraw this row and not the sidebar.
+private struct AutomationsLink: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let failed = model.automations.failed
+        SidebarLink("Automations", to: .automations) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
+        } accessory: {
+            if failed > 0 { Badge(count: failed, .outline) }
         }
     }
 }

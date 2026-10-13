@@ -7,7 +7,7 @@ struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
     private enum Path { case newAccount, restore }
-    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, restoring }
+    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring }
 
     @State private var path = Path.newAccount
     @State private var step = Step.welcome
@@ -17,7 +17,9 @@ struct OnboardingView: View {
     @State private var pin = ""
     @State private var confirmation = ""
     @State private var shownWords: [String] = []
-    @State private var wroteDown = false
+    /// The three words asked back after "I've written them down"; Back
+    /// keeps their places and what was typed.
+    @State private var check = WordCheck()
     @State private var working = false
     @State private var problem: String?
 
@@ -31,6 +33,7 @@ struct OnboardingView: View {
             case .pin: pinStep
             case .confirmPin: confirmPinStep
             case .showWords: showWordsStep
+            case .checkWords: checkWordsStep
             case .restoring: RestoreProgressView()
             }
         }
@@ -47,7 +50,7 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 Text("Welcome to Peel")
                     .font(Theme.font(28, .bold))
-                Text("Sphinx on your Mac. Private messages, tribes and sats, on an account only you hold the keys to.")
+                Text("Sphinx messages and sats on your Mac.")
                     .font(Theme.font(15))
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -62,7 +65,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.peel(.outline, size: .lg))
             }
-            Text("New to Sphinx? Ask someone already on it for an invite.")
+            Text("No invite? Ask someone on Sphinx.")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
@@ -71,7 +74,7 @@ struct OnboardingView: View {
 
     private var inviteStep: some View {
         StepBody(title: "Paste your invite",
-                 detail: "The link or code someone sent you. It creates your account on the Sphinx server, and may come with sats from whoever invited you.") {
+                 detail: "The link or code someone sent you.") {
             FormItem(label: "Invite") {
                 FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
             }
@@ -82,7 +85,7 @@ struct OnboardingView: View {
 
     private var enterWordsStep: some View {
         StepBody(title: "Restore from twelve words",
-                 detail: "Type them in order, or paste all twelve into the first box. Peel brings back your contacts and message history from the server. Your other devices keep working.",
+                 detail: "Type them in order, or paste all twelve.",
                  width: 520) {
             WordEntryGrid(words: $words)
         } footer: {
@@ -99,8 +102,7 @@ struct OnboardingView: View {
     }
 
     private var nameStep: some View {
-        StepBody(title: "What should people call you?",
-                 detail: "Your name goes with your messages, to the people you talk to and in tribes. You can change it later.") {
+        StepBody(title: "What should people call you?") {
             FormItem(label: "Name") {
                 FormTextField(label: "Name", prompt: "Required", text: $name)
                     .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
@@ -111,8 +113,7 @@ struct OnboardingView: View {
     }
 
     private var pinStep: some View {
-        StepBody(title: "Set a PIN",
-                 detail: "Six digits. Peel asks for it when it opens, and it locks your twelve words on this Mac.") {
+        StepBody(title: "Set a PIN") {
             PinField(pin: $pin) { go(.confirmPin) }
         } footer: {
             footer(next: "Continue", enabled: pin.count == 6) { go(.confirmPin) }
@@ -120,7 +121,7 @@ struct OnboardingView: View {
     }
 
     private var confirmPinStep: some View {
-        StepBody(title: "Enter your PIN again", detail: "To make sure it's the one you meant.") {
+        StepBody(title: "Enter your PIN again") {
             PinField(pin: $confirmation) { Task { await confirmPin() } }
         } footer: {
             footer(next: path == .newAccount ? "Create account" : "Restore",
@@ -130,39 +131,55 @@ struct OnboardingView: View {
 
     private var showWordsStep: some View {
         StepBody(title: "Write down your twelve words",
-                 detail: "They are your account. With them you can restore it on any device; anyone else who has them controls your messages and sats. Peel keeps them locked with your PIN on this Mac and never sends them anywhere.",
+                 detail: "Anyone with these words controls your account.",
                  width: 520) {
             VStack(alignment: .leading, spacing: 18) {
-                NumberedWordGrid(count: shownWords.count) { index in
+                NumberedWordGrid(places: Array(shownWords.indices)) { index in
                     Text(shownWords[index])
                         .font(Theme.font(15))
                     Spacer(minLength: 0)
                 }
-                Toggle("I've written them down somewhere safe, on paper", isOn: $wroteDown)
-                    .toggleStyle(.checkbox)
-                    .font(Theme.font(14))
+                if model.myContactInfo == nil {
+                    // Signed up, the server's answer not yet in: the engine registers again as it
+                    // connects. A refused invite never answers, so the line says what to do.
+                    Text("Not confirmed yet. If it stays this way, ask for a new invite.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         } footer: {
             HStack {
                 Spacer()
-                Button("Open Peel") {
-                    shownWords = []
-                    model.enterApp()
-                }
+                Button("I've written them down") { go(.checkWords) }
                 .buttonStyle(.peel(.primary, size: .lg))
-                .disabled(!wroteDown)
             }
+        }
+    }
+
+    /// Three of the words typed back from paper, so a copy with a word
+    /// missed or misspelt is caught while the words can still be read here.
+    private var checkWordsStep: some View {
+        StepBody(title: "Check what you wrote",
+                 detail: "Type these three words from your paper.",
+                 width: 520) {
+            WordCheckGrid(check: $check) { Task { await checkWords() } }
+        } footer: {
+            footer(next: "Open Peel", enabled: check.isFilled && !working) { Task { await checkWords() } }
         }
     }
 
     // MARK: Actions
 
-    /// The numbered steps of the current path; confirming the PIN counts as the PIN step.
+    /// The numbered steps of the current path; confirming the PIN counts as
+    /// the PIN step, checking the words as the words step.
     private var steps: [Step] {
         path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .name, .pin]
     }
 
-    private var position: Int? { steps.firstIndex(of: step == .confirmPin ? .pin : step) }
+    private var position: Int? {
+        steps.firstIndex(of: step == .confirmPin ? .pin : step == .checkWords ? .showWords : step)
+    }
 
     private var progress: (step: Int, of: Int)? {
         position.map { ($0 + 1, steps.count) }
@@ -178,6 +195,9 @@ struct OnboardingView: View {
         if step == .confirmPin {
             confirmation = ""
             go(.pin)
+        } else if step == .checkWords {
+            // The account exists: back to the words, never before them.
+            go(.showWords)
         } else if let position, position > 0 {
             go(steps[position - 1])
         } else {
@@ -212,8 +232,24 @@ struct OnboardingView: View {
             pin = ""
             confirmation = ""
         } catch {
-            problem = PeelError.readable(error)
+            problem = PeelError.problem(error)
             confirmation = ""
+        }
+    }
+
+    /// Records the words as written down and opens Peel, or says which
+    /// places differ.
+    private func checkWords() async {
+        guard !working, check.isFilled else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.confirmWords(check.byPosition, of: shownWords)
+            shownWords = []
+            check = WordCheck()
+            model.enterApp()
+        } catch {
+            problem = PeelError.problem(error)
         }
     }
 
@@ -237,18 +273,19 @@ struct RestoreProgressView: View {
     var body: some View {
         let progress = model.restoreProgress
         StepBody(title: "Restoring your account",
-                 detail: "A busy account takes a few minutes. You can start using Peel now; older history keeps arriving in the background.",
+                 detail: "You can start now while older messages arrive.",
                  width: 460) {
-            VStack(spacing: 0) {
-                RestoreRow(title: "Account", detail: model.connection.label,
-                           state: model.connection == .connected ? .done : .active)
-                RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
-                           state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
-                           state: .from(started: progress.messages != nil, done: progress.finished),
-                           fraction: progress.messages?.fraction)
+            Card {
+                VStack(spacing: 0) {
+                    RestoreRow(title: "Account", detail: model.connection.label,
+                               state: model.connection == .connected ? .done : .active)
+                    RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
+                               state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
+                    RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
+                               state: .from(started: progress.messages != nil, done: progress.finished),
+                               fraction: progress.messages?.fraction)
+                }
             }
-            .formCard()
             if case .failed(let failure) = progress.outcome {
                 Text(failure)
                     .font(Theme.font(13))
@@ -305,9 +342,8 @@ struct RestoreRow: View {
                         .foregroundStyle(state == .waiting ? Theme.secondaryText : Theme.text)
                     Spacer()
                     Text(detail)
-                        .font(Theme.font(12))
                         .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
                 if let fraction, state == .active {
                     ProgressView(value: fraction)
@@ -315,7 +351,7 @@ struct RestoreRow: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Theme.Space.lg)
         .padding(.vertical, 14)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
     }
@@ -332,7 +368,7 @@ struct OnboardingPage<Content: View>: View {
     var body: some View {
         VStack(spacing: 22) {
             if let progress {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     HStack(spacing: 6) {
                         ForEach(1...progress.of, id: \.self) { index in
                             Capsule()
@@ -341,8 +377,7 @@ struct OnboardingPage<Content: View>: View {
                         }
                     }
                     Text("Step \(progress.step) of \(progress.of)")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                        .muted()
                 }
                 .frame(maxWidth: 440)
             }
@@ -362,24 +397,26 @@ struct OnboardingPage<Content: View>: View {
     }
 }
 
-/// Title, explanation, the step's fields and its buttons.
+/// Title, an optional one-line detail, the step's fields and its buttons.
 struct StepBody<Fields: View, Footer: View>: View {
     let title: String
-    let detail: String
+    var detail: String?
     var width: CGFloat = 440
     @ViewBuilder let fields: Fields
     @ViewBuilder let footer: Footer
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 Text(title)
                     .font(Theme.font(24, .bold))
-                Text(detail)
-                    .font(Theme.font(14))
-                    .lineSpacing(3)
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let detail {
+                    Text(detail)
+                        .font(Theme.font(14))
+                        .lineSpacing(3)
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             fields
             footer
@@ -390,23 +427,25 @@ struct StepBody<Fields: View, Footer: View>: View {
 
 /// Three columns of numbered boxes, for showing or typing the twelve words:
 /// the form's boxed fields, the one being typed in (`focused`) ringed.
+/// Each box is numbered with its word's place in `places` (0 to 11): all
+/// twelve, or the three a check asks back.
 struct NumberedWordGrid<Cell: View>: View {
-    let count: Int
+    let places: [Int]
     var focused: Int?
     @ViewBuilder let cell: (Int) -> Cell
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-            ForEach(0..<count, id: \.self) { index in
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Space.sm), count: 3), spacing: Theme.Space.sm) {
+            ForEach(places.indices, id: \.self) { index in
                 HStack(spacing: 10) {
-                    Text("\(index + 1)")
+                    Text("\(places[index] + 1)")
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                         .frame(width: 18, alignment: .trailing)
                     cell(index)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
                 .modifier(FieldChrome(focused: focused == index))
             }
@@ -421,7 +460,7 @@ struct WordEntryGrid: View {
     @FocusState private var focus: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             Button {
                 if let text = Clipboard.paste() {
                     focus = nil
@@ -431,12 +470,10 @@ struct WordEntryGrid: View {
                 Label("Paste twelve words", systemImage: "doc.on.clipboard")
             }
             .buttonStyle(.peel(.link))
-            NumberedWordGrid(count: 12, focused: focus) { index in
+            NumberedWordGrid(places: Array(words.indices), focused: focus) { index in
                 TextField("", text: binding(for: index))
                     .focused($focus, equals: index)
-                    .textFieldStyle(.plain)
-                    .font(Theme.font(15))
-                    .autocorrectionDisabled()
+                    .wordBox()
             }
         }
     }
@@ -471,6 +508,57 @@ struct WordEntryGrid: View {
     }
 }
 
+extension View {
+    /// A word's box in `NumberedWordGrid` when it is typed into: plain,
+    /// 15 pt, never autocorrected.
+    func wordBox() -> some View {
+        textFieldStyle(.plain)
+            .font(Theme.font(15))
+            .autocorrectionDisabled()
+    }
+}
+
+/// Three of the twelve words asked back: their places, chosen at random
+/// (`Engine.wordsToCheck`), and what was typed for each. Always one answer
+/// per place: a box bound to its answer may still read it as its view
+/// closes, so a check is replaced by a new one, never emptied.
+struct WordCheck {
+    let positions = Engine.wordsToCheck()
+    var answers: [String]
+
+    init() {
+        answers = positions.map { _ in "" }
+    }
+
+    /// Every box has something in it.
+    var isFilled: Bool { answers.allSatisfy { !$0.trimmed.isEmpty } }
+
+    /// The answers by place, for `AppModel.confirmWords`.
+    var byPosition: [Int: String] { Dictionary(uniqueKeysWithValues: zip(positions, answers)) }
+}
+
+/// The boxes of a `WordCheck`, each numbered with its word's place. Return
+/// moves to the next box, and from the last submits.
+struct WordCheckGrid: View {
+    @Binding var check: WordCheck
+    let submit: () -> Void
+    @FocusState private var focus: Int?
+
+    var body: some View {
+        NumberedWordGrid(places: check.positions, focused: focus) { index in
+            TextField("", text: $check.answers[index])
+                .focused($focus, equals: index)
+                .wordBox()
+                .onSubmit { if index + 1 < check.positions.count { focus = index + 1 } else { submit() } }
+        }
+        .task(id: check.positions) {
+            // Focus asked for during the screen change is ignored; ask once it has settled.
+            try? await Task.sleep(for: .milliseconds(150))
+            focus = 0
+        }
+    }
+}
+
 /// Six boxes over a hidden secure field, so the digits are never shown.
 struct PinField: View {
     @Binding var pin: String
@@ -485,7 +573,7 @@ struct PinField: View {
                 .focused($focused)
                 .opacity(0.01)
                 .accessibilityLabel("PIN")
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.sm) {
                 ForEach(0..<6, id: \.self) { index in
                     // The form's boxed field; the next digit's box ringed.
                     Color.clear

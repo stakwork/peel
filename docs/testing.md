@@ -107,7 +107,9 @@ hand and pass its directory as `PEEL_STACK_DIR` (the first line `start`
 prints); stop it with `scripts/test-stack.sh stop <dir>`.
 
 `scripts/test-stack.sh` runs the broker, the tribes server, the mixer
-(`NO_LIGHTNING`), a memes stub and a wire tap in front of the broker
+(`NO_LIGHTNING`), a memes stub (attachments, and since phase 11 the
+`/preferences` file, kept per account under `memes/preferences/`) and a
+wire tap in front of the broker
 (`scripts/test-stack-helpers.py`, python3 with `cryptography`), each on a
 random free port, never 1883 or 8000. Binaries come from `SPHINX_BIN_DIR`
 (default `~/Documents/sphinx/target/debug`) or `SPHINX_BROKER`,
@@ -131,6 +133,29 @@ The one change to PeelCore is a test seam,
 `Profile.init(developmentAt:)` (internal): a development profile in any
 directory.
 
+### Funding a development profile
+
+The only allowed way to give a development profile sats, for the CLI or
+`scripts/check-app.sh`. Editing a balance, setting or anything else in a
+profile's database is forbidden.
+
+```sh
+scripts/test-stack.sh start                       # prints PEEL_STACK_DIR and PEEL_BROKER
+.build/debug/peel --profile <dev> --server <PEEL_BROKER> --tribe-host <PEEL_TRIBES> \
+  --memes-host <PEEL_MEMES> init
+SPHINX_BIN_DIR=<cargo target>/debug scripts/fund-dev.sh <PEEL_STACK_DIR> <dev> 1000
+```
+
+The script refuses `default` and `throwaway`, a stack whose broker is not
+on 127.0.0.1 (or is on 1883 or 8000), and a profile whose server is not
+that stack's broker or wire tap. It keeps the profile online with `peel
+listen` while `FundDev` (`Tests/PeelIntegrationTests/FundDev.swift`, run
+only by the script) makes a bank as `Bank` does, adds the profile by its
+contact info and pays it; the test process never opens the profile. The
+script then waits for `peel whoami` to show the sats. The profile ends
+with the sats plus 1 (the key exchange), a contact named "bank", and the
+mixer under real accounting. Each run makes a new bank (about a minute).
+
 ### Journeys and results (four full runs, the last after #80 to #90)
 
 | Journey | Test | Result |
@@ -138,17 +163,27 @@ directory.
 | Sign up; restore from twelve words in a second directory | `Accounts` | pass |
 | Key exchange by contact info; both sides ready; no second exchange; the adder −3 sats, the added +1, and Payments labels the four rows (review F6, journey 3) | `Contacts.keyExchangeByContactInfo` | pass |
 | Key exchange from an invite's code (inviter added, invite untouched) | `Contacts.keyExchangeByInvite` | pass |
+| A contact's record (type 33) naming another contact changes nothing (bug hunt N1) | `Contacts.aContactRecordSomeoneElseSentChangesNothing` | pass (2026-10-11); fails without `Engine.isForeignContactRecord` |
+| The account's other device adds a contact; its record adds them here as it happens | `Contacts.aContactRecordFromTheAccountsOtherDeviceAddsTheContact` | pass (2026-10-11) |
 | DMs both ways through the wire tap; the plain text never on the wire (raw, base64, hex, a 16-byte run) | `DirectMessages` | pass |
-| Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |
+| Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10) and a paid file (10, one row, which the tribe's copy finds); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |
 | Keysend both ways, both balances after each; a sent row set back to pending (as older builds left them) is settled by the history on the next connect | `Payments.keysendBothWays` | pass: the recipient gets the amount, the sender pays it plus the 1-sat ping (finding 1) |
 | Two payments to an offline contact, the second over what is left (review F1, journey 1) | `Payments.paymentsToAnOfflineContact` | pass (2026-10-09): the first waits, only its ping leaves the balance; the second is refused by Peel's gate; Bob comes online and gets exactly one, confirmed by his history |
 | Two devices of one account each pay an offline contact; one goes through (review F2, and journey 2 for F4) | `Payments.twoDevicesPayAnOfflineContact` | see "Payments review, reconciliation" in `phases/04-money.md`: the recipient's history confirms one, the other reads not received, Payments counts one; a third device restored afterwards reads the failed send as failed |
 | The whole balance (nothing left for the ping), over the threshold unconfirmed: nothing moves | `Payments.refusedPaymentsMoveNothing` | pass |
 | `request_invoice` on a `NO_LIGHTNING` server | `Payments.requestInvoiceWithoutLightning` | pass (`noInvoiceFromServer`, nothing stored) |
-| Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments` | pass |
+| Attachment: uploaded encrypted to the memes stub, downloaded, decrypted, cached | `Attachments.uploadDownloadAndDecrypt` | pass |
+| A paid picture in a DM (payments review journey 4): Alice buys it and Bob's key unlocks it; a second purchase Bob stores but does not answer before his engine closes is answered when it connects again (bug hunt N3). Each purchase costs Alice the price and the 1-sat ping once and brings Bob the price; the answers move no sats and are delivered | `Attachments.aPaidPictureIsBoughtAndAnsweredEvenAfterASellerStops` | pass (2026-10-11) |
 | Invite: make (exactly its amount), redeem by signup, seen used | `Invites.makeAndRedeem` | pass |
 | Invite: cancel refunds exactly; a signup with it afterwards gets nothing | `Invites.cancelRefunds` | pass |
+| Invite: a signup whose register reply is lost (tap deafened) keeps its words; the next connect registers with the invite's sats and adds the inviter, who sees the invite used (bug hunt N2) | `Invites.aSignupWhoseReplyIsLostKeepsTheWords` | pass (2026-10-11); fails before the fix (signup throws, the profile deleted) |
 | Restore history on a second device: contact, DMs both ways, payment, tribe and post, balance | `History` | pass; once, a key exchange timed out (finding 3) |
+| Read markers and a mute across two devices of one account, both ways (nothing pushed live; the other device's ask on coming to the front brings them); a tribe join after a read leaves it behind the server's marker with nothing Peel counts, and reading it moves the marker past the join | `Reads.markersAndMutesAcrossDevices` | pass (2026-10-12) |
+| 600 messages while the tap is down, all on the server first; a live one as soon as she is back, then a quit before the catch-up ends (required, so it cannot pass untested); the next launch fetches the rest, no server index missing (bug hunt N4) | `History.aCatchUpCutShortByAQuitLeavesNoGap` | pass (2026-10-12); before the fix 501 never came, server indices 6 to 606 had gaps |
+| A malformed chunk (type 34) between two texts while the tap is down: the catch-up keeps both texts, and the next one goes past it | `History.aMessageTheCoreCannotReadLeavesOnlyItselfOut` | pass (2026-10-12); before, neither text came: the catch-up stopped at that page, and the next started there again |
+| The agent's read tools over Alice's account: Bob's two messages and his tribe thread, read side by side as a model asks (unseen, search, contacts and tribes, then the thread), with their real uuids, chat ids and unseen counts, between the markers | `Agent.readToolsSeeWhatArrived` | pass (2026-10-12) |
+| The send tool through the approval gate in the agent chat's session: allowed once, Bob receives exactly the card's words and the row links to that message (its uuid); denied, nothing leaves either side and the model is told | `Agent.aSendGoesOnlyOnceAllowed` | pass (2026-10-12) |
+| A post in Bob's paid tribe: the card's price is exactly what leaves Alice's balance; Bob doubles the price while a second card waits, and allowing it pays nothing, sends nothing, and says why | `Agent.aTribeSendPaysWhatTheCardSaidAndNeverMore` | pass (2026-10-12); without the tool's cap Alice pays the new price; before the fix the row read "The operation couldn't be completed. (PeelCore.Engine.Failure error 6.)" |
 
 Findings:
 
@@ -192,7 +227,86 @@ Findings:
    contact needs 5 sats." (`contactNeedsSats`); offline it is still told
    it is not connected.
 
+The agent's journeys (`AgentJourneys.swift`) drive AgentKit's
+`AgentSession` over a real account, as the app opens it (its
+`agent.sqlite`, the Sphinx read tools and the send tool over its engine);
+only the model is scripted (`ScriptedModel`, which asks for the calls a
+model would and keeps the tool results it was sent). Run them alone with
+`PEEL_INTEGRATION=1 SPHINX_BIN_DIR=~/sphinx-target/debug swift test --filter Journeys/Agent`.
+
 Not built: invoices paid and received (the server makes invoices only with
 a Lightning node, so this needs a regtest bitcoind and CLN behind the
 mixer), migrations from a real v14 or v16 database fixture (the offline
-`MigrationTests` still cover the chain from v1), paid attachments, calls.
+`MigrationTests` still cover the chain from v1), paid attachments in a tribe,
+calls.
+
+## Recorded streams
+
+No test calls a model provider or uses a real API key, opt-in or not
+(Tom's decision, 2026-10-13). The real wire shapes reach the tests as
+files instead: `scripts/record-agent-fixtures.sh` makes two small real
+requests for one provider (a streamed text reply and a streamed call to a
+trivial tool) and writes the response bodies to
+`Tests/AgentKitTests/Fixtures/recorded/<provider>-text.sse` and
+`<provider>-tool.sse`. Tom runs it by hand with his own key, one provider
+at a time; never an agent, and never from a test:
+
+```sh
+PEEL_AGENT_PROVIDER=anthropic  PEEL_AGENT_API_KEY=sk-ant-… scripts/record-agent-fixtures.sh
+PEEL_AGENT_PROVIDER=openai     PEEL_AGENT_API_KEY=sk-…     scripts/record-agent-fixtures.sh
+PEEL_AGENT_PROVIDER=openrouter PEEL_AGENT_API_KEY=sk-or-…  scripts/record-agent-fixtures.sh
+# optional: PEEL_AGENT_MODEL=<id> (default: the picker's recommended model), PEEL_AGENT_MAX_TOKENS=<n>
+```
+
+It writes response bodies only (no headers, request or key), replaces
+message, request, organisation and fingerprint ids with placeholders, and
+writes nothing if the result holds the key, its last six characters or an
+`sk-` style token, or if a reply did not end as asked (a reply cut at the
+token cap: raise `PEEL_AGENT_MAX_TOKENS`). Read the files before
+committing them.
+
+`StreamCaseTests` decodes each provider's text and tool stream, the
+recorded one when it is there, else the hand-written one in `Fixtures/`
+(OpenRouter's falls back to OpenAI's), so a new recording is picked up by
+the next `swift test` with nothing else to change. A bad key's answer per
+provider is a stubbed `ProviderTests` case.
+
+## Timeline log
+
+An opt-in log of how a chat's message list is placed, for a list that opens
+blank or in the wrong place on a real account, where `check-app.sh` does
+not show it. Off by default; while off nothing extra is built or observed.
+
+```sh
+defaults write dev.peel.mac PeelTimelineLog -bool YES     # then quit and reopen Peel
+/usr/bin/log stream --predicate 'subsystem == "dev.peel.mac" AND category == "timeline"' --level debug
+# reproduce, then Ctrl-C and paste the output
+defaults delete dev.peel.mac PeelTimelineLog              # off again, after a relaunch
+```
+
+Use `/usr/bin/log`: in zsh, `log` alone is a shell builtin. The setting is
+read once at launch (`TimelineLog.enabled`) from the app's bundle ID: a build
+signed by another team reads `dev.peel.mac.<team>`, and one checked with
+`check-app.sh` reads `dev.peel.mac.check`.
+
+Each line starts with six hex characters of a hash of the chat's key, keyed
+afresh at each launch (the same chat has another tag after a relaunch), then
+the event, then the list's state (`rows`, `atBottom`, `atEnd`,
+`following`, `opening`, `pinning`, `phase`, and `realised`, the rows the
+lazy stack has made, which the list counts with the log off too). Events: the app's phase; the
+timeline reset, loaded (messages, threads, limit) and its rows built
+(count, the "New messages" row); the list's appear and disappear (the
+focus or divider row asked for); every placement (`place:` the bottom on
+appear, a divider pass, `go(to:)`, `scrollToNewest`, a re-pin) and why a
+re-pin ran or was skipped; scroll phase changes; `bottom state written`;
+the scroll geometry (offset, content and container heights, `below` the
+end, insets; not while scrolled by hand); and the rows in view by index,
+or `visible NONE with rows: blank`, the blank list itself. Read together:
+rows realised and in view while the screen is empty is a drawing problem;
+none in view with the offset past the content (`below` negative) is a
+placement problem; none realised at all is the lazy stack not making them. Never message
+text, names, keys, ids or amounts. With the log on, the lazy stack is a
+scroll target layout (`.scrollTargetLayout`) so its rows in view can be
+reported; off, it is not. So the list runs a little differently with the
+log on: a blank that will not come back with it on says that much, not
+that the bug is gone.

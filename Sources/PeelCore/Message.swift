@@ -114,23 +114,34 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// One of our text messages or attachments that failed, or that the
     /// server has not confirmed within the timeout, and so may be sent again
-    /// or discarded. An attachment still uploading is neither. A payment or
-    /// boost only once it failed: an unconfirmed one may have paid, and
-    /// sending it again would pay twice. And only one sent from this Mac,
-    /// which keeps the sats it sent (`msat`): a row of ours from history or
-    /// another device carries none, and Retry would pay the amount its body
-    /// declares to its chat, which a message the core only takes for ours
-    /// (`Engine.cappedToArrived`) could have chosen. A payment request moves
-    /// no money, so it goes again like text.
+    /// or discarded. An attachment still uploading is neither. An
+    /// unconfirmed one that may have paid (`mayHavePaid`: a tribe's price)
+    /// waits, as a payment or boost does: sending it again would pay twice.
+    /// A payment or boost goes again only once it failed, and only if sent
+    /// from this Mac, which keeps the sats it sent (`msat`): a row of ours
+    /// from history or another device carries none, and Retry would pay the
+    /// amount its body declares to its chat, which a message the core only
+    /// takes for ours (`Engine.cappedToArrived`) could have chosen. A
+    /// payment request moves no money, so it goes again like text.
     public func isRetryable(now: Date = .now) -> Bool {
         guard fromMe, !deleted else { return false }
         if MessageType.payments.contains(type) { return delivery == .failed && msat != nil }
         guard MessageType.resendable.contains(type), uploadState != .pending else { return false }
         switch delivery {
         case .failed: return true
-        case .pending: return now.timeIntervalSince(date) > Self.confirmationTimeout
+        case .pending: return !mayHavePaid && now.timeIntervalSince(date) > Self.confirmationTimeout
         case .delivered, .unsettled, nil: return false
         }
+    }
+
+    /// Ours, sent with sats: a payment, boost or purchase, or a message that
+    /// paid a tribe's price, that left (it has a tag, written before anything
+    /// is published; one with none, such as an attachment's draft, never
+    /// left). Until the server says how it went it may have paid, so it is
+    /// never sent again and waits for the server (`isRetryable`,
+    /// `Storage.mayHavePaidSQL`).
+    public var mayHavePaid: Bool {
+        fromMe && tag != nil && ((msat ?? 0) > 0 || MessageType.moneySends.contains(type))
     }
 
     /// How old an undelivered message may be and still go again by itself
@@ -169,9 +180,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// One of ours the server refused or never took.
     public var notSent: Bool { fromMe && delivery == .failed }
 
-    /// Someone else's message that can be boosted, as the Mac app allows it.
+    /// Someone else's message that can be boosted, as the Mac app allows it
+    /// (`isBoostActionAllowed`): text or an attachment (a paid one, bought or
+    /// not, included) with a uuid, never a call or a call link. Payments
+    /// and requests, which the Mac app also leaves out, are not content.
     public var isBoostable: Bool {
-        !fromMe && !deleted && uuid != nil && type == MessageType.text
+        !fromMe && !deleted && uuid?.isEmpty == false && isContent && !(content.map(CallLink.isLink) ?? false)
     }
 
     var senderInfo: SenderInfo? {
@@ -314,6 +328,40 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         case .pdf, .text, .file: return "File: \(fileName ?? "file")"
         case nil: return ""
         }
+    }
+}
+
+extension Message {
+    /// Read by hand: several times faster than `Decodable` on the reads every
+    /// write re-runs. Must read every stored property.
+    public init(row: Row) throws {
+        id = row["id"]
+        uuid = row["uuid"]
+        serverIndex = row["serverIndex"]
+        type = row["type"]
+        chat = row["chat"]
+        fromMe = row["fromMe"]
+        sender = row["sender"]
+        body = row["body"]
+        content = row["content"]
+        msat = row["msat"]
+        timestamp = row["timestamp"]
+        tag = row["tag"]
+        paymentHash = row["paymentHash"]
+        status = row["status"]
+        mentionsMe = row["mentionsMe"]
+        replyUUID = row["replyUUID"]
+        threadUUID = row["threadUUID"]
+        mediaType = row["mediaType"]
+        fileName = row["fileName"]
+        fileSize = row["fileSize"]
+        upload = row["upload"]
+        deleted = row["deleted"]
+        amountMsat = row["amountMsat"]
+        senderTZ = row["senderTZ"]
+        arrived = row["arrived"]
+        firstSentAt = row["firstSentAt"]
+        autoResentAt = row["autoResentAt"]
     }
 }
 

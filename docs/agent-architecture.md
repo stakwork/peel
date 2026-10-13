@@ -3,6 +3,10 @@
 Last updated 2026-10-10. The single source of truth for the Sphinx agent
 that Peel is the client for. Nothing here is built.
 
+> **Proposed change (2026-10-13, not agreed):** the Mac as the brain,
+> strut as the graph's only writer, Peel's agent as a front agent that
+> hands work to strut jobs. See [agent-brain.md](agent-brain.md).
+
 This replaces the plan of 2026-10-08–09 (an always-on agent host with its
 own Sphinx account, Strut jobs, ACP workers and a graph only the host could
 open). Tom judged that too much, too early. The decisions below were agreed
@@ -29,12 +33,14 @@ other places to run the same code ("Later", below).
   in the graph: Concept is one node type among others, read and walked
   with the same generic tools.
 - **Version 1 is the foundational agent:** connect a model, chat, read
-  and search your Sphinx chats, and send messages. No memory, graph,
-  payments or approvals yet; the plan is in
+  and search your Sphinx chats, and send messages. No memory, graph or
+  payments yet; the plan is in
   [phases/09-agents.md](phases/09-agents.md).
-- **Sends go out directly,** as in the official apps, and every send shows
-  in the agent chat. Each tool declares its effect (read or send), so an
-  approval gate can come later without changing the tools.
+- **Every send asks first** (changed 2026-10-12): a card in the agent chat
+  shows the exact message and any price; Allow once, Always allow for
+  that chat (never for a send that costs sats), or Deny. Each tool
+  declares its effect (read or send), and every tool that acts waits on
+  the same gate, so connectors and coding agents reuse it unchanged.
 - **Memory comes from the agent chat and explicit Remember only.** The
   agent never reads other chats to learn, only to carry out a task.
 - **Agent conversations are graph nodes,** so they sync with everything
@@ -97,7 +103,7 @@ implementation, not AgentKit.
 | Channel: how you talk to the agent | A local Agent chat in Peel, calling AgentKit directly | Sphinx messages to the agent's own account; the agent is a contact |
 | Graph | The local LadybugDB file | A local file on the server, synced the same way |
 | Tools | Graph, then Sphinx actions | Adds schedules, coding agents (ACP) and connectors |
-| Approvals | None in v1 | An approval gate, with spending caps for unattended runs |
+| Approvals | A card per send (once, always per chat, deny) | The same gate, with spending caps for unattended runs |
 
 ## The graph
 
@@ -181,7 +187,10 @@ Every write becomes one event:
 - **Encryption.** Events are encrypted with the account's key, as the
   preferences file is (RNCryptor with the node secret key; see
   [phases/11-preferences-sync.md](phases/11-preferences-sync.md)). The
-  memes server sees only ciphertext.
+  memes server sees only ciphertext. Only the official preferences file
+  uses the raw node secret (the official apps need it); Peel-only graph
+  data uses its own key, derived from the node secret by HKDF with a
+  label, so one key never serves two formats.
 - **Transport** (Tom T's plan, 2026-10-10: every write logged locally with
   its timestamp, uploaded to the memes server as an encrypted file; the
   fetch and push rules are still to be agreed). Proposed rules:
@@ -270,13 +279,23 @@ Two kinds of provider:
   route inside the terms may be the vendor's own CLI over ACP, which is not
   possible on iPhone.
 
+## Own versus rent
+
+Peel owns what no package does for it: the Sphinx tools, the session and
+UI, the event log and sync, and small pieces tied to its storage and UI.
+It rents what providers change every month: the model clients and MCP.
+The full list of what the agent has and lacks is in
+[phases/09-agents.md](phases/09-agents.md), "Capabilities against agent
+SDKs".
+
 ## Risks
 
-- **Sends without approval.** To carry out a task the agent reads a chat,
-  and text in that chat could tell it to message someone. v1 accepts this,
-  as the official apps do, and shows every send in the agent chat. The
-  first gate rule, when it comes: sends go out without asking only to
-  contacts the user named in the request.
+- **Sends someone else asked for.** To carry out a task the agent reads a
+  chat, and text in that chat could tell it to message someone. Every
+  send waits on a card showing the exact text, target and price, and the
+  text may hold nothing that draws nothing. An "Always allow" for a chat
+  is the remaining exposure: a read message could steer a send to that
+  chat without a card. It is listed and revoked in Account.
 - **Search on iPhone.** Whether LadybugDB's full-text and vector extensions
   work on iOS is unknown. The fallback is a SQLite FTS index beside the
   graph.
@@ -330,7 +349,9 @@ The old plan's parts, still wanted, now behind the seams above:
   graph nodes that sync like everything else.
 - **Connections:** calendar first (EventKit on the Mac, OAuth through MCP
   on a server), then email, contacts, files and notes. Read only by
-  default; tokens never travel in a Sphinx message.
+  default; tokens never travel in a Sphinx message. Proposed design
+  (2026-10-13): [jobs-architecture.md](jobs-architecture.md), connectors as
+  Strut steps that jobs use.
 
 ## Open questions
 

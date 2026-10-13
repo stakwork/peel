@@ -85,6 +85,10 @@ enum Offscreen {
         // installs one in the app menu without the setter, so the app reads
         // none, and the menu's item is taken out whenever it comes back.
         replace(NSApplication.self, NSSelectorFromString("servicesMenu"), #selector(NSApplication.offscreenServicesMenu))
+        // Never to the front, whoever asks (a notification's click among them).
+        replace(NSApplication.self, NSSelectorFromString("activate"), #selector(NSApplication.offscreenActivate as (NSApplication) -> () -> Void))
+        replace(NSApplication.self, NSSelectorFromString("activateIgnoringOtherApps:"),
+                #selector(NSApplication.offscreenActivate(ignoringOtherApps:)))
         NotificationCenter.default.addObserver(forName: NSMenu.didAddItemNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { removeServices() }
         }
@@ -188,6 +192,8 @@ extension NSPasteboard {
 
 extension NSApplication {
     @objc fileprivate func offscreenServicesMenu() -> NSMenu? { nil }
+    @objc fileprivate func offscreenActivate() { Offscreen.log("offscreen: not coming to the front") }
+    @objc fileprivate func offscreenActivate(ignoringOtherApps: Bool) { offscreenActivate() }
 }
 
 extension NSWorkspace {

@@ -210,21 +210,22 @@ struct MoneyRefusalTests {
         }
     }
 
-    @Test func aNoteThatWouldBeSplitIsRefused() async throws {
-        let (engine, _) = try engine()
-        await #expect(throws: Engine.Failure.noteTooLong) {
-            try await engine.sendPayment(to: person, amountMsat: 1_000, text: longNote)
-        }
-    }
-
     // MARK: Boosts
 
-    @Test func onlySomeoneElsesTextCanBeBoosted() async throws {
-        let (engine, storage) = try engine(messages: [
-            text(1, chat: person, fromMe: true), ownPayment(2, status: .delivered, msat: 1_000),
+    @Test func onlySomeoneElsesTextOrAttachmentCanBeBoosted() async throws {
+        var callLink = text(3, chat: person)
+        callLink.content = "https://chat.sphinx.chat/rooms/sphinx.call.1"
+        var image = text(4, chat: person)
+        image.type = MessageType.attachment
+        let (engine, storage) = try engine(balanceMsat: 999, messages: [
+            text(1, chat: person, fromMe: true), ownPayment(2, status: .delivered, msat: 1_000), callLink, image,
         ])
-        for id in [try id(1, storage), try id(2, storage), 999] {
+        for id in [try id(1, storage), try id(2, storage), try id(3, storage), 999] {
             await #expect(throws: Engine.Failure.notBoostable) { try await engine.boost(messageID: id, amountMsat: 1_000) }
+        }
+        // Someone else's image passes to the balance check.
+        await #expect(throws: Engine.Failure.insufficientBalance) {
+            try await engine.boost(messageID: try id(4, storage), amountMsat: 1_000)
         }
     }
 
@@ -297,9 +298,45 @@ struct MoneyRefusalTests {
     @Test func aQuickBoostIsNotHeldToTheThreshold() async throws {
         let (engine, storage) = try engine(
             messages: [text(1, chat: person)],
-            settings: [.paymentConfirmationMsat: "0", .alias: String(repeating: "a", count: 600)]
+            settings: [.alias: String(repeating: "a", count: 600)]
+        )
+        try await engine.setPaymentConfirmation(msat: 0)
+        let id = try id(1, storage)
+        await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id) }
+        // Set here, it was confirmed when saved.
+        try await engine.setBoostAmount(msat: 21_000, confirmedMsat: 21_000)
+        await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id) }
+    }
+
+    /// An amount from another device (the preferences file) over the
+    /// threshold is asked for on this one. Confirmed, the tap goes on to the
+    /// send; it counts for later taps only once a boost with it has gone
+    /// (here the send fails, so the next tap asks again). Confirmed when set
+    /// on this device, it is never asked. Under the threshold it goes as before.
+    @Test func aSyncedBoostAmountOverTheThresholdIsConfirmedHere() async throws {
+        let (engine, storage) = try engine(
+            messages: [text(1, chat: person)],
+            settings: [.alias: String(repeating: "a", count: 600)]
         )
         let id = try id(1, storage)
+        let synced = PreferenceRow(key: "tip_amount", identifier: "0", value: #""500""#, updatedAt: 1_760_000_000)
+        try await storage.pool.write { db in try synced.upsert(db) }
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 500_000)) {
+            try await engine.quickBoost(messageID: id)
+        }
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 500_000)) {
+            try await engine.quickBoost(messageID: id, confirmedMsat: 400_000)
+        }
+        await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id, confirmedMsat: 500_000) }
+        #expect(try storage.preference(.boostConfirmedMsat) == nil)
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 500_000)) {
+            try await engine.quickBoost(messageID: id)
+        }
+        try storage.setPreference(.boostConfirmedMsat, 500_000)
+        await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id) }
+        // Under the threshold, nothing to confirm.
+        let small = PreferenceRow(key: "tip_amount", identifier: "0", value: #""50""#, updatedAt: 1_760_000_001)
+        try await storage.pool.write { db in try small.upsert(db) }
         await #expect(throws: Engine.Failure.nameTooLong) { try await engine.quickBoost(messageID: id) }
     }
 
@@ -309,7 +346,8 @@ struct MoneyRefusalTests {
         let (engine, _) = try engine()
         #expect(try await engine.boostAmountMsat() == Engine.defaultBoostAmountMsat)
         await #expect(throws: Engine.Failure.invalidAmount) { try await engine.setBoostAmount(msat: 0) }
-        let over = Engine.defaultPaymentConfirmationMsat + 1
+        await #expect(throws: Engine.Failure.partSat) { try await engine.setBoostAmount(msat: 21_500) }
+        let over = Engine.defaultPaymentConfirmationMsat + 1000
         await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: over)) {
             try await engine.setBoostAmount(msat: over)
         }
@@ -322,7 +360,7 @@ struct MoneyRefusalTests {
         try await engine.setBoostAmount(msat: 21_000)
         #expect(try await engine.boostAmountMsat() == 21_000)
         try await engine.setPaymentConfirmation(msat: 0)
-        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 1)) { try await engine.setBoostAmount(msat: 1) }
+        await #expect(throws: Engine.Failure.needsConfirmation(amountMsat: 1000)) { try await engine.setBoostAmount(msat: 1000) }
     }
 
     // MARK: Retrying a payment

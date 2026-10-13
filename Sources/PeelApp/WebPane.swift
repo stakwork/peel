@@ -135,7 +135,7 @@ final class WebPane: NSObject {
     /// the page's place. The page then has the keyboard.
     func go(to typed: String) {
         guard let url = WebPage.typed(typed) else {
-            problem = Problem(url: nil, message: "Peel opens web addresses here: http and https only.")
+            problem = Problem(url: nil, message: "Only http and https addresses open here.")
             return
         }
         open(url)
@@ -432,7 +432,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
 extension WebPane: WKDownloadDelegate {
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
         guard let folder = try? IncomingFiles.newFolder(in: Self.downloadsRoot) else {
-            self.download = .failed(suggestedFilename, reason: "Peel could not make a folder for it")
+            self.download = .failed(suggestedFilename, reason: "Could not make a folder for it")
             return nil
         }
         let file = folder.appendingPathComponent("download", isDirectory: false)
@@ -446,13 +446,13 @@ extension WebPane: WKDownloadDelegate {
             do {
                 self.download = .saved(try await UserFiles.saveToDownloads(file, named: name))
             } catch {
-                self.download = .failed(name, reason: PeelError.readable(error))
+                self.download = .failed(name, reason: PeelError.problem(error))
             }
         }
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        take(download) { _, name in self.download = .failed(name, reason: error.localizedDescription) }
+        take(download) { _, name in self.download = .failed(name, reason: PeelError.problem(error)) }
     }
 
     /// The download's entry, removed; its private copy goes once `body` is
@@ -493,26 +493,45 @@ extension View {
 }
 
 /// The first items of a chat header's More menu: Browser, which shows the
-/// pane (its page, or an empty address field), then a tribe's second brain
-/// and web app, each only when the tribe has one (stored only when
-/// `WebPage.address` took it). `open` is the window's link router, as for a
-/// message link, so they open in the pane.
+/// pane (its page, or an empty address field), then the tribe's pages
+/// (`Tribe.pages`, in their one order), each opened in the pane.
 @MainActor
 enum WebMenuEntries {
-    static func entries(for tribe: Tribe?, pane: WebPane, open: OpenURLAction) -> [MenuEntry] {
+    static func entries(for tribe: Tribe?, pane: WebPane) -> [MenuEntry] {
         let browser = MenuEntry.button("Browser", systemImage: "globe") {
             withAnimation(.easeOut(duration: 0.2)) { pane.show() }
         }
-        let pages: [(String, String, String?)] = [
-            ("Second brain", "brain", tribe?.secondBrainURL), ("Tribe app", "square.grid.2x2", tribe?.appURL),
-        ]
-        return [browser] + pages.compactMap { title, image, address in
-            guard let url = address.flatMap(URL.init(string:)) else { return nil }
-            return .item(MenuItem(title: title, systemImage: image, detailSystemImage: "arrow.up.right") {
-                open(url)
+        return [browser] + (tribe?.pages ?? []).map { page in
+            .item(MenuItem(title: page.title, systemImage: page.systemImage, detailSystemImage: "arrow.up.right") {
+                pane.open(page)
                 return true
             })
         }
+    }
+}
+
+/// How a tribe's page is named and drawn, in the More menu and its details.
+extension TribePage {
+    var title: String {
+        switch kind {
+        case .app: "Tribe app"
+        case .secondBrain: "Second brain"
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case .app: "square.grid.2x2"
+        case .secondBrain: "brain"
+        }
+    }
+}
+
+extension WebPane {
+    /// Opens a tribe's page beside the chat: the one way the menu and the
+    /// details open one.
+    func open(_ page: TribePage) {
+        withAnimation(.easeOut(duration: 0.2)) { open(page.url) }
     }
 }
 
@@ -568,8 +587,14 @@ struct WebPaneView: View {
                     WebViewHost(webView: webView)
                 }
                 if let problem = pane.problem {
-                    LoadProblem(host: problem.url?.host, problem: problem.message,
-                                retry: problem.url == nil ? nil : { pane.retry() })
+                    EmptyState(problem.message, title: "Could not open \(problem.url?.host ?? "that address")") {
+                        // An address Peel would not open has nothing to try again.
+                        if problem.url != nil {
+                            Button("Try again") { pane.retry() }
+                                .buttonStyle(.peel(.outline, size: .sm))
+                        }
+                    }
+                    .background(Theme.background)
                 }
             }
             if let download = pane.download {
@@ -595,23 +620,26 @@ private struct WebToolbar: View {
     var body: some View {
         let page = pane.page
         HStack(spacing: 2) {
-            ToolbarIcon(systemImage: "arrow.left", help: "Back", enabled: page.canGoBack) { pane.goBack() }
-            ToolbarIcon(systemImage: "arrow.right", help: "Forward", enabled: page.canGoForward) { pane.goForward() }
-            ToolbarIcon(
-                systemImage: page.isLoading ? "xmark" : "arrow.clockwise",
-                help: page.isLoading ? "Stop" : "Reload", enabled: pane.webView != nil
-            ) { pane.reloadOrStop() }
+            IconButton("arrow.left", help: "Back") { pane.goBack() }
+                .disabled(!page.canGoBack)
+            IconButton("arrow.right", help: "Forward") { pane.goForward() }
+                .disabled(!page.canGoForward)
+            IconButton(page.isLoading ? "xmark" : "arrow.clockwise", help: page.isLoading ? "Stop" : "Reload") {
+                pane.reloadOrStop()
+            }
+            .disabled(pane.webView == nil)
             AddressField(pane: pane)
                 .padding(.horizontal, 6)
-            ToolbarIcon(systemImage: "arrow.up.right.square", help: "Open in default browser", enabled: page.url != nil) {
+            IconButton("arrow.up.right.square", help: "Open in default browser") {
                 if let url = page.url { NSWorkspace.shared.open(url) }
             }
+            .disabled(page.url == nil)
             MoreMenu(pane: pane, url: page.url)
-            ToolbarIcon(systemImage: "xmark", help: "Close (⌘W)") {
+            IconButton("xmark", help: "Close (⌘W)") {
                 withAnimation(.easeIn(duration: 0.15)) { pane.close() }
             }
         }
-        .padding(.leading, 8)
+        .padding(.leading, Theme.Space.sm)
         .padding(.trailing, 10)
         .frame(height: 60)
         .overlay(alignment: .bottom) {
@@ -786,88 +814,32 @@ private struct MoreMenu: View {
     }
 }
 
-private struct ToolbarIcon: View {
-    let systemImage: String
-    let help: String
-    var enabled = true
-    let action: () -> Void
-
-    var body: some View {
-        HoverIconButton(systemImage: systemImage, help: help, action: action)
-            .disabled(!enabled)
-            .opacity(enabled ? 1 : 0.35)
-    }
-}
-
-private struct LoadProblem: View {
-    let host: String?
-    let problem: String
-    let retry: (() -> Void)?
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("Couldn't open \(host ?? "that address")")
-                .font(Theme.font(15, .semibold))
-            Text(problem)
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
-            if let retry {
-                Button("Try again", action: retry)
-                    .buttonStyle(.peel(.outline, size: .sm))
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
-    }
-}
-
-/// A download under way or saved; a failure is the usual `NoticeBar`.
+/// A download under way, saved or failed: a callout in a strip along the
+/// pane's foot.
 private struct DownloadBar: View {
     @Environment(AppModel.self) private var model
     let download: WebPane.Download
     let dismiss: () -> Void
 
     var body: some View {
-        switch download {
-        case .saving(let name):
-            bar {
-                ProgressView().controlSize(.small)
-                Text("Downloading \(name)…")
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+        Group {
+            switch download {
+            case .saving(let name):
+                Callout(detail: "Downloading \(name)…", icon: .progress, oneLine: true, dismiss: dismiss)
+            case .saved(let file):
+                Callout(
+                    detail: "Saved \(file.lastPathComponent) to Downloads",
+                    icon: .symbol("arrow.down.circle", Theme.confirmed), oneLine: true, dismiss: dismiss
+                ) {
+                    Button("Show in Finder") { model.showInFinder(file) }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                }
+            case .failed(let name, let reason):
+                Callout(detail: PeelError.problem(reason, couldNot: "download \(name)"), icon: .problem, dismiss: dismiss)
             }
-        case .saved(let file):
-            bar {
-                Image(systemName: "arrow.down.circle")
-                    .foregroundStyle(Theme.confirmed)
-                Text("Saved \(file.lastPathComponent) to Downloads")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 8)
-                Button("Show in Finder") { model.showInFinder(file) }
-                    .buttonStyle(.peel(.outline, size: .sm))
-            }
-        case .failed(let name, let reason):
-            NoticeBar(text: "Could not download \(name): \(reason)", dismiss: dismiss)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Theme.panel)
-                .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
         }
-    }
-
-    private func bar(@ViewBuilder _ content: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            content()
-            Spacer(minLength: 8)
-            HoverIconButton(systemImage: "xmark", help: "Dismiss", action: dismiss)
-        }
-        .font(Theme.font(12))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, Theme.Space.sm)
         .background(Theme.panel)
         .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
     }

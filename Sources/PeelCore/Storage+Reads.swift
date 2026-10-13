@@ -57,6 +57,8 @@ extension Storage {
                     SELECT id, chat, content, mentionsMe FROM message
                     WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
                       AND type IN (\(MessageType.contentSQL)) AND +chat IN (\(Self.tribeChats)) \(only)
+                      -- `mentions` needs an "@": without one only a row marked a mention can change.
+                      AND (mentionsMe = 1 OR instr(content, '@') > 0)
                     ORDER BY id LIMIT ?
                     """,
                 arguments: [after] + StatementArguments(Array(chats ?? [])) + [chunk]
@@ -64,10 +66,8 @@ extension Storage {
         } update: { db, row in
             let mentioned = PeelCore.mentions(row["content"], aliases: aliasesByChat[row["chat"]] ?? plain)
             if mentioned != row["mentionsMe"] {
-                try db.execute(
-                    sql: "UPDATE message SET mentionsMe = ? WHERE id = ?",
-                    arguments: [mentioned, row["id"] as Int64]
-                )
+                try db.cachedStatement(sql: "UPDATE message SET mentionsMe = ? WHERE id = ?")
+                    .execute(arguments: [mentioned, row["id"] as Int64])
             }
         }
     }
@@ -114,6 +114,32 @@ extension Storage {
 
     func highestServerIndex() throws -> Int64? {
         try pool.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(serverIndex) FROM message") }
+    }
+
+    /// Whether a message other than `copy` carries its send tag. The same
+    /// message is its uuid at its server index, or our send not yet given
+    /// one (its echo), of the same type and words. Also left out: the row a tribe's
+    /// copy takes over, our send in its chat named by `original`, with the
+    /// same tag, type and words, not yet given a server index. A join or
+    /// leave has no words (every one is ""), so neither of those last two
+    /// counts for one: a copy of our join or leave sent here is a replay,
+    /// harmlessly for the tribe's own forward, as the join or leave is
+    /// already recorded here.
+    func holdsTag(_ tag: String, besides copy: Message, takingOver original: String?) throws -> Bool {
+        try pool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                    SELECT EXISTS (SELECT 1 FROM message WHERE tag = ?1
+                        AND NOT (uuid IS ?2 AND (serverIndex IS ?3
+                            OR (serverIndex IS NULL AND type = ?6 AND content IS ?7 AND ?6 NOT IN (?8, ?9))))
+                        AND NOT (?4 IS NOT NULL AND uuid = ?4 AND chat = ?5 AND fromMe = 1 AND serverIndex IS NULL
+                            AND type = ?6 AND content IS ?7 AND ?6 NOT IN (?8, ?9)))
+                    """,
+                arguments: [tag, copy.uuid, copy.serverIndex, original, copy.chat, copy.type, copy.content,
+                            MessageType.groupJoin, MessageType.groupLeave]
+            ) ?? false
+        }
     }
 
     /// Every stored tribe, joined or left: the subquery for "is this chat a tribe".
@@ -198,10 +224,13 @@ extension Storage {
     /// (`countsAsUnreadSQL`). One row per conversation; each count is ranges
     /// on `message_unread` (one per type), plus a lookup of the boosted
     /// message for each boost in range; the mentions a range on
-    /// `message_mentions`. A message deleted after it arrived still counts,
-    /// as before payments (it was news when it came).
+    /// `message_mentions`; `isBehind` a range past the marker on
+    /// `message_chat_serverIndex`. A message deleted after it arrived still
+    /// counts, as before payments (it was news when it came).
     private static let readStatesSQL = """
-        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew, (
+        SELECT c.chat, COALESCE(s.muteLevel, 0) AS muteLevel, s.lastRead, c.isNew,
+            EXISTS (SELECT 1 FROM message m WHERE m.chat = c.chat
+                AND m.serverIndex > COALESCE(s.lastRead, -1) AND m.fromMe = 0) AS isBehind, (
             SELECT COUNT(*) FROM message m
             WHERE m.chat = c.chat AND \(countsAsUnreadSQL)
                 AND m.serverIndex > COALESCE(s.lastRead, -1)
@@ -222,6 +251,29 @@ extension Storage {
             }
             .removeDuplicates()
             .values(in: pool)
+    }
+
+    /// The newest `limit` messages of a chat past its read marker that count
+    /// as unread (`countsAsUnreadSQL`, as `readStates` counts them), oldest
+    /// first; with `mentionsOnly`, those that mention this account (what a
+    /// muted chat counts).
+    public func unreadMessages(in chat: String, mentionsOnly: Bool = false, limit: Int) throws -> [Message] {
+        try pool.read { db in
+            try Message.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM (
+                        SELECT m.* FROM message m
+                        -- The marker as a constant, so the indexes seek past it.
+                        WHERE m.chat = ?1 AND \(Self.countsAsUnreadSQL)
+                            AND m.serverIndex > COALESCE((SELECT lastRead FROM chatState WHERE chat = ?1), -1)
+                            \(mentionsOnly ? "AND m.mentionsMe = 1" : "")
+                        ORDER BY m.timestamp DESC, m.id DESC LIMIT ?2
+                    ) ORDER BY timestamp, id
+                    """,
+                arguments: [chat, limit]
+            )
+        }
     }
 
     /// Read markers moved here and not yet sent to the server.
@@ -247,6 +299,11 @@ extension Storage {
 
     public func message(id: Int64) throws -> Message? {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE id = ?", arguments: [id]) }
+    }
+
+    /// The message a send's tag names (`Engine.sendText` returns it).
+    public func message(tag: String) throws -> Message? {
+        try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE tag = ?", arguments: [tag]) }
     }
 
     /// Our payments, boosts and purchases to people that are still pending,
@@ -292,20 +349,26 @@ extension Storage {
         return balance > waiting ? balance - waiting : 0
     }
 
+    /// `Message.mayHavePaid` for a row of ours: it left (a tag) with sats.
+    static let mayHavePaidSQL =
+        "(tag IS NOT NULL AND (type IN (\(MessageType.sqlList(MessageType.moneySends))) OR COALESCE(msat, 0) > 0))"
+
     /// A send tracked by tag that the server has not confirmed or refused.
     struct PendingSend: Hashable {
         var tag: String
         /// When it was sent or written, in milliseconds since 1970.
         var createdAt: Int64
-        /// It pays: a payment, boost or purchase, an invoice we pay or an
-        /// invite's funding payment, so one the server never recorded failed
+        /// It pays: a payment, boost or purchase, a message that paid a
+        /// tribe's price, an invoice we pay or an invite's funding payment,
+        /// so one the server never recorded failed
         /// (`Message.unrecordedPaymentTimeout`).
         var movesMoney: Bool
     }
 
     /// Every send the server has not confirmed or refused, from the three
-    /// tables that track one by tag: our payments, boosts and purchases, and
-    /// text that has waited past `cutoff` (newest first, at most 200,
+    /// tables that track one by tag: our payments, boosts and purchases,
+    /// messages that paid a tribe's price, and other text that has waited
+    /// past `cutoff` (newest first, at most 200,
     /// `message_pending`); our payments, boosts and purchases with no status
     /// at all, which came from history or another device (newest first, at
     /// most 200; payments review F4), never failed for want of a record:
@@ -319,9 +382,9 @@ extension Storage {
                 db,
                 sql: """
                     SELECT * FROM (
-                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, type IN (\(moneySends)) AS movesMoney
+                        SELECT tag, COALESCE(timestamp, 0) AS createdAt, \(Self.mayHavePaidSQL) AS movesMoney
                         FROM message WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL
-                            AND (type IN (\(moneySends)) OR timestamp < ?)
+                            AND (\(Self.mayHavePaidSQL) OR timestamp < ?)
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, COALESCE(timestamp, 0), 0

@@ -33,7 +33,7 @@ final class ChatSearch {
         guard query != nil, !searching || !matches.isEmpty else { return nil }
         if matches.isEmpty { return "No matches" }
         let total = matches.count >= Self.limit ? "\(Self.limit.formatted())+" : matches.count.formatted()
-        guard let current else { return matches.count == 1 ? "1 match" : "\(total) matches" }
+        guard let current else { return Formatting.count(matches.count, "match", "matches", shown: total) }
         return "\(current + 1) of \(total)"
     }
 
@@ -137,7 +137,7 @@ struct SearchHeaderButton: View {
 
     var body: some View {
         let open = model.search?.chat == chat
-        HeaderButton(systemImage: "magnifyingglass", help: "Search in chat (⌘F)", lit: open) {
+        IconButton("magnifyingglass", help: "Search in chat (⌘F)", lit: open) {
             if open { model.closeSearch() } else { model.openSearch(in: chat) }
         }
     }
@@ -150,6 +150,7 @@ struct SearchHeaderButton: View {
 /// match (the first when none is); Escape closes.
 struct ChatSearchBar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
     @Bindable var search: ChatSearch
     let placeholder: String
 
@@ -185,7 +186,7 @@ struct ChatSearchBar: View {
     }
 
     private var bar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.sm) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
@@ -205,24 +206,22 @@ struct ChatSearchBar: View {
                         .fixedSize()
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Theme.Space.md)
             .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .modifier(FieldChrome(focused: focused, hovering: hovering))
             .contentShape(Rectangle())
             .onTapGesture { focused = true }
             .onHover { hovering = $0 }
             HStack(spacing: 2) {
-                HeaderButton(systemImage: "chevron.up", help: "Newer match") { model.stepSearch(by: -1) }
+                IconButton("chevron.up", help: "Newer match") { model.stepSearch(by: -1) }
                     .disabled(!search.canStepNewer)
-                    .opacity(search.canStepNewer ? 1 : 0.4)
-                HeaderButton(systemImage: "chevron.down", help: "Older match") { model.stepSearch(by: 1) }
+                IconButton("chevron.down", help: "Older match") { model.stepSearch(by: 1) }
                     .disabled(!search.canStepOlder)
-                    .opacity(search.canStepOlder ? 1 : 0.4)
-                HeaderButton(systemImage: "xmark", help: "Close search (Esc)") { model.closeSearch() }
+                IconButton("xmark", help: "Close search (Esc)") { model.closeSearch() }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Space.xl)
+        .padding(.vertical, Theme.Space.sm)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
     }
 
@@ -234,20 +233,22 @@ struct ChatSearchBar: View {
     }
 
     #if os(macOS)
-    /// The field's keys, while it has the cursor; not while an input method
-    /// is composing, whose Return and arrows are its own.
+    /// The field's keys, while it has the cursor, in its own window, under
+    /// any menu, panel or the image viewer (`KeyMonitor`'s order); not while
+    /// an input method is composing, whose Return and arrows are its own.
     private func listen() {
-        keys.start { [model] event in
+        keys.start { [model, presenter] event in
+            guard presenter?.takesKeys(event) == true, model.viewer == nil else { return false }
             if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true { return false }
             let modifiers = event.modifierFlags.intersection([.command, .option, .control])
             guard modifiers.isEmpty else { return false }
             switch event.keyCode {
-            case 125: model.stepSearch(by: 1, show: false) // down
-            case 126: model.stepSearch(by: -1, show: false) // up
-            case 36, 76: // Return, Enter
+            case KeyCode.down: model.stepSearch(by: 1, show: false)
+            case KeyCode.up: model.stepSearch(by: -1, show: false)
+            case KeyCode.return, KeyCode.enter:
                 guard let search = model.search, !search.matches.isEmpty else { return false }
                 model.showSearchMatch(search.current ?? 0)
-            case 53: model.closeSearch() // Escape
+            case KeyCode.escape: model.closeSearch()
             default: return false
             }
             return true
@@ -264,8 +265,6 @@ private struct SearchResults: View {
     @Environment(AppModel.self) private var model
     let search: ChatSearch
 
-    private static let rowHeight: CGFloat = 36
-
     var body: some View {
         let terms = search.query?.terms ?? []
         ScrollViewReader { proxy in
@@ -278,14 +277,13 @@ private struct SearchResults: View {
                         ) {
                             model.showSearchMatch(index)
                         }
-                        .frame(height: Self.rowHeight)
                         .id(index)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.xs)
             }
-            .frame(maxHeight: Self.rowHeight * 5.5 + 8)
+            .frame(maxHeight: SearchResultRow.height * 5.5 + 8)
             .fixedSize(horizontal: false, vertical: true)
             .onChange(of: search.current) { _, index in
                 if let index { proxy.scrollTo(index) }
@@ -307,22 +305,23 @@ private struct SearchResultRow: View {
     let selected: Bool
     let action: () -> Void
 
-    @State private var hovering = false
+    static let height: CGFloat = 36
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Avatar(name: sender.avatarName, url: sender.photoURL, size: 20, hue: sender.hue)
+        ListRow(selected: selected, minHeight: Self.height, action: action) {
+            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.sm, hue: sender.hue)
+        } title: {
+            HStack(spacing: Theme.Space.sm) {
                 Text(sender.label)
                     .font(Theme.font(13, .semibold))
                     .foregroundStyle(sender.hue.name)
                     .lineLimit(1)
                     .layoutPriority(1)
                 Text(snippet)
-                    .font(Theme.font(13))
-                    .foregroundStyle(Theme.text)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+            }
+        } trailing: {
+            HStack(spacing: Theme.Space.sm) {
                 if message.threadUUID != nil {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .font(.system(size: 11))
@@ -332,18 +331,10 @@ private struct SearchResultRow: View {
                 Text(Formatting.relative(message.date))
                     .font(Theme.font(12))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
                     .fixedSize()
             }
-            .padding(.horizontal, 8)
-            .frame(maxHeight: .infinity)
-            .background(selected ? Theme.selection : hovering ? Theme.hover : .clear,
-                        in: RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 }
 

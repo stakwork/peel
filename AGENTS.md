@@ -385,7 +385,10 @@ is a short plan. Update the status and the journal when you finish something.
     is listening (`onThisMac`: opened without following a link; anything
     but a plain owner-only file of this user's naming a server on this
     Mac with a key refused; ignored once the strut that wrote it has
-    stopped; the key never printed, dumped or reflected); one memory
+    stopped; read again by `AppModel.lookForMemory` before each reply
+    (`AgentSession.willRun`), which drops a strut that stopped; a development
+    profile only with `-memoryConnection <path>`; the key never printed,
+    dumped or reflected); one memory
     step run by
     `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
     arguments as the run's `input` under the config `{{ input }}` (strut

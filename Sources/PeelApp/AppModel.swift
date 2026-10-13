@@ -264,7 +264,7 @@ final class AppModel {
     private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     var agent: AgentSession?
-    /// The agent's memory: the strut on this Mac, from its connection file (read once per open).
+    /// The agent's memory: the strut on this Mac, from its connection file (`lookForMemory`).
     var memoryServer: MemoryServer?
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?

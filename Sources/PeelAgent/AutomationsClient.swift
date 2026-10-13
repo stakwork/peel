@@ -89,8 +89,8 @@ public struct SchedulePreview: Sendable, Equatable {
 }
 
 /// strut's automation endpoints, for the agent's tools and the Automations
-/// view alike, over the strut kept as the memory server (its address and
-/// key). Every Peel automation hangs off one workflow, `peel-automation`,
+/// view alike, over the memory's strut (its address and key, from its
+/// connection file). Every Peel automation hangs off one workflow, `peel-automation`,
 /// whose one `http` step posts to this Mac's `AutomationServer`.
 public struct AutomationsClient: Sendable {
     public let server: MemoryServer

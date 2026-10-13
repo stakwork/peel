@@ -27,8 +27,8 @@ extension AppModel {
     /// The tools the agent may use over the account's `engine`: the time,
     /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
     /// the person's approval for each message; and the memory and automation
-    /// tools when a strut on this Mac has the memory steps. A run with no approver (an automation's)
-    /// is not offered the tools that ask.
+    /// tools when a strut on this Mac has the memory steps. A run with no
+    /// approver (an automation's) is not offered the tools that ask.
     static func agentTools(_ engine: Engine, memory: MemoryServer?) -> ToolRegistry {
         let sphinx = SphinxTools(storage: engine.storage)
         var tools = [.currentTime] + sphinx.tools + [sphinx.send(through: engine)]
@@ -66,34 +66,53 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile). The memory is the strut on this Mac, found by
-    /// its connection file, for an app profile only: a development one
-    /// never writes to the real graph.
+    /// development profile), and the memory, if a strut is running.
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             profile.removeOldMemoryKey()
-            let memory = profile.kind == .app ? memoryOnThisMac() : nil
-            memoryServer = memory
-            agent = AgentSession(
+            let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
-                tools: Self.agentTools(engine, memory: memory), systemPrompt: Self.agentSystemPrompt(remembers: memory != nil)
+                tools: Self.agentTools(engine, memory: nil), systemPrompt: Self.agentSystemPrompt(remembers: false)
             ) { Self.agentClient($0, profile: profile) }
-            startAutomations(profile, engine: engine)
+            agent.willRun = { [weak self] in self?.lookForMemory() }
+            self.agent = agent
+            lookForMemory(reporting: true)
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
         }
     }
 
-    /// The strut on this Mac, if one is running with the memory steps; a
-    /// connection file refused is said once, and memory stays off.
-    private func memoryOnThisMac() -> MemoryServer? {
+    /// Gives the open agent the strut on this Mac while one is running with
+    /// the memory steps, or takes it away once it is not: its tools, prompt
+    /// and automations. Looked at when the agent opens and before each
+    /// reply, so a strut started after Peel is found, and one that stopped
+    /// (its port may now be anyone's) is not sent the key or memory text. A
+    /// refused connection file is said when `reporting`.
+    func lookForMemory(reporting: Bool = false) {
+        guard let profile, let engine, let agent, let file = Self.memoryConnection(profile) else { return }
+        var memory: MemoryServer?
         do {
-            return try MemoryServer.onThisMac()
+            memory = try MemoryServer.onThisMac(file: file)
         } catch {
-            notice = PeelError.problem(error, couldNot: "turn on the agent's memory")
-            return nil
+            if reporting { notice = PeelError.problem(error, couldNot: "turn on the agent's memory") }
         }
+        guard memory != memoryServer else { return }
+        memoryServer = memory
+        closeMemory()
+        agent.tools = Self.agentTools(engine, memory: memory)
+        agent.systemPrompt = Self.agentSystemPrompt(remembers: memory != nil)
+        stopAutomations()
+        startAutomations(profile, engine: engine)
+    }
+
+    /// Where `profile` finds strut: its connection file for an app profile;
+    /// for a development one only a file named by the `memoryConnection`
+    /// default (`-memoryConnection <path>`), so a test account never writes
+    /// to the real graph.
+    private static func memoryConnection(_ profile: Profile) -> URL? {
+        profile.kind == .app ? MemoryServer.connectionFile
+            : UserDefaults.standard.string(forKey: "memoryConnection").map { URL(filePath: $0) }
     }
 
     /// The model client for `credential`; a development profile may name a

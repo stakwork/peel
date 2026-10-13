@@ -176,6 +176,9 @@ public final class AgentSession {
     /// The tools the agent may use; registering one is a line in the app.
     public var tools: ToolRegistry
     public var systemPrompt: String
+    /// Called before each reply is asked for (a send or a retry), so the
+    /// app can change `tools` and `systemPrompt` first.
+    @ObservationIgnored public var willRun: (() -> Void)?
 
     private let store: any AgentStore
     private let rules: ApprovalRules
@@ -296,6 +299,7 @@ public final class AgentSession {
     }
 
     private func run(answering turn: AgentTurn) {
+        willRun?()
         let credential: AgentCredential?
         do {
             credential = try credentials.read()

@@ -92,8 +92,8 @@ strut tick ── Fri 17:00 ──► run workflow `peel-automation`
   HTTP server bound to 127.0.0.1, port 4778 unless `defaults write
   dev.peel.mac automationPort` says otherwise. It needs a bearer token,
   made on first use and kept in the Keychain (`Profile.automationToken`),
-  and rejects anything else. It runs while a strut is set in Account ›
-  Peel agent, the same strut as the memory. This is the "channel from
+  and rejects anything else. It runs while Peel has found a strut by its
+  connection file, the same strut as the memory. This is the "channel from
   strut back into the app" that agent-brain.md says Option B lacked. The
   same endpoint later lets strut jobs reach Sphinx tools.
 

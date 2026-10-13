@@ -37,29 +37,33 @@ extension AppModel {
         return (1...65535).contains(port) ? port : 4778
     }
 
-    /// The client for the strut kept as the memory server; nil without one.
+    /// The client for the memory's strut (`lookForMemory`); nil without one.
     var automationsClient: AutomationsClient? {
         memoryServer.map(AutomationsClient.init(server:))
     }
 
-    /// While the agent chat is open and a strut is set: listens for strut
+    /// While the agent chat is open with a strut found: listens for strut
     /// with the profile's token (made on first use), and points strut's
-    /// `peel-automation` workflow here.
+    /// `peel-automation` workflow here. A development profile listens only
+    /// with an `automationPort` of its own, never on the app's.
     func startAutomations(_ profile: Profile, engine: Engine) {
-        guard automationsClient != nil else { return }
+        guard let memory = memoryServer,
+              profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
         let port = Self.automationPort
         let stopping = automationStopping
         Task {
             do {
                 let token = try AutomationServer.token(in: profile.automationToken)
-                // The last server lets go of the port first (a strut changed in Account, an account switched).
+                // The last server lets go of the port first (an account switched).
                 await stopping?.value
                 // Stopped with the agent chat (`closeAgent`), so holding the model is bounded.
                 let server = try await AutomationServer.start(port: port, token: token) { request in
                     await self.runAutomation(request)
                 }
-                // Closed, or another account opened, while it started.
-                guard self.engine === engine, automationServer == nil else { return await server.stop() }
+                // Closed, another account opened, or the strut changed or stopped while it started.
+                guard self.engine === engine, memoryServer == memory, automationServer == nil else {
+                    return await server.stop()
+                }
                 automationServer = server
                 automationToken = token
                 await installAutomations()

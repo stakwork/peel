@@ -122,7 +122,7 @@ struct AutomationsClientTests {
     // MARK: The tools
 
     private var tools: AutomationTools {
-        let server = MemoryServer(base: URL(string: "http://127.0.0.1:1")!)!
+        let server = MemoryServer(base: URL(string: "http://127.0.0.1:1")!, key: "k")!
         return AutomationTools(client: AutomationsClient(server: server), timeZone: TimeZone(identifier: "Europe/London")!)
     }
 

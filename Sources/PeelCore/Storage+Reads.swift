@@ -57,6 +57,8 @@ extension Storage {
                     SELECT id, chat, content, mentionsMe FROM message
                     WHERE id > ? AND fromMe = 0 AND deleted = 0 AND content IS NOT NULL
                       AND type IN (\(MessageType.contentSQL)) AND +chat IN (\(Self.tribeChats)) \(only)
+                      -- `mentions` needs an "@": without one only a row marked a mention can change.
+                      AND (mentionsMe = 1 OR instr(content, '@') > 0)
                     ORDER BY id LIMIT ?
                     """,
                 arguments: [after] + StatementArguments(Array(chats ?? [])) + [chunk]
@@ -64,10 +66,8 @@ extension Storage {
         } update: { db, row in
             let mentioned = PeelCore.mentions(row["content"], aliases: aliasesByChat[row["chat"]] ?? plain)
             if mentioned != row["mentionsMe"] {
-                try db.execute(
-                    sql: "UPDATE message SET mentionsMe = ? WHERE id = ?",
-                    arguments: [mentioned, row["id"] as Int64]
-                )
+                try db.cachedStatement(sql: "UPDATE message SET mentionsMe = ? WHERE id = ?")
+                    .execute(arguments: [mentioned, row["id"] as Int64])
             }
         }
     }

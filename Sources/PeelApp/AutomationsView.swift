@@ -4,34 +4,39 @@ import SwiftUI
 
 /// The person's automations (`docs/phases/12-automations.md`): what the
 /// agent runs on its own, read from strut. One-offs still to come, then
-/// recurring ones, then one-offs done. A new one is asked of the agent, so
-/// there is one way to make one and one card to approve it.
+/// recurring ones, then one-offs done. They are made by asking the agent,
+/// so the page only lists them; until the agent and strut are set up, it
+/// says what to set up instead.
 struct AutomationsView: View {
     @Environment(AppModel.self) private var model
-    @State private var draft = ""
     @State private var expanded: String?
 
     var body: some View {
         let state = model.automations
         VStack(spacing: 0) {
             DetailHeader(title: "Automations")
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.lg) {
-                    FormTextField(label: "New automation", prompt: "Remind me tomorrow at 8 to…, or every Friday at 5…",
-                                  text: $draft, systemImage: "plus")
-                        .onSubmit {
-                            if model.askAgentForAutomation(draft) { draft = "" }
-                        }
-                        .disabled(model.automationsClient == nil)
-                    notices(state)
-                    group("Upcoming", state.upcoming)
-                    group("Recurring", state.recurring)
-                    group("Done", state.done)
-                    if state.loaded, state.list.isEmpty, model.automationsClient != nil, state.problem == nil {
-                        EmptyState("Ask for a reminder or a regular task above, or in the agent chat.", size: .sm)
-                    }
+            if model.agent?.connection == nil {
+                EmptyState("It runs your automations.", title: "Set up Peel's agent") {
+                    AgentConnectButton(source: .automations, title: "Set up", variant: .primary)
                 }
-                .padding(Theme.Space.lg)
+            } else if model.automationsClient == nil {
+                EmptyState("It keeps the schedule.", title: "Connect strut") {
+                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.primary))
+                }
+            } else if state.loaded, state.list.isEmpty, state.problem == nil {
+                EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
+                    Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                        notices(state)
+                        group("Upcoming", state.upcoming)
+                        group("Recurring", state.recurring)
+                        group("Done", state.done)
+                    }
+                    .padding(Theme.Space.lg)
+                }
             }
         }
         .task {
@@ -45,11 +50,7 @@ struct AutomationsView: View {
 
     @ViewBuilder
     private func notices(_ state: AutomationsState) -> some View {
-        if model.automationsClient == nil {
-            Callout(.neutral, "Automations need strut", detail: "Set a strut on this Mac in Account › Peel agent; it keeps the schedule.") {
-                Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.link, size: .sm))
-            }
-        } else if let problem = state.problem {
+        if let problem = state.problem {
             Callout(.attention, detail: problem, dismiss: { model.automations.problem = nil })
         } else if state.schedulerLooksOff() {
             Callout(.attention, "strut's clock looks off",
@@ -114,6 +115,7 @@ private struct AutomationRow: View {
             if automation.running { ("Running…", false) }
             else if !automation.enabled { ("Paused", false) }
             else if automation.lastRunFailed { ("Didn't finish", true) }
+            else if automation.isMissed { ("Missed", false) }
             else if let next = automation.nextRun { (Formatting.dateAndTime(next), false) }
             else if let last = automation.lastRun?.startedAt { ("Ran " + Formatting.dateAndTime(last), false) }
             else { ("", false) }

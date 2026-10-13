@@ -166,21 +166,6 @@ extension AppModel {
         await changeAutomations("change \u{201C}\(automation.name)\u{201D}") { _ = try await $0.update(automation, prompt: prompt) }
     }
 
-    /// The new-automation field: the text goes to the agent chat, so there is
-    /// one way to make one, with one card to approve. False, with the reason
-    /// shown, when the agent cannot take it now; the field then keeps it.
-    func askAgentForAutomation(_ text: String) -> Bool {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let agent else { return false }
-        guard !agent.isRunning else {
-            automations.problem = "The agent is still replying; press Return again when it has finished."
-            return false
-        }
-        destination = .agent
-        agent.send("Set up an automation: " + text)
-        return true
-    }
-
     private func changeAutomations(_ what: String, _ change: (AutomationsClient) async throws -> Void) async {
         guard let client = automationsClient else { return }
         do {

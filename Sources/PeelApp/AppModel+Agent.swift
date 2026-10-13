@@ -6,7 +6,7 @@ import PeelCore
 /// Where a Connect panel was opened from, so it opens beside that button:
 /// the chat's card or its error row, or the Account page's provider or key.
 enum AgentConnectSource: Hashable {
-    case chat, problem, account, accountKey
+    case chat, problem, account, accountKey, automations
 }
 
 extension AppModel {

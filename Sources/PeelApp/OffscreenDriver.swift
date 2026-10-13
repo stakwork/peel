@@ -151,7 +151,8 @@ final class OffscreenDriver {
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
     /// Account screen (the menu's Account…); `payments`, the Payments screen;
-    /// `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// `automations`, the Automations page; `automations-setup`, its Set up
+    /// (the Connect panel) while no model is connected; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
     /// its gear (Account at Peel agent); `agent-retry`, its
     /// Retry; `agent-view`, the first View in its newest reply;
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
@@ -171,6 +172,12 @@ final class OffscreenDriver {
         case "payments":
             // What the sidebar's Payments row sets.
             model.destination = .payments
+        case "automations":
+            // What the sidebar's Automations row sets.
+            model.destination = .automations
+        case "automations-setup":
+            // The Automations page's Set up, while no model is connected.
+            model.agentConnectFrom = .automations
         case "agent-connect":
             // The agent chat's Connect, on its card or its error row.
             model.agentConnectFrom = .chat

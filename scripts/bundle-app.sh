@@ -30,6 +30,14 @@ for framework in $(otool -L .build/debug/PeelApp | sed -n 's|^[[:space:]]*@rpath
     "$APP/Contents/Frameworks/$framework"/Versions/*/Headers "$APP/Contents/Frameworks/$framework"/Versions/*/Modules
 done
 cp Assets/AppIcon.icns Assets/Assets.car "$APP/Contents/Resources/"
+# The agent's strut, as scripts/stage-strut.sh left it; without it the app
+# finds only a strut started outside it (its connection file). Not under
+# Contents/Helpers, which codesign keeps for signed nested bundles.
+if [ -d .build/strut/strut ]; then
+  ditto .build/strut/strut "$APP/Contents/Strut"
+else
+  echo "bundle-app: no strut staged (scripts/stage-strut.sh <strut checkout>); the agent has memory only from a strut started outside Peel" >&2
+fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -44,7 +52,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>CFBundleVersion</key><string>1</string>
-    <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Peel uses the microphone so people on a call can hear you.</string>
     <key>NSCameraUsageDescription</key><string>Peel uses the camera when you turn on video in a call.</string>

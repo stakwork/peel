@@ -47,11 +47,17 @@ public final class AutomationServer: Sendable {
     /// The token kept in `item`, or a new random one kept there.
     public static func token(in item: any SecretItem) throws -> String {
         if let kept = try item.read(), let token = String(data: kept, encoding: .utf8), token.count >= 32 { return token }
+        let token = try newKey()
+        try item.write(Data(token.utf8))
+        return token
+    }
+
+    /// 32 random bytes as hex: a token, or a strut's key (`BundledStrut`).
+    static func newKey() throws -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            throw PeelError("could not make a token")
+            throw PeelError("could not make a key")
         }
-        try item.write(Data(bytes.hex.utf8))
         return bytes.hex
     }
 

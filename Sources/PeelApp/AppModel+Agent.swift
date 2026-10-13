@@ -66,7 +66,8 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile), and the memory, if a strut is running.
+    /// development profile), and the memory: Peel's own strut for an app
+    /// account, started here if it is not running.
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
@@ -77,25 +78,37 @@ extension AppModel {
             ) { Self.agentClient($0, profile: profile) }
             agent.willRun = { [weak self] in self?.lookForMemory() }
             self.agent = agent
+            // A strut that stopped is not started again from here, only before the next reply: no crash loop.
+            strut?.onChange = { [weak self] in self?.lookForMemory(restarting: false) }
             lookForMemory(reporting: true)
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
         }
     }
 
-    /// Gives the open agent the strut on this Mac while one is running with
-    /// the memory steps, or takes it away once it is not: its tools, prompt
-    /// and automations. Looked at when the agent opens and before each
-    /// reply, so a strut started after Peel is found, and one that stopped
+    /// Gives the open agent its strut while one is running with the memory
+    /// steps, or takes it away once it is not: its tools, prompt and
+    /// automations. For an app account that is Peel's own strut, once
+    /// ready; in a build without one, a strut started outside Peel, found by
+    /// its connection file. Looked at when the agent opens, when Peel's
+    /// strut starts or stops, and before each reply, so one that stopped
     /// (its port may now be anyone's) is not sent the key or memory text. A
     /// refused connection file is said when `reporting`.
-    func lookForMemory(reporting: Bool = false) {
-        guard let profile, let engine, let agent, let file = Self.memoryConnection(profile) else { return }
+    func lookForMemory(reporting: Bool = false, restarting: Bool = true) {
+        guard let profile, let engine, let agent else { return }
         var memory: MemoryServer?
-        do {
-            memory = try MemoryServer.onThisMac(file: file)
-        } catch {
-            if reporting { notice = PeelError.problem(error, couldNot: "turn on the agent's memory") }
+        if profile.kind == .app, let strut {
+            memory = strut.server
+            // Not running yet, or stopped since: started, and here once ready.
+            if memory == nil, restarting { startStrut(strut, reporting: reporting) }
+        } else if let file = Self.memoryConnection(profile) {
+            do {
+                memory = try MemoryServer.onThisMac(file: file)
+            } catch {
+                if reporting { notice = PeelError.problem(error, couldNot: "turn on the agent's memory") }
+            }
+        } else {
+            return
         }
         guard memory != memoryServer else { return }
         memoryServer = memory
@@ -104,6 +117,15 @@ extension AppModel {
         agent.systemPrompt = Self.agentSystemPrompt(remembers: memory != nil)
         stopAutomations()
         startAutomations(profile, engine: engine)
+    }
+
+    private func startStrut(_ strut: BundledStrut, reporting: Bool) {
+        Task {
+            do { _ = try await strut.start() } catch {
+                // Not said once the agent has closed (its account locked or forgotten).
+                if reporting, agent != nil { notice = PeelError.problem(error, couldNot: "start the agent's memory") }
+            }
+        }
     }
 
     /// Where `profile` finds strut: its connection file for an app profile;

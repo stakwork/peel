@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PeelCore
+import PeelUI
 
 // The Mac's side of `Platform`: what the model asks of AppKit, LiveKit,
 // WebKit and AVKit, which it never imports itself.
@@ -48,7 +49,7 @@ extension MenuPresenter: MenuHosting {
 }
 
 /// `Clipboard`, for the model.
-struct MacPasteboard: Pasteboard {
+struct MacPasteboard: PeelUI.Pasteboard {
     func copyImage(at file: URL) -> Bool { Clipboard.copyImage(at: file) }
     func clearSecret() { Clipboard.clearSecret() }
 }

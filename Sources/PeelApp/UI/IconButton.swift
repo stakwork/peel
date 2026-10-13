@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// Peel's icon button, shadcn's `<Button variant="ghost" size="icon">`: an
 /// SF Symbol, or any label, in a square that lights under the pointer. It

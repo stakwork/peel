@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// A row in a list: shadcn's `Item`. Something at the start (an avatar, a
 /// tick), a title over an optional muted detail, and something at the end

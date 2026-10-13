@@ -2,6 +2,7 @@
 import AppKit
 import os
 import PeelCore
+import PeelUI
 import UniformTypeIdentifiers
 
 /// Files for a composer from a pasteboard: a drag's (onto a conversation or

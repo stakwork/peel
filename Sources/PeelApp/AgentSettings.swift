@@ -1,6 +1,7 @@
 import AgentKit
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Account › Peel agent: its name, the connected provider (Change), the key
 /// by its last four (Replace, Remove confirmed in place), the model and

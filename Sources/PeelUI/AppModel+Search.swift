@@ -6,30 +6,30 @@ import PeelCore
 /// (`Storage.searchMessages`, thread messages included) and which one is
 /// shown. Its own object so typing and stepping redraw only what reads it.
 @MainActor @Observable
-final class ChatSearch {
+public final class ChatSearch {
     /// The most matches listed; past it the count reads "1,000+".
-    static let limit = 1000
+    public static let limit = 1000
 
-    let chat: String
-    var text = ""
+    public let chat: String
+    public var text = ""
     /// What the matches are for, as searched: its terms are lit.
-    private(set) var query: MessageQuery?
-    private(set) var matches: [Message] = []
+    public private(set) var query: MessageQuery?
+    public private(set) var matches: [Message] = []
     /// The match selected in the list (the arrows move it, Return goes to
     /// it), 0 the newest.
-    private(set) var current: Int?
-    private(set) var searching = false
-    private(set) var failed = false
+    public private(set) var current: Int?
+    public private(set) var searching = false
+    public private(set) var failed = false
     /// Raised to put the cursor back in the field (⌘F while it is open).
-    var focusRequests = 0
+    public var focusRequests = 0
 
-    init(chat: String) {
+    public init(chat: String) {
         self.chat = chat
     }
 
     /// "3 of 12", "12 matches", "No matches", or nothing while there is
     /// nothing to count.
-    var status: String? {
+    public var status: String? {
         if failed { return "Could not search" }
         guard query != nil, !searching || !matches.isEmpty else { return nil }
         if matches.isEmpty { return "No matches" }
@@ -38,8 +38,8 @@ final class ChatSearch {
         return "\(current + 1) of \(total)"
     }
 
-    var canStepOlder: Bool { (current ?? -1) + 1 < matches.count }
-    var canStepNewer: Bool { (current ?? 0) > 0 }
+    public var canStepOlder: Bool { (current ?? -1) + 1 < matches.count }
+    public var canStepNewer: Bool { (current ?? 0) > 0 }
 
     fileprivate func began() {
         searching = true
@@ -62,13 +62,13 @@ extension AppModel {
     /// Edit › Find (⌘F): the open chat's search, or the sidebar's when no
     /// chat is open (Threads, Mentions, Payments, the account). Only while
     /// the main window takes commands (`takesCommands`).
-    func find() {
+    public func find() {
         guard takesCommands else { return }
         if let chat = selectedChat { openSearch(in: chat) } else { sidebarSearchFocus += 1 }
     }
 
     /// Opens the chat's search, or puts the cursor back in it.
-    func openSearch(in chat: String) {
+    public func openSearch(in chat: String) {
         if let search, search.chat == chat {
             search.focusRequests += 1
         } else {
@@ -77,7 +77,7 @@ extension AppModel {
     }
 
     /// Closes the search; the cursor goes back to the chat's composer.
-    func closeSearch() {
+    public func closeSearch() {
         guard let chat = search?.chat else { return }
         search = nil
         composerFocus[.chat(chat), default: 0] += 1
@@ -85,7 +85,7 @@ extension AppModel {
 
     /// Searches the chat's stored messages for what `search` holds now, off
     /// the main actor, and lists the matches, none selected yet.
-    func runSearch(_ search: ChatSearch) async {
+    public func runSearch(_ search: ChatSearch) async {
         let text = search.text
         let query = MessageQuery(text)
         guard let storage = engine?.storage, !query.isEmpty else { return search.found([], for: nil) }
@@ -103,7 +103,7 @@ extension AppModel {
 
     /// Selects the next match down the list (`by` 1, older) or up it (-1,
     /// newer), stopping at either end; `show` also goes to it.
-    func stepSearch(by step: Int, show: Bool = true) {
+    public func stepSearch(by step: Int, show: Bool = true) {
         guard let search else { return }
         let next = (search.current ?? -1) + step
         guard search.matches.indices.contains(next) else { return }
@@ -113,7 +113,7 @@ extension AppModel {
     /// Scrolls to a match and lights it, through the jump quotes and
     /// notifications use (which checks it was not deleted since); one in a
     /// thread opens its thread.
-    func showSearchMatch(_ index: Int) {
+    public func showSearchMatch(_ index: Int) {
         guard let search, search.matches.indices.contains(index) else { return }
         let message = search.matches[index]
         search.select(index)

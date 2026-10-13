@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import WebKit
 import PeelCore
+import PeelUI
 
 /// The web pane: a link from a message, or a tribe's app or second brain,
 /// opens beside the chat rather than in the browser, like the browser pane

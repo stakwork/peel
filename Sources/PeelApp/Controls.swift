@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// An icon button that opens a menu below it, such as a message's More; lit
 /// while its menu is open.

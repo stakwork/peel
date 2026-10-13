@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Asks for the PIN at launch, and again after the PIN timeout.
 struct LockView: View {

@@ -9,22 +9,35 @@ import UniformTypeIdentifiers
 
 /// One of each service, from the app.
 @MainActor
-struct Platform {
-    var presence: any AppPresence
-    var files: any FilePicking
-    var pasteboard: any Pasteboard
-    var playback: any Playback
+public struct Platform {
+    public var presence: any AppPresence
+    public var files: any FilePicking
+    public var pasteboard: any Pasteboard
+    public var playback: any Playback
     /// The web pane over a profile's own website data, made when first used.
-    var web: (Profile?) -> any WebPresenting
-    var calls: any CallProvider
+    public var web: (Profile?) -> any WebPresenting
+    public var calls: any CallProvider
     /// The agent's tools, memory and automations; nil where there are none.
-    var agent: (any AgentHost)?
+    public var agent: (any AgentHost)?
+
+    public init(
+        presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
+        web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?
+    ) {
+        self.presence = presence
+        self.files = files
+        self.pasteboard = pasteboard
+        self.playback = playback
+        self.web = web
+        self.calls = calls
+        self.agent = agent
+    }
 }
 
 /// Peel among the other apps: whether it is in front, bringing it there,
 /// and what it shows outside its windows.
 @MainActor
-protocol AppPresence {
+public protocol AppPresence {
     /// Whether Peel is the app in front, where the open chat is being read.
     var isFrontmost: Bool { get }
     /// Whether local notifications may be posted at all: not outside an app
@@ -41,7 +54,7 @@ protocol AppPresence {
 /// The main window's menus and panels, as `AppModel.takesCommands` asks
 /// about them (`MenuPresenter`, on the Mac).
 @MainActor
-protocol MenuHosting: AnyObject {
+public protocol MenuHosting: AnyObject {
     /// A Peel menu or panel is up.
     var anythingOpen: Bool { get }
     /// Its window is the one a key press goes to.
@@ -51,7 +64,7 @@ protocol MenuHosting: AnyObject {
 /// The system's file panels and the file browser: picking files to open,
 /// where to save one, and showing one.
 @MainActor
-protocol FilePicking {
+public protocol FilePicking {
     /// Files picked beside the window, of the given types if any; nil when
     /// cancelled.
     func open(prompt: String?, multiple: Bool, directories: Bool, types: [UTType]) -> [URL]?
@@ -63,7 +76,7 @@ protocol FilePicking {
 
 /// The clipboard, as the model uses it.
 @MainActor
-protocol Pasteboard {
+public protocol Pasteboard {
     /// Puts the picture in a file on the clipboard; false when it cannot be read.
     func copyImage(at file: URL) -> Bool
     /// Clears a secret copied earlier if it is still on the clipboard.
@@ -72,7 +85,7 @@ protocol Pasteboard {
 
 /// The one video or recording playing at a time.
 @MainActor
-protocol Playback {
+public protocol Playback {
     func play(_ id: Int64, file: URL)
     /// The viewer closed: what it showed pauses.
     func closeFullScreen()
@@ -81,7 +94,7 @@ protocol Playback {
 
 /// The web pane beside the chat.
 @MainActor
-protocol WebPresenting: AnyObject {
+public protocol WebPresenting: AnyObject {
     /// Shows an HTML attachment offline, as a clicked link would.
     func openDocument(_ file: URL, named name: String) async throws
     /// Before the profile is removed: the pane's website data goes.
@@ -91,13 +104,13 @@ protocol WebPresenting: AnyObject {
 /// Joins a call's room. The media (LiveKit) stays in the app: a target that
 /// imports both it and PeelCore inherits the `RustBuffer` header clash.
 @MainActor
-protocol CallProvider {
+public protocol CallProvider {
     func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall
 }
 
 /// The call this device is on.
 @MainActor
-protocol OngoingCall: AnyObject {
+public protocol OngoingCall: AnyObject {
     var link: CallLink { get }
     var chat: String { get }
     /// "#tribe" or the contact, as the call began.
@@ -118,7 +131,7 @@ protocol OngoingCall: AnyObject {
 /// tools, Peel's strut (the memory) and the automations. Opened and closed
 /// with the account.
 @MainActor
-protocol AgentHost: AnyObject {
+public protocol AgentHost: AnyObject {
     func open(_ profile: Profile, engine: Engine, in model: AppModel)
     func close(in model: AppModel)
     /// Escape in the agent's composer: closes a memory open beside the

@@ -2,6 +2,7 @@
 import PeelAgent
 import AppKit
 import PeelCore
+import PeelUI
 
 /// Runs a check script against Peel's own windows, offscreen only
 /// (`Offscreen.drive`): events go into this app's own queue for its own

@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Paste a link, see what the tribe is and what it costs, then join.
 struct JoinTribeForm: View {

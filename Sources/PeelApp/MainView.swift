@@ -1,6 +1,7 @@
 import AgentKit
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Slack-style layout: sidebar, conversation; see docs/design/README.md.
 /// Content runs under the hidden title bar; the sidebar keeps clear of the

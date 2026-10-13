@@ -2,6 +2,7 @@ import AgentKit
 import Foundation
 import PeelAgent
 import PeelCore
+import PeelUI
 
 /// The agent's pieces that need PeelAgent, for the model (`AgentHost`):
 /// the memory, Peel's strut and the automations. The model reads them

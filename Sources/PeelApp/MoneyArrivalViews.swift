@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// The balance under your name in the sidebar header: it rolls up, digit by
 /// digit, when a payment arrives. Nothing moves: the line keeps the width of

@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// A copy button: runs `copy`, then, if it copied, shows the check and
 /// "Copied" for `CopyFeedback.hold`; another click starts the wait again.

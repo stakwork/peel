@@ -3,30 +3,30 @@ import PeelCore
 
 /// Who sent something, as `ChatRow.People.sender(of:inTribe:)` names them:
 /// you, the contact, or a tribe member by the alias they sent.
-struct Sender: Equatable {
+public struct Sender: Equatable, Sendable {
     /// What someone who sent no name is called, everywhere.
-    static let unnamed = "Someone"
+    public static let unnamed = "Someone"
 
     /// The name they go by; nil when they sent none.
-    var alias: String?
-    var photoURL: String?
+    public var alias: String?
+    public var photoURL: String?
     /// Their colour, on their initials and name.
-    var hue: PersonHue
-    var isMe = false
+    public var hue: PersonHue
+    public var isMe = false
 
     /// Their name as a run header shows it: yours is your alias.
-    var name: String { alias ?? (isMe ? "You" : Self.unnamed) }
+    public var name: String { alias ?? (isMe ? "You" : Self.unnamed) }
     /// As quotes and lists name them: you are "You".
-    var label: String { isMe ? "You" : name }
+    public var label: String { isMe ? "You" : name }
     /// What their avatar's initials come from: "?" with no name.
-    var avatarName: String { alias ?? "?" }
+    public var avatarName: String { alias ?? "?" }
 }
 
 extension Sender {
     /// A tribe member as their message names them (decoded from it), for
     /// whatever names someone else in a tribe: the rows, notes, mentions,
     /// notifications. Never you: `People` names you.
-    init(member message: Message) {
+    public init(member message: Message) {
         let details = message.senderDetails
         self.init(alias: details.alias, photoURL: details.photoURL,
                   hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
@@ -34,7 +34,7 @@ extension Sender {
 }
 
 /// What a reply quotes: the parent and its sender, or a note that it is not here.
-enum Quote: Equatable {
+public enum Quote: Equatable, Sendable {
     case message(Message, Sender)
     /// The parent is older than this Mac's history, or the link is broken.
     case missing
@@ -44,8 +44,8 @@ enum Quote: Equatable {
 /// a message (or a run of one sender's images, or a collapsed thread), a
 /// request to join, or a note; in a thread also its original and the
 /// "N replies" line. Names and photos are decoded here, once per message.
-struct ChatRow: Identifiable, Equatable {
-    enum Kind: Equatable {
+public struct ChatRow: Identifiable, Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
         case message, request, note
         /// Sats sent in a direct message (type 5).
         case payment
@@ -57,75 +57,75 @@ struct ChatRow: Identifiable, Equatable {
         case replies(Int)
     }
 
-    let id: String
-    var kind: Kind
+    public let id: String
+    public var kind: Kind
     /// What actions act on: the newest of an image run (Boost included; a
     /// tile's own menu offers none), the original of a collapsed thread.
-    var message: Message
+    public var message: Message
     /// In a tribe: the member's name and photo show beside their messages.
-    var inTribe: Bool
+    public var inTribe: Bool
     /// A run of one sender's images (two or more), oldest first.
-    var images: [Message] = []
-    var summary: ThreadSummary?
+    public var images: [Message] = []
+    public var summary: ThreadSummary?
     /// The boosts on `message` (the original, for a collapsed thread).
-    var boosts: BoostSummary?
+    public var boosts: BoostSummary?
     /// Whether to offer Boost: someone else's boostable message we have not
     /// boosted yet (Tom, 2026-10-07; the official apps offer it again). Our
     /// failed boost on it offers Retry and Discard under it instead; the
     /// engine's `quickBoost` holds the same rule.
-    var canBoost: Bool { message.isBoostable && boosts?.hasOwnBoost != true }
-    var quote: Quote?
+    public var canBoost: Bool { message.isBoostable && boosts?.hasOwnBoost != true }
+    public var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
-    var approved: Bool?
+    public var approved: Bool?
     /// For a payment request: its invoice and whether it is paid.
-    var paymentRequest: PaymentRequest?
+    public var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
-    var purchase: PurchaseState?
+    public var purchase: PurchaseState?
     /// A call message (or text that is only a call link) that passed the
     /// checks against the account's call server: drawn as the call card.
-    var call: CallLink?
+    public var call: CallLink?
     /// The first tribe or contact link in the text: drawn as a card under
     /// the text, which shows without it (`MessageLink.card`).
-    var card: MessageLink.Card?
+    public var card: MessageLink.Card?
     /// A GIF from Giphy: drawn above its caption, the row's text.
-    var giphy: Giphy?
-    var sender: Sender
+    public var giphy: Giphy?
+    public var sender: Sender
     /// In a tribe, someone else's alias as sent; nil in a direct message.
-    var member: String? { inTribe && !sender.isMe ? sender.alias : nil }
+    public var member: String? { inTribe && !sender.isMe ? sender.alias : nil }
     /// The sender's zone when they wrote it, if they shared one: the
     /// message's own offset, else the run's (`AppModel.withSenderZones`).
     /// Never for yours.
-    var senderZone: TimeZone?
+    public var senderZone: TimeZone?
     /// The messages the row stands for, oldest first: a run's images, a
     /// collapsed thread's newest, else its own.
-    var shown: [Message] {
+    public var shown: [Message] {
         if let latest { return [latest] }
         return images.isEmpty ? [message] : images
     }
 
     /// Where the row sits in time: a collapsed thread at its newest message.
-    var date: Date
-    var startsDay = false
+    public var date: Date
+    public var startsDay = false
     /// "New messages" goes above this row: the first incoming one past the
     /// read marker the chat had when it was opened.
-    var startsNew = false
+    public var startsNew = false
     /// For a collapsed thread: its newest message, which placed the row.
-    var latest: Message?
-    var startsRun = false
-    var endsRun = true
+    public var latest: Message?
+    public var startsRun = false
+    public var endsRun = true
 
     /// Images sent within this long of each other, by one sender, share a grid.
-    static let imageRunGap: TimeInterval = 60
+    public static let imageRunGap: TimeInterval = 60
 
     /// Who the rows name: you, and in a direct message the contact (a
     /// tribe's members name themselves on their messages).
-    struct People {
-        var me: Sender
-        var contact: Sender
+    public struct People: Sendable {
+        public var me: Sender
+        public var contact: Sender
 
         /// The one way a message's sender is named: you, in a tribe the
         /// member (decoded from the message), else the contact.
-        func sender(of message: Message, inTribe: Bool) -> Sender {
+        public func sender(of message: Message, inTribe: Bool) -> Sender {
             if message.fromMe { return me }
             return inTribe ? Sender(member: message) : contact
         }
@@ -134,7 +134,7 @@ struct ChatRow: Identifiable, Equatable {
     /// The rows of a chat (`threads` collapsed), or of a thread: with
     /// `threadRoot` set, its `original` (or a note that it is missing) and
     /// "N replies" come first. `newAfter` is the read marker that places "New messages".
-    static func rows(
+    public static func rows(
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
         boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
         purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People, callServer: String? = nil,
@@ -256,7 +256,7 @@ struct ChatRow: Identifiable, Equatable {
 
     /// Whether this is the row a jump to the message with `uuid` goes to:
     /// its own, in its run of images, or the original of its thread.
-    func holds(_ uuid: String?) -> Bool {
+    public func holds(_ uuid: String?) -> Bool {
         [.message, .payment, .paymentRequest].contains(kind)
             && (message.uuid == uuid || images.contains { $0.uuid == uuid } || summary?.original.uuid == uuid)
     }

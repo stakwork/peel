@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import PeelCore
+import PeelUI
 
 /// An attachment in a message: an image (or a grid of a run of them), a
 /// video, a recording or a file card. Images download as soon as they

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
+import PeelUI
 
 /// The system's file panels and the Finder, in one place: picking files to
 /// open, where to save one, and showing one. No panels offscreen.

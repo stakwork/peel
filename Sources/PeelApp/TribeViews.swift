@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Create a tribe, or edit one this account owns: what the Mac app's tribe
 /// form sets, in the form system's sections (Basics with the tags, Pricing, Access).

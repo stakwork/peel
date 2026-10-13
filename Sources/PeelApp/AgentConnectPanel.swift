@@ -1,6 +1,7 @@
 import AgentKit
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Connect a model: the provider, its API key (pasted, or typed), the
 /// model, then one small test call with the spinner inside Connect. What

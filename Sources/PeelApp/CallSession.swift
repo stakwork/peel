@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import LiveKit
 import PeelCore
+import PeelUI
 
 /// The call this Mac is on: owns the LiveKit room for one call, its
 /// microphone, camera and devices, and what the window and the sidebar show

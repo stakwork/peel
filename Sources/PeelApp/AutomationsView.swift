@@ -1,5 +1,6 @@
 import PeelAgent
 import PeelCore
+import PeelUI
 import SwiftUI
 
 /// The person's automations (`docs/phases/12-automations.md`): what the

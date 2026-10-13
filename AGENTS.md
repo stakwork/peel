@@ -482,8 +482,9 @@ is a short plan. Update the status and the journal when you finish something.
   sats: a real payment from the bank on a local stack ("Checking the app")
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
-- `scripts/build-ffi.sh` — assembles the bindings from sibling `sphinx-rs` and
-  `sphinx-mac-v2` checkouts
+- `scripts/build-ffi.sh` — assembles the bindings: downloads the pinned
+  `sphinx-rs` and `sphinx-mac-v2` files from GitHub, or with `--update` takes
+  them from sibling checkouts
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
@@ -512,9 +513,12 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 .build/debug/peel --profile <dev> listen             # CLI
 ```
 
-`scripts/build-ffi.sh` checks the static library against `Vendor/sphinxrs.lock`
-(sha256 plus the `sphinx-rs` commit); pass `--update` after deliberately taking a
-new build of the core.
+`Vendor/sphinxrs.lock` pins the core: the static library's sha256, the
+`sphinx-rs` commit and the `sphinx-mac-v2` commit that ships the library.
+`scripts/build-ffi.sh` downloads exactly those files (cached in
+`.build/sphinx-core`) and refuses a library with another hash. To move to a new
+core, check out the new commits in sibling `sphinx-rs` and `sphinx-mac-v2`
+checkouts, push them, and run `scripts/build-ffi.sh --update`.
 
 The app bundle is assembled by hand in `scripts/bundle-app.sh`; there is no
 Xcode project for the app itself. To check a build without replacing the
@@ -582,7 +586,9 @@ quitting before any window opens.
 The app keeps the words in the data-protection Keychain, which needs the
 `keychain-access-groups` entitlement, which needs a provisioning profile. Tom
 has a free Personal Team (team `T3M78XC3UV`, bundle ID `dev.peel.mac`, access
-group `T3M78XC3UV.dev.peel.mac`), so:
+group `T3M78XC3UV.dev.peel.mac`). A bundle ID belongs to one team, so a build
+signed by any other team is `dev.peel.mac.<team>` instead (`PEEL_BUNDLE_ID`
+overrides it), with its own, empty Keychain. So:
 
 - `scripts/sign-app.sh` builds `scripts/provision` (an empty app, same bundle
   ID) with `xcodebuild -allowProvisioningUpdates` into `.build/provision`,

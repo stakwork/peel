@@ -3,41 +3,99 @@
 #   Vendor/sphinxrsFFI.xcframework  - the Rust static library plus its C header
 #   Sources/Sphinxrs/sphinxrs.swift - the generated Swift bindings
 #
-# Both come from sibling checkouts so they stay in lockstep with what the
-# official Mac app ships. Override the locations with SPHINX_RS and SPHINX_MAC,
-# and with SPHINX the core's own checkout, which the security check reads.
+# Vendor/sphinxrs.lock pins them: the library's sha256, the sphinx-rs commit the
+# bindings come from, and the sphinx-mac-v2 commit that ships that library, so
+# Peel links exactly what the official Mac app ships.
+#
+#   scripts/build-ffi.sh            downloads the pinned files from GitHub
+#                                   (cached in .build/sphinx-core) and checks
+#                                   the library against the lock
+#   scripts/build-ffi.sh --update   takes them from sibling checkouts instead
+#                                   and records them in the lock: for moving to
+#                                   a new core. Override the checkouts with
+#                                   SPHINX_RS and SPHINX_MAC, and with SPHINX the
+#                                   core's own, which the security check reads.
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPHINX_RS="${SPHINX_RS:-$ROOT/../sphinx-rs}"
-SPHINX_MAC="${SPHINX_MAC:-$ROOT/../sphinx-mac-v2}"
-
-LIB="$SPHINX_MAC/universal-sphinxrs-mac.a"
-BINDINGS="$SPHINX_RS/sphinx-ffi/src/sphinxrs.swift"
-HEADER="$SPHINX_RS/sphinx-ffi/src/sphinxrsFFI.h"
-
-for f in "$LIB" "$BINDINGS" "$HEADER"; do
-  [ -f "$f" ] || { echo "missing: $f" >&2; exit 1; }
-done
-
-# The Mac app keeps its own copy of the bindings; refuse to mix versions.
-MAC_BINDINGS="$SPHINX_MAC/com.stakwork.sphinx.desktop/Crypter/sphinxrs.swift"
-if [ -f "$MAC_BINDINGS" ] && ! cmp -s "$BINDINGS" "$MAC_BINDINGS"; then
-  echo "bindings in sphinx-rs and sphinx-mac-v2 differ; the static library may not match" >&2
-  exit 1
-fi
-
-# Every signing and encryption step runs inside this library, so refuse a copy
-# that differs from the one recorded in Vendor/sphinxrs.lock. Pass --update after
-# deliberately taking a new build.
 LOCK="$ROOT/Vendor/sphinxrs.lock"
-ACTUAL="$(shasum -a 256 "$LIB" | cut -d' ' -f1) $(git -C "$SPHINX_RS" rev-parse HEAD)"
-if [ "${1:-}" = "--update" ] || [ ! -f "$LOCK" ]; then
+CACHE="$ROOT/.build/sphinx-core"
+mkdir -p "$CACHE"
+die() { echo "build-ffi: $*" >&2; exit 1; }
+sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+get() { # url, to stdout; CI passes GITHUB_TOKEN for the API's rate limit
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -H "Authorization: Bearer $GITHUB_TOKEN" "$1"
+  else
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 "$1"
+  fi
+}
+# GitHub serves a fork's commits under the upstream repo's URLs, so a commit
+# is taken only once stakwork's own master has it.
+on_master() { # repo commit
+  [ -f "$CACHE/$2.on-master" ] && return
+  compare="$(get "https://api.github.com/repos/stakwork/$1/compare/master...$2")" \
+    || die "could not ask GitHub whether stakwork/$1 master has $2 (offline or rate-limited?)"
+  status="$(printf '%s\n' "$compare" | grep -o '"status": *"[a-z]*"' | head -1 | sed 's/.*"\([a-z]*\)"$/\1/')"
+  case "$status" in
+    identical|behind) : > "$CACHE/$2.on-master" ;;
+    *) die "$2 is not on stakwork/$1 master${status:+ ($status)}; push it there first" ;;
+  esac
+}
+
+if [ "${1:-}" = "--update" ]; then
+  SPHINX_RS="${SPHINX_RS:-$ROOT/../sphinx-rs}"
+  SPHINX_MAC="${SPHINX_MAC:-$ROOT/../sphinx-mac-v2}"
+  LIB="$SPHINX_MAC/universal-sphinxrs-mac.a"
+  BINDINGS="$SPHINX_RS/sphinx-ffi/src/sphinxrs.swift"
+  HEADER="$SPHINX_RS/sphinx-ffi/src/sphinxrsFFI.h"
+  for f in "$LIB" "$BINDINGS" "$HEADER"; do
+    [ -f "$f" ] || die "missing: $f"
+  done
+  # The Mac app keeps its own copy of the bindings; refuse to mix versions.
+  MAC_BINDINGS="$SPHINX_MAC/com.stakwork.sphinx.desktop/Crypter/sphinxrs.swift"
+  if [ -f "$MAC_BINDINGS" ] && ! cmp -s "$BINDINGS" "$MAC_BINDINGS"; then
+    die "bindings in sphinx-rs and sphinx-mac-v2 differ; the static library may not match"
+  fi
+  # Others download by these commits, so both must be committed as they are here.
+  git -C "$SPHINX_MAC" diff --quiet HEAD -- universal-sphinxrs-mac.a \
+    || die "universal-sphinxrs-mac.a has uncommitted changes in $SPHINX_MAC"
+  git -C "$SPHINX_RS" diff --quiet HEAD -- sphinx-ffi/src \
+    || die "sphinx-ffi/src has uncommitted changes in $SPHINX_RS"
+  RS_COMMIT="$(git -C "$SPHINX_RS" rev-parse HEAD)"
+  MAC_COMMIT="$(git -C "$SPHINX_MAC" log -1 --format=%H -- universal-sphinxrs-mac.a)"
+  on_master sphinx-rs "$RS_COMMIT"
+  on_master sphinx-mac-v2 "$MAC_COMMIT"
   mkdir -p "$ROOT/Vendor"
-  printf '%s\n' "$ACTUAL" > "$LOCK"
-elif [ "$(cat "$LOCK")" != "$ACTUAL" ]; then
-  echo "universal-sphinxrs-mac.a or sphinx-rs differ from Vendor/sphinxrs.lock; re-run with --update if intended" >&2
-  exit 1
+  printf '%s %s %s\n' "$(sha256 "$LIB")" "$RS_COMMIT" "$MAC_COMMIT" > "$LOCK"
+  CARGO_TOML="$(git -C "$SPHINX_RS" show HEAD:sphinx-ffi/Cargo.toml)"
+else
+  [ -f "$LOCK" ] || die "missing $LOCK; run with --update from sibling checkouts"
+  read -r LIB_SHA RS_COMMIT MAC_COMMIT < "$LOCK"
+  printf '%s %s %s\n' "$LIB_SHA" "$RS_COMMIT" "$MAC_COMMIT" | grep -qE '^[0-9a-f]{64} [0-9a-f]{40} [0-9a-f]{40}$' \
+    || die "$LOCK should hold a sha256 and two commit hashes"
+  on_master sphinx-rs "$RS_COMMIT"
+  on_master sphinx-mac-v2 "$MAC_COMMIT"
+  fetch() { # repo commit path destination
+    [ -s "$4" ] && return
+    echo "downloading $1/$3 at $(printf '%.7s' "$2")" >&2
+    get "https://raw.githubusercontent.com/stakwork/$1/$2/$3" > "$4.part"
+    mv "$4.part" "$4"
+  }
+  LIB="$CACHE/$LIB_SHA.a"
+  BINDINGS="$CACHE/$RS_COMMIT-sphinxrs.swift"
+  HEADER="$CACHE/$RS_COMMIT-sphinxrsFFI.h"
+  fetch sphinx-mac-v2 "$MAC_COMMIT" universal-sphinxrs-mac.a "$LIB"
+  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/src/sphinxrs.swift "$BINDINGS"
+  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/src/sphinxrsFFI.h "$HEADER"
+  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/Cargo.toml "$CACHE/$RS_COMMIT-Cargo.toml"
+  # Every signing and encryption step runs inside this library, so refuse a
+  # copy that differs from the one recorded in the lock.
+  if [ "$(sha256 "$LIB")" != "$LIB_SHA" ]; then
+    rm -f "$LIB"
+    die "the downloaded universal-sphinxrs-mac.a does not match Vendor/sphinxrs.lock"
+  fi
+  CARGO_TOML="$(cat "$CACHE/$RS_COMMIT-Cargo.toml")"
 fi
 
 # The core rev sphinx-rs pins must carry upstream's client security fixes
@@ -46,7 +104,7 @@ fi
 # SR-016's amount check, Engine.isForeignContactRecord for SR-017.
 SPHINX="${SPHINX:-$ROOT/../sphinx}"
 # As committed, the sphinx-rs commit the lock names.
-CORE_REV="$(git -C "$SPHINX_RS" show HEAD:sphinx-ffi/Cargo.toml | sed -n 's/^sphinx = .*rev = "\([0-9a-f]*\)".*/\1/p')"
+CORE_REV="$(printf '%s\n' "$CARGO_TOML" | sed -n 's/^sphinx = .*rev = "\([0-9a-f]*\)".*/\1/p')"
 CORE_KNOWN=no
 git -C "$SPHINX" cat-file -e "${CORE_REV:-none}^{commit}" 2>/dev/null && CORE_KNOWN=yes
 MISSING=""
@@ -125,4 +183,4 @@ EOF
 mkdir -p "$ROOT/Sources/Sphinxrs"
 cp "$BINDINGS" "$ROOT/Sources/Sphinxrs/sphinxrs.swift"
 
-echo "bindings ready: $(git -C "$SPHINX_RS" log -1 --format='sphinx-rs %h (%ad)' --date=short)"
+echo "bindings ready: sphinx-rs $(printf '%.7s' "$RS_COMMIT"), library from sphinx-mac-v2 $(printf '%.7s' "$MAC_COMMIT")"

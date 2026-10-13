@@ -64,7 +64,8 @@ struct AgentSettingsSection: View {
                     }
                 }
                 Fact("Conversation") {
-                    EmptyView()
+                    // Not EmptyView: it drops the value's full-width frame and the row centres.
+                    Spacer(minLength: 0)
                 } trailing: {
                     InlineConfirm(trigger: "Clear…", prompt: "Clear the agent chat?", confirm: "Clear") {
                         attempt { try agent.clear() }

@@ -45,7 +45,7 @@ struct AgentLoopTests {
         #expect(events.first == .textDelta("Let me look."))
         #expect(events.contains(.toolStarted(id: "c1", name: "echo", input: ["n": 1])))
         let finished = events.compactMap { event -> (String, Bool)? in
-            if case .toolFinished(_, _, let summary, _, let failed) = event { (summary, failed) } else { nil }
+            if case .toolFinished(_, _, let summary, _, _, let failed) = event { (summary, failed) } else { nil }
         }
         #expect(finished.map(\.0) == [#"{"n":1}"#, #"{"n":2}"#])
         #expect(finished.allSatisfy { !$0.1 })

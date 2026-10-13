@@ -156,7 +156,9 @@ final class OffscreenDriver {
     /// Retry; `agent-view`, the first View in its newest reply;
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
     /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
-    /// `agent-remove-key`, Account's Remove key once confirmed.
+    /// `agent-remove-key`, Account's Remove key once confirmed;
+    /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
+    /// in the newest memory row (its panel beside the chat).
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -207,6 +209,18 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "agent-rows":
+            // A click on every tool row's chevron.
+            model.agentRowsOpened += 1
+        case "agent-memory":
+            // A click on the first fact the newest Remembered row shows.
+            let rows = model.agent?.turns.flatMap(\.tools).compactMap { tool in
+                tool.row.flatMap { MemoryResult(tool: tool.name, row: $0) }
+            } ?? []
+            guard case .remembered(let remembered)? = rows.last(where: { if case .remembered = $0 { true } else { false } }),
+                  let fact = remembered.facts.first?.fact
+            else { throw Failure(description: "no Remembered row with a fact") }
+            model.openMemory(fact)
         default:
             throw Failure(description: "nothing to open named \(name)")
         }

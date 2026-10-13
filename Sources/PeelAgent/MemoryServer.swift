@@ -88,7 +88,29 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
             throw PeelError("The memory server refused: " + words(value["error"]?["message"]?.string ?? "no reason given"))
         }
         guard let output = value["output"] else { throw PeelError("The memory server's step returned nothing.") }
-        if let refusal = output["error"]?.string { throw PeelError(words(refusal)) }
+        if let refusal = output["error"]?.string {
+            throw refusal.hasPrefix("not_found") ? NotFound(description: words(refusal)) : PeelError(words(refusal))
+        }
         return output
+    }
+
+    /// Strut's `not_found`: no such node, or it was forgotten. Told as a
+    /// `PeelError` is, in strut's words.
+    public struct NotFound: LocalizedError, CustomStringConvertible, Sendable {
+        public let description: String
+        /// The model reads errors as `localizedDescription`.
+        public var errorDescription: String? { description }
+    }
+
+    /// One node as `memory/get` reads it; nil when memory no longer has it.
+    public func node(_ id: String) async throws -> MemoryNode? {
+        do {
+            guard let node = MemoryNode(try await run("get", ["ref_id": .string(id)])) else {
+                throw PeelError("Memory gave back something Peel cannot show.")
+            }
+            return node
+        } catch is NotFound {
+            return nil
+        }
     }
 }

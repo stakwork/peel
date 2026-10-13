@@ -258,6 +258,33 @@ struct AgentSessionTests {
         #expect(reopened.turns.last?.tools.map(\.name) == names)
     }
 
+    /// A row keeps what a tool returned only when the tool says so (the
+    /// memory tools), through a reopen; a chat read keeps its first line.
+    @Test func aRowKeepsOnlyWhatItsToolKeeps() async throws {
+        let path = temporaryStorePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let kept = Tool(name: "kept", description: "Keeps its row.", inputSchema: ["type": "object"], effect: .read) { _ in
+            .kept("Found 1\n{\"a\":1}", row: ["a": 1])
+        }
+        let tools = [echoTool(), kept]
+        let provider = FakeProvider([
+            .events([.toolCallCompleted(ToolCall(id: "c1", name: "echo", input: ["n": 1])),
+                     .toolCallCompleted(ToolCall(id: "c2", name: "kept", input: [:])), .finished(.toolUse)]),
+            textReply("Done."),
+        ])
+        let agent = try connectedSession(provider, store: SQLiteAgentStore(path: path, device: "mac"), tools: tools)
+        agent.send("look")
+        try await until { !agent.isRunning }
+        #expect(agent.turns.last?.tools.map(\.row) == [nil, ["a": 1]])
+        #expect(agent.turns.last?.tools.last?.summary == "Found 1")
+        #expect(provider.received.last?.messages.contains {
+            $0.content.contains(.toolResult(ToolResult(toolCallID: "c2", content: "Found 1\n{\"a\":1}")))
+        } == true)
+
+        let reopened = try connectedSession(FakeProvider([]), store: SQLiteAgentStore(path: path, device: "mac"), tools: tools)
+        #expect(reopened.turns.last?.tools.map(\.row) == [nil, ["a": 1]])
+    }
+
     @Test func aKeyThatCannotBeReadIsNotTakenForNoKey() throws {
         let provider = FakeProvider([])
         let credentials = MemoryCredentials()

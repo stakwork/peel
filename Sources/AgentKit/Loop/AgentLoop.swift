@@ -196,7 +196,7 @@ public struct AgentLoop: Sendable {
             var end = next + 1
             if isRead[next] { while end < calls.count, isRead[end] { end += 1 } }
             let limit = isRead[next] ? max(concurrentReads, 1) : 1
-            await withTaskGroup(of: (Int, String, Bool, Duration).self) { group in
+            await withTaskGroup(of: (Int, String, Bool, JSONValue?, Duration).self) { group in
                 var running = 0
                 while true {
                     while running < limit, next < end, !Task.isCancelled {
@@ -205,17 +205,17 @@ public struct AgentLoop: Sendable {
                         await onEvent(.toolStarted(id: call.id, name: call.name, input: call.input))
                         group.addTask {
                             let started = ContinuousClock.now
-                            let (output, failed) = await perform(call, with: resolved[index])
-                            return (index, output, failed, started.duration(to: .now))
+                            let (output, failed, row) = await perform(call, with: resolved[index])
+                            return (index, output, failed, row, started.duration(to: .now))
                         }
                         running += 1
                         next += 1
                     }
-                    guard let (index, output, failed, duration) = await group.next() else { break }
+                    guard let (index, output, failed, row, duration) = await group.next() else { break }
                     running -= 1
                     outputs[index] = (output, failed)
-                    await onEvent(.toolFinished(id: calls[index].id, name: calls[index].name,
-                                                summary: Self.summary(of: output), duration: duration, failed: failed))
+                    await onEvent(.toolFinished(id: calls[index].id, name: calls[index].name, summary: Self.summary(of: output),
+                                                row: row, duration: duration, failed: failed))
                 }
             }
         }
@@ -232,30 +232,32 @@ public struct AgentLoop: Sendable {
     }
 
     /// Runs one tool call with its tool (nil when it has none or its
-    /// arguments were malformed): what the model is sent, and whether it failed.
-    private func perform(_ call: ToolCall, with tool: Tool?) async -> (String, Bool) {
+    /// arguments were malformed): what the model is sent, whether it failed,
+    /// and what its row keeps (`Tool.Output.kept`).
+    private func perform(_ call: ToolCall, with tool: Tool?) async -> (String, Bool, JSONValue?) {
         if call.malformedInput != nil {
-            return ("The arguments were not a valid JSON object; call the tool again with valid JSON.", true)
+            return ("The arguments were not a valid JSON object; call the tool again with valid JSON.", true, nil)
         }
-        guard let tool else { return ("There is no tool named \(call.name).", true) }
+        guard let tool else { return ("There is no tool named \(call.name).", true, nil) }
         do {
-            let output: String
+            let result: Tool.Output
             switch try await tool.plan(call.input) {
-            case .result(let result):
-                output = result.text
+            case .result(let answer):
+                result = answer
             case .action(let intent, let run):
                 // Reads run side by side; only a tool declared to ask may act, one at a time.
-                guard tool.effect.asks else { return ("Not run: a \(tool.effect.rawValue) tool may not act.", true) }
+                guard tool.effect.asks else { return ("Not run: a \(tool.effect.rawValue) tool may not act.", true, nil) }
                 let outcome = await approver?.approve(ApprovalRequest(callID: call.id, tool: call.name, intent: intent))
-                if let refusal = ApprovalOutcome.refusal(outcome, of: intent) { return refusal }
-                output = try await run().text
+                if let (words, failed) = ApprovalOutcome.refusal(outcome, of: intent) { return (words, failed, nil) }
+                result = try await run()
             }
-            guard output.count > maxToolResultCharacters else { return (output, false) }
-            return (String(output.prefix(maxToolResultCharacters)) + "\n[cut: the result was longer]", false)
+            let output = result.text
+            guard output.count > maxToolResultCharacters else { return (output, false, result.row) }
+            return (String(output.prefix(maxToolResultCharacters)) + "\n[cut: the result was longer]", false, result.row)
         } catch is CancellationError {
-            return ("Stopped by the user before it finished.", true)
+            return ("Stopped by the user before it finished.", true, nil)
         } catch {
-            return (error.localizedDescription, true)
+            return (error.localizedDescription, true, nil)
         }
     }
 
@@ -287,7 +289,8 @@ public struct AgentLoop: Sendable {
 public enum LoopEvent: Sendable, Hashable {
     case textDelta(String)
     case toolStarted(id: String, name: String, input: JSONValue)
-    case toolFinished(id: String, name: String, summary: String, duration: Duration, failed: Bool)
+    /// `row`: what the tool's row keeps to show when opened (`Tool.Output.kept`).
+    case toolFinished(id: String, name: String, summary: String, row: JSONValue?, duration: Duration, failed: Bool)
     /// The model call failed with `error` before showing anything, and is
     /// made again after this wait; `.zero` when it is made again now.
     case retrying(after: Duration, ModelError)

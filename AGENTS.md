@@ -249,7 +249,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
   card, the turn rows, tool rows (an acting tool's outcome and View) and
   the failure row, `AgentApprovalCard` (a send waiting on you, where its
-  row will be), `AgentConnectButton`), `AgentConnectPanel` (provider, key,
+  row will be), `AgentConnectButton`), `AgentMemoryViews` (a memory
+  tool's opened row in sentences, and `MemoryPanelView`, one memory beside
+  the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
   model and the test call) and `AgentSettings` (Account › Peel agent, with
   the "Always allowed" rules and Revoke);
   `CallViews` (the call card, the header's call button and presence

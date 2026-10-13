@@ -167,16 +167,55 @@ extension Chip where Label == ChipText {
 struct ChipText: View {
     let title: String
     let on: Bool
+    /// Muted after the title: a memory's "new".
+    var note: String?
 
     var body: some View {
         HStack(spacing: Theme.Space.xs) {
             if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
             Text(title).lineLimit(1).truncationMode(.tail)
+            if let note { Text(note).foregroundStyle(Theme.secondaryText) }
         }
         .frame(maxWidth: 200)
         .font(Theme.font(12, .medium))
         .foregroundStyle(on ? Theme.selectionText : Theme.text)
         .padding(.horizontal, 10)
         .frame(height: 24)
+    }
+}
+
+/// Lays its views out in lines, left to right, starting a new line when
+/// the next would not fit: a tribe's tags, the names a memory was about.
+struct ChipFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let frames = place(subviews, width: proposal.width ?? .infinity)
+        let width = frames.map(\.maxX).max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, place(subviews, width: bounds.width)) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        var point = CGPoint.zero
+        var lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if point.x > 0, point.x + size.width > width {
+                point = CGPoint(x: 0, y: point.y + lineHeight + spacing)
+                lineHeight = 0
+            }
+            frames.append(CGRect(origin: point, size: size))
+            point.x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        return frames
     }
 }

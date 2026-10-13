@@ -99,7 +99,7 @@ public struct MemoryTools: Sendable {
         properties: [String: JSONValue], required: [String] = []
     ) -> Tool {
         Tool(name: name, description: description, inputSchema: Self.object(properties, required: required), effect: effect) { input in
-            Self.summarised(try await server.run(verb, prepare(input)), summary)
+            Self.summarised(try await server.run(verb, prepare(input)), summary, keeps: MemoryResult.tools.contains(name))
         }
     }
 
@@ -127,10 +127,14 @@ public struct MemoryTools: Sendable {
     /// A result as the model reads it and its row shows it: one plain line
     /// first, then the step's JSON between the markers that say people wrote
     /// it, cleaned and capped as chat data is (`ChatData.clean`), so nothing
-    /// inside can pose as or hide a marker.
-    static func summarised(_ output: JSONValue, _ line: (JSONValue) -> String) -> Tool.Output {
-        .text([line(output), ChatData.begin, ChatData.clean(output.jsonString, max: ChatData.maxCharacters), ChatData.end]
-            .joined(separator: "\n"))
+    /// inside can pose as or hide a marker. The row keeps the step's JSON to
+    /// show when opened (`keeps`: only the tools whose rows read it), unless
+    /// it was too long to send whole.
+    static func summarised(_ output: JSONValue, _ line: (JSONValue) -> String, keeps: Bool = true) -> Tool.Output {
+        let json = output.jsonString
+        let text = [line(output), ChatData.begin, ChatData.clean(json, max: ChatData.maxCharacters), ChatData.end]
+            .joined(separator: "\n")
+        return keeps && json.count <= ChatData.maxCharacters ? .kept(text, row: output) : .text(text)
     }
 
     /// Each memory tool's first line, from what its step returned: one

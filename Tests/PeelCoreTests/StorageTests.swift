@@ -133,6 +133,27 @@ struct StorageTests {
         #expect(try storage.highestServerIndex() == 42)
     }
 
+    /// `Message(row:)` is written by hand: a property it misses would read as
+    /// nil or false, where the `Decodable` reading it replaced would fail.
+    @Test func everyStoredPropertyIsReadBack() throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1"), false, nil)]))
+        try storage.pool.write { db in
+            try db.execute(sql: """
+                UPDATE message SET serverIndex = 1, fromMe = 1, sender = '{}', body = ?, content = 'c', msat = 1,
+                    timestamp = 1, tag = 't', paymentHash = 'h', status = 'COMPLETE', mentionsMe = 1,
+                    replyUUID = 'r', threadUUID = 'th', mediaType = 'image/png', fileName = 'f', fileSize = 1,
+                    upload = 'DONE', deleted = 1, amountMsat = 1, arrived = 1, firstSentAt = 1, autoResentAt = 1
+                """, arguments: [#"{"metadata":"{\"tz\":\"Europe/London\"}"}"#])
+        }
+        let message = try #require(try storage.message(uuid: "u1", in: Message.fixture().chat))
+        for child in Mirror(reflecting: message).children {
+            // Every flag is set, and every optional is filled (nil prints as "nil").
+            if let flag = child.value as? Bool { #expect(flag, "\(child.label ?? "?") not read") }
+            #expect(String(describing: child.value) != "nil", "\(child.label ?? "?") not read")
+        }
+    }
+
     @Test func laterCopyFillsMissingBodyFields() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", content: nil), false, nil)]))

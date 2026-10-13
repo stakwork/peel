@@ -56,6 +56,13 @@ struct Benchmarks {
         }
     }
 
+    @Test func preview() {
+        let messages = (0..<10_000).map { Seed.message($0, chat: Seed.tribes[0], tribe: true) }
+        Bench.measure("message.preview.10k") {
+            for message in messages { _ = message.preview }
+        }
+    }
+
     // MARK: Writes
 
     @Test func historyPage() throws {
@@ -85,6 +92,13 @@ struct Benchmarks {
         try await Bench.measureAsync("read.conversations") { _ = try await first(storage.conversations()) }
         try await Bench.measureAsync("read.readStates") { _ = try await first(storage.readStates()) }
         try await Bench.measureAsync("read.threads") { _ = try await first(storage.threads()) }
+
+        // Rows into `Message` alone, without the timeline's joins.
+        try Bench.measure("read.messageRows.9k", runs: 5) {
+            _ = try storage.pool.read { db in
+                try Message.fetchAll(db, sql: "SELECT * FROM message WHERE chat = ? LIMIT 9000", arguments: [big])
+            }
+        }
 
         let oldest = try #require(try storage.message(uuid: Seed.uuid(0), in: big))
         try Bench.measure("read.timelineLimit.oldest") { _ = try storage.timelineLimit(reaching: oldest) }

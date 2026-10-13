@@ -331,6 +331,40 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 }
 
+extension Message {
+    /// Read by hand rather than through `Decodable`, several times faster on
+    /// the reads every write re-runs: every stored property, by column name.
+    public init(row: Row) throws {
+        id = row["id"]
+        uuid = row["uuid"]
+        serverIndex = row["serverIndex"]
+        type = row["type"]
+        chat = row["chat"]
+        fromMe = row["fromMe"]
+        sender = row["sender"]
+        body = row["body"]
+        content = row["content"]
+        msat = row["msat"]
+        timestamp = row["timestamp"]
+        tag = row["tag"]
+        paymentHash = row["paymentHash"]
+        status = row["status"]
+        mentionsMe = row["mentionsMe"]
+        replyUUID = row["replyUUID"]
+        threadUUID = row["threadUUID"]
+        mediaType = row["mediaType"]
+        fileName = row["fileName"]
+        fileSize = row["fileSize"]
+        upload = row["upload"]
+        deleted = row["deleted"]
+        amountMsat = row["amountMsat"]
+        senderTZ = row["senderTZ"]
+        arrived = row["arrived"]
+        firstSentAt = row["firstSentAt"]
+        autoResentAt = row["autoResentAt"]
+    }
+}
+
 /// Someone who wrote in a thread, for the avatars on its summary.
 public struct ThreadParticipant: Sendable, Equatable, Hashable {
     public var alias: String?

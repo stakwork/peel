@@ -255,8 +255,7 @@ extension Storage {
     private static func store(_ message: Message, replacing original: String?, in db: Database) throws -> Message? {
         if let original, let uuid = message.uuid,
            let merged = try Message.fetchOne(
-               db,
-               sql: """
+               db.cachedStatement(sql: """
                    UPDATE message SET
                        uuid = ?,
                        serverIndex = COALESCE(?, serverIndex),
@@ -266,7 +265,7 @@ extension Storage {
                    WHERE uuid = ? AND chat = ? AND fromMe = 1
                        AND NOT EXISTS (SELECT 1 FROM message WHERE uuid = ?)
                    RETURNING *
-                   """,
+                   """),
                // The tribe forwarding it proves the server took it.
                arguments: [
                    uuid, message.serverIndex, message.timestamp, message.sender, Message.Delivery.delivered.rawValue,
@@ -276,8 +275,7 @@ extension Storage {
             return merged
         }
         return try Message.fetchOne(
-            db,
-            sql: """
+            db.cachedStatement(sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
                      mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat, noWords)
@@ -306,7 +304,7 @@ extension Storage {
                         THEN excluded.amountMsat ELSE COALESCE(message.amountMsat, excluded.amountMsat) END
                 WHERE message.chat = excluded.chat AND message.fromMe = excluded.fromMe
                 RETURNING *
-                """,
+                """),
             arguments: [
                 message.uuid, message.serverIndex, message.type, message.chat, message.fromMe, message.sender,
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
@@ -463,15 +461,12 @@ extension Storage {
     /// Fills in a contact's name or photo. Photos must be https; anything else is dropped.
     private static func upsertContact(_ db: Database, pubkey: String, alias: String?, photoURL: String?) throws {
         let photo = photoURL?.httpsOnly
-        try db.execute(
-            sql: """
-                INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
-                ON CONFLICT(pubkey) DO UPDATE SET
-                    alias = COALESCE(NULLIF(excluded.alias, ''), alias),
-                    photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
-                """,
-            arguments: [pubkey, alias, photo]
-        )
+        try db.cachedStatement(sql: """
+            INSERT INTO contact (pubkey, alias, photoURL) VALUES (?, ?, ?)
+            ON CONFLICT(pubkey) DO UPDATE SET
+                alias = COALESCE(NULLIF(excluded.alias, ''), alias),
+                photoURL = COALESCE(NULLIF(excluded.photoURL, ''), photoURL)
+            """).execute(arguments: [pubkey, alias, photo])
     }
 
     /// `chatState.readPending`: a marker moved here and not yet sent.

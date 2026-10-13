@@ -6,6 +6,8 @@ extension Storage {
     /// removals are left out, as in the Mac app: the tribe's copy does not
     /// say whom they were for. (Only the owner can send them.)
     private static let messagesSQL = messagesSQL(also: "")
+    /// The same from a message on (`TimelineStart`), oldest first.
+    private static let windowSQL = messagesSQL(also: "", from: true)
 
     /// A thread message, for the row `alias`: text or an attachment with
     /// words (`Message.hasNoWords`).
@@ -13,16 +15,18 @@ extension Storage {
         "\(alias).type IN (\(MessageType.contentSQL)) AND \(alias).noWords = 0"
     }
 
-    private static func messagesSQL(also condition: String) -> String {
-        """
-        SELECT * FROM (
+    /// The newest messages, or with `from` those from a time and row id on
+    /// (arguments: the chat, the condition's own, then the start's time and
+    /// id), oldest first and at most the limit (the last argument).
+    private static func messagesSQL(also condition: String, from: Bool = false) -> String {
+        let shown = """
             SELECT * FROM message m
             WHERE chat = ? AND type IN (\(MessageType.sqlList(MessageType.shownInChats)))
                 AND NOT (fromMe = 1 AND type = \(MessageType.groupKick))
             \(condition)
-            ORDER BY timestamp DESC, id DESC LIMIT ?
-        ) ORDER BY timestamp, id
-        """
+            """
+        if from { return shown + "\nAND (timestamp, id) >= (?, ?) ORDER BY timestamp, id LIMIT ?" }
+        return "SELECT * FROM (\(shown)\nORDER BY timestamp DESC, id DESC LIMIT ?) ORDER BY timestamp, id"
     }
 
     /// What a tribe's main conversation hides, as the Mac app does: every
@@ -30,7 +34,9 @@ extension Storage {
     /// original. A thread whose original is not stored is not collapsed.
     /// Messages with no words are not counted, and one is hidden once its
     /// thread has a message with words.
-    private static let tribeTimelineSQL = messagesSQL(also: """
+    private static let tribeTimelineSQL = messagesSQL(also: tribeHidden)
+    private static let tribeWindowSQL = messagesSQL(also: tribeHidden, from: true)
+    private static let tribeHidden = """
         AND NOT (m.threadUUID IS NOT NULL AND m.type IN (\(MessageType.contentSQL))
             AND EXISTS (SELECT 1 FROM message o WHERE o.uuid = m.threadUUID AND o.chat = m.chat)
             AND (EXISTS (
@@ -46,7 +52,7 @@ extension Storage {
             WHERE n.chat = m.chat AND n.threadUUID = m.uuid AND \(threadMessage("n"))
             LIMIT 1 OFFSET 1
         ))
-        """)
+        """
 
     /// A thread's newest 200 messages with words, oldest first.
     private static let threadMessagesSQL = messagesSQL(also: "AND threadUUID = ? AND \(threadMessage("m"))")
@@ -100,8 +106,11 @@ extension Storage {
     /// message; plus the parents quoted and the collapsed threads.
     ///
     /// `limit` (at least the newest 200) reaches further back for a message
-    /// older than those; see `timelineLimit(reaching:)`.
-    public func timeline(in chat: String, limit: Int = pageSize) -> some AsyncSequence<Timeline, any Error> {
+    /// older than those; see `timelineLimit(reaching:)`. With `start`, the
+    /// `limit` messages from it on instead (`timelineStart(reaching:)`).
+    public func timeline(
+        in chat: String, from start: TimelineStart? = nil, limit: Int = pageSize
+    ) -> some AsyncSequence<Timeline, any Error> {
         // Read once: inside the observation every setting written would emit again.
         let requesterNodes = (try? requesterNodes(chat)) ?? [chat]
         // Not a constant region: read markers are read only once there are threads.
@@ -110,9 +119,16 @@ extension Storage {
                 let isTribe = try Bool.fetchOne(
                     db, sql: "SELECT EXISTS (SELECT 1 FROM tribe WHERE pubkey = ?)", arguments: [chat]
                 ) ?? false
-                let messages = try Message.fetchAll(
-                    db, sql: isTribe ? Self.tribeTimelineSQL : Self.messagesSQL, arguments: [chat, limit]
-                )
+                let messages = if let start {
+                    try Message.fetchAll(
+                        db, sql: isTribe ? Self.tribeWindowSQL : Self.windowSQL,
+                        arguments: [chat, start.timestamp, start.id, limit]
+                    )
+                } else {
+                    try Message.fetchAll(
+                        db, sql: isTribe ? Self.tribeTimelineSQL : Self.messagesSQL, arguments: [chat, limit]
+                    )
+                }
                 var threads: [String: ThreadSummary] = [:]
                 let threadUUIDs = Set(messages.compactMap(\.threadUUID))
                 if isTribe, !threadUUIDs.isEmpty {

@@ -107,6 +107,30 @@ struct ReadMarkerTests {
         #expect(anchored.messages.last?.uuid == "u250")
     }
 
+    @Test func aWindowStartsJustBeforeAnAnchor() async throws {
+        let storage = try profile.storage()
+        let messages = (1...500).map { i in
+            (Message.fixture(uuid: "u\(i)", serverIndex: Int64(i), chat: chat, timestamp: Int64(i)), false, String?.none)
+        }
+        _ = try storage.apply(Storage.Commit(messages: messages))
+        let old = try #require(try storage.message(uuid: "u100", in: chat))
+        let start = try #require(try storage.timelineStart(reaching: old))
+        let window = try #require(try await first(storage.timeline(in: chat, from: start, limit: 200)))
+        // 50 older, then the anchor and what follows, oldest first.
+        #expect(window.messages.map(\.uuid) == (50..<250).map { "u\($0)" })
+        // Taking in more below, up to the newest.
+        let longer = try #require(try await first(storage.timeline(in: chat, from: start, limit: 600)))
+        #expect(longer.messages.first?.uuid == "u50")
+        #expect(longer.messages.last?.uuid == "u500")
+        #expect(longer.messages.count == 451)
+
+        // Fewer than 50 older: the window starts at the chat's first.
+        let early = try #require(try storage.message(uuid: "u10", in: chat))
+        let earliest = try #require(try storage.timelineStart(reaching: early))
+        let opening = try #require(try await first(storage.timeline(in: chat, from: earliest, limit: 200)))
+        #expect(opening.messages.first?.uuid == "u1")
+    }
+
     @Test func unreadCountFollowsAMarkerMovedBack() async throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(

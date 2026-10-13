@@ -477,8 +477,11 @@ struct MessageList: View {
                 // as new, whatever the last report said: a re-pin's early
                 // return below skips the crossing, and reports can be
                 // coalesced, so a return here can arrive with `old` already
-                // at the bottom.
-                bottom.report(atBottom: new.atBottom, settled: !opening && phase == .idle, newest: newestIndex)
+                // at the bottom. Not a jump's window's bottom, short of the
+                // newest.
+                if reachesNewest {
+                    bottom.report(atBottom: new.atBottom, settled: !opening && phase == .idle, newest: newestIndex)
+                }
                 if new.atBottom, farFromBottom { farFromBottom = false }
                 // A row that changed height under a list following at its end
                 // (one that does not reserve its final size, such as a video
@@ -507,10 +510,13 @@ struct MessageList: View {
                 switch bottom.cross(atBottom: new.atBottom) {
                 case .reached:
                     // Scrolled back to the bottom by hand after "Mark unread":
-                    // reading resumes. Not when a new message scrolls it there.
-                    if userScrolling { reachedBottom() }
-                    following = true
-                    if composer.thread == nil { model.chatListAtBottom() }
+                    // reading resumes. Not when a new message scrolls it there,
+                    // nor at the bottom of a jump's window, short of the newest.
+                    if userScrolling, reachesNewest { reachedBottom() }
+                    // A window's bottom is not the chat's: what it takes in
+                    // below comes in under you, not followed to its end.
+                    if reachesNewest { following = true }
+                    if composer.thread == nil, reachesNewest || userScrolling { model.chatListAtBottom() }
                 case .left:
                     // Scrolled away by hand: no longer following, and
                     // everything there had been seen.
@@ -538,13 +544,14 @@ struct MessageList: View {
             // while following. Scrolled up, you stay where you are and the
             // jump button counts them.
             .onChange(of: rows.last?.id) { _, _ in
+                guard reachesNewest else { return }
                 let scrolls = following || rows.last?.shown.last?.fromMe == true
                 log("newest row changed, scrolls=\(scrolls)")
                 if scrolls { scrollToNewest(proxy) }
             }
             .overlay(alignment: .bottomTrailing) {
                 let count = newSinceScrolledUp
-                if farFromBottom || count > 0 {
+                if farFromBottom || count > 0 || !reachesNewest {
                     JumpToNewestButton(count: count, composer: composer) { jumpToNewest(proxy) }
                         .padding(.trailing, Theme.Space.xl)
                         .padding(.bottom, Theme.Space.md)
@@ -556,6 +563,10 @@ struct MessageList: View {
 
     /// The row "New messages" sits above.
     private var divider: ChatRow? { rows.first(where: \.startsNew) }
+
+    /// Whether this list ends at the newest message: a thread's always, the
+    /// chat's unless a jump's window stops short of it.
+    private var reachesNewest: Bool { composer.thread != nil || model.timelineReachesNewest }
 
     /// To "New messages" at the top, twice: the rows around it have only
     /// estimated heights until the first scroll draws them. Not once you
@@ -616,7 +627,9 @@ struct MessageList: View {
     /// To the newest message; like scrolling there by hand, it ends a
     /// "Mark unread" hold and reads the chat.
     private func jumpToNewest(_ proxy: ScrollViewProxy) {
-        scrollToNewest(proxy, duration: 0.3)
+        // A jump's window ends short of the newest: the newest replace it,
+        // and the list opens again at its bottom.
+        if reachesNewest { scrollToNewest(proxy, duration: 0.3) } else { model.showNewest() }
         reachedBottom()
     }
 

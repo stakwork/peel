@@ -173,6 +173,26 @@ extension Storage {
     /// How many of a chat's newest messages a timeline shows.
     public static let pageSize = 200
 
+    /// Where a timeline showing `message` starts: `before` stored rows older
+    /// than it (hidden types too), or the chat's first; nil for a message
+    /// never stored.
+    public func timelineStart(reaching message: Message, before: Int = 50) throws -> TimelineStart? {
+        guard let timestamp = message.timestamp, let id = message.id else { return nil }
+        return try pool.read { db in
+            let row = try Row.fetchOne(
+                db, sql: """
+                    SELECT timestamp, id FROM message WHERE chat = ? AND (timestamp, id) < (?, ?)
+                    ORDER BY timestamp DESC, id DESC LIMIT 1 OFFSET ?
+                    """,
+                arguments: [message.chat, timestamp, id, before - 1]
+            ) ?? Row.fetchOne(
+                db, sql: "SELECT timestamp, id FROM message WHERE chat = ? ORDER BY timestamp, id LIMIT 1",
+                arguments: [message.chat]
+            )
+            return row.map { TimelineStart(timestamp: $0["timestamp"], id: $0["id"]) }
+        }
+    }
+
     /// A timeline limit that reaches back to `message` (with a few older ones,
     /// so it does not sit at the very top), and never below `pageSize`. It
     /// counts every row from it on, hidden types too, so it may reach further.

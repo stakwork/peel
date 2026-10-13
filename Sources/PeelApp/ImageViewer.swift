@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// One sender's images at full size over the window: who sent them and
 /// when, Reply, Copy and Save as…, arrows (or the arrow keys) between them,

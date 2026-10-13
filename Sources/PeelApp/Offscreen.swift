@@ -1,3 +1,4 @@
+import PeelUI
 #if os(macOS)
 import AppKit
 import ObjectiveC

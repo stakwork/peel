@@ -2,13 +2,13 @@ import Foundation
 import PeelCore
 
 /// The list's groups, by relative time.
-enum PaymentSection: String, CaseIterable {
+public enum PaymentSection: String, CaseIterable, Sendable {
     case today = "Today"
     case yesterday = "Yesterday"
     case thisWeek = "Earlier this week"
     case earlier = "Earlier"
 
-    init(_ date: Date, now: Date = .now) {
+    public init(_ date: Date, now: Date = .now) {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
             self = .today
@@ -24,7 +24,7 @@ enum PaymentSection: String, CaseIterable {
 
 extension PaymentItem {
     /// The row's name: who, or what it was when nobody is known.
-    var title: String {
+    public var title: String {
         if let counterpart { return counterpart }
         switch kind {
         case .invoice: return incoming ? "Invoice paid" : "Lightning invoice"
@@ -39,7 +39,7 @@ extension PaymentItem {
     private var isRefund: Bool { message?.type == MessageType.purchaseDeny }
 
     /// The one line under the name.
-    var subtitle: String {
+    public var subtitle: String {
         if status == .failed, let error { return error }
         if kind == .boost { return isTribe ? "Boost in #\(chatName ?? "")" : "Boost" }
         if let note { return note }
@@ -63,7 +63,7 @@ extension PaymentItem {
     }
 
     /// Why a key exchange moves sats, for its detail.
-    var keyExchangeNote: String? {
+    public var keyExchangeNote: String? {
         guard kind == .keyExchange else { return nil }
         let five = Sats.format(msat: Engine.keyExchangeMsat), three = Sats.format(msat: Engine.priceToMeetMsat)
         return addedThem
@@ -72,7 +72,7 @@ extension PaymentItem {
     }
 
     /// "Boost received", "Payment sent".
-    var headline: String {
+    public var headline: String {
         let what = switch kind {
         case .boost: "Boost"
         case .payment: "Payment"

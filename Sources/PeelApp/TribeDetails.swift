@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// A tribe's details (the header's Tribe details, ⌘I, or a click on its
 /// name): what it is, who owns it, what it costs, its link with a QR, its

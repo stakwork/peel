@@ -5,48 +5,48 @@ import PeelCore
 
 /// Everything the windows show, kept current from the engine and storage.
 @MainActor @Observable
-final class AppModel {
-    enum Phase { case loading, locked, onboarding, ready }
+public final class AppModel {
+    public enum Phase: Sendable { case loading, locked, onboarding, ready }
 
     /// How far a restore from twelve words has got, and why history (a
     /// restore's or a catch-up's) stopped, until it resumes.
-    struct RestoreProgress {
-        struct Count {
-            var reached: UInt64
-            var end: UInt64?
+    public struct RestoreProgress: Sendable {
+        public struct Count: Sendable {
+            public var reached: UInt64
+            public var end: UInt64?
 
-            var fraction: Double? {
+            public var fraction: Double? {
                 guard let end, end > 0 else { return nil }
                 return min(1, Double(reached) / Double(end))
             }
         }
 
-        enum Outcome { case finished, failed(String) }
+        public enum Outcome: Sendable { case finished, failed(String) }
 
         /// A restore from the words has not finished, this launch or an earlier one.
-        var restoring = false
-        var contacts: Count?
-        var messages: Count?
-        var outcome: Outcome?
+        public var restoring = false
+        public var contacts: Count?
+        public var messages: Count?
+        public var outcome: Outcome?
 
-        var finished: Bool {
+        public var finished: Bool {
             if case .finished = outcome { true } else { false }
         }
 
-        var paused: String? {
+        public var paused: String? {
             if case .failed(let reason) = outcome { reason } else { nil }
         }
     }
 
     /// What the sidebar has selected.
-    enum Destination: Hashable {
+    public enum Destination: Hashable, Sendable {
         case threads, mentions, automations, payments, account
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
     }
 
-    var phase: Phase = .loading {
+    public var phase: Phase = .loading {
         // Locked, no call is watched.
         didSet {
             if phase != oldValue {
@@ -55,12 +55,12 @@ final class AppModel {
             }
         }
     }
-    var connection: Engine.ConnectionState = .offline(retryIn: nil)
-    var conversations: [Conversation] = []
+    public var connection: Engine.ConnectionState = .offline(retryIn: nil)
+    public var conversations: [Conversation] = []
     /// The open chat's main conversation: in a tribe with threads collapsed,
     /// plus the messages its replies quote.
-    var timeline = Timeline.empty
-    var destination: Destination? {
+    public var timeline = Timeline.empty
+    public var destination: Destination? {
         didSet {
             if selectedChat != oldValue?.chat {
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
@@ -79,40 +79,40 @@ final class AppModel {
         }
     }
     /// The search open in the chat, if any (`ChatSearch.swift`).
-    var search: ChatSearch?
+    public var search: ChatSearch?
     /// The thread open in the side panel, and what it holds.
-    var openThread: ThreadRef? {
+    public var openThread: ThreadRef? {
         didSet { if openThread != oldValue { observeThread() } }
     }
-    private(set) var thread: ChatThread?
+    public private(set) var thread: ChatThread?
     /// Threads this account started or wrote in, for the Threads list.
-    private(set) var threads: [ThreadSummary] = []
+    public private(set) var threads: [ThreadSummary] = []
     /// What each composer is replying to.
-    var replyTargets: [ComposerID: Message] = [:]
+    public var replyTargets: [ComposerID: Message] = [:]
     /// Files waiting in each composer until it sends.
-    var pendingFiles: [ComposerID: [URL]] = [:]
+    public var pendingFiles: [ComposerID: [URL]] = [:]
     /// The composer files are being dragged towards, for its overlay.
-    var dropTarget: ComposerID?
+    public var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
-    var attachmentPrices: [ComposerID: String] = [:]
+    public var attachmentPrices: [ComposerID: String] = [:]
     /// The composer whose Send sats panel is open, from its bolt.
-    var sendingSats: ComposerID?
+    public var sendingSats: ComposerID?
     /// Bumped to put the cursor in a composer.
-    var composerFocus: [ComposerID: Int] = [:]
+    public var composerFocus: [ComposerID: Int] = [:]
     /// The sidebar has the keyboard (a row was clicked): a chat opened from
     /// it leaves the cursor out of its composer, so the arrows go on moving.
-    var sidebarHasKeys = false
+    public var sidebarHasKeys = false
     /// The image viewer, when open.
-    var viewer: ImageViewerState?
+    public var viewer: ImageViewerState?
     /// What each composer holds unsent, kept while a thread covers its
     /// chat or another chat is open.
-    var drafts: [ComposerID: String] = [:]
+    public var drafts: [ComposerID: String] = [:]
     /// The open chat's rows and the open thread's, worked out once per
     /// change of what they show rather than on every redraw.
-    private(set) var chatRows: [ChatRow] = [] {
+    public private(set) var chatRows: [ChatRow] = [] {
         didSet { refreshRecentCalls() }
     }
-    private(set) var threadRows: [ChatRow] = []
+    public private(set) var threadRows: [ChatRow] = []
     /// The engine's aliases each tribe echoed back on your messages
     /// (`Engine.echoedOwnAliases`), and from them and your name what a
     /// mention of you looks like in each tribe and elsewhere
@@ -122,14 +122,14 @@ final class AppModel {
     private var plainMentionAliases: Set<String> = []
     /// Downloads, uploads and local copies of attachments, by message id;
     /// each observed on its own so a progress tick redraws only its tile.
-    @ObservationIgnored var attachmentHandles: [Int64: AttachmentHandle] = [:]
+    @ObservationIgnored public var attachmentHandles: [Int64: AttachmentHandle] = [:]
     /// The main window's menus and panels (`peelMenuHost(main:)`).
-    @ObservationIgnored weak var mainPresenter: (any MenuHosting)?
+    @ObservationIgnored public weak var mainPresenter: (any MenuHosting)?
     /// The sidebar's search, which filters its lists.
-    var searchQuery = ""
+    public var searchQuery = ""
     /// Which sidebar sections are open and shown in full, kept with the
     /// account (`Engine.sidebarLayout`).
-    var sidebarLayout = ChatSections.Layout() {
+    public var sidebarLayout = ChatSections.Layout() {
         didSet {
             guard sidebarLayout != savedLayout, let engine else { return }
             savedLayout = sidebarLayout
@@ -143,89 +143,89 @@ final class AppModel {
     /// (`sidebarSections`).
     private var heldUnread: ChatReadState?
     /// Bumped to put the cursor in the sidebar's search (⌘F with no chat open).
-    var sidebarSearchFocus = 0
-    var myAlias: String?
+    public var sidebarSearchFocus = 0
+    public var myAlias: String?
     /// The photo sent with this account's messages, https or nil.
-    var myPhotoURL: String?
-    var myContactInfo: String? {
+    public var myPhotoURL: String?
+    public var myContactInfo: String? {
         didSet { myHue = PersonHue(pubkey: myPubkey ?? "", alias: nil, inTribe: false) }
     }
     /// The server this account talks to, as `host:port`.
-    var myServer: String?
+    public var myServer: String?
     /// The call server links are checked against (`Engine.callServer`);
     /// nil when the account has none, and then no message is a call.
-    var callServer: String?
+    public var callServer: String?
     /// Who is on each call being watched, by room: the recent calls across
     /// chats (`callWatches`), and those a card or the header shows.
-    var callPresence: [String: CallPresence] = [:] {
+    public var callPresence: [String: CallPresence] = [:] {
         didSet { refreshLiveCallCounts() }
     }
     /// The views and model watches on each room and the chat each shows it
     /// in; not observed, so a card scrolling in or out redraws nothing.
-    @ObservationIgnored var callWatchers: [String: [UUID: String]] = [:]
+    @ObservationIgnored public var callWatchers: [String: [UUID: String]] = [:]
     /// The messages that may be recent calls, across chats, from storage.
-    @ObservationIgnored var recentCallMessages: [Message] = []
+    @ObservationIgnored public var recentCallMessages: [Message] = []
     /// The model's own watch of each `WatchedCall`, by chat and room,
     /// whatever chat is open, and the wake-up for the next change.
-    @ObservationIgnored var callWatches: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored var callWatchExpiry: Task<Void, Never>?
+    @ObservationIgnored public var callWatches: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored public var callWatchExpiry: Task<Void, Never>?
     /// The open chat's newest calls under 12 hours, at most three, newest
     /// first: what the header watches. Set with the rows, when it changes.
-    var recentCalls: [CallLink] = []
+    public var recentCalls: [CallLink] = []
     /// The call this Mac is on, and its window.
-    var call: (any OngoingCall)?
+    public var call: (any OngoingCall)?
     /// The goodbye of the calls left, which a quit waits for.
-    @ObservationIgnored var callLeaving: Task<Void, Never>?
+    @ObservationIgnored public var callLeaving: Task<Void, Never>?
     /// How many are on each chat's watched calls (the busiest), for chats
     /// with someone on one: the sidebar's green phone, with the call you
     /// are on (`liveCallCount(in:)`). Kept apart so a presence tick that
     /// changes no count redraws no row.
-    var liveCallCounts: [String: Int] = [:]
+    public var liveCallCounts: [String: Int] = [:]
     /// Why the last join of a room failed, shown beside its Join.
-    var callFailures: [String: String] = [:]
+    public var callFailures: [String: String] = [:]
     /// The room being joined and the chat a call is being started in, for
     /// the spinner inside the button clicked.
-    var joiningRoom: String?
-    var startingCallIn: String?
-    var balanceMsat: UInt64? {
+    public var joiningRoom: String?
+    public var startingCallIn: String?
+    public var balanceMsat: UInt64? {
         didSet { if let balanceMsat { money.balance(balanceMsat) } }
     }
     /// Sats promised to people still offline (`Storage.waitingMsat`): still
     /// in the balance, but not to be spent again.
-    var waitingMsat: UInt64 = 0
+    public var waitingMsat: UInt64 = 0
     /// Whether the account's twelve words were checked (`Engine.wordsConfirmed`);
     /// true until the account loads, so nothing asks before it is known.
-    var wordsConfirmed = true
+    public var wordsConfirmed = true
     /// "4,000 waiting", shown beside the balance; nil when nothing waits.
-    var waitingText: String? { waitingMsat > 0 ? "\(Sats.number(msat: waitingMsat)) waiting" : nil }
+    public var waitingText: String? { waitingMsat > 0 ? "\(Sats.number(msat: waitingMsat)) waiting" : nil }
     /// "4,996 sats · 4,000 waiting"; nil until the server reports a balance.
-    var balanceText: String? { balanceMsat.map { Sats.format(msat: $0) + (waitingText.map { " · \($0)" } ?? "") } }
+    public var balanceText: String? { balanceMsat.map { Sats.format(msat: $0) + (waitingText.map { " · \($0)" } ?? "") } }
     /// Payments and boosts over this ask for a second click (`Engine`'s threshold).
-    var paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
+    public var paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
     /// Payments and boosts on their way to the engine, so a double click
     /// never sends one twice.
-    @ObservationIgnored var moneyInFlight: Set<String> = []
+    @ObservationIgnored public var moneyInFlight: Set<String> = []
     /// What the one-tap Boost tips (the engine's boost amount).
-    var boostAmountMsat = Engine.defaultBoostAmountMsat
+    public var boostAmountMsat = Engine.defaultBoostAmountMsat
     /// A one-tap boost amount from another device the last Boost asked to
     /// confirm (`quickBoost`), and the notice that asked: the next Boost of
     /// that message sends it while the notice is still shown.
-    @ObservationIgnored var boostToConfirm: (messageID: Int64, msat: UInt64, notice: String)?
+    @ObservationIgnored public var boostToConfirm: (messageID: Int64, msat: UInt64, notice: String)?
     /// Run headers' looked-up sender zones (nil: none), by chat, then
     /// alias and moment; see `withSenderZones`.
-    @ObservationIgnored var senderZoneCache: [String: [String: TimeZone?]] = [:]
+    @ObservationIgnored public var senderZoneCache: [String: [String: TimeZone?]] = [:]
     /// The senders whose zones are being read, by chat.
-    @ObservationIgnored var senderZonesAsked: [String: Set<String>] = [:]
+    @ObservationIgnored public var senderZonesAsked: [String: Set<String>] = [:]
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
-    var notice: String?
+    public var notice: String?
     /// The notice a failed background check with the server put up
     /// (`Engine.Event.serverCheckError`): dismissed by itself once connected.
     @ObservationIgnored private var serverCheckNotice: String?
     /// The latest error that belongs to a conversation, shown inside it.
-    var conversationNotices: [String: String] = [:]
+    public var conversationNotices: [String: String] = [:]
     /// Unread counts and mute levels by chat.
-    var readStates: [String: ChatReadState] = [:]
+    public var readStates: [String: ChatReadState] = [:]
     /// The open chat's read marker as it was when it opened, before it was
     /// marked read: "New messages" goes above the first incoming message
     /// past it. `after` is nil when nothing was unread, and once you send.
@@ -235,7 +235,7 @@ final class AppModel {
     private var keepsUnread: String?
     /// A message to scroll to and light up once its list shows it (the
     /// chat's, or with `inThread` its thread panel's); see `focus(on:)`.
-    var focus: FocusTarget?
+    public var focus: FocusTarget?
     /// For `focus` on a message older than the newest 200: the open chat's
     /// timeline is a window from just before it, not its newest messages,
     /// so each change re-reads that window rather than everything since.
@@ -243,49 +243,49 @@ final class AppModel {
     private var timelineWindow: (start: TimelineStart, limit: Int)?
     /// Whether the open chat's list ends at its newest message: false while
     /// a window short of it is open.
-    var timelineReachesNewest: Bool {
+    public var timelineReachesNewest: Bool {
         guard let timelineWindow else { return true }
         return timeline.messages.count < timelineWindow.limit
     }
     /// Unread mentions, muted chats too, for the sidebar's Mentions row:
     /// they agree with the rows' gold counts (`sidebarCount`).
-    var unreadMentions: Int {
+    public var unreadMentions: Int {
         readStates.values.reduce(0) { $0 + $1.mentions }
     }
     /// Unread messages by each chat's notification level; the Dock badge.
-    var unreadCount: Int {
+    public var unreadCount: Int {
         readStates.values.reduce(0) { $0 + $1.shownUnread }
     }
     /// Why the last attempt to connect failed; cleared once connected.
-    var connectionError: String?
+    public var connectionError: String?
     /// When the engine will next try to reconnect, for a live countdown.
-    var reconnectAt: Date?
-    var restoreProgress = RestoreProgress()
+    public var reconnectAt: Date?
+    public var restoreProgress = RestoreProgress()
     /// Local notifications and the Dock badge.
-    let notifier: Notifier
+    public let notifier: Notifier
     /// Sats arriving: the header's count-up and pill, Payments' unseen count.
-    let money = MoneyArrivals()
+    public let money = MoneyArrivals()
     /// What the app supplies: panels, the clipboard, playback, calls, presence.
-    @ObservationIgnored let platform: Platform
+    @ObservationIgnored public let platform: Platform
     /// The web pane beside the chat, with this profile's website data.
-    @ObservationIgnored private(set) lazy var webPresenter = platform.web(profile)
+    @ObservationIgnored public private(set) lazy var webPresenter = platform.web(profile)
     /// The agent's tools, memory and automations, where the platform has them.
-    var agentHost: (any AgentHost)? { platform.agent }
+    public var agentHost: (any AgentHost)? { platform.agent }
 
     /// The app's own account keeps its words in the Keychain. Launching with
     /// `-profile <name>` opens a development profile instead, whose words sit in
     /// a plain file; the window says so.
-    private(set) var profile: Profile?
-    private(set) var engine: Engine?
+    public private(set) var profile: Profile?
+    public private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
-    var agent: AgentSession?
+    public var agent: AgentSession?
     /// Bumped to open every tool row in the agent chat, as clicks on their
     /// chevrons would (the offscreen driver's `agent-rows`).
-    var agentRowsOpened = 0
+    public var agentRowsOpened = 0
     /// Where the Connect panel is open from, if it is.
-    var agentConnectFrom: AgentConnectSource?
+    public var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).
-    var showsAgentSettings = false
+    public var showsAgentSettings = false
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -301,9 +301,9 @@ final class AppModel {
     /// front or not; 0 means only at launch. A preference of this device
     /// (the PIN is this device's); one never set here takes the
     /// `pinTimeoutHours` default earlier builds read, which is left in place.
-    private(set) var pinTimeoutHours = 0
+    public private(set) var pinTimeoutHours = 0
 
-    init(platform: Platform) {
+    public init(platform: Platform) {
         self.platform = platform
         notifier = Notifier(presence: platform.presence)
         do {
@@ -324,15 +324,15 @@ final class AppModel {
         }
     }
 
-    var usesFileSecrets: Bool { profile?.kind == .development }
+    public var usesFileSecrets: Bool { profile?.kind == .development }
 
-    var selectedChat: String? { destination?.chat }
+    public var selectedChat: String? { destination?.chat }
 
     /// The sidebar's chats as shown: Unread, then the recent tribes and
     /// direct messages, matching its search. The open chat, unread when it
     /// was opened, stays in Unread until another is opened, so it does not
     /// jump away as it is read and ⌥⇧↓ goes on from it.
-    var sidebarSections: ChatSections {
+    public var sidebarSections: ChatSections {
         var states = readStates
         if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
             states[heldUnread.chat] = heldUnread
@@ -343,7 +343,7 @@ final class AppModel {
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
     /// sidebar's Unread section, going round. From anywhere in the main
     /// window, as ⌘F (`takesCommands`).
-    func openUnread(by offset: Int) {
+    public func openUnread(by offset: Int) {
         guard takesCommands, let chat = sidebarSections.unread(from: selectedChat, by: offset) else { return }
         destination = .chat(chat)
     }
@@ -353,33 +353,33 @@ final class AppModel {
     /// or panel and no image viewer up.
     /// Checked in the action, never through `.disabled`, which a command
     /// does not follow (#131).
-    var takesCommands: Bool {
+    public var takesCommands: Bool {
         guard phase == .ready, !isLockDue, viewer == nil, let presenter = mainPresenter,
               !presenter.anythingOpen else { return false }
         return presenter.hostsKeyWindow
     }
 
-    var selectedConversation: Conversation? {
+    public var selectedConversation: Conversation? {
         conversations.first { $0.chat == selectedChat }
     }
 
     /// Every tribe's details by pubkey, joined or left: price, description,
     /// the pin, whether this account owns it.
-    private(set) var tribes: [String: Tribe] = [:]
+    public private(set) var tribes: [String: Tribe] = [:]
     /// Tribes linked in messages, by link, as their cards last read them.
-    private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
+    public private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
     /// Each tribe's members as last read (`tribeMembers`), for the counts
     /// shown outside the Members panel (`TribeMembers.countLabel`).
-    private(set) var knownMembers: [String: TribeMembers] = [:]
+    public private(set) var knownMembers: [String: TribeMembers] = [:]
     @ObservationIgnored private var readingMembers: Set<String> = []
     /// The open tribe's pinned message, read from storage however old.
-    private(set) var pinnedMessage: Message?
+    public private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
     /// newest first.
-    private(set) var invites: [String: InviteRecord] = [:]
-    private(set) var pendingInvites: [InviteRecord] = []
+    public private(set) var invites: [String: InviteRecord] = [:]
+    public private(set) var pendingInvites: [InviteRecord] = []
 
-    func start() async {
+    public func start() async {
         guard phase == .loading, let profile else { return }
         guard profile.hasAccount else {
             phase = .onboarding
@@ -402,7 +402,7 @@ final class AppModel {
 
     /// Opens the account with its PIN at launch, or lets the user back in after
     /// the PIN timeout. Throws `SecretStoreFailure.wrongPIN` for a wrong PIN.
-    func unlock(pin: String) async throws {
+    public func unlock(pin: String) async throws {
         guard let profile else { return }
         if engine == nil {
             try await open(profile, pin: pin)
@@ -417,7 +417,7 @@ final class AppModel {
     /// lost. The account itself lives on and can be restored from its words.
     /// If removing fails part-way, the app starts over from whatever is left:
     /// the lock screen while the words remain, onboarding once they are gone.
-    func forgetAccount() async throws {
+    public func forgetAccount() async throws {
         guard let profile else { return }
         await engine?.close()
         engine = nil
@@ -440,17 +440,17 @@ final class AppModel {
 
     /// The name others see on the messages sent from now on. The engine's
     /// `.profile` event updates `myAlias`.
-    func setName(_ name: String) async throws {
+    public func setName(_ name: String) async throws {
         try await signedIn().setAlias(name)
     }
 
-    func removePhoto() async throws {
+    public func removePhoto() async throws {
         try await signedIn().setPhotoURL("")
     }
 
     /// Works the rows out again when who they name changed (your profile,
     /// the contact), not only when the messages did.
-    func rebuildRows() {
+    public func rebuildRows() {
         rebuildChatRows()
         rebuildThreadRows()
     }
@@ -485,22 +485,22 @@ final class AppModel {
     }
 
     /// You, as the sidebar, Account, member lists and rows name you.
-    var me: Sender { Sender(alias: myAlias, photoURL: myPhotoURL, hue: myHue, isMe: true) }
+    public var me: Sender { Sender(alias: myAlias, photoURL: myPhotoURL, hue: myHue, isMe: true) }
 
     /// You in `chat`: as you appear in a tribe where you set your own name
     /// or photo (`Tribe.myAlias`, `myPhotoURL`), else `me`.
-    func me(in chat: String) -> Sender {
+    public func me(in chat: String) -> Sender {
         guard let tribe = tribes[chat] else { return me }
         return Sender(alias: tribe.myAlias ?? myAlias, photoURL: tribe.myPhotoURL ?? myPhotoURL, hue: myHue, isMe: true)
     }
 
     /// You and the contact, as a chat's rows name them.
-    func people(in chat: String) -> ChatRow.People {
+    public func people(in chat: String) -> ChatRow.People {
         people(in: chat, conversation: conversations.first { $0.chat == chat })
     }
 
     /// The same, with the chat's conversation already found.
-    func people(in chat: String, conversation: Conversation?) -> ChatRow.People {
+    public func people(in chat: String, conversation: Conversation?) -> ChatRow.People {
         ChatRow.People(
             me: me(in: chat),
             contact: Sender(alias: conversation?.name, photoURL: conversation?.photoURL,
@@ -508,27 +508,27 @@ final class AppModel {
         )
     }
 
-    func isTribe(_ chat: String) -> Bool {
+    public func isTribe(_ chat: String) -> Bool {
         conversations.first { $0.chat == chat }?.isTribe ?? false
     }
 
     /// Uploads a picture from this Mac and makes it the photo.
-    func uploadPhoto(_ file: URL) async throws {
+    public func uploadPhoto(_ file: URL) async throws {
         try await signedIn().uploadPhoto(file)
     }
 
     /// Uploads a picture from this Mac for a tribe's image; returns its link.
-    func uploadPicture(_ file: URL) async throws -> String {
+    public func uploadPicture(_ file: URL) async throws -> String {
         try await signedIn().uploadPicture(file)
     }
 
     /// Asks for a picture, beside the window.
-    func choosePicture() -> URL? {
+    public func choosePicture() -> URL? {
         platform.files.open(prompt: "Choose", multiple: false, directories: false, types: [.image])?.first
     }
 
     /// The twelve words, after the PIN. Nothing here keeps or logs them.
-    func revealWords(pin: String) async throws -> [String] {
+    public func revealWords(pin: String) async throws -> [String] {
         guard let profile else { throw PeelError("no profile") }
         return try await Task.detached { try profile.words(pin: pin) }.value
     }
@@ -536,34 +536,34 @@ final class AppModel {
     /// Records that the words were written down when `answers` (typed back,
     /// by position) match `words`, the account's own as shown. Throws
     /// `Engine.Failure.wrongWords` naming the positions that differ.
-    func confirmWords(_ answers: [Int: String], of words: [String]) async throws {
+    public func confirmWords(_ answers: [Int: String], of words: [String]) async throws {
         try await signedIn().confirmWords(answers, mnemonic: words.joined(separator: " "))
         wordsConfirmed = true
     }
 
     /// What the account holds, for Forget on the lock screen: the open
     /// account's balance, or before it opens the one last stored.
-    func balanceBeforeForget() async -> UInt64? {
+    public func balanceBeforeForget() async -> UInt64? {
         if engine != nil { return balanceMsat }
         guard let profile else { return nil }
         return await Task.detached { profile.storedBalanceMsat() }.value
     }
 
     /// Reseals the words under a new PIN, typed twice.
-    func changePIN(from oldPIN: String, to newPIN: String, confirmation: String) async throws {
+    public func changePIN(from oldPIN: String, to newPIN: String, confirmation: String) async throws {
         guard let profile else { throw PeelError("no profile") }
         guard newPIN == confirmation else { throw PeelError("The new PINs don't match.") }
         try await Task.detached { try profile.changePIN(from: oldPIN, to: newPIN) }.value
     }
 
-    func setPINTimeout(hours: Int) async throws {
+    public func setPINTimeout(hours: Int) async throws {
         try await signedIn().setPINTimeout(hours: hours)
         pinTimeoutHours = hours
     }
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
     /// comes to the front, and every 30 seconds by `lockWhenIdle`.
-    func lockIfDue() {
+    public func lockIfDue() {
         guard isLockDue else { return }
         platform.pasteboard.clearSecret()
         notifier.removeAllDelivered()
@@ -572,21 +572,21 @@ final class AppModel {
 
     /// Peel has gone unused for the PIN timeout, though it may not have
     /// locked yet; notifications already say nothing.
-    var isLockDue: Bool {
+    public var isLockDue: Bool {
         guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let lastActiveAt else { return false }
         return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
     }
 
     /// The person used Peel (a key, a click, a scroll in its windows). Once
     /// the lock is due, using it no longer puts the lock off.
-    func noteActivity() {
+    public func noteActivity() {
         guard phase == .ready, !isLockDue else { return }
         lastActiveAt = .now
     }
 
     /// Locks once Peel has gone unused for the PIN timeout, also while it
     /// stays in front (audit F7), until the task is cancelled.
-    func lockWhenIdle() async {
+    public func lockWhenIdle() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(30))
             lockIfDue()
@@ -594,7 +594,7 @@ final class AppModel {
     }
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
-    func willTerminate() {
+    public func willTerminate() {
         agentHost?.stop()
         platform.pasteboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
@@ -602,7 +602,7 @@ final class AppModel {
 
     /// Creates an account from an invite and returns its twelve words, to show
     /// once. The app opens when the user confirms they wrote them down.
-    func createAccount(invite input: String, name: String, pin: String) async throws -> [String] {
+    public func createAccount(invite input: String, name: String, pin: String) async throws -> [String] {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         guard let invite = try? Engine.parseInvite(input) else {
@@ -615,7 +615,7 @@ final class AppModel {
 
     /// Brings an account back from its twelve words, then pulls contacts and
     /// history in the background; `restoreProgress` follows it.
-    func restoreAccount(words: [String], name: String, pin: String) async throws {
+    public func restoreAccount(words: [String], name: String, pin: String) async throws {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
@@ -627,12 +627,12 @@ final class AppModel {
 
     /// Resume after history stalled: the engine picks it up where it stands,
     /// or says why not (`historyFailed`).
-    func resumeHistory() async {
+    public func resumeHistory() async {
         try? await engine?.resumeHistory()
     }
 
     /// Opens the main window, from onboarding or the lock screen.
-    func enterApp() {
+    public func enterApp() {
         lastActiveAt = .now
         phase = .ready
         Task { await notifier.refreshPermission() }
@@ -641,30 +641,30 @@ final class AppModel {
     // MARK: Notifications
 
     /// Whether Peel is the app in front, where the open chat is being read.
-    var isFrontmost: Bool { platform.presence.isFrontmost }
+    public var isFrontmost: Bool { platform.presence.isFrontmost }
 
     /// Asks the system for permission, after the offer explained it.
-    func enableNotifications() async {
+    public func enableNotifications() async {
         await notifier.requestPermission()
     }
 
-    func dismissNotificationOffer() {
+    public func dismissNotificationOffer() {
         notifier.dismissOffer()
     }
 
-    func openNotificationSettings() {
+    public func openNotificationSettings() {
         notifier.openSystemSettings()
     }
 
     /// Off: notifications say only "New message".
-    func setNotificationShowsText(_ shows: Bool) async throws {
+    public func setNotificationShowsText(_ shows: Bool) async throws {
         try await signedIn().setNotificationShowsText(shows)
         notifier.showsText = shows
     }
 
     /// A click on a notification: Peel to the front with that chat open,
     /// at the message it was for, or Payments for sats received.
-    func openFromNotification(_ chat: String, messageID: Int64?) {
+    public func openFromNotification(_ chat: String, messageID: Int64?) {
         platform.presence.activate()
         guard phase == .ready || phase == .locked else { return }
         if chat == Notifier.paymentsThread {
@@ -682,7 +682,7 @@ final class AppModel {
     /// it, lit for a moment. One older than the newest 200 opens a window
     /// from just before it; one deleted since opens the chat with a notice.
     /// Takes precedence over "New messages".
-    func focus(on message: Message, inThread: Bool = false) {
+    public func focus(on message: Message, inThread: Bool = false) {
         let chat = message.chat
         guard let storage = engine?.storage else { return }
         // As stored now: it may have been deleted since the list was drawn.
@@ -723,7 +723,7 @@ final class AppModel {
     /// The chat's list is at its bottom: a window short of the newest takes
     /// the next 200 below, keeping what is drawn; one that reaches it goes
     /// back to the newest 200, so later changes re-read only those.
-    func chatListAtBottom() {
+    public func chatListAtBottom() {
         guard var window = timelineWindow else { return }
         if timelineReachesNewest { return showNewest() }
         window.limit += Storage.pageSize
@@ -732,24 +732,24 @@ final class AppModel {
     }
 
     /// The open chat's newest messages, leaving a window for a jump.
-    func showNewest() {
+    public func showNewest() {
         guard timelineWindow != nil else { return }
         timelineWindow = nil
         observeMessages()
     }
 
-    func resend(_ message: Message) async {
+    public func resend(_ message: Message) async {
         guard let id = message.id else { return }
         await attempt("send again", in: message.chat) { try await $0.resend(messageID: id) }
     }
 
     /// Deletes a message for everyone; a refusal shows in its chat.
-    func delete(_ message: Message) async {
+    public func delete(_ message: Message) async {
         guard let id = message.id else { return }
         await attempt("delete", in: message.chat) { try await $0.deleteMessage(id: id) }
     }
 
-    func discard(_ message: Message) async {
+    public func discard(_ message: Message) async {
         guard let id = message.id else { return }
         await attempt("discard", in: message.chat) { try await $0.discard(messageID: id) }
     }
@@ -757,7 +757,7 @@ final class AppModel {
     /// Runs an action on one chat; a failure shows above that chat's
     /// composer. Returns whether it succeeded.
     @discardableResult
-    func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async -> Bool {
+    public func attempt(_ what: String, in chat: String, _ action: (Engine) async throws -> Void) async -> Bool {
         guard let engine else { return false }
         conversationNotices[chat] = nil
         do {
@@ -769,21 +769,21 @@ final class AppModel {
         }
     }
 
-    func dismissNotice(in chat: String) {
+    public func dismissNotice(in chat: String) {
         conversationNotices[chat] = nil
     }
 
-    func setMute(_ chat: String, _ level: MuteLevel) async {
+    public func setMute(_ chat: String, _ level: MuteLevel) async {
         await attempt("change notifications", in: chat) { try await $0.setMute(chat, level: level) }
     }
 
-    func reconnectNow() async {
+    public func reconnectNow() async {
         await engine?.reconnectNow()
     }
 
     /// Marks the open chat read while the window is in front, so a message that
     /// arrives while you look at it never shows as unread.
-    func markSelectedChatRead() {
+    public func markSelectedChatRead() {
         guard let chat = selectedChat else { return }
         noteNewMessages(in: chat)
         guard isFrontmost, phase == .ready, keepsUnread != chat else { return }
@@ -811,7 +811,7 @@ final class AppModel {
     /// Marks a chat unread from one message on, or from its newest incoming
     /// message. On the open chat it then stays unread while you look, with
     /// "New messages" moved to where it now starts.
-    func markUnread(_ chat: String, from message: Message? = nil) async {
+    public func markUnread(_ chat: String, from message: Message? = nil) async {
         let open = chat == selectedChat
         if open { keepsUnread = chat }
         var marker: Int64?
@@ -829,7 +829,7 @@ final class AppModel {
     }
 
     /// The open chat's list reached its bottom: a chat kept unread is read now.
-    func reachedBottom(of chat: String) {
+    public func reachedBottom(of chat: String) {
         guard keepsUnread == chat else { return }
         keepsUnread = nil
         markSelectedChatRead()
@@ -837,7 +837,7 @@ final class AppModel {
 
     /// Sending reads the chat (the server moves its marker too); "New
     /// messages" has done its job.
-    func sent(in chat: String) {
+    public func sent(in chat: String) {
         if keepsUnread == chat { keepsUnread = nil }
         // What you sent is at the newest, which a jump's window may stop short of.
         if chat == selectedChat { showNewest() }
@@ -846,7 +846,7 @@ final class AppModel {
     }
 
     /// What a tribe link points to, to show before paying to join.
-    func previewTribe(_ link: String) async throws -> TribeInfo {
+    public func previewTribe(_ link: String) async throws -> TribeInfo {
         guard let engine else { throw PeelError("not signed in") }
         return try await engine.tribeInfo(link: link)
     }
@@ -854,7 +854,7 @@ final class AppModel {
     /// Reads a tribe linked in a message for its card, once per link
     /// (`Engine.linkedTribeInfo`: only from the account's own tribes host).
     /// `again` reads a failed one again.
-    func loadLinkedTribe(_ link: TribeLink, again: Bool = false) async {
+    public func loadLinkedTribe(_ link: TribeLink, again: Bool = false) async {
         guard let engine, linkedTribes[link] == nil || again && linkedTribes[link]?.problem != nil else { return }
         // A long scroll through shared links stays bounded.
         if linkedTribes.count >= 200 { linkedTribes = linkedTribes.filter { $0.value == .loading } }
@@ -873,14 +873,14 @@ final class AppModel {
 
     /// Joins a tribe from its link, paying only the price shown, through the
     /// engine's payment checks, and opens it.
-    func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
+    public func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
         await pay("join tribe") {
             let tribe = try await $0.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat, confirmedMsat: confirmedMsat)
             destination = .chat(tribe.pubkey)
         }
     }
 
-    func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
+    public func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
         let members = try await signedIn().tribeMembers(pubkey)
         knownMembers[pubkey] = members
         return members
@@ -889,7 +889,7 @@ final class AppModel {
     /// A tribe's members for a link card's count: read again each time for
     /// a member (who has posted, stored here), but asked of the tribes
     /// server only once a session for the owner, and never twice at once.
-    func loadKnownMembers(_ pubkey: String) async {
+    public func loadKnownMembers(_ pubkey: String) async {
         guard knownMembers[pubkey] == nil || tribes[pubkey]?.isOwner != true,
               readingMembers.insert(pubkey).inserted else { return }
         defer { readingMembers.remove(pubkey) }
@@ -897,44 +897,44 @@ final class AppModel {
     }
 
     /// Creates a tribe owned by this account and opens it.
-    func createTribe(_ settings: TribeSettings) async throws {
+    public func createTribe(_ settings: TribeSettings) async throws {
         let tribe = try await signedIn().createTribe(settings)
         destination = .chat(tribe.pubkey)
     }
 
-    func tribeSettings(_ pubkey: String) async throws -> TribeSettings {
+    public func tribeSettings(_ pubkey: String) async throws -> TribeSettings {
         try await signedIn().tribeSettings(pubkey)
     }
 
-    func updateTribe(_ pubkey: String, _ settings: TribeSettings) async throws {
+    public func updateTribe(_ pubkey: String, _ settings: TribeSettings) async throws {
         try await signedIn().updateTribe(pubkey, settings: settings)
     }
 
-    func tribeDetails(_ pubkey: String) async throws -> TribeDetails {
+    public func tribeDetails(_ pubkey: String) async throws -> TribeDetails {
         try await signedIn().tribeDetails(pubkey)
     }
 
     /// How you appear in one tribe; nil or empty is your account's own.
-    func setTribeIdentity(_ pubkey: String, alias: String?, photoURL: String?) async throws {
+    public func setTribeIdentity(_ pubkey: String, alias: String?, photoURL: String?) async throws {
         try await signedIn().setTribeIdentity(pubkey, alias: alias, photoURL: photoURL)
     }
 
-    func deleteTribe(_ pubkey: String) async throws {
+    public func deleteTribe(_ pubkey: String) async throws {
         try await signedIn().deleteTribe(pubkey)
         if selectedChat == pubkey { destination = nil }
     }
 
-    func kick(_ member: String, from pubkey: String) async throws {
+    public func kick(_ member: String, from pubkey: String) async throws {
         try await signedIn().kickMember(member, from: pubkey)
     }
 
-    func answerJoinRequest(in pubkey: String, _ request: Engine.JoinRequest, approve: Bool) async throws {
+    public func answerJoinRequest(in pubkey: String, _ request: Engine.JoinRequest, approve: Bool) async throws {
         try await signedIn().answerJoinRequest(in: pubkey, request, approve: approve)
     }
 
     /// Answers a request shown in the open tribe; a failure shows above its
     /// composer. Returns whether the answer went out.
-    func answerJoinRequest(_ message: Message, approve: Bool) async -> Bool {
+    public func answerJoinRequest(_ message: Message, approve: Bool) async -> Bool {
         guard let uuid = message.uuid else { return false }
         return await attempt(approve ? "approve" : "decline", in: message.chat) {
             try await $0.answerJoinRequest(in: message.chat, .message(uuid: uuid), approve: approve)
@@ -942,30 +942,30 @@ final class AppModel {
     }
 
     /// Pins a message (by uuid) for every member, or unpins with nil.
-    func pin(_ uuid: String?, in pubkey: String) async {
+    public func pin(_ uuid: String?, in pubkey: String) async {
         await attempt(uuid == nil ? "unpin" : "pin", in: pubkey) { try await $0.pinMessage(uuid, in: pubkey) }
     }
 
     /// Who can be @mentioned in a tribe, read off the main thread.
-    func mentionCandidates(in pubkey: String) async -> [TribeMember] {
+    public func mentionCandidates(in pubkey: String) async -> [TribeMember] {
         guard let storage = engine?.storage else { return [] }
         return await Task.detached { (try? storage.mentionCandidates(in: pubkey)) ?? [] }.value
     }
 
     /// Tribe messages that mention this account, newest first, as they change.
     /// Followed only while the Mentions list is open.
-    func mentionUpdates() -> (some AsyncSequence<[Message], any Error>)? {
+    public func mentionUpdates() -> (some AsyncSequence<[Message], any Error>)? {
         engine?.storage.mentions()
     }
 
     /// This account's key, which names it on a tribe's member list.
-    var myPubkey: String? {
+    public var myPubkey: String? {
         myContactInfo?.split(separator: "_").first.map(String.init)
     }
 
     /// What a mention of you (a gold chip) looks like in `chat`
     /// (`ownMentionAliases`).
-    func mentionAliases(in chat: String) -> Set<String> {
+    public func mentionAliases(in chat: String) -> Set<String> {
         tribeMentionAliases[chat] ?? plainMentionAliases
     }
 
@@ -985,30 +985,30 @@ final class AppModel {
 
     /// Yours, by your key everywhere, as the official apps key their own
     /// messages. Every other colour comes from `hue(pubkey:alias:inTribe:)`.
-    private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
+    public private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
 
     /// Someone in a boost, a thread or a call: you, or who they said they
     /// are (a tribe member by alias, or the contact, whose key is the chat's).
-    func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool) -> Sender {
+    public func avatar(fromMe: Bool, alias: String?, photoURL: String?, chat: String, inTribe: Bool) -> Sender {
         fromMe ? me(in: chat) : Sender(alias: alias, photoURL: photoURL, hue: hue(pubkey: chat, alias: alias, inTribe: inTribe))
     }
 
-    func hue(of member: TribeMember) -> PersonHue {
+    public func hue(of member: TribeMember) -> PersonHue {
         hue(pubkey: member.pubkey, alias: member.alias, inTribe: true)
     }
 
     /// Who a payment was with (`counterpart`, when anyone is known).
-    func hue(of payment: PaymentItem) -> PersonHue {
+    public func hue(of payment: PaymentItem) -> PersonHue {
         hue(pubkey: payment.chat, alias: payment.counterpart, inTribe: payment.isTribe)
     }
 
     /// Someone known by their key: a contact, or a tribe member (by alias).
-    func hue(pubkey: String?, alias: String?, inTribe: Bool) -> PersonHue {
+    public func hue(pubkey: String?, alias: String?, inTribe: Bool) -> PersonHue {
         if let pubkey, pubkey == myPubkey { return myHue }
         return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe)
     }
 
-    func signedIn() throws -> Engine {
+    public func signedIn() throws -> Engine {
         guard let engine else { throw PeelError("not signed in") }
         return engine
     }
@@ -1348,9 +1348,28 @@ final class AppModel {
     }
 }
 
+/// What a tribe linked in a message is, as its card last read it
+/// (`AppModel.loadLinkedTribe`).
+public enum LinkedTribe: Equatable, Sendable {
+    case loading
+    case loaded(TribeInfo)
+    /// Listed on a host other than the account's own: not read.
+    case elsewhere
+    case deleted
+    case failed(String)
+
+    public var info: TribeInfo? {
+        if case .loaded(let info) = self { info } else { nil }
+    }
+
+    public var problem: String? {
+        if case .failed(let problem) = self { problem } else { nil }
+    }
+}
+
 /// Where a Connect panel was opened from, so it opens beside that button:
 /// the chat's card or its error row, or the Account page's provider or key.
-enum AgentConnectSource: Hashable {
+public enum AgentConnectSource: Hashable, Sendable {
     case chat, problem, account, accountKey, automations
 }
 

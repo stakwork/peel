@@ -2,6 +2,7 @@ import AgentKit
 import Foundation
 import PeelAgent
 import PeelCore
+import PeelUI
 
 /// What the Automations view shows (`docs/phases/12-automations.md`): the
 /// list strut keeps, and why it could not be read, if it could not.

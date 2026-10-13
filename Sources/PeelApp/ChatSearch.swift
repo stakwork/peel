@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// The chat header's search button opens or closes the search (⌘F, Edit ›
 /// Find, opens it: `AppModel.find`).

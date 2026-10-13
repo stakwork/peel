@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// Offers notifications once the account is open.
 struct NotificationOffer: View {

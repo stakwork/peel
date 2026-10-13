@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// A picture chosen from this Mac, never typed: the picture as it is now,
 /// Choose picture… (or a picture dropped on it) and Remove. The upload is

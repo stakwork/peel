@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// The account screen: who others see, how to be added, the words and PIN
 /// that guard the account on this Mac, and leaving it. Opened from the foot

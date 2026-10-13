@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// A section's heading: 12 pt semibold in the secondary colour (shadcn's
 /// blocks use `text-sm font-medium text-muted-foreground`). A form's

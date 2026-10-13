@@ -1,6 +1,7 @@
 import SwiftUI
 import LiveKit
 import PeelCore
+import PeelUI
 
 /// The call window (board C3): the chat and the running time on top, one
 /// tile per person, and the control bar. Closing it (⌘W) leaves the call;

@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// A card: shadcn's `Card`, the box under a group of rows or a preview.
 /// `.raised` lifts it off a popover or a page (a switch row, the tribe's

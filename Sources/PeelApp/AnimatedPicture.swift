@@ -2,6 +2,7 @@ import AppKit
 import QuartzCore
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// An animated GIF in a row: an attachment's or Giphy's. It plays while it
 /// is on the screen in Peel's front window; with Reduce Motion it shows its

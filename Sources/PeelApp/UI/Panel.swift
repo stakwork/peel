@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// A panel: shadcn's `Card` in a popover, the only box a popover has. The
 /// title with the panel's own utility actions (Copy link, as icon buttons)

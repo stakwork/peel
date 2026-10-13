@@ -1,6 +1,7 @@
 import SwiftUI
 import LiveKit
 import PeelCore
+import PeelUI
 
 /// Development only: joins a room on a local `livekit-server --dev` and
 /// publishes the microphone, to prove the LiveKit build, signing and

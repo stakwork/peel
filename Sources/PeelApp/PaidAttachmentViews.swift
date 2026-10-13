@@ -39,8 +39,10 @@ struct LockedAttachment: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(kind == .text ? "Paid message" : "Paid file")
                             .font(Theme.font(13, .semibold))
-                        Text(kind == .text ? "Opens once bought" : AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
-                            .muted()
+                        if kind != .text {
+                            Text(AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
+                                .muted()
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -78,13 +80,13 @@ struct LockedAttachment: View {
         case .processing:
             HStack(spacing: Theme.Space.sm) {
                 ProgressView().controlSize(.small)
-                Text("Unlocking: waiting for \(seller) to send the key")
+                Text("Waiting for \(seller)…")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(2)
             }
         case .denied:
-            Text("\(seller) turned the purchase down and sent the sats back.")
+            Text("\(seller) declined. Your sats were returned.")
                 .muted()
         case .unlocked, .forSale:
             // Never shown: an unlocked one or our own is drawn as the attachment itself.
@@ -104,7 +106,7 @@ struct LockedAttachment: View {
                 if let problem = attempt.problem {
                     ProblemText(problem)
                 } else if state == .failed {
-                    ProblemText("The last try did not go through; nothing was paid.")
+                    ProblemText("Didn't go through. Nothing was paid.")
                 }
             }
         }
@@ -170,6 +172,6 @@ struct AttachmentPriceField: View {
             FormNumberField(label: "Price", text: text, unit: "sats", prompt: "Free")
                 .frame(width: 120)
         }
-        .help("Sell these files: buyers pay this many sats each to open one. Leave empty to send them free.")
+        .help("Price per file. Empty sends them free.")
     }
 }

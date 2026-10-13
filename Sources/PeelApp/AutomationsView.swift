@@ -28,7 +28,7 @@ struct AutomationsView: View {
                     group("Recurring", state.recurring)
                     group("Done", state.done)
                     if state.loaded, state.list.isEmpty, model.automationsClient != nil, state.problem == nil {
-                        EmptyState("Ask for a reminder or a regular task above, or in the agent chat.", size: .sm)
+                        EmptyState("No automations yet.", size: .sm)
                     }
                 }
                 .padding(Theme.Space.lg)
@@ -46,14 +46,13 @@ struct AutomationsView: View {
     @ViewBuilder
     private func notices(_ state: AutomationsState) -> some View {
         if model.automationsClient == nil {
-            Callout(.neutral, "Automations need strut", detail: "Set a strut on this Mac in Account › Peel agent; it keeps the schedule.") {
+            Callout(.neutral, detail: "Automations aren't set up yet.") {
                 Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.link, size: .sm))
             }
         } else if let problem = state.problem {
             Callout(.attention, detail: problem, dismiss: { model.automations.problem = nil })
         } else if state.schedulerLooksOff() {
-            Callout(.attention, "strut's clock looks off",
-                    detail: "An automation's time passed without a run. Start strut with STRUT_SCHEDULER=1; Run now works meanwhile.") {
+            Callout(.attention, "Scheduled runs are paused", detail: "Run now still works.") {
                 EmptyView()
             }
         }

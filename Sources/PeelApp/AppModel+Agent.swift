@@ -123,11 +123,6 @@ extension AppModel {
         return credential.provider.client(apiKey: credential.apiKey, baseURL: baseURL)
     }
 
-    /// Where the connected model's key is kept, as the screens say it.
-    var agentKeyPlace: String {
-        profile?.kind == .development ? "a plain file of this development profile" : "this Mac's Keychain"
-    }
-
     /// The agent chat's settings: Account, at its Peel agent section.
     func openAgentSettings() {
         showsAgentSettings = true

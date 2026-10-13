@@ -43,8 +43,7 @@ struct AgentConnectPanel: View {
                     .disabled(checking)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    FormItem(label: "\(provider.name) API key", helper: "Kept in \(model.agentKeyPlace), not synced.",
-                             problem: problem) {
+                    FormItem(label: "\(provider.name) API key", problem: problem) {
                         HStack(spacing: 8) {
                             FormTextField(label: "\(provider.name) API key", text: $key, problem: problem != nil,
                                           focusOnAppear: true, secure: true)
@@ -61,7 +60,7 @@ struct AgentConnectPanel: View {
                     }
                     .buttonStyle(.peel(.link, size: .sm))
                 }
-                FormItem(label: "Model", helper: "You can change it any time in Account.") {
+                FormItem(label: "Model") {
                     PeelDropdown(
                         selection: modelID,
                         options: provider.models.map { model in

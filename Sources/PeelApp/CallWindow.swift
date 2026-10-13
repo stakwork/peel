@@ -379,7 +379,7 @@ private struct CallControls: View {
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }
         if !refused.isEmpty {
-            note("Peel can't use \(refused.joined(separator: " or "))", action: "Open System Settings") {
+            note("Can't use \(refused.joined(separator: " or "))", action: "Open System Settings") {
                 let pane = call.micAccess == .refused ? "Privacy_Microphone" : "Privacy_Camera"
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
                     NSWorkspace.shared.open(url)

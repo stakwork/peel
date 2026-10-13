@@ -7,7 +7,6 @@ import PeelCore
 /// Clear conversation. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
     static let id = "agent-settings"
-    @Environment(AppModel.self) private var model
     let agent: AgentSession
 
     @State private var problem: String?
@@ -41,7 +40,7 @@ struct AgentSettingsSection: View {
                     } trailing: {
                         HStack(spacing: 8) {
                             AgentConnectButton(source: .accountKey, title: "Replace")
-                            InlineConfirm(trigger: "Remove", prompt: "Remove the key? The agent stops until you connect again.",
+                            InlineConfirm(trigger: "Remove", prompt: "Remove the key? The agent will stop.",
                                           confirm: "Remove") {
                                 attempt { try agent.removeKey() }
                             }
@@ -65,27 +64,21 @@ struct AgentSettingsSection: View {
                     }
                 }
                 Fact("Conversation") {
-                    Text("Clears the agent chat on this Mac. Your other chats are not touched.")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.secondaryText)
+                    EmptyView()
                 } trailing: {
                     InlineConfirm(trigger: "Clear…", prompt: "Clear the agent chat?", confirm: "Clear") {
                         attempt { try agent.clear() }
                     }
                 }
             }
-            Text(footnote)
-                .font(Theme.font(12))
-                .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.attention)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 4)
+            if let problem {
+                Text(problem)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.attention)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
         }
-    }
-
-    private var footnote: String {
-        if let problem { return problem }
-        let provider = agent.connection?.provider.name ?? "the provider you connect"
-        return "The key stays in \(model.agentKeyPlace) and is not synced. What the agent reads to answer you is sent to \(provider), not to Sphinx or to us."
     }
 
     /// The provider's models, with the one in use even if the list has no longer got it.
@@ -115,8 +108,7 @@ private struct AgentNameRow: View {
     var body: some View {
         if editing {
             VStack(alignment: .leading, spacing: 14) {
-                FormItem(label: "Name", helper: "What the agent is called in the sidebar and in its chat.",
-                         problem: problem) {
+                FormItem(label: "Name", problem: problem) {
                     FormTextField(label: "Name", text: $draft, focusOnAppear: true)
                         .onSubmit(save)
                 }

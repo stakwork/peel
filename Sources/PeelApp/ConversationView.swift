@@ -114,7 +114,7 @@ private struct ChatColumn: View {
                 paysTo: conversation.isTribe ? nil : conversation.name
             )
         }
-        .fileDrop(into: composer, for: conversation)
+        .fileDrop(into: composer)
         .onAppear {
             // Opened from the sidebar's keys, the keys stay there.
             if !model.sidebarHasKeys { model.composerFocus[composer, default: 0] += 1 }
@@ -269,10 +269,6 @@ struct TribeMembersPanel: View {
 
     var body: some View {
         Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
-            if members?.complete == false {
-                Text("Only the tribe's owner gets the full member list.")
-                    .muted()
-            }
             memberList
         } actions: {
             if let link = tribe?.link {

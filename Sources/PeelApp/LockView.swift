@@ -18,9 +18,11 @@ struct LockView: View {
                 VStack(spacing: Theme.Space.sm) {
                     Text("Enter your PIN")
                         .font(Theme.font(24, .bold))
-                    Text(problem ?? "It unlocks your account on this Mac.")
-                        .font(Theme.font(14))
-                        .foregroundStyle(Theme.secondaryText)
+                    if let problem {
+                        Text(problem)
+                            .font(Theme.font(14))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                 }
                 PinField(pin: $pin) { Task { await unlock() } }
                     .disabled(working)
@@ -39,16 +41,14 @@ struct LockView: View {
         .task { holdsSats = await (model.balanceBeforeForget() ?? 0) > 0 }
     }
 
-    /// Whether the account holds sats, then what is lost without the words:
-    /// Forget asks for no proof of them, so a lost PIN can start again. Never
-    /// how many sats: the PIN guards that, as a locked notification says
-    /// only "Sats received". Never "no sats" either: the balance stored
-    /// before the PIN may predate sats received since.
+    /// What is lost without the words: Forget asks for no proof of them, so
+    /// a lost PIN can start again. Never how many sats: the PIN guards that,
+    /// as a locked notification says only "Sats received". Never "no sats"
+    /// either: the balance stored before the PIN may predate sats received since.
     private var forgetExplanation: String {
-        let lost = holdsSats
-            ? "This account holds sats. Without your twelve words, it and its sats cannot be brought back."
-            : "Without your twelve words, this account and any sats it holds cannot be brought back."
-        return "\(lost) Forgetting removes its words and messages from this Mac; with the words you can restore it here or on any device."
+        holdsSats
+            ? "It holds sats. Without your twelve words, they're lost for good."
+            : "Without your twelve words, it can't be brought back."
     }
 
     private func unlock() async {

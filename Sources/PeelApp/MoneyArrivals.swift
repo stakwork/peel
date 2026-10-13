@@ -197,7 +197,7 @@ struct BalanceLabel: View {
                         HStack(spacing: 0) { balance(shown); Text(" · ") + clock + Text(" \(Sats.number(msat: waitingMsat))") }
                         HStack(spacing: 0) { balance(shown); Text(" · ") + clock }
                     }
-                    .help("\(Sats.format(msat: waitingMsat)) waiting for people to come online: their server takes it then, so it is not yours to spend.")
+                    .help("\(Sats.format(msat: waitingMsat)) held for people who are offline")
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(Sats.format(msat: shown)), \(Sats.format(msat: waitingMsat)) waiting")
                 } else {

@@ -173,34 +173,22 @@ private struct BoostersPanel: View {
 /// "Waiting for Bob to come online", since their server holds the sats
 /// until their app answers. It may have paid, so there is no Discard or
 /// Retry until the engine marks it failed; Peel has no way to cancel it
-/// and the server no expiry for it, so it says so (`waitsForPerson`,
-/// payments review F5).
+/// and the server no expiry for it, so it says so (payments review F5).
 struct WaitingForServer: View {
     @Environment(AppModel.self) private var model
     let since: Date
     let what: String
     var person: String?
 
-    /// What a payment of ours waiting for `name` (nil: unnamed) to come
-    /// online will do, here and in Payments' detail.
-    /// Hedged: a ping that never left (the connection went, or the app
-    /// quit, during the wait for the server) means nothing wakes the
-    /// payment, and one the server never recorded fails later.
-    static func waitsForPerson(_ name: String?) -> String {
-        let when = name.map { "\($0) next opens" } ?? "they next open"
-        return "It should pay when \(when) Sphinx, however long that takes. It can't be cancelled from here"
-    }
-
     var body: some View {
         TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
                 let words = person.map { person in
                     let name = model.contactName(person)
-                    let days = Int(Message.waitingLimit / 86_400)
-                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled from here",
-                            help: "\(Self.waitsForPerson(name)). Their server holds it until then. For \(days) days it is kept out of what you can spend; after that the sats count as spendable again, but it may still go through if your balance covers it.")
+                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled",
+                            help: "It pays when \(name.map { "\($0) next opens" } ?? "they next open") Sphinx.")
                 } ?? (label: "\(what) waiting for the server…",
-                      help: "It may already have paid, so it cannot be sent again until the server says it failed.")
+                      help: "It may have paid already, so it can't be resent.")
                 Text(words.label)
                     .font(Theme.font(11, .medium))
                     .foregroundStyle(Theme.secondaryText)
@@ -217,7 +205,7 @@ struct NotSettled: View {
     let what: String
 
     /// The same words in Payments' detail.
-    static let explanation = "Not settled: the server passed it on but never confirmed the sats moved; your balance shows whether they did"
+    static let explanation = "Unconfirmed. Check your balance to see if it went"
 
     var body: some View {
         Text("\(what) not settled")
@@ -273,7 +261,7 @@ struct PaymentRow: View {
                     Text("Not received")
                         .font(Theme.font(11, .medium))
                         .foregroundStyle(Theme.secondaryText)
-                        .help(PaymentItem.notArrived + ". The message came; the sats did not.")
+                        .help("The message came, but the sats did not.")
                 }
             }
             .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
@@ -381,7 +369,7 @@ struct PaymentRequestRow: View {
                     }
                     footer(invoice)
                 } else {
-                    Text("This request's invoice cannot be read, so it cannot be paid.")
+                    Text("Can't read this invoice, so it can't be paid.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)
                 }
@@ -396,7 +384,7 @@ struct PaymentRequestRow: View {
     @ViewBuilder private func footer(_ invoice: Invoice) -> some View {
         switch request?.state ?? .open {
         case .underpaid(let msat):
-            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount") came; this invoice cannot take the rest.")
+            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount"). This invoice can't take the rest.")
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.attention)
@@ -409,7 +397,7 @@ struct PaymentRequestRow: View {
         case .paying:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text("Paying; it stays pending until the server confirms.")
+                Text("Paying…")
             }
             .muted()
         case .open, .failed:

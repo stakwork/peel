@@ -28,7 +28,7 @@ struct MemoryRowDetail: View {
             case .remembered(let remembered)?: Remembered(remembered: remembered)
             case .found(let refs)?: Found(refs: refs)
             case .read(let node)?: Read(node: node)
-            case nil: Text("Nothing Peel can show.").foregroundStyle(Theme.secondaryText)
+            case nil: Text("Nothing to show.").foregroundStyle(Theme.secondaryText)
             }
         }
         .font(Theme.font(12))
@@ -60,7 +60,7 @@ struct MemoryRowDetail: View {
                 .padding(.vertical, 2)
             }
             if remembered.facts.isEmpty {
-                Text("A note, with no facts.")
+                Text("No facts.")
                     .foregroundStyle(Theme.secondaryText)
             }
             if !remembered.about.isEmpty {
@@ -78,7 +78,7 @@ struct MemoryRowDetail: View {
                 SectionHeader("New words")
                     .padding(.top, Theme.Space.xs)
                 if !remembered.proposed.isEmpty {
-                    Text(remembered.proposed.joined(separator: ", ") + ", kept as proposed")
+                    Text(remembered.proposed.joined(separator: ", "))
                         .foregroundStyle(Theme.secondaryText)
                 }
                 ForEach(remembered.notes, id: \.self) { note in
@@ -248,7 +248,7 @@ struct MemoryPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: title, subtitle: title == "Memory" ? nil : "Memory") {
+            DetailHeader(title: title) {
                 if panel.canGoBack {
                     IconButton("chevron.left", help: "Back") { panel.back() }
                 }

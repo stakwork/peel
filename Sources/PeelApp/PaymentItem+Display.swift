@@ -67,8 +67,8 @@ extension PaymentItem {
         guard kind == .keyExchange else { return nil }
         let five = Sats.format(msat: Engine.keyExchangeMsat), three = Sats.format(msat: Engine.priceToMeetMsat)
         return addedThem
-            ? "Adding \(chatName ?? "them") cost \(five); their app paid \(three) back."
-            : "\(chatName ?? "They") paid \(five) to add you; your app paid \(three) back."
+            ? "Adding \(chatName ?? "them") cost \(five), and \(three) came back."
+            : "\(chatName ?? "They") paid \(five) to add you, and \(three) went back."
     }
 
     /// "Boost received", "Payment sent".

@@ -298,6 +298,17 @@ Review notes left open:
 - If `Account.restore` fails after the words are saved, a retry reports that an
   account already exists until the app is relaunched.
 
+## Words
+
+Secondary text is the exception, not the default (Tom, 2026-10-13). A
+label, its value and its control usually say enough; a helper line, a
+switch's description, a header's subtitle or a caption under a row is
+added only when someone would otherwise make a mistake: money moving or
+held, something that cannot be undone, the twelve words, a state they
+must act on, or an error. When one earns its place it is one short
+sentence in everyday words: no "server", "offset", "Keychain", "macOS",
+no edge cases, no account of how Peel works inside.
+
 ## Colour
 
 Tokens come from the official Mac app's colour catalog
@@ -1460,11 +1471,10 @@ What that gives:
   you send here. Turning it off stops sending; Evan keeps the last one you
   sent." A public tribe's panel has no switch, only the line "Your time zone
   is never sent in public tribes."
-- **Account › Time zone** (T4): "Time zone: Automatic · Europe/London
-  (GMT+1)", or one chosen from a searchable Peel menu, and "Shared in",
-  which counts the chats you share with ("12 chats · as GMT+1" or "No
-  chats"): every direct message and private tribe except those turned
-  off, with "Never in public tribes" in its note.
+- **Account › Time zone** (T4): a row of Account's first section, "Time
+  zone: Automatic · Europe/London (GMT+1)", or one chosen from a
+  searchable Peel menu. No count of the chats it goes to and no note
+  (removed 2026-10-13 as noise; see "Words").
 - **No account-wide "new chats share" setting.** Every new chat shares,
   as in the official apps, whose file has no such key, so it would never
   sync. Turning it off per chat is one click in the chat's info.
@@ -1802,8 +1812,8 @@ writes no rows for chats nobody touched; turning a chat off writes
   sent in public tribes." and no switch.
 - **Account › Time zone** (T4): the zone (Automatic · this Mac's, or a chosen
   name) opening a searchable `ZonePicker` panel (a `peelPopover`, since the
-  menu's keys would swallow typing); "Shared in" counts the chats
-  `offsetShared` says go out ("2 chats · as GMT+1" or "No chats").
+  menu's keys would swallow typing). The "Shared in" count was removed
+  on 2026-10-13.
 - **Verified** on the local stack with three development profiles (London,
   TZ=America/Chicago, TZ=Asia/Kolkata): run labels in a private tribe and a
   DM, the fallback for a message sent with sharing off, the thread panel,

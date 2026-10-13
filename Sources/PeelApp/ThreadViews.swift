@@ -35,7 +35,7 @@ struct ThreadPanel: View {
                        placeholder: "Reply in thread", showsNotice: !beside)
         }
         .background(Theme.panel)
-        .fileDrop(into: composer, for: conversation)
+        .fileDrop(into: composer)
     }
 }
 
@@ -123,7 +123,7 @@ struct ThreadsView: View {
     var body: some View {
         let threads = model.threads
         VStack(spacing: 0) {
-            DetailHeader(title: "Threads", subtitle: "Threads you started or replied to, newest first") {
+            DetailHeader(title: "Threads") {
                 EmptyView()
             } trailing: {
                 if model.unreadThreads > 0 {
@@ -132,7 +132,7 @@ struct ThreadsView: View {
                 }
             }
             if threads.isEmpty {
-                EmptyState("Threads you start or reply to show up here.")
+                EmptyState("No threads yet.")
             } else {
                 let conversations = Dictionary(model.conversations.map { ($0.chat, $0) }, uniquingKeysWith: { $1 })
                 ScrollView {

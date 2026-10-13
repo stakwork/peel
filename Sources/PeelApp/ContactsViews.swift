@@ -117,7 +117,7 @@ struct AddContactForm: View {
     var body: some View {
         Panel("Add contact", close: done) {
             if let sentTo {
-                Text("Sent to \(sentTo). They show under Direct messages once their app answers.")
+                Text("Sent to \(sentTo). They appear once they accept.")
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +272,7 @@ private struct CodePreview: View {
 
     private var detail: String {
         switch code {
-        case .invite: "An invite for a new account. Peel adds who sent it; its sats stay in the invite."
+        case .invite: "Adds whoever sent this invite."
         default: "Contact info"
         }
     }
@@ -358,8 +358,6 @@ struct InviteForm: View {
             InviteDetail(code: made.code, done: done)
         } else {
             Panel("Invite someone", close: done) {
-                Text("An invite holds sats for someone new: they sign up with it, get the sats and have you as a contact.").muted()
-                    .padding(.top, 6)
                 FormSection {
                     FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
                 }
@@ -371,7 +369,7 @@ struct InviteForm: View {
                         FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
                     }
                 }
-                Text("The sats leave your balance now. The server may keep a fee from them; cancelling returns the rest. Only this Mac keeps the invite, so only here can it be cancelled.").muted()
+                Text("The sats leave your balance now. Cancel to get them back.").muted()
                     .padding(.top, 10)
             } footer: {
                 HStack(alignment: .top) {
@@ -446,7 +444,7 @@ private struct InviteDetail: View {
         .padding(.top, Theme.Space.md)
         if invite.status == .ready {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Send it to them yourself: whoever has it can sign up with its sats.")
+                Text("Anyone with this invite can claim its sats.")
                     .muted()
                 HStack(spacing: Theme.Space.sm) {
                     CopyButton("Copy invite", text: invite.link)
@@ -505,12 +503,12 @@ private struct InviteDetail: View {
     static func statusLine(_ invite: InviteRecord) -> String {
         let made = "Made \(Formatting.dateAndTime(invite.created))"
         return switch invite.status {
-        case .sending: "Waiting for the server to confirm"
+        case .sending: "Setting up…"
         case .ready: "\(made) · waiting to be used"
-        case .cancelling: "Cancelling: the server has not sent the sats back"
-        case .cancelled: "Cancelled; the sats came back"
+        case .cancelling: "Cancelling, sats not back yet"
+        case .cancelled: "Cancelled, sats returned"
         case .used: "Used"
-        case .failed: "Not made: the payment failed"
+        case .failed: "Payment failed"
         }
     }
 }

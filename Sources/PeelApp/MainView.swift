@@ -187,6 +187,8 @@ struct Detail: View {
                 ThreadsView()
             case .mentions:
                 MentionsView()
+            case .automations:
+                AutomationsView()
             case .payments:
                 PaymentsView()
             case .account:

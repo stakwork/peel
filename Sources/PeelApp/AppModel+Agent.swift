@@ -12,23 +12,30 @@ enum AgentConnectSource: Hashable {
 extension AppModel {
     // MARK: The agent chat (docs/phases/09-agents.md, PR 5)
 
-    static func agentSystemPrompt(remembers: Bool) -> String {
+    /// `unattended`, for an automation's run: nothing about sending or
+    /// scheduling, whose tools a run without an approver is not offered.
+    static func agentSystemPrompt(remembers: Bool, unattended: Bool = false) -> String {
         """
         You are Peel's agent, a helper inside Peel, a Sphinx chat app on the user's Mac. Answer plainly and \
         briefly, in Markdown when it helps. Use a tool when it gives a better answer than guessing. When the \
         tools you have cannot do what is asked, say so.
-        """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt + " " + SphinxTools.sendPrompt
+        """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt + (unattended ? "" : " " + SphinxTools.sendPrompt)
             + (remembers ? " " + MemoryTools.systemPrompt : "")
+            + (remembers && !unattended ? " " + AutomationTools.systemPrompt : "")
     }
 
     /// The tools the agent may use over the account's `engine`: the time,
     /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
-    /// the person's approval for each message; and the memory tools when a
-    /// memory server is set.
+    /// the person's approval for each message; and the memory and automation
+    /// tools when a strut is set. A run with no approver (an automation's)
+    /// is not offered the tools that ask.
     static func agentTools(_ engine: Engine, memory: MemoryServer?) -> ToolRegistry {
         let sphinx = SphinxTools(storage: engine.storage)
-        let remembering = memory.map { MemoryTools(server: $0).tools } ?? []
-        return ToolRegistry([.currentTime] + sphinx.tools + [sphinx.send(through: engine)] + remembering)
+        var tools = [.currentTime] + sphinx.tools + [sphinx.send(through: engine)]
+        if let memory {
+            tools += MemoryTools(server: memory).tools + AutomationTools(client: AutomationsClient(server: memory)).tools
+        }
+        return ToolRegistry(tools)
     }
 
     /// The agent's memory (`docs/agent-brain.md`, an experiment): a strut on
@@ -52,6 +59,9 @@ extension AppModel {
         closeMemory()
         agent.tools = Self.agentTools(engine, memory: server)
         agent.systemPrompt = Self.agentSystemPrompt(remembers: server != nil)
+        // Automations live on that strut: listen for it, and point its workflow here.
+        stopAutomations()
+        startAutomations(profile, engine: engine)
     }
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
@@ -82,22 +92,28 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile). A development profile may name a local test
-    /// server with `-agentBaseURL http://127.0.0.1:<port>`.
+    /// development profile).
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
-            let baseURL = profile.kind == .development
-                ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
             let memory = try? MemoryServer.kept(in: profile.memoryServer)
             memoryServer = memory
             agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
                 tools: Self.agentTools(engine, memory: memory), systemPrompt: Self.agentSystemPrompt(remembers: memory != nil)
-            ) { $0.provider.client(apiKey: $0.apiKey, baseURL: baseURL) }
+            ) { Self.agentClient($0, profile: profile) }
+            startAutomations(profile, engine: engine)
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
         }
+    }
+
+    /// The model client for `credential`; a development profile may name a
+    /// local test server with `-agentBaseURL http://127.0.0.1:<port>`.
+    nonisolated static func agentClient(_ credential: AgentCredential, profile: Profile) -> any ModelProvider {
+        let baseURL = profile.kind == .development
+            ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
+        return credential.provider.client(apiKey: credential.apiKey, baseURL: baseURL)
     }
 
     /// Where the connected model's key is kept, as the screens say it.
@@ -112,6 +128,7 @@ extension AppModel {
     }
 
     func closeAgent() {
+        stopAutomations()
         agent?.close()
         agent = nil
         closeMemory()
@@ -121,7 +138,7 @@ extension AppModel {
 }
 
 /// The credential as JSON in one `SecretItem`: the Keychain in the app.
-private struct KeptCredential: AgentCredentialStore {
+struct KeptCredential: AgentCredentialStore {
     let item: any SecretItem
 
     func read() throws -> AgentCredential? {
@@ -153,6 +170,12 @@ enum AgentToolTitle {
         "memory_ontology": "Read memory's vocabulary",
         "forget_memory": "Forgot",
         "merge_memory": "Merged",
+        "list_automations": "Read automations",
+        "preview_schedule": "Checked a schedule",
+        "create_automation": "Create an automation",
+        "update_automation": "Change an automation",
+        "delete_automation": "Delete an automation",
+        "run_automation_now": "Run an automation",
     ]
 
     static func of(_ name: String) -> String {

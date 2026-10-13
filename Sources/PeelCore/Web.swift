@@ -184,13 +184,32 @@ public enum Web {
     /// on this Mac can reach a loopback port, so the key is what makes it
     /// Peel's.
     public static func postToThisMac(_ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String) async throws -> Data {
+        let request = try thisMacRequest("POST", url, json: body, bearer: bearer)
+        return try await Transfer(limit: limit, what: what, progress: nil).run(thisMacSession.dataTask(with: request)).0
+    }
+
+    /// One request to a server on this Mac, as `postToThisMac` makes it,
+    /// with its status: a 2xx or 4xx reply comes back with its body, so a
+    /// refusal's own words reach the caller; anything else throws.
+    public static func requestThisMac(
+        _ method: String, _ url: URL, json body: Data? = nil, bearer: String? = nil, limit: Int, what: String
+    ) async throws -> (status: Int, data: Data) {
+        let request = try thisMacRequest(method, url, json: body, bearer: bearer)
+        let (data, response) = try await Transfer(limit: limit, what: what, progress: nil, accepting: Set(200..<500))
+            .run(thisMacSession.dataTask(with: request))
+        return (response.statusCode, data)
+    }
+
+    private static func thisMacRequest(_ method: String, _ url: URL, json body: Data?, bearer: String?) throws -> URLRequest {
         guard isThisMac(url) else { throw PeelError("\(url.host ?? "the host") is not this Mac") }
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpMethod = method
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
         if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = body
-        return try await Transfer(limit: limit, what: what, progress: nil).run(thisMacSession.dataTask(with: request)).0
+        return request
     }
 
     /// A public https host, or this machine over http (the local test stack).

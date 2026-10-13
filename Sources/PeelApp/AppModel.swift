@@ -37,7 +37,7 @@ final class AppModel {
 
     /// What the sidebar has selected.
     enum Destination: Hashable {
-        case threads, mentions, payments, account
+        case threads, mentions, automations, payments, account
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
@@ -271,6 +271,14 @@ final class AppModel {
     /// Bumped to open every tool row in the agent chat, as clicks on their
     /// chevrons would (the offscreen driver's `agent-rows`).
     var agentRowsOpened = 0
+    /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
+    @ObservationIgnored var automationServer: AutomationServer?
+    /// The last server's close, which a new one waits for before taking its port.
+    @ObservationIgnored var automationStopping: Task<Void, Never>?
+    /// The token the listening server checks, for installing its workflow again.
+    @ObservationIgnored var automationToken: String?
+    /// The Automations view's list, read from strut.
+    var automations = AutomationsState()
     /// Where the Connect panel is open from, if it is.
     var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).
@@ -662,6 +670,8 @@ final class AppModel {
         guard phase == .ready || phase == .locked else { return }
         if chat == Notifier.paymentsThread {
             destination = .payments
+        } else if chat == Notifier.agentThread {
+            destination = .agent
         } else if let message = messageID.flatMap({ try? engine?.storage.message(id: $0) }), message.chat == chat {
             focus(on: message)
         } else {

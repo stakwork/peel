@@ -27,14 +27,18 @@ public struct AgentTurn: Identifiable, Sendable, Equatable {
     /// The tools an agent's reply ran, in order, shown above its text.
     public var tools: [ToolActivity] = []
     public var ending: Ending?
+    /// For a result a scheduled automation delivered on its own, its name.
+    public var automation: String?
 
-    public init(id: String, author: Author, text: String, date: Date, tools: [ToolActivity] = [], ending: Ending? = nil) {
+    public init(id: String, author: Author, text: String, date: Date, tools: [ToolActivity] = [], ending: Ending? = nil,
+                automation: String? = nil) {
         self.id = id
         self.author = author
         self.text = text
         self.date = date
         self.tools = tools
         self.ending = ending
+        self.automation = automation
     }
 }
 
@@ -264,6 +268,19 @@ public final class AgentSession {
         let turn = save(AgentTurn(id: UUID().uuidString.lowercased(), author: .user, text: text, date: .now), answering: nil)
         turns.append(turn)
         run(answering: turn)
+    }
+
+    /// A scheduled automation's result, arriving on its own
+    /// (`docs/phases/12-automations.md`): kept as the agent's, named for the
+    /// automation, and counted unread while the chat is not on screen. It
+    /// answers no message, so a reply streaming now is not disturbed.
+    public func deliver(_ text: String, from automation: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !closed else { return }
+        let turn = AgentTurn(id: UUID().uuidString.lowercased(), author: .agent, text: text, date: .now,
+                             automation: automation)
+        turns.append(save(turn, answering: nil))
+        if !isShown { unread += 1 }
     }
 
     /// Asks again for the message whose reply failed.
@@ -731,6 +748,13 @@ public final class AgentSession {
             case .user:
                 asked = turn
             case .agent:
+                if let automation = turn.automation {
+                    // Delivered on its own: its own exchange, never the reply
+                    // to a message the person is still waiting on.
+                    let note = "(The scheduled automation \"\(automation)\" ran on its own and told the person:)"
+                    exchanges.append((turn.id, [.user(note), ModelMessage(role: .assistant, content: [.text(turn.text)])]))
+                    continue
+                }
                 guard let question = asked, turn.ending != .declined else { continue }
                 // What its actions came to goes first, where no cut reaches it,
                 // so a "no" stays a "no" in the model's view and in a summary.
@@ -771,12 +795,14 @@ extension AgentTurn {
             author: record.createdBy == Author.agent.rawValue ? .agent : .user,
             text: record.body ?? "",
             date: Date(timeIntervalSince1970: Double(record.createdMs) / 1000),
-            ending: props["ending"]?.string.flatMap(Ending.init(rawValue:)))
+            ending: props["ending"]?.string.flatMap(Ending.init(rawValue:)),
+            automation: props["automation"]?.string)
     }
 
     var props: [String: JSONValue] {
         var props: [String: JSONValue] = [:]
         if let ending { props["ending"] = .string(ending.rawValue) }
+        if let automation { props["automation"] = .string(automation) }
         return props
     }
 }

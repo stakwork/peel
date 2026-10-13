@@ -119,7 +119,8 @@ extension Storage {
                 let addsUs = commit.marksNewContacts && trustSender && !message.fromMe
                     && message.type == MessageType.contactKey
                 let isNew = try (money || addsUs) && !(Bool.fetchOne(
-                    db, sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)", arguments: [message.uuid]
+                    db.cachedStatement(sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)"),
+                    arguments: [message.uuid]
                 ) ?? false)
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 applied.stored.append(row)

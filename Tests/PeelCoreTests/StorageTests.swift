@@ -138,21 +138,34 @@ struct StorageTests {
     @Test func everyStoredPropertyIsReadBack() throws {
         let storage = try profile.storage()
         _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1"), false, nil)]))
+        // Each text column holds its own name and each number a value of its
+        // own, so a property read from the wrong column shows.
         try storage.pool.write { db in
             try db.execute(sql: """
-                UPDATE message SET serverIndex = 1, fromMe = 1, sender = '{}', body = ?, content = 'c', msat = 1,
-                    timestamp = 1, tag = 't', paymentHash = 'h', status = 'COMPLETE', mentionsMe = 1,
-                    replyUUID = 'r', threadUUID = 'th', mediaType = 'image/png', fileName = 'f', fileSize = 1,
-                    upload = 'DONE', deleted = 1, amountMsat = 1, arrived = 1, firstSentAt = 1, autoResentAt = 1
+                UPDATE message SET uuid = 'uuid', serverIndex = 10, fromMe = 1, sender = 'sender', body = ?,
+                    content = 'content', msat = 11, timestamp = 12, tag = 'tag', paymentHash = 'paymentHash',
+                    status = 'status', mentionsMe = 1, replyUUID = 'replyUUID', threadUUID = 'threadUUID',
+                    mediaType = 'mediaType', fileName = 'fileName', fileSize = 13, upload = 'upload', deleted = 1,
+                    amountMsat = 14, arrived = 1, firstSentAt = 15, autoResentAt = 16
                 """, arguments: [#"{"metadata":"{\"tz\":\"Europe/London\"}"}"#])
         }
-        let message = try #require(try storage.message(uuid: "u1", in: Message.fixture().chat))
+        let message = try #require(try storage.message(uuid: "uuid", in: Message.fixture().chat))
+        var numbers: [Int64] = []
         for child in Mirror(reflecting: message).children {
+            let label = child.label ?? "?"
             // Every flag is set, and every optional is filled.
-            if let flag = child.value as? Bool { #expect(flag, "\(child.label ?? "?") not read") }
+            if let flag = child.value as? Bool { #expect(flag, "\(label) not read") }
             let value = Mirror(reflecting: child.value)
-            #expect(value.displayStyle != .optional || !value.children.isEmpty, "\(child.label ?? "?") not read")
+            #expect(value.displayStyle != .optional || !value.children.isEmpty, "\(label) not read")
+            switch value.children.first?.value ?? child.value {
+            case let text as String where !["chat", "body", "senderTZ"].contains(label):
+                #expect(text == label, "\(label) read from \(text)")
+            case let number as Int64: numbers.append(number)
+            default: break
+            }
         }
+        #expect(Set(numbers).count == numbers.count, "a number read from another column: \(numbers)")
+        #expect(message.senderTZ == "Europe/London")
     }
 
     @Test func laterCopyFillsMissingBodyFields() throws {

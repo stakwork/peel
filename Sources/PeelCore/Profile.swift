@@ -99,21 +99,13 @@ public struct Profile: Sendable {
         try secrets.changePIN(from: oldPIN, to: newPIN)
     }
 
-    /// Removes the memory server #219 kept in the Keychain (strut's key),
-    /// which nothing reads since Peel finds strut's own connection file.
-    /// Best effort, on each agent open and with the profile; drop once no
-    /// Mac can still have one.
-    public func removeOldMemoryKey() {
-        guard kind == .app else { return }
-        try? KeychainItem(service: "dev.peel.memory", account: name).delete()
-    }
-
     /// Removes the words and everything stored with them, the agent's key
     /// and automation token first. A failure to remove any is reported, and
     /// the database is then kept with them.
     public func delete() throws {
         try agentCredential.delete()
-        removeOldMemoryKey()
+        // The memory server #219 kept (an old strut key), if this Mac has it still.
+        try? KeychainItem(service: "dev.peel.memory", account: name).delete()
         try automationToken.delete()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

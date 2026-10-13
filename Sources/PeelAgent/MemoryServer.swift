@@ -6,8 +6,8 @@ import PeelCore
 /// (`docs/agent-brain.md`), reached through strut's synchronous
 /// `POST /steps/memory/<verb>/run`. Peel never opens the graph's file.
 /// Only a server on this Mac, and with its key: anything on the Mac can
-/// reach a loopback port. Found, not set: strut writes its address and key
-/// to `connectionFile` once it is listening (`onThisMac`).
+/// reach a loopback port. Never set by hand: the strut Peel ships says its
+/// address and key when it starts (`BundledStrut`).
 public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public let base: URL
     /// strut's `STRUT_API_KEY`.
@@ -30,44 +30,6 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     public var description: String { base.absoluteString }
     public var debugDescription: String { description }
     public var customMirror: Mirror { Mirror(self, children: [:]) }
-
-    /// Where strut, started with `STRUT_CONNECTION_FILE` naming it, says
-    /// how to reach it once it is listening, `{"url", "key", "pid"}`, and
-    /// removes it when it stops.
-    public static let connectionFile = FileManager.default.homeDirectoryForCurrentUser
-        .appending(path: "Library/Application Support/strut-memory/connection")
-
-    private struct Connection: Decodable {
-        let url: String
-        let key: String
-        let pid: Int32
-    }
-
-    /// The strut on this Mac, as its connection `file` names it; nil when
-    /// there is none, or the strut that wrote it has stopped (its port may
-    /// now be anyone's). A file that is not a plain one of this user's that
-    /// no one else may read or write, or names no key or a server anywhere
-    /// else, is refused: it could point the memory at someone else's server.
-    public static func onThisMac(file: URL = connectionFile) throws -> MemoryServer? {
-        // Opened once, never through a link, and checked on what was opened.
-        let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else {
-            if errno == ENOENT { return nil }
-            throw PeelError("strut's connection file could not be read; memory stays off.")
-        }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        var status = stat()
-        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG, status.st_uid == getuid(),
-              status.st_mode & 0o077 == 0, status.st_size <= 4096 else {
-            throw PeelError("strut's connection file is not an owner-only file of yours; memory stays off.")
-        }
-        guard let connection = try? JSONDecoder().decode(Connection.self, from: handle.readToEnd() ?? Data()),
-              let url = URL(string: connection.url),
-              let server = MemoryServer(base: url, key: connection.key) else {
-            throw PeelError("strut's connection file does not name a server on this Mac with a key; memory stays off.")
-        }
-        return kill(connection.pid, 0) == 0 ? server : nil
-    }
 
     /// The most a reply may be.
     static let replyLimit = 2_000_000

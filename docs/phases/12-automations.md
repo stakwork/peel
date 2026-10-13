@@ -172,7 +172,7 @@ use the same strut base URL and the same `Web.isThisMac` check:
 
 | | Mac now | Home server later |
 |---|---|---|
-| strut and the schedule | strut on this Mac (`memoryServer` default) | strut moved to the Mac mini, with the same records |
+| strut and the schedule | strut on this Mac (its connection file) | strut moved to the Mac mini, with the same records |
 | The work | Peel.app's `AutomationServer` | A headless `peel serve` (the CLI already has `listen`), with the same endpoint and the same tools |
 | Asleep or closed | The run is skipped (strut skips missed fires) or fails because Peel is closed. The sidebar shows it, and Run now retries | Always on |
 

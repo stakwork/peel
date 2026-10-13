@@ -224,13 +224,34 @@ In Peel:
   none. An alias resolves (`full_name` → `name`); a one-value predicate
   supersedes the current fact by itself; anything new is kept as
   `proposed` and reported, never refused.
-- The server is set in Account › Peel agent › Memory: its address (this
-  Mac only, `Web.isThisMac`) and strut's `STRUT_API_KEY`, kept per
-  profile as the model's key is (the Keychain; a file on a development
-  profile). Saving makes a test call first; the open agent's tools change
-  at once. Anything on the Mac can reach a loopback port, so the key is
-  what makes the memory Peel's (2026-10-13, replacing a `memoryServer`
-  default with no key).
+- Nothing to set up (Tom, 2026-10-13: "the moment you create an
+  account, there should be a connection"). strut, started with
+  `STRUT_CONNECTION_FILE` naming
+  `~/Library/Application Support/strut-memory/connection`, writes
+  `{url, key, pid}` there once it is listening (only on 127.0.0.1 with a
+  `STRUT_API_KEY`; otherwise it removes any earlier file) and removes it
+  when it stops. When an app account opens its agent, Peel reads it
+  (`MemoryServer.onThisMac`): opened once without following a link, and
+  refused unless it is a plain file of this user's no one else may read
+  or write, naming a server on this Mac with a key. A file whose strut
+  has stopped is ignored, since its port may now be anyone's. A refused
+  file is said in the notice; no file means no memory, quietly. No row
+  in Account and nothing in the Keychain (#219's item is removed on
+  open and with the profile). A development profile never reads it, so
+  a test account never writes to the real graph. Anything on the Mac
+  can reach a loopback port, so the key is what makes the memory
+  Peel's.
+- Decided and left, from the independent review (2026-10-13):
+  - **One graph per Mac, for one account** (Tom, 2026-10-13): assume
+    one Sphinx account on the Mac, its graph synced to all its clients.
+    A graph per account comes with sub-accounts.
+  - **Peel does not check that strut answers.** The key proves Peel to
+    strut, not strut to Peel. The pid check covers a strut that has
+    stopped; a challenge (Peel sends a nonce, strut answers with an HMAC
+    under the key) would also cover a process that took the port while
+    strut was still running. Left for now (Tom, 2026-10-13); it belongs
+    with strut's ready line, when Peel starts strut itself.
+  - Only `127.0.0.1` is announced, not `::1` or `localhost`.
 - Memory text goes to strut as the run's `input`, never as config,
   which strut templates (`{{ … }}` would be evaluated).
   Without it the tools are absent.
@@ -264,41 +285,39 @@ Done when "Remember: my name is Tom" stores Self and a fact, "call me
 Thomas" supersedes it, and a cleared conversation answers "What's my
 name?" from memory.
 
-Next for memory, in order (updated 2026-10-13, after #218 merged):
+Next for memory, in order (updated 2026-10-13):
 
-Done: the tools (#218); strut's key in the Keychain, set in Account,
-the graph in an owner-only folder (#219); `@ladybugdb/core` proposed to
-strut as an optional dependency (stakwork/strut#154, Evan's call).
+Done: the tools (#218); strut's key, the graph's folder owner-only
+(#219); connecting with nothing to set up, from strut's connection file,
+replacing #219's Keychain item and Account row (strut's side a local
+commit beside the memory steps); `@ladybugdb/core`
+proposed to strut as an optional dependency (stakwork/strut#154, Evan's
+call). In the product, Sphinx or Peel starts strut and reads its address
+and key from strut's ready line (`STRUT_READY_KEY`), as Sphinx Mac does
+with its bundled strut.
 
-1. **Next up: connect without setting anything up.** strut, started
-   with the memory steps, writes its address and key to a `connection`
-   file in its owner-only memory folder; when an account opens with no
-   memory server kept, Peel reads it, makes the test call, and keeps it
-   in the Keychain. Account's Memory row still shows it, with Change and
-   Remove. (In the product, Sphinx or Peel starts strut and hands the key
-   over, as Sphinx Mac does with its bundled strut.)
-2. **One tool builder for the app and the CLI.** The tools and system
+1. **Next up: one tool builder for the app and the CLI.** The tools and system
    prompt are put together twice (`AppModel+Agent`, `peel`'s
    `Commands+Agent`); one PeelAgent builder taking storage, an optional
    engine and an optional `MemoryServer` gives `peel agent` memory
    (`--memory`), so memory can be tried and tested from the terminal.
-3. **Encrypted backup.** The memes server holds one preferences file per
+2. **Encrypted backup.** The memes server holds one preferences file per
    account and no other named files (stakwork/sphinx-meme router.go), so:
    strut's `memory/export` makes a snapshot; Peel encrypts it with
    `MediaCrypto` (RNCryptor, as the preferences file) under a key derived
    by HKDF from the node secret for this use only; uploads it with
    `POST /file` under a fixed, unsearchable file name; a new device
    finds the newest in its own `GET /mymedia` and restores with
-   `memory/import`. Daily while Peel runs, and "Back up now" in the
-   Memory row. Old copies pile up until the server can overwrite a
+   `memory/import`. Daily while Peel runs, with no button until memory
+   has a place on screen. Old copies pile up until the server can overwrite a
    personal file in place.
-4. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
+3. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
    strut's onnxruntime) for duplicates and recall; Ladybug's full-text and
    vector indexes instead of the word scan; a strut job that draws facts
    from conversation episodes after the fact, so the front agent only
    saves what is said explicitly; janitors for duplicates, proposed
    vocabulary, contradictions and summaries; restore after forget.
-5. **Later.** Readable memory rows that open one memory (a session is on
+4. **Later.** Readable memory rows that open one memory (a session is on
    it); caching the ontology instead of a call per conversation; the
    agent's procedures as concepts it walks to (Glimmer) rather than a
    longer prompt; the memory steps in a place other swarms can learn from

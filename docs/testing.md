@@ -240,29 +240,36 @@ mixer), migrations from a real v14 or v16 database fixture (the offline
 `MigrationTests` still cover the chain from v1), paid attachments in a tribe,
 calls.
 
-## Live model checks
+## Recorded streams
 
-`Tests/AgentKitTests/LiveProviderTests.swift` calls the real providers,
-the one proof of the wire shapes the hand-written `Fixtures/` streams only
-describe. Skipped unless `PEEL_AGENT_LIVE=1`, so plain `swift test` never
-reaches the network. Never run with a key an agent was given; Tom runs
-them with his own, one provider at a time:
+No test calls a model provider or uses a real API key, opt-in or not
+(Tom's decision, 2026-10-13). The real wire shapes reach the tests as
+files instead: `scripts/record-agent-fixtures.sh` makes two small real
+requests for one provider (a streamed text reply and a streamed call to a
+trivial tool) and writes the response bodies to
+`Tests/AgentKitTests/Fixtures/recorded/<provider>-text.sse` and
+`<provider>-tool.sse`. Tom runs it by hand with his own key, one provider
+at a time; never an agent, and never from a test:
 
 ```sh
-PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=anthropic  PEEL_AGENT_API_KEY=sk-ant-… swift test --filter LiveProviderTests
-PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=openai     PEEL_AGENT_API_KEY=sk-…     swift test --filter LiveProviderTests
-PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=openrouter PEEL_AGENT_API_KEY=sk-or-…  swift test --filter LiveProviderTests
-# optional: PEEL_AGENT_MODEL=<id>; default, the provider's recommended model in the picker
+PEEL_AGENT_PROVIDER=anthropic  PEEL_AGENT_API_KEY=sk-ant-… scripts/record-agent-fixtures.sh
+PEEL_AGENT_PROVIDER=openai     PEEL_AGENT_API_KEY=sk-…     scripts/record-agent-fixtures.sh
+PEEL_AGENT_PROVIDER=openrouter PEEL_AGENT_API_KEY=sk-or-…  scripts/record-agent-fixtures.sh
+# optional: PEEL_AGENT_MODEL=<id> (default: the picker's recommended model), PEEL_AGENT_MAX_TOKENS=<n>
 ```
 
-With a key, for that provider: a streamed reply (more than one piece, its
-usage, ended as a finished turn) and one tool call round trip through
-`AgentLoop` (the tool's result goes back in the provider's format and the
-answer uses it). With `PEEL_AGENT_LIVE=1` alone, no key: each of the three
-providers answers a made-up key with `.invalidKey`, without the key in its
-words. The made-up key run passed on 2026-10-12 for all three; the keyed
-checks have not been run yet. A wrong model id (OpenAI's and OpenRouter's
-are unverified) fails the keyed checks with the provider's refusal.
+It writes response bodies only (no headers, request or key), replaces
+message, request, organisation and fingerprint ids with placeholders, and
+writes nothing if the result holds the key, its last six characters or an
+`sk-` style token, or if a reply did not end as asked (a reply cut at the
+token cap: raise `PEEL_AGENT_MAX_TOKENS`). Read the files before
+committing them.
+
+`StreamCaseTests` decodes each provider's text and tool stream, the
+recorded one when it is there, else the hand-written one in `Fixtures/`
+(OpenRouter's falls back to OpenAI's), so a new recording is picked up by
+the next `swift test` with nothing else to change. A bad key's answer per
+provider is a stubbed `ProviderTests` case.
 
 ## Timeline log
 

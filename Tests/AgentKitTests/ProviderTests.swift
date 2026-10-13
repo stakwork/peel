@@ -78,7 +78,7 @@ struct ProviderTests {
     private let session = ModelHTTP.session(protocolClasses: [StubProtocol.self])
 
     @Test func anthropicStreamsAndSendsTheKeyOnlyInItsHeader() async throws {
-        StubProtocol.serve("/a1/messages", .init(status: 200, headers: ["content-type": "text/event-stream"], body: try fixture("anthropic-text")))
+        StubProtocol.serve("/a1/messages", .init(status: 200, headers: ["content-type": "text/event-stream"], body: try StreamCase(provider: .anthropic, kind: .text).stream()))
         let provider = AnthropicProvider(apiKey: "sk-ant-secret", baseURL: URL(string: "https://anthropic.test/a1")!, session: session)
         let (events, error) = await collect(provider.stream(request))
         #expect(error == nil)
@@ -115,7 +115,7 @@ struct ProviderTests {
     }
 
     @Test func openAIStreamsWithBearerAuthAndExtraHeaders() async throws {
-        StubProtocol.serve("/o1/chat/completions", .init(status: 200, body: try fixture("openai-tool")))
+        StubProtocol.serve("/o1/chat/completions", .init(status: 200, body: try StreamCase(provider: .openRouter, kind: .tool).stream()))
         let provider = OpenAICompatibleProvider(
             apiKey: "sk-or-secret", baseURL: URL(string: "https://router.test/o1")!, headers: ["X-Title": "Peel"],
             maxTokensField: "max_tokens", session: session)
@@ -152,6 +152,32 @@ struct ProviderTests {
         let (events, error) = await collect(provider.stream(request))
         #expect(events.isEmpty)
         #expect(error == .rateLimited(retryAfter: 30))
+    }
+
+    /// Each provider's answer to a bad key, as its docs give it (OpenAI's
+    /// masks the key; this OpenRouter one echoes it whole), reaches the
+    /// session as `.invalidKey`, without the key in its words.
+    @Test(arguments: AgentProvider.allCases)
+    func aBadKeyIsInvalidKeyWithoutTheKey(provider: AgentProvider) async {
+        let key = "sk-peel-not-a-real-key-cd12"
+        let base = URL(string: "https://provider.test/key-\(provider.rawValue)")!
+        let body = switch provider {
+        case .anthropic: #"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#
+        case .openAI:
+            #"{"error":{"message":"Incorrect API key provided: sk-peel****cd12.","type":"invalid_request_error","code":"invalid_api_key"}}"#
+        case .openRouter: #"{"error":{"message":"Invalid key \#(key)","code":401}}"#
+        }
+        let client: any ModelProvider = provider == .anthropic
+            ? AnthropicProvider(apiKey: key, baseURL: base, session: session)
+            : OpenAICompatibleProvider(apiKey: key, baseURL: base, headers: [:], maxTokensField: "max_tokens", session: session)
+        StubProtocol.serve(base.path + (provider == .anthropic ? "/messages" : "/chat/completions"), .init(status: 401, body: body))
+        let (events, error) = await collect(client.stream(request))
+        #expect(events.isEmpty)
+        guard case .invalidKey(let message) = error else {
+            Issue.record("\(provider.name) answered a bad key with \(String(describing: error))")
+            return
+        }
+        for part in [key, "cd12", "sk-peel"] { #expect(message?.contains(part) != true, "\(message ?? "")") }
     }
 
     @Test func noNetworkIsAPlainError() async {

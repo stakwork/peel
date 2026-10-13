@@ -641,10 +641,8 @@ Later: memory.
   send allowed once, then denied; a paid tribe send costing exactly the
   card's price, and refused when the price rises while the card waits),
   with the model scripted and the rest real; `LiveProviderTests`, opt-in
-  with `PEEL_AGENT_LIVE=1` (a streamed reply, a tool round trip and a
-  bad key per provider; docs/testing.md, "Live model checks"). The
-  made-up key run passed against all three providers; the keyed checks
-  wait for Tom's keys.
+  checks against the real providers (a streamed reply, a tool round trip
+  and a bad key per provider), since replaced by recorded streams (below).
 - Found by the journey and fixed: a send the engine refused reached the
   model and the row as "The operation couldn't be completed.
   (PeelCore.Engine.Failure error 6.)". `SendTool` now words a refusal
@@ -667,6 +665,25 @@ Later: memory.
   6" wherever `localizedDescription` is used. One agent tool list and
   prompt in PeelAgent, shared by the app, the CLI and the journeys
   (today each builds its own).
+
+**Tests: no real keys; recorded streams (2026-10-13).** Tom decided no
+test may call a model provider or use a real API key, even opt-in: a key
+in a test's environment is a key an agent can be handed, and a suite that
+reaches the network is one a plain run can reach it with by mistake.
+`LiveProviderTests` is deleted. In its place `scripts/record-agent-fixtures.sh`,
+run by hand by Tom with his own key, records one provider's streamed text
+reply and tool call into `Fixtures/recorded/` (response bodies only, ids
+scrubbed, nothing written if the key or an `sk-` token is in it), and
+`StreamCaseTests` decodes each provider's stream from there, or the
+hand-written one until there is a recording (a reply in several pieces,
+its usage, a tool call with arguments). The bad key per provider is now a
+stubbed `ProviderTests` case, against bodies written from the docs, not
+the providers' own. What no test proves any more: that a real provider
+accepts Peel's request bodies, above all the second step of a tool loop
+(tool results, replayed thinking, assistant tool calls); the request
+bodies are pinned only by `ProviderTests`' own expectations. The
+recorder's requests are written by hand to match the providers' bodies
+and must be kept in step with them. No streams are recorded yet.
 
 ## Capabilities against agent SDKs
 

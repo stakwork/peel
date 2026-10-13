@@ -413,8 +413,11 @@ is a short plan. Update the status and the journal when you finish something.
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
   the clock, apply order, idempotency, per-field last write wins, forget
   and unlink, rebuild, search, walk and ontology); streams in `Fixtures/`
-  (written by hand from the providers' docs, never recorded) through both
-  decoders, HTTP statuses to `ModelError`, the
+  (written by hand from the providers' docs) through both decoders, and
+  each provider's text and tool stream (`StreamCaseTests`: the one in
+  `Fixtures/recorded/` when Tom has recorded it with
+  `scripts/record-agent-fixtures.sh`, else the hand-written one), HTTP
+  statuses to `ModelError` (a bad key per provider), the
   request bodies over an in-process `URLProtocol` stub, the loop with
   a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
   caps, Stop during a wait, read tools side by side and in order, an
@@ -422,10 +425,13 @@ is a short plan. Update the status and the journal when you finish something.
   summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
   failures and Retry, connecting, the key, reopening, Clear) and
   `ApprovalTests` (the loop with a scripted approver, the gate's rules,
-  the session's card); `LiveProviderTests`, the opt-in checks against the
-  real providers (`PEEL_AGENT_LIVE=1`, skipped otherwise; docs/testing.md,
-  "Live model checks"); `TestSupport` (the scripted provider and approver,
-  the in-memory credential, a connected session)
+  the session's card); `TestSupport` (the scripted provider and approver,
+  the in-memory credential, a connected session, `StreamCase`). No test
+  calls a model provider or uses a real key
+- `scripts/record-agent-fixtures.sh` — records one provider's real streams
+  into `Tests/AgentKitTests/Fixtures/recorded/` (ids scrubbed; refuses
+  anything holding a key); Tom runs it by hand with his own key, never an
+  agent or a test (docs/testing.md, "Recorded streams")
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
@@ -651,12 +657,13 @@ or 8000); opt-in, see `docs/testing.md`:
 PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
 ```
 
-`LiveProviderTests` (AgentKitTests) calls the real model providers with
-Tom's key; opt-in, never with a key an agent was given (docs/testing.md,
-"Live model checks"):
+No test calls a model provider or uses a real API key, opt-in or not. The
+providers' real streams reach the tests as files Tom records by hand with
+his own key; agents never run the recorder (docs/testing.md, "Recorded
+streams"):
 
 ```sh
-PEEL_AGENT_LIVE=1 PEEL_AGENT_PROVIDER=anthropic PEEL_AGENT_API_KEY=<key> swift test --filter LiveProviderTests
+PEEL_AGENT_PROVIDER=anthropic PEEL_AGENT_API_KEY=<key> scripts/record-agent-fixtures.sh
 ```
 
 `Tests/PeelBenchmarks` times the hot paths on a synthetic account (50

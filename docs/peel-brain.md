@@ -242,6 +242,55 @@ installs with `--ignore-scripts`.
    the pairing link (on a screen, or a local web page). Last: it is the
    most to maintain.
 
+### First install, 2026-10-14: what it took
+
+The first real run, the brain on Tom's Mac in Docker, reached by Peel over
+Tailscale, took these manual steps:
+
+1. Create a Tailscale account; install Tailscale on the Mac and log in (a
+   macOS VPN prompt, and a login that did not finish the first time).
+2. In the admin console: MagicDNS (already on) and HTTPS certificates.
+3. Build the strut image locally (no published image yet).
+4. Run `setup.sh`; approve the box with a login link. **Bug:** Tailscale's
+   container waits about a minute for that login, then restarts with a new
+   link, so approving it rarely works.
+5. Make an auth key in the admin console and paste it into `.env` with a
+   shell command.
+6. **Bug:** recreating only the Tailscale container left strut on the old
+   one's network: `https://peel-brain…/health` answered 502 until strut was
+   recreated too.
+
+Both bugs are fixed in `brain/` (an auth key is required; `setup.sh`
+recreates both containers). The rest is the work below.
+
+### Where the install should get to
+
+What telling someone (Gonza) to set it up should look like:
+
+| Step | Today, once #258 and strut#168 merge | Target |
+|---|---|---|
+| Network | Tailscale account and app on each device; turn on HTTPS; make an auth key | Same account and apps; the box's setup page logs in with a "Connect Tailscale" button, no key to copy |
+| Install the brain | Install Docker, copy `brain/`, run `./setup.sh` | One command, `curl -fsSL <url>/install.sh \| sh`, or an Umbrel app, or a flashed SD card |
+| Connect Peel | Open the printed `peel://brain` link, or type the address and key | Scan a QR code from the box's setup page; Peel shows Connected |
+| Memory | Starts empty | "Move memory to home server" in Peel (build step 3) |
+
+The pieces, in order:
+
+1. **`install.sh`** hosted in this repo: checks for Docker, downloads
+   `brain/`, runs `setup.sh`. Removes "copy the folder".
+2. **A setup page on the box** instead of terminal prompts, served on the
+   home network only during setup: a Tailscale login button (the box waits
+   as long as needed, which avoids the auth-key step), an optional model
+   key, then the pairing QR code. The same page serves Umbrel and the SD
+   card image.
+3. **Peel's Brain section explains setup**: what to install, the one
+   command, and "scan the code" — so nobody needs this doc.
+4. **Umbrel app**, then **SD card image**, both opening the setup page.
+
+Tailscale itself stays a one-time step per person: an account, and the
+app on the Mac and phone. In v2, with the agent as a contact, chat no longer
+needs it.
+
 ## Relation to the iPhone plan
 
 [phases/07-iphone.md](phases/07-iphone.md) makes the phone a remote by
@@ -284,7 +333,8 @@ connection is for everything else.
 4. **iPhone: pairing** by QR code, remote only.
 5. **Packaging** (beside 1–4): strut publishes a multi-arch image with an
    arm64 memory smoke test; Peel's `brain/` bundle and `setup.sh`; then
-   Umbrel, the SD card image and the Swarm preset.
+   `install.sh`, the setup page, Umbrel, the SD card image and the Swarm
+   preset ("Where the install should get to").
 
 ## Open questions
 

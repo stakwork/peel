@@ -64,7 +64,7 @@ runs, and an account has exactly one.**
   exist; `@ladybugdb/core`, `onnxruntime-node` and `sherpa-onnx-node` have
   linux-x64 and linux-arm64 builds. Ladybug is a file
   (`<data>/memory/graph.lbug`, or `STRUT_MEMORY_DB`), not a service. strut
-  publishes no image of its own yet (only `strut-browser`).
+  publishes `ghcr.io/stakwork/strut` for amd64 and arm64 (strut#168).
 - **Peel's engine does not run on Linux.** The `peel` CLI links
   `Vendor/sphinxrsFFI.xcframework` and imports `Security`, `CommonCrypto`,
   `CryptoKit` and `NIOTransportServices` in eight files. Not needed for v1:
@@ -160,7 +160,7 @@ Stacks are presets chosen by env var (`src/defaults.rs`); after first boot
 `config.yaml` is the source of truth. For Peel Brain:
 
 1. strut publishes `ghcr.io/stakwork/strut` for amd64 and arm64 from its
-   existing `Dockerfile` (copy `publish-browser.yml`).
+   `Dockerfile` (strut#168).
 2. Swarm gains a `Strut` image and a `PEEL_BRAIN=true` preset: one node, a
    `/data` volume, `STRUT_WORKSPACE_BACKEND=fs`, `STRUT_API_KEY` and
    `STRUT_SECRET_KEY` made at stack creation.
@@ -196,7 +196,7 @@ services:
     volumes: [ts-state:/var/lib/tailscale, ./serve.json:/config/serve.json]
 
   strut:
-    image: ghcr.io/stakwork/strut:latest   # multi-arch, to be published
+    image: ghcr.io/stakwork/strut:latest   # multi-arch, from strut's CI
     network_mode: service:tailscale        # no port open on the home network
     restart: unless-stopped
     environment:
@@ -268,7 +268,7 @@ recreates both containers). The rest is the work below.
 
 What telling someone (Gonza) to set it up should look like:
 
-| Step | Today, once #258 and strut#168 merge | Target |
+| Step | Today | Target |
 |---|---|---|
 | Network | Tailscale account and app on each device; turn on HTTPS; make an auth key | Same account and apps; the box's setup page logs in with a "Connect Tailscale" button, no key to copy |
 | Install the brain | Install Docker, copy `brain/`, run `./setup.sh` | One command, `curl -fsSL <url>/install.sh \| sh`, or an Umbrel app, or a flashed SD card |

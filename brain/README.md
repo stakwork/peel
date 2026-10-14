@@ -28,10 +28,14 @@ router. It needs to be online: strut calls hosted models.
 4. In the admin console's Machines list, turn off key expiry for
    `peel-brain`, or it drops off the tailnet when its key expires.
 
-Until `ghcr.io/stakwork/strut` is published, build the image from a strut
-checkout on the box and point the bundle at it:
+The bundle runs `ghcr.io/stakwork/strut:latest`, built for amd64 and arm64
+from strut's `main`. To pin a version, or to run a strut you built
+yourself, set `STRUT_IMAGE` in `.env`:
 
 ```sh
+# a pinned version
+echo STRUT_IMAGE=ghcr.io/stakwork/strut:<short-sha> >> .env
+# or your own build
 docker build -t strut:local /path/to/strut
 echo STRUT_IMAGE=strut:local >> .env
 ```

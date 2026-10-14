@@ -1,0 +1,11 @@
+// Someone else's message while at the bottom: the list follows it to the
+// newest (review table row 7; rule 2: an append while following holds the
+// newest).
+// needs: peer
+// check: arrival land=end
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "arrival", "for": 10}
+{"signal": "peer-sends"}
+{"wait": 9}

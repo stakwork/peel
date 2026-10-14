@@ -1,0 +1,12 @@
+// Open a chat with 30 unread: "New messages" near the top; never the
+// bottom with the line out of view, never a blank frame (review table row
+// 2; rule 6).
+// needs: peer
+// before: unread 30
+// check: open land=divider
+{"width": 1180}
+{"select": "{{other}}"}
+{"wait": 1}
+{"probe": "open", "for": 3}
+{"select": "{{chat}}"}
+{"wait": 2.5}

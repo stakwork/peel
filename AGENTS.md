@@ -813,6 +813,11 @@ quitting before any window opens.
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …
   ```
 
+  The message list journeys add a frame probe and the steps they need
+  (`probe`, `thread`, `close`, `scroll`, `scrollTo`, `width`, `jump`,
+  `expect`, `signal`; `OffscreenDriver`'s header): `docs/testing.md`,
+  "List journeys".
+
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own
   event queue, so key monitors and shortcuts see them as typed (a key
   with ⌘ is offered to the window's views first, as AppKit does for a key

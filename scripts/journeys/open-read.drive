@@ -1,0 +1,10 @@
+// Open a chat with nothing unread: the newest message, the bottom flush,
+// already drawn; no visible jump or blank frame (review table row 1; rules
+// 5 and 6: one movement, shown once placed, not on a timer).
+// check: open land=end
+{"width": 1180}
+{"select": "{{other}}"}
+{"wait": 1}
+{"probe": "open", "for": 3}
+{"select": "{{chat}}"}
+{"wait": 2.5}

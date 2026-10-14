@@ -317,3 +317,38 @@ scroll target layout (`.scrollTargetLayout`) so its rows in view can be
 reported; off, it is not. So the list runs a little differently with the
 log on: a blank that will not come back with it on says that much, not
 that the bug is gone.
+
+## List journeys
+
+Each row of the journey table in `reviews/2026-10-14-message-lists.md`
+that the Mac can drive is a drive file in `scripts/journeys/`, checked
+offscreen through `scripts/check-app.sh`. A `probe` step records every
+message list (chat, thread, agent) each frame, as near as a 120 Hz timer
+comes, while the steps after it run: the top row wholly in view (a keyed
+hash of its id and its index, never its text), its offset from the list's
+top, the rows laid out around it, whether the list is at its end, shown,
+or blank (rows to show, hidden or none in view), and where "New messages"
+and a jump's target sit. It reads only what the list already keeps
+(`ListEnd`'s frames and scroll geometry), so a probe does not change how
+the list runs, unlike the timeline log's `scrollTargetLayout`; outside
+the offscreen mode nothing is registered. `scripts/journeys/evaluate.py`
+judges the probe files against each drive's `// check:` lines: any frame
+where the reading row moved more than 1 pt (or the bottom left its end)
+in a journey that must hold it, any blank frame, and the landing.
+
+```sh
+scripts/test-stack.sh start                             # its PEEL_STACK_DIR
+SPHINX_BIN_DIR=<cargo target>/debug scripts/journeys/seed.sh <stack dir> lj-me lj-peer   # once, ~15 min
+scripts/journeys/run.sh lj-me --peer lj-peer            # or name journeys: … thread-scrolled-narrow
+```
+
+The seed makes two development profiles on the stack, contacts, with a
+~320-message chat (threads every 25, one "needle"). The runner reads the
+chat before each journey, marks it unread for `open-unread`, and sends
+from the peer when a drive signals it; results land in `.build/journeys/<journey>/`.
+A scroll is a live scroll on the list's own scroll view (its start, a
+step a frame, its end), which the list sees as a scroll by hand (the
+timeline log shows `phase interacting`); wheel events cannot be aimed at
+a window off the screens. A resize steps the window's frame a frame
+apart. While a probe runs, the app leaves the background priority band
+and App Nap, whose timer coalescing would sample a few frames a second.

@@ -4,6 +4,7 @@ import PeelAgent
 import AppKit
 import PeelCore
 import PeelUI
+import SwiftUI
 
 /// Runs a check script against Peel's own windows, offscreen only
 /// (`Offscreen.drive`): events go into this app's own queue for its own
@@ -17,12 +18,55 @@ import PeelUI
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
 /// the notification for its newest message from someone else).
+///
+/// For the list journeys (`scripts/journeys`): `{"probe": "name", "for": 2}`
+/// records every message list each frame for that long while the steps
+/// after it run, into `name.probe.json` (`ListProbe`); `{"thread":
+/// "newest"}` (or `"visible"`, or a row's index) opens a thread as its
+/// "N replies" does, `{"close": "thread"}` closes it as its X does;
+/// `{"scroll": 600}` scrolls the chat's list up 600 points as a live scroll
+/// by hand (`"in": "thread"` for the thread's, negative for down),
+/// `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
+/// 0.3}` resizes the window, as a drag would over that long; `{"jump": 150}`
+/// goes to the 150th newest message, as a search match does;
+/// `{"expect": "search"}` notes the first search match as where a probe
+/// should land; `{"signal": "send"}` writes `signal-send` in the out dir for
+/// the script running the drive; `{"type": "text", "return": true}` types
+/// and presses Return with no pause between.
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
+        var probe, thread, close, expect, signal, list: String?
         var mods: [String]?
-        var wait: Double?
+        var wait, duration, scroll, width, over: Double?
+        var scrollTo, jump: Int?
+        var submit: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal
+            case mods, wait, scroll, width, over, scrollTo, jump
+            case list = "in", duration = "for", submit = "return"
+        }
+    }
+
+    /// A `probe` running: its samples, a frame each, and the steps taken
+    /// meanwhile, by seconds since it started.
+    private struct Probe {
+        struct Sample: Encodable {
+            let t: Double
+            let width: Double
+            let lists: [ListProbe.List]
+        }
+        struct Event: Encodable {
+            let t: Double
+            let step: String
+        }
+        let name: String
+        let start: Date
+        let end: Date
+        var samples: [Sample] = []
+        var events: [Event] = []
     }
 
     private struct Failure: Error, CustomStringConvertible { let description: String }
@@ -34,6 +78,14 @@ final class OffscreenDriver {
     private let model: @MainActor () -> AppModel?
     /// See `offerKeyEquivalents`.
     private var keyEquivalents: Any?
+    private var probe: Probe?
+    private var probeTimer: Timer?
+    /// Held while a probe runs: the app is never active offscreen, and App
+    /// Nap would otherwise stretch its timers to a few a second.
+    private var probeActivity: NSObjectProtocol?
+    /// The message a jump or search went to (its uuid), which a probe
+    /// reports the place of.
+    private var target: String?
 
     private init(output: URL, model: @escaping @MainActor () -> AppModel?) {
         self.output = output
@@ -63,10 +115,18 @@ final class OffscreenDriver {
                 // A pairing link's key never reaches the log.
                 Offscreen.log("drive: \(line): " + text.replacing(/key=[^&"\s]*/, with: "key=[redacted]"))
                 let step = try JSONDecoder().decode(Step.self, from: Data(text.utf8))
+                if let probe {
+                    // Never what is typed.
+                    let event = Probe.Event(t: Date.now.timeIntervalSince(probe.start), step: step.type == nil ? text : "type")
+                    self.probe?.events.append(event)
+                }
                 try await perform(step)
                 try await Task.sleep(for: .milliseconds(300))
                 if step.key != nil || step.type != nil { Offscreen.log("drive: \(line): focus \(focus)") }
             }
+            // A probe still running records to its end.
+            while let probe, Date.now < probe.end { try await Task.sleep(for: .milliseconds(50)) }
+            try finishProbe()
             let services = NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.submenu?.title == "Services" } ?? false }
             Offscreen.log("drive: Services menu \(services == true ? "present" : "none")")
             Offscreen.log("drive: done; snapshots in \(output.path)")
@@ -115,8 +175,30 @@ final class OffscreenDriver {
             Offscreen.log("drive: opened a \(url.scheme ?? "") link")
         } else if let text = step.type {
             for character in text { try post(String(character), modifiers: []) }
+            if step.submit == true { try post("return", modifiers: []) }
         } else if let name = step.snapshot {
             try snapshot(name)
+        } else if let name = step.probe {
+            try startProbe(name, for: step.duration ?? 1)
+        } else if let which = step.thread {
+            try openThread(which)
+        } else if step.close == "thread" {
+            // As the thread's X does; Escape in its composer closes it too.
+            withAnimation(.easeIn(duration: 0.15)) { model()?.closeThread() }
+        } else if let points = step.scroll {
+            try await scroll(by: points, in: step.list ?? "chat")
+        } else if let row = step.scrollTo {
+            try await scroll(toRow: row, in: step.list ?? "chat")
+        } else if let width = step.width {
+            try await resize(to: width, over: step.over ?? 0)
+        } else if let back = step.jump {
+            try await jump(back)
+        } else if step.expect == "search" {
+            try await until("search matches", timeout: 10) { !(self.model()?.search?.matches.isEmpty ?? true) }
+            target = model()?.search?.matches.first?.uuid
+        } else if let name = step.signal {
+            guard !name.isEmpty, !name.contains("/") else { throw Failure(description: "a signal's name is a plain word") }
+            try Data().write(to: output.appendingPathComponent("signal-\(name)"))
         } else {
             throw Failure(description: "no action in this step")
         }
@@ -354,6 +436,201 @@ final class OffscreenDriver {
             guard event.modifierFlags.contains(.command), let window = event.window else { return event }
             return MainActor.assumeIsolated { !window.isKeyWindow && window.performKeyEquivalent(with: event) } ? nil : event
         }
+    }
+
+    // MARK: List journeys
+
+    /// Samples every list each frame (as near as a 120 Hz timer comes)
+    /// until `seconds` have passed.
+    private func startProbe(_ name: String, for seconds: Double) throws {
+        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix(".") else {
+            throw Failure(description: "a probe's name is a plain file name")
+        }
+        try finishProbe()
+        let start = Date.now
+        probe = Probe(name: name, start: start, end: start.addingTimeInterval(min(seconds, 60)))
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sample() }
+        }
+        timer.tolerance = 0
+        RunLoop.main.add(timer, forMode: .common)
+        probeTimer = timer
+        probeActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "list probe")
+        // Out of the background band `Offscreen.start` puts it in, whose
+        // timers are coalesced too, for the probe's few seconds.
+        setpriority(PRIO_DARWIN_PROCESS, 0, 0)
+        sample()
+    }
+
+    private func sample() {
+        guard let probe, let model = model() else { return }
+        guard Date.now < probe.end else {
+            do { try finishProbe() } catch { Offscreen.log("drive: probe \(probe.name) not written: \(error)") }
+            return
+        }
+        func rows(_ kind: String) -> [ChatRow] {
+            switch kind {
+            case "chat": model.chatRows
+            case "thread": model.threadRows
+            default: []
+            }
+        }
+        let target = self.target
+        let lists = ListProbe.sample(
+            divider: { rows($0).first(where: \.startsNew)?.id },
+            target: { kind in target.flatMap { uuid in rows(kind).first { $0.holds(uuid) }?.id } }
+        )
+        let width = Double(main?.frame.width ?? 0)
+        self.probe?.samples.append(.init(t: Date.now.timeIntervalSince(probe.start), width: width, lists: lists))
+    }
+
+    private func finishProbe() throws {
+        probeTimer?.invalidate()
+        probeTimer = nil
+        if let probeActivity {
+            ProcessInfo.processInfo.endActivity(probeActivity)
+            setpriority(PRIO_DARWIN_PROCESS, 0, PRIO_DARWIN_BG)
+        }
+        probeActivity = nil
+        guard let probe else { return }
+        self.probe = nil
+        struct File: Encodable {
+            let name: String
+            let events: [Probe.Event]
+            let samples: [Probe.Sample]
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try encoder.encode(File(name: probe.name, events: probe.events, samples: probe.samples))
+            .write(to: output.appendingPathComponent("\(probe.name).probe.json"))
+        Offscreen.log("drive: probe \(probe.name), \(probe.samples.count) frames")
+    }
+
+    /// As a click on a row's "N replies" opens its thread: `newest`, the
+    /// newest row with one (else the newest message); `visible`, the newest in view with one, else
+    /// the top message in view (the thread it would start); or a row's index.
+    private func openThread(_ which: String) throws {
+        guard let model = model(), case .chat = model.destination else { throw Failure(description: "no chat open") }
+        let rows = model.chatRows.enumerated().filter { $0.element.kind == .message }
+        let row: ChatRow?
+        switch which {
+        case "newest":
+            // A direct message's threads are not folded: its newest message.
+            row = (rows.last { $0.element.summary != nil } ?? rows.last)?.element
+        case "visible":
+            let inView = Set(ListProbe.inView(kind: "chat"))
+            let shown = rows.filter { inView.contains($0.element.id) }
+            row = (shown.last { $0.element.summary != nil } ?? shown.first)?.element
+        default:
+            guard let index = Int(which) else { throw Failure(description: "no thread \(which)") }
+            row = rows.first { $0.offset == index }?.element
+        }
+        guard let row else { throw Failure(description: "no row for thread \(which)") }
+        withAnimation(.easeOut(duration: 0.2)) {
+            if let summary = row.summary {
+                model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
+            } else {
+                model.openThread(of: row.message)
+            }
+        }
+        Offscreen.log("drive: thread on row \(model.chatRows.firstIndex { $0.id == row.id } ?? -1)")
+    }
+
+    /// Up (positive) or down by `points`, as a live scroll by hand: the
+    /// list's own scroll view says a live scroll started, moves a step a
+    /// frame and says it ended, as it does for a trackpad. (Wheel events
+    /// cannot be aimed at a window off the screens: their place is held to
+    /// the displays.)
+    private func scroll(by points: Double, in kind: String) async throws {
+        let view = try scrollView(kind)
+        let steps = max(1, Int((abs(points) / 40).rounded(.up)))
+        let delta = points / Double(steps)
+        let center = NotificationCenter.default
+        center.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
+        for _ in 0..<steps {
+            let clip = view.contentView
+            let height = (view.documentView?.frame.height ?? 0) - clip.bounds.height
+            // Up is towards the document's top.
+            let y = min(max(clip.bounds.origin.y + (clip.isFlipped ? -delta : delta), 0), max(height, 0))
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+            view.reflectScrolledClipView(clip)
+            center.post(name: NSScrollView.didLiveScrollNotification, object: view)
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
+    }
+
+    /// Scrolls until row `index` is laid out, then puts its top at the list's top.
+    private func scroll(toRow index: Int, in kind: String) async throws {
+        for _ in 0..<40 {
+            guard let end = ListProbe.end(kind: kind), end.ids.indices.contains(index) else {
+                throw Failure(description: "no row \(index) in the \(kind) list")
+            }
+            let height = end.view.upperBound - end.view.lowerBound
+            if let frame = end.frames[end.ids[index]] {
+                let distance = Double(end.view.lowerBound - frame.minY)
+                if abs(distance) > 0.5 { try await scroll(by: distance, in: kind) }
+                return
+            }
+            let laid = end.ids.indices.filter { end.frames[end.ids[$0]] != nil }
+            let up = laid.min().map { index < $0 } ?? true
+            try await scroll(by: Double(height) * 0.8 * (up ? 1 : -1), in: kind)
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        throw Failure(description: "row \(index) never laid out")
+    }
+
+    /// The scroll view showing the list: the one whose content and height
+    /// are the list's.
+    private func scrollView(_ kind: String) throws -> NSScrollView {
+        guard let end = ListProbe.end(kind: kind), let root = main?.contentView else {
+            throw Failure(description: "no \(kind) list")
+        }
+        var found: [NSScrollView] = []
+        func walk(_ view: NSView) {
+            if let scroll = view as? NSScrollView { found.append(scroll) }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+        let height = end.view.upperBound - end.view.lowerBound
+        guard let view = found.first(where: { scroll in
+            abs((scroll.documentView?.frame.height ?? 0) - end.content) < 2 && abs(scroll.contentView.bounds.height - height) < 2
+        }) else {
+            let sizes = found.map { "\(Int($0.documentView?.frame.height ?? 0))/\(Int($0.contentView.bounds.height))" }
+            throw Failure(description: "no scroll view for the \(kind) list (\(Int(end.content))/\(Int(height))) among \(sizes)")
+        }
+        return view
+    }
+
+    /// The window's width, in steps a frame apart over `seconds`, as a drag.
+    private func resize(to width: Double, over seconds: Double) async throws {
+        guard let window = main else { throw Failure(description: "no window") }
+        let start = Double(window.frame.width)
+        let steps = max(1, Int(seconds * 60))
+        for step in 1...steps {
+            var frame = window.frame
+            frame.size.width = start + (width - start) * Double(step) / Double(steps)
+            window.setFrame(frame, display: true)
+            if step < steps { try await Task.sleep(for: .milliseconds(16)) }
+        }
+        Offscreen.log("drive: window \(Int(window.frame.width)) wide")
+    }
+
+    /// To the `back`th newest message of the open chat, as a search match
+    /// or a notification goes (`focus(on:)`).
+    private func jump(_ back: Int) async throws {
+        guard let model = model(), case .chat(let chat) = model.destination, let storage = model.engine?.storage else {
+            throw Failure(description: "no chat open")
+        }
+        var messages: [Message] = []
+        for try await timeline in storage.timeline(in: chat, limit: max(Storage.pageSize, back)) {
+            messages = timeline.messages
+            break
+        }
+        guard back >= 1, messages.count >= back else { throw Failure(description: "fewer than \(back) messages") }
+        let message = messages[messages.count - back]
+        target = message.uuid
+        model.focus(on: message)
     }
 
     // MARK: Snapshots

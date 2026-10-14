@@ -31,8 +31,12 @@ import SwiftUI
     /// Scrolls a re-pin has made: shown once none has come for a while.
     var moves = 0
 
-    /// The content in view at the last scroll geometry.
-    private var view: Range<CGFloat> = 0..<0
+    /// The content in view at the last scroll geometry, and the content's
+    /// height then (read by a drive's `probe`, `ListProbe`).
+    private(set) var view: Range<CGFloat> = 0..<0
+    private(set) var content: CGFloat = 0
+    /// The list is shown (no longer hidden until placed); for `ListProbe`.
+    var shown = false
 
     /// The latest re-pin asked for, and when the oldest still waiting was.
     private(set) var request = 0
@@ -53,8 +57,9 @@ import SwiftUI
 
     /// With rows laid out, none of them in view. Called with every scroll
     /// geometry, it keeps the content in view for the rest.
-    func noneInView(offset: CGFloat, container: CGFloat) -> Bool {
+    func noneInView(offset: CGFloat, container: CGFloat, content: CGFloat) -> Bool {
         view = offset..<(offset + container)
+        self.content = content
         return !frames.isEmpty && !frames.values.contains { $0.maxY > offset && $0.minY < view.upperBound }
     }
 

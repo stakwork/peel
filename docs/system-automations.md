@@ -58,7 +58,8 @@ strut and never calls Peel.
   `merge` refuses to merge `Self` into another entity, so "never merge the
   user away" is already enforced. What is missing:
   - `merge` takes no `created_by`.
-  - `merge` records only counts of what moved, so it cannot be undone.
+  - `merge` records only counts of what moved, so it cannot be undone
+    (not needed in v1).
   - Nothing lists entities. `recall` needs words to match on, so a job
     has no way to sweep for duplicates.
 
@@ -183,7 +184,6 @@ the reason it matched:
 - one name the first-name form of the other: "Kate" and "Katie Moss",
   matched by a shared first token, or a prefix of at least 3 letters, or
   a nickname from strut's language data
-- a pair marked as not the same (by `memory/unmerge`, below) is left out
 
 ### The prompt
 
@@ -220,20 +220,10 @@ Peel's own calls keep setting `agent` or `user`, as today.
 - **No chat message and no notification in v1.** A strut-only run does
   not reach Peel's agent chat. A janitor working quietly is the point,
   and its history is one click away (open question 4).
-- **Undo:** in the agent chat, the user says "Kate and Katie are different
-  people", and Peel's agent calls a new tool, `unmerge_memory`. strut needs
-  two changes for this:
-  - `memory/merge` keeps a merge record on the duplicate: which fact and
-    episode edges it moved, which aliases it added, and which facts it
-    superseded.
-  - A new step, `memory/unmerge`, reverses exactly that record. It clears
-    the duplicate's `deleted_at` and its `ALIAS_OF`, moves the recorded
-    edges back, removes the added aliases, un-expires the facts the merge
-    superseded, and marks the pair as not the same, so
-    `memory/duplicates` stops offering it.
-
-  Because the janitor merges without asking, unmerge ships with it or
-  before it.
+- **No undo in v1** (Tom, 2026-10-14: get it running first). `merge` is
+  soft (the duplicate stays, marked deleted, as an alias), so an
+  unmerge can be added later. That needs a merge record and a
+  `memory/unmerge` step, and fits with a QA or review step when one comes.
 
 ## UI (Peel)
 
@@ -306,12 +296,10 @@ What is still open:
 1. **strut: memory.**
    - `memory/duplicates`
    - `created_by` on `memory/merge`, stamped by strut inside workflows
-   - the merge record and `memory/unmerge`
 
    Done when, on the bench memory, `memory/duplicates` returns the
    auto-safe pairs (Self and a Person with the user's name; Kate and
-   Katie Moss), and an unmerge leaves `memory/get` on both entities as it
-   was before the merge.
+   Katie Moss).
 2. **strut: system workflows.**
    - shipped `system/` workflows installed on start with `s-` versions,
      and the update rule above
@@ -324,14 +312,13 @@ What is still open:
    - the model key and default model handed to strut
    - the one-time turn-on
    - the System tab, with the switch, Run now and runs with their cost
-   - `unmerge_memory`
 
    Done when:
    - a fresh profile with a model connected gets Tidy memory switched on
    - Run now merges the duplicate of the user into Self, and the run says
      so
-   - "Kate and Katie are different" undoes it
-4. **Later.** More built-ins (the Ontology janitor, the Facts janitor if it
+4. **Later.** Undo (`memory/unmerge`) and some QA of merges. More
+   built-ins (the Ontology janitor, the Facts janitor if it
    needs a model), and the marketplace.
 
 ## Open questions for Tom

@@ -150,6 +150,7 @@ struct MessageList: View {
             // With "New messages", open at it instead.
             .onAppear {
                 tracking.gone = false
+                ListProbe.register(tracking, kind: composer.thread == nil ? "chat" : "thread")
                 // Nothing to place: the empty list while the messages load
                 // (and an empty chat), and a thread, which reads from its top.
                 if rows.isEmpty || composer.thread != nil {
@@ -302,7 +303,8 @@ struct MessageList: View {
             // view the stack measures again and its height comes back to
             // theirs. Keyed by the offset, so landing there again asks again.
             .onScrollGeometryChange(for: CGFloat?.self) { geometry in
-                tracking.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height)
+                tracking.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height,
+                                    content: geometry.contentSize.height)
                     ? geometry.contentOffset.y : nil
             } action: { _, out in
                 // Still only: an animated scroll to the newest crosses that
@@ -386,6 +388,7 @@ struct MessageList: View {
     private func reveal(_ why: String) {
         guard !revealed, !tracking.gone else { return }
         revealed = true
+        tracking.shown = true
         log("revealed: \(why)")
     }
 

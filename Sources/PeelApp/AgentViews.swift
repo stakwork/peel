@@ -232,7 +232,8 @@ private struct AgentMessageList: View {
             // Turns laid out, none in view: past them, blank. Keyed by the
             // offset, so landing there again asks again.
             .onScrollGeometryChange(for: CGFloat?.self) { geometry in
-                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height)
+                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height,
+                               content: geometry.contentSize.height)
                     ? geometry.contentOffset.y : nil
             } action: { _, out in
                 if out != nil, phase == .idle { repin(proxy, "turns laid out, none in view") }
@@ -243,6 +244,7 @@ private struct AgentMessageList: View {
             }
             .onAppear {
                 end.gone = false
+                ListProbe.register(end, kind: "agent", ignoring: Self.lastRow)
                 log("appear")
                 if turns.isEmpty {
                     reveal("nothing to place")
@@ -311,6 +313,7 @@ private struct AgentMessageList: View {
     private func reveal(_ why: String) {
         guard !revealed, !end.gone else { return }
         revealed = true
+        end.shown = true
         log("revealed: \(why)")
     }
 

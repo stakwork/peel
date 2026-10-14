@@ -1,0 +1,14 @@
+// Resize the window while scrolled up, as a drag: the reading row stays
+// (review table row 6; rule 2: a resize holds the reading row, or the
+// newest if following).
+// check: resize hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "resize", "for": 3}
+{"width": 900, "over": 0.4}
+{"wait": 0.5}
+{"width": 1180, "over": 0.4}
+{"wait": 1.2}

@@ -1,0 +1,15 @@
+// Jump to a message older than the newest 200 (a window around it), then
+// the jump button (Command-Down): the newest, with no reload flash (review
+// table row 4: "a reload when you press the jump button"; rule 4: the
+// window reaching the newest is apart from being at the bottom).
+// check: jump land=target
+// check: newest land=end
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "jump", "for": 3}
+{"jump": 280}
+{"wait": 2.5}
+{"probe": "newest", "for": 4}
+{"key": "down", "mods": ["cmd"]}
+{"wait": 3.5}

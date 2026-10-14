@@ -1,0 +1,15 @@
+// You send in the thread while the chat beside it is scrolled up: the
+// thread goes to its newest, the chat does not move (review table row 9;
+// layer 1: a thread send moves only the thread's list). The chat is
+// scrolled up once the thread is open, which can move it.
+// check: send hold=chat land=end@thread
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"thread": "newest"}
+{"wait": 1.5}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "send", "for": 5}
+{"type": "a reply from the journey check", "return": true}
+{"wait": 4.5}

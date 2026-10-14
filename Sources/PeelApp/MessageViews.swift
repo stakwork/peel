@@ -43,6 +43,13 @@ struct MessageList: View {
     /// stops at that padding, short of the scroll view's own bottom.
     private static let bottomID = "bottom"
 
+    /// The list's content, its top at 0, as the scroll offset measures it.
+    private static let contentSpace = "messageListContent"
+
+    /// Only for a scroll to a point (a re-pin by where rows are);
+    /// everything else goes by the `ScrollViewReader`.
+    @State private var position = ScrollPosition()
+
     /// Where the list sits against its bottom, as the scroll position, the
     /// content's height or the list's own height changes.
     private struct BottomDistance: Equatable {
@@ -101,7 +108,18 @@ struct MessageList: View {
                         // A day divider alone in view counts as none made:
                         // one re-pin more, no harm.
                         .onAppear { tracking.appeared(row.id) }
-                        .onDisappear { tracking.made.remove(row.id) }
+                        .onDisappear {
+                            tracking.made.remove(row.id)
+                            tracking.frames[row.id] = nil
+                        }
+                        // Where it really sits; only a layout moves it.
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.contentSpace)) }) { frame in
+                            tracking.frames[row.id] = frame
+                            tracking.placed[row.id] = frame
+                            if row.id == rows.last?.id {
+                                log("last row at \(TimelineLog.points(frame.minY))...\(TimelineLog.points(frame.maxY))")
+                            }
+                        }
                     }
                 }
                 // Only for the timeline log's visible rows.
@@ -109,7 +127,9 @@ struct MessageList: View {
                 .environment(\.goToMessage) { go(to: $0, proxy: proxy) }
                 .padding(.vertical, Theme.Space.md)
                 .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottomID) }
+                .coordinateSpace(.named(Self.contentSpace))
             }
+            .scrollPosition($position)
             // A thread reads from its original down; a chat from its newest up.
             // Either starts at the bottom once there is more than fits.
             .defaultScrollAnchor(composer.thread == nil ? .bottom : .top, for: .alignment)
@@ -123,6 +143,7 @@ struct MessageList: View {
             // initial anchor can land short of the end; go to the newest.
             // With "New messages", open at it instead.
             .onAppear {
+                tracking.gone = false
                 log("appear focus=\(focusTarget.map { index(of: $0.message) } ?? "none") divider=\(divider.map { index(of: $0.id) } ?? "none")")
                 // The newest first, also before "New messages": left at the
                 // initial anchor, a list opening at it sat for those 100 ms
@@ -149,6 +170,7 @@ struct MessageList: View {
                     }
                     Task {
                         try? await Task.sleep(for: .milliseconds(100))
+                        guard !tracking.gone else { return log("open dropped: the list is gone") }
                         if focusTarget != nil {
                             // Settled once the scroll to it is over (`go(to:)`).
                             opening = false
@@ -162,7 +184,10 @@ struct MessageList: View {
                     opened()
                 }
             }
-            .onDisappear { log("disappear") }
+            .onDisappear {
+                log("disappear")
+                tracking.gone = true
+            }
             .timelineProbe(geometry: logGeometry, visible: logVisible)
             .onScrollPhaseChange { _, new in
                 log("phase \(phase) -> \(new)")
@@ -170,6 +195,7 @@ struct MessageList: View {
                 if new == .interacting {
                     pinning = false
                     tracking.lastRowTries = 0
+                    tracking.steps = 0
                 }
                 // A scroll that ended at the bottom sends no report once still.
                 if new == .idle { settled() }
@@ -246,6 +272,29 @@ struct MessageList: View {
                     withAnimation(.easeOut(duration: 0.2)) { farFromBottom = new.far }
                 }
             }
+            // Rows laid out, none of them in view: the blank list, past
+            // the rows the lazy stack placed. Measuring the newest rows
+            // taller than its estimate, it raised the estimate for the rows
+            // above it has not made, and added the difference to its
+            // height below the rows it placed rather than moving them down.
+            // A scroll to the end (the marker, or the last row, whose place
+            // it also estimates) then lands in that space, where there is
+            // no row to make and so nothing to correct its estimate: blank
+            // until you scroll back up to the rows by hand. Back to the
+            // newest of them, by where it really is (`repin`); with rows in
+            // view the stack measures again and its height comes back to
+            // theirs. Keyed by the offset, so landing there again asks again.
+            .onScrollGeometryChange(for: CGFloat?.self) { geometry in
+                tracking.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height)
+                    ? geometry.contentOffset.y : nil
+            } action: { _, out in
+                // Still only: an animated scroll to the newest crosses that
+                // space on its way, and re-pins when it ends. A thread reads
+                // from its top.
+                guard out != nil, following, phase == .idle, composer.thread == nil, focusTarget == nil else { return }
+                log("repin: rows laid out, none in view")
+                repin(proxy)
+            }
             .onChange(of: model.focus?.message.id) { _, _ in takeFocus(proxy) }
             // "Mark unread" moved the divider: what is below it is unread again.
             .onChange(of: divider?.id) { _, id in
@@ -254,7 +303,11 @@ struct MessageList: View {
             // Your own messages always take you to the newest; others' only
             // while following. Scrolled up, you stay where you are and the
             // jump button counts them.
+            // The rows as they are now, for a re-pin whose task holds the
+            // rows of when it was asked for.
+            .onChange(of: rows.map(\.id), initial: true) { _, ids in tracking.ids = ids }
             .onChange(of: rows.last?.id) { _, _ in
+                tracking.steps = 0
                 guard reachesNewest else { return }
                 let scrolls = following || rows.last?.shown.last?.fromMe == true
                 log("newest row changed, scrolls=\(scrolls)")
@@ -284,7 +337,7 @@ struct MessageList: View {
     /// have taken the list.
     private func openAtDivider(_ proxy: ScrollViewProxy) async {
         for pass in 0..<2 {
-            guard let divider, !userScrolling, pass == 0 || !following else { return }
+            guard let divider, !tracking.gone, !userScrolling, pass == 0 || !following else { return }
             // The initial anchor may have set it, reaching the bottom.
             following = false
             log("place: divider pass \(pass) scrollTo row \(index(of: divider.id))")
@@ -362,26 +415,63 @@ struct MessageList: View {
     /// back within one. One for a burst of changes, at most 100 ms late
     /// while they keep coming, and none once you have taken the list.
     ///
-    /// With no row made (or `byLastRow`, on opening): to the last row
-    /// first, then the end marker. The marker sits outside the lazy rows,
+    /// With rows laid out, by where they are (below); with none, and no
+    /// row made (or `byLastRow`, on opening): to the last row first, then
+    /// the end marker. The marker sits outside the lazy rows,
     /// so a scroll to it, or an offset clamped to the end as the estimate
     /// shrinks, can leave the stack with no row made at the end: a blank
     /// list until a scroll by hand. A scroll to a row makes the stack make it.
     private func repin(_ proxy: ScrollViewProxy, byLastRow: Bool = false) {
+        // Nothing to hold at the end. The empty list shown while a chat's
+        // messages load is replaced by one with them (`ConversationView`),
+        // and its re-pin, run after, moved the new list to the end of its
+        // estimate: in Tom's logs, just before two of the blanks.
+        guard !rows.isEmpty else { return }
         let request = tracking.ask(byLastRow: byLastRow)
         Task {
             try? await Task.sleep(for: .milliseconds(20))
             guard let byLastRow = tracking.take(request) else { return }
             let latest = tracking.request
+            // Nor once gone (its proxy is another list's scroll view's now).
+            guard !tracking.gone else { return log("repin dropped: the list is gone") }
             guard following, !userScrolling else { return log("repin skipped") }
-            if byLastRow, let last = rows.last?.id, tracking.lastRowTries < ListTracking.lastRowLimit {
+            // Already showing the newest row to its end, where it is laid
+            // out: past it, the stack's height can be only its estimate
+            // (`noneInView`), and the marker and the last row's
+            // estimated place both lie in that blank.
+            if let last = tracking.ids.last, tracking.endsInView(last, padding: Theme.Space.md) {
+                pinning = false
+                tracking.steps = 0
+                return log("repin: the newest row ends in view")
+            }
+            // With rows laid out, by where they really are, as a scroll by
+            // hand goes: the newest row's bottom to the list's bottom once
+            // it is laid out; short of it, half a list past the newest row
+            // laid out, where the stack lays out the rows after it, then
+            // again. A jump to the end goes by the stack's estimate.
+            // Each step asks again, until the newest row ends in view (above).
+            if let step = tracking.towardsNewest(padding: Theme.Space.md), tracking.steps < ListTracking.stepLimit {
+                pinning = false
+                tracking.steps += 1
+                if let row = step.from {
+                    log("place: repin down from row \(index(of: row)) to y=\(TimelineLog.points(step.y))")
+                } else {
+                    log("place: repin to the newest row's bottom y=\(TimelineLog.points(step.y))")
+                }
+                position.scrollTo(y: max(step.y, 0))
+                repin(proxy)
+                return
+            }
+            // Past the steps, the end as before; the steps again next time.
+            tracking.steps = 0
+            if byLastRow, let last = tracking.ids.last, tracking.lastRowTries < ListTracking.lastRowLimit {
                 if tracking.made.isEmpty { tracking.lastRowTries += 1 }
                 log("place: repin scrollTo last row")
                 proxy.scrollTo(last, anchor: .bottom)
                 // A frame for it to land before the marker below it; a
                 // request since (its own resize, a new message) goes instead.
                 try? await Task.sleep(for: .milliseconds(20))
-                guard tracking.request == latest, rows.last?.id == last, following, !userScrolling else {
+                guard tracking.request == latest, !tracking.gone, tracking.ids.last == last, following, !userScrolling else {
                     return log("repin skipped")
                 }
             }
@@ -478,7 +568,17 @@ struct MessageList: View {
         log("geometry offset=\(TimelineLog.points(geometry.contentOffset.y)) "
             + "content=\(TimelineLog.points(geometry.contentSize.height)) "
             + "container=\(TimelineLog.points(geometry.containerSize.height)) below=\(TimelineLog.points(below)) "
-            + "insets=\(TimelineLog.points(geometry.contentInsets.top))/\(TimelineLog.points(geometry.contentInsets.bottom))")
+            + "insets=\(TimelineLog.points(geometry.contentInsets.top))/\(TimelineLog.points(geometry.contentInsets.bottom)) "
+            + laidOut)
+    }
+
+    /// The rows laid out, by index, and where they sit in the content.
+    private var laidOut: String {
+        let positions = Dictionary(rows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let placed = tracking.frames.compactMap { id, frame in positions[id].map { (index: $0, frame: frame) } }
+        guard let first = placed.map(\.index).min(), let last = placed.map(\.index).max() else { return "laid out none" }
+        let top = placed.map(\.frame.minY).min() ?? 0, bottom = placed.map(\.frame.maxY).max() ?? 0
+        return "laid out \(first)...\(last) at \(TimelineLog.points(top))...\(TimelineLog.points(bottom))"
     }
 
     /// The first and last rows in view, by index; none in view with rows
@@ -488,9 +588,9 @@ struct MessageList: View {
         // A day divider shares its row's id.
         let shown = Set(ids.compactMap { positions[$0] })
         if let first = shown.min(), let last = shown.max() {
-            log("visible rows \(first)...\(last) (\(shown.count))")
+            log("visible rows \(first)...\(last) (\(shown.count)), \(laidOut)")
         } else {
-            log(rows.isEmpty ? "visible none, no rows" : "visible NONE with rows: blank")
+            log(rows.isEmpty ? "visible none, no rows" : "visible NONE with rows: blank, \(laidOut)")
         }
     }
 }
@@ -502,6 +602,53 @@ struct MessageList: View {
     /// an appear or disappear twice cannot skew it: none with rows to show
     /// is the blank list.
     var made: Set<String> = []
+    /// Where each row laid out sits in the content, from its first layout
+    /// until it disappears; laid out is a little wider than made.
+    var frames: [String: CGRect] = [:]
+    /// Where each row was last laid out, kept once it is not: once the
+    /// list is past the rows, the stack drops them, and a re-pin steps
+    /// back down from where they were (`towardsNewest`).
+    var placed: [String: CGRect] = [:]
+    /// The list has disappeared: its scroll view is another list's now.
+    var gone = false
+
+    /// The content in view at the last scroll geometry.
+    private var view: Range<CGFloat> = 0..<0
+
+    /// Whether the row with `id` is laid out and in view down to `padding`
+    /// below it.
+    func endsInView(_ id: String, padding: CGFloat) -> Bool {
+        guard let frame = frames[id] else { return false }
+        return frame.maxY > view.lowerBound && frame.maxY + padding <= view.upperBound + 0.5
+    }
+
+    /// With rows laid out, none of them in view.
+    func noneInView(offset: CGFloat, container: CGFloat) -> Bool {
+        view = offset..<(offset + container)
+        return !frames.isEmpty && !frames.values.contains { $0.maxY > offset && $0.minY < view.upperBound }
+    }
+
+    /// Steps down from the newest row laid out towards the newest row
+    /// (`MessageList.repin`) since one ended in view or you took the list;
+    /// past `stepLimit` the re-pin jumps to the end as before.
+    var steps = 0
+    static let stepLimit = 12
+
+    /// The list's rows by id, as they are now (`MessageList` keeps it).
+    var ids: [String] = []
+
+    /// Where a re-pin scrolls by the rows laid out, nil with none: the
+    /// newest row's bottom (plus `padding`) at the list's bottom while it
+    /// is laid out; else half a list past the bottom of the newest row
+    /// laid out or last placed (`from`), so the rows after it are laid out
+    /// in view. A place kept from an earlier layout is only stepped from.
+    func towardsNewest(padding: CGFloat) -> (y: CGFloat, from: String?)? {
+        let height = view.upperBound - view.lowerBound
+        guard height > 0 else { return nil }
+        if let last = ids.last, let frame = frames[last] { return (frame.maxY + padding - height, nil) }
+        guard let newest = ids.last(where: { placed[$0] != nil }), let frame = placed[newest] else { return nil }
+        return (frame.maxY - height / 2, newest)
+    }
     /// Scrolls to the last row with none made since a row was made or you
     /// took the list; a stack that never makes one is left after
     /// `lastRowLimit`, not scrolled every few frames.

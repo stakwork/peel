@@ -301,10 +301,15 @@ appear, a divider pass, `go(to:)`, `scrollToNewest`, a re-pin) and why a
 re-pin ran or was skipped; scroll phase changes; `bottom state written`;
 the scroll geometry (offset, content and container heights, `below` the
 end, insets; not while scrolled by hand); and the rows in view by index,
-or `visible NONE with rows: blank`, the blank list itself. Read together:
-rows realised and in view while the screen is empty is a drawing problem;
-none in view with the offset past the content (`below` negative) is a
-placement problem; none realised at all is the lazy stack not making them. Never message
+or `visible NONE with rows: blank`, the blank list itself. The geometry and
+visible lines end with the rows laid out and where they sit in the content
+(`laid out 183...188 at 31191.8...31946.8`, in the same points as the
+offset), and the last row's place is logged as it moves (`last row at`).
+Read together: rows realised and in view while the screen is empty is a
+drawing problem; none in view with the offset past the content (`below`
+negative) is a placement problem; rows laid out above the offset with the
+list at its end is the stack's estimate run past its rows (2026-10-14,
+`03-chat.md`); none realised at all is the lazy stack not making them. Never message
 text, names, keys, ids or amounts. With the log on, the lazy stack is a
 scroll target layout (`.scrollTargetLayout`) so its rows in view can be
 reported; off, it is not. So the list runs a little differently with the

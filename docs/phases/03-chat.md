@@ -2578,6 +2578,94 @@ Confidence: moderate. It acts on the exact state Tom's log shows
 (at the end, nothing made), but that state never persisted offscreen;
 Tom's build with the log on says whether the last-row scroll draws it.
 
+## Blank past the rows the stack placed (branch `fix/blank-timeline-past-rows`, 2026-10-14)
+
+From Tom on main with #196: Evan's chat (134 rows, an image eight rows
+from the end) opened blank until a large scroll; a small one left it blank.
+Later Sphinx & Stak (199 rows) did the same. Not reproduced offscreen: a
+seeded chat of Evan's shape (lengths, newlines, links, the image, filler
+text, two dev profiles on a local stack) measures half his height (5 619
+pt against 12 169: his rows span days, so headers and day dividers), and
+its estimate never ran far enough. Found instead with the timeline log on
+his build, after adding where each row laid out sits in the content.
+
+What the logs show, Evan (20:50:31): opened at the end, the estimate swung
+11 146, 6 249, 9 437, 10 499 pt; rows 125...133 laid out at 9 782...10 501
+and in view; then the stack, having measured them taller than its
+estimate, put its height at 12 624, keeping the rows where they were: 2 110
+pt of height below the last row with no row in it. A re-pin to the end
+marker went to 11 895, in that space (`visible NONE`); the estimate fell to
+11 741, the offset clamped to 11 012, still 500 pt below the rows; the
+#196 scroll to the last row landed at 10 999, the last row's estimated
+place, not its real one (10 501). Nothing laid out in view, nothing
+measured, so the estimate stayed: blank until a scroll by hand reached the
+rows (about 500 pt up), when the stack measured them and its height fell
+to 10 552. Sphinx & Stak: 25 098, 14 388, 43 515, 33 869 pt in 100 ms,
+rows 183...188 in view, then the end (33 140): blank. In three of the
+four logged blanks the jump to the end was a re-pin of the empty list
+shown while the chat's messages load (`ConversationView` makes the list
+again once they have), run after that list had been replaced
+(`place: repin scrollTo bottom | rows=0`); in the fourth no re-pin of ours
+logged one, so SwiftUI also moves the list there. So the stack's estimate
+can run past its rows at the end of any chat, by more when the newest rows
+measure far from its average, and any scroll by that estimate (the marker,
+a row not laid out) can land past them.
+
+Done means: a list following its end is never left past its rows; a re-pin
+moves by where rows are laid out, never by the estimate when there are
+any; the empty list's re-pins never move its replacement.
+
+Changed, in `MessageList`:
+
+- Each row reports where it is laid out in the content (one
+  `onGeometryChange` per row, called on a layout, not while scrolling):
+  `frames` while laid out, `placed` kept after.
+- The re-pin, with rows laid out: if the newest row ends in view, nothing
+  (past it is only estimate); if it is laid out, its bottom to the list's
+  bottom; if not, half a list past the newest row laid out, where the
+  stack lays out the rows after it, then again (at most 12 steps). By a
+  `ScrollPosition` to a point; with none laid out (opening), as before.
+- Rows laid out, none in view, while following and still: a re-pin.
+- An empty list asks for no re-pin, and a list gone drops its re-pins and
+  its opening scrolls (`ListTracking.gone`).
+- The log: `laid out a...b at y...y` on geometry and visible lines, `last
+  row at`, the new placements (`docs/testing.md`, "Timeline log").
+
+Tried and dropped: every row of the newest 50 to 74 made always (a plain
+stack under the lazy one), so the end is never estimated. No blank, but
+550 ms to open a chat against 45 (debug build, same load, 10 opens each).
+
+Tom's build, after: Sphinx & Stak still went past its rows once
+(12:55:40.198, the jump with no re-pin of ours), then stepped down from row
+188, 193, 197 and to the newest row's bottom, flush by .397 (about 40 ms
+blank). Evan and Sphinx & Stak no longer stay blank for him. Offscreen (the
+seeded chat, 10 opens per run): no blank, every open flush; first layout
+47 and 50 ms against main's 40 and 45 at the same load; a message and an
+image arriving at the bottom stay flush; opening at "New messages" blanks
+for 20 to 130 ms on main and here alike, and recovers.
+
+Independent review (agent), applied: the walk reads the rows as they are
+now (`ListTracking.ids`), not those its task was asked with; every step,
+the last too, asks again until the newest row ends in view, and a place
+kept from an earlier layout is only stepped from; the steps start again on
+a new newest row and after the jump to the end; the blank check only while
+still (an animated scroll to the newest crosses that space) and not in a
+thread. Checked after: 10 opens with the log off (snapshots: all at the
+newest row; the log on adds scroll targets, which the new `ScrollPosition`
+could follow), 10 with it on (flush, no blank). Not applied: the jump
+button can show while the estimate is still past the newest row in view,
+until the stack measures again.
+
+Not done or not checked: an image loading at the bottom after it arrived
+(images do not download in the check app); the agent chat
+(`AgentMessageList`) is lazy and scrolls to its end marker the same way and
+Tom has seen it blank; not logged, so next, on its own branch.
+
+Confidence: the cause, high (measured on Tom's account); the fix, that the
+re-pin no longer lands past the rows and steps back when something else
+puts it there, shown once on his account and never failing offscreen,
+where the blank did not reproduce.
+
 ## Hover cards and menus at their trigger (branch `fix/hover-card-anchor`, 2026-10-10)
 
 Tom's report: in a tribe, after tapping and hovering several boost chips,

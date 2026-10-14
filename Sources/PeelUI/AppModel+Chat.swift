@@ -206,6 +206,14 @@ extension AppModel {
         await attempt("mark as read", in: chat) { try await $0.markRead(chat) }
     }
 
+    /// Mark as read or Mark as unread for a chat's menu (`ReadToggle`):
+    /// storage is read only when nothing is unread, as the menu is built.
+    public func readToggle(for chat: String) -> ReadToggle? {
+        ReadToggle.offered(unread: readStates[chat]?.unread ?? 0) {
+            (try? engine?.storage.newestIncomingIndex(in: chat)) != nil
+        }
+    }
+
     public func markAllThreadsRead() async {
         for chat in Set(threads.filter { $0.unread > 0 }.map(\.chat)) {
             await markRead(chat)

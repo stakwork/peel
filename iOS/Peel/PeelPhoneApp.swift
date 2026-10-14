@@ -15,8 +15,19 @@ struct PeelPhoneApp: App {
         let model = AppModel(platform: .phone())
         _model = State(initialValue: model)
         _router = State(initialValue: PhoneRouter(model: model))
-        // The tab badge is Sphinx blue, as on the Mac's rows, not the system's red.
-        UITabBarItem.appearance().badgeColor = UIColor(Theme.accent)
+        // The tab badge is Sphinx blue, as on the Mac's rows, not the system's
+        // red. iOS 26's tab bar ignores `UITabBarItem.badgeColor`; it reads
+        // the badge from the bar's appearance, in each of its layouts.
+        let tabs = UITabBarAppearance()
+        tabs.configureWithDefaultBackground()
+        for layout in [tabs.stackedLayoutAppearance, tabs.inlineLayoutAppearance, tabs.compactInlineLayoutAppearance] {
+            for state in [layout.normal, layout.selected] {
+                state.badgeBackgroundColor = UIColor(Theme.accent)
+                state.badgeTextAttributes = [.foregroundColor: UIColor(Theme.buttonText)]
+            }
+        }
+        UITabBar.appearance().standardAppearance = tabs
+        UITabBar.appearance().scrollEdgeAppearance = tabs
     }
 
     var body: some Scene {

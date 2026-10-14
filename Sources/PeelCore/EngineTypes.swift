@@ -99,6 +99,23 @@ extension Engine {
             case .connected: "Connected"
             }
         }
+
+        /// Whole seconds until the next try while offline with one set
+        /// (`retryAt`), 0 once it is due; nil otherwise.
+        public func retrySeconds(retryAt: Date?, now: Date) -> Int? {
+            guard case .offline = self, let retryAt else { return nil }
+            return max(0, Int(retryAt.timeIntervalSince(now).rounded(.up)))
+        }
+
+        /// `label`, counting down to the next try: "Offline, retrying in
+        /// 8s", then "Offline, retrying" once it is due.
+        public func label(retryAt: Date?, now: Date) -> String {
+            switch retrySeconds(retryAt: retryAt, now: now) {
+            case nil: label
+            case 0: "Offline, retrying"
+            case let seconds?: "Offline, retrying in \(seconds)s"
+            }
+        }
     }
 
     public enum Failure: Error, Equatable, CustomStringConvertible {

@@ -312,6 +312,48 @@ the simulator is locked and no PIN was entered by the agent. The shell
 and the components were checked with made-up rows in a scratch screen,
 not committed.
 
+### F2a: Chats (built 2026-10-14, `ios/f2a-chats`)
+
+**Built.** Chats to [../design/iphone.md](../design/iphone.md), screens 1
+and 9: the large title with New message in the bar's glass (the orange
+bolt joins it only when not connected); Automations, Threads (blue count
+of `unreadThreads`) and Mentions (`unreadMentions`) as `NavRow`s; Unread,
+Tribes and Direct messages over `sidebarSections`, so the Mac's order,
+trimming, "Show all N" / "Show fewer" and open chat rule hold, the
+collapsible headers writing `sidebarLayout`. A section's header is its
+first row, not a sticky header, which sat see-through over the rows
+under the glass bar. Swipe right: Mark read (with unread) or Mark
+unread; swipe left: Mute or Unmute; a long press has the same and the
+notification level. Pull to refresh is `AppModel.refresh()`: reconnect
+and wait up to 5 s when not connected, otherwise catch up unless history
+is already running. Not connected: the Mac's countdown, "Offline,
+retrying in 8s" (Tom, 2026-10-14: one wording on both apps, over the
+board's "Reconnecting in 8 s"), in orange under the large title
+(`.largeSubtitle`) and in the bolt's popover beside it, the Mac's
+`ConnectionCard` on an opaque `menu` panel with Reconnect now. Threads
+and Mentions push lists from the Mac's model (`threads`,
+`mentionUpdates`); a tap opens the chat at the message or with the
+thread sheet over it, on top of the list. Automations says plainly they
+are on the Mac for now. New message opens a `ComingScreen` sheet. No
+chats: "No chats yet", or "Restoring your chats" while a restore runs.
+
+**Not built, and why:** Pin (the model pins messages, not chats); the
+agent row's AGENT label and orange count (no agent DM on the phone
+until the remote track; `ChatListRow` is ready for it); "Join a tribe",
+"Add contact", "Invite someone" and pending invites at the sections'
+ends (their forms are the Mac's).
+
+**Shared with the Mac** (moved out of `Sidebar.swift`, the Mac
+unchanged): `MuteLevel.choices(isTribe:)` with `title` and `short`;
+`ReadToggle` and `AppModel.readToggle(for:)`, Mark as read or unread;
+`ConnectionState.label(retryAt:now:)`, the countdown (tested,
+`ChatMenuRulesTests`). The tab badge is blue through the tab bar's
+`UITabBarAppearance` (iOS 26 ignores `UITabBarItem.badgeColor`).
+
+**Not verified** with an account: checked with made-up chats and
+mentions in a scratch launch mode, removed before the commit; the
+Threads list's rows were not drawn (`ThreadSummary` has no public init).
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

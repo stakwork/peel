@@ -88,6 +88,43 @@ public enum MuteLevel: Int, Sendable {
         case .muted: false
         }
     }
+
+    /// The levels a chat offers, loudest first: the tribes server marks
+    /// mentions only in tribes, so a direct message has no "Mentions only".
+    public static func choices(isTribe: Bool) -> [MuteLevel] {
+        isTribe ? [.all, .mentionsOnly, .muted] : [.all, .muted]
+    }
+
+    /// As a menu offers it, under "Notify me about".
+    public var title: String {
+        switch self {
+        case .all: "All messages"
+        case .mentionsOnly: "Mentions only"
+        case .muted: "Nothing (mute)"
+        }
+    }
+
+    /// Beside "Notifications" once chosen.
+    public var short: String {
+        switch self {
+        case .all: "All"
+        case .mentionsOnly: "Mentions"
+        case .muted: "Muted"
+        }
+    }
+}
+
+/// What a chat's menu offers for its read state: Mark as read while it has
+/// unread messages, otherwise Mark as unread once someone else has written
+/// in it (the server keeps a marker only below an incoming message).
+public enum ReadToggle: Sendable, Equatable {
+    case markRead, markUnread
+
+    /// `hasIncoming` is asked only when nothing is unread.
+    public static func offered(unread: Int, hasIncoming: () -> Bool) -> ReadToggle? {
+        if unread > 0 { return .markRead }
+        return hasIncoming() ? .markUnread : nil
+    }
 }
 
 /// Unread count and mute level for one chat.

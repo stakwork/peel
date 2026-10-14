@@ -803,6 +803,22 @@ public final class AppModel {
         await engine?.reconnectNow()
     }
 
+    /// Pull to refresh: not connected, reconnect now and wait up to five
+    /// seconds for it; connected, catch up from where history stands,
+    /// unless history is already being asked for (a restore or a
+    /// catch-up running), which asking again would only repeat.
+    public func refresh() async {
+        guard connection == .connected else {
+            await reconnectNow()
+            for _ in 0..<20 where connection != .connected && !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            return
+        }
+        guard let engine, await !engine.isSyncingHistory else { return }
+        await resumeHistory()
+    }
+
     /// Marks the open chat read while the window is in front, so a message that
     /// arrives while you look at it never shows as unread.
     public func markSelectedChatRead() {

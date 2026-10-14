@@ -309,7 +309,9 @@ Read together: rows realised and in view while the screen is empty is a
 drawing problem; none in view with the offset past the content (`below`
 negative) is a placement problem; rows laid out above the offset with the
 list at its end is the stack's estimate run past its rows (2026-10-14,
-`03-chat.md`); none realised at all is the lazy stack not making them. Never message
+`03-chat.md`); none realised at all is the lazy stack not making them. The
+agent chat's list logs as `agent` (turns laid out and in view, `end at`
+the conversation's last row, each placement and what asked for it). Never message
 text, names, keys, ids or amounts. With the log on, the lazy stack is a
 scroll target layout (`.scrollTargetLayout`) so its rows in view can be
 reported; off, it is not. So the list runs a little differently with the

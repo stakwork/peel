@@ -1,6 +1,6 @@
 # Phase 7 — iPhone
 
-Last updated 2026-10-13. **A proposal for Tom's review; nothing is built.**
+Last updated 2026-10-14. **A proposal for Tom's review; nothing is built.**
 Resumed 2026-10-13 (paused since 2026-10-08). It builds on
 [../agent-brain.md](../agent-brain.md) (the Mac is the brain, the phone is a
 remote), [../jobs-architecture.md](../jobs-architecture.md) (jobs run in
@@ -102,10 +102,10 @@ never sleeps. Later the same code runs headless on Linux.
 │ Tom's account (PeelCore)     │            │ Tom's account engine     Agent's account engine│
 │  chats · payments · calls    │            │  (as today)               (new, headless)      │
 │                              │            │                               │                │
-│ Agent tab: the DM with the   │  Sphinx    │  RemoteInbox (agent.sqlite) ◄─┘                │
-│  agent, rendered with cards  │◄─────────► │   ack · dedupe by uuid · expiry · order        │
-│ Activity: Needs you, jobs,   │  broker    │        │                                       │
-│  automations (cached state)  │  holds     │  AgentLoop + ApprovalGate (as today)           │
+│ Agent DM in Chats, with its  │  Sphinx    │  RemoteInbox (agent.sqlite) ◄─┘                │
+│  cards (approvals, results)  │◄─────────► │   ack · dedupe by uuid · expiry · order        │
+│ Automations screen, pushed   │  broker    │        │                                       │
+│  from Chats (cached state)   │  holds     │  AgentLoop + ApprovalGate (as today)           │
 │                              │  messages  │   tools: Sphinx · memory · automations · jobs  │
 │ Push via hub → NSE           │  while     │        │ loopback only                         │
 └──────────────────────────────┘  asleep    │  Strut (bundled) ── Ladybug graph              │
@@ -457,25 +457,13 @@ What that means for Peel:
 
 ## 6. The app (Liquid Glass)
 
-The Mac's layout is Slack's. On a phone that becomes a stack, with the
-system's glass doing the chrome. The rule: glass is for controls that float
-over content (tab bar, toolbars, the composer, the on-a-call bar), never for
-content itself. Colours stay Sphinx's and keep the design's meanings:
-orange is "waiting on you", green is running or done.
+The design is [../design/iphone.md](../design/iphone.md), agreed by Tom on
+2026-10-14 from the board
+(https://claude.ai/artifact/PWonJ4bK6FXiCr7dpmrLBm). In short: tabs Chats,
+Payments and You, plus search (Tom, 2026-10-14); the agent is a DM in
+Chats, not a tab, and Automations is a screen pushed from Chats; glass only
+on floating chrome; the Mac's colours and their meanings.
 
-| Tab | Holds |
-|---|---|
-| **Chats** | Unread, then tribes and direct messages, in the Mac sidebar's order; a chat pushes in; threads open as a sheet |
-| **Agent** | The DM with the agent, with its cards inline: approval, Needs you, job and automation results. The connection bolt and the brain's status ("Mac awake", "Mac asleep since 23:10, your messages are queued") sit in its header |
-| **Activity** | One list with a filter (Needs you, Running, Automations), not three tabs. Rows show what the brain last reported and when; pull to refresh sends `status`. Orange count on the tab while something waits on you |
-| **Payments** | As on the Mac: balance, history, receive, pay an invoice |
-| Search (system search role) | Search across chats, the ⌘K palette's phone form |
-
-- **The composer** is a `UITextView` wrapper with the Mac composer's
-  behaviour, inside a glass capsule at the bottom, with the attach and send
-  buttons inside it.
-- **Cards open where they are tapped.** An approval is inline in the chat,
-  not a pinned modal; Allow once / Always allow / Deny as on the Mac.
 - **Calls** use LiveKit's iOS SDK behind `CallProvider`. CallKit and the
   official app's VoIP push are later.
 - **Quick capture** (the Mac's planned ⌃⌥Space) is an App Intent on the
@@ -508,27 +496,34 @@ client track is held up by S1.
 |---|---|---|---|
 | **I1** | C | Batch 17: `PeelUI`, the platform protocols, `PeelMac`. Runs alone | — |
 | **I2** | C | The iOS project and target, signing, iOS 26 in `Package.swift`; the app opens, unlocks with the PIN, restores from words, connects | I1, S1 |
-| **I3** | C | Chats: list, conversation, composer, threads, attachments, Markdown (reusing the Mac's renderer) | I2 |
-| **I4** | C | Payments, contacts, tribes, invites | I3 |
-| **I5** | C | Push: the extension, the shared Keychain group, `setPushToken` once the hub agrees | I3, S4 |
-| **I6** | C | Calls | I3 |
+| **F1** | C | Phone foundation: the theme and glass helpers, the tab shell, navigation, the shared rows, a cross-platform Markdown renderer (the Mac's `MessageText` off AppKit) | I2 |
+| **F2a** | C | Chats: the list, its top rows, Unread, Tribes, Direct messages, swipe actions, the not-connected state | F1 |
+| **F2b** | C | Conversation, the Thread sheet and the composer | F1 |
+| **F2c** | C | Payments, You and Lock | F1 |
+| **I5** | C | Push: the extension, the shared Keychain group, `setPushToken` once the hub agrees | F2b, S4 |
+| **I6** | C | Calls | F2b |
 | **B1** | R | The agent as a real contact: the `Agent` record (ready for more than one), its identity as a second engine on the brain, setup in Account › Agent, its contact row opening the Agent chat on the Mac | S2 |
 | **B2** | R | `RemoteInbox`, the envelope, ack, expiry and order; Talk turns from the DM into `AgentSession` | B1 |
 | **B3** | R | Commands for automations and status; deliveries to the DM | B2 |
 | **B4** | R | Approvals over the remote (`approval.request` / `decide`), with the replay and expiry checks | B2 |
 | **B5** | R | Jobs over the remote, once jobs-architecture.md's P2 and P3 land | B2, P2, P3 |
-| **B6** | both | The phone's Agent and Activity tabs over B2 to B4 | I3, B3, B4 |
+| **B6** | both | The agent DM's cards and the Automations screen on the phone, over B2 to B4 | F2b, B3, B4 |
 | **B7** | both | Notification actions for approvals; the App Intents and share sheet | I5, B6 |
 | **H1** | R | Brain mode for a Mac mini; brain export and import; the laptop as a client; Run missed on wake | B3 |
 
 ```
 now      S1  S2  S3  S4        I1 (alone)
 then     I2  B1
-then     I3  B2
-then     I4  B3  B4  I6
-then     I5  B6  H1
+then     F1  B2
+then     F2a F2b F2c  B3  B4
+then     I5  I6  B6  H1
 last     B7  B5 (when jobs land)
 ```
+
+F2a, F2b and F2c run in parallel once F1 is in. The agent's cards (the
+brain's status, queued messages, approvals, job results) and the
+Automations screen on the phone wait for the remote track (B1 to B4);
+until then the agent DM is a plain DM.
 
 ### Done means, for v1
 

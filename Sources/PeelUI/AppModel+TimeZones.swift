@@ -91,6 +91,18 @@ extension AppModel {
         try? await engine?.localTime(of: chat, member: member)
     }
 
+    /// Whether your offset goes with what you send in `chat`: on unless
+    /// turned off; nil before an account is open.
+    public func timeZoneSharing(in chat: String) async -> Bool? {
+        guard let engine else { return nil }
+        return (try? await engine.timeZoneSharing(in: chat)) ?? true
+    }
+
+    /// Turns sharing your offset on or off in a direct message or a private tribe.
+    public func setTimeZoneSharing(_ on: Bool, in chat: String) async throws {
+        try await signedIn().setTimeZoneSharing(on, in: chat)
+    }
+
     /// Chooses this account's zone (an IANA name), or nil for this Mac's.
     public func setTimeZone(_ identifier: String?) async throws {
         try await signedIn().setTimeZone(identifier)

@@ -92,12 +92,7 @@ struct TribeDetailsPanel: View {
     }
 
     /// "Public tribe · Created 3 Oct 2026".
-    private var subtitle: String {
-        [
-            tribe.isPrivate ? "Private tribe" : "Public tribe",
-            info?.created.map { "Created \(Formatting.date($0))" },
-        ].compactMap { $0 }.joined(separator: " · ")
-    }
+    private var subtitle: String { tribe.detailsSubtitle(created: info?.created) }
 
     @ViewBuilder private var facts: some View {
         FactList {
@@ -109,7 +104,7 @@ struct TribeDetailsPanel: View {
             }
             Fact("To join") { known(info?.joinPrice.described) }
             Fact("Each message") { Text(tribe.messagePrice.described) }
-            Fact("Escrow") { Text(escrow) }
+            Fact("Escrow") { Text(tribe.escrowLine(millis: info?.escrowMillis)) }
         }
         .monospacedDigit()
         .padding(.top, 14)
@@ -139,15 +134,6 @@ struct TribeDetailsPanel: View {
     /// A value the registry gives: a dash until it answers.
     private func known(_ text: String?) -> some View {
         Text(text ?? "—").foregroundStyle(text == nil ? Theme.tertiaryText : Theme.text)
-    }
-
-    /// "5 sats, back after 2 hours", or None.
-    private var escrow: String {
-        guard tribe.escrowMsat > 0 else { return "None" }
-        let amount = Sats.exact(msat: tribe.escrowMsat)
-        guard let millis = info?.escrowMillis, millis > 0 else { return amount }
-        let hours = Sats.text(UInt64(millis), unit: Sats.millisecondsPerHour)
-        return "\(amount), back after \(hours) \(hours == "1" ? "hour" : "hours")"
     }
 
     /// The tribe's pages (`Tribe.pages`, in the More menu's order), opened
@@ -222,71 +208,41 @@ private struct TribeIdentitySection: View {
     @Environment(AppModel.self) private var model
     let tribe: Tribe
 
-    @State private var alias = ""
-    /// The tribe's own photo: nil while it uses the account's.
-    @State private var photoURL: String?
-    @State private var uploading = false
-    @State private var saving = false
-    @State private var problem: String?
+    /// What is shown, and Save (`TribeIdentityDraft`).
+    @State private var draft = TribeIdentityDraft()
 
     private var accountName: String { model.myAlias?.nilIfEmpty ?? "you" }
-    private var changed: Bool {
-        alias.trimmed.nilIfEmpty != tribe.myAlias || photoURL != tribe.myPhotoURL
-    }
 
     var body: some View {
+        @Bindable var draft = draft
         FormSection("How you appear in #\(tribe.displayName)") {
-            FormItem(label: "Name", helper: helper, problem: problem) {
-                FormTextField(label: "Name", prompt: accountName, text: $alias)
+            FormItem(label: "Name", helper: draft.note, problem: draft.problem) {
+                FormTextField(label: "Name", prompt: accountName, text: $draft.alias)
             }
             FormItem(label: "Photo") {
                 PictureField(
-                    picture: Avatar(name: alias.trimmed.nilIfEmpty ?? accountName, url: photoURL ?? model.myPhotoURL,
+                    picture: Avatar(name: draft.alias.trimmed.nilIfEmpty ?? accountName, url: draft.photoURL ?? model.myPhotoURL,
                                     size: Theme.AvatarSize.xl, hue: model.myHue),
-                    upload: { photoURL = try await model.uploadPicture($0) },
-                    remove: photoURL == nil ? nil : .now { photoURL = nil },
-                    uploading: $uploading
+                    upload: { draft.photoURL = try await model.uploadPicture($0) },
+                    remove: draft.photoURL == nil ? nil : .now { draft.photoURL = nil },
+                    uploading: $draft.uploading
                 )
             }
-            if changed {
+            if draft.changed(from: tribe) {
                 HStack {
                     Spacer()
-                    Button("Revert") { reset() }
+                    Button("Revert") { draft.reset(to: tribe) }
                         .buttonStyle(.peel(.ghost))
-                        .disabled(saving)
-                    Button { Task { await save() } } label: { Text("Save").buttonProgress(saving) }
-                        .buttonStyle(.peel(.primary))
-                        .disabled(uploading)
+                        .disabled(draft.saving)
+                    Button { Task { await draft.save(in: tribe, with: model) } } label: {
+                        Text("Save").buttonProgress(draft.saving)
+                    }
+                    .buttonStyle(.peel(.primary))
+                    .disabled(draft.uploading)
                 }
             }
         }
-        .onAppear(perform: reset)
-        .onChange(of: alias) { problem = nil }
-    }
-
-    /// What members will read, only when it is not what was typed: a tribe
-    /// alias is only letters, digits and underscores.
-    private var helper: String? {
-        guard let typed = alias.trimmed.nilIfEmpty else { return nil }
-        let sent = tribeAlias(typed)
-        return sent == typed ? nil : "Members see \u{201C}\(sent)\u{201D}."
-    }
-
-    private func reset() {
-        alias = tribe.myAlias ?? ""
-        photoURL = tribe.myPhotoURL
-        problem = nil
-    }
-
-    private func save() async {
-        guard !saving, !uploading else { return }
-        saving = true
-        defer { saving = false }
-        do {
-            try await model.setTribeIdentity(tribe.pubkey, alias: alias, photoURL: photoURL)
-        } catch {
-            problem = PeelError.problem(error, couldNot: "save how you appear")
-        }
+        .onAppear { draft.reset(to: tribe) }
     }
 }
 

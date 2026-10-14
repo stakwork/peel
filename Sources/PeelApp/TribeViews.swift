@@ -13,49 +13,19 @@ struct TribeSettingsForm: View {
     let editing: Tribe?
     let done: () -> Void
 
-    @State private var name = ""
-    @State private var summary = ""
-    /// The image's link, never shown: what the tribe has, or an upload.
-    @State private var photoURL = ""
+    /// What is typed, and what the tribe had (`TribeSettingsDraft`).
+    @State private var draft = TribeSettingsDraft()
     @State private var uploadingImage = false
-    @State private var priceToJoin = ""
-    @State private var pricePerMessage = ""
-    @State private var escrow = ""
-    @State private var escrowHours = ""
-    @State private var isPrivate = false
-    @State private var unlisted = false
-    /// Turned on, in the order they were.
-    @State private var tags: [String] = []
-    /// What the tribe had, so a field left as it was shown sends exactly that.
-    @State private var original: TribeSettings?
     /// What is on its way: Create or Save (which spins), or Delete.
     @State private var working: Action?
     @State private var problem: String?
     /// What is wrong with one field, shown under it until a field changes.
-    @State private var fieldProblem: FieldProblem?
+    @State private var fieldProblem: TribeSettingsDraft.FieldProblem?
 
     private enum Action { case save, delete }
-    /// A field that can have its own problem, named as the engine's words name it.
-    private enum Field: String {
-        case name, photo = "image", priceToJoin = "price to join", pricePerMessage = "price per message"
-        case escrow, escrowHours = "escrow time"
+    private typealias Field = TribeSettingsDraft.Field
 
-        /// The field an engine refusal is about, if it is about one.
-        init?(_ failure: Engine.Failure) {
-            switch failure {
-            case .tribeNeedsName: self = .name
-            case .tribeImageNotHTTPS: self = .photo
-            default: return nil
-            }
-        }
-    }
-
-    private struct FieldProblem: Error {
-        let field: Field
-        let text: String
-    }
-
-    private var loaded: Bool { editing == nil || original != nil }
+    private var loaded: Bool { editing == nil || draft.original != nil }
 
     var body: some View {
         // Its own buttons do not close it while a save or delete runs.
@@ -85,10 +55,10 @@ struct TribeSettingsForm: View {
                 .keyboardShortcut(.defaultAction)
                 // Not off while it saves, so it keeps its fill under the
                 // spinner; `save` ignores a second click.
-                .disabled(working == .delete || !loaded || name.trimmed.isEmpty || uploadingImage)
+                .disabled(working == .delete || !loaded || draft.name.trimmed.isEmpty || uploadingImage)
             }
         }
-        .onChange(of: [name, photoURL, priceToJoin, pricePerMessage, escrow, escrowHours]) {
+        .onChange(of: draft.typedFields) {
             if fieldProblem != nil { fieldProblem = nil }
         }
         .task { await load() }
@@ -97,43 +67,42 @@ struct TribeSettingsForm: View {
     @ViewBuilder private var fields: some View {
         FormSection("Basics") {
             FormItem(label: "Name", problem: problem(.name)) {
-                FormTextField(label: "Name", prompt: "Required", text: $name, problem: problem(.name) != nil)
+                FormTextField(label: "Name", prompt: "Required", text: $draft.name, problem: problem(.name) != nil)
             }
             FormItem(label: "What it is about") {
-                FormTextField(label: "What it is about", text: $summary, axis: .vertical)
+                FormTextField(label: "What it is about", text: $draft.summary, axis: .vertical)
             }
             FormItem(label: "Image", problem: problem(.photo)) {
                 PictureField(
                     picture: TribeIcon(
-                        name: name.trimmed.nilIfEmpty ?? "?", url: photoURL.nilIfEmpty,
+                        name: draft.name.trimmed.nilIfEmpty ?? "?", url: draft.photoURL.nilIfEmpty,
                         pubkey: editing?.pubkey ?? "", size: Theme.AvatarSize.xl
                     ).avatar,
-                    upload: { photoURL = try await model.uploadPicture($0) },
-                    remove: photoURL.isEmpty ? nil : .now { photoURL = "" },
+                    upload: { draft.photoURL = try await model.uploadPicture($0) },
+                    remove: draft.photoURL.isEmpty ? nil : .now { draft.photoURL = "" },
                     uploading: $uploadingImage
                 )
             }
             FormItem(label: "Tags") {
-                // The official apps' set, and any other the tribe already has.
-                TagChips(tags: TribeSettings.tagChoices + (original?.tags ?? []).filter { !TribeSettings.tagChoices.contains($0) },
-                         selection: $tags)
+                TagChips(tags: draft.tagChoices, selection: $draft.tags)
             }
         }
         FormSection("Pricing") {
             // Two to a line. Under a price, what members actually pay when it is more.
-            let typed = try? settings()
+            let pay = draft.membersPay
             HStack(alignment: .top, spacing: Theme.Space.md) {
-                amountItem("Price to join", helper: membersPay(typed?.joinPrice), text: $priceToJoin, unit: "sats", field: .priceToJoin)
-                amountItem("Price per message", helper: membersPay(typed?.messagePrice), text: $pricePerMessage, unit: "sats", field: .pricePerMessage)
+                amountItem("Price to join", helper: pay.toJoin, text: $draft.priceToJoin, unit: "sats", field: .priceToJoin)
+                amountItem("Price per message", helper: pay.perMessage, text: $draft.pricePerMessage, unit: "sats",
+                           field: .pricePerMessage)
             }
             HStack(alignment: .top, spacing: Theme.Space.md) {
-                amountItem("Escrow per message", helper: "Held, then paid back", text: $escrow, unit: "sats", field: .escrow)
-                amountItem("Paid back after", text: $escrowHours, unit: "hours", field: .escrowHours)
+                amountItem("Escrow per message", helper: "Held, then paid back", text: $draft.escrow, unit: "sats", field: .escrow)
+                amountItem("Paid back after", text: $draft.escrowHours, unit: "hours", field: .escrowHours)
             }
         }
         FormSection("Access") {
-            FormSwitchRow(label: "Private", detail: "You approve who joins.", isOn: $isPrivate)
-            FormSwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $unlisted)
+            FormSwitchRow(label: "Private", detail: "You approve who joins.", isOn: $draft.isPrivate)
+            FormSwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $draft.unlisted)
         }
     }
 
@@ -146,12 +115,6 @@ struct TribeSettingsForm: View {
         }
     }
 
-    /// "Members pay 3 sats, the minimum.", only when that is not the price typed.
-    private func membersPay(_ price: TribePrice?) -> String? {
-        guard let price, price.reason != nil else { return nil }
-        return "Members pay \(price.described)."
-    }
-
     private func problem(_ field: Field) -> String? {
         fieldProblem?.field == field ? fieldProblem?.text : nil
     }
@@ -159,45 +122,10 @@ struct TribeSettingsForm: View {
     private func load() async {
         guard let editing else { return }
         do {
-            let settings = try await model.tribeSettings(editing.pubkey)
-            name = settings.name
-            summary = settings.summary ?? ""
-            photoURL = settings.photoURL ?? ""
-            priceToJoin = Sats.text(settings.priceToJoinMsat, unit: Sats.msatPerSat)
-            pricePerMessage = Sats.text(settings.pricePerMessageMsat, unit: Sats.msatPerSat)
-            escrow = Sats.text(settings.escrowMsat, unit: Sats.msatPerSat)
-            escrowHours = Sats.text(settings.escrowMillis, unit: Sats.millisecondsPerHour)
-            isPrivate = settings.isPrivate
-            unlisted = settings.unlisted
-            tags = settings.tags
-            original = settings
+            draft = TribeSettingsDraft(try await model.tribeSettings(editing.pubkey))
         } catch {
             problem = PeelError.problem(error, couldNot: "load the tribe")
         }
-    }
-
-    private func settings() throws -> TribeSettings {
-        /// A field still showing what the tribe had sends exactly that, even
-        /// where the shown text was rounded (an escrow time of 20 minutes).
-        /// A number that does not parse is that field's problem.
-        func value(
-            _ text: String, unit: UInt64, _ stored: KeyPath<TribeSettings, UInt64>, _ field: Field
-        ) throws -> UInt64 {
-            if let original, text == Sats.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
-            do {
-                return try Sats.parse(text, unit: unit, of: field.rawValue)
-            } catch {
-                throw FieldProblem(field: field, text: PeelError.problem(error))
-            }
-        }
-        return TribeSettings(
-            name: name, summary: summary, photoURL: photoURL,
-            pricePerMessageMsat: try value(pricePerMessage, unit: Sats.msatPerSat, \.pricePerMessageMsat, .pricePerMessage),
-            priceToJoinMsat: try value(priceToJoin, unit: Sats.msatPerSat, \.priceToJoinMsat, .priceToJoin),
-            escrowMsat: try value(escrow, unit: Sats.msatPerSat, \.escrowMsat, .escrow),
-            escrowMillis: try value(escrowHours, unit: Sats.millisecondsPerHour, \.escrowMillis, .escrowHours),
-            isPrivate: isPrivate, unlisted: unlisted, tags: tags
-        )
     }
 
     private func save() async {
@@ -208,21 +136,16 @@ struct TribeSettingsForm: View {
         fieldProblem = nil
         do {
             if let editing {
-                try await model.updateTribe(editing.pubkey, try settings())
+                try await model.updateTribe(editing.pubkey, try draft.settings())
             } else {
-                try await model.createTribe(try settings())
+                try await model.createTribe(try draft.settings())
             }
             done()
-        } catch let error as FieldProblem {
-            fieldProblem = error
-        } catch let failure as Engine.Failure {
-            if let field = Field(failure) {
-                fieldProblem = FieldProblem(field: field, text: PeelError.problem(failure))
-            } else {
-                problem = PeelError.problem(failure, couldNot: editing == nil ? "create the tribe" : "save the tribe")
-            }
         } catch {
-            problem = PeelError.problem(error, couldNot: editing == nil ? "create the tribe" : "save the tribe")
+            switch TribeSettingsDraft.saveProblem(error, creating: editing == nil) {
+            case .field(let field): fieldProblem = field
+            case .form(let text): problem = text
+            }
         }
     }
 

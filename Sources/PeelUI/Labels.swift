@@ -97,3 +97,83 @@ extension AppModel {
             : "Without your twelve words, it can't be brought back."
     }
 }
+
+/// An invite's words, as the Mac's sidebar and detail and the phone's
+/// Chats and invite screen say them.
+extension InviteRecord {
+    /// Beside a pending invite's name: the amount once it can be shared.
+    public var shortStatus: String {
+        switch status {
+        case .sending: "Sending…"
+        case .cancelling: "Cancelling…"
+        default: Sats.format(msat: amountMsat)
+        }
+    }
+
+    /// "Made 3 Oct 2026 at 10:02 · waiting to be used".
+    public var statusLine: String {
+        let made = "Made \(Formatting.dateAndTime(created))"
+        return switch status {
+        case .sending: "Setting up…"
+        case .ready: "\(made) · waiting to be used"
+        case .cancelling: "Cancelling, sats not back yet"
+        case .cancelled: "Cancelled, sats returned"
+        case .used: "Used"
+        case .failed: "Payment failed"
+        }
+    }
+}
+
+/// A tribe's details in words, for the Mac's panel and the phone's screen.
+extension Tribe {
+    /// "Public tribe · Created 3 Oct 2026", the date once the registry answers.
+    public func detailsSubtitle(created: Date?) -> String {
+        [isPrivate ? "Private tribe" : "Public tribe", created.map { "Created \(Formatting.date($0))" }]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// "5 sats, back after 2 hours", or None; the time once the registry answers.
+    public func escrowLine(millis: Int64?) -> String {
+        guard escrowMsat > 0 else { return "None" }
+        let amount = Sats.exact(msat: escrowMsat)
+        guard let millis, millis > 0 else { return amount }
+        let hours = Sats.text(UInt64(millis), unit: Sats.millisecondsPerHour)
+        return "\(amount), back after \(hours) \(hours == "1" ? "hour" : "hours")"
+    }
+
+    /// What members will read for a name typed for a tribe, only when it
+    /// is not what was typed: a tribe alias is only letters, digits and
+    /// underscores.
+    public static func aliasNote(_ typed: String) -> String? {
+        guard let typed = typed.trimmed.nilIfEmpty else { return nil }
+        let sent = tribeAlias(typed)
+        return sent == typed ? nil : "Members see \u{201C}\(sent)\u{201D}."
+    }
+}
+
+extension TribeInfo {
+    /// "Joining costs 10 sats · 3 sats a message", before joining.
+    public var priceLine: String {
+        "Joining costs \(joinPrice.text) · \(messagePrice.text) a message"
+    }
+}
+
+extension ContactCode {
+    /// Who the code adds, under its name: an invite adds its inviter.
+    public var previewDetail: String {
+        if case .invite = self { "Adds whoever sent this invite." } else { "Contact info" }
+    }
+
+    /// Why this code adds nobody though it reads: a tribe link is joined, not added.
+    public var addRefusal: String? {
+        if case .tribe = self { PeelError.problem(Engine.Failure.tribeLinkNotContact) } else { nil }
+    }
+}
+
+extension Conversation {
+    /// Whether its details offer the time zone switch: a person or a
+    /// private tribe; a public tribe never gets your offset.
+    public func offersTimeZoneSwitch(tribe: Tribe?) -> Bool {
+        !isTribe || tribe?.isPrivate == true
+    }
+}

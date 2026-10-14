@@ -4,7 +4,6 @@ import PeelAgent
 import AppKit
 import PeelCore
 import PeelUI
-import SwiftUI
 
 /// Runs a check script against Peel's own windows, offscreen only
 /// (`Offscreen.drive`): events go into this app's own queue for its own
@@ -53,10 +52,15 @@ final class OffscreenDriver {
     /// A `probe` running: its samples, a frame each, and the steps taken
     /// meanwhile, by seconds since it started.
     private struct Probe {
-        struct Sample: Encodable {
+        /// A frame as read (`ListProbe.Capture`), with the model's rows and
+        /// the target then; what the file holds is made from it at the end.
+        struct Sample {
             let t: Double
             let width: Double
-            let lists: [ListProbe.List]
+            let lists: [ListProbe.Capture]
+            let chatRows: [ChatRow]
+            let threadRows: [ChatRow]
+            let target: String?
         }
         struct Event: Encodable {
             let t: Double
@@ -112,12 +116,13 @@ final class OffscreenDriver {
                 line += 1
                 let text = text.trimmingCharacters(in: .whitespaces)
                 guard !text.isEmpty, !text.hasPrefix("//") else { continue }
-                // A pairing link's key never reaches the log.
-                Offscreen.log("drive: \(line): " + text.replacing(/key=[^&"\s]*/, with: "key=[redacted]"))
+                // A pairing link's key never reaches the log or a probe.
+                let redacted = text.replacing(/key=[^&"\s]*/, with: "key=[redacted]")
+                Offscreen.log("drive: \(line): " + redacted)
                 let step = try JSONDecoder().decode(Step.self, from: Data(text.utf8))
                 if let probe {
-                    // Never what is typed.
-                    let event = Probe.Event(t: Date.now.timeIntervalSince(probe.start), step: step.type == nil ? text : "type")
+                    // As the log has it, and never what is typed.
+                    let event = Probe.Event(t: Date.now.timeIntervalSince(probe.start), step: step.type == nil ? redacted : "type")
                     self.probe?.events.append(event)
                 }
                 try await perform(step)
@@ -183,8 +188,8 @@ final class OffscreenDriver {
         } else if let which = step.thread {
             try openThread(which)
         } else if step.close == "thread" {
-            // As the thread's X does; Escape in its composer closes it too.
-            withAnimation(.easeIn(duration: 0.15)) { model()?.closeThread() }
+            // As the thread's X and Escape do.
+            ThreadPanel.closing { model()?.closeThread() }
         } else if let points = step.scroll {
             try await scroll(by: points, in: step.list ?? "chat")
         } else if let row = step.scrollTo {
@@ -468,20 +473,11 @@ final class OffscreenDriver {
             do { try finishProbe() } catch { Offscreen.log("drive: probe \(probe.name) not written: \(error)") }
             return
         }
-        func rows(_ kind: String) -> [ChatRow] {
-            switch kind {
-            case "chat": model.chatRows
-            case "thread": model.threadRows
-            default: []
-            }
-        }
-        let target = self.target
-        let lists = ListProbe.sample(
-            divider: { rows($0).first(where: \.startsNew)?.id },
-            target: { kind in target.flatMap { uuid in rows(kind).first { $0.holds(uuid) }?.id } }
+        let sample = Probe.Sample(
+            t: Date.now.timeIntervalSince(probe.start), width: Double(main?.frame.width ?? 0), lists: ListProbe.capture(),
+            chatRows: model.chatRows, threadRows: model.threadRows, target: target
         )
-        let width = Double(main?.frame.width ?? 0)
-        self.probe?.samples.append(.init(t: Date.now.timeIntervalSince(probe.start), width: width, lists: lists))
+        self.probe?.samples.append(sample)
     }
 
     private func finishProbe() throws {
@@ -494,14 +490,37 @@ final class OffscreenDriver {
         probeActivity = nil
         guard let probe else { return }
         self.probe = nil
+        struct Sample: Encodable {
+            let t: Double
+            let width: Double
+            let lists: [ListProbe.List]
+        }
         struct File: Encodable {
             let name: String
             let events: [Probe.Event]
-            let samples: [Probe.Sample]
+            let samples: [Sample]
+        }
+        // Each list's rows by index, and each row's tag, made once.
+        var indices: [[String]: [String: Int]] = [:]
+        var tags: [String: String] = [:]
+        func tag(_ id: String) -> String {
+            if let tag = tags[id] { return tag }
+            let tag = ListProbe.tag(id)
+            tags[id] = tag
+            return tag
+        }
+        let samples = probe.samples.map { sample in
+            Sample(t: sample.t, width: sample.width, lists: sample.lists.map { capture in
+                let rows = capture.kind == "chat" ? sample.chatRows : capture.kind == "thread" ? sample.threadRows : []
+                let index = indices[capture.ids] ?? Dictionary(capture.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+                indices[capture.ids] = index
+                let target = sample.target.flatMap { uuid in rows.first { $0.holds(uuid) }?.id }
+                return ListProbe.list(capture, divider: rows.first(where: \.startsNew)?.id, target: target, index: index, tag: tag)
+            })
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        try encoder.encode(File(name: probe.name, events: probe.events, samples: probe.samples))
+        try encoder.encode(File(name: probe.name, events: probe.events, samples: samples))
             .write(to: output.appendingPathComponent("\(probe.name).probe.json"))
         Offscreen.log("drive: probe \(probe.name), \(probe.samples.count) frames")
     }
@@ -526,7 +545,7 @@ final class OffscreenDriver {
             row = rows.first { $0.offset == index }?.element
         }
         guard let row else { throw Failure(description: "no row for thread \(which)") }
-        withAnimation(.easeOut(duration: 0.2)) {
+        ThreadPanel.opening {
             if let summary = row.summary {
                 model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
             } else {
@@ -580,8 +599,8 @@ final class OffscreenDriver {
         throw Failure(description: "row \(index) never laid out")
     }
 
-    /// The scroll view showing the list: the one whose content and height
-    /// are the list's.
+    /// The scroll view showing the list, found by what the list last
+    /// reported: its content's height, its own height and its offset.
     private func scrollView(_ kind: String) throws -> NSScrollView {
         guard let end = ListProbe.end(kind: kind), let root = main?.contentView else {
             throw Failure(description: "no \(kind) list")
@@ -592,12 +611,16 @@ final class OffscreenDriver {
             view.subviews.forEach(walk)
         }
         walk(root)
+        // The one whose content, height and place in it are all the list's;
+        // two lists matching on all three would be refused, not guessed.
         let height = end.view.upperBound - end.view.lowerBound
-        guard let view = found.first(where: { scroll in
-            abs((scroll.documentView?.frame.height ?? 0) - end.content) < 2 && abs(scroll.contentView.bounds.height - height) < 2
-        }) else {
-            let sizes = found.map { "\(Int($0.documentView?.frame.height ?? 0))/\(Int($0.contentView.bounds.height))" }
-            throw Failure(description: "no scroll view for the \(kind) list (\(Int(end.content))/\(Int(height))) among \(sizes)")
+        let matches = found.filter { scroll in
+            abs((scroll.documentView?.frame.height ?? 0) - end.content) < 1
+                && abs(scroll.contentView.bounds.height - height) < 1
+                && abs(scroll.contentView.bounds.minY - end.view.lowerBound) < 1
+        }
+        guard matches.count == 1, let view = matches.first else {
+            throw Failure(description: "\(matches.count) scroll views match the \(kind) list among \(found.count)")
         }
         return view
     }

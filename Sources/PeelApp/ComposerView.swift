@@ -84,7 +84,8 @@ struct Composer: View {
                     stop()
                     return true
                 }
-                return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+                // A reply cancelled, else the thread closed, with its slide.
+                return ThreadPanel.closing { model.escape(in: composer) }
             },
             attach: { if composer.takesFiles { model.attach($0, to: composer) } },
             dropTargeted: { if composer.takesFiles { model.dropTargeted($0, composer: composer) } }

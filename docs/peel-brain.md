@@ -178,6 +178,10 @@ down; the strut connection carries memory, jobs, run results and the
 graph. The agent's own Sphinx identity on the server needs Peel's engine
 there, which is later (below).
 
+Tom, 2026-10-14: the agent as a contact "makes a lot of sense". So the
+agent's chat goes over Sphinx to its own identity, and the direct strut
+connection is for everything else.
+
 ## Later
 
 - **Peel's engine on the server.** So the agent can be messaged and reply

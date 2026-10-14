@@ -5,7 +5,7 @@ import LiveKit
 
 @main
 struct PeelApp: App {
-    @State private var model = AppModel(platform: .mac)
+    @State private var model = AppModel(platform: .mac())
     #if os(macOS)
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     #endif

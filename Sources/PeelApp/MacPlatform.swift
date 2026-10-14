@@ -7,7 +7,8 @@ import PeelUI
 // WebKit and AVKit, which it never imports itself.
 
 extension Platform {
-    static var mac: Platform {
+    /// A new set each call: the app makes its one model with it.
+    static func mac() -> Platform {
         Platform(
             presence: MacPresence(), files: FilePanels(), pasteboard: MacPasteboard(),
             playback: MediaPlayback.shared, web: { WebPane(profile: $0) }, calls: LiveKitCalls(),
@@ -73,6 +74,6 @@ extension AppModel {
     var callSession: CallSession? { call as? CallSession }
 
     /// The web pane beside the chat: on the Mac, always a `WebPane`
-    /// (`Platform.mac`).
+    /// (`Platform.mac()`).
     var web: WebPane { webPresenter as! WebPane }
 }

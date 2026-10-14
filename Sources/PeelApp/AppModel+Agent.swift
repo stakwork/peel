@@ -49,13 +49,13 @@ final class MacAgent: AgentHost {
     /// this launch (forgotten from the lock screen) or this build ships
     /// none; a development profile's is in its folder.
     func forget(_ profile: Profile) throws {
-        strut?.stop(quietly: true)
+        stop()
         if profile.kind == .app { try BundledStrut.erase() }
     }
 }
 
 extension AppModel {
-    /// The Mac's model is always made with a `MacAgent` (`Platform.mac`).
+    /// The Mac's model is always made with a `MacAgent` (`Platform.mac()`).
     var macAgent: MacAgent { agentHost as! MacAgent }
 
     var memoryServer: MemoryServer? {
@@ -90,7 +90,8 @@ extension AppModel {
 
     var automations: AutomationsState {
         get { macAgent.automations }
-        set { macAgent.automations = newValue }
+        // In place: `automations.runs[id] = …` copies nothing.
+        _modify { yield &macAgent.automations }
     }
 }
 

@@ -653,7 +653,7 @@ public final class AppModel {
     }
 
     public func openNotificationSettings() {
-        notifier.openSystemSettings()
+        platform.presence.openNotificationSettings()
     }
 
     /// Off: notifications say only "New message".

@@ -148,6 +148,22 @@ in the review's batch 17 status. The plan:
   (`ComposerField`, an `NSTextView`) cannot be shared, and neither can
   menus, floating windows or the web pane.
 
+Review findings not applied (2026-10-14), for a later batch:
+
+- The Mac reaches its own services through casts on the model
+  (`agentHost as! MacAgent`, `webPresenter as! WebPane`). `Platform.mac()`
+  is the only place the model is made, so they hold; type-safe access
+  needs `AppModel` generic over its platform, or the agent's methods moved
+  onto `MacAgent` (which would also drop the seven forwarders in
+  `AppModel+Agent`).
+- `FilePicking` is synchronous, shaped by `NSOpenPanel`; the phone's
+  pickers are async, so it changes when the phone attaches files (I3).
+- Mac-only state still in `PeelUI`: `agentRowsOpened`, `agentConnectFrom`,
+  `MenuHosting` and `takesCommands`, the `-profile` launch argument and the
+  old `pinTimeoutHours` default.
+- `PeelTestSupport` imports PeelCore `@testable`, so a release build of
+  every target fails; nothing builds release today.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

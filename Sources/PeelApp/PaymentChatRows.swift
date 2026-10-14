@@ -206,7 +206,7 @@ struct NotSettled: View {
     let what: String
 
     /// The same words in Payments' detail.
-    static let explanation = "Unconfirmed. Check your balance to see if it went"
+    static let explanation = PaymentItem.notSettled
 
     var body: some View {
         Text("\(what) not settled")

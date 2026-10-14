@@ -4,36 +4,6 @@ import PeelUI
 
 // MARK: - Rows
 
-/// The amount as banking apps show it: "+500" received (green), "−2,000"
-/// sent in the text colour; the sign carries direction, not colour alone.
-/// Pending reads grey, failed struck through.
-struct SignedAmount: View {
-    let msat: Int64
-    let incoming: Bool
-    var status: PaymentItem.Status = .complete
-    var size: CGFloat = 14
-
-    var body: some View {
-        Text(Sats.signed(msat: msat, incoming: incoming))
-        .strikethrough(status == .failed)
-        .font(Theme.font(size, .semibold))
-        .monospacedDigit()
-        .foregroundStyle(status != .complete ? Theme.secondaryText : incoming ? Theme.confirmed : Theme.text)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-    }
-
-    private var label: String {
-        let amount = Sats.format(msat: msat)
-        switch status {
-        case .complete: return "\(incoming ? "Received" : "Sent") \(amount)"
-        case .pending: return "\(incoming ? "Receiving" : "Sending") \(amount), pending"
-        case .unsettled: return "\(incoming ? "Receiving" : "Sending") \(amount), not settled"
-        case .failed: return "\(incoming ? "Receipt" : "Send") of \(amount) failed"
-        }
-    }
-}
-
 private extension AppModel {
     /// The counterpart's colour, or the text colour when nobody is known.
     func nameColour(of payment: PaymentItem) -> Color {
@@ -94,13 +64,7 @@ struct PaymentListRow: View {
     }
 
     private var time: String {
-        let time = Formatting.paymentTime(item.date, in: section)
-        switch item.status {
-        case .complete: return time
-        case .pending: return "\(item.isToContact ? "Waiting" : "Pending") · \(time)"
-        case .unsettled: return "Not settled · \(time)"
-        case .failed: return "\(item.incoming ? "Not received" : "Failed") · \(time)"
-        }
+        item.timeWithStatus(Formatting.paymentTime(item.date, in: section))
     }
 }
 
@@ -123,7 +87,7 @@ struct PaymentDetailPane: View {
                 )
             }
             who
-            if let quoted {
+            if let quoted = item.quoted {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(quoted.label)
                         .muted()
@@ -160,48 +124,17 @@ struct PaymentDetailPane: View {
                 Text(item.title)
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(model.nameColour(of: item))
-                Text(context)
+                Text(item.context)
                     .muted()
             }
             .lineLimit(1)
         }
     }
 
-    private var context: String {
-        if item.isTribe { return item.counterpart == nil ? "In #\(item.chatName ?? "")" : "Member of #\(item.chatName ?? "")" }
-        if item.chat != nil { return "Contact" }
-        if let invoice = item.invoice, !invoice.incoming {
-            return "To \(Formatting.shortKey(invoice.payee)), not a contact"
-        }
-        return "Not tied to a contact"
-    }
-
-    /// The message a boost was for, or the one a fee was for.
-    private var quoted: (label: String, message: Message)? {
-        if let boosted = item.boosted { return (item.incoming ? "Boosted your message" : "You boosted", boosted) }
-        if item.kind == .messageFee, let message = item.message { return ("Your message", message) }
-        return nil
-    }
-
-    private var pendingStatus: String {
-        guard item.isToContact else { return "Pending" }
-        return "Waiting for \(item.chatName ?? "them") to come online, can't be cancelled"
-    }
-
     private var facts: some View {
         FactList {
-            switch item.status {
-            case .complete:
-                Fact("Status", text: item.incoming ? "Received" : "Settled", symbol: "checkmark", tint: Theme.confirmed)
-            case .pending:
-                Fact("Status", text: pendingStatus, symbol: "clock")
-            case .unsettled:
-                Fact("Status", text: NotSettled.explanation, symbol: "questionmark.circle")
-            case .failed where item.incoming:
-                Fact("Status", text: item.error ?? "Not received", symbol: "xmark")
-            case .failed:
-                Fact("Status", text: "Failed\(item.error.map { ": \($0)" } ?? ""), nothing was sent", symbol: "xmark")
-            }
+            let status = item.statusFact
+            Fact("Status", text: status.text, symbol: status.symbol, tint: status.settled ? Theme.confirmed : nil)
             Fact("When", text: Formatting.moment(item.date, seconds: true))
             Fact("Amount", text: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
             if let fee = item.feeMsat {

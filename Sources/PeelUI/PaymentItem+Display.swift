@@ -90,4 +90,51 @@ extension PaymentItem {
         }
         return "\(what) \(how)"
     }
+
+    /// A row's time with what is still to happen: "Pending · 14:22",
+    /// "Waiting · 14:22" for a contact who is offline, "Failed · 14:22".
+    public func timeWithStatus(_ time: String) -> String {
+        switch status {
+        case .complete: time
+        case .pending: "\(isToContact ? "Waiting" : "Pending") · \(time)"
+        case .unsettled: "Not settled · \(time)"
+        case .failed: "\(incoming ? "Not received" : "Failed") · \(time)"
+        }
+    }
+
+    /// Who it was with, under their name in its detail.
+    public var context: String {
+        if isTribe { return counterpart == nil ? "In #\(chatName ?? "")" : "Member of #\(chatName ?? "")" }
+        if chat != nil { return "Contact" }
+        if let invoice, !invoice.incoming {
+            return "To \(Formatting.shortKey(invoice.payee)), not a contact"
+        }
+        return "Not tied to a contact"
+    }
+
+    /// The message a boost was for, or the one a fee was for, and what to call it.
+    public var quoted: (label: String, message: Message)? {
+        if let boosted { return (incoming ? "Boosted your message" : "You boosted", boosted) }
+        if kind == .messageFee, let message { return ("Your message", message) }
+        return nil
+    }
+
+    /// What an unsettled payment's detail says: the message went, the sats may not have.
+    public static let notSettled = "Unconfirmed. Check your balance to see if it went"
+
+    /// The status in its detail, and its symbol; `settled` when it is done.
+    public var statusFact: (text: String, symbol: String, settled: Bool) {
+        switch status {
+        case .complete:
+            (incoming ? "Received" : "Settled", "checkmark", true)
+        case .pending:
+            (isToContact ? "Waiting for \(chatName ?? "them") to come online, can't be cancelled" : "Pending", "clock", false)
+        case .unsettled:
+            (Self.notSettled, "questionmark.circle", false)
+        case .failed where incoming:
+            (error ?? "Not received", "xmark", false)
+        case .failed:
+            ("Failed\(error.map { ": \($0)" } ?? ""), nothing was sent", "xmark", false)
+        }
+    }
 }

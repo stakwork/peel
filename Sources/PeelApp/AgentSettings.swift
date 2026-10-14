@@ -150,25 +150,68 @@ private struct AgentNameRow: View {
 
 /// Account › Brain (`docs/peel-brain.md`): This Mac, Peel's own strut, or
 /// the account's home server by address and key, with what it said when
-/// last checked. A pairing link's server waits above it for a yes. Nothing
-/// is moved between the two: each keeps its own memory.
+/// last checked. A pairing link's server, or the switch back to this Mac,
+/// waits above it for a yes, with the offer to move the memory too (a move,
+/// never a sync: where it came from keeps its own). A move's progress and
+/// result show above it as well.
 struct BrainSection: View {
     @Environment(AppModel.self) private var model
     @State private var editing = false
+    @State private var leaving = false
+    /// Move this Mac's memory there (switching to a home server), on
+    /// unless this Mac's is known empty, until the person sets it.
+    @State private var moveMemory: Bool?
+    /// Bring the home server's memory back (switching to this Mac), on
+    /// unless this Mac's is known to hold some (it would be refused),
+    /// until the person sets it.
+    @State private var bringBack: Bool?
     @State private var problem: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let move = model.memoryMove {
+                MemoryMoveCallout(move: move) { model.memoryMove = nil }
+                    .padding(.top, Theme.Space.md)
+            }
             if let pairing = model.pairing {
                 Callout(
                     .neutral, "Use the home server at \(pairing.base.host ?? pairing.description)?",
-                    detail: "From a pairing link. The agent will use that server's memory; what it remembered on this Mac stays here."
+                    detail: "From a pairing link. The agent will use that server's memory."
                 ) {
-                    HStack(spacing: 8) {
-                        Button("Use home server") { attempt { try model.setBrain(.homeServer(pairing)) } }
+                    VStack(alignment: .leading, spacing: 8) {
+                        if offersMoveThere {
+                            MoveOption(label: "Move this Mac's memory there (it also stays here)", isOn: moveChoice)
+                        }
+                        HStack(spacing: 8) {
+                            Button("Use home server") {
+                                attempt { try model.setBrain(.homeServer(pairing), moving: offersMoveThere && moveChoice.wrappedValue) }
+                            }
                             .buttonStyle(.peel(.primary))
-                        Button("Cancel") { model.pairing = nil }
-                            .buttonStyle(.peel(.outline))
+                            .disabled(moving)
+                            Button("Cancel") { model.pairing = nil }
+                                .buttonStyle(.peel(.outline))
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.top, Theme.Space.md)
+                .onAppear(perform: offerMove)
+            }
+            if leaving, model.brain?.homeServer != nil {
+                Callout(.neutral, "Use this Mac?", detail: "The home server keeps its memory.") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if model.hasOwnStrut {
+                            MoveOption(label: "Bring the home server's memory to this Mac", isOn: bringBackChoice)
+                        }
+                        HStack(spacing: 8) {
+                            Button("Use this Mac") {
+                                attempt { try model.setBrain(.thisMac, moving: model.hasOwnStrut && bringBackChoice.wrappedValue) }
+                                leaving = false
+                            }
+                            .buttonStyle(.peel(.primary))
+                            Button("Cancel") { leaving = false }
+                                .buttonStyle(.peel(.outline))
+                        }
                     }
                     .padding(.top, 6)
                 }
@@ -176,7 +219,8 @@ struct BrainSection: View {
             }
             SettingsSection("Brain") {
                 if editing {
-                    HomeServerForm { editing = false }
+                    HomeServerForm(offersMove: offersMoveThere, moveMemory: moveChoice) { editing = false }
+                        .onAppear(perform: offerMove)
                 } else {
                     rows
                 }
@@ -191,6 +235,28 @@ struct BrainSection: View {
         }
     }
 
+    /// Switching from this Mac to a home server offers to move the memory
+    /// along, when this copy of Peel has its own to move.
+    private var offersMoveThere: Bool { model.brain == .thisMac && model.hasOwnStrut }
+
+    /// On unless this Mac's memory is known to be empty.
+    private func offerMove() {
+        moveMemory = nil
+        model.checkLocalMemory()
+    }
+
+    private var moving: Bool { model.memoryMove?.isRunning == true }
+
+    /// The move switches; once the person sets one, a late answer from
+    /// `checkLocalMemory` no longer changes it.
+    private var moveChoice: Binding<Bool> {
+        Binding(get: { moveMemory ?? model.localHoldsMemory ?? true }, set: { moveMemory = $0 })
+    }
+
+    private var bringBackChoice: Binding<Bool> {
+        Binding(get: { bringBack ?? !(model.localHoldsMemory ?? false) }, set: { bringBack = $0 })
+    }
+
     @ViewBuilder private var rows: some View {
         switch model.brain {
         case .thisMac?:
@@ -202,6 +268,16 @@ struct BrainSection: View {
             } trailing: {
                 Button("Use a home server…") { editing = true }
                     .buttonStyle(.peel(.outline))
+                    .disabled(moving)
+            }
+            if let home = model.lastHomeServer, model.hasOwnStrut {
+                Fact("Memory") {
+                    Text("The home server at \(home.base.host ?? home.description) keeps its own.").muted()
+                } trailing: {
+                    Button("Bring it back") { model.bringMemoryBack(from: home) }
+                        .buttonStyle(.peel(.outline))
+                        .disabled(moving)
+                }
             }
         case .homeServer(let server)?:
             Fact("Brain") {
@@ -216,10 +292,21 @@ struct BrainSection: View {
                 HStack(spacing: 8) {
                     Button("Change") { editing = true }
                         .buttonStyle(.peel(.outline))
-                    InlineConfirm(trigger: "Use this Mac", prompt: "The home server keeps its memory.",
-                                  confirm: "Use this Mac", confirmKind: .primary) {
-                        attempt { try model.setBrain(.thisMac) }
+                    Button("Use this Mac") {
+                        bringBack = nil
+                        leaving = true
                     }
+                    .buttonStyle(.peel(.outline))
+                }
+                .disabled(moving || leaving)
+            }
+            if model.hasOwnStrut {
+                Fact("Memory") {
+                    Text("Move what the agent remembered on this Mac here. It stays on this Mac as it was.").muted()
+                } trailing: {
+                    Button("Move from this Mac") { model.moveMemoryToHomeServer() }
+                        .buttonStyle(.peel(.outline))
+                        .disabled(moving)
                 }
             }
             Fact("Status") {
@@ -245,6 +332,50 @@ struct BrainSection: View {
             problem = nil
         } catch {
             problem = PeelError.problem(error, couldNot: "change the brain")
+        }
+    }
+}
+
+/// The offer to move memory along with a switch: its words and a switch.
+private struct MoveOption: View {
+    let label: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) { Text(label).font(Theme.font(12)) }
+            .toggleStyle(FormSwitchStyle())
+    }
+}
+
+/// A memory move under way, or how it ended: the count that arrived, or
+/// why nothing did (amber, never red: nothing was lost).
+private struct MemoryMoveCallout: View {
+    let move: MemoryMoveState
+    let dismiss: () -> Void
+
+    var body: some View {
+        switch move {
+        case .running(let direction, let step):
+            Callout(detail: Self.words(direction, step), icon: .progress)
+        case .done(let direction, let facts):
+            let count = Formatting.count(facts, "memory", "memories")
+            Callout(.neutral, direction == .toHomeServer ? "Moved \(count) to the home server" : "Brought \(count) back to this Mac",
+                    detail: direction == .toHomeServer
+                        ? "The agent now uses the home server's memory. This Mac's stays here as it was."
+                        : "The home server keeps its own.",
+                    icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
+        case .failed(let why):
+            Callout(.attention, detail: why, dismiss: dismiss)
+        }
+    }
+
+    static func words(_ direction: MemoryMoveState.Direction, _ step: MemoryMove.Step?) -> String {
+        switch (direction, step) {
+        case (_, nil): "Starting this Mac's memory…"
+        case (.toHomeServer, .reading?): "Reading this Mac's memory…"
+        case (.toHomeServer, .sending?): "Sending it to the home server…"
+        case (.toThisMac, .reading?): "Reading the home server's memory…"
+        case (.toThisMac, .sending?): "Loading it into this Mac…"
         }
     }
 }
@@ -289,6 +420,9 @@ private struct ConnectedLabel: View {
 /// The home server's address and key, typed or pasted.
 private struct HomeServerForm: View {
     @Environment(AppModel.self) private var model
+    /// Offers to move this Mac's memory there too (switching from this Mac).
+    let offersMove: Bool
+    @Binding var moveMemory: Bool
     let done: () -> Void
     @State private var address = ""
     @State private var key = ""
@@ -303,6 +437,11 @@ private struct HomeServerForm: View {
             FormItem(label: "Key", helper: "STRUT_API_KEY, as the home server's setup printed it") {
                 FormTextField(label: "Key", text: $key, secure: true)
                     .onSubmit(save)
+            }
+            if offersMove {
+                FormSwitchRow(label: "Move this Mac's memory there",
+                              detail: "Only into an empty home server. It also stays on this Mac as it was.",
+                              isOn: $moveMemory)
             }
             Text("The agent will use the home server's memory. What it remembered on this Mac stays here. "
                 + AutomationsView.homeServerNote)
@@ -327,7 +466,7 @@ private struct HomeServerForm: View {
             return
         }
         do {
-            try model.setBrain(.homeServer(server))
+            try model.setBrain(.homeServer(server), moving: offersMove && moveMemory)
             done()
         } catch {
             problem = PeelError.problem(error, couldNot: "keep the home server")

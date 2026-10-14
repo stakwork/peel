@@ -69,7 +69,6 @@ struct AgentChatView: View {
         } panel: { _ in
             if let panel = model.memoryPanel { MemoryPanelView(panel: panel) }
         }
-        .animation(.easeOut(duration: 0.2), value: model.memoryPanel != nil)
         // A card waiting on the person must be in view: on a narrow window
         // the memory would hide it.
         .onChange(of: agent.waiting != nil) { _, waiting in

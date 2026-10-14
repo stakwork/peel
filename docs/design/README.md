@@ -412,7 +412,9 @@ sats use tabular figures. Text in dark mode is `#E3E7EC`, not white; links
 Panes: the sidebar (220–420 pt) and the thread panel (300–560 pt) resize by
 dragging their dividers; a double-click puts the standard width back, and
 the widths are remembered on this Mac. Below about 740 pt for the chat and
-the panel together, the thread panel takes the chat's place.
+the panel together, the thread panel covers the chat, which stays as it
+was under it. The panel slides in and out; the chat column changes width
+once, never animated.
 
 ## Motion
 
@@ -1196,7 +1198,7 @@ app's browser pane, without its tabs (decided 2026-10-08, restyled
 - **Where:** right of the detail column, 560 pt at first, dragged on its
   divider between 360 pt and what leaves the column 400 pt (remembered on
   this Mac; double-click for the standard width). On a window too narrow for
-  both, the pane takes the column's place rather than covering it. It stays
+  both, the pane covers the column, which stays as it was under it. It stays
   open across chats, threads and Payments until closed: the toolbar's ×,
   or ⌘W while the page or the address field has the keyboard (⌘W
   elsewhere still closes the window). Closing it, or locking Peel, ends the

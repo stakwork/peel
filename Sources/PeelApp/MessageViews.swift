@@ -63,6 +63,8 @@ struct MessageList: View {
         /// The list's own height: the composer growing a line, or the
         /// search bar opening, takes room from it.
         var container: CGFloat
+        /// Its width: a panel beside it, the window or the sidebar.
+        var width: CGFloat
         /// At the end, as far as layout goes, or short of filling the list.
         var atEnd: Bool
         var atBottom: Bool
@@ -151,9 +153,10 @@ struct MessageList: View {
             .onAppear {
                 tracking.gone = false
                 ListProbe.register(tracking, kind: composer.thread == nil ? "chat" : "thread")
-                // Nothing to place: the empty list while the messages load
-                // (and an empty chat), and a thread, which reads from its top.
-                if rows.isEmpty || composer.thread != nil {
+                let opensAt = self.opensAt
+                // Nothing to place: an empty chat, and a thread, which reads
+                // from its top, unless it goes back to where it was.
+                if rows.isEmpty || (composer.thread != nil && focusTarget == nil && opensAt == nil) {
                     reveal("nothing to place")
                 } else {
                     Task {
@@ -161,7 +164,8 @@ struct MessageList: View {
                         reveal("at the limit")
                     }
                 }
-                log("appear focus=\(focusTarget.map { index(of: $0.message) } ?? "none") divider=\(divider.map { index(of: $0.id) } ?? "none")")
+                log("appear focus=\(focusTarget.map { index(of: $0.message) } ?? "none") "
+                    + "divider=\(openingDivider.map { index(of: $0.id) } ?? "none") anchor=\(restored.map { index(of: $0.id) } ?? "none")")
                 // The newest first, also before "New messages": left at the
                 // initial anchor, a list opening at it sat for those 100 ms
                 // at the lazy stack's estimated end, past every row it had
@@ -177,13 +181,12 @@ struct MessageList: View {
                     // and the stack can be left with no row made there.
                     repin(proxy, byLastRow: true)
                 }
-                if focusTarget != nil || divider != nil {
-                    // A message asked for wins over "New messages". Both
-                    // wait for the list's initial bottom anchor, which would
-                    // undo a scroll to them asked for now.
+                if focusTarget != nil || opensAt != nil {
+                    // Each waits for the list's initial bottom anchor, which
+                    // would undo a scroll to it asked for now.
                     if focusTarget == nil {
                         following = false
-                        dividerUnread = true
+                        dividerUnread = openingDivider != nil
                     }
                     Task {
                         try? await Task.sleep(for: .milliseconds(100))
@@ -192,9 +195,9 @@ struct MessageList: View {
                             // Settled once the scroll to it is over (`go(to:)`).
                             opening = false
                             takeFocus(proxy)
-                        } else {
-                            await openAtDivider(proxy)
-                            reveal("at New messages")
+                        } else if let opensAt {
+                            await open(at: opensAt.id, offset: opensAt.offset, proxy)
+                            reveal(openingDivider != nil ? "at New messages" : "where it was")
                             opened()
                         }
                     }
@@ -207,9 +210,16 @@ struct MessageList: View {
                 tracking.gone = true
             }
             .timelineProbe(geometry: logGeometry, visible: logVisible)
-            .onScrollPhaseChange { _, new in
+            .onScrollPhaseChange { old, new in
                 log("phase \(phase) -> \(new)")
                 phase = new
+                // A scroll by hand that ended short of the bottom: not
+                // following, whichever came first, its phase or its move
+                // off the bottom (which then counted as by itself).
+                if new == .idle, old == .interacting || old == .decelerating, !bottom.atBottom, following {
+                    following = false
+                    dividerUnread = false
+                }
                 if new == .interacting {
                     pinning = false
                     tracking.lastRowTries = 0
@@ -221,7 +231,7 @@ struct MessageList: View {
             .onScrollGeometryChange(for: BottomDistance.self) { geometry in
                 let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
                 return BottomDistance(height: geometry.contentSize.height, container: geometry.containerSize.height,
-                                      atEnd: below <= 0.5, atBottom: below <= 24,
+                                      width: geometry.containerSize.width, atEnd: below <= 0.5, atBottom: below <= 24,
                                       far: below > geometry.containerSize.height)
             } action: { old, new in
                 if atEnd != new.atEnd { atEnd = new.atEnd }
@@ -238,12 +248,16 @@ struct MessageList: View {
                     bottom.report(atBottom: new.atBottom, settled: !opening && phase == .idle, newest: newestIndex)
                 }
                 if new.atBottom, farFromBottom { farFromBottom = false }
+                // Scrolled up, the row you were reading, whatever the new width
+                // does to the offset (it can clamp it to the end).
+                let holding = new.width != old.width && old.width > 0 && !opening && phase == .idle && holdAcrossWidth(proxy)
+                    || tracking.hold != nil
                 // A row that changed height under a list following at its end
                 // (one that does not reserve its final size, such as a video
                 // sizing itself), or the list's own height changing there,
                 // moved the end; or a re-pin fell short: back to the end.
-                let resized = new.height != old.height || new.container != old.container
-                if (resized && bottom.atBottom) || pinning, !new.atEnd, following, phase == .idle {
+                let resized = new.height != old.height || new.container != old.container || new.width != old.width
+                if (resized && bottom.atBottom) || pinning, !new.atEnd, following, !holding, phase == .idle {
                     log("repin: \(resized ? "resized" : "pinning") height=\(TimelineLog.points(new.height)) container=\(TimelineLog.points(new.container))")
                     return repin(proxy)
                 }
@@ -270,7 +284,7 @@ struct MessageList: View {
                     if userScrolling, reachesNewest { reachedBottom() }
                     // A window's bottom is not the chat's: what it takes in
                     // below comes in under you, not followed to its end.
-                    if reachesNewest { following = true }
+                    if reachesNewest, !holding { following = true }
                     if composer.thread == nil, reachesNewest || userScrolling { model.chatListAtBottom() }
                 case .left:
                     // Scrolled away by hand: no longer following, and
@@ -328,7 +342,14 @@ struct MessageList: View {
             .onChange(of: rows.last?.id) { _, _ in
                 tracking.steps = 0
                 guard reachesNewest else { return }
-                let scrolls = following || rows.last?.shown.last?.fromMe == true
+                // Yours, by the message itself (sent here, from another
+                // device, a payment or a boost alike); in the chat, not a
+                // reply in the thread open beside it, which only the
+                // thread's list follows.
+                let newest = rows.last?.shown.last
+                let inOpenThread = newest?.threadUUID != nil && newest?.threadUUID == model.openThread?.uuid
+                let yours = newest?.fromMe == true && (composer.thread != nil || !inOpenThread)
+                let scrolls = following || yours
                 log("newest row changed, scrolls=\(scrolls)")
                 if scrolls { scrollToNewest(proxy) }
             }
@@ -347,21 +368,108 @@ struct MessageList: View {
     /// The row "New messages" sits above.
     private var divider: ChatRow? { rows.first(where: \.startsNew) }
 
+    /// "New messages", when a list made now opens at it: not once the
+    /// chat's list has been at its newest since (`AppModel.opensAtNewMessages`).
+    private var openingDivider: ChatRow? {
+        guard let chat = composer.chat, model.opensAtNewMessages(in: chat) else { return nil }
+        return divider
+    }
+
+    /// The row a list made now opens at: none for a message asked for,
+    /// which wins; else "New messages" at the top, else where it last
+    /// stood. None: the newest.
+    private var opensAt: (id: String, offset: Double)? {
+        if focusTarget != nil { return nil }
+        if let divider = openingDivider { return (divider.id, 0) }
+        return restored
+    }
+
+    /// Where this list last stood (`AppModel.anchor(of:)`), when that was a
+    /// row it still has. One no longer loaded (it stood in a jump's window,
+    /// since left) opens at the newest.
+    private var restored: (id: String, offset: Double)? {
+        guard case .row(let id, let offset) = model.anchor(of: composer), rows.contains(where: { $0.id == id }) else {
+            return nil
+        }
+        return (id, offset)
+    }
+
+    /// Rows never kept as the list's place: the one under "New messages",
+    /// which goes once you send, and the replies and missing-original lines.
+    private var unanchored: Set<String> {
+        Set(rows.lazy.filter { row in
+            switch row.kind {
+            case .replies, .missingOriginal: true
+            default: row.startsNew
+            }
+        }.map(\.id))
+    }
+
     /// Whether this list ends at the newest message: a thread's always, the
     /// chat's unless a jump's window stops short of it.
     private var reachesNewest: Bool { composer.thread != nil || model.timelineReachesNewest }
 
-    /// To "New messages" at the top, twice: the rows around it have only
-    /// estimated heights until the first scroll draws them. Not once you
-    /// have taken the list.
-    private func openAtDivider(_ proxy: ScrollViewProxy) async {
-        for pass in 0..<2 {
-            guard let divider, !tracking.gone, !userScrolling, pass == 0 || !following else { return }
+    /// To a row with its top `offset` below the list's top ("New messages"
+    /// at the top, or where the list last stood). By where it is laid out
+    /// when it is; else to its estimated place first, which lays it out
+    /// (or the rows around it, whose heights correct the estimate), then
+    /// again, at most three times. Not once you have taken the list, nor
+    /// once its task is cancelled (a later move has taken over).
+    private func open(at id: String, offset: Double, _ proxy: ScrollViewProxy, pause: Duration = .milliseconds(100)) async {
+        for pass in 0..<3 {
+            guard !Task.isCancelled, tracking.ids.contains(id), !tracking.gone, !userScrolling,
+                  pass == 0 || !following else { return }
             // The initial anchor may have set it, reaching the bottom.
             following = false
-            log("place: divider pass \(pass) scrollTo row \(index(of: divider.id))")
-            proxy.scrollTo(divider.id, anchor: .top)
-            try? await Task.sleep(for: .milliseconds(100))
+            if let frame = tracking.frames[id] {
+                log("place: open pass \(pass) to row \(index(of: id)) at y=\(TimelineLog.points(frame.minY - offset))")
+                position.scrollTo(y: max(frame.minY - offset, 0))
+                return
+            }
+            log("place: open pass \(pass) scrollTo row \(index(of: id))")
+            proxy.scrollTo(id, anchor: .top)
+            try? await Task.sleep(for: pause)
+        }
+    }
+
+    /// Interim, until the list controller replaces it (PR 4 of the list
+    /// review, `docs/reviews/2026-10-14-message-lists.md`): a timed,
+    /// bounded retry on the lazy stack's estimates. Delete it then; do not
+    /// build on it.
+    ///
+    /// The list's width changed (a panel opened or closed beside it, the
+    /// window or the sidebar resized) while scrolled up: its rows wrap
+    /// again, and the lazy stack moves them and the offset over the next
+    /// few layouts, holding nothing. Returns whether it holds the row you
+    /// were reading (`keepAnchor`), which goes back to where it was on
+    /// screen once (`holdOnceLaidOut`). At the newest, the re-pin keeps
+    /// the bottom flush.
+    private func holdAcrossWidth(_ proxy: ScrollViewProxy) -> Bool {
+        guard case .row(let id, let offset) = model.anchor(of: composer), !(reachesNewest && bottom.atBottom) else {
+            return false
+        }
+        // It stays with that row: no re-pin takes it to the end.
+        following = false
+        // Once this layout is done; a later change (a drag) takes over.
+        tracking.hold?.cancel()
+        tracking.hold = Task {
+            try? await Task.sleep(for: .milliseconds(20))
+            guard !Task.isCancelled, !tracking.gone else { return }
+            log("place: width changed, back to row \(index(of: id))")
+            await open(at: id, offset: offset, proxy, pause: .milliseconds(20))
+            if !Task.isCancelled { tracking.hold = nil }
+        }
+        return true
+    }
+
+    /// Where the list stands now, once still: kept in the model for a list
+    /// of these rows made again, and for a width change to hold.
+    private func keepAnchor() {
+        guard !opening, !tracking.gone, !rows.isEmpty, !userScrolling, tracking.hold == nil else { return }
+        if reachesNewest, bottom.atBottom {
+            model.keep(.newest, of: composer)
+        } else if let top = tracking.topRow(skipping: unanchored) {
+            model.keep(.row(id: top.id, offset: Double(top.offset)), of: composer)
         }
     }
 
@@ -398,9 +506,11 @@ struct MessageList: View {
         settled()
     }
 
-    /// Still at the bottom after opening or a scroll: everything there is in
-    /// view. A report would say so, but none comes while nothing moves.
+    /// Still after opening or a scroll: where it stands is kept, and at the
+    /// bottom everything there is in view. A report would say so, but none
+    /// comes while nothing moves.
     private func settled() {
+        keepAnchor()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         update { $0.report(atBottom: true, settled: true, newest: newestIndex) }
     }
@@ -431,6 +541,7 @@ struct MessageList: View {
         withAnimation(.easeInOut(duration: duration)) {
             proxy.scrollTo(Self.bottomID, anchor: .bottom)
         } completion: {
+            keepAnchor()
             // Rows that grew on the way moved the end it aimed at.
             repin(proxy)
         }
@@ -449,10 +560,7 @@ struct MessageList: View {
     /// shrinks, can leave the stack with no row made at the end: a blank
     /// list until a scroll by hand. A scroll to a row makes the stack make it.
     private func repin(_ proxy: ScrollViewProxy, byLastRow: Bool = false) {
-        // Nothing to hold at the end. The empty list shown while a chat's
-        // messages load is replaced by one with them (`ConversationView`),
-        // and its re-pin, run after, moved the new list to the end of its
-        // estimate: in Tom's logs, just before two of the blanks.
+        // Nothing to hold at the end of an empty chat.
         guard !rows.isEmpty else { return }
         let request = tracking.ask(byLastRow: byLastRow)
         Task {
@@ -570,7 +678,7 @@ struct MessageList: View {
             return true
         } else if composer.thread == nil, parent.threadUUID != nil {
             // The thread's list scrolls to it and lights it.
-            withAnimation(.easeOut(duration: 0.2)) { model.focus(on: parent, inThread: true) }
+            model.focus(on: parent, inThread: true)
         }
         return false
     }
@@ -642,6 +750,8 @@ struct MessageList: View {
     static let lastRowLimit = 3
     /// Whether any re-pin still waiting goes by the last row.
     private var byLastRow = false
+    /// A width change's correction while it runs (`holdAcrossWidth`).
+    var hold: Task<Void, Never>?
 
     func appeared(_ id: String) {
         made.insert(id)

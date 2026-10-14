@@ -3,8 +3,8 @@ import PeelCore
 import PeelUI
 
 /// A chat: its header, the conversation and the composer, with the open
-/// thread beside it. On a window too narrow for both, the thread takes the
-/// conversation's place rather than covering it.
+/// thread beside it. On a window too narrow for both, the thread covers the
+/// conversation, which stays as it was under it.
 struct ConversationView: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -27,12 +27,25 @@ struct ConversationView: View {
                 ThreadPanel(conversation: conversation, ref: thread, beside: beside)
             }
         }
+        // The thread closed (its X, Escape): the keys go back to the chat's
+        // composer, not left on the window. Not when the sidebar has them.
+        .onChange(of: thread == nil) { _, closed in
+            if closed, !model.sidebarHasKeys { model.composerFocus[.chat(conversation.chat), default: 0] += 1 }
+        }
     }
 }
 
-/// A column with a panel beside it on the right (a thread, the web pane),
-/// resizable on its divider. On a window too narrow for both, the panel
-/// takes the column's place rather than covering it.
+/// A column with a panel beside it on the right (a thread, the web pane, a
+/// memory), resizable on its divider. On a window too narrow for both, the
+/// panel covers the column, which stays made under it: hidden, out of reach
+/// of the pointer, VoiceOver and the keyboard, and shown again as it was
+/// (its list where you left it) when the panel closes. Made again, a list
+/// opened afresh and lost its place.
+///
+/// The panel slides in and out over the column; the column changes width
+/// once, unanimated: narrower once the panel has slid in, wider as it
+/// starts to slide out. Animated, every row of a list in it wrapped again
+/// at each width on the way, and the list moved under you.
 struct SidePanelSplit<Main: View, Panel: View>: View {
     let isOpen: Bool
     /// Dragged on the divider.
@@ -47,31 +60,70 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
     /// Told whether it is beside the column, or in its place.
     @ViewBuilder let panel: (_ beside: Bool) -> Panel
 
+    /// The column has made room for the open panel: from the end of its
+    /// slide in, so the column is never narrowed beside an empty strip.
+    @State private var roomMade = false
+    /// The panel's slide in, which the column's fade and its room follow.
+    private static var slideIn: Double { 0.2 }
+
     var body: some View {
-        // Always inside the reader, so opening the panel keeps the column
-        // (its scroll position and drafts) rather than making it again.
+        // Always inside the reader and always made, so neither opening the
+        // panel nor crossing the width that fits both makes the column again.
         GeometryReader { geometry in
             // Beside the column, the panel gets what is left up to the width
             // it was dragged to, so a drag or a narrow window shrinks it
-            // before it has to take the column's place.
+            // before it has to cover the column.
             let room = Double(geometry.size.width - minimumMain - 1)
             let both = room >= range.lowerBound
+            let covered = isOpen && !both
             HStack(spacing: 0) {
-                if !isOpen || both {
-                    main()
+                main()
+                    // Fading under the panel as it slides over.
+                    .animation(.easeOut(duration: Self.slideIn)) { $0.opacity(covered ? 0 : 1) }
+                    .allowsHitTesting(!covered)
+                    .accessibilityHidden(covered)
+                    .disabled(covered)
+                    // What has the keyboard in it gives it up (`ComposerField`).
+                    .environment(\.coveredByPanel, covered)
+                if isOpen, both, roomMade {
+                    // Where the divider and the panel slide in.
+                    Color.clear.frame(width: min(width, room) + 1)
                 }
-                if isOpen {
-                    if both {
-                        PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
-                                    standard: standard, growsTo: .leading)
-                    }
-                    panel(both)
-                        .frame(width: both ? min(width, room) : nil)
+            }
+            // Whoever opened or closed the panel inside an animation, the
+            // column's width changes at once.
+            .transaction(value: isOpen) { $0.animation = nil }
+            .overlay(alignment: .trailing) {
+                ZStack {
+                    if isOpen {
+                        HStack(spacing: 0) {
+                            if both {
+                                PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
+                                            standard: standard, growsTo: .leading)
+                            }
+                            panel(both)
+                                .frame(width: both ? min(width, room) : nil)
+                        }
                         .transition(.move(edge: .trailing))
+                    }
                 }
+                .animation(isOpen ? .easeOut(duration: Self.slideIn) : .easeIn(duration: 0.15), value: isOpen)
+            }
+        }
+        .onAppear { roomMade = isOpen }
+        .onChange(of: isOpen) { _, open in
+            guard open else { return roomMade = false }
+            Task {
+                try? await Task.sleep(for: .seconds(Self.slideIn))
+                if isOpen { roomMade = true }
             }
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Under a panel that covers it (`SidePanelSplit`, a narrow window).
+    @Entry var coveredByPanel = false
 }
 
 /// A chat's header, conversation and composer. Its own view, so resizing the
@@ -97,12 +149,16 @@ private struct ChatColumn: View {
             if let search = model.search, search.chat == conversation.chat {
                 ChatSearchBar(search: search, placeholder: "Search in \(conversation.title)")
             }
-            MessageList(rows: model.chatRows, composer: composer, canAnswer: tribe?.canManage == true)
-            // A fresh scroll view per chat: reusing one across chats left the
-            // lazy stack blank at the bottom anchor until it was scrolled.
-            // Made again once the messages have loaded, so it starts at
-            // the bottom of them rather than of an empty list.
-            .id(model.timeline.messages.isEmpty ? nil : conversation.chat)
+            // Made once per chat, with its messages: reusing one scroll view
+            // across chats left the lazy stack blank at the bottom anchor
+            // until it was scrolled, and one made empty while they loaded
+            // and then again left late tasks moving its replacement.
+            if model.loadedChat == conversation.chat {
+                MessageList(rows: model.chatRows, composer: composer, canAnswer: tribe?.canManage == true)
+                    .id(conversation.chat)
+            } else {
+                Spacer()
+            }
             ChatFooter(
                 conversation: conversation, tribe: tribe, composer: composer,
                 placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",

@@ -483,6 +483,35 @@ before and after; `SheetPage` beside `StepPage`; the Mac's and the
 phone's preset lists and the countdown's words still written twice. Each
 is a cleanup across both apps, left for a pass of its own.
 
+### Simplify sweep of S1, batch 17 and I2 (2026-10-14, `ios/simplify-sweep`)
+
+A /simplify pass over what #242, #247 and #249 left on main. Done: one
+`ClipboardPasteboard` for both apps (was `MacPasteboard` and
+`PhonePasteboard`, the same two lines); `PIN.digits` for both PIN fields
+and `PIN.length` for the Mac's literal sixes; the Mac's Change PIN worded
+by `PIN.problem`; the restore screen's lines (`RestoreProgress.lines`)
+in PeelUI, drawn by both, the phone's failure line now `paused` like the
+Mac's (the same condition); spreading pasted words (`WordBoxes.fill`)
+once; Forget's warning (`AppModel.forgetWarning`) once.
+
+Not applied, proposals for a later pass:
+- The force casts `agentHost as! MacAgent` and `webPresenter as! WebPane`:
+  sound (the Mac makes its one model with `.mac()`), but removing them
+  needs a typed handle the Mac keeps or a generic `Platform`.
+- Onboarding's flow (steps, numbering, `confirmPin`, `checkWords`) written
+  twice: an `@Observable` flow in PeelUI both views draw. The two have
+  drifted (a PIN mismatch, where typed words are forgotten), so each
+  drift needs a decision first.
+- The word check's submit (`confirmWords`, its guard, catch and problem)
+  four times (onboarding and Account or You, on each app); unlock and
+  forget likewise twice: model operations that return their problem.
+- The Mac's `PinField` completes again on a seventh key (the phone's
+  `PinBoxes` checks the old value); a fix, not a cleanup.
+- `Platform.opensFirstChat`, a navigation choice among services: the
+  Mac could ask for the first chat itself.
+- `scripts/build-ffi.sh` stages and rebuilds the xcframework on every run
+  even when nothing changed: a stamp of its inputs would skip it.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

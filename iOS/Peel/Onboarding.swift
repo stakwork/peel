@@ -267,19 +267,15 @@ struct RestoreProgress: View {
     var body: some View {
         let progress = model.restoreProgress
         StepPage(title: "Restoring your account", detail: "You can start now while older messages arrive.") {
+            let lines = progress.lines(connection: model.connection)
             VStack(spacing: 0) {
-                RestoreLine(title: "Account", detail: model.connection.label,
-                            state: model.connection == .connected ? .done : .active)
-                Divider().overlay(Theme.divider)
-                RestoreLine(title: "Contacts", detail: progress.label(progress.contacts, noun: "checked"),
-                            state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                Divider().overlay(Theme.divider)
-                RestoreLine(title: "Messages", detail: progress.label(progress.messages, noun: "received"),
-                            state: .from(started: progress.messages != nil, done: progress.finished),
-                            fraction: progress.messages?.fraction)
+                ForEach(lines.indices, id: \.self) { index in
+                    if index > 0 { Divider().overlay(Theme.divider) }
+                    RestoreLine(line: lines[index])
+                }
             }
             .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-            if case .failed(let failure) = progress.outcome {
+            if let failure = progress.paused {
                 ProblemText(failure)
             }
         } actions: {
@@ -290,22 +286,12 @@ struct RestoreProgress: View {
 }
 
 struct RestoreLine: View {
-    enum State {
-        case waiting, active, done
-
-        static func from(started: Bool, done: Bool) -> State {
-            done ? .done : started ? .active : .waiting
-        }
-    }
-    let title: String
-    let detail: String
-    let state: State
-    var fraction: Double?
+    let line: AppModel.RestoreProgress.Line
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Group {
-                switch state {
+                switch line.state {
                 case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
                 case .active: ProgressView()
                 case .waiting: Image(systemName: "circle").foregroundStyle(Theme.divider)
@@ -315,16 +301,16 @@ struct RestoreLine: View {
             .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(title)
+                    Text(line.title)
                         .font(Theme.font(16))
-                        .foregroundStyle(state == .waiting ? Theme.secondaryText : Theme.text)
+                        .foregroundStyle(line.state == .waiting ? Theme.secondaryText : Theme.text)
                     Spacer()
-                    Text(detail)
+                    Text(line.detail)
                         .font(Theme.font(14))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                 }
-                if let fraction, state == .active {
+                if let fraction = line.fraction, line.state == .active {
                     ProgressView(value: fraction)
                 }
             }

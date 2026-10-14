@@ -74,8 +74,26 @@ extension Message {
 }
 
 extension PIN {
+    /// What a PIN field keeps of what was typed: ASCII digits, at most six.
+    public static func digits(_ text: String) -> String {
+        String(text.filter { $0.isASCII && $0.isNumber }.prefix(length))
+    }
+
     /// What to show when a PIN was not accepted.
     public static func problem(_ error: any Error) -> String {
         error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
+    }
+}
+
+extension AppModel {
+    /// What forgetting the account loses without the words: Forget asks for
+    /// no proof of them, so a lost PIN can start again. Never how many sats:
+    /// the PIN guards that, as a locked notification says only "Sats
+    /// received". Never "no sats" either: the balance stored before the PIN
+    /// may predate sats received since.
+    public static func forgetWarning(holdsSats: Bool) -> String {
+        holdsSats
+            ? "It holds sats. Without your twelve words, they're lost for good."
+            : "Without your twelve words, it can't be brought back."
     }
 }

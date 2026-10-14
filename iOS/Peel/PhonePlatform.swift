@@ -13,7 +13,7 @@ extension Platform {
     /// A new set each call: the app makes its one model with it.
     static func phone() -> Platform {
         Platform(
-            presence: PhonePresence(), files: PhoneFiles(), pasteboard: PhonePasteboard(),
+            presence: PhonePresence(), files: PhoneFiles(), pasteboard: ClipboardPasteboard(),
             playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: PhoneCalls(), agent: nil,
             // Chats is a list to come back to, not a pane to fill.
             opensFirstChat: false
@@ -48,13 +48,6 @@ struct PhoneFiles: FilePicking {
     func open(prompt: String?, multiple: Bool, directories: Bool, types: [UTType]) -> [URL]? { nil }
     func saveLocation(named name: String) -> URL? { nil }
     func reveal(_ file: URL) {}
-}
-
-/// `Clipboard`, for the model.
-struct PhonePasteboard: PeelUI.Pasteboard {
-    func copyImage(at file: URL) -> Bool { Clipboard.copyImage(at: file) }
-    // A secret copied on the phone expires on its own (`Clipboard.copySecret`).
-    func clearSecret() { Clipboard.clearSecret() }
 }
 
 /// Nothing plays yet: the read-only conversation shows no media (I3).

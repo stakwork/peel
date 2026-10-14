@@ -175,16 +175,12 @@ struct PinBoxes: View {
             focused = true
         }
         .onChange(of: pin) { old, value in
-            let digits = Self.digits(value)
+            let digits = PIN.digits(value)
             if digits != value { pin = digits }
             // A seventh key leaves the same six, already complete.
-            if digits.count == PIN.length, digits != Self.digits(old) { complete() }
+            if digits.count == PIN.length, digits != PIN.digits(old) { complete() }
         }
         .onChange(of: isEnabled) { _, enabled in if enabled { focused = true } }
-    }
-
-    private static func digits(_ text: String) -> String {
-        String(text.filter { $0.isASCII && $0.isNumber }.prefix(PIN.length))
     }
 }
 
@@ -284,14 +280,7 @@ struct WordEntry: View {
     /// whether the text held more than one word.
     @discardableResult
     private func fill(from index: Int, with text: String) -> Bool {
-        let parts = Engine.words(in: text)
-        guard parts.count > 1 else {
-            words[index] = parts.first ?? ""
-            return false
-        }
-        for (offset, part) in parts.prefix(words.count - index).enumerated() {
-            words[index + offset] = part
-        }
+        guard let parts = WordBoxes.fill(&words, from: index, with: text) else { return false }
         if parts.count >= 12 {
             // Twelve words pasted leave the clipboard once read, as on the
             // Mac (`Clipboard.clearPasted`), without reading it again: on the

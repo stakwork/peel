@@ -95,3 +95,10 @@ enum Clipboard {
         #endif
     }
 }
+
+/// `Clipboard`, for the model, on the Mac and the iPhone alike. A secret
+/// copied on the phone expires on its own (`Clipboard.copySecret`).
+struct ClipboardPasteboard: PeelUI.Pasteboard {
+    func copyImage(at file: URL) -> Bool { Clipboard.copyImage(at: file) }
+    func clearSecret() { Clipboard.clearSecret() }
+}

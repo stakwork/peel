@@ -45,9 +45,7 @@ struct LockScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ForgetAccount(
                 trigger: "Forgot your PIN?",
-                explanation: holdsSats
-                    ? "Forget this account on this iPhone. It holds sats. Without your twelve words, they're lost for good."
-                    : "Forget this account on this iPhone. Without your twelve words, it can't be brought back."
+                explanation: "Forget this account on this iPhone. " + AppModel.forgetWarning(holdsSats: holdsSats)
             )
             // Not while an unlock is opening the account.
             .disabled(working)

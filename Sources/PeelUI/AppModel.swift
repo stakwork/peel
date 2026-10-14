@@ -44,6 +44,32 @@ public final class AppModel {
             if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
             return "\(count.reached.formatted()) \(noun)"
         }
+
+        /// One line of the restore screen: what it is, its count or the
+        /// connection, and how far along it is.
+        public struct Line: Sendable {
+            public enum State: Sendable { case waiting, active, done }
+
+            public let title: String
+            public let detail: String
+            public let state: State
+            public var fraction: Double?
+        }
+
+        /// The restore screen's lines: the account (its connection), then
+        /// contacts, then messages, as the server sends them back.
+        public func lines(connection: Engine.ConnectionState) -> [Line] {
+            func state(started: Bool, done: Bool) -> Line.State {
+                done ? .done : started ? .active : .waiting
+            }
+            return [
+                Line(title: "Account", detail: connection.label, state: connection == .connected ? .done : .active),
+                Line(title: "Contacts", detail: label(contacts, noun: "checked"),
+                     state: state(started: contacts != nil, done: messages != nil || finished)),
+                Line(title: "Messages", detail: label(messages, noun: "received"),
+                     state: state(started: messages != nil, done: finished), fraction: messages?.fraction),
+            ]
+        }
     }
 
     /// What the sidebar has selected.

@@ -275,7 +275,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `MessageText` (message text over
+  for the chat: `MessageViews`, `ListEnd` (where a lazy list's rows are
+  laid out, so the chat's and the agent's lists are held at their end by
+  them, never by the stack's estimate), `MessageText` (message text over
   `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
   plain SwiftUI that the iPhone compiles too, its size a parameter, 14
   here), `LinkCards` (the tribe and contact link

@@ -38,6 +38,12 @@ struct MessageList: View {
     /// Until the list has gone where it opens (the newest, "New messages"
     /// or a message asked for), it has shown nothing yet.
     @State private var opening = true
+    /// Shown once it has gone where it opens and stopped moving. Until a
+    /// lazy stack has measured the rows in view its estimate swings, and
+    /// each swing moved the list in view: a chat opened with the rows
+    /// jumping for a fifth of a second. Never later than `revealLimit`.
+    @State private var revealed = false
+    private static let revealLimit: Duration = .milliseconds(400)
 
     /// The end of the list, under its padding. Scrolling to the last row
     /// stops at that padding, short of the scroll view's own bottom.
@@ -114,8 +120,7 @@ struct MessageList: View {
                         }
                         // Where it really sits; only a layout moves it.
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.contentSpace)) }) { frame in
-                            tracking.frames[row.id] = frame
-                            tracking.placed[row.id] = frame
+                            tracking.laidOut(row.id, at: frame)
                             if row.id == rows.last?.id {
                                 log("last row at \(TimelineLog.points(frame.minY))...\(TimelineLog.points(frame.maxY))")
                             }
@@ -130,6 +135,7 @@ struct MessageList: View {
                 .coordinateSpace(.named(Self.contentSpace))
             }
             .scrollPosition($position)
+            .opacity(revealed ? 1 : 0)
             // A thread reads from its original down; a chat from its newest up.
             // Either starts at the bottom once there is more than fits.
             .defaultScrollAnchor(composer.thread == nil ? .bottom : .top, for: .alignment)
@@ -144,6 +150,16 @@ struct MessageList: View {
             // With "New messages", open at it instead.
             .onAppear {
                 tracking.gone = false
+                // Nothing to place: the empty list while the messages load
+                // (and an empty chat), and a thread, which reads from its top.
+                if rows.isEmpty || composer.thread != nil {
+                    reveal("nothing to place")
+                } else {
+                    Task {
+                        try? await Task.sleep(for: Self.revealLimit)
+                        reveal("at the limit")
+                    }
+                }
                 log("appear focus=\(focusTarget.map { index(of: $0.message) } ?? "none") divider=\(divider.map { index(of: $0.id) } ?? "none")")
                 // The newest first, also before "New messages": left at the
                 // initial anchor, a list opening at it sat for those 100 ms
@@ -177,6 +193,7 @@ struct MessageList: View {
                             takeFocus(proxy)
                         } else {
                             await openAtDivider(proxy)
+                            reveal("at New messages")
                             opened()
                         }
                     }
@@ -365,6 +382,13 @@ struct MessageList: View {
         bottom.newBelow(newestFirst: rows.reversed().lazy.map(\.shown))
     }
 
+    /// Shows the list, once.
+    private func reveal(_ why: String) {
+        guard !revealed, !tracking.gone else { return }
+        revealed = true
+        log("revealed: \(why)")
+    }
+
     /// The list has gone where it opens.
     private func opened() {
         opening = false
@@ -442,7 +466,11 @@ struct MessageList: View {
             if let last = tracking.ids.last, tracking.endsInView(last, padding: Theme.Space.md) {
                 pinning = false
                 tracking.steps = 0
-                return log("repin: the newest row ends in view")
+                log("repin: the newest row ends in view")
+                // Shown once nothing has asked to move it for a while.
+                try? await Task.sleep(for: .milliseconds(60))
+                if tracking.request == latest { reveal("settled at the end") }
+                return
             }
             // With rows laid out, by where they really are, as a scroll by
             // hand goes: the newest row's bottom to the list's bottom once
@@ -450,7 +478,7 @@ struct MessageList: View {
             // laid out, where the stack lays out the rows after it, then
             // again. A jump to the end goes by the stack's estimate.
             // Each step asks again, until the newest row ends in view (above).
-            if let step = tracking.towardsNewest(padding: Theme.Space.md), tracking.steps < ListTracking.stepLimit {
+            if let step = tracking.towardsNewest(padding: Theme.Space.md), tracking.steps < ListEnd.stepLimit {
                 pinning = false
                 tracking.steps += 1
                 if let row = step.from {
@@ -528,6 +556,7 @@ struct MessageList: View {
                 // It may not have moved (a row already at the bottom), so no
                 // phase change says it is still.
                 settled()
+                reveal("at a message")
             }
             flashed = row.id
             Task {
@@ -596,68 +625,19 @@ struct MessageList: View {
 }
 
 /// What a `MessageList` keeps outside SwiftUI's observation, so writing
-/// it redraws nothing: the rows made and the re-pin's requests.
-@MainActor private final class ListTracking {
+/// it redraws nothing: where its rows are (`ListEnd`), the rows made and
+/// the re-pin's requests.
+@MainActor private final class ListTracking: ListEnd {
     /// The rows the lazy stack has made (appeared, not yet gone), by id, so
     /// an appear or disappear twice cannot skew it: none with rows to show
     /// is the blank list.
     var made: Set<String> = []
-    /// Where each row laid out sits in the content, from its first layout
-    /// until it disappears; laid out is a little wider than made.
-    var frames: [String: CGRect] = [:]
-    /// Where each row was last laid out, kept once it is not: once the
-    /// list is past the rows, the stack drops them, and a re-pin steps
-    /// back down from where they were (`towardsNewest`).
-    var placed: [String: CGRect] = [:]
-    /// The list has disappeared: its scroll view is another list's now.
-    var gone = false
-
-    /// The content in view at the last scroll geometry.
-    private var view: Range<CGFloat> = 0..<0
-
-    /// Whether the row with `id` is laid out and in view down to `padding`
-    /// below it.
-    func endsInView(_ id: String, padding: CGFloat) -> Bool {
-        guard let frame = frames[id] else { return false }
-        return frame.maxY > view.lowerBound && frame.maxY + padding <= view.upperBound + 0.5
-    }
-
-    /// With rows laid out, none of them in view.
-    func noneInView(offset: CGFloat, container: CGFloat) -> Bool {
-        view = offset..<(offset + container)
-        return !frames.isEmpty && !frames.values.contains { $0.maxY > offset && $0.minY < view.upperBound }
-    }
-
-    /// Steps down from the newest row laid out towards the newest row
-    /// (`MessageList.repin`) since one ended in view or you took the list;
-    /// past `stepLimit` the re-pin jumps to the end as before.
-    var steps = 0
-    static let stepLimit = 12
-
-    /// The list's rows by id, as they are now (`MessageList` keeps it).
-    var ids: [String] = []
-
-    /// Where a re-pin scrolls by the rows laid out, nil with none: the
-    /// newest row's bottom (plus `padding`) at the list's bottom while it
-    /// is laid out; else half a list past the bottom of the newest row
-    /// laid out or last placed (`from`), so the rows after it are laid out
-    /// in view. A place kept from an earlier layout is only stepped from.
-    func towardsNewest(padding: CGFloat) -> (y: CGFloat, from: String?)? {
-        let height = view.upperBound - view.lowerBound
-        guard height > 0 else { return nil }
-        if let last = ids.last, let frame = frames[last] { return (frame.maxY + padding - height, nil) }
-        guard let newest = ids.last(where: { placed[$0] != nil }), let frame = placed[newest] else { return nil }
-        return (frame.maxY - height / 2, newest)
-    }
     /// Scrolls to the last row with none made since a row was made or you
     /// took the list; a stack that never makes one is left after
     /// `lastRowLimit`, not scrolled every few frames.
     var lastRowTries = 0
     static let lastRowLimit = 3
-    /// The latest re-pin asked for, when the oldest still waiting was asked
-    /// for, and whether any of them goes by the last row.
-    private(set) var request = 0
-    private var waitingSince: ContinuousClock.Instant?
+    /// Whether any re-pin still waiting goes by the last row.
     private var byLastRow = false
 
     func appeared(_ id: String) {
@@ -667,21 +647,15 @@ struct MessageList: View {
 
     /// A re-pin asked for; returns its number.
     func ask(byLastRow: Bool) -> Int {
-        request &+= 1
         if byLastRow { self.byLastRow = true }
-        if waitingSince == nil { waitingSince = .now }
-        return request
+        return ask()
     }
 
-    /// Whether `request` runs now, and if so whether by the last row: the
-    /// latest one, or any once requests have kept coming for 100 ms.
+    /// Whether `request` runs now (`ListEnd.due`), and if so whether by
+    /// the last row.
     func take(_ request: Int) -> Bool? {
-        guard let since = waitingSince,
-              request == self.request || ContinuousClock.now - since >= .milliseconds(100) else { return nil }
-        defer {
-            waitingSince = nil
-            byLastRow = false
-        }
+        guard due(request) else { return nil }
+        defer { byLastRow = false }
         return byLastRow || made.isEmpty
     }
 }

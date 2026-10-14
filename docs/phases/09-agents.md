@@ -831,6 +831,60 @@ bodies are pinned only by `ProviderTests`' own expectations. The
 recorder's requests are written by hand to match the providers' bodies
 and must be kept in step with them. No streams are recorded yet.
 
+### The agent chat opening part way up (branch `fix/agent-chat-blank`, 2026-10-14)
+
+From Tom, after the chat list's fix (`03-chat.md`, "Blank past the rows
+the stack placed", #259): the agent chat still opened blank, or part way
+up. `AgentMessageList` had the chat's weakness and none of its re-pins: a
+lazy stack, and a scroll to an end marker outside it on appearing, on a
+new turn, on a problem and on every piece of a streaming reply; nothing
+when the content's height changed. His log (the timeline log, now on the
+agent list too): opened at the estimated end (offset 613 of 1 342 pt),
+turns 11 to 14 laid out and in view; measured taller, the stack moved
+them down to 1 902 to 3 280 pt and put its height at 4 986, the offset
+stayed at 405, and the list showed turns 2 to 8 with the newest more than
+1 000 pt below. Nothing asked to go back. With the log off (no scroll
+targets) the same move can land where nothing is laid out: blank.
+Reproduced offscreen on `gate-alice` (23 turns): opened on turns 4 to 11
+every time.
+
+Changed: `ListEnd` (new, `PeelApp`) holds what the chat's list kept for
+its end (rows laid out and last placed, the steps down, the re-pin's
+requests), and `MessageList`'s tracking is it plus its own. The agent list
+reports where each turn and a last row under the reply are laid out, and
+every move to its end is a re-pin by them: the last row to the bottom once
+it is laid out, else a step down, else the marker. New: a re-pin when the
+content's or the list's height changes while following and still, and
+when turns are laid out with none in view. A step now puts the newest row
+laid out near the top of the list (a list's height of rows after it laid
+out), not half way: 2 steps on `gate-alice` where it took 3 or 4; the
+chat's list takes the same step, checked again (10 opens of the seeded
+chat, flush, no blank).
+
+Offscreen, `gate-alice`, 10 opens: every one ends with the newest turn in
+view and the list flush (offset 1 471 of 2 082), 2 steps each, no blank.
+
+Tom's account, first try: the agent chat opened at turns 1 to 7 again.
+The one step went to the last row's place kept from an earlier layout
+(2 850 pt, the content then 2 231), which moved nothing, and nothing asked
+again. A step now goes from the rows laid out now, and from a kept place
+only with none. Re-pins dropped log why (`repin … skipped`).
+
+He also found opening a tribe jittery: the log of one open shows the list
+moved five times in 180 ms (18 855, 17 918, 10 868, 10 967, 11 038), the
+stack measuring the rows it had just drawn and the re-pins following; most
+of it happened on main too. Both lists are now hidden (`opacity` 0) until
+they have gone where they open: at the end and no move for 60 ms (the
+chat's re-pins asked for none, the agent's made none), at "New messages",
+at a message asked for; a thread or an empty list at once; never later than
+400 ms. Offscreen the chat's list showed on "settled at the end" every
+open and never moved after; the agent's, at load average 23 to 39, mostly
+at the 400 ms limit and moved once after (it lands 12 pt short of the
+padded end with the log off). Tom: "much smoother now".
+
+Not checked: a reply streaming (no model key in the check app), the
+composer growing on the agent list.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

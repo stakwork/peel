@@ -147,7 +147,21 @@ private struct AgentMessageList: View {
     /// once back at the bottom.
     @State private var following = true
     @State private var phase = ScrollPhase.idle
+    /// Where the turns are laid out, to hold the list at its end by them.
+    @State private var end = ListEnd()
+    /// Only for a scroll to a point (`repin`).
+    @State private var position = ScrollPosition()
+    /// Shown once at the end and still, as the chat's list is
+    /// (`MessageList.revealed`); never later than `revealLimit`.
+    @State private var revealed = false
+    private static let revealLimit: Duration = .milliseconds(400)
+    /// The end marker, under the padding, for a jump with nothing laid out.
     private static let bottom = "bottom"
+    /// The last row in the lazy stack, under the reply and any note: where
+    /// it is laid out is where the conversation really ends.
+    private static let lastRow = "end"
+    private static let contentSpace = "agentListContent"
+    private static let padding: CGFloat = 12
 
     var body: some View {
         let turns = agent.turns
@@ -163,21 +177,35 @@ private struct AgentMessageList: View {
                                 .padding(.horizontal, 20)
                         }
                         AgentTurnRow(turn: turn, name: agent.name)
+                            .id(turn.id)
+                            .laidOut(turn.id, in: end, space: Self.contentSpace)
                         if let summary, summary.through == turn.id { AgentSummaryRow(summary: summary) }
                         if let problem, problem.turnID == turn.id {
                             AgentProblemRow(agent: agent, failure: problem.failure)
                         }
                     }
                     // Its own view: the reply growing redraws it alone.
-                    AgentReplyRow(agent: agent) { if following { proxy.scrollTo(Self.bottom, anchor: .bottom) } }
+                    AgentReplyRow(agent: agent) { repin(proxy, "reply grew") }
+                    Color.clear.frame(height: 1)
+                        .laidOut(Self.lastRow, in: end, space: Self.contentSpace)
                 }
-                .padding(.vertical, 12)
+                // Only for the timeline log's visible rows.
+                .scrollTargetLayout(isEnabled: TimelineLog.enabled)
+                .padding(.vertical, Self.padding)
                 .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottom) }
+                .coordinateSpace(.named(Self.contentSpace))
             }
+            .scrollPosition($position)
+            .opacity(revealed ? 1 : 0)
+            .timelineProbe(geometry: logGeometry, visible: logVisible)
             // Short, it sits on the composer, as a chat does.
             .defaultScrollAnchor(.bottom, for: .alignment)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .onScrollPhaseChange { _, new in phase = new }
+            .onScrollPhaseChange { _, new in
+                log("phase \(phase) -> \(new)")
+                phase = new
+                if new == .interacting { end.steps = 0 }
+            }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height) <= 24
             } action: { _, bottom in
@@ -187,14 +215,134 @@ private struct AgentMessageList: View {
                     following = false
                 }
             }
-            .onAppear { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+            // The turns measured taller than estimated move down, the
+            // offset stays, and the list is left on older turns (or past
+            // them, blank); the composer growing takes room from it: back
+            // to the end, by where it is.
+            .onScrollGeometryChange(for: CGSize.self) { geometry in
+                CGSize(width: geometry.containerSize.height, height: geometry.contentSize.height)
+            } action: { _, _ in
+                if phase == .idle { repin(proxy, "resized") }
+            }
+            // Turns laid out, none in view: past them, blank. Keyed by the
+            // offset, so landing there again asks again.
+            .onScrollGeometryChange(for: CGFloat?.self) { geometry in
+                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height)
+                    ? geometry.contentOffset.y : nil
+            } action: { _, out in
+                if out != nil, phase == .idle { repin(proxy, "turns laid out, none in view") }
+            }
+            .onChange(of: turns.map(\.id), initial: true) { _, ids in
+                end.ids = ids + [Self.lastRow]
+                end.steps = 0
+            }
+            .onAppear {
+                end.gone = false
+                log("appear")
+                if turns.isEmpty {
+                    reveal("nothing to place")
+                } else {
+                    Task {
+                        try? await Task.sleep(for: Self.revealLimit)
+                        reveal("at the limit")
+                    }
+                }
+                // Nothing laid out yet: the end as the stack estimates it,
+                // then by the turns once they are.
+                proxy.scrollTo(Self.bottom, anchor: .bottom)
+                repin(proxy, "appear")
+            }
+            .onDisappear {
+                log("disappear")
+                end.gone = true
+            }
             // A message sent always goes to the newest; a reply growing
             // only while the list is at the bottom.
             .onChange(of: turns.count) {
                 if turns.last?.author == .user { following = true }
-                if following { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                repin(proxy, "turns \(turns.count)")
             }
-            .onChange(of: problem) { if following { proxy.scrollTo(Self.bottom, anchor: .bottom) } }
+            .onChange(of: problem) { repin(proxy, "problem") }
+        }
+    }
+
+    /// To the end while following, by where the turns are laid out
+    /// (`ListEnd`): the conversation's last row to the bottom once it is;
+    /// short of it, a step down from the newest turn laid out, then again;
+    /// with none, the end marker. One for a burst of requests (a reply
+    /// streaming), at most 100 ms late while they keep coming.
+    private func repin(_ proxy: ScrollViewProxy, _ why: String) {
+        guard following else { return }
+        let request = end.ask()
+        Task {
+            try? await Task.sleep(for: .milliseconds(20))
+            guard end.due(request) else { return }
+            guard !end.gone, following, phase == .idle else { return log("repin \(why) skipped") }
+            if end.endsInView(Self.lastRow, padding: Self.padding) {
+                end.steps = 0
+                log("repin \(why): the end in view")
+                // Shown once nothing has moved it for a while.
+                let moves = end.moves
+                try? await Task.sleep(for: .milliseconds(60))
+                if end.moves == moves { reveal("settled at the end") }
+                return
+            }
+            if let step = end.towardsNewest(padding: Self.padding), end.steps < ListEnd.stepLimit {
+                end.steps += 1
+                log("place: \(why), to y=\(TimelineLog.points(step.y))\(step.from == nil ? "" : " (a step)")")
+                end.moves += 1
+                position.scrollTo(y: max(step.y, 0))
+                repin(proxy, why)
+                return
+            }
+            end.steps = 0
+            log("place: \(why), scrollTo bottom")
+            end.moves += 1
+            proxy.scrollTo(Self.bottom, anchor: .bottom)
+        }
+    }
+
+    /// Shows the list, once.
+    private func reveal(_ why: String) {
+        guard !revealed, !end.gone else { return }
+        revealed = true
+        log("revealed: \(why)")
+    }
+
+    // MARK: Timeline log (`TimelineLog`; nothing is built while it is off)
+
+    private func log(_ event: @autoclosure () -> String) {
+        TimelineLog.log("agent \(event()) | turns=\(agent.turns.count) reply=\(agent.reply != nil) "
+            + "following=\(following) phase=\(phase) \(laidOut)")
+    }
+
+    /// The turns laid out, by index, and where they sit in the content.
+    private var laidOut: String {
+        let positions = Dictionary(agent.turns.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let placed = end.frames.compactMap { id, frame in positions[id].map { (index: $0, frame: frame) } }
+        let last = end.frames[Self.lastRow].map { " end at \(TimelineLog.points($0.maxY))" } ?? ""
+        guard let first = placed.map(\.index).min(), let newest = placed.map(\.index).max() else { return "laid out none" + last }
+        let top = placed.map(\.frame.minY).min() ?? 0, bottom = placed.map(\.frame.maxY).max() ?? 0
+        return "laid out \(first)...\(newest) at \(TimelineLog.points(top))...\(TimelineLog.points(bottom))" + last
+    }
+
+    /// Not while scrolled by hand, which would be a line a frame.
+    private func logGeometry(_ geometry: ScrollGeometry) {
+        guard phase != .interacting, phase != .decelerating else { return }
+        let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
+        log("geometry offset=\(TimelineLog.points(geometry.contentOffset.y)) "
+            + "content=\(TimelineLog.points(geometry.contentSize.height)) "
+            + "container=\(TimelineLog.points(geometry.containerSize.height)) below=\(TimelineLog.points(below))")
+    }
+
+    /// The turns in view by index; none with turns to show is the blank list.
+    private func logVisible(_ ids: [String]) {
+        let positions = Dictionary(agent.turns.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let shown = ids.compactMap { positions[$0] }
+        if let first = shown.min(), let last = shown.max() {
+            log("visible turns \(first)...\(last) (\(shown.count))")
+        } else {
+            log(agent.turns.isEmpty ? "visible none, no turns" : "visible NONE with turns: blank")
         }
     }
 }

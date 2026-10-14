@@ -290,6 +290,16 @@ Peel switches over at 9.
   client of the brain, not a host for it (strut doesn't run on iOS); a
   direct strut pairing on the phone is not the long-term path.
 
+- **The agent runs in strut, and is a contact** (Tom, 2026-10-14). In v2
+  the agent's loop is a strut workflow on the brain (agent-brain.md's
+  "front agent … into strut", its open question 4, answered), so it moves
+  with the brain in a handover like everything else. A thin Sphinx bridge
+  on the brain (Peel's engine headless, or a small sphinx-rs service) holds
+  the agent's Sphinx account, turns messages into strut runs and sends the
+  replies, and exposes the Sphinx tools (read chats, send, pay) that live
+  in Peel's Swift today. Remotes reach the agent by message, Tailscale stays
+  for strut's UI and the graph.
+
 ## Open questions
 
 1. **For Evan:** brain mode opt-in (`STRUT_BRAIN=1`) or the default?

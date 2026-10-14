@@ -234,10 +234,10 @@ Review findings not applied (2026-10-14):
 - **The tab shell** (`MainTabs`): Chats, Payments, You and the system's
   search tab (`role: .search`), each its own `NavigationStack` with large
   titles. The Chats badge is the unread count in Sphinx blue. You's icon
-  is your photo (your initial on your colour without one) in an accent
-  ring while selected, rendered to an image since a tab bar draws only
-  images. The whole icon is 30 pt, so the photo is 22: at 30 with the
-  ring outside it, it ran into the tab's label. A conversation hides the
+  is your 30 pt photo (your initial on your colour without one), larger
+  than a glyph (Tom); selected, a 2 pt accent ring and a thin gap sit
+  inside its edge, since a ring outside it ran into the tab's label. It
+  is rendered to an image, since a tab bar draws only images. A conversation hides the
   tab bar. Payments is a placeholder with the balance until F2c; I2's
   Account moved into You as it was. Search filters the chat list by name
   (`searchQuery`, cleared on leaving the tab).
@@ -252,6 +252,10 @@ Review findings not applied (2026-10-14):
   `openThread`, a notification, a chat removed). A chat opened from
   Threads or Mentions goes on top of that list. A thread open when Chats
   is left comes back with it.
+- **Surfaces**: `.phoneList(.plain / .grouped)` on every list or form
+  (Peel's page behind it and its navigation bar, never the system's black
+  or grey) and `.phoneRows(…)` on its sections (`background` rows, or
+  `quote` cells grouped, `divider` hairlines).
 - **Theme** (`PhoneTheme`): `PhoneFont`, the Mac's sizes on Dynamic Type
   text styles (`.phoneFont(.row)`, `.message`, `.name`, `.time`, …);
   `Surface` and `Theme.quietText(on:)`, `tertiaryText` on the background

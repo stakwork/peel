@@ -71,6 +71,7 @@ struct ChatList: View {
                 Section("Unread") {
                     ForEach(sections.unread) { ChatLink(conversation: $0, state: states[$0.chat]) }
                 }
+                .phoneRows()
             }
             if !sections.tribes.isEmpty {
                 Section("Tribes") {
@@ -79,6 +80,7 @@ struct ChatList: View {
                         ShowAll(what: "\(all) tribes", all: $model.sidebarLayout.allTribes)
                     }
                 }
+                .phoneRows()
             }
             if !sections.direct.isEmpty {
                 Section("Direct messages") {
@@ -87,11 +89,10 @@ struct ChatList: View {
                         ShowAll(what: Formatting.people(all), all: $model.sidebarLayout.allDirect)
                     }
                 }
+                .phoneRows()
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .phoneList()
         .overlay {
             if model.conversations.isEmpty {
                 ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.bubble.right",
@@ -112,7 +113,6 @@ private struct ChatLink: View {
         NavigationLink(value: ChatsRoute.chat(conversation.chat)) {
             ChatListRow(conversation: conversation, state: state)
         }
-        .listRowBackground(Theme.background)
     }
 }
 
@@ -126,7 +126,6 @@ private struct ShowAll: View {
         Button(all ? "Show fewer" : "Show all \(what)") { all.toggle() }
             .font(Theme.font(15))
             .foregroundStyle(Theme.accent)
-            .listRowBackground(Theme.background)
     }
 }
 

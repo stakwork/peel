@@ -86,3 +86,33 @@ extension Theme {
     /// The least a control is tall or wide: the system's touch target.
     static let touchTarget: CGFloat = 44
 }
+
+/// A list's kind: rows on the page (Chats), or grouped cells (You).
+enum PhoneListKind {
+    case plain
+    /// Cells on `quote`, a step up from the page.
+    case grouped
+}
+
+extension View {
+    /// On a `List` or `Form`: Peel's page behind it and behind its
+    /// navigation bar and large title, never the system's black or grey.
+    /// Its rows take `phoneRows` (a `Section` passes it to its rows).
+    @ViewBuilder func phoneList(_ kind: PhoneListKind = .plain) -> some View {
+        let page = scrollContentBackground(.hidden)
+            .background(Theme.background.ignoresSafeArea())
+            .containerBackground(Theme.background, for: .navigation)
+        switch kind {
+        case .plain: page.listStyle(.plain)
+        case .grouped: page.listStyle(.insetGrouped)
+        }
+    }
+
+    /// On a list's rows or sections: their fill (`background` on a plain
+    /// list, `quote` grouped) and `divider` hairlines between them.
+    func phoneRows(_ kind: PhoneListKind = .plain) -> some View {
+        listRowBackground(kind == .grouped ? Theme.quote : Theme.background)
+            .listRowSeparatorTint(Theme.divider)
+            .listSectionSeparatorTint(Theme.divider)
+    }
+}

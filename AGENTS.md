@@ -365,7 +365,8 @@ is a short plan. Update the status and the journal when you finish something.
   follows it when the model moves it), `PhoneTheme` (`PhoneFont`, the
   Mac's sizes on Dynamic Type styles, `.phoneFont`; `Surface` and
   `Theme.quietText(on:)`, the grey for a raised surface; the gutter and
-  touch target), `Glass` (`GlassCapsule`, `GlassCapsuleButton`,
+  touch target; `.phoneList` and `.phoneRows`, Peel's surfaces under every
+  list and its rows), `Glass` (`GlassCapsule`, `GlassCapsuleButton`,
   `GlassButton`, `.floatingBar`, `.scrollEdges`: Liquid Glass on chrome
   only), `PhoneComponents` (`CountBadge`, `PhoneSectionHeader`, `NavRow`,
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:

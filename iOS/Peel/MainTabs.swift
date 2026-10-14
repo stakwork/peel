@@ -37,18 +37,19 @@ struct MainTabs: View {
     }
 }
 
-/// Your photo as the You tab's icon, inside a 2 pt accent ring past a
-/// 2 pt gap while selected; your initial on your colour without a photo.
-/// The whole is 30 pt (the design's photo size), so the photo is 22: a
-/// larger image runs into the tab's label once the ring is on. A tab bar
-/// draws only images, so it is rendered to one.
+/// Your photo at 30 pt as the You tab's icon, larger than a glyph (Tom);
+/// your initial on your colour without a photo. Selected, a 2 pt accent
+/// ring and a thin gap are drawn inside its edge, not outside it, where
+/// they ran into the tab's label. A tab bar draws only images, so it is
+/// rendered to one.
 private struct YouTabIcon: View {
     @Environment(AppModel.self) private var model
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
     let selected: Bool
     @State private var image: UIImage?
 
-    private static let photo: CGFloat = 22
+    private static let side: CGFloat = 30
     private static let ring: CGFloat = 2
 
     /// What the image is drawn from: drawn again only when one changes.
@@ -58,11 +59,12 @@ private struct YouTabIcon: View {
         let hue: PersonHue
         let selected: Bool
         let scale: CGFloat
+        let scheme: ColorScheme
     }
 
     var body: some View {
         let key = Key(name: model.me.avatarName, photo: model.myPhotoURL, hue: model.myHue,
-                      selected: selected, scale: displayScale)
+                      selected: selected, scale: displayScale, scheme: colorScheme)
         Image(uiImage: image ?? UIImage())
             .renderingMode(.original)
             .accessibilityHidden(true)
@@ -76,15 +78,16 @@ private struct YouTabIcon: View {
     }
 
     private static func render(_ key: Key) -> UIImage? {
-        let side = photo + 4 * ring
-        let icon = ZStack {
-            if key.selected {
-                Circle().strokeBorder(Theme.accent, lineWidth: ring)
+        let icon = Avatar(name: key.name, url: key.photo, size: side, hue: key.hue)
+            .overlay {
+                if key.selected {
+                    // Inside the photo's edge, so the icon stays 30 pt and
+                    // clear of the label: the ring, then a gap in the page's colour.
+                    Circle().strokeBorder(Theme.accent, lineWidth: ring)
+                    Circle().inset(by: ring).strokeBorder(Theme.background, lineWidth: 1.5)
+                }
             }
-            Avatar(name: key.name, url: key.photo, size: photo, hue: key.hue)
-        }
-        .frame(width: side, height: side)
-        let renderer = ImageRenderer(content: icon)
+        let renderer = ImageRenderer(content: icon.environment(\.colorScheme, key.scheme))
         renderer.scale = key.scale
         return renderer.uiImage?.withRenderingMode(.alwaysOriginal)
     }

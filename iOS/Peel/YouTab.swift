@@ -30,6 +30,7 @@ struct YouTab: View {
                     .padding(.vertical, 6)
                     .accessibilityElement(children: .combine)
                 }
+                .phoneRows(.grouped)
                 Section("Account") {
                     NavigationLink {
                         NameEditor()
@@ -48,6 +49,7 @@ struct YouTab: View {
                         }
                     }
                 }
+                .phoneRows(.grouped)
                 Section("Security") {
                     if model.profile?.requiresPIN == true {
                         NavigationLink("Change PIN") { ChangePIN() }
@@ -58,6 +60,7 @@ struct YouTab: View {
                         LabeledContent("Twelve words", value: model.wordsConfirmed ? "Checked" : "Not checked yet")
                     }
                 }
+                .phoneRows(.grouped)
                 Section {
                     ForgetAccount(
                         trigger: "Forget this account on this iPhone",
@@ -65,10 +68,9 @@ struct YouTab: View {
                     )
                     .padding(.vertical, 4)
                 }
+                .phoneRows(.grouped)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Theme.background)
+            .phoneList(.grouped)
             .navigationTitle("You")
         }
     }

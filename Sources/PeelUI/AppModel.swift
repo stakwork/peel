@@ -643,6 +643,8 @@ public final class AppModel {
         guard let invite = try? Engine.parseInvite(input) else {
             throw PeelError("That doesn't look like a Sphinx invite.")
         }
+        // Face ID left by an account forgotten part-way would hold its PIN.
+        try? profile.biometrics?.turnOff()
         let created = try await Account.signup(profile, invite: invite, alias: name, pin: pin)
         await attach(created.engine)
         return Engine.words(in: created.mnemonic)
@@ -654,6 +656,7 @@ public final class AppModel {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
+        try? profile.biometrics?.turnOff()
         let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()

@@ -21,6 +21,9 @@ public struct Profile: Sendable {
     /// The key Peel's strut encrypts its secrets with (`STRUT_SECRET_KEY`),
     /// made when it first starts (`BundledStrut`).
     public let strutKey: any SecretItem
+    /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
+    /// development profile, which has no PIN.
+    public let biometrics: BiometricUnlock?
 
     /// Names are path components, so only plain characters are allowed.
     public init(name: String, kind: Kind) throws {
@@ -39,9 +42,11 @@ public struct Profile: Sendable {
             secrets = KeychainSecretStore(account: name)
             agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
             strutKey = KeychainItem(service: "dev.peel.strut", account: name)
+            biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
             (secrets, agentCredential, strutKey) = Self.files(in: directory)
+            biometrics = nil
         }
     }
 
@@ -52,6 +57,7 @@ public struct Profile: Sendable {
         kind = .development
         self.directory = directory
         (secrets, agentCredential, strutKey) = Self.files(in: directory)
+        biometrics = nil
     }
 
     /// A development profile's words, agent key and strut's key, in
@@ -97,6 +103,7 @@ public struct Profile: Sendable {
     public func changePIN(from oldPIN: String, to newPIN: String) throws {
         guard requiresPIN else { throw PeelError("this profile has no PIN") }
         try secrets.changePIN(from: oldPIN, to: newPIN)
+        biometrics?.pinChanged(to: newPIN)
     }
 
     /// Removes the words and everything stored with them, the agent's key
@@ -109,6 +116,7 @@ public struct Profile: Sendable {
         // The automation token #221 kept; strut is now handed one per launch.
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         try strutKey.delete()
+        try biometrics?.turnOff()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

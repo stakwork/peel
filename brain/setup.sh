@@ -37,7 +37,10 @@ ask_secret() {
 if [ ! -f .env ]; then
     echo "First run: writing .env"
     anthropic=$(ask_secret "Anthropic API key (Enter to add it later in strut's Secrets): ")
-    tsauth=$(ask_secret "Tailscale auth key (Enter to log in with a link instead): ")
+    # Required: without one, Tailscale's container waits about a minute for a
+    # browser login, then restarts with a new link, so the link rarely works.
+    tsauth=$(ask_secret "Tailscale auth key (Settings › Keys in the admin console): ")
+    [ -n "$tsauth" ] || fail "a Tailscale auth key is needed"
     umask 077
     cat > .env <<EOF
 STRUT_API_KEY=$(random_key)
@@ -49,7 +52,9 @@ EOF
 fi
 mkdir -p data
 
-docker compose up -d
+# strut lives in the Tailscale container's network; recreate both together so
+# strut never keeps the network of a Tailscale container that was replaced.
+docker compose up -d --force-recreate
 
 # The first JSON value of a field in `tailscale status --json`, which lists
 # this machine before its peers.

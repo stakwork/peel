@@ -12,8 +12,8 @@ services:
     hostname: ${BRAIN_HOSTNAME:-peel-brain}
     restart: unless-stopped
     environment:
-      # Optional: without one, the log prints a login link (setup.sh shows it).
-      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      # An auth key from the admin console (Settings › Keys); setup.sh asks for it.
+      TS_AUTHKEY: ${TS_AUTHKEY:?run ./setup.sh first}
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
     volumes:

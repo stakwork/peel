@@ -19,10 +19,11 @@ router. It needs to be online: strut calls hosted models.
 ## Setup
 
 1. In the Tailscale admin console, turn on MagicDNS and HTTPS certificates
-   (DNS settings). Optionally make an auth key (Settings › Keys).
-2. Copy this folder to the box and run `./setup.sh`. It asks for an
-   Anthropic key and a Tailscale auth key (both optional), makes strut's
-   keys, starts everything and prints a pairing link.
+   (DNS settings), and make an auth key (Settings › Keys; not reusable, not
+   ephemeral).
+2. Copy this folder to the box and run `./setup.sh`. It asks for the
+   Tailscale auth key and an Anthropic key (optional), makes strut's keys,
+   starts everything and prints a pairing link.
 3. Open the link on the Mac, or scan it on the phone.
 
 Until `ghcr.io/stakwork/strut` is published, build the image from a strut

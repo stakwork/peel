@@ -99,6 +99,13 @@ public struct AutomationsClient: Sendable {
     public let server: MemoryServer
 
     public static let workflow = "peel-automation"
+    /// The secrets in strut's store that `step` reads: Peel's bearer token
+    /// and its port on this Mac. Two, not one JSON value, so strut's
+    /// cassettes scrub each (they scrub a secret's whole value).
+    static let tokenSecret = "PEEL_AUTOMATION_TOKEN"
+    static let portSecret = "PEEL_AUTOMATION_PORT"
+    /// The custom step the workflow runs: Peel's adapter, published with it.
+    static let step = "peel/run-automation"
     static let replyLimit = 2_000_000
 
     public init(server: MemoryServer) {
@@ -208,12 +215,19 @@ public struct AutomationsClient: Sendable {
 
     // MARK: The workflow
 
-    /// Makes sure strut's `peel-automation` workflow posts to `peel` with
-    /// `token`: published when missing, or as a new version when its address
-    /// or token changed. Each version is named for its content, so the
-    /// check is one read.
-    public func install(peel: URL, token: String) async throws {
-        let yaml = Self.workflowYAML(peel: peel, token: token)
+    /// Hands strut `token` and `port` for its encrypted secret store
+    /// (`tokenSecret`, `portSecret`), publishes `step` (strut keeps one
+    /// version per content, so the same source is a no-op), then makes sure
+    /// its `peel-automation` workflow is the current one: published when
+    /// missing, or as a new version when Peel's changed. Each version is
+    /// named for its content, so the check is one read.
+    public func install(port: Int, token: String) async throws {
+        _ = try await call("PUT", "secrets/\(Self.tokenSecret)", ["value": .string(token)], what: "the automation token")
+        _ = try await call("PUT", "secrets/\(Self.portSecret)", ["value": .string(String(port))], what: "the automation port")
+        _ = try await call("POST", "steps", ["name": .string(Self.step), "code": .string(Self.stepSource),
+                                             "description": "Hands a scheduled prompt to Peel on this Mac."],
+                           what: "the automation step")
+        let yaml = Self.workflowYAML
         let version = Self.version(of: yaml)
         let (status, data) = try await request("GET", "workflows/\(Self.workflow)", nil, what: "the workflow")
         var active: String?
@@ -234,34 +248,61 @@ public struct AutomationsClient: Sendable {
                            what: "the workflow")
     }
 
-    /// The workflow: one `http` step to Peel, its address and token in params.
-    static func workflowYAML(peel: URL, token: String) -> String {
-        """
+    /// The step: reads the token and Peel's port from strut's secret store in
+    /// code, as strut's adapters do, and posts the run through
+    /// `ctx.services.http` to 127.0.0.1 at that port. Its config is the run
+    /// only: a workflow can name neither the token nor where it goes.
+    static let stepSource = #"""
+        import { z, defineStep } from "strut";
+
+        export default defineStep({
+          type: "\#(step)",
+          description: "Hands an automation's prompt to Peel on this Mac, at the port and with the token Peel keeps in the secret store. Output: { status, body } — body is Peel's reply.",
+          input: z.object({
+            name: z.string(),
+            prompt: z.string(),
+            since: z.any().optional(),
+          }),
+          output: z.any(),
+          async run(cfg, ctx) {
+            const token = await ctx.services.secrets.get("\#(tokenSecret)");
+            const port = Number(await ctx.services.secrets.get("\#(portSecret)"));
+            if (!token || !Number.isInteger(port) || port < 1 || port > 65535) {
+              throw new Error('secrets "\#(tokenSecret)" and "\#(portSecret)" are not set: Peel stores them when its agent chat opens');
+            }
+            const res = await ctx.services.http(`http://127.0.0.1:${port}/automations/run`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}` },
+              body: { name: cfg.name, prompt: cfg.prompt, since: cfg.since ?? null },
+              timeout: 600000,
+            });
+            if (!res.ok) {
+              const why = typeof res.body === "string" ? res.body : res.body?.error ?? JSON.stringify(res.body);
+              throw new Error(`Peel answered ${res.status}: ${why}`);
+            }
+            return { status: res.status, body: res.body };
+          },
+        });
+
+        """#
+
+    /// The workflow: one `step` to Peel, and nothing about where Peel is or
+    /// its token, so it is the same on every launch.
+    static let workflowYAML = """
         name: \(workflow)
         input:
           name: { type: string }
           prompt: { type: string }
           since: { type: json, required: false, description: "When the last successful run finished; null on the first" }
-        params:
-          peel_url: "\(peel.absoluteString)"
-          peel_token: "\(token)"
         steps:
           - id: peel
-            type: http
+            type: \(step)
             config:
-              url: "{{ params.peel_url }}/automations/run"
-              method: POST
-              timeout: 600000
-              headers:
-                Authorization: "Bearer {{ params.peel_token }}"
-                Content-Type: application/json
-              body:
-                name: "{{ input.name }}"
-                prompt: "{{ input.prompt }}"
-                since: "{{ input.since }}"
+              name: "{{ input.name }}"
+              prompt: "{{ input.prompt }}"
+              since: "{{ input.since }}"
 
         """
-    }
 
     /// `p-` and the content's hash: the same content always has the same label.
     static func version(of yaml: String) -> String {

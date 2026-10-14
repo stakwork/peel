@@ -287,7 +287,8 @@ final class AppModel {
     @ObservationIgnored var automationServer: AutomationServer?
     /// The last server's close, which a new one waits for before taking its port.
     @ObservationIgnored var automationStopping: Task<Void, Never>?
-    /// The token the listening server checks, for installing its workflow again.
+    /// The token strut sends with each automation: made when the agent opens,
+    /// in memory only, the same for every server and PUT until it closes.
     @ObservationIgnored var automationToken: String?
     /// The Automations view's list, read from strut.
     var automations = AutomationsState()

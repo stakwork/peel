@@ -7,6 +7,8 @@ import PeelCore
 /// only in memory; its address is the port the OS gives it, read from its
 /// ready line. It exits by itself when Peel goes away, however that
 /// happens: its stdin is a pipe only Peel holds (`STRUT_EXIT_ON_STDIN_EOF`).
+/// Its secret store (the automation token) is encrypted with a key the
+/// account keeps (`Profile.strutKey`), made on its first start.
 /// Its workspace and the memory graph are in the folder it is given (the app
 /// account's under Application Support), and go with the account (`erase`).
 @MainActor
@@ -19,6 +21,7 @@ public final class BundledStrut {
 
     private let folder: URL
     private let data: URL
+    private let secretKey: any SecretItem
     private var process: Process?
     private var stdin: Pipe?
     private var starting: Task<MemoryServer, any Error>?
@@ -26,19 +29,20 @@ public final class BundledStrut {
     /// How long strut may take to say it is ready.
     static let readyTimeout: Duration = .seconds(30)
 
-    /// The strut in `bundle`, if it has one.
-    public convenience init?(in bundle: Bundle = .main, data: URL = BundledStrut.dataFolder) {
-        self.init(folder: bundle.bundleURL.appending(path: "Contents/Strut"), data: data)
+    /// The strut in `bundle`, if it has one, its secrets encrypted with the key kept in `secretKey`.
+    public convenience init?(in bundle: Bundle = .main, data: URL = BundledStrut.dataFolder, secretKey: any SecretItem) {
+        self.init(folder: bundle.bundleURL.appending(path: "Contents/Strut"), data: data, secretKey: secretKey)
     }
 
     /// The strut package in `folder` (its `desktop.js` and `native/node`),
     /// if there is one: for `peel agent`, which is not inside Peel.app, the
     /// one `stage-strut.sh` staged (`staged`).
-    public init?(folder: URL, data: URL) {
+    public init?(folder: URL, data: URL, secretKey: any SecretItem) {
         guard FileManager.default.isExecutableFile(atPath: folder.appending(path: "native/node").path),
               FileManager.default.fileExists(atPath: folder.appending(path: "desktop.js").path) else { return nil }
         self.folder = folder
         self.data = data
+        self.secretKey = secretKey
     }
 
     /// Where its workspace and the memory graph live: beside the profiles, in Peel's folder.
@@ -109,11 +113,12 @@ public final class BundledStrut {
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
         let key = try AutomationServer.newKey()
+        let secrets = try Self.secretKey(in: secretKey)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
-        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, data: data)
+        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -183,14 +188,22 @@ public final class BundledStrut {
         return MemoryServer(base: url, key: key)
     }
 
+    /// The key kept in `item`, or a new random one kept there.
+    nonisolated static func secretKey(in item: any SecretItem) throws -> String {
+        if let kept = try item.read(), let key = String(data: kept, encoding: .utf8), key.count == 64 { return key }
+        let key = try AutomationServer.newKey()
+        try item.write(Data(key.utf8))
+        return key
+    }
+
     /// Peel's own environment without anything that would change how Node,
     /// strut or its OpenSSL runs (`DYLD_*`, `NODE_*`, `STRUT_*`, `OPENSSL_*`,
     /// `SSL_CERT_*`) or that is Peel's own (`PEEL_*`, the CLI's model key
     /// among them), and then strut's: this Mac only, a port the OS picks,
-    /// Peel's key and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
+    /// Peel's keys and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
     /// configuration and loads no engine or provider: it was built for
     /// Homebrew's folders, which another user may own.
-    nonisolated static func environment(_ inherited: [String: String], key: String, data: URL) -> [String: String] {
+    nonisolated static func environment(_ inherited: [String: String], key: String, secretKey: String, data: URL) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
             name == "NODE_EXTRA_CA_CERTS"
@@ -201,6 +214,7 @@ public final class BundledStrut {
             "STRUT_PORT": "0",
             "STRUT_API_KEY": key,
             "STRUT_READY_KEY": "1",
+            "STRUT_SECRET_KEY": secretKey,
             "STRUT_WORKSPACE_BACKEND": "fs",
             "STRUT_WORKSPACE": data.appending(path: "workspace").path,
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,

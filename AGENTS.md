@@ -190,8 +190,10 @@ is a short plan. Update the status and the journal when you finish something.
     profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
     data-protection Keychain item, which the words and the agent's key
     share) and `FileItem` (an owner-only file) behind `SecretItem`; the
-    profile's `agentCredential` (the agent's provider, model and API key)
-    and `agentDatabase` (`agent.sqlite`)
+    profile's `agentCredential` (the agent's provider, model and API key),
+    `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
+    or `strut-key` on a development profile; gone with the profile) and
+    `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
     registry, the config): ephemeral sessions (also the memes server's), the
@@ -392,7 +394,9 @@ is a short plan. Update the status and the journal when you finish something.
     started when an app account opens its agent (and again before a reply
     if it stopped), erased with the account (`erase`: what the agent
     remembered and its automations), its key made by Peel for
-    this launch and kept only in memory, its port the OS's, read from its
+    this launch and kept only in memory, its secret store encrypted with
+    `STRUT_SECRET_KEY` (the profile's `strutKey`, made on first start, read
+    before strut starts, never logged), its port the OS's, read from its
     ready line (only `127.0.0.1` with Peel's key is trusted); the caller's
     `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
     `SSL_CERT_*` dropped, and
@@ -402,6 +406,22 @@ is a short plan. Update the status and the journal when you finish something.
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
     two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
+  - `AutomationServer.swift` — where strut reaches Peel when an automation
+    fires (`docs/phases/12-automations.md`): `POST /automations/run` on
+    127.0.0.1 with the bearer token `AppModel` makes when the agent opens
+    (in memory only, the same for every server and PUT until it closes)
+  - `AutomationsClient.swift` — strut's automation endpoints; `install`
+    puts the server's token and port in strut's encrypted secret store
+    (`PUT /secrets/PEEL_AUTOMATION_TOKEN` and `…_PORT`, two values so
+    cassettes scrub each; a failure is the view's problem, never a
+    fallback), publishes Peel's custom step `peel/run-automation`
+    (`stepSource`: reads both with `ctx.services.secrets.get` in code, as
+    strut's adapters do, and posts through `ctx.services.http` to
+    127.0.0.1 at that port; its config is the run only, so a workflow's
+    config can neither carry the token nor change where it goes; strut
+    keeps one version per content)
+    and then the `peel-automation` workflow, which runs that step and says
+    nothing about Peel, so its content-hash version never changes
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut on this Mac owns (`docs/agent-brain.md`): its address and
     `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`;

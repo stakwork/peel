@@ -52,6 +52,8 @@ extension AppModel {
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
+            // One per account open, so every server and every PUT to strut agrees on it.
+            automationToken = try AutomationServer.newKey()
             if strut == nil { strut = Self.strut(for: profile) }
             let setup = Self.agentSetup(engine, memory: nil)
             let agent = AgentSession(
@@ -104,9 +106,10 @@ extension AppModel {
     /// account never writes to the real memory.
     static func strut(for profile: Profile) -> BundledStrut? {
         switch profile.kind {
-        case .app: BundledStrut()
+        case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
-            UserDefaults.standard.bool(forKey: "strut") ? BundledStrut(data: BundledStrut.dataFolder(for: profile)) : nil
+            UserDefaults.standard.bool(forKey: "strut")
+                ? BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) : nil
         }
     }
 
@@ -126,6 +129,7 @@ extension AppModel {
 
     func closeAgent() {
         stopAutomations()
+        automationToken = nil
         agent?.close()
         agent = nil
         closeMemory()

@@ -80,16 +80,16 @@ struct AutomationsClientTests {
         #expect(try AutomationsClient.read(201, Data(#"{"ok":true}"#.utf8))["ok"] == .bool(true))
     }
 
-    /// The same address and token always make the same version, so the
-    /// install check is one read; a new token makes a new one.
-    @Test func theWorkflowsVersionIsItsContent() throws {
-        let peel = try #require(URL(string: "http://127.0.0.1:4778"))
-        let yaml = AutomationsClient.workflowYAML(peel: peel, token: "t0k")
-        #expect(AutomationsClient.version(of: yaml) == AutomationsClient.version(of: yaml))
-        #expect(AutomationsClient.version(of: yaml).hasPrefix("p-"))
-        #expect(AutomationsClient.version(of: yaml) != AutomationsClient.version(of: AutomationsClient.workflowYAML(peel: peel, token: "t1k")))
-        #expect(yaml.contains(#"peel_url: "http://127.0.0.1:4778""#))
+    /// Nothing about where Peel is or its token is in the workflow strut
+    /// keeps in its workspace: Peel's step reads both from strut's secret
+    /// store in code. So the workflow is the same on every launch.
+    @Test func theWorkflowRunsPeelsStepAndSaysNothingOfPeel() {
+        let yaml = AutomationsClient.workflowYAML
+        #expect(yaml.contains("type: peel/run-automation"))
         #expect(yaml.contains("since: { type: json, required: false"))
+        for word in ["PEEL_AUTOMATION", "uthorization", "Bearer", "token", "http", "port", "params", "127.0.0.1"] {
+            #expect(!yaml.contains(word), "\(word)")
+        }
     }
 
     @Test func eachRunIsHandedItsPromptAndTheLastRun() {

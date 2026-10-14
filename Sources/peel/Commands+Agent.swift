@@ -30,6 +30,44 @@ enum AgentCommand {
 
     static let keyVariable = "PEEL_AGENT_API_KEY"
 
+    /// The model `--provider` (anthropic unless named), `--model` (needed
+    /// but for anthropic) and `--base-url` name, shared by `peel agent` and
+    /// `peel eval memory`.
+    struct ModelChoice {
+        /// nil when `--provider` was not given.
+        var provider: AgentProvider?
+        var model: String?
+        var baseURL: URL?
+
+        init(_ arguments: inout Arguments) throws {
+            provider = try arguments.option("--provider").map { name in
+                guard let provider = AgentProvider(rawValue: name) else {
+                    throw PeelError("--provider is anthropic, openai or openrouter, not \(name)")
+                }
+                return provider
+            }
+            baseURL = try arguments.option("--base-url").map { text in
+                guard let url = URL(string: text) else { throw PeelError("cannot read base URL \(text)") }
+                return url
+            }
+            model = arguments.option("--model")
+        }
+
+        /// The key in `PEEL_AGENT_API_KEY`, if one is set.
+        static var environmentKey: String? {
+            ProcessInfo.processInfo.environment[keyVariable].flatMap { $0.isEmpty ? nil : $0 }
+        }
+
+        /// The client with `apiKey`, and the model it runs.
+        func client(apiKey: String) throws -> (any ModelProvider, String) {
+            let provider = provider ?? .anthropic
+            guard let model = model ?? (provider == .anthropic ? AnthropicProvider.defaultModel : nil) else {
+                throw PeelError("--provider \(provider.rawValue) needs --model <id>")
+            }
+            return (provider.client(apiKey: apiKey, baseURL: baseURL), model)
+        }
+    }
+
     /// The agent's arguments after `agent`, and the `--profile` given:
     /// `--send` and `--memory` need one. Nothing starts or connects before
     /// `chat` has checked the rest and the key.
@@ -66,11 +104,16 @@ enum AgentCommand {
         try await chat(arguments, storage: storage, strut: strut)
     }
 
-    /// The strut `--memory` starts for `profile`: the one stage-strut.sh
-    /// staged (the CLI is not inside Peel.app), its data in the profile's
+    /// The strut `--memory` starts for `profile`: its data in the profile's
     /// own folder, never the app account's memory.
     @MainActor static func strut(for profile: Profile) throws -> BundledStrut {
-        guard let strut = BundledStrut(folder: BundledStrut.staged, data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) else {
+        try strut(data: BundledStrut.dataFolder(for: profile), key: profile.strutKey)
+    }
+
+    /// The strut stage-strut.sh staged (the CLI is not inside Peel.app),
+    /// with its data in `data`; shared with `peel eval memory`.
+    @MainActor static func strut(data: URL, key: any SecretItem) throws -> BundledStrut {
+        guard let strut = BundledStrut(folder: BundledStrut.staged, data: data, secretKey: key) else {
             throw PeelError("no strut staged at \(BundledStrut.staged.path); run scripts/stage-strut.sh <strut checkout>")
         }
         return strut
@@ -84,37 +127,15 @@ enum AgentCommand {
         sending connect: (() async throws -> Sending)? = nil
     ) async throws {
         var arguments = arguments
-        let providerName = arguments.option("--provider") ?? "anthropic"
-        let modelOption = arguments.option("--model")
-        let baseURL = try arguments.option("--base-url").map { text in
-            guard let url = URL(string: text) else { throw PeelError("cannot read base URL \(text)") }
-            return url
-        }
+        let choice = try ModelChoice(&arguments)
         let maxSteps = try arguments.option("--max-steps").map { text in
             guard let steps = Int(text), steps > 0 else { throw PeelError("--max-steps is a whole number above 0, not \(text)") }
             return steps
         }
         guard arguments.isEmpty else { throw PeelError("agent: unexpected \(arguments.rest().joined(separator: " "))") }
-        guard let key = ProcessInfo.processInfo.environment[keyVariable], !key.isEmpty else {
-            throw PeelError("set \(keyVariable) to the provider's API key")
-        }
-
-        let provider: any ModelProvider
-        let model: String?
-        switch providerName {
-        case "anthropic":
-            provider = AnthropicProvider(apiKey: key, baseURL: baseURL ?? AnthropicProvider.defaultBaseURL)
-            model = modelOption ?? AnthropicProvider.defaultModel
-        case "openai":
-            provider = OpenAICompatibleProvider(apiKey: key, baseURL: baseURL ?? OpenAICompatibleProvider.openAI)
-            model = modelOption
-        case "openrouter":
-            provider = OpenAICompatibleProvider.openRouter(apiKey: key, baseURL: baseURL ?? OpenAICompatibleProvider.openRouter)
-            model = modelOption
-        default:
-            throw PeelError("--provider is anthropic, openai or openrouter, not \(providerName)")
-        }
-        guard let model else { throw PeelError("--provider \(providerName) needs --model <id>") }
+        guard let key = ModelChoice.environmentKey else { throw PeelError("set \(keyVariable) to the provider's API key") }
+        let (provider, model) = try choice.client(apiKey: key)
+        let providerName = (choice.provider ?? .anthropic).rawValue
 
         let sending = try await connect?()
         func finish() async {

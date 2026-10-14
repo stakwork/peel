@@ -522,6 +522,9 @@ is a short plan. Update the status and the journal when you finish something.
     strut's; `created_by` is set here, never by the model; a result is one
     cleaned line (the row's summary) then the JSON between the chat-data
     markers
+  - `KeptCredential.swift` — the connected model's credential as JSON in
+    one `SecretItem` (the Keychain in the app, a development profile's
+    file), read by the app and `peel eval memory --profile`
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -541,6 +544,9 @@ is a short plan. Update the status and the journal when you finish something.
     before each reply); and the memory tools (no automations: they need
     the app). `--base-url http://127.0.0.1:<port>`
     points it at a local scripted model
+  - `Commands+Eval.swift` — `peel eval memory`, the memory benchmark
+    (Tests, "Memory eval"); `ModelChoice` (`--provider`, `--model`,
+    `--base-url`) is shared with `peel agent`
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -573,7 +579,11 @@ is a short plan. Update the status and the journal when you finish something.
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged
-  strut `--memory`'s remember and recall, the model scripted) and
+  strut `--memory`'s remember and recall, the model scripted),
+  `MemoryScenarioTests` (with a staged strut, the 14 Oct memory hand test's
+  rounds through the memory tools, no model, and what memory holds after;
+  offline, `evals/memory.json` well formed and malformed scenarios refused,
+  and the eval's scoring) and
   `MemoryToolsTests` (this Mac only, the POST included; the key never
   printed; strut's replies and refusals; which tools write; the rows'
   lines; the markers; `created_by`)
@@ -888,6 +898,28 @@ before and after a change:
 
 ```sh
 PEEL_BENCH=1 PEEL_BENCH_OUT=.build/bench/before.json swift test -Xswiftc -O --filter PeelBenchmarks
+```
+
+### Memory eval
+
+`peel eval memory` measures the agent's memory end to end with a real
+model: each scenario in `evals/memory.json` (say, clear, ask; checks on
+the answer and on what memory holds) runs on a fresh temporary memory
+through the staged strut, with the app's prompt and memory tools and
+nothing sent, `--runs` times (default 3). It prints each check's pass
+rate with the failing answers and memory, and exits non-zero when a
+check passes in under two thirds of the runs; a strut that does not start
+or a model never asked (a refused key, a bad address, an unknown model id) stops it. Off by default:
+without `PEEL_AGENT_API_KEY` or `--profile <dev profile>` (that profile's
+connected model, the key never printed) it says how to run and exits 0.
+Run it before merging a change to memory or its prompt. The model-free
+half is `MemoryScenarioTests`, on whenever a strut is staged. A run
+stopped by force (Ctrl-C, a crash) can leave a `peel-eval-memory-*`
+folder in the temporary directory.
+
+```sh
+PEEL_AGENT_API_KEY=<key> swift run peel eval memory [--runs 5] [--scenario where-before]
+swift run peel eval memory --profile <dev profile>
 ```
 
 ### Local LiveKit server

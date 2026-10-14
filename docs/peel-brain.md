@@ -343,6 +343,10 @@ connection is for everything else.
 
 ## Build order
 
+Moving memory alone (steps 2–3 below) is superseded by moving the whole
+brain: [brain-handover.md](brain-handover.md).
+
+
 1. **Peel: the Brain setting.** `MemoryServer` accepts remote https and
    Tailscale addresses; the bundled strut is not started in home-server
    mode; a connection and version check. Memory and jobs then work against

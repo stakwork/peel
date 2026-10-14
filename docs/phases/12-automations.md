@@ -262,6 +262,9 @@ POST /automations/run   Authorization: Bearer <token>
    history and the failure badge.
 6. **Later:** `deliver_at`, delivery to the phone, `sphinx-automation`,
    `peel serve` on the home server, and strut jobs for heavy work.
+   Built-in automations: strut workflows every user gets, toggled in
+   Peel, starting with a daily "Tidy memory"
+   ([../system-automations.md](../system-automations.md)).
 
 ## Risks
 

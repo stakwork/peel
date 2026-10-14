@@ -242,7 +242,7 @@ is a short plan. Update the status and the journal when you finish something.
   PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
   `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
-  (`Platform.mac`: `MacPresence`, `MacPasteboard`, `LiveKitCalls`, and
+  (`Platform.mac()`: `MacPresence`, `MacPasteboard`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
   `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the

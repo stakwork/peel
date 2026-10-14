@@ -108,11 +108,6 @@ public final class Notifier {
         UserDefaults.standard.set(true, forKey: Self.offerDismissedKey)
     }
 
-    /// Peel's page in System Settings > Notifications.
-    public func openSystemSettings() {
-        presence.openNotificationSettings()
-    }
-
     // MARK: Account
 
     public func attach(_ storage: Storage, showsText: Bool) {

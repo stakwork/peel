@@ -1,0 +1,45 @@
+# Peel Brain: your own strut on an always-on box (docs/peel-brain.md).
+#
+#   ./setup.sh          first time: writes .env, starts it, prints the pairing link
+#   docker compose pull && docker compose up -d     to update
+#
+# strut shares the Tailscale container's network, so it is reachable only on
+# your tailnet, at https://peel-brain.<tailnet>.ts.net, and no port is opened
+# on the home network. Everything worth keeping is in ./data.
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${BRAIN_HOSTNAME:-peel-brain}
+    restart: unless-stopped
+    environment:
+      # Optional: without one, the log prints a login link (setup.sh shows it).
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ts-state:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+
+  strut:
+    # Until strut publishes its image, build one from a strut checkout and set
+    # STRUT_IMAGE=strut:local in .env (README.md).
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:latest}
+    network_mode: service:tailscale
+    depends_on: [tailscale]
+    restart: unless-stopped
+    environment:
+      # No Neo4j: workflows and runs on disk; memory is its own Ladybug file
+      # under /data/workspace/memory.
+      STRUT_WORKSPACE_BACKEND: fs
+      STRUT_WORKSPACE: /data/workspace
+      STRUT_MODEL_DIR: /data/models
+      # Unset, every route is open and the secret store uses a fixed dev key.
+      STRUT_API_KEY: ${STRUT_API_KEY:?run ./setup.sh first}
+      STRUT_SECRET_KEY: ${STRUT_SECRET_KEY:?run ./setup.sh first}
+      # Optional here: a model key can also be pasted under Secrets in strut's UI.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./data:/data
+
+volumes:
+  ts-state:

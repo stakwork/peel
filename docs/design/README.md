@@ -8,6 +8,8 @@ on-a-call bar and the switch confirm (C3 to C5), with screen share, click to
 focus and keep on top, and call notifications. Not built yet: the gaps each section's notes list. The phase files say what is left. The source mock lives on the canvas "Peel layout directions"
 (direction D); the screenshots below are taken from it.
 
+The iPhone app's design is in [iphone.md](iphone.md).
+
 ![Dark theme](layout-dark.png)
 
 ![Light theme](layout-light.png)

@@ -68,7 +68,7 @@ let package = Package(
             // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
-        // The storage and engine fixtures both test targets below share; a
+        // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.
         .target(
             name: "PeelTestSupport",
@@ -80,6 +80,8 @@ let package = Package(
             name: "PeelCoreTests",
             dependencies: ["PeelCore", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
+        // The app's model, on a real engine and profile; no window, no server.
+        .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "PeelTestSupport"]),
         // PeelAgent is Mac-only, and so are its tests (and `peel agent`'s).
         .testTarget(
             name: "PeelAgentTests",

@@ -176,11 +176,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.call != nil || model.callLeaving != nil else { return .terminateNow }
+        guard let model, model.calls.call != nil || model.calls.leaving != nil else { return .terminateNow }
         quitting = false
         // Whichever comes first: the goodbye, or two seconds, so a quit
         // never waits on a dead network.
-        Task { await model.endCall(); quit(sender) }
+        Task { await model.calls.end(); quit(sender) }
         Task { try? await Task.sleep(for: .seconds(2)); quit(sender) }
         return .terminateLater
     }

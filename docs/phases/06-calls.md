@@ -1450,6 +1450,21 @@ rasul on it):
   subscribe): `call-who` and the card read "J, G, R" then "+1 · 4" once the
   late join was named.
 
+## CallStore (2026-10-14)
+
+The call state the journals above name on `AppModel` moved, unchanged,
+into `CallStore` (`Sources/PeelUI/CallStore.swift`), which the model holds
+as `calls`: `callServer` is `calls.server`, `callPresence` `presence`,
+`liveCallCounts` `liveCounts`, `liveCallCount(in:)` `liveCount(in:)`,
+`recentCalls` `recent`, `callFailures` `failures`, `startingCallIn`
+`startingIn`, `callLeaving` `leaving`; `watchCall`, `joinCall`,
+`startCall`, `leaveCall`, `endCall` and `rejoinCall` are `watch`, `join`,
+`start`, `leave`, `end` and `rejoin` (a join or start is given the
+chat's title); `refreshCallWatches`, `stopWatchingCalls` and
+`refreshRecentCalls` are the store's own, run when the model locks
+(`watchesRecent`), resets and rebuilds the open chat's rows. Its tests are
+`Tests/PeelUITests/CallStoreTests`.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

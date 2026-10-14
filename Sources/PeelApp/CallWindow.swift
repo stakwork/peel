@@ -14,7 +14,7 @@ struct CallWindow: View {
 
     var body: some View {
         Group {
-            if let call = model.callSession {
+            if let call = model.calls.session {
                 CallRoomView(call: call)
             } else {
                 Color.clear
@@ -24,11 +24,11 @@ struct CallWindow: View {
         .background(Theme.callBackground)
         .foregroundStyle(Theme.text)
         .ignoresSafeArea(edges: .top)
-        .navigationTitle(model.call?.title ?? "Call")
+        .navigationTitle(model.calls.call?.title ?? "Call")
         .peelMenuHost()
-        .onAppear { if model.call == nil { dismissWindow(id: Self.id) } }
-        .onChange(of: model.call == nil) { _, gone in if gone { dismissWindow(id: Self.id) } }
-        .onDisappear { model.leaveCall() }
+        .onAppear { if model.calls.call == nil { dismissWindow(id: Self.id) } }
+        .onChange(of: model.calls.call == nil) { _, gone in if gone { dismissWindow(id: Self.id) } }
+        .onDisappear { model.calls.leave() }
     }
 
 }
@@ -292,7 +292,7 @@ private struct CallControls: View {
                 )
                 share
                 Button {
-                    model.leaveCall()
+                    model.calls.leave()
                 } label: {
                     pill("phone.down.fill", "Leave", weight: .bold, text: Theme.buttonText, fill: Theme.destructive)
                         .padding(.horizontal, Theme.Space.xs)
@@ -391,9 +391,9 @@ private struct CallControls: View {
             note(notice)
         }
         if call.state == .lost {
-            note(model.callFailures[call.link.room]
+            note(model.calls.failures[call.link.room]
                     ?? (call.connectedAt == nil ? "Could not connect to the call" : "Lost the connection to the call"),
-                 action: model.joiningRoom == call.link.room ? nil : "Rejoin") { model.rejoinCall() }
+                 action: model.calls.joiningRoom == call.link.room ? nil : "Rejoin") { model.calls.rejoin() }
         }
     }
 

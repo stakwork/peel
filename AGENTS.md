@@ -241,7 +241,7 @@ is a short plan. Update the status and the journal when you finish something.
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
-  PIN's words); `WordCheck` (three of the twelve words asked back); `MoneyArrivals` (`Receipt`, the
+  PIN's words and a PIN field's digits, Forget's warning); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -251,7 +251,7 @@ is a short plan. Update the status and the journal when you finish something.
   PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
   `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
-  (`Platform.mac()`: `MacPresence`, `MacPasteboard`, `LiveKitCalls`, and
+  (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
   `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
@@ -272,7 +272,7 @@ is a short plan. Update the status and the journal when you finish something.
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `AppIcon`),
-  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
+  `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `MessageViews`, `MessageText` (message text over

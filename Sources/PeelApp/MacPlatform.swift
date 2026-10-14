@@ -10,7 +10,7 @@ extension Platform {
     /// A new set each call: the app makes its one model with it.
     static func mac() -> Platform {
         Platform(
-            presence: MacPresence(), files: FilePanels(), pasteboard: MacPasteboard(),
+            presence: MacPresence(), files: FilePanels(), pasteboard: ClipboardPasteboard(),
             playback: MediaPlayback.shared, web: { WebPane(profile: $0) }, calls: LiveKitCalls(),
             agent: MacAgent()
         )
@@ -47,12 +47,6 @@ extension MenuPresenter: MenuHosting {
         guard let window = NSApp.keyWindow ?? NSApp.currentEvent?.window else { return false }
         return window === hostWindow
     }
-}
-
-/// `Clipboard`, for the model.
-struct MacPasteboard: PeelUI.Pasteboard {
-    func copyImage(at file: URL) -> Bool { Clipboard.copyImage(at: file) }
-    func clearSecret() { Clipboard.clearSecret() }
 }
 
 extension MediaPlayback: Playback {}

@@ -286,8 +286,8 @@ private struct ChangePINRow: View {
         do {
             try await model.changePIN(from: old, to: new, confirmation: confirmation)
             reset(to: .closed, note: "PIN changed")
-        } catch SecretStoreFailure.wrongPIN {
-            reset(to: .old, note: "Wrong PIN. Try again.")
+        } catch let error as SecretStoreFailure where error == .wrongPIN {
+            reset(to: .old, note: PIN.problem(error))
         } catch {
             reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
         }

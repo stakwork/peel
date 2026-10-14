@@ -117,7 +117,7 @@ struct OnboardingView: View {
         StepBody(title: "Set a PIN") {
             PinField(pin: $pin) { go(.confirmPin) }
         } footer: {
-            footer(next: "Continue", enabled: pin.count == 6) { go(.confirmPin) }
+            footer(next: "Continue", enabled: pin.count == PIN.length) { go(.confirmPin) }
         }
     }
 
@@ -126,7 +126,7 @@ struct OnboardingView: View {
             PinField(pin: $confirmation) { Task { await confirmPin() } }
         } footer: {
             footer(next: path == .newAccount ? "Create account" : "Restore",
-                   enabled: confirmation.count == 6 && !working) { Task { await confirmPin() } }
+                   enabled: confirmation.count == PIN.length && !working) { Task { await confirmPin() } }
         }
     }
 
@@ -210,7 +210,7 @@ struct OnboardingView: View {
     }
 
     private func confirmPin() async {
-        guard !working, confirmation.count == 6 else { return }
+        guard !working, confirmation.count == PIN.length else { return }
         guard confirmation == pin else {
             pin = ""
             confirmation = ""
@@ -278,13 +278,7 @@ struct RestoreProgressView: View {
                  width: 460) {
             Card {
                 VStack(spacing: 0) {
-                    RestoreRow(title: "Account", detail: model.connection.label,
-                               state: model.connection == .connected ? .done : .active)
-                    RestoreRow(title: "Contacts", detail: progress.label(progress.contacts, noun: "checked"),
-                               state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                    RestoreRow(title: "Messages", detail: progress.label(progress.messages, noun: "received"),
-                               state: .from(started: progress.messages != nil, done: progress.finished),
-                               fraction: progress.messages?.fraction)
+                    ForEach(progress.lines(connection: model.connection), id: \.title) { RestoreRow(line: $0) }
                 }
             }
             if let failure = progress.paused {
@@ -304,22 +298,12 @@ struct RestoreProgressView: View {
 }
 
 struct RestoreRow: View {
-    enum State {
-        case waiting, active, done
-
-        static func from(started: Bool, done: Bool) -> State {
-            done ? .done : started ? .active : .waiting
-        }
-    }
-    let title: String
-    let detail: String
-    let state: State
-    var fraction: Double?
+    let line: AppModel.RestoreProgress.Line
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Group {
-                switch state {
+                switch line.state {
                 case .done:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
                 case .active:
@@ -332,15 +316,15 @@ struct RestoreRow: View {
             .frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(title)
+                    Text(line.title)
                         .font(Theme.font(14))
-                        .foregroundStyle(state == .waiting ? Theme.secondaryText : Theme.text)
+                        .foregroundStyle(line.state == .waiting ? Theme.secondaryText : Theme.text)
                     Spacer()
-                    Text(detail)
+                    Text(line.detail)
                         .monospacedDigit()
                         .muted()
                 }
-                if let fraction, state == .active {
+                if let fraction = line.fraction, line.state == .active {
                     ProgressView(value: fraction)
                         .tint(Theme.accent)
                 }
@@ -490,14 +474,7 @@ struct WordEntryGrid: View {
     /// the clipboard leave it once read.
     @discardableResult
     private func fill(from index: Int, with text: String) -> Bool {
-        let parts = Engine.words(in: text)
-        guard parts.count > 1 else {
-            words[index] = parts.first ?? ""
-            return false
-        }
-        for (offset, part) in parts.prefix(12 - index).enumerated() {
-            words[index + offset] = part
-        }
+        guard let parts = WordBoxes.fill(&words, from: index, with: text) else { return false }
         Clipboard.clearPasted(words: parts)
         return true
     }
@@ -550,7 +527,7 @@ struct PinField: View {
                 .opacity(0.01)
                 .accessibilityLabel("PIN")
             HStack(spacing: Theme.Space.sm) {
-                ForEach(0..<6, id: \.self) { index in
+                ForEach(0..<PIN.length, id: \.self) { index in
                     // The form's boxed field; the next digit's box ringed.
                     Color.clear
                         .frame(height: 52)
@@ -572,9 +549,9 @@ struct PinField: View {
             focused = true
         }
         .onChange(of: pin) { _, value in
-            let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(PIN.length))
+            let digits = PIN.digits(value)
             if digits != value { pin = digits }
-            if digits.count == 6 { complete() }
+            if digits.count == PIN.length { complete() }
         }
     }
 }

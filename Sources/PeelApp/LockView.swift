@@ -34,22 +34,12 @@ struct LockView: View {
                 // For a lost PIN.
                 ForgetAccountControl(
                     trigger: "Forgot your PIN? Forget this account on this Mac",
-                    explanation: forgetExplanation
+                    explanation: AppModel.forgetWarning(holdsSats: holdsSats)
                 )
                 .frame(maxWidth: 360)
             }
         }
         .task { holdsSats = await (model.balanceBeforeForget() ?? 0) > 0 }
-    }
-
-    /// What is lost without the words: Forget asks for no proof of them, so
-    /// a lost PIN can start again. Never how many sats: the PIN guards that,
-    /// as a locked notification says only "Sats received". Never "no sats"
-    /// either: the balance stored before the PIN may predate sats received since.
-    private var forgetExplanation: String {
-        holdsSats
-            ? "It holds sats. Without your twelve words, they're lost for good."
-            : "Without your twelve words, it can't be brought back."
     }
 
     private func unlock() async {

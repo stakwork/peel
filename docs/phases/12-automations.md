@@ -317,6 +317,9 @@ POST /automations/run   Authorization: Bearer <token>
      running `setModel`'s few loopback calls side by side.
    - Next: Tidy memory's real run once strut ships it; undo
      (`memory/unmerge`) is out of v1.
+8. **No run bookkeeping in memory** (2026-10-14): a run had saved its
+   "last checked" time as a Fact on Self; the automation, memory and run
+   prompts now say each run is told when the last one finished.
 
 ## Risks
 

@@ -18,16 +18,15 @@ struct PaymentsView: View {
         case pay
     }
 
-    @State private var items: [PaymentItem] = []
-    @State private var paging = PaymentPaging()
-    @State private var loadingOlder = false
-    @State private var problem: String?
+    @State private var feed: PaymentsFeed
     @State private var pane: Pane?
     /// What the Pay pane holds, kept while it is closed and reopened.
     @State private var invoiceText = ""
-    /// Received since Payments was last open, lit once when its row is in the list.
-    @State private var toLight: [Receipt] = []
-    @State private var lit: Set<String> = []
+    init(model: AppModel) {
+        _feed = State(initialValue: PaymentsFeed(model: model))
+    }
+
+    private var items: [PaymentItem] { feed.items }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -57,32 +56,12 @@ struct PaymentsView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: pane == nil)
-        .task(id: paging.limit) {
-            do {
-                guard let updates = model.paymentHistoryUpdates(limit: paging.limit) else { return }
-                for try await rows in updates {
-                    items = rows
-                    lightArrived()
-                }
-            } catch {
-                problem = PeelError.problem(error, couldNot: "load payments")
-            }
-        }
-        // Connecting brings the balance a moment later, so changes within
-        // half a second make one refresh. Once begun, a fetch is never
-        // cancelled: the server's answer names no request, so a dropped one
-        // could be taken as the next fetch's answer.
-        .task(id: RefreshTrigger(connected: model.connection == .connected, balanceMsat: model.balanceMsat)) {
-            guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
-            Task { await refresh() }
-        }
+        .task(id: feed.paging.limit) { await feed.follow() }
+        .task(id: feed.refreshTrigger) { await feed.refreshSoon() }
         // Seen only once the window is in front: until then the row keeps
         // its "+350" and the notification stays.
         .onChange(of: model.money.unseen.isEmpty == false && appearsActive, initial: true) { _, seeing in
-            guard seeing else { return }
-            toLight += model.money.takeUnseen()
-            model.notifier.removeDelivered(in: [Notifier.paymentsThread])
-            lightArrived()
+            if seeing { feed.seeArrivals() }
         }
         .dropDestination(for: String.self) { texts, _ in
             guard let text = texts.first, (try? Invoice(text)) != nil else { return false }
@@ -93,58 +72,9 @@ struct PaymentsView: View {
         .onExitCommand { pane = nil }
     }
 
-    private struct RefreshTrigger: Equatable {
-        let connected: Bool
-        let balanceMsat: UInt64?
-    }
-
-    /// The newest page again: the balance moved or the connection came back.
-    private func refresh() async {
-        guard model.connection == .connected else { return }
-        do {
-            try await model.refreshPaymentHistory()
-            problem = nil
-        } catch {
-            // Another fetch is running, or the server is slow: the next change asks again.
-        }
-    }
-
-    /// Lights the rows of payments received since Payments was last open,
-    /// once each, fading as the list settles (as a jump to a message does).
-    private func lightArrived() {
-        guard !toLight.isEmpty else { return }
-        var rows: Set<String> = []
-        toLight.removeAll { receipt in
-            guard let item = items.first(where: receipt.matches) else { return false }
-            rows.insert(item.id)
-            return true
-        }
-        guard !rows.isEmpty else { return }
-        lit.formUnion(rows)
-        Task {
-            try? await Task.sleep(for: .seconds(0.4))
-            withAnimation(.easeOut(duration: 1.5)) { lit.subtract(rows) }
-        }
-    }
-
-    /// The end of the list is in view: a page more of what is stored, offline
-    /// too, and while connected the server's next older page, which fills
-    /// the raised limit as it is stored.
-    private func loadOlder() async {
-        paging.reachedEnd(showing: items.count)
-        guard paging.hasMore, !loadingOlder, model.connection == .connected else { return }
-        loadingOlder = true
-        defer { loadingOlder = false }
-        do {
-            paging.fetched(try await model.fetchOlderPayments())
-        } catch {
-            problem = PeelError.problem(error, couldNot: "load older payments")
-        }
-    }
-
     @ViewBuilder private var list: some View {
         if items.isEmpty {
-            EmptyState(problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
+            EmptyState(feed.problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -157,17 +87,17 @@ struct PaymentsView: View {
                                 .padding(.bottom, 6)
                             ForEach(rows) { item in
                                 PaymentListRow(item: item, section: section, selected: pane == .detail(item.id),
-                                               lit: lit.contains(item.id)) {
+                                               lit: feed.lit.contains(item.id)) {
                                     pane = pane == .detail(item.id) ? nil : .detail(item.id)
                                 }
-                                .onAppear { if item.id == items.last?.id { Task { await loadOlder() } } }
+                                .onAppear { if item.id == items.last?.id { Task { await feed.loadOlder() } } }
                             }
                         }
                     }
-                    if loadingOlder || (problem != nil && paging.hasMore) {
+                    if feed.loadingOlder || (feed.problem != nil && feed.paging.hasMore) {
                         HStack(spacing: Theme.Space.sm) {
-                            if loadingOlder { ProgressView().controlSize(.small) }
-                            Text(loadingOlder ? "Loading older payments" : problem ?? "")
+                            if feed.loadingOlder { ProgressView().controlSize(.small) }
+                            Text(feed.loadingOlder ? "Loading older payments" : feed.problem ?? "")
                                 .muted()
                         }
                         .padding(Theme.Space.md)

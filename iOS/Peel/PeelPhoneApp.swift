@@ -40,6 +40,16 @@ struct PeelPhoneApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.becameActive() }
                 }
+                // The PIN timeout counts the time Peel is away: in front is
+                // in use (the phone locks itself when it is not), noted as
+                // it comes back, every half minute, and as it leaves; on
+                // coming back `becameActive` locks first if it is due.
+                .task(id: scenePhase == .active) {
+                    model.noteActivity()
+                    while scenePhase == .active, (try? await Task.sleep(for: .seconds(30))) != nil {
+                        model.noteActivity()
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
                     model.willTerminate()
                 }

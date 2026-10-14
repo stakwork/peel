@@ -109,6 +109,7 @@ struct CopyLabel: View {
     }
 }
 
+#if os(macOS)
 /// The pill a menu's copy leaves at the bottom of the window.
 struct ToastView: View {
     /// Read here, not by the window's root, so only the pill redraws.
@@ -148,3 +149,4 @@ struct ToastView: View {
         .accessibilityHidden(true)
     }
 }
+#endif

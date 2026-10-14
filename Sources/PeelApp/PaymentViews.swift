@@ -352,11 +352,6 @@ struct SegmentedChoice<Value: Hashable>: View {
 
 // MARK: - Account
 
-/// A setting's presets, with its current value among them if it is not one.
-func presets<Value: Comparable>(_ choices: [Value], including current: Value) -> [Value] {
-    choices.contains(current) ? choices : (choices + [current]).sorted()
-}
-
 /// What the one-tap Boost tips (the official apps' "Default tip amount",
 /// 100 sats): presets, or another amount typed in. Over the confirmation
 /// threshold a typed amount takes a second click, as a payment would.

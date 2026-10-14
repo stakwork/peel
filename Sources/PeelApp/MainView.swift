@@ -191,7 +191,7 @@ struct Detail: View {
             case .automations:
                 AutomationsView()
             case .payments:
-                PaymentsView()
+                PaymentsView(model: model)
             case .account:
                 AccountView()
             case .agent:

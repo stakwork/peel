@@ -188,6 +188,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
     claims, unchecked) and `.hex` for bytes
+  - `BiometricUnlock.swift` — Face ID in place of the PIN, opt-in: the
+    PIN kept in a Keychain item behind `.biometryCurrentSet` (this device,
+    a passcode set), released by a face and then used as a typed PIN;
+    removed when it is unreadable or wrong, followed by Change PIN, gone
+    with the profile (`Profile.biometrics`; tested with a fake keeper)
   - `Profile.swift`, `SecretStore.swift` — a local account: `.app` profiles keep
     the words in the data-protection Keychain sealed under a six-digit PIN
     (moved there from the login Keychain on first unlock), `.development`
@@ -222,7 +227,8 @@ is a short plan. Update the status and the journal when you finish something.
   `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (join, start, leave,
   presence and the watches of recent calls; the view passes the call
   window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
-  sends, history, invoices, buying an attachment), `AppModel+Contacts`
+  sends, history, invoices and `invoiceBlocker`, buying an attachment),
+  `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
   (adding by code, invites), `AppModel+TimeZones` (sender zones, local
   times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -358,8 +364,8 @@ is a short plan. Update the status and the journal when you finish something.
   no team: a team goes in the ignored `Local.xcconfig`, see
   `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
   in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase),
-  `MainTabs` (the tab shell: Chats, Payments, You with your photo as its
-  icon, and the system's search tab; Payments' placeholder and Search),
+  `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
+  with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
   the selected tab and each tab's path, `openChat`, `open(_ message:)`,
   `openThread`, `openPayment`, `openFromNotification`, the thread sheet's
@@ -376,7 +382,13 @@ is a short plan. Update the status and the journal when you finish something.
   web pane do nothing and are never offered; the web pane and calls throw
   their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
-  `LockScreen` (with `ForgetAccount`), `Onboarding` (invite or restore,
+  `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
+  `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
+  (`BalanceHeader`, `PaymentRow`), `PaymentDetail` (`FactRow`),
+  `SendSheet` (an invoice pasted or scanned, or a contact),
+  `ReceiveSheet`, `InvoiceScanner` (VisionKit, QR only), `PayControls`
+  (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
+  `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
   the swipe actions and long-press menu, pull to refresh,
@@ -395,10 +407,13 @@ is a short plan. Update the status and the journal when you finish something.
   right to reply in the thread, VoiceOver's actions), `ThreadSheet`,
   `Composer` (`PhoneComposer`: the glass capsule over a `UITextView`,
   attach from Photos, the camera or Files, `@` mentions, the mic and the
-  bolt saying what is coming) and `YouTab` (name, balance, server, Change
-  PIN, the words, Forget). It also compiles `Theme`, `Avatar`,
-  `Clipboard`, `MessageText` and `UI/`'s `Badge`, `Card`, `IconButton`
-  and `PeelButton` from `Sources/PeelApp`
+  bolt saying what is coming) and `YouTab` (photo, name and balance;
+  Agent; the words, Change PIN, Face ID, the PIN timeout, boost amount,
+  the confirmation threshold, server; Forget). It also compiles `Theme`,
+  `Avatar`, `Clipboard`, `CopyButton`, `MessageText`, `QRCode` and
+  `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and `PaymentKit`
+  (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) from
+  `Sources/PeelApp`
   (the project's "Shared with the Mac" group) and takes its icon from
   `Assets/AppIcon.icon`; `Peel/Assets.xcassets` holds `Logo`, a link to
   `Assets/peel.svg`, for `AppIcon` on the phone
@@ -576,7 +591,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
-  `ServerAddressTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
+  `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS

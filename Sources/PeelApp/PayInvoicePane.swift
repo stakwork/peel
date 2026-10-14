@@ -18,22 +18,7 @@ struct PayInvoicePane: View {
     /// Our payment of the invoice shown, once there is one.
     @State private var payment: InvoiceRecord?
     /// What stops paying an invoice, worked out in `details`' task.
-    @State private var verdict: Verdict?
-
-    private struct Verdict {
-        let check: Check
-        let problem: Engine.Failure?
-        let paidAt: Date?
-    }
-
-    /// What `invoiceProblem` depends on: a change asks it again.
-    private struct Check: Equatable {
-        let invoice: Invoice
-        let expired: Bool
-        let balanceMsat: UInt64?
-        let paymentStatus: InvoiceRecord.Status?
-        let inHistory: Bool
-    }
+    @State private var verdict: InvoiceVerdict?
 
     private var invoice: Invoice? {
         text.trimmed.isEmpty ? nil : try? Invoice(text)
@@ -68,9 +53,9 @@ struct PayInvoicePane: View {
     private func details(_ invoice: Invoice, expired: Bool) -> some View {
         // Our payment of it in the history, from here or another device.
         let sent = history.first { $0.paymentHash == invoice.paymentHash && !$0.incoming }
-        let check = Check(invoice: invoice, expired: expired, balanceMsat: model.balanceMsat, paymentStatus: payment?.status,
-                          inHistory: sent != nil)
-        let checked = verdict?.check.invoice == invoice ? verdict : nil
+        let check = InvoiceCheck(invoice: invoice, expired: expired, balanceMsat: model.balanceMsat,
+                                 paymentStatus: payment?.status, inHistory: sent != nil)
+        let checked = verdict?.about(invoice)
         return VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 14) {
                 BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 30)
@@ -80,7 +65,7 @@ struct PayInvoicePane: View {
             .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
             if let payment, payment.status != .failed {
                 outcome(payment, sent: sent)
-            } else if let checked, checked.check == check, checked.problem == nil {
+            } else if let checked, checked.allowsPaying(check) {
                 payForm(invoice)
             } else {
                 if let checked, let problem = checked.problem {
@@ -96,9 +81,9 @@ struct PayInvoicePane: View {
             }
         }
         .task(id: check) {
-            let (problem, paidAt) = await model.invoiceProblem(invoice)
+            let answer = await model.verdict(on: check)
             guard !Task.isCancelled else { return }
-            verdict = Verdict(check: check, problem: problem, paidAt: paidAt)
+            verdict = answer
         }
     }
 
@@ -139,33 +124,15 @@ struct PayInvoicePane: View {
     /// Why this invoice cannot be paid from here: the engine's own rules,
     /// in words. One amber note, and a link when there is somewhere to go.
     private func blocker(_ problem: Engine.Failure, invoice: Invoice, paidAt: Date?, sent: PaymentItem?) -> some View {
-        let reserve = Engine.feeReserveMsat(for: invoice.amountMsat)
-        let (title, detail): (String, String)
+        let (title, detail) = model.invoiceBlocker(problem, invoice: invoice, paidAt: paidAt)
         var link: (String, () -> Void)?
         switch problem {
-        case .invoiceWithoutAmount:
-            (title, detail) = ("This invoice names no amount", "Ask for one with an amount.")
-        case .invoiceExpired:
-            (title, detail) = ("This invoice has expired",
-                               "Ask for a new one.")
-        case .ownInvoice:
-            (title, detail) = ("This is your own invoice", "Send it to whoever is paying you.")
         case .invoiceAlreadyPaid:
-            (title, detail) = ("You already paid this invoice",
-                               paidAt.map { "On \(Formatting.moment($0))." } ?? "")
-            if let sent {
-                link = ("Show that payment", { show(sent.id) })
-            }
-        case .invoicePending:
-            (title, detail) = ("A payment of this invoice is on its way",
-                               "It may have paid already.")
+            if let sent { link = ("Show that payment", { show(sent.id) }) }
         case .insufficientBalance:
-            (title, detail) = ("Not enough sats",
-                               "Needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: reserve)) "
-                                   + "in fees. You have \(Sats.format(msat: model.balanceMsat ?? 0)).")
             link = ("Receive sats", receive)
         default:
-            (title, detail) = ("This invoice cannot be paid now", problem.description)
+            break
         }
         return Callout(.attention, title, detail: detail) {
             if let link { Button(link.0, action: link.1).buttonStyle(.peel(.link)) }

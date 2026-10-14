@@ -12,6 +12,41 @@ public enum PaymentOutcome: Equatable, Sendable {
     case busy
 }
 
+/// What decides whether an invoice can be paid from here: a change to any
+/// of it asks the engine again (`AppModel.verdict(on:)`). Pay stays off
+/// until the verdict for what is shown now is in.
+public struct InvoiceCheck: Equatable, Sendable {
+    public let invoice: Invoice
+    public let expired: Bool
+    public let balanceMsat: UInt64?
+    /// Our payment of it, as stored.
+    public let paymentStatus: InvoiceRecord.Status?
+    /// Our payment of it is in the server's history.
+    public let inHistory: Bool
+
+    public init(invoice: Invoice, expired: Bool, balanceMsat: UInt64?, paymentStatus: InvoiceRecord.Status?, inHistory: Bool) {
+        self.invoice = invoice
+        self.expired = expired
+        self.balanceMsat = balanceMsat
+        self.paymentStatus = paymentStatus
+        self.inHistory = inHistory
+    }
+}
+
+/// The engine's answer for an `InvoiceCheck`: what stops paying it, and
+/// when it was paid when that is what stops it.
+public struct InvoiceVerdict: Sendable {
+    public let check: InvoiceCheck
+    public let problem: Engine.Failure?
+    public let paidAt: Date?
+
+    /// For the invoice shown: while a recheck runs, its last note stays.
+    public func about(_ invoice: Invoice) -> InvoiceVerdict? { check.invoice == invoice ? self : nil }
+
+    /// Pay may go: the verdict is for exactly what is shown, and nothing stops it.
+    public func allowsPaying(_ current: InvoiceCheck) -> Bool { check == current && problem == nil }
+}
+
 extension AppModel {
     // MARK: Boosts and payments
 
@@ -166,6 +201,36 @@ extension AppModel {
                   case .paid(let at)? = try? engine.storage.paidState(paymentHash: invoice.paymentHash) else { return (problem, nil) }
             return (problem, at)
         }.value
+    }
+
+    /// `invoiceProblem` for what a Pay screen shows now, kept with what it
+    /// was asked for, so the screen can tell an answer still current.
+    public func verdict(on check: InvoiceCheck) async -> InvoiceVerdict {
+        let (problem, paidAt) = await invoiceProblem(check.invoice)
+        return InvoiceVerdict(check: check, problem: problem, paidAt: paidAt)
+    }
+
+    /// Why an invoice cannot be paid from here (`invoiceProblem`), in words:
+    /// a title and a line under it, for the Pay screens' amber note.
+    public func invoiceBlocker(_ problem: Engine.Failure, invoice: Invoice, paidAt: Date?) -> (title: String, detail: String) {
+        switch problem {
+        case .invoiceWithoutAmount:
+            ("This invoice names no amount", "Ask for one with an amount.")
+        case .invoiceExpired:
+            ("This invoice has expired", "Ask for a new one.")
+        case .ownInvoice:
+            ("This is your own invoice", "Send it to whoever is paying you.")
+        case .invoiceAlreadyPaid:
+            ("You already paid this invoice", paidAt.map { "On \(Formatting.moment($0))." } ?? "")
+        case .invoicePending:
+            ("A payment of this invoice is on its way", "It may have paid already.")
+        case .insufficientBalance:
+            ("Not enough sats",
+             "Needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: Engine.feeReserveMsat(for: invoice.amountMsat))) "
+                 + "in fees. You have \(Sats.format(msat: balanceMsat ?? 0)).")
+        default:
+            ("This invoice cannot be paid now", problem.description)
+        }
     }
 
     public func payInvoice(_ invoice: Invoice, confirmedMsat: UInt64?) async -> PaymentOutcome {

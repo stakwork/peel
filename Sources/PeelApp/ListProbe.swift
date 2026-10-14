@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import PeelUI
 
@@ -8,17 +9,29 @@ import PeelUI
 /// observer, modifier or state to the list: it runs as it does unprobed.
 /// Registering does nothing outside the offscreen mode.
 @MainActor enum ListProbe {
-    private final class Entry {
+    @MainActor private final class Entry {
         weak var end: ListEnd?
         let kind: String
         let serial: Int
         let ignored: String?
+        /// The list's rows as it last had them, and without `ignored`: made
+        /// again only when they change, not each frame.
+        private var source: [String] = []
+        private var rows: [String] = []
 
         init(end: ListEnd, kind: String, serial: Int, ignored: String?) {
             self.end = end
             self.kind = kind
             self.serial = serial
             self.ignored = ignored
+        }
+
+        func ids(of end: ListEnd) -> [String] {
+            if end.ids != source {
+                source = end.ids
+                rows = ignored.map { ignored in source.filter { $0 != ignored } } ?? source
+            }
+            return rows
         }
     }
 
@@ -35,8 +48,7 @@ import PeelUI
         entries.append(Entry(end: end, kind: kind, serial: made, ignored: ignoring))
     }
 
-    /// A row as a sample shows it: a keyed hash of its id (never its text
-    /// or id), its index in the list, and where it sits from the top of the
+    /// A row as a probe writes it: its tag (`tag`, never its text or id), its index in the list, and where it sits from the top of the
     /// list's view.
     struct Row: Encodable {
         let row: String
@@ -73,38 +85,65 @@ import PeelUI
         let targetIndex: Int?
     }
 
-    /// Every list now in a window. `divider` and `target` give, by list
-    /// kind, the row id of "New messages" and of the message gone to.
-    static func sample(divider: (String) -> String?, target: (String) -> String?) -> [List] {
+    /// One list in one frame as read, nothing derived: a frame's work is
+    /// copying what the list holds (the arrays and the frames are shared,
+    /// not copied, until the list changes them). `List` is made from it
+    /// once, when the probe is written.
+    struct Capture {
+        let kind: String
+        let serial: Int
+        let ids: [String]
+        let view: Range<CGFloat>
+        let content: CGFloat
+        let shown: Bool
+        let frames: [String: CGRect]
+    }
+
+    /// Every list now in a window.
+    static func capture() -> [Capture] {
         entries.compactMap { entry in
             guard let end = entry.end, !end.gone else { return nil }
-            let ids = end.ids.filter { $0 != entry.ignored }
-            let index = Dictionary(ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-            let view = end.view
-            let height = view.upperBound - view.lowerBound
-            func row(_ id: String, _ frame: CGRect) -> Row? {
-                guard let place = index[id] else { return nil }
-                return Row(row: TimelineLog.tag(id), index: place, y: Double(frame.minY - view.lowerBound),
-                           height: Double(frame.height))
-            }
-            let placed = end.frames.compactMap { id, frame in index[id] != nil ? (id, frame) : nil }
-            let inView = placed.filter { $0.1.maxY > view.lowerBound && $0.1.minY < view.upperBound }
-            let whole = inView.filter { $0.1.minY >= view.lowerBound - 0.5 && $0.1.maxY <= view.upperBound + 0.5 }
-            let top = (whole.isEmpty ? inView : whole).min { $0.1.minY < $1.1.minY }
-            let near = placed.filter { $0.1.maxY > view.lowerBound - height && $0.1.minY < view.upperBound + height }
-            let below = end.content - view.upperBound
-            let frames = end.frames
-            func find(_ id: String?) -> Row? { id.flatMap { id in frames[id].flatMap { row(id, $0) } } }
-            return List(
-                kind: entry.kind, list: entry.serial, rows: ids.count, shown: end.shown,
-                atEnd: below <= 0.5, offset: Double(view.lowerBound), below: Double(below), container: Double(height), inView: inView.count,
-                blank: !ids.isEmpty && (!end.shown || inView.isEmpty),
-                top: top.flatMap { row($0.0, $0.1) },
-                laidOut: near.compactMap { row($0.0, $0.1) }.sorted { $0.index < $1.index },
-                divider: find(divider(entry.kind)), target: find(target(entry.kind)),
-                targetIndex: target(entry.kind).flatMap { index[$0] }
-            )
+            return Capture(kind: entry.kind, serial: entry.serial, ids: entry.ids(of: end), view: end.view,
+                           content: end.content, shown: end.shown, frames: end.frames)
         }
+    }
+
+    /// What a probe writes, made after it ends. `divider` and `target` give
+    /// the row id of "New messages" and of the message gone to, if any.
+    static func list(_ capture: Capture, divider: String?, target: String?, index: [String: Int],
+                     tag: (String) -> String) -> List {
+        let view = capture.view
+        let height = view.upperBound - view.lowerBound
+        func row(_ id: String, _ frame: CGRect) -> Row? {
+            guard let place = index[id] else { return nil }
+            return Row(row: tag(id), index: place, y: Double(frame.minY - view.lowerBound), height: Double(frame.height))
+        }
+        let placed = capture.frames.compactMap { id, frame in index[id] != nil ? (id, frame) : nil }
+        let inView = placed.filter { $0.1.maxY > view.lowerBound && $0.1.minY < view.upperBound }
+        let whole = inView.filter { $0.1.minY >= view.lowerBound - 0.5 && $0.1.maxY <= view.upperBound + 0.5 }
+        let top = (whole.isEmpty ? inView : whole).min { $0.1.minY < $1.1.minY }
+        let near = placed.filter { $0.1.maxY > view.lowerBound - height && $0.1.minY < view.upperBound + height }
+        let below = capture.content - view.upperBound
+        func find(_ id: String?) -> Row? { id.flatMap { id in capture.frames[id].flatMap { row(id, $0) } } }
+        return List(
+            kind: capture.kind, list: capture.serial, rows: capture.ids.count, shown: capture.shown,
+            atEnd: below <= 0.5, offset: Double(view.lowerBound), below: Double(below), container: Double(height),
+            inView: inView.count, blank: !capture.ids.isEmpty && (!capture.shown || inView.isEmpty),
+            top: top.flatMap { row($0.0, $0.1) },
+            laidOut: near.compactMap { row($0.0, $0.1) }.sorted { $0.index < $1.index },
+            divider: find(divider), target: find(target), targetIndex: target.flatMap { index[$0] }
+        )
+    }
+
+    /// A key made for each run, so a probe's tags match nothing outside it.
+    private static let salt = SymmetricKey(size: .bits128)
+
+    /// A row's tag in a probe: sixteen hex characters of a keyed hash of its
+    /// id, long enough that two rows never share one; the id itself (a
+    /// message's uuid) is not written.
+    static func tag(_ id: String) -> String {
+        HMAC<SHA256>.authenticationCode(for: Data(id.utf8), using: salt)
+            .prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 }
 

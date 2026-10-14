@@ -1120,7 +1120,8 @@ struct MessageContent: View {
     }
 }
 
-private extension View {
+extension View {
+    /// The row's menu on a right-click, when it has one.
     @ViewBuilder func rowMenu(_ source: String, _ entries: (@MainActor () -> [MenuEntry])?) -> some View {
         if let entries { peelMenu(source: source, entries) } else { self }
     }

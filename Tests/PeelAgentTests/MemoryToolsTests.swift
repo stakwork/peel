@@ -23,6 +23,25 @@ struct MemoryToolsTests {
         #expect(tools.tools.allSatisfy { $0.effect == .write || $0.effect == .read })
     }
 
+    /// The arguments strut's memory steps take (remember, get), copied here:
+    /// a change on either side must change this test too.
+    @Test func theToolsTakeWhatStrutsStepsTake() throws {
+        let base = try #require(URL(string: "http://127.0.0.1:1"))
+        let tools = Dictionary(uniqueKeysWithValues: MemoryTools(server: try #require(MemoryServer(base: base, key: "k"))).tools.map { ($0.name, $0) })
+        func names(_ schema: AgentKit.JSONValue?) -> Set<String> {
+            guard case .object(let properties)? = schema?["properties"] else { return [] }
+            return Set(properties.keys)
+        }
+        let remember = try #require(tools["remember"]).definition.inputSchema
+        #expect(names(remember) == ["episode", "speaker", "mentions", "facts"])
+        #expect(names(remember["properties"]?["facts"]?["items"]) ==
+                ["subject", "predicate", "text", "object", "supersede", "valid_at", "invalid_at", "ended"])
+        #expect(remember["properties"]?["facts"]?["items"]?["properties"]?["ended"]?["type"] == "boolean")
+        let read = try #require(tools["read_memory"]).definition.inputSchema
+        #expect(names(read) == ["ref_id", "type", "name", "user"])
+        #expect(read["properties"]?["user"]?["type"] == "boolean")
+    }
+
     /// The key is never printed (`print`, `debugPrint`, `dump`); an empty
     /// key, or one with a line break, is refused.
     @Test func theKeyIsNeverPrintedAndMustBePlain() throws {
@@ -94,7 +113,8 @@ struct MemoryToolsTests {
         #expect(Summary.remembered(try json(#"{"facts":[],"entities":[{"name":"Kate"}]}"#)) == "A note about Kate")
         #expect(Summary.found(try json(#"[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]"#)) == "4 found: 'a', 'b', 'c'…")
         #expect(Summary.found(try json("[]")) == "Nothing found")
-        #expect(Summary.read(try json(#"{"node_type":"Self","name":"Me","facts":[{}]}"#)) == "Me (Self) · 1 fact")
+        #expect(Summary.read(try json(#"{"node_type":"Person","name":"Kate","facts":[{}]}"#)) == "Kate (Person) · 1 fact")
+        #expect(Summary.read(try json(#"{"node_type":"Owner","user":true,"name":"Tom","facts":[{},{}]}"#)) == "You · 2 facts")
         #expect(Summary.forgot(try json(#"{"forgotten":{"name":"Biscuit"},"with_facts":2}"#)) == "'Biscuit' and 2 facts")
         #expect(Summary.merged(try json(#"{"merged":{"name":"Katie M"},"kept":{"name":"Kate"}}"#)) == "'Katie M' into 'Kate'")
         // The JSON sits between the chat-data markers, and cannot end them early.

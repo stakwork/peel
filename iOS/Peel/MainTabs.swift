@@ -16,7 +16,7 @@ struct MainTabs: View {
             Tab("Chats", systemImage: "bubble.left.and.bubble.right", value: PhoneTab.chats) {
                 ChatsTab()
             }
-            // The Dock badge's count; blue (`UITabBarItem` appearance, `PeelPhoneApp`).
+            // The Dock badge's count; blue (the tab bar appearance, `PeelPhoneApp`).
             .badge(model.unreadCount)
             Tab("Payments", systemImage: "bolt", value: PhoneTab.payments) {
                 PaymentsTab()

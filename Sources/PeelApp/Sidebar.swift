@@ -472,12 +472,14 @@ struct ConversationLink: View {
 enum ConversationMenu {
     static func entries(for conversation: Conversation, model: AppModel) -> [MenuEntry] {
         let chat = conversation.chat
-        let unread = model.readStates[chat]?.unread ?? 0
         var read: [MenuEntry] = []
-        if unread > 0 {
+        switch model.readToggle(for: chat) {
+        case .markRead:
             read.append(.button("Mark as read", systemImage: "checkmark.circle") { Task { await model.markRead(chat) } })
-        } else if (try? model.engine?.storage.newestIncomingIndex(in: chat)) != nil {
+        case .markUnread:
             read.append(.button("Mark as unread", systemImage: "envelope.badge") { Task { await model.markUnread(chat) } })
+        case nil:
+            break
         }
         guard conversation.isTribe, let tribe = model.tribes[chat] else {
             return .sections(read, levels(for: conversation, model: model))
@@ -489,8 +491,8 @@ enum ConversationMenu {
     static func levels(for conversation: Conversation, model: AppModel) -> [MenuEntry] {
         let chat = conversation.chat
         let level = model.readStates[chat]?.mute ?? .all
-        return [.header("Notify me about")] + choices(conversation).map { choice in
-            .button(choice.title, checked: choice.level == level) { Task { await model.setMute(chat, choice.level) } }
+        return [.header("Notify me about")] + MuteLevel.choices(isTribe: conversation.isTribe).map { choice in
+            .button(choice.title, checked: choice == level) { Task { await model.setMute(chat, choice) } }
         }
     }
 
@@ -498,15 +500,8 @@ enum ConversationMenu {
     static func notifications(for conversation: Conversation, model: AppModel) -> MenuEntry {
         let level = model.readStates[conversation.chat]?.mute ?? .all
         return .submenu("Notifications", systemImage: "bell",
-                        detail: choices(conversation).first { $0.level == level }?.short,
+                        detail: MuteLevel.choices(isTribe: conversation.isTribe).contains(level) ? level.short : nil,
                         levels(for: conversation, model: model))
-    }
-
-    /// The tribes server only marks mentions in tribes.
-    private static func choices(_ conversation: Conversation) -> [(level: MuteLevel, title: String, short: String)] {
-        conversation.isTribe
-            ? [(.all, "All messages", "All"), (.mentionsOnly, "Mentions only", "Mentions"), (.muted, "Nothing (mute)", "Muted")]
-            : [(.all, "All messages", "All"), (.muted, "Nothing (mute)", "Muted")]
     }
 
     static func link(_ tribe: Tribe) -> [MenuEntry] {
@@ -558,9 +553,9 @@ struct ConnectionCard: View {
     var body: some View {
         Panel("Connection", compact: true, close: done) {
             // Ticks only while counting down to a retry.
-            if offline, let at = model.reconnectAt {
+            if offline, model.reconnectAt != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    label(Self.countdown(to: at, now: context.date))
+                    label(model.connection.label(retryAt: model.reconnectAt, now: context.date))
                 }
             } else {
                 label(model.connection.label)
@@ -586,11 +581,6 @@ struct ConnectionCard: View {
         Text(text)
             .font(Theme.font(13))
             .monospacedDigit()
-    }
-
-    private static func countdown(to at: Date, now: Date) -> String {
-        let seconds = max(0, Int(at.timeIntervalSince(now).rounded(.up)))
-        return seconds > 0 ? "Offline, retrying in \(seconds)s" : "Offline, retrying"
     }
 }
 

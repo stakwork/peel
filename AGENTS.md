@@ -375,8 +375,13 @@ is a short plan. Update the status and the journal when you finish something.
   their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `Onboarding` (invite or restore,
-  pushed steps, `RestoreProgress`), `ChatsTab` (`AppModel.sidebarSections`,
-  the connection bolt and subtitle, `chatsDestinations`, `ComingScreen`),
+  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
+  Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
+  the swipe actions and long-press menu, pull to refresh,
+  `chatsDestinations`, `ComingScreen`), `ChatsConnection` (the orange
+  countdown under the title and the bolt's `ConnectionPanel`),
+  `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
+  now"),
   `ConversationScreen` (the newest page of `chatRows`, read only, its
   text through `MessageText`) and `YouTab` (name, balance, server, Change
   PIN, the words, Forget). It also compiles `Theme`, `Avatar`,

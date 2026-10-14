@@ -23,6 +23,8 @@ struct Onboarding: View {
     @State private var check = WordCheck()
     @State private var working = false
     @State private var problem: String?
+    /// What the next step change shows, rather than clearing `problem`.
+    @State private var problemAfterBack: String?
 
     var body: some View {
         NavigationStack(path: $steps) {
@@ -35,7 +37,8 @@ struct Onboarding: View {
                 }
         }
         .onChange(of: steps) { old, new in
-            problem = nil
+            problem = problemAfterBack
+            problemAfterBack = nil
             // Leaving the flow forgets what was typed; stepping back within it keeps it.
             if new.isEmpty {
                 invite = ""
@@ -214,9 +217,9 @@ struct Onboarding: View {
     private func confirmPin() async {
         guard !working, confirmation.count == PIN.length else { return }
         guard confirmation == pin else {
+            // Shown once the step change below has cleared both PINs.
+            problemAfterBack = "The PINs don't match. Set it again."
             steps.removeLast()
-            // After the change above has cleared both PINs and the problem.
-            Task { @MainActor in problem = "The PINs don't match. Set it again." }
             return
         }
         working = true
@@ -268,10 +271,10 @@ struct RestoreProgress: View {
                 RestoreLine(title: "Account", detail: model.connection.label,
                             state: model.connection == .connected ? .done : .active)
                 Divider().overlay(Theme.divider)
-                RestoreLine(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
+                RestoreLine(title: "Contacts", detail: progress.label(progress.contacts, noun: "checked"),
                             state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
                 Divider().overlay(Theme.divider)
-                RestoreLine(title: "Messages", detail: describe(progress.messages, noun: "received"),
+                RestoreLine(title: "Messages", detail: progress.label(progress.messages, noun: "received"),
                             state: .from(started: progress.messages != nil, done: progress.finished),
                             fraction: progress.messages?.fraction)
             }
@@ -283,12 +286,6 @@ struct RestoreProgress: View {
             Button { model.enterApp() } label: { ActionLabel("Open Peel") }
                 .primaryAction()
         }
-    }
-
-    private func describe(_ count: AppModel.RestoreProgress.Count?, noun: String) -> String {
-        guard let count else { return model.restoreProgress.finished ? "None" : "Waiting" }
-        if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
-        return "\(count.reached.formatted()) \(noun)"
     }
 }
 

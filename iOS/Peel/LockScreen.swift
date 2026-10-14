@@ -42,6 +42,8 @@ struct LockScreen: View {
                     ? "Forget this account on this iPhone. It holds sats. Without your twelve words, they're lost for good."
                     : "Forget this account on this iPhone. Without your twelve words, it can't be brought back."
             )
+            // Not while an unlock is opening the account.
+            .disabled(working)
             .padding(.horizontal, 20)
             .padding(.bottom, Theme.Space.md)
         }

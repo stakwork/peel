@@ -280,9 +280,9 @@ struct RestoreProgressView: View {
                 VStack(spacing: 0) {
                     RestoreRow(title: "Account", detail: model.connection.label,
                                state: model.connection == .connected ? .done : .active)
-                    RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
+                    RestoreRow(title: "Contacts", detail: progress.label(progress.contacts, noun: "checked"),
                                state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                    RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
+                    RestoreRow(title: "Messages", detail: progress.label(progress.messages, noun: "received"),
                                state: .from(started: progress.messages != nil, done: progress.finished),
                                fraction: progress.messages?.fraction)
                 }
@@ -300,12 +300,6 @@ struct RestoreProgressView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-    }
-
-    private func describe(_ count: AppModel.RestoreProgress.Count?, noun: String) -> String {
-        guard let count else { return model.restoreProgress.finished ? "None" : "Waiting" }
-        if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
-        return "\(count.reached.formatted()) \(noun)"
     }
 }
 
@@ -517,25 +511,6 @@ extension View {
             .font(Theme.font(15))
             .autocorrectionDisabled()
     }
-}
-
-/// Three of the twelve words asked back: their places, chosen at random
-/// (`Engine.wordsToCheck`), and what was typed for each. Always one answer
-/// per place: a box bound to its answer may still read it as its view
-/// closes, so a check is replaced by a new one, never emptied.
-struct WordCheck {
-    let positions = Engine.wordsToCheck()
-    var answers: [String]
-
-    init() {
-        answers = positions.map { _ in "" }
-    }
-
-    /// Every box has something in it.
-    var isFilled: Bool { answers.allSatisfy { !$0.trimmed.isEmpty } }
-
-    /// The answers by place, for `AppModel.confirmWords`.
-    var byPosition: [Int: String] { Dictionary(uniqueKeysWithValues: zip(positions, answers)) }
 }
 
 /// The boxes of a `WordCheck`, each numbered with its word's place. Return

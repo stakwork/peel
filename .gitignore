@@ -8,6 +8,9 @@ xcuserdata/
 Vendor/sphinxrsFFI.xcframework/
 Sources/Sphinxrs/sphinxrs.swift
 !scripts/provision/Provision.xcodeproj/
+!iOS/Peel.xcodeproj/
+# The iPhone app's team (iOS/Local.xcconfig.example)
+iOS/Local.xcconfig
 
 # Session worktrees and settings of the Claude desktop app
 .claude/*

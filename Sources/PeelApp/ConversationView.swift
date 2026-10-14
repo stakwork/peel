@@ -436,23 +436,8 @@ struct MembershipNote: View {
     /// The row's sender (`People.sender(of:inTribe:)`).
     let sender: Sender
 
-    private var text: String {
-        let who = sender.label
-        switch message.type {
-        case MessageType.groupLeave: return "\(who) left"
-        case MessageType.groupKick: return "The owner removed you from this tribe"
-        case MessageType.memberRequest: return "You asked to join"
-        // The tribe names the approved member as the sender.
-        case MessageType.memberApprove: return "\(Sender(member: message).name) was approved"
-        case MessageType.memberReject:
-            return message.fromMe ? "You declined a request to join" : "The owner declined your request to join"
-        case MessageType.tribeDelete: return "The owner deleted this tribe"
-        default: return "\(who) joined"
-        }
-    }
-
     var body: some View {
-        Text(text)
+        Text(message.membershipNote(by: sender))
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(maxWidth: .infinity)

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Peel",
-    platforms: [.macOS(.v15), .iOS(.v18)],
+    platforms: [.macOS(.v15), .iOS("26.0")],
     products: [
         .library(name: "PeelCore", targets: ["PeelCore"]),
         .library(name: "AgentKit", targets: ["AgentKit"]),

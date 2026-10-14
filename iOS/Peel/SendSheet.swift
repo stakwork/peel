@@ -114,6 +114,8 @@ struct SendSheet: View {
 private struct PayInvoiceForm: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(PhoneRouter.self) private var router
+    @Environment(\.dismissSheet) private var dismissSheet
     let invoice: Invoice
     let history: [PaymentItem]
     let clear: () -> Void
@@ -172,11 +174,10 @@ private struct PayInvoiceForm: View {
                     .buttonStyle(.peel(.outline, size: .touch))
             } else if payment == nil || payment?.status == .failed {
                 if checked?.problem == nil {
-                    TouchPayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt) { confirmed in
+                    // Pay waits until the engine's rules are checked for what is shown now.
+                    TouchPayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                         await model.payInvoice(invoice, confirmedMsat: confirmed)
-                    }
-                    // Off until the engine's rules are checked for what is shown now.
-                    .disabled(checked?.allowsPaying(check) != true)
+                    }, canPay: checked?.allowsPaying(check) == true)
                 }
                 Button { clear() } label: { Text("Another invoice").frame(maxWidth: .infinity) }
                     .buttonStyle(.peel(.ghost, size: .touch))
@@ -216,6 +217,12 @@ private struct PayInvoiceForm: View {
         return Callout(.attention, words.title, detail: words.detail) {
             if problem == .insufficientBalance {
                 Button("Receive sats", action: receive).buttonStyle(.peel(.link))
+            } else if problem == .invoiceAlreadyPaid, let sent {
+                Button("Show that payment") {
+                    dismissSheet()
+                    router.openPayment(sent.id)
+                }
+                .buttonStyle(.peel(.link))
             }
         }
     }

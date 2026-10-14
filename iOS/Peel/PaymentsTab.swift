@@ -10,6 +10,20 @@ import SwiftUI
 /// open. A row pushes its detail.
 struct PaymentsTab: View {
     @Environment(AppModel.self) private var model
+    /// Made once, when the tab first shows, and kept: not on every render of
+    /// the tab bar.
+    @State private var feed: PaymentsFeed?
+
+    var body: some View {
+        Group {
+            if let feed { PaymentsScreen(feed: feed) } else { Theme.background.ignoresSafeArea() }
+        }
+        .onAppear { if feed == nil { feed = PaymentsFeed(model: model) } }
+    }
+}
+
+private struct PaymentsScreen: View {
+    @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
 
@@ -18,12 +32,8 @@ struct PaymentsTab: View {
         var id: String { rawValue }
     }
 
-    @State private var feed: PaymentsFeed
+    let feed: PaymentsFeed
     @State private var sheet: Sheet?
-
-    init(model: AppModel) {
-        _feed = State(initialValue: PaymentsFeed(model: model))
-    }
 
     private var items: [PaymentItem] { feed.items }
 
@@ -79,7 +89,7 @@ struct PaymentsTab: View {
             }
             .phoneRows()
         } else {
-            ForEach(days, id: \.day) { group in
+            ForEach(PaymentDay.group(items), id: \.day) { group in
                 Section {
                     ForEach(group.items) { item in
                         NavigationLink(value: PaymentsRoute.payment(item.id)) {
@@ -106,17 +116,6 @@ struct PaymentsTab: View {
                 .phoneRows()
             }
         }
-    }
-
-    /// The items by calendar day, in the list's order (newest first).
-    private var days: [(day: Date, items: [PaymentItem])] {
-        let calendar = Calendar.current
-        var days: [(day: Date, items: [PaymentItem])] = []
-        for item in items {
-            let day = calendar.startOfDay(for: item.date)
-            if days.last?.day == day { days[days.count - 1].items.append(item) } else { days.append((day, [item])) }
-        }
-        return days
     }
 }
 

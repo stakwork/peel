@@ -84,6 +84,41 @@ public struct BiometricUnlock: Sendable {
     }
 }
 
+/// The enrolled faces as the system reports them now.
+enum BiometricEnrolment: Equatable, Sendable {
+    /// Their fingerprint (`domainState.biometry.stateHash`), not a secret.
+    case faces(Data)
+    /// None enrolled any more.
+    case none
+    /// Not known just now: locked out after failed tries, or busy.
+    case unknown
+
+    /// What a read that did not give the PIN means, from its status, the
+    /// faces' fingerprint kept with the item, and the faces now. Only a
+    /// change of faces the system reports (or none left) turns Face ID off;
+    /// a lockout, a cancel or a face not matched falls back to the PIN and
+    /// keeps it on.
+    static func outcome(of status: OSStatus, kept: Data?, now: BiometricEnrolment) -> BiometricRelease {
+        switch status {
+        case errSecItemNotFound, errSecDecode:
+            return .unreadable
+        case errSecAuthFailed:
+            switch now {
+            case .none:
+                return .unreadable
+            case .faces(let faces):
+                guard let kept, !kept.isEmpty else { return .declined }
+                return kept == faces ? .declined : .unreadable
+            case .unknown:
+                return .declined
+            }
+        default:
+            // errSecUserCanceled, errSecInteractionNotAllowed and the rest.
+            return .declined
+        }
+    }
+}
+
 /// What a biometric read gave.
 enum BiometricRelease: Sendable, Equatable {
     case pin(String)
@@ -106,18 +141,21 @@ protocol BiometricKeeper: Sendable {
 
 /// The PIN in the data-protection Keychain behind `.biometryCurrentSet`,
 /// `WhenPasscodeSetThisDeviceOnly`, never synchronised. The enrolled faces'
-/// fingerprint at that moment (`domainState.biometry.stateHash`, not secret)
-/// is kept in the item's generic attribute: a read that fails while it no
-/// longer matches is the faces having changed, not a face not matching.
+/// fingerprint at that moment is kept in the item's generic attribute, so a
+/// failed read can be told apart (`BiometricEnrolment.outcome`).
 struct KeychainBiometricKeeper: BiometricKeeper {
     let account: String
     private static let service = "dev.peel.biometric"
 
-    /// The enrolled faces as the system fingerprints them now.
-    private static var enrolment: Data? {
+    /// The enrolled faces as the system reports them now.
+    private static var enrolment: BiometricEnrolment {
         let context = LAContext()
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else { return nil }
-        return context.domainState.biometry.stateHash
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            return context.domainState.biometry.stateHash.map(BiometricEnrolment.faces) ?? .unknown
+        }
+        // Locked out after failed tries says nothing about the faces.
+        return error?.code == LAError.Code.biometryNotEnrolled.rawValue ? .none : .unknown
     }
 
     private var query: [String: Any] {
@@ -152,7 +190,7 @@ struct KeychainBiometricKeeper: BiometricKeeper {
             kSecAttrLabel as String: "Peel Face ID \(account)",
             kSecAttrAccessControl as String: access,
             kSecAttrSynchronizable as String: false,
-            kSecAttrGeneric as String: Self.enrolment ?? Data(),
+            kSecAttrGeneric as String: { if case .faces(let faces) = Self.enrolment { faces } else { Data() } }(),
         ]) { $1 }
         let status = SecItemAdd(attributes as CFDictionary, nil)
         guard status == errSecSuccess else { throw PeelError("could not turn on Face ID (\(status))") }
@@ -170,19 +208,11 @@ struct KeychainBiometricKeeper: BiometricKeeper {
                 kSecReturnData as String: true,
                 kSecUseAuthenticationContext as String: context,
             ]) { $1 } as CFDictionary, &item)
-            switch status {
-            case errSecSuccess:
-                guard let data = item as? Data, let pin = String(data: data, encoding: .utf8) else { return .unreadable }
-                return .pin(pin)
-            case errSecItemNotFound, errSecDecode:
-                return .unreadable
-            case errSecAuthFailed where keptEnrolment(query) != Self.enrolment:
-                // Faces added or removed since: this item will never open again.
-                return .unreadable
-            default:
-                // errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed.
-                return .declined
+            guard status == errSecSuccess else {
+                return BiometricEnrolment.outcome(of: status, kept: keptEnrolment(query), now: Self.enrolment)
             }
+            guard let data = item as? Data, let pin = String(data: data, encoding: .utf8) else { return .unreadable }
+            return .pin(pin)
         }.value
     }
 

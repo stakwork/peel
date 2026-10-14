@@ -279,6 +279,17 @@ Each PR: tests, the live check it names, code review, simplify and security
 review. strut PRs 1–7 can go in while Peel keeps the current memory move;
 Peel switches over at 9.
 
+## Decided
+
+- **The brain belongs to the account** (Tom, 2026-10-14): its id and key
+  come from the twelve words. It is the account's memory, wherever it runs:
+  this Mac, or a home server.
+- **The phone reaches the agent through Sphinx** (Tom, 2026-10-14): the
+  agent is a contact, and the phone sends it messages, routed by meaning,
+  as [phases/07-iphone.md](phases/07-iphone.md) plans. The phone is a
+  client of the brain, not a host for it (strut doesn't run on iOS); a
+  direct strut pairing on the phone is not the long-term path.
+
 ## Open questions
 
 1. **For Evan:** brain mode opt-in (`STRUT_BRAIN=1`) or the default?
@@ -288,7 +299,5 @@ Peel switches over at 9.
    folders: portable or host-bound? Gate peer callers (hive) too?
 4. Run history: newest 20 per workflow, or none?
 5. Brain state and generation on keyless `/health`: acceptable?
-6. The phone: [phases/07-iphone.md](phases/07-iphone.md) says it never talks
-   to strut; peel-brain.md pairs it directly. Which, for v1?
 7. The brain key derived from the words means anyone with the words can
    reach the brain; that is already true of everything else the words hold.

@@ -44,8 +44,11 @@ All by Tom, 2026-10-14.
    Mentions (rows, not tiles). Then Unread, Tribes and Direct messages, in
    the Mac's order and with its trimming. No profile header on Chats.
 4. **Chats' title bar** is the large title "Chats" with one glass capsule
-   holding New message. The connection bolt joins the capsule only when not
-   connected, in orange.
+   holding the connection bolt, always: green (`confirmed`) when connected,
+   orange when not. Tapping it always opens the connection panel. There
+   is no New message button (Tom, 2026-10-14, superseding "New message,
+   and the bolt only when not connected"): people are added and tribes
+   joined from the ends of their sections, as on the Mac.
 5. **Threads and Mentions push their own lists.**
 6. **A thread is a sheet**: large detent, a grabber, and it keeps the
    draft. No "Also send to channel".
@@ -70,7 +73,8 @@ All by Tom, 2026-10-14.
 12. **Lock**: the PIN keypad, Face ID, and "Forgot your PIN?".
 13. **Not connected**: an orange bolt in the title capsule and "Reconnecting
     in N s" under the title. The bolt opens a panel beside it with the
-    state, the last error and Reconnect now.
+    state, the countdown, the last error and Reconnect now. Connected, the
+    same panel says so (Tom, 2026-10-14).
 14. **Liquid Glass only on floating chrome**: the tab bar, search, toolbar
     capsules and the composer, through the system's `.glassEffect`.
     Neighbouring toolbar buttons share one capsule. The scroll-edge effect
@@ -84,6 +88,11 @@ All by Tom, 2026-10-14.
     (`tertiaryText`) falls under 4.5:1 there.
 16. **iOS patterns** from the iOS review are accepted: see "iOS patterns"
     below.
+17. **People and tribes as on the Mac** (Tom, 2026-10-14): Add contact
+    (scan with the camera, paste, or a photo of a code), Invite someone
+    with sats and the pending invites, contact details, Join a tribe (by
+    its link or QR code, the price shown), Create a tribe, and a tribe's
+    details and members, each the Mac's behaviour over PeelUI.
 
 ## Navigation map
 
@@ -93,16 +102,19 @@ Lock (full screen, before anything)
 Tab bar (glass): Chats · Payments · You      Search (separate glass button, search role)
 
 Chats  (NavigationStack, large title)
-├─ title capsule: New message → sheet (to design)
-│                 bolt (only when not connected) → connection panel, beside the bolt
+├─ title capsule: bolt (green or orange) → connection panel, beside the bolt
 ├─ Automations  → push Automations
 ├─ Threads      → push Threads list (to design) → push conversation + thread sheet
 ├─ Mentions     → push Mentions list (to design) → push conversation at the message
 ├─ a tribe row  → push Conversation (tab bar hidden)
 │                  ├─ thread summary / Reply in thread → Thread sheet
-│                  ├─ title → tribe info (to design)
+│                  ├─ More › details → push Tribe details → push Members
+│                  │                    └─ Edit tribe (owner) → sheet
 │                  └─ call → call (to design)
 ├─ a person row → push DM (as Conversation, with the send-sats bolt)
+│                  └─ More › details → push Details
+├─ Join a tribe, Create a tribe (end of Tribes) → sheet
+├─ a pending invite, Add contact, Invite someone (end of DMs) → sheet
 └─ the agent row → push Agent DM
 
 Payments  (NavigationStack, large title)
@@ -132,10 +144,11 @@ with Dynamic Type.
 ### 1. Chats
 
 - **Title row.** The large title "Chats" (34 bold) and, on its right, one
-  glass capsule (44 pt) with New message (a pencil). When not connected,
-  the orange bolt joins the same capsule, before New message (screen 9).
-  When connected there is no bolt and no green: being connected is the
-  quiet case. The large title collapses into the bar on scroll.
+  glass capsule (44 pt) with the connection bolt: green when connected,
+  orange when not (screen 9). Its label says the state, so colour is not
+  the only signal. A tap opens the connection panel beside it, connected
+  or not. No New message (Tom, 2026-10-14). The large title collapses
+  into the bar on scroll.
 - **Rows at the top**, sidebar-style (a 19 pt icon in a 30 pt column, then
   the name): Automations, Threads (blue count of threads with new
   replies), Mentions (count as on the Mac). Bold when they have something
@@ -145,11 +158,32 @@ with Dynamic Type.
   mention you; no section when nothing is unread; no chevron. A chat
   opened from Unread stays there until you open another.
 - **Tribes.** The five most recent, then "Show all 14 tribes" (blue, 14);
-  "Show fewer" once open; ends with "Join a tribe". The header collapses
-  the section (a chevron after the title).
+  "Show fewer" once open; ends with "Join a tribe" and "Create a tribe"
+  (a "+" in the avatars' column, `secondaryText`), each a sheet. The
+  header collapses the section (a chevron after the title). The section
+  is there with no tribes, for its actions.
 - **Direct messages.** The five most recent, then "Show all 10 people";
-  pending invites, "Add contact" and "Invite someone" at the end. The
-  agent sits here like a person (see "Chat row").
+  pending invites (the Mac's dashed envelope ring, the nickname, the
+  amount where a count goes), "Add contact" and "Invite someone" at the
+  end, each a sheet. Someone who added you shows "New" until their chat
+  is read, as on the Mac: the core accepts them at once, so there is no
+  request to answer. The agent sits here like a person (see "Chat row").
+- **Add contact** (sheet): their code typed or pasted, scanned with the
+  camera, or read from a photo of their QR code; who it adds; an
+  optional name; Add, which pays the 5-sat key exchange through the
+  touch-safe confirm. Why a code adds nobody shows quietly, never red.
+- **Invite someone** (sheet): the amount, a nickname and message only you
+  see, and Invite, always confirmed with its amount; then the invite.
+- **An invite** (sheet): its amount and state, the QR code with Copy
+  invite, Share and Share QR once the server holds its sats, your
+  message, and Cancel invite confirmed in place.
+- **Join a tribe** (sheet): the link typed, pasted, scanned or read from a
+  photo, looked up at once when it arrives whole; the tribe's image,
+  name, description and "Joining costs 10 sats · 3 sats a message"; Join
+  through the touch-safe confirm.
+- **Create a tribe**, and **Edit tribe** from its details: the Mac's form
+  (Basics with the image and tags, Pricing, Access), Delete confirmed in
+  place.
 - The open, closed and shown-in-full state of each section is the Mac's
   `Setting.sidebarLayout`, shared through the engine.
 - **Pull to refresh** reconnects if needed and runs a catch-up.
@@ -274,7 +308,7 @@ with Dynamic Type.
 
 ### 9. Chats, not connected
 
-- The title capsule holds the orange bolt and New message.
+- The title capsule holds the orange bolt (green once connected).
 - Under the large title, one line in orange: "Reconnecting in 8 s".
 - Tapping the bolt opens a panel beside it (not a sheet, not a centred
   alert): an orange bolt and "Not connected", one sentence ("Trying again
@@ -282,6 +316,28 @@ with Dynamic Type.
   the last error in `secondaryText`, and Reconnect now (filled). The
   panel is the Mac's `ConnectionCard`.
 - The rest of Chats stays as it is; nothing greys out.
+- Connected, the panel has the green bolt, "Connected" and the server,
+  and no Reconnect now (there is nothing to start).
+
+### 11. Details (Tom, 2026-10-14)
+
+Pushed over the conversation from its More menu
+(`PhoneRouter.openDetails`); Back returns to it.
+
+- **A contact**: their photo (64 pt), name, "Contact since" and their
+  local time; their public key with its QR code, Copy key, Share and
+  Share QR; the time zone switch; Remove contact, confirmed in place with
+  what it deletes, back to Chats once done.
+- **A tribe**: its image, name, "Public tribe · Created 3 Oct 2026",
+  description and tags; a card of Owner, To join, Each message and
+  Escrow; Members with the count (pushes the list); the tribe link with
+  its QR code; how you appear in it (name and photo, Save); the time
+  zone switch in a private tribe; Edit tribe for its owner; and Leave
+  tribe (or Remove from Peel), confirmed in place.
+- **Members**: photos and names in their colours. The owner gets the
+  tribes server's list: requests to join first with Decline and Approve,
+  and Remove on a member by swiping, confirmed in place. Anyone else
+  sees who has posted, "Seen in #tribe".
 
 ### 10. Composer, keyboard up
 
@@ -371,8 +427,9 @@ Accepted from the iOS review (Tom, 2026-10-14):
 
 ## Accessibility
 
-- Every glass button has a label (Back, New message, Not connected,
-  Search, Call, More, Attach, Record a voice message, Send).
+- Every glass button has a label (Back, the bolt's state: Connected,
+  Connecting or Offline, Search, Call, More, Attach, Record a voice
+  message, Send).
 - Section headers and screen titles are headings.
 - One VoiceOver element per message: the sender, the time, the text, then
   boosts and replies ("1,200 sats boosted", "4 replies"). Its actions are
@@ -401,9 +458,9 @@ Not on the board yet. Each needs drawing before it is built:
   paid and locked attachments, voice messages, images and files.
 - **Empty states**: no chats, no unread, no payments, no automations, no
   agent yet.
-- **Contact and tribe info**: profile, members, pinned messages, mute,
-  leave.
+- **Pinned messages and mute** in a chat's details (contact and tribe
+  details are built: screen 11).
 - **Calls**: incoming, in call, the on-a-call bar.
-- **New message** sheet and the agent's details page.
+- **The agent's details page.**
 - **Onboarding**: restore from the twelve words, create, set a PIN.
 - **Light appearance.** The app is dark only for now, as on the Mac.

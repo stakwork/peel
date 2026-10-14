@@ -229,8 +229,8 @@ is a short plan. Update the status and the journal when you finish something.
   window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
-  (adding by code, invites), `AppModel+TimeZones` (sender zones, local
-  times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
+  (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
+  times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
@@ -241,7 +241,11 @@ is a short plan. Update the status and the journal when you finish something.
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
-  PIN's words and a PIN field's digits, Forget's warning); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
+  PIN's words and a PIN field's digits, Forget's warning, an invite's
+  status, a tribe's details lines and price to join, what a contact code
+  adds); `TribeForms` (`TribeSettingsDraft`, Create and Edit tribe's
+  fields and their problems; `TribeLookup`, Join a tribe's link and
+  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -271,7 +275,7 @@ is a short plan. Update the status and the journal when you finish something.
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
-  `Avatar` (people's and tribes' icons, `AppIcon`),
+  `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
@@ -370,7 +374,8 @@ is a short plan. Update the status and the journal when you finish something.
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
   the selected tab and each tab's path, `openChat`, `open(_ message:)`,
-  `openThread`, `openPayment`, `openFromNotification`, the thread sheet's
+  `openThread`, `openDetails` (a chat's details over it), `openMembers`,
+  `openPayment`, `openFromNotification`, the thread sheet's
   binding; it writes `AppModel.destination` from what is on screen and
   follows it when the model moves it), `PhoneTheme` (`PhoneFont`, the
   Mac's sizes on Dynamic Type styles, `.phoneFont`; `Surface` and
@@ -388,14 +393,23 @@ is a short plan. Update the status and the journal when you finish something.
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
   (`BalanceHeader`, `PaymentRow`), `PaymentDetail` (`FactRow`),
   `SendSheet` (an invoice pasted or scanned, or a contact),
-  `ReceiveSheet`, `InvoiceScanner` (VisionKit, QR only), `PayControls`
+  `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
-  the swipe actions and long-press menu, pull to refresh,
-  `chatsDestinations`, `ComingScreen`), `ChatsConnection` (the orange
-  countdown under the title and the bolt's `ConnectionPanel`),
+  the swipe actions and long-press menu, pull to refresh, the sections'
+  actions (Join and Create a tribe, pending invites, Add contact, Invite
+  someone), `chatsDestinations`), `ChatsConnection` (`ConnectionBolt`,
+  green or orange, the orange countdown under the title and the bolt's
+  `ConnectionPanel`), `PeopleControls` (`PeopleSheet`, `SheetStack`,
+  `ActionRow`, `PendingInviteRow`, `CodeEntry`: a code typed, pasted,
+  scanned or read from a photo; `ConfirmInPlace`; `ShareableCode`, a QR
+  code to copy and share), `ContactSheets` (`AddContactSheet`,
+  `InviteSheet`, `InviteDetailScreen`), `TribeSheets` (`JoinTribeSheet`,
+  `TribeSettingsSheet`: create and edit), `ChatDetails`
+  (`ChatDetailsScreen`: a contact's or a tribe's, how you appear in a
+  tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
   `ConversationScreen` (the header with Call and More in one capsule, the

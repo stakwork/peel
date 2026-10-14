@@ -576,14 +576,18 @@ is a short plan. Update the status and the journal when you finish something.
     this Mac or the account's home server, kept in `Profile.brain` (one
     that cannot be read is never taken for this Mac), and the pairing link
     `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
+  - `MemoryBackup.swift` — this Mac's graph files renamed aside into
+    `memory/backups/graph-<time>.lbug…` before the home server's memory is
+    brought back in their place, put back on failure, the newest three kept
   - `MemoryMove.swift` — moving the memory between Peel's own strut and a
     home server ("Move, not sync"): `memory/export` on one (this Mac's by
     a file in its own folder, read only from there and deleted after; a
     home server's `inline`), `memory/import` as `data` on the other, which
-    takes only an empty graph, the rows counted on both; strut's refusal
-    codes (`not_empty:`, `bad_snapshot:`, …) in plain words. Account ›
-    Brain runs it (`AppModel.moveMemoryToHomeServer`, `bringMemoryBack`),
-    holding the memory tools until it ends
+    takes only an empty graph (or, to a home server, `replace`s its graph,
+    which strut there backs up first: "Reconnecting" in
+    `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
+    (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
+    option, holding the memory tools until it ends
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
     from a home server (`Brain`, `isHomeServer`; `health` reads its
@@ -658,7 +662,9 @@ is a short plan. Update the status and the journal when you finish something.
   `BrainTests` (the pairing link, what is kept, `/health` read),
   `MemoryMoveTests` (both moves against stub struts: what goes where,
   refusals in words, counts that differ, a home server gone mid-way, the
-  export file deleted and never read outside strut's folder),
+  export file deleted and never read outside strut's folder; bringing
+  memory back in place of this Mac's: the graph kept as a backup, put back
+  on any failure, a linked graph left alone, the newest three kept),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged

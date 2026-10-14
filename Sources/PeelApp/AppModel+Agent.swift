@@ -21,13 +21,10 @@ final class MacAgent: AgentHost {
     /// Account › Brain.
     var pairing: MemoryServer?
     /// A move of memory between this Mac and the home server, under way or
-    /// just ended (`moveMemoryToHomeServer`, `bringMemoryBack`). While one
+    /// just ended (`setBrain`). While one
     /// runs the agent has no memory tools, so nothing writes into a graph
     /// being loaded.
     var memoryMove: MemoryMoveState?
-    /// The home server this account last left for this Mac, this launch:
-    /// where "Bring memory back" reads from.
-    var lastHomeServer: MemoryServer?
     /// Whether this Mac's memory holds anything (`checkLocalMemory`, or
     /// what the last move left); nil when not known.
     var localHoldsMemory: Bool?
@@ -38,6 +35,9 @@ final class MacAgent: AgentHost {
     /// mode), both stopped when the account closes or is forgotten.
     @ObservationIgnored var moving: Task<Void, Never>?
     @ObservationIgnored var movingStrut: BundledStrut?
+    /// This Mac's memory set aside while the home server's is brought back
+    /// in its place: put back if the move is cut short.
+    @ObservationIgnored var settingAside: MemoryBackup?
     /// The strut Peel ships, if this build has one, for this launch's
     /// profile (`strut(for:)`): started when its agent opens, stopped when
     /// Peel quits.
@@ -85,12 +85,19 @@ final class MacAgent: AgentHost {
         strut?.stop(quietly: true)
     }
 
-    /// Cancels the move under way and stops the strut started for it.
+    /// Cancels the move under way and stops the strut started for it;
+    /// this Mac's memory, if it was set aside, is put back now, since Peel
+    /// may be quitting before the move hears of it.
     func stopMove() {
         moving?.cancel()
         moving = nil
         movingStrut?.stop(quietly: true)
         movingStrut = nil
+        if let settingAside {
+            strut?.stop(quietly: true)
+            try? settingAside.restore()
+            self.settingAside = nil
+        }
     }
 
     /// The app account's memory is erased even if its strut never started
@@ -134,11 +141,6 @@ extension AppModel {
     var memoryMove: MemoryMoveState? {
         get { macAgent.memoryMove }
         set { macAgent.memoryMove = newValue }
-    }
-
-    var lastHomeServer: MemoryServer? {
-        get { macAgent.lastHomeServer }
-        set { macAgent.lastHomeServer = newValue }
     }
 
     var localHoldsMemory: Bool? {
@@ -326,18 +328,33 @@ extension AppModel {
 
     /// Keeps `new` as the account's brain and moves the agent to it: with a
     /// home server Peel's own strut is stopped and never started; back on
-    /// this Mac it is started again. Nothing is moved between the two.
-    /// `moving`: the memory goes along (`moveMemoryToHomeServer`, or
-    /// `bringMemoryBack` from the home server left). A reply under way is
-    /// checked before the switch is kept, so it never switches without starting the move.
-    func setBrain(_ new: Brain, moving: Bool = false) throws {
+    /// this Mac it is started again. When this copy of Peel has a strut of
+    /// its own the memory goes along, with no option: from this Mac to a
+    /// home server it is copied there after the switch, in place of any
+    /// there, unless this Mac's is known empty (`moveMemoryToHomeServer`;
+    /// "Reconnecting" in `docs/peel-brain.md`); back to this Mac the home server's replaces this Mac's
+    /// (`bringMemoryBack`, which switches only once it is here). A reply
+    /// under way is checked before the switch is kept, so it never switches
+    /// without starting the move.
+    func setBrain(_ new: Brain) throws {
         guard let profile else { throw PeelError("Peel's account is not open.") }
         // The move would lose the strut it reads or loads.
         guard memoryMove?.isRunning != true else { throw PeelError("Wait for the memory move to finish.") }
-        if moving, agent?.isRunning == true { throw PeelError("Wait for Peel's reply to finish, then move the memory.") }
-        try new.keep(in: profile.brain)
         let left = brain?.homeServer
-        if let left, new == .thisMac { lastHomeServer = left }
+        let bringing = hasOwnStrut && new == .thisMac && left != nil
+        let copying = hasOwnStrut && brain == .thisMac && new != .thisMac && localHoldsMemory != false
+        if bringing || copying, agent?.isRunning == true { throw PeelError("Wait for Peel's reply to finish, then switch.") }
+        if bringing, let left {
+            bringMemoryBack(from: left)
+            return
+        }
+        try use(new, profile)
+        if copying { moveMemoryToHomeServer() }
+    }
+
+    /// Keeps `new` and moves the agent to it (`setBrain`).
+    private func use(_ new: Brain, _ profile: Profile) throws {
+        try new.keep(in: profile.brain)
         brain = new
         pairing = nil
         switch new {
@@ -350,11 +367,6 @@ extension AppModel {
         lookForMemory(reporting: true)
         // The same server kept again (a new key for the same address) is checked again too.
         checkBrain()
-        guard moving else { return }
-        switch new {
-        case .homeServer: moveMemoryToHomeServer()
-        case .thisMac: if let left { bringMemoryBack(from: left) }
-        }
     }
 
     /// A `peel://brain?…` link (`Brain.pairing`): the home server it names
@@ -382,10 +394,10 @@ extension AppModel {
         }
     }
 
-    /// Moves this Mac's memory to the home server in use, which must be
-    /// empty: Peel's own strut started for the move and stopped after,
+    /// Copies this Mac's memory to the home server in use, in place of its
+    /// own, which strut keeps as a backup there: Peel's own strut started for the move and stopped after,
     /// since a home server never runs it. This Mac's memory stays as it was.
-    func moveMemoryToHomeServer() {
+    private func moveMemoryToHomeServer() {
         guard let profile, let home = brain?.homeServer else { return }
         runMemoryMove(.toHomeServer) { [self] progress in
             guard let own = Self.strut(for: profile) else { throw PeelError("This copy of Peel has no memory of its own to move.") }
@@ -399,29 +411,62 @@ extension AppModel {
             }
             let local = try await own.start()
             try Task.checkCancellation()
-            return try await MemoryMove.toHomeServer(from: local, folder: BundledStrut.dataFolder(for: profile), to: home,
-                                                     progress: progress)
+            switch try await MemoryMove.toHomeServer(from: local, folder: BundledStrut.dataFolder(for: profile), to: home,
+                                                     progress: progress) {
+            case .copied(let moved, let replaced): return .done(.toHomeServer, moved.facts, keptBackup: replaced)
+            case .nothingToCopy: return nil
+            }
         }
     }
 
-    /// Loads the home server's memory into this Mac's, which must be empty;
-    /// the home server keeps its own.
-    func bringMemoryBack(from home: MemoryServer) {
-        guard let profile, brain == .thisMac else { return }
+    /// Brings the home server's memory to this Mac in place of this Mac's
+    /// own (`MemoryMove.replacingThisMac`), which is kept as a backup: while
+    /// the home server was in use its memory was the truth. This Mac is
+    /// used once the memory is here, or at once if the home server's holds
+    /// nothing; on any failure this Mac's memory and the brain stay as they were.
+    private func bringMemoryBack(from home: MemoryServer) {
+        guard let profile else { return }
         runMemoryMove(.toThisMac) { [self] progress in
-            if strut == nil { useOwnStrut(profile) }
-            guard let own = strut else { throw PeelError("This copy of Peel has no memory of its own to bring it into.") }
-            let local = try await own.start()
-            try Task.checkCancellation()
-            return try await MemoryMove.fromHomeServer(home, into: local, progress: progress)
+            guard let own = Self.strut(for: profile) else {
+                throw PeelError("This copy of Peel has no memory of its own to bring it into.")
+            }
+            // Started only for this, and stopped however it ends: a strut
+            // left running in home-server mode would be a second writer.
+            macAgent.movingStrut = own
+            defer {
+                own.stop(quietly: true)
+                if macAgent.movingStrut === own { macAgent.movingStrut = nil }
+            }
+            var mine: MemoryBackup?
+            let brought = try await MemoryMove.replacingThisMac(
+                with: home, folder: BundledStrut.memoryFolder(data: BundledStrut.dataFolder(for: profile)),
+                stop: { own.stop(quietly: true) }, start: { try await own.start() },
+                holding: { held in
+                    // A move cut short and settling late never clears a newer one's.
+                    if let held { mine = held }
+                    if held != nil || macAgent.settingAside == mine { macAgent.settingAside = held }
+                }, progress: progress
+            )
+            own.stop(quietly: true)
+            do {
+                try use(.thisMac, profile)
+            } catch {
+                // Still on the home server, so this Mac keeps its own memory.
+                try? brought?.backup.restore()
+                throw PeelError(PeelError.problem(error) + " This Mac's memory is as it was.")
+            }
+            guard let brought else { return nil }
+            localHoldsMemory = brought.moved.holdsMemory
+            return .done(.toThisMac, brought.moved.facts, keptBackup: !brought.backup.isEmpty)
         }
     }
 
     /// One move at a time, never while the agent is replying; the memory
-    /// tools are held until it ends, and its result stays in Account › Brain.
+    /// tools are held until it ends, and how it ended (`move`'s state; nil
+    /// for nothing to say) stays in Account › Brain.
     private func runMemoryMove(
         _ direction: MemoryMoveState.Direction,
-        _ move: @escaping (_ progress: @escaping @Sendable (MemoryMove.Step) async -> Void) async throws -> MemoryMove.Moved
+        _ move: @escaping (_ progress: @escaping @Sendable (MemoryMove.Step) async -> Void) async throws -> MemoryMoveState?
     ) {
         guard memoryMove?.isRunning != true else { return }
         guard agent?.isRunning != true else {
@@ -432,20 +477,18 @@ extension AppModel {
         lookForMemory()
         macAgent.moving = Task {
             do {
-                let moved = try await move { step in
+                let ended = try await move { step in
                     await MainActor.run {
                         if self.memoryMove?.isRunning == true { self.memoryMove = .running(direction, step) }
                     }
                 }
                 // The account closed while it ran: nothing of it is shown to the next one.
                 guard !Task.isCancelled else { return }
-                memoryMove = .done(direction, moved.facts)
-                // Either way this Mac now holds what was moved (a move copies).
-                localHoldsMemory = moved.holdsMemory
+                memoryMove = ended
             } catch {
                 guard !Task.isCancelled else { return }
                 memoryMove = .failed(PeelError.problem(error, couldNot: direction == .toHomeServer
-                    ? "move the memory to the home server" : "bring the memory back"))
+                    ? "copy the memory to the home server" : "bring the memory back"))
             }
             macAgent.moving = nil
             lookForMemory(reporting: true)
@@ -498,10 +541,9 @@ extension AppModel {
     }
 
     func closeAgent() {
-        // A move's strut, its state and the last home server's key are this account's alone.
+        // A move's strut and its state are this account's alone.
         macAgent.stopMove()
         memoryMove = nil
-        lastHomeServer = nil
         localHoldsMemory = nil
         stopAutomations()
         automationToken = nil
@@ -651,8 +693,9 @@ enum MemoryMoveState: Equatable {
 
     /// Under way, at `step` once the bundled strut is up.
     case running(Direction, MemoryMove.Step?)
-    /// Ended, with the facts that arrived.
-    case done(Direction, Int)
+    /// Ended, with the facts that arrived, and whether the older memory
+    /// where they arrived was kept as a backup (on that machine) to make room.
+    case done(Direction, Int, keptBackup: Bool)
     /// Ended without moving anything, or with what arrived not matching; why, as a sentence.
     case failed(String)
 

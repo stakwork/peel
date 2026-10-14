@@ -97,6 +97,26 @@ problem memory-backup.md leaves out. So:
   (`memory/import`), and stops using the local one. These are the steps
   memory-backup.md already plans for backup; going back to "This Mac" is
   the same move the other way.
+- **While a home server is in use, its memory is the truth.** This Mac's
+  copy only goes stale, so bringing the memory back replaces it: Peel stops
+  its strut, renames `graph.lbug` and its `graph.lbug.*` files into
+  `memory/backups/graph-<time>.lbug…` (owner-only, never deleted there; the
+  newest three sets are kept), starts strut on an empty graph and imports
+  the home server's, checked as any move. Any failure puts this Mac's files
+  back and stays on the home server; only success switches to "This Mac"
+  (`MemoryMove.replacingThisMac`, `MemoryBackup`). A home server whose
+  memory holds nothing is not exported over this Mac's: Peel just switches.
+- **Reconnecting.** Memory follows you: whatever was in use last is the
+  truth. Reconnecting after switching back, the home server holds an old
+  copy and this Mac the newer one, so on connect this Mac's replaces the
+  home server's: Peel sends it with `memory/import`'s `replace` (strut#176),
+  and strut there writes its graph to `memory/backups/memory-<time>.tar.gz`
+  first (the newest three kept), then loads this Mac's; a backup that
+  fails (`backup_failed`) leaves its graph untouched. Account › Brain says
+  "Its older copy is saved as a backup there." This Mac's memory empty,
+  nothing is sent and the home server's is used as it is. A home server
+  whose strut predates `replace` refuses with `not_empty`: still
+  connected, and asked to update strut.
 - **The bundled strut is never a fallback.** If the home server is
   unreachable, memory and jobs say the brain is offline; chat still works.
   A Mac writing its own graph while the server is down is the split this
@@ -341,17 +361,17 @@ connection is for everything else.
    waits for strut to add one. Nothing is moved: the local graph stays.
 2. **strut: `memory/export` and `memory/import`** (memory-backup.md). Backup
    and "Move memory to home server" from the same steps.
-   *Peel's side built 2026-10-14 (Mac):* Account › Brain offers the move
-   when switching to a home server (on unless this Mac's memory is known
-   empty) and as "Copy from this Mac" while on one: Peel's own strut is
-   started for it and stopped after, the export read from its folder and
-   deleted, the import refused unless the home server is empty, the rows
-   counted on both. Switching back to This Mac offers "Bring what your
-   home server remembers to this Mac" (inline export there, import here,
-   only into an empty graph), also offered as "Copy it here" for the rest
-   of that launch. The form (2026-10-14, for people who never saw a
-   terminal): "Connect a home server", one field for the pairing link
-   (dots, its host shown under it once it parses), the copy switch, and
+   *Peel's side built 2026-10-14 (Mac):* no switches; the memory follows
+   the switch. Connecting a home server from This Mac copies this Mac's
+   memory there unless it is empty: Peel's own strut is started for it and
+   stopped after, the export read from its folder and deleted, the rows
+   counted on both; memory already there is replaced, kept as a backup
+   there ("Reconnecting"). Switching back to This
+   Mac always brings the home server's memory back in place of this Mac's
+   (inline export there, import here; this Mac's kept as a backup), or just
+   switches when the home server's holds nothing. The form (2026-10-14, for
+   people who never saw a terminal): "Connect a home server", one field
+   for the pairing link (dots, its host shown under it once it parses), and
    "Enter address and key instead" for typing them. Neither side's memory is deleted; the memory tools wait
    while a move runs, and a move waits for a reply in progress.
 3. **Peel and strut: automations by pull.** Waiting runs that Peel claims,

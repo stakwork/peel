@@ -147,6 +147,10 @@ extension AppModel {
     /// ticket has come, so a failed join leaves you on it.
     public func joinCall(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
+        if let reason = platform.calls.unavailable {
+            if failureInChat { conversationNotices[chat] = reason } else { callFailures[link.room] = reason }
+            return false
+        }
         guard joiningRoom == nil, let engine else { return false }
         joiningRoom = link.room
         defer { joiningRoom = nil }
@@ -175,6 +179,12 @@ extension AppModel {
     /// in a tribe) and joins it, with your camera on for a video call.
     /// Nothing is sent while a join or another start runs.
     public func startCall(in chat: String, audioOnly: Bool) async -> Bool {
+        // Nothing posted (a call message costs 3 sats in a tribe) for a
+        // call this device could not join.
+        if let reason = platform.calls.unavailable {
+            conversationNotices[chat] = reason
+            return false
+        }
         guard startingCallIn == nil, joiningRoom == nil, let engine else { return false }
         startingCallIn = chat
         defer { startingCallIn = nil }

@@ -1,8 +1,23 @@
+import Foundation
 import PeelCore
 
 extension Conversation {
     /// "#tribe" or the contact's name, where a chat is named outside its own header.
     public var title: String { isTribe ? "#\(name)" : name }
+}
+
+extension TribeMembers {
+    /// How many are in the tribe, counted as the Members panel lists them:
+    /// for the owner, the tribes server's list ("12 members", requests to
+    /// join not counted); for anyone else, who has posted and themself ("4
+    /// seen", as its "Seen in #tribe"). Never the registry's `member_count`:
+    /// an edit or pin from the official apps drops it, a kick after that
+    /// counts down from nothing to 0, and a leave never counts down.
+    public var countLabel: String {
+        guard complete else { return "\((members.count + 1).formatted()) seen" }
+        let count = members.count { !$0.pending }
+        return Formatting.count(count, "member")
+    }
 }
 
 /// Leave and Remove from Peel as every place that offers them words them:

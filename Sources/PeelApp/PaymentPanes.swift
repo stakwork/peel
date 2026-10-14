@@ -49,18 +49,6 @@ struct BigAmount: View {
     }
 }
 
-extension TimelineSchedule where Self == ExplicitTimelineSchedule<[Date]> {
-    /// Draws now and again at `date`. `.now` comes first because, before
-    /// its first entry, a timeline draws with that entry's date: a lone
-    /// future date reads as already passed. A date already passed is left
-    /// out: entries must not go back in time, or the timeline redraws on
-    /// every frame for as long as it is on screen.
-    static func redrawing(at date: Date?) -> Self {
-        let now = Date.now
-        return .explicit([now] + [date].compactMap { $0 }.filter { $0 > now })
-    }
-}
-
 /// Its content, told whether the invoice has expired, and drawn again the
 /// moment it does, so Pay goes then rather than at the next redraw.
 struct UntilExpiry<Content: View>: View {

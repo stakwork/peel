@@ -44,14 +44,11 @@ struct Composer: View {
         Task { await model.sendDraft(from: composer) }
     }
 
-    /// Aliases starting with what follows the `@`, ignoring case, as the Mac
-    /// app matches them; an exact match first, so Return never swaps a
-    /// finished `@ann` for `@anna`.
+    /// Aliases starting with what follows the `@` (`MentionQuery`): an
+    /// exact match first, so Return never swaps a finished `@ann` for `@anna`.
     private var suggestions: [TribeMember] {
         guard let mention, mention != dismissedMention else { return [] }
-        let typed = mention.lowercased()
-        let matches = mentionable.filter { $0.alias.lowercased().hasPrefix(typed) }
-        return Array((matches.filter { $0.alias == mention } + matches.filter { $0.alias != mention }).prefix(20))
+        return MentionQuery.suggestions(mentionable, typed: mention)
     }
 
     private func choose(_ member: TribeMember) {

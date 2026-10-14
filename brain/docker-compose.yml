@@ -1,7 +1,7 @@
 # Peel Brain: your own strut on an always-on box (docs/peel-brain.md).
 #
 #   ./setup.sh          first time: writes .env, starts it, prints the pairing link
-#   docker compose pull && docker compose up -d     to update
+#   docker compose pull --ignore-pull-failures && ./setup.sh     to update
 #
 # strut shares the Tailscale container's network, so it is reachable only on
 # your tailnet, at https://peel-brain.<tailnet>.ts.net, and no port is opened
@@ -9,11 +9,13 @@
 services:
   tailscale:
     image: tailscale/tailscale:stable
-    hostname: ${BRAIN_HOSTNAME:-peel-brain}
+    hostname: peel-brain
     restart: unless-stopped
     environment:
       # An auth key from the admin console (Settings › Keys); setup.sh asks for it.
       TS_AUTHKEY: ${TS_AUTHKEY:?run ./setup.sh first}
+      # The key is single-use: log in with it once, then reuse the saved state.
+      TS_AUTH_ONCE: "true"
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
     volumes:
@@ -25,7 +27,6 @@ services:
     # STRUT_IMAGE=strut:local in .env (README.md).
     image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:latest}
     network_mode: service:tailscale
-    depends_on: [tailscale]
     restart: unless-stopped
     environment:
       # No Neo4j: workflows and runs on disk; memory is its own Ladybug file
@@ -33,6 +34,9 @@ services:
       STRUT_WORKSPACE_BACKEND: fs
       STRUT_WORKSPACE: /data/workspace
       STRUT_MODEL_DIR: /data/models
+      # Loopback only: tailscale serve is the one way in, not :3000 on the
+      # tailnet IP or the Docker network.
+      STRUT_HOST: 127.0.0.1
       # Unset, every route is open and the secret store uses a fixed dev key.
       STRUT_API_KEY: ${STRUT_API_KEY:?run ./setup.sh first}
       STRUT_SECRET_KEY: ${STRUT_SECRET_KEY:?run ./setup.sh first}

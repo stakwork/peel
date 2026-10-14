@@ -25,6 +25,8 @@ router. It needs to be online: strut calls hosted models.
    Tailscale auth key and an Anthropic key (optional), makes strut's keys,
    starts everything and prints a pairing link.
 3. Open the link on the Mac, or scan it on the phone.
+4. In the admin console's Machines list, turn off key expiry for
+   `peel-brain`, or it drops off the tailnet when its key expires.
 
 Until `ghcr.io/stakwork/strut` is published, build the image from a strut
 checkout on the box and point the bundle at it:
@@ -39,7 +41,7 @@ echo STRUT_IMAGE=strut:local >> .env
 | | |
 |---|---|
 | Pairing link again | `./setup.sh` |
-| Update | `docker compose pull && docker compose up -d` |
+| Update | `docker compose pull --ignore-pull-failures && ./setup.sh` |
 | Logs | `docker compose logs -f strut` |
 | Stop | `docker compose down` |
 | strut's UI | `https://peel-brain.<tailnet>.ts.net`, with the key from `.env` |

@@ -27,28 +27,32 @@ random_key() {
 # Reads a line without echoing it, for keys.
 ask_secret() {
     printf '%s' "$1" >&2
+    trap 'stty echo 2>/dev/null; exit 130' INT TERM
     stty -echo 2>/dev/null || true
     IFS= read -r answer || answer=""
     stty echo 2>/dev/null || true
+    trap - INT TERM
     echo >&2
     printf '%s' "$answer"
 }
 
-if [ ! -f .env ]; then
+# First run is "no strut keys yet", not "no .env": the README's
+# STRUT_IMAGE=strut:local line may already be in it.
+if ! grep -q '^STRUT_API_KEY=' .env 2>/dev/null; then
     echo "First run: writing .env"
     anthropic=$(ask_secret "Anthropic API key (Enter to add it later in strut's Secrets): ")
     # Required: without one, Tailscale's container waits about a minute for a
     # browser login, then restarts with a new link, so the link rarely works.
     tsauth=$(ask_secret "Tailscale auth key (Settings › Keys in the admin console): ")
     [ -n "$tsauth" ] || fail "a Tailscale auth key is needed"
-    umask 077
-    cat > .env <<EOF
+    touch .env
+    chmod 600 .env
+    cat >> .env <<EOF
 STRUT_API_KEY=$(random_key)
 STRUT_SECRET_KEY=$(random_key)
 ANTHROPIC_API_KEY=$anthropic
 TS_AUTHKEY=$tsauth
 EOF
-    umask 022
 fi
 mkdir -p data
 
@@ -56,22 +60,15 @@ mkdir -p data
 # strut never keeps the network of a Tailscale container that was replaced.
 docker compose up -d --force-recreate
 
-# The first JSON value of a field in `tailscale status --json`, which lists
-# this machine before its peers.
+# A string field of this machine's `tailscale status --json` (no peers).
 ts_field() {
-    docker compose exec -T tailscale tailscale status --json 2>/dev/null \
+    docker compose exec -T tailscale tailscale status --json --peers=false 2>/dev/null \
         | sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" | head -1
 }
 
 echo "Waiting for Tailscale…"
-shown_login=""
 i=0
 while [ "$(ts_field BackendState)" != "Running" ]; do
-    login=$(ts_field AuthURL)
-    if [ -n "$login" ] && [ "$login" != "$shown_login" ]; then
-        echo "Log this box in to your tailnet: $login"
-        shown_login=$login
-    fi
     i=$((i + 1))
     [ "$i" -lt 300 ] || fail "Tailscale did not connect; see: docker compose logs tailscale"
     sleep 2
@@ -89,12 +86,11 @@ host=$(ts_field DNSName)
 host=${host%.}
 [ -n "$host" ] || fail "no Tailscale name for this box"
 key=$(sed -n 's/^STRUT_API_KEY=//p' .env)
-url="https://$host"
 link="peel://brain?url=https%3A%2F%2F$host&key=$key"
 
 cat <<EOF
 
-Peel Brain is running at $url
+Peel Brain is running at https://$host
 (HTTPS needs MagicDNS and HTTPS certificates on in the tailnet's DNS settings.)
 
 Pair Peel with this link, or enter the address and key in Peel's Brain setting:

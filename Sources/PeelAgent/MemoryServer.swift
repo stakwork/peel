@@ -59,11 +59,13 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
 
     /// `memory/import` of a snapshot as base64 text. The body is put together
     /// as bytes: base64 needs no JSON escaping, and a 100 MB snapshot is not
-    /// copied through an encoder.
-    public func importSnapshot(base64: Data) async throws -> AgentKit.JSONValue {
+    /// copied through an encoder. `replace`: in place of a graph that is not
+    /// empty, which strut keeps first as a backup on its own machine
+    /// (strut#176; an older strut ignores it and refuses with `not_empty`).
+    public func importSnapshot(base64: Data, replace: Bool = false) async throws -> AgentKit.JSONValue {
         var body = Data(#"{"config":"{{ input }}","input":{"data":""#.utf8)
         body.append(base64)
-        body.append(contentsOf: #""}}"#.utf8)
+        body.append(contentsOf: (replace ? #"","replace":true}}"# : #""}}"#).utf8)
         return try await post("import", body: body, snapshot: true)
     }
 

@@ -263,8 +263,9 @@ final class OffscreenDriver {
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
     /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
-    /// a pairing link's callout there; `brain-this-mac`, Use this Mac once
-    /// confirmed; `brain-check`, Check.
+    /// a pairing link's callout there; `brain-leave`, its Use this Mac
+    /// (asking first); `brain-this-mac`, Use this Mac once confirmed;
+    /// `brain-check`, Check.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -343,6 +344,8 @@ final class OffscreenDriver {
             try model.agent?.removeKey()
         case "brain-form":
             model.brainFormOpened += 1
+        case "brain-leave":
+            model.brainLeaveOpened += 1
         case "brain-use":
             guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
             try model.setBrain(.homeServer(pairing))

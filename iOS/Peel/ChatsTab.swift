@@ -80,7 +80,6 @@ private struct ChatList: View {
 
 /// One chat: its picture and name, when it last moved, and its count.
 private struct ChatLink: View {
-    @Environment(AppModel.self) private var model
     let conversation: Conversation
     let state: ChatReadState?
 

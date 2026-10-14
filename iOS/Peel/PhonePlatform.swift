@@ -10,7 +10,8 @@ import UserNotifications
 // views never offer it (docs/phases/07-iphone.md, I2).
 
 extension Platform {
-    static var phone: Platform {
+    /// A new set each call: the app makes its one model with it.
+    static func phone() -> Platform {
         Platform(
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: PhonePasteboard(),
             playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: PhoneCalls(), agent: nil

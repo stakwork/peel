@@ -94,6 +94,8 @@ struct AutomationsClientTests {
             {"runId":"6","status":"error","error":{"message":"agent failed after 0 step(s): invalid x-api-key (HTTP 401: {\"type\":\"error\"})"}}
             """#)
         #expect(AutomationRunRecord(failed)?.error == "invalid x-api-key")
+        let unconnected = try AgentKit.JSONValue(parsing: #"{"runId":"7","status":"error","error":{"message":"agent: no model connected (STRUT_DEFAULT_MODEL is not set)"}}"#)
+        #expect(AutomationRunRecord(unconnected)?.error == "no model connected")
     }
 
     // MARK: System automations

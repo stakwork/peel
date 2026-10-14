@@ -39,10 +39,11 @@ struct AutomationsView: View {
             }
         }
         .task {
-            // strut fires on its own: keep the list current while it shows.
+            // strut fires on its own: keep the list current while it shows,
+            // and close to live while a run is going.
             while !Task.isCancelled {
                 await model.refreshAutomations()
-                try? await Task.sleep(for: .seconds(30))
+                try? await Task.sleep(for: .seconds(model.automations.list.contains(where: \.running) ? 3 : 30))
             }
         }
     }

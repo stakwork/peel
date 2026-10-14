@@ -113,11 +113,14 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
 
     /// strut's words for a failed model call, as a person reads them:
     /// "agent failed after 0 step(s): invalid x-api-key (HTTP 401: {…})"
-    /// is "invalid x-api-key".
+    /// is "invalid x-api-key", and "agent: no model connected
+    /// (STRUT_DEFAULT_MODEL is not set)" is "no model connected".
     static func shortened(_ message: String) -> String {
         var text = message
-        if let http = text.range(of: " (HTTP ") { text = String(text[..<http.lowerBound]) }
-        if let prefix = text.firstMatch(of: #/^agent failed after \d+ step\(s\): /#) { text.removeSubrange(prefix.range) }
+        for tail in [" (HTTP ", " (STRUT_"] {
+            if let cut = text.range(of: tail) { text = String(text[..<cut.lowerBound]) }
+        }
+        if let prefix = text.firstMatch(of: #/^agent(?: failed after \d+ step\(s\))?: /#) { text.removeSubrange(prefix.range) }
         return text.isEmpty ? message : text
     }
 }

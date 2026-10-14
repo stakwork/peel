@@ -134,6 +134,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
         }
     }
 
+    /// Ours on its way: faint until the server has it, unless it may be
+    /// sent again or is still uploading (those show why instead).
+    public func isSending(now: Date = .now) -> Bool {
+        delivery == .pending && !isRetryable(now: now) && !(fromMe && uploadState == .pending)
+    }
+
     /// Ours, sent with sats: a payment, boost or purchase, or a message that
     /// paid a tribe's price, that left (it has a tag, written before anything
     /// is published; one with none, such as an attachment's draft, never

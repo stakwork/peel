@@ -2,13 +2,6 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-extension EnvironmentValues {
-    /// From a quote to the message it quotes, in the list it sits in. Set
-    /// by `MessageList` on every redraw, so it looks in the rows of now
-    /// while the rows themselves (`MessageRow`, `Equatable`) stay as drawn.
-    @Entry var goToMessage: @MainActor @Sendable (Message) -> Void = { _ in }
-}
-
 /// A conversation's rows, newest at the bottom. `composer` is where a reply
 /// from here goes: the chat's, or the thread panel's.
 struct MessageList: View {
@@ -739,14 +732,6 @@ struct MessageRow: View, Equatable {
         .zIndex(hovering ? 1 : 0)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-    }
-}
-
-extension Message {
-    /// Ours on its way: faint until the server has it, unless it may be
-    /// sent again or is still uploading (those show why instead).
-    func isSending(now: Date = .now) -> Bool {
-        delivery == .pending && !isRetryable(now: now) && !(fromMe && uploadState == .pending)
     }
 }
 

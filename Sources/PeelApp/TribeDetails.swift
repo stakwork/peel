@@ -215,20 +215,6 @@ struct TribeDetailsPanel: View {
     }
 }
 
-extension TribeMembers {
-    /// How many are in the tribe, counted as the Members panel lists them:
-    /// for the owner, the tribes server's list ("12 members", requests to
-    /// join not counted); for anyone else, who has posted and themself ("4
-    /// seen", as its "Seen in #tribe"). Never the registry's `member_count`:
-    /// an edit or pin from the official apps drops it, a kick after that
-    /// counts down from nothing to 0, and a leave never counts down.
-    var countLabel: String {
-        guard complete else { return "\((members.count + 1).formatted()) seen" }
-        let count = members.count { !$0.pending }
-        return Formatting.count(count, "member")
-    }
-}
-
 /// "How you appear in #tribe": a name and a photo sent with your messages
 /// there in place of your account's, as the official apps keep them. The
 /// picture is picked, never typed; Save sends neither until it is clicked.

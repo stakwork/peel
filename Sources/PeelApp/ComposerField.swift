@@ -1,3 +1,4 @@
+import PeelCore
 import PeelUI
 #if os(macOS)
 import AppKit
@@ -187,21 +188,11 @@ private struct ComposerTextView: NSViewRepresentable {
         /// app looks for it; reported without the `@`.
         func findMention(_ textView: NSTextView) {
             let selection = textView.selectedRange()
-            let string = textView.string as NSString
-            var found: (NSRange, String)?
-            if selection.length == 0, selection.location <= string.length {
-                let before = string.substring(to: selection.location)
-                let start = before.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards)
-                    .map { $0.upperBound } ?? before.startIndex
-                let word = before[start...]
-                if word.hasPrefix("@") {
-                    let length = (String(word) as NSString).length
-                    found = (NSRange(location: selection.location - length, length: length), String(word.dropFirst()))
-                }
-            }
-            mentionRange = found?.0
-            if parent.mention != found?.1 {
-                let query = found?.1
+            let found = MentionQuery.word(in: textView.string, cursor: selection.location,
+                                          selectionLength: selection.length)
+            mentionRange = found?.range
+            if parent.mention != found?.query {
+                let query = found?.query
                 Task { @MainActor in self.parent.mention = query }
             }
         }

@@ -79,6 +79,8 @@ public final class AppModel {
                     focus = nil
                     timelineWindow = nil
                 }
+                newestLimit = Storage.pageSize
+                loadingOlder = false
                 observeMessages()
                 if openThread?.chat != selectedChat { openThread = nil }
                 if search?.chat != selectedChat { search = nil }
@@ -249,6 +251,17 @@ public final class AppModel {
     /// so each change re-reads that window rather than everything since.
     /// Reaching the window's bottom takes it further (`chatListAtBottom`).
     private var timelineWindow: (start: TimelineStart, limit: Int)?
+    /// How many of the open chat's newest messages its timeline reads, when
+    /// no jump's window is open: a page more each time the list asks for
+    /// older ones (`loadOlder`), back to one page on opening a chat.
+    private var newestLimit = Storage.pageSize
+    /// Whether the open chat may have messages above its timeline: it reads
+    /// its newest messages, and as many came as were asked for.
+    public var mayHaveOlder: Bool {
+        timelineWindow == nil && timeline.messages.count >= newestLimit
+    }
+    /// An older page asked for (`loadOlder`) and not here yet.
+    public private(set) var loadingOlder = false
     /// Whether the open chat's list ends at its newest message: false while
     /// a window short of it is open.
     public var timelineReachesNewest: Bool {
@@ -746,10 +759,25 @@ public final class AppModel {
     /// the next 200 below, keeping what is drawn; one that reaches it goes
     /// back to the newest 200, so later changes re-read only those.
     public func chatListAtBottom() {
+        // Back at the newest after older pages: every change re-reads only
+        // the newest page again (the rows above go until scrolled to).
+        if timelineWindow == nil, newestLimit > Storage.pageSize {
+            newestLimit = Storage.pageSize
+            observeMessages(keepingRows: true)
+        }
         guard var window = timelineWindow else { return }
         if timelineReachesNewest { return showNewest() }
         window.limit += Storage.pageSize
         timelineWindow = window
+        observeMessages(keepingRows: true)
+    }
+
+    /// A page of older messages above the open chat's newest (the
+    /// iPhone's list asks as it nears its top), keeping what is drawn.
+    public func loadOlder() {
+        guard mayHaveOlder else { return }
+        newestLimit += Storage.pageSize
+        loadingOlder = true
         observeMessages(keepingRows: true)
     }
 
@@ -1328,7 +1356,7 @@ public final class AppModel {
         }
         guard let storage = engine?.storage, let chat = selectedChat else { return }
         let window = timelineWindow
-        let limit = window?.limit ?? Storage.pageSize
+        let limit = window?.limit ?? newestLimit
         TimelineLog.log("\(TimelineLog.tag(chat)) timeline reset, limit \(limit)")
         messagesTask = Task {
             do {
@@ -1338,6 +1366,7 @@ public final class AppModel {
                     TimelineLog.log("\(TimelineLog.tag(chat)) timeline loaded: \(timeline.messages.count) messages, "
                         + "\(timeline.threads.count) threads, limit \(limit)")
                     self.timeline = timeline
+                    loadingOlder = false
                     rebuildChatRows()
                 }
             } catch {

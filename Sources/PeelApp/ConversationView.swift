@@ -504,7 +504,7 @@ struct UndeliveredActions: View {
                     .foregroundStyle(Theme.secondaryText)
             } else {
                 if !confirmingDiscard {
-                    Text(label)
+                    Text(message.undeliveredLabel)
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                     // Ours from history or another device is never paid again from here.
@@ -530,16 +530,6 @@ struct UndeliveredActions: View {
         }
         .buttonStyle(.plain)
         .font(Theme.font(11, .medium))
-    }
-
-    private var label: String {
-        // An attachment the memes server never got says so, as the Mac app.
-        if message.uploadState == .failed { return "Not uploaded" }
-        guard isPayment else { return "Not delivered" }
-        if message.type == MessageType.boost, let msat = message.amountMsat {
-            return "Boost of \(Sats.format(msat: msat)) not sent"
-        }
-        return "Not sent"
     }
 
     private func retry() async {

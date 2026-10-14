@@ -1,8 +1,7 @@
 import Foundation
-import Network
-import os
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private let room = "sphinx.call.0123456789abcdef0123456789abcdef"
 private let production = URL(string: "https://chat.sphinx.chat")!
@@ -300,49 +299,3 @@ struct CallTicketFetchTests {
         #expect(URLCache.shared.cachedResponse(for: URLRequest(url: url)) == nil)
     }
 }
-
-/// A loopback HTTP server that answers every request with one cacheable,
-/// cookie-setting JSON reply, and records each request's head. Also serves
-/// the tribes registry in `AuditMoneyTests`.
-final class HTTPStub: Sendable {
-    private let listener: NWListener
-    private let heads = OSAllocatedUnfairLock(initialState: [String]())
-    let port: UInt16
-
-    var requests: [String] { heads.withLock { $0 } }
-
-    init(body: @escaping @Sendable (UInt16) -> String) async throws {
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
-        let listener = try NWListener(using: parameters)
-        let record: @Sendable (String) -> Void = { [heads] head in heads.withLock { $0.append(head) } }
-        listener.newConnectionHandler = { connection in
-            connection.start(queue: .global())
-            connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, _, _ in
-                record(String(decoding: data ?? Data(), as: UTF8.self))
-                let body = body(listener.port?.rawValue ?? 0)
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n"
-                    + "Cache-Control: max-age=3600\r\nSet-Cookie: stub=1; Path=/\r\nConnection: close\r\n\r\n" + body
-                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
-            }
-        }
-        port = try await withCheckedThrowingContinuation { continuation in
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    listener.stateUpdateHandler = nil
-                    continuation.resume(returning: listener.port?.rawValue ?? 0)
-                case .failed(let error):
-                    listener.stateUpdateHandler = nil
-                    continuation.resume(throwing: error)
-                default: break
-                }
-            }
-            listener.start(queue: .global())
-        }
-        self.listener = listener
-    }
-
-    func stop() { listener.cancel() }
-}
-

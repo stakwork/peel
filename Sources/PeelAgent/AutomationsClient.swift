@@ -3,8 +3,9 @@ import CryptoKit
 import Foundation
 import PeelCore
 
-/// One of the person's automations, as strut lists it
-/// (`docs/phases/12-automations.md`).
+/// One automation, as strut lists it (`docs/phases/12-automations.md`):
+/// the person's own, on `peel-automation`, or a system automation strut
+/// ships on a workflow of its own (`docs/system-automations.md`).
 public struct Automation: Sendable, Equatable, Identifiable {
     public struct LastRun: Sendable, Equatable {
         public let runId: String
@@ -14,6 +15,12 @@ public struct Automation: Sendable, Equatable, Identifiable {
     }
 
     public let id: String
+    /// The workflow it fires: `peel-automation`, or a system one's own.
+    public let workflow: String
+    /// Its workflow's category: `system` for the ones strut ships.
+    public let category: String?
+    /// Its workflow's description, read for system automations only.
+    public var about: String?
     public var name: String
     public var enabled: Bool
     /// strut's trigger object (`every`, `at`, `on`, `tz`, …).
@@ -24,6 +31,12 @@ public struct Automation: Sendable, Equatable, Identifiable {
     public var nextRun: Date?
     public var lastRun: LastRun?
     public var running: Bool
+
+    /// Shipped with strut and run by strut alone: the person may turn it
+    /// on or off and run it, and the agent may not touch it.
+    public var isSystem: Bool { category == "system" }
+    /// The person's own, made through the agent: on `peel-automation`.
+    public var isYours: Bool { workflow == AutomationsClient.workflow }
 
     /// Its last run did not finish.
     public var lastRunFailed: Bool { lastRun?.status == "error" }
@@ -45,6 +58,8 @@ public struct Automation: Sendable, Equatable, Identifiable {
         guard let id = json["id"]?.string, let name = json["name"]?.string else { return nil }
         self.id = id
         self.name = name
+        workflow = json["workflow"]?.string ?? AutomationsClient.workflow
+        category = json["category"]?.string
         enabled = json["enabled"] != .bool(false)
         trigger = json["trigger"] ?? .object([:])
         prompt = AutomationsClient.unescaped(json["input"]?["prompt"]?.string ?? "")
@@ -72,7 +87,11 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     public let startedAt: Date?
     /// What Peel answered, for a run that reached Peel.
     public let reply: AutomationReply?
-    /// Why it failed, in strut's words.
+    /// What a system automation's agent said at the end, run in strut.
+    public let text: String?
+    /// What that run's model calls cost, in US dollars, as strut counted it.
+    public let cost: Double?
+    /// Why it failed, in strut's words, without the provider's raw reply.
     public let error: String?
 
     init?(_ json: AgentKit.JSONValue) {
@@ -81,7 +100,28 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         status = json["status"]?.string ?? "running"
         startedAt = json["startedAt"]?.string.flatMap(Automation.date)
         reply = json["output"]?["body"].flatMap { try? $0.decoded(as: AutomationReply.self) }
-        error = json["error"]?["message"]?.string
+        // An empty one says nothing: "Finished".
+        text = json["output"]?["text"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+        // A number, or one a template wrote as text.
+        cost = switch json["output"]?["cost"] {
+        case .number(let dollars)?: dollars
+        case .string(let text)?: Double(text)
+        default: nil
+        }
+        error = json["error"]?["message"]?.string.map(Self.shortened)
+    }
+
+    /// strut's words for a failed model call, as a person reads them:
+    /// "agent failed after 0 step(s): invalid x-api-key (HTTP 401: {…})"
+    /// is "invalid x-api-key", and "agent: no model connected
+    /// (STRUT_DEFAULT_MODEL is not set)" is "no model connected".
+    static func shortened(_ message: String) -> String {
+        var text = message
+        for tail in [" (HTTP ", " (STRUT_"] {
+            if let cut = text.range(of: tail) { text = String(text[..<cut.lowerBound]) }
+        }
+        if let prefix = text.firstMatch(of: #/^agent(?: failed after \d+ step\(s\))?: /#) { text.removeSubrange(prefix.range) }
+        return text.isEmpty ? message : text
     }
 }
 
@@ -94,7 +134,8 @@ public struct SchedulePreview: Sendable, Equatable {
 /// strut's automation endpoints, for the agent's tools and the Automations
 /// view alike, over the memory's strut (its address and key, from its ready
 /// line: `BundledStrut`). Every Peel automation hangs off one workflow, `peel-automation`,
-/// whose one `http` step posts to this Mac's `AutomationServer`.
+/// whose one `http` step posts to this Mac's `AutomationServer`; a system
+/// automation hangs off its own workflow, which strut runs alone.
 public struct AutomationsClient: Sendable {
     public let server: MemoryServer
 
@@ -114,10 +155,32 @@ public struct AutomationsClient: Sendable {
 
     // MARK: Automations
 
-    /// Every Peel automation, in strut's order.
-    public func list() async throws -> [Automation] {
-        let reply = try await call("GET", "automations?workflow=\(Self.workflow)", what: "the automations")
-        return (reply["automations"]?.array ?? []).compactMap(Automation.init)
+    /// Every workflow's automations in strut's order, or only `workflow`'s.
+    public func list(workflow: String? = nil) async throws -> [Automation] {
+        var descriptions: [String: String] = [:]
+        return try await list(workflow: workflow, descriptions: &descriptions)
+    }
+
+    /// The same, a system one with its workflow's description: from
+    /// `descriptions` (by workflow), else read once and kept there; "" when
+    /// strut cannot say it, so it is not asked again.
+    public func list(workflow: String? = nil, descriptions: inout [String: String]) async throws -> [Automation] {
+        let path = workflow.map { "automations?workflow=\(Self.escaped(path: $0))" } ?? "automations"
+        var list = try await call("GET", path, what: "the automations")["automations"]?.array?.compactMap(Automation.init) ?? []
+        for name in Set(list.filter(\.isSystem).map(\.workflow)) where descriptions[name] == nil {
+            descriptions[name] = (try? await description(of: name)) ?? ""
+        }
+        for index in list.indices where list[index].isSystem {
+            list[index].about = descriptions[list[index].workflow].flatMap { $0.isEmpty ? nil : $0 }
+        }
+        return list
+    }
+
+    /// A workflow's description: strut keeps one per version, so the
+    /// active version's.
+    func description(of workflow: String) async throws -> String? {
+        let meta = try await call("GET", "workflows/\(Self.escaped(path: workflow))", what: "the workflow")
+        return meta["active"]?.string.flatMap { meta["versions"]?[$0]?["description"]?.string }
     }
 
     /// strut's sentence for `trigger` and its next five runs; refuses a
@@ -150,24 +213,42 @@ public struct AutomationsClient: Sendable {
             body["input"] = Self.input(name: name ?? current.name, prompt: prompt ?? current.prompt)
         }
         guard !body.isEmpty else { return current }
-        return try automation(in: await call("PATCH", path(current.id), .object(body), what: "the automation"))
+        return try automation(in: await call("PATCH", path(current), .object(body), what: "the automation"))
     }
 
-    public func delete(_ id: String) async throws {
-        _ = try await call("DELETE", path(id), what: "the automation")
+    public func delete(_ automation: Automation) async throws {
+        _ = try await call("DELETE", path(automation), what: "the automation")
     }
 
     /// Runs it now, off its schedule; refused while its last run still goes.
-    public func runNow(_ id: String) async throws {
-        _ = try await call("POST", path(id) + "/fire", what: "the run")
+    public func runNow(_ automation: Automation) async throws {
+        _ = try await call("POST", path(automation) + "/fire", what: "the run")
     }
 
     /// Its most recent runs, newest first (strut keeps every run of the
     /// workflow in one list, unpaged).
-    public func runs(of id: String, limit: Int = 20) async throws -> [AutomationRunRecord] {
-        let reply = try await call("GET", "workflows/\(Self.workflow)/runs", what: "the runs")
-        return (reply.array ?? []).filter { $0["automation"]?["id"]?.string == id }.prefix(limit)
+    public func runs(of automation: Automation, limit: Int = 20) async throws -> [AutomationRunRecord] {
+        let reply = try await call("GET", "workflows/\(Self.escaped(path: automation.workflow))/runs", what: "the runs")
+        return (reply.array ?? []).filter { $0["automation"]?["id"]?.string == automation.id }.prefix(limit)
             .compactMap(AutomationRunRecord.init)
+    }
+
+    /// Turns on, once, each system automation Peel has not turned on before
+    /// (`done`, by workflow: strut makes a deleted one again under a new
+    /// id): strut ships them off, since it cannot know a model is
+    /// connected. One already on counts as done, so either way one the
+    /// person turns off later stays off. Returns `list` as it is now and the
+    /// workflows done now; one strut refused is tried again next time.
+    public func turnOnSystem(in list: [Automation], done: Set<String>) async -> (list: [Automation], done: Set<String>) {
+        var list = list, now: Set<String> = []
+        for index in list.indices where list[index].isSystem && !done.contains(list[index].workflow) {
+            if !list[index].enabled {
+                guard (try? await update(list[index], enabled: true)) != nil else { continue }
+                list[index].enabled = true
+            }
+            now.insert(list[index].workflow)
+        }
+        return (list, now)
     }
 
     /// What every run is handed: the prompt, the automation's name, and when
@@ -202,8 +283,12 @@ public struct AutomationsClient: Sendable {
 
     private static let gap: Character = "\u{200B}"
 
-    private func path(_ id: String) -> String {
-        "workflows/\(Self.workflow)/automations/\(id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(["-"])) ?? id)"
+    private func path(_ automation: Automation) -> String {
+        "workflows/\(Self.escaped(path: automation.workflow))/automations/\(Self.escaped(path: automation.id))"
+    }
+
+    private static func escaped(path part: String) -> String {
+        part.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(["-"])) ?? part
     }
 
     private func automation(in reply: AgentKit.JSONValue) throws -> Automation {
@@ -220,7 +305,8 @@ public struct AutomationsClient: Sendable {
     /// version per content, so the same source is a no-op), then makes sure
     /// its `peel-automation` workflow is the current one: published when
     /// missing, or as a new version when Peel's changed. Each version is
-    /// named for its content, so the check is one read.
+    /// named for its content, so the check is one read. The connected model
+    /// is not part of it (`setModel`): it is handed over whether or not Peel listens.
     public func install(port: Int, token: String) async throws {
         _ = try await call("PUT", "secrets/\(Self.tokenSecret)", ["value": .string(token)], what: "the automation token")
         _ = try await call("PUT", "secrets/\(Self.portSecret)", ["value": .string(String(port))], what: "the automation port")
@@ -246,6 +332,43 @@ public struct AutomationsClient: Sendable {
         guard active != version else { return }
         _ = try await call("POST", "workflows/\(Self.workflow)", ["version": .string(version), "yaml": .string(yaml)],
                            what: "the workflow")
+    }
+
+    /// The secret a system automation's `agent` step takes its model from
+    /// when its workflow names none: `<provider>/<model>`, as strut names one.
+    static let modelSecret = "STRUT_DEFAULT_MODEL"
+
+    /// Where strut reads `provider`'s key from.
+    static func keySecret(_ provider: AgentProvider) -> String {
+        switch provider {
+        case .anthropic: "ANTHROPIC_API_KEY"
+        case .openAI: "OPENAI_API_KEY"
+        case .openRouter: "OPENROUTER_API_KEY"
+        }
+    }
+
+    /// Every provider's (`keySecret`).
+    static let keySecrets = AgentProvider.allCases.map(keySecret)
+
+    /// Puts the connected model and its key in strut's secret store, for
+    /// the system automations, and takes out any other provider's key;
+    /// with no model connected, takes out the model and every key. Called
+    /// whenever strut starts or the connected model changes, apart from
+    /// `install` (`AppModel.modelChanged`).
+    public func setModel(_ credential: AgentCredential?) async throws {
+        if let credential {
+            _ = try await call("PUT", "secrets/\(Self.modelSecret)",
+                               ["value": .string("\(credential.provider.rawValue)/\(credential.model)")], what: "the model")
+            _ = try await call("PUT", "secrets/\(Self.keySecret(credential.provider))", ["value": .string(credential.apiKey)],
+                               what: "the model's key")
+        }
+        let gone = (credential == nil ? [Self.modelSecret] : [])
+            + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret)
+        for name in gone {
+            let (status, data) = try await request("DELETE", "secrets/\(name)", nil, what: "the model's key")
+            // Never stored, or taken out before: already as wanted.
+            if status != 404 { _ = try Self.read(status, data) }
+        }
     }
 
     /// The step: reads the token and Peel's port from strut's secret store in

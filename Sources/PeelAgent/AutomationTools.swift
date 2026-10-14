@@ -6,7 +6,9 @@ import PeelCore
 /// runs on its own, on a schedule or once, over strut's automations
 /// (`AutomationsClient`). Reading and previewing never ask; creating,
 /// changing, deleting and running one wait on a card that shows strut's
-/// own words for the schedule, every time.
+/// own words for the schedule, every time. Only the person's own, on
+/// `peel-automation`: the system automations strut ships are the person's
+/// to turn on or off, never the agent's to list, change or run.
 public struct AutomationTools: Sendable {
     let client: AutomationsClient
     /// The time zone a trigger without one is in: the person's.
@@ -64,7 +66,8 @@ public struct AutomationTools: Sendable {
             inputSchema: ["type": "object", "properties": [:], "additionalProperties": false],
             effect: .read
         ) { _ in
-            let automations = try await client.list()
+            // strut filters by workflow; checked again here.
+            let automations = try await client.list(workflow: AutomationsClient.workflow).filter(\.isYours)
             guard !automations.isEmpty else { return .text("No automations yet.") }
             var data = ChatData("\(automations.count) automations:")
             for automation in automations { data.add(describe(automation)) }
@@ -164,7 +167,7 @@ public struct AutomationTools: Sendable {
             let current = try await find(input)
             let intent = ToolIntent(action: "Delete \u{201C}\(current.name)\u{201D}", details: ["Runs: " + current.summary])
             return .action(intent) {
-                try await client.delete(current.id)
+                try await client.delete(current)
                 return .text("Deleted \u{201C}\(current.name)\u{201D}.")
             }
         }
@@ -179,7 +182,7 @@ public struct AutomationTools: Sendable {
         ) { input in
             let current = try await find(input)
             return .action(ToolIntent(action: "Run \u{201C}\(current.name)\u{201D} now", content: current.prompt)) {
-                try await client.runNow(current.id)
+                try await client.runNow(current)
                 return .text("Started \u{201C}\(current.name)\u{201D}; its result arrives in this chat when it finishes.")
             }
         }
@@ -198,12 +201,19 @@ public struct AutomationTools: Sendable {
         return .object(fields)
     }
 
+    /// The person's automation with the input's id; refuses any other, a
+    /// system automation's above all, before anything is changed.
     private func find(_ input: AgentKit.JSONValue) async throws -> Automation {
         let id = try SphinxTools.required("id", in: input)
-        guard let found = try await client.list().first(where: { $0.id == id }) else {
-            throw PeelError("No automation has the id \(id); list_automations shows them.")
+        let matches = try await client.list().filter { $0.id == id }
+        if let found = matches.first(where: \.isYours) { return found }
+        if let system = matches.first(where: \.isSystem) {
+            throw PeelError("\u{201C}\(system.name)\u{201D} is a system automation: only the person can turn it on or off, in Automations.")
         }
-        return found
+        if let other = matches.first {
+            throw PeelError("\u{201C}\(other.name)\u{201D} is not one of Peel's automations; list_automations shows them.")
+        }
+        throw PeelError("No automation has the id \(id); list_automations shows them.")
     }
 
     func describe(_ automation: Automation) -> String {

@@ -516,7 +516,17 @@ is a short plan. Update the status and the journal when you finish something.
     config can neither carry the token nor change where it goes; strut
     keeps one version per content)
     and then the `peel-automation` workflow, which runs that step and says
-    nothing about Peel, so its content-hash version never changes
+    nothing about Peel, so its content-hash version never changes.
+    `setModel` puts the connected model as `STRUT_DEFAULT_MODEL` and its
+    provider's key in the store, for the system automations, and takes
+    them out on disconnect; `AppModel.modelChanged` calls it apart from
+    `install`, one at a time, whenever strut starts or the model changes
+    (a Keychain that cannot be read leaves the store alone).
+    It lists every workflow's automations (a system one, `category:
+    system`, with its workflow's description), addresses each on its own
+    workflow, and turns each system automation on once (`turnOnSystem`,
+    `docs/system-automations.md`); the agent's `AutomationTools` see and
+    change `peel-automation`'s only
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut on this Mac owns (`docs/agent-brain.md`): its address and
     `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`;
@@ -573,8 +583,9 @@ is a short plan. Update the status and the journal when you finish something.
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests
   and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
-  `withTestEngine`); a library target, since a test target cannot depend on
-  another, imported `@testable`
+  `withTestEngine`) and `HTTPStub.swift` (a loopback HTTP server that
+  records each whole request); a library target, since a test target
+  cannot depend on another, imported `@testable`
 - `Tests/PeelAgentTests/` — offline tests for PeelAgent, Mac-only like it:
   `AutomationTests`, `AutomationsClientTests`, `BundledStrutTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message

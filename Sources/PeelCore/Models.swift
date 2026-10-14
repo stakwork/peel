@@ -49,6 +49,11 @@ public enum Setting: String, Sendable {
     /// (`Engine.confirmWords`), or all twelve to restore. Never the words
     /// themselves. An account with no record has not been checked.
     case wordsConfirmed
+
+    /// The system automations Peel has turned on once (their workflows'
+    /// names, as a JSON array: strut makes a deleted one again under a new
+    /// id), so one the person turns off stays off.
+    case systemAutomationsOn
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

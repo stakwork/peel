@@ -155,7 +155,9 @@ final class OffscreenDriver {
     /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
     /// the open chat's newest row from someone else; `payments`, the Payments screen;
     /// `automations`, the Automations page; `automations-setup`, its Set up
-    /// (the Connect panel) while no model is connected; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// (the Connect panel) while no model is connected; `automations-system`,
+    /// its System tab; `system-open`, `system-switch` and `system-run-now`,
+    /// the first system automation's row, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
     /// its gear (Account at Peel agent); `agent-retry`, its
     /// Retry; `agent-view`, the first View in its newest reply;
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
@@ -182,6 +184,16 @@ final class OffscreenDriver {
         case "automations-setup":
             // The Automations page's Set up, while no model is connected.
             model.agentConnectFrom = .automations
+        case "automations-system":
+            // The Automations page's System tab.
+            model.automationsTab = .system
+        case "system-open", "system-switch", "system-run-now":
+            guard let automation = model.automations.system.first else { throw Failure(description: "no system automation") }
+            switch name {
+            case "system-open": model.openedAutomation = automation.id
+            case "system-switch": Task { await model.setAutomation(automation, enabled: !automation.enabled) }
+            default: Task { await model.runAutomationNow(automation) }
+            }
         case "message-menu":
             // A click on More over the open chat's newest row from someone else.
             guard case .chat(let chat) = model.destination, let presenter = model.mainPresenter as? MenuPresenter, let window = main,

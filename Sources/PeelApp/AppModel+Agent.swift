@@ -26,6 +26,18 @@ final class MacAgent: AgentHost {
     @ObservationIgnored var automationToken: String?
     /// The Automations view's list, read from strut.
     var automations = AutomationsState()
+    /// What strut's secret store was last given (`AppModel.modelChanged`):
+    /// which strut, and the connected model, nil for none.
+    @ObservationIgnored var strutModel: (server: MemoryServer, credential: AgentCredential?)?
+    /// The one hand-over to strut in flight, and whether it runs again
+    /// after (the model or strut changed while it ran).
+    @ObservationIgnored var modelHanding: Task<Void, Never>?
+    @ObservationIgnored var modelHandingAgain = false
+    /// The Automations view's tab and its one opened row, kept while the
+    /// view is away (and set by the offscreen driver's `automations-system`
+    /// and `system-open`).
+    var automationsTab = AutomationsView.Tab.yours
+    var openedAutomation: String?
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
@@ -88,10 +100,35 @@ extension AppModel {
         set { macAgent.automationToken = newValue }
     }
 
+    var strutModel: (server: MemoryServer, credential: AgentCredential?)? {
+        get { macAgent.strutModel }
+        set { macAgent.strutModel = newValue }
+    }
+
+    var modelHanding: Task<Void, Never>? {
+        get { macAgent.modelHanding }
+        set { macAgent.modelHanding = newValue }
+    }
+
+    var modelHandingAgain: Bool {
+        get { macAgent.modelHandingAgain }
+        set { macAgent.modelHandingAgain = newValue }
+    }
+
     var automations: AutomationsState {
         get { macAgent.automations }
         // In place: `automations.runs[id] = …` copies nothing.
         _modify { yield &macAgent.automations }
+    }
+
+    var automationsTab: AutomationsView.Tab {
+        get { macAgent.automationsTab }
+        set { macAgent.automationsTab = newValue }
+    }
+
+    var openedAutomation: String? {
+        get { macAgent.openedAutomation }
+        set { macAgent.openedAutomation = newValue }
     }
 }
 
@@ -147,6 +184,7 @@ extension AppModel {
                 tools: setup.tools, systemPrompt: setup.systemPrompt()
             ) { Self.agentClient($0, profile: profile) }
             agent.willRun = { [weak self] in self?.lookForMemory() }
+            agent.credentialChanged = { [weak self] in self?.modelChanged() }
             self.agent = agent
             // A strut that stopped is not started again from here, only before the next reply: no crash loop.
             strut?.onChange = { [weak self] in self?.lookForMemory(restarting: false) }
@@ -174,6 +212,8 @@ extension AppModel {
         agent.tools = setup.tools
         agent.systemPrompt = setup.systemPrompt()
         stopAutomations()
+        // First, so a model disconnected while strut was stopped leaves it before anything runs.
+        modelChanged()
         startAutomations(profile, engine: engine)
     }
 

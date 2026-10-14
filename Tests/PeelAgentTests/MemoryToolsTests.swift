@@ -3,6 +3,7 @@ import Testing
 import AgentKit
 import PeelCore
 @testable import PeelAgent
+@testable import PeelTestSupport
 
 /// The agent's memory over strut (`MemoryServer`, `MemoryTools`): only a
 /// server on this Mac, strut's replies read back, and each tool's row line.
@@ -94,12 +95,25 @@ struct MemoryToolsTests {
         #expect(throws: PeelError.self) { try MemoryServer.output(of: Data(invalid.utf8)) }
     }
 
-    /// Who wrote a memory is Peel's to say, never the model's.
-    @Test func provenanceIsSetByPeel() throws {
-        let input = try JSONValue(parsing: #"{"episode":"hi","created_by":"user"}"#)
-        let sent = MemoryTools.byTheAgent(input)
-        #expect(sent["created_by"]?.string == "agent")
-        #expect(sent["episode"]?.string == "hi")
+    /// Who wrote a memory is Peel's to say, never the model's: what each
+    /// tool that records it sends strut says the agent, whatever the model passed.
+    @Test(arguments: [
+        ("remember", #"{"episode":"hi","created_by":"user"}"#),
+        ("merge_memory", #"{"keep":"n1","duplicate":"n2","created_by":"user"}"#),
+    ])
+    func provenanceIsSetByPeel(tool name: String, input: String) async throws {
+        let stub = try await HTTPStub { _ in #"{"status":"success","output":{}}"# }
+        defer { stub.stop() }
+        let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
+        let tools = MemoryTools(server: try #require(MemoryServer(base: base, key: "k"))).tools
+        let tool = try #require(tools.first { $0.name == name })
+        guard case .result = try await tool.plan(try JSONValue(parsing: input)) else {
+            Issue.record("a memory write runs at once")
+            return
+        }
+        let body = try #require(stub.requests.first?.components(separatedBy: "\r\n\r\n").last)
+        let sent = try JSONValue(parsing: body)["input"]
+        #expect(sent?["created_by"]?.string == "agent")
     }
 
     /// A row shows the line before the JSON, never the JSON.

@@ -32,11 +32,15 @@ struct BundledStrutTests {
         let environment = BundledStrut.environment(
             ["PATH": "/usr/bin", "HOME": "/Users/x", "DYLD_INSERT_LIBRARIES": "/evil.dylib", "NODE_OPTIONS": "--inspect",
              "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0", "PEEL_AGENT_API_KEY": "model key",
-             "STRUT_SECRET_KEY": "the caller's"],
+             "STRUT_SECRET_KEY": "the caller's", "ANTHROPIC_API_KEY": "shell key", "OPENAI_API_KEY": "shell key",
+             "OPENROUTER_API_KEY": "shell key"],
             key: key, secretKey: secretKey, data: data)
         #expect(environment["PATH"] == "/usr/bin" && environment["HOME"] == "/Users/x")
         #expect(environment["DYLD_INSERT_LIBRARIES"] == nil && environment["NODE_OPTIONS"] == nil
                 && environment["STRUT_CONNECTION_FILE"] == nil && environment["PEEL_AGENT_API_KEY"] == nil)
+        // A model key from the shell would outlive a disconnect: strut has only the store's.
+        #expect(environment["ANTHROPIC_API_KEY"] == nil && environment["OPENAI_API_KEY"] == nil
+                && environment["OPENROUTER_API_KEY"] == nil)
         #expect(environment["STRUT_HOST"] == "127.0.0.1" && environment["STRUT_PORT"] == "0")
         #expect(environment["STRUT_API_KEY"] == key && environment["STRUT_READY_KEY"] == "1")
         #expect(environment["STRUT_SECRET_KEY"] == secretKey)
@@ -171,14 +175,14 @@ struct BundledStrutTests {
         let automation = try await client.create(
             name: "Daily", prompt: "Summarise",
             trigger: ["type": "schedule", "every": "day", "at": ["09:00"], "tz": "Europe/London"])
-        let first = try await fire(automation.id, on: client)
+        let first = try await fire(automation, on: client)
         #expect(first.status == "success", "\(first.error ?? "")")
         #expect(seen.withLock { $0 } == [AutomationRequest(name: "Daily", prompt: "Summarise")])
 
         // Started again with the same key, nothing installed: the stored token still decrypts.
         strut.stop()
         let again = AutomationsClient(server: try await strut.start())
-        let second = try await fire(automation.id, on: again, after: first.id)
+        let second = try await fire(automation, on: again, after: first.id)
         #expect(second.status == "success", "\(second.error ?? "")")
         #expect(seen.withLock { $0.count } == 2)
 
@@ -214,10 +218,10 @@ struct BundledStrutTests {
     }
 
     /// Runs it now and waits for that run to end: its record.
-    func fire(_ id: String, on client: AutomationsClient, after earlier: String? = nil) async throws -> AutomationRunRecord {
-        try await client.runNow(id)
+    func fire(_ automation: Automation, on client: AutomationsClient, after earlier: String? = nil) async throws -> AutomationRunRecord {
+        try await client.runNow(automation)
         for _ in 0..<100 {
-            if let run = try await client.runs(of: id).first, run.id != earlier, run.status != "running" { return run }
+            if let run = try await client.runs(of: automation).first, run.id != earlier, run.status != "running" { return run }
             try await Task.sleep(for: .milliseconds(100))
         }
         throw PeelError("the run did not end")

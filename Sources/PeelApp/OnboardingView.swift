@@ -280,9 +280,9 @@ struct RestoreProgressView: View {
                 VStack(spacing: 0) {
                     RestoreRow(title: "Account", detail: model.connection.label,
                                state: model.connection == .connected ? .done : .active)
-                    RestoreRow(title: "Contacts", detail: describe(progress.contacts, noun: "checked"),
+                    RestoreRow(title: "Contacts", detail: progress.label(progress.contacts, noun: "checked"),
                                state: .from(started: progress.contacts != nil, done: progress.messages != nil || progress.finished))
-                    RestoreRow(title: "Messages", detail: describe(progress.messages, noun: "received"),
+                    RestoreRow(title: "Messages", detail: progress.label(progress.messages, noun: "received"),
                                state: .from(started: progress.messages != nil, done: progress.finished),
                                fraction: progress.messages?.fraction)
                 }
@@ -300,12 +300,6 @@ struct RestoreProgressView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-    }
-
-    private func describe(_ count: AppModel.RestoreProgress.Count?, noun: String) -> String {
-        guard let count else { return model.restoreProgress.finished ? "None" : "Waiting" }
-        if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
-        return "\(count.reached.formatted()) \(noun)"
     }
 }
 

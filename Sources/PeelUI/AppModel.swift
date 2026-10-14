@@ -36,6 +36,14 @@ public final class AppModel {
         public var paused: String? {
             if case .failed(let reason) = outcome { reason } else { nil }
         }
+
+        /// A count's line on the restore screen: "120 of 300", "35 checked",
+        /// or before any, "Waiting" ("None" once finished).
+        public func label(_ count: Count?, noun: String) -> String {
+            guard let count else { return finished ? "None" : "Waiting" }
+            if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
+            return "\(count.reached.formatted()) \(noun)"
+        }
     }
 
     /// What the sidebar has selected.
@@ -563,6 +571,20 @@ public final class AppModel {
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
     /// comes to the front, and every 30 seconds by `lockWhenIdle`.
+    /// Peel came to the front: the lock if it is due, then what may have
+    /// changed elsewhere meanwhile.
+    public func becameActive() {
+        lockIfDue()
+        // Asked first, so the open chat's `read` goes after the ask and its
+        // answer is not applied over it.
+        Task {
+            await engine?.refreshReadsAndMutes()
+            markSelectedChatRead()
+        }
+        Task { await engine?.refreshPreferences() }
+        Task { await notifier.refreshPermission() }
+    }
+
     public func lockIfDue() {
         guard isLockDue else { return }
         platform.pasteboard.clearSecret()

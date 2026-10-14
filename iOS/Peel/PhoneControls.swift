@@ -137,11 +137,13 @@ struct ActionLabel: View {
 }
 
 /// Six boxes over a hidden secure field on the number pad, so the digits
-/// are never shown. Calls `complete` at the sixth.
+/// are never shown. Calls `complete` at the sixth, once per six typed;
+/// focused again when enabled again (after a wrong PIN was checked).
 struct PinBoxes: View {
     @Binding var pin: String
     let complete: () -> Void
     @FocusState private var focused: Bool
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         ZStack {
@@ -172,11 +174,17 @@ struct PinBoxes: View {
             try? await Task.sleep(for: .milliseconds(450))
             focused = true
         }
-        .onChange(of: pin) { _, value in
-            let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(PIN.length))
+        .onChange(of: pin) { old, value in
+            let digits = Self.digits(value)
             if digits != value { pin = digits }
-            if digits.count == PIN.length { complete() }
+            // A seventh key leaves the same six, already complete.
+            if digits.count == PIN.length, digits != Self.digits(old) { complete() }
         }
+        .onChange(of: isEnabled) { _, enabled in if enabled { focused = true } }
+    }
+
+    private static func digits(_ text: String) -> String {
+        String(text.filter { $0.isASCII && $0.isNumber }.prefix(PIN.length))
     }
 }
 
@@ -186,6 +194,7 @@ struct NumberedWords<Cell: View>: View {
     let places: [Int]
     var focused: Int?
     @ViewBuilder let cell: (Int) -> Cell
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
@@ -202,6 +211,11 @@ struct NumberedWords<Cell: View>: View {
                 .frame(height: 48)
                 .fieldBox(focused: focused == index)
             }
+        }
+        // Covered while Peel is not active, so the app switcher's snapshot
+        // never holds the words.
+        .overlay {
+            if scenePhase != .active { Theme.background }
         }
     }
 }
@@ -223,6 +237,9 @@ extension View {
 struct WordEntry: View {
     @Binding var words: [String]
     @FocusState private var focus: Int?
+    /// Bumped when the clipboard may have changed, so the paste button
+    /// looks at it again: it decides whether it is enabled only as it appears.
+    @State private var clipboardChanges = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
@@ -234,6 +251,15 @@ struct WordEntry: View {
             }
             .buttonBorderShape(.capsule)
             .labelStyle(.titleAndIcon)
+            .id(clipboardChanges)
+            // Changed here, or (no notification for that) in another app
+            // while Peel was away.
+            .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+                clipboardChanges += 1
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                clipboardChanges += 1
+            }
             NumberedWords(places: Array(words.indices), focused: focus) { index in
                 TextField("", text: binding(for: index))
                     .wordField()

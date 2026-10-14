@@ -351,7 +351,7 @@ is a short plan. Update the status and the journal when you finish something.
   no team: a team goes in the ignored `Local.xcconfig`, see
   `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
   in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase,
-  `MainTabs`: Chats and Account), `PhonePlatform` (`Platform.phone`:
+  `MainTabs`: Chats and Account), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
   their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,

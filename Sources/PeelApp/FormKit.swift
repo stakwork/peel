@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 // Peel's form system: shadcn's conventions in SwiftUI (Tom, 2026-10-09),
 // replacing direction A's label-left, value-right rows for text. Each field

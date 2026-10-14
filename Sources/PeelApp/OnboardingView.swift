@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// New account (invite → name → PIN → twelve words) or restore (twelve words →
 /// name → PIN → progress). See docs/design/README.md, "Profile and onboarding".

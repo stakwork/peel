@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import WebKit
 import PeelCore
+import PeelUI
 
 /// The web pane: a link from a message, or a tribe's app or second brain,
 /// opens beside the chat rather than in the browser, like the browser pane
@@ -412,7 +413,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
         initiatedByFrame frame: WKFrameInfo
     ) async -> [URL]? {
-        FilePicking.open(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
+        FilePanels().open(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {

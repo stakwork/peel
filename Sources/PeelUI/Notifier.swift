@@ -1,10 +1,6 @@
-#if os(macOS)
-import AppKit
-#endif
 import Foundation
 import Observation
 import PeelCore
-import SwiftUI
 import UserNotifications
 
 /// Local notifications for messages that arrive while Peel runs, and the Dock
@@ -21,17 +17,19 @@ import UserNotifications
 /// policy says the chat is quiet, and more than a few at once from one chat
 /// (a catch-up after sleep) become one summary.
 @MainActor @Observable
-final class Notifier {
-    enum Permission { case unavailable, notAsked, denied, allowed }
+public final class Notifier {
+    public enum Permission: Sendable { case unavailable, notAsked, denied, allowed }
 
-    private(set) var permission: Permission = .unavailable
+    public private(set) var permission: Permission = .unavailable
     /// Whether a notification may say what a message says; kept with the account.
-    var showsText = true
+    public var showsText = true
     /// "Not now" on the offer, for this Mac.
-    private(set) var offerDismissed = UserDefaults.standard.bool(forKey: Notifier.offerDismissedKey)
+    public private(set) var offerDismissed = UserDefaults.standard.bool(forKey: Notifier.offerDismissedKey)
 
     /// The chats, read states and lock state that decide what to show.
-    @ObservationIgnored weak var model: AppModel?
+    @ObservationIgnored public weak var model: AppModel?
+    /// The badge on Peel's icon and the system's notification settings.
+    @ObservationIgnored private let presence: any AppPresence
 
     /// Nil when running outside an app bundle, where the notification
     /// center is not available, and offscreen, which posts nothing.
@@ -57,12 +55,13 @@ final class Notifier {
     private static let gathering: Duration = .milliseconds(400)
     private static let hiddenText = "New message"
     /// The thread of money notifications; a click opens Payments.
-    static let paymentsThread = "payments"
+    public static let paymentsThread = "payments"
     /// The thread of automation results; a click opens the agent chat.
-    static let agentThread = "agent"
+    public static let agentThread = "agent"
 
-    init() {
-        guard Bundle.main.bundleURL.pathExtension == "app", !Offscreen.isOn else {
+    public init(presence: any AppPresence) {
+        self.presence = presence
+        guard presence.postsNotifications else {
             center = nil
             delegate = nil
             return
@@ -84,11 +83,11 @@ final class Notifier {
     }
 
     /// Whether to offer turning notifications on: never asked, not declined here.
-    var offersPermission: Bool { permission == .notAsked && !offerDismissed }
+    public var offersPermission: Bool { permission == .notAsked && !offerDismissed }
 
     // MARK: Permission
 
-    func refreshPermission() async {
+    public func refreshPermission() async {
         guard let center else { return }
         let current: Permission = switch await center.notificationSettings().authorizationStatus {
         case .notDetermined: .notAsked
@@ -99,29 +98,19 @@ final class Notifier {
     }
 
     /// Shows the system's question; the answer can be changed only in System Settings.
-    func requestPermission() async {
+    public func requestPermission() async {
         _ = try? await center?.requestAuthorization(options: [.alert, .sound, .badge])
         await refreshPermission()
     }
 
-    func dismissOffer() {
+    public func dismissOffer() {
         offerDismissed = true
         UserDefaults.standard.set(true, forKey: Self.offerDismissedKey)
     }
 
-    /// Peel's page in System Settings > Notifications.
-    func openSystemSettings() {
-        #if os(macOS)
-        let id = Bundle.main.bundleIdentifier ?? ""
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
-    }
-
     // MARK: Account
 
-    func attach(_ storage: Storage, showsText: Bool) {
+    public func attach(_ storage: Storage, showsText: Bool) {
         clearSession()
         self.storage = storage
         self.showsText = showsText
@@ -132,7 +121,7 @@ final class Notifier {
     }
 
     /// The account is gone from this Mac: nothing of it stays on screen.
-    func reset() {
+    public func reset() {
         clearSession()
         setBadge(0)
         removeAllDelivered()
@@ -148,14 +137,14 @@ final class Notifier {
     }
 
     /// Nothing an earlier notification said stays readable, for when Peel locks.
-    func removeAllDelivered() {
+    public func removeAllDelivered() {
         chatsShown = []
         center?.removeAllDeliveredNotifications()
     }
 
     // MARK: Messages
 
-    func received(_ message: Message, _ arrival: Engine.Arrival) {
+    public func received(_ message: Message, _ arrival: Engine.Arrival) {
         guard center != nil, permission == .allowed else { return }
         switch arrival {
         case .live: break
@@ -173,7 +162,7 @@ final class Notifier {
         }
     }
 
-    func historyEnded() {
+    public func historyEnded() {
         firstSync = false
     }
 
@@ -214,7 +203,7 @@ final class Notifier {
     /// A scheduled automation's result, delivered to the agent chat: one
     /// notification under the automation's name, quiet while that chat is
     /// in front of you. A click opens the agent chat.
-    func automationDelivered(name: String, text: String, chatShown: Bool) {
+    public func automationDelivered(name: String, text: String, chatShown: Bool) {
         guard let center, permission == .allowed, let model, storage != nil, !chatShown else { return }
         let (_, locked) = policy(model)
         post(center, id: "automation-\(UUID().uuidString)", chat: Self.agentThread, message: nil, locked: locked,
@@ -223,7 +212,7 @@ final class Notifier {
     }
 
     /// Markdown as a notification shows it: the words, without the marks.
-    static func plain(_ markdown: String) -> String {
+    public static func plain(_ markdown: String) -> String {
         guard let parsed = try? AttributedString(
             markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else { return markdown }
         return String(parsed.characters)
@@ -236,7 +225,7 @@ final class Notifier {
     /// accepted them already, so this is news, not a request. Not held to the
     /// read marker (answering them moves the server's past their key exchange
     /// at once); quiet for their chat open in front of you, and when muted.
-    func contactAdded(_ message: Message) {
+    public func contactAdded(_ message: Message) {
         guard let center, permission == .allowed, let model, storage != nil,
               message.uuid.map({ posted.insert($0).inserted }) ?? true else { return }
         let (policy, locked) = policy(model)
@@ -254,7 +243,7 @@ final class Notifier {
     /// "all" lets it through: it mentions nobody) and stays quiet for the chat
     /// open in front of you; a paid invoice (a request in a chat too) always
     /// shows. Nothing while Payments is open in front of you.
-    func moneyReceived(_ receipts: [Receipt]) {
+    public func moneyReceived(_ receipts: [Receipt]) {
         guard let center, permission == .allowed, let model, storage != nil else { return }
         let (policy, locked) = policy(model)
         if !locked, model.isFrontmost, model.destination == .payments { return }
@@ -349,7 +338,7 @@ final class Notifier {
 
     /// Keeps the Dock badge equal to what the sidebar counts, and takes away
     /// the notifications of chats whose read marker moved, here or elsewhere.
-    func readStatesChanged(to states: [String: ChatReadState], from previous: [String: ChatReadState], unread: Int) {
+    public func readStatesChanged(to states: [String: ChatReadState], from previous: [String: ChatReadState], unread: Int) {
         setBadge(unread)
         let read = chatsShown.filter { chat in
             guard let before = previous[chat], let after = states[chat]?.lastRead else { return false }
@@ -361,13 +350,11 @@ final class Notifier {
     private func setBadge(_ count: Int) {
         guard count != badge else { return }
         badge = count
-        #if os(macOS)
-        NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
-        #endif
+        presence.showBadge(count)
     }
 
     /// Takes away these chats' notifications, read or open in front of you.
-    func removeDelivered(in chats: Set<String>) {
+    public func removeDelivered(in chats: Set<String>) {
         let chats = chats.intersection(chatsShown)
         guard let center, !chats.isEmpty else { return }
         chatsShown.subtract(chats)
@@ -399,33 +386,5 @@ private final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unche
               let chat = response.notification.request.content.userInfo["chat"] as? String else { return }
         let message = response.notification.request.content.userInfo["message"] as? Int64
         await MainActor.run { open?(chat, message) }
-    }
-}
-
-/// Offers notifications once the account is open.
-struct NotificationOffer: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        HStack(spacing: Theme.Space.md) {
-            Image(systemName: "bell")
-                .foregroundStyle(Theme.secondaryText)
-            Text("Get notified about new messages?")
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            // The text gives way, never the buttons: their labels keep one line.
-            Group {
-                Button("Not now") { model.dismissNotificationOffer() }
-                    .buttonStyle(.peel(.outline, size: .sm))
-                Button("Turn on notifications") { Task { await model.enableNotifications() } }
-                    .buttonStyle(.peel(.primary, size: .sm))
-            }
-            .fixedSize()
-        }
-        .padding(.horizontal, Theme.Space.lg)
-        .padding(.vertical, 10)
-        .background(Theme.panel)
-        .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
     }
 }

@@ -1,6 +1,7 @@
 import PeelAgent
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// A chat: its header, the conversation and the composer, with the open
 /// thread beside it. On a window too narrow for both, the thread takes the
@@ -72,11 +73,6 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
             }
         }
     }
-}
-
-extension Conversation {
-    /// "#tribe" or the contact's name, where a chat is named outside its own header.
-    var title: String { isTribe ? "#\(name)" : name }
 }
 
 /// A chat's header, conversation and composer. Its own view, so resizing the

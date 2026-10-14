@@ -1,21 +1,11 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 // Time zones in the app (`docs/design/README.md`, "Time zones", boards T1,
 // T2, T3a and T6; Account's group, T4, is in `AccountView`). Shown quietly:
 // their local time once per run, in the DM header, on hover; never a second
 // timestamp on every message, and nothing at all when it is not known.
-
-extension Formatting {
-    /// "6 h ahead", "6 h 30 min behind", "30 min ahead"; nil when the same.
-    static func offset(_ seconds: Int) -> String? {
-        let minutes = abs(seconds) / 60
-        guard minutes > 0 else { return nil }
-        let (hours, rest) = (minutes / 60, minutes % 60)
-        let amount = [hours > 0 ? "\(hours) h" : nil, rest > 0 ? "\(rest) min" : nil].compactMap { $0 }.joined(separator: " ")
-        return "\(amount) \(seconds > 0 ? "ahead" : "behind")"
-    }
-}
 
 // MARK: - The run header's local time (T3a)
 

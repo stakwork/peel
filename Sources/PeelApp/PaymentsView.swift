@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 // MARK: - The screen
 
@@ -18,8 +19,7 @@ struct PaymentsView: View {
     }
 
     @State private var items: [PaymentItem] = []
-    @State private var limit = Int(Engine.paymentPageSize)
-    @State private var hasMore = true
+    @State private var paging = PaymentPaging()
     @State private var loadingOlder = false
     @State private var problem: String?
     @State private var pane: Pane?
@@ -57,9 +57,9 @@ struct PaymentsView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: pane == nil)
-        .task(id: limit) {
+        .task(id: paging.limit) {
             do {
-                guard let updates = model.paymentHistoryUpdates(limit: limit) else { return }
+                guard let updates = model.paymentHistoryUpdates(limit: paging.limit) else { return }
                 for try await rows in updates {
                     items = rows
                     lightArrived()
@@ -131,17 +131,12 @@ struct PaymentsView: View {
     /// too, and while connected the server's next older page, which fills
     /// the raised limit as it is stored.
     private func loadOlder() async {
-        // At most a page past what shows, so the end of what is stored
-        // stops raising it. Not `items.count >= limit`: pings folded into
-        // their payments leave a full page a row or two short.
-        let page = Int(Engine.paymentPageSize)
-        if limit - items.count < page { limit += page }
-        guard hasMore, !loadingOlder, model.connection == .connected else { return }
+        paging.reachedEnd(showing: items.count)
+        guard paging.hasMore, !loadingOlder, model.connection == .connected else { return }
         loadingOlder = true
         defer { loadingOlder = false }
         do {
-            let count = try await model.fetchOlderPayments()
-            hasMore = count >= page
+            paging.fetched(try await model.fetchOlderPayments())
         } catch {
             problem = PeelError.problem(error, couldNot: "load older payments")
         }
@@ -169,7 +164,7 @@ struct PaymentsView: View {
                             }
                         }
                     }
-                    if loadingOlder || (problem != nil && hasMore) {
+                    if loadingOlder || (problem != nil && paging.hasMore) {
                         HStack(spacing: Theme.Space.sm) {
                             if loadingOlder { ProgressView().controlSize(.small) }
                             Text(loadingOlder ? "Loading older payments" : problem ?? "")

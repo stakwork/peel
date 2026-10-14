@@ -2,6 +2,7 @@
 import AppKit
 #endif
 import SwiftUI
+import PeelUI
 
 /// Peel's own menu, in place of every native context menu, pop-up button and
 /// picker: one look, keyboard navigable (arrows, Return, Escape, and the

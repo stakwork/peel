@@ -2,11 +2,97 @@ import AgentKit
 import Foundation
 import PeelAgent
 import PeelCore
+import PeelUI
 
-/// Where a Connect panel was opened from, so it opens beside that button:
-/// the chat's card or its error row, or the Account page's provider or key.
-enum AgentConnectSource: Hashable {
-    case chat, problem, account, accountKey, automations
+/// The agent's pieces that need PeelAgent, for the model (`AgentHost`):
+/// the memory, Peel's strut and the automations. The model reads them
+/// through `AppModel.macAgent`.
+@MainActor @Observable
+final class MacAgent: AgentHost {
+    /// The agent's memory: the running strut's address and key (`lookForMemory`).
+    var memoryServer: MemoryServer?
+    /// The strut Peel ships, if this build has one, for this launch's
+    /// profile (`strut(for:)`): started when its agent opens, stopped when
+    /// Peel quits.
+    @ObservationIgnored var strut: BundledStrut?
+    /// The one memory open beside the agent chat (`openMemory`), if any.
+    var memoryPanel: MemoryPanel?
+    /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
+    @ObservationIgnored var automationServer: AutomationServer?
+    /// The last server's close, which a new one waits for before taking its port.
+    @ObservationIgnored var automationStopping: Task<Void, Never>?
+    /// The token strut sends with each automation: made when the agent opens,
+    /// in memory only, the same for every server and PUT until it closes.
+    @ObservationIgnored var automationToken: String?
+    /// The Automations view's list, read from strut.
+    var automations = AutomationsState()
+
+    func open(_ profile: Profile, engine: Engine, in model: AppModel) {
+        model.openAgent(profile, engine: engine)
+    }
+
+    func close(in model: AppModel) {
+        model.closeAgent()
+    }
+
+    func closeMemory(in model: AppModel) -> Bool {
+        guard memoryPanel != nil else { return false }
+        model.closeMemory()
+        return true
+    }
+
+    func stop() {
+        strut?.stop(quietly: true)
+    }
+
+    /// The app account's memory is erased even if its strut never started
+    /// this launch (forgotten from the lock screen) or this build ships
+    /// none; a development profile's is in its folder.
+    func forget(_ profile: Profile) throws {
+        stop()
+        if profile.kind == .app { try BundledStrut.erase() }
+    }
+}
+
+extension AppModel {
+    /// The Mac's model is always made with a `MacAgent` (`Platform.mac()`).
+    var macAgent: MacAgent { agentHost as! MacAgent }
+
+    var memoryServer: MemoryServer? {
+        get { macAgent.memoryServer }
+        set { macAgent.memoryServer = newValue }
+    }
+
+    var strut: BundledStrut? {
+        get { macAgent.strut }
+        set { macAgent.strut = newValue }
+    }
+
+    var memoryPanel: MemoryPanel? {
+        get { macAgent.memoryPanel }
+        set { macAgent.memoryPanel = newValue }
+    }
+
+    var automationServer: AutomationServer? {
+        get { macAgent.automationServer }
+        set { macAgent.automationServer = newValue }
+    }
+
+    var automationStopping: Task<Void, Never>? {
+        get { macAgent.automationStopping }
+        set { macAgent.automationStopping = newValue }
+    }
+
+    var automationToken: String? {
+        get { macAgent.automationToken }
+        set { macAgent.automationToken = newValue }
+    }
+
+    var automations: AutomationsState {
+        get { macAgent.automations }
+        // In place: `automations.runs[id] = …` copies nothing.
+        _modify { yield &macAgent.automations }
+    }
 }
 
 extension AppModel {

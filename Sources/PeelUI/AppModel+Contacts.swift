@@ -6,7 +6,7 @@ extension AppModel {
     /// through the engine's payment checks: the key exchange pays 5 sats.
     /// Someone already a contact is not added again: their chat opens.
     /// Returns whether a key exchange was started, once the engine went ahead.
-    func addContact(code: String, alias: String, confirmedMsat: UInt64?) async -> (PaymentOutcome, Bool?) {
+    public func addContact(code: String, alias: String, confirmedMsat: UInt64?) async -> (PaymentOutcome, Bool?) {
         var added: Bool?
         let outcome = await pay("add contact") {
             let (pubkey, started) = try await $0.addContact(code: code, alias: alias.trimmed, confirmedMsat: confirmedMsat)
@@ -18,7 +18,7 @@ extension AppModel {
 
     /// Makes an invite with sats, through the engine's payment checks; the
     /// engine always asks to confirm the amount first.
-    func makeInvite(
+    public func makeInvite(
         amountMsat: UInt64, nickname: String, message: String, confirmedMsat: UInt64?
     ) async -> (PaymentOutcome, InviteRecord?) {
         var made: InviteRecord?
@@ -34,7 +34,7 @@ extension AppModel {
     /// kept for their chat: a call in it is left, its thread, drafts,
     /// replies, files waiting and notifications go, and the selection moves
     /// to the next direct message (or the one above, or nothing).
-    func deleteContact(_ pubkey: String) async throws {
+    public func deleteContact(_ pubkey: String) async throws {
         let direct = sidebarSections.direct.map(\.chat)
         try await signedIn().deleteContact(pubkey)
         if call?.chat == pubkey { leaveCall() }
@@ -55,11 +55,11 @@ extension AppModel {
         }
     }
 
-    func cancelInvite(_ code: String) async throws {
+    public func cancelInvite(_ code: String) async throws {
         try await signedIn().cancelInvite(code: code)
     }
 
-    func forgetInvite(_ code: String) async throws {
+    public func forgetInvite(_ code: String) async throws {
         try await signedIn().forgetInvite(code: code)
     }
 }

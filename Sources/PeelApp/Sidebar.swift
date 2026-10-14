@@ -1,6 +1,7 @@
 import AgentKit
 import SwiftUI
 import PeelCore
+import PeelUI
 
 // MARK: - Sidebar
 
@@ -106,7 +107,7 @@ struct Sidebar: View {
             }
             // Its own view: each page restored redraws the bar, not the sidebar.
             RestoreBar()
-            if let call = model.call {
+            if let call = model.callSession {
                 OnCallBar(call: call)
             }
         }
@@ -521,40 +522,6 @@ enum ConversationMenu {
         return [.destructive(exit.title, systemImage: exit.systemImage, confirm: exit.confirm(conversation.name)) {
             Task { await model.leave(chat) }
         }]
-    }
-}
-
-/// Leave and Remove from Peel as every place that offers them words them:
-/// the menu, the members panel, the details and the status bar.
-extension Tribe.Exit {
-    var title: String {
-        switch self {
-        case .leave: "Leave tribe"
-        case .remove: "Remove from Peel"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .leave: "rectangle.portrait.and.arrow.right"
-        case .remove: "trash"
-        }
-    }
-
-    /// The second click's words.
-    func confirm(_ tribeName: String) -> String {
-        switch self {
-        case .leave: "Leave #\(tribeName)"
-        case .remove: "Remove #\(tribeName)"
-        }
-    }
-
-    /// What could not be done, after "Could not".
-    var failure: String {
-        switch self {
-        case .leave: "leave the tribe"
-        case .remove: "remove the tribe"
-        }
     }
 }
 

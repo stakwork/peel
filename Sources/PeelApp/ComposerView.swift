@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// One rounded field that holds everything: what it is replying to and the
 /// files waiting to go over a single row of attach (and in a direct message

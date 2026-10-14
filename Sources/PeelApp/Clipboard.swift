@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 enum Clipboard {
     /// Returns whether it copied, like `copyImage`, for `CopyButton` and `MenuEntry.copy`.

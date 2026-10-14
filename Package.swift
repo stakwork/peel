@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "PeelCore", targets: ["PeelCore"]),
         .library(name: "AgentKit", targets: ["AgentKit"]),
+        .library(name: "PeelUI", targets: ["PeelUI"]),
         .executable(name: "peel", targets: ["peel"]),
         .executable(name: "PeelApp", targets: ["PeelApp"]),
     ],
@@ -53,10 +54,17 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
-        // The only target that links LiveKit and WebRTC; PeelCore and the CLI never do.
+        // The app's model, shared by the Mac and the iPhone: `AppModel` and
+        // what it holds, with the platform's services behind protocols
+        // (`Platform`). No AppKit, UIKit, LiveKit or PeelAgent.
+        .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit"]),
+        // The Mac app over PeelUI, and the only target that links LiveKit
+        // and WebRTC; PeelCore and the CLI never do.
         .executableTarget(
             name: "PeelApp",
-            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "LiveKit", package: "client-sdk-swift")],
+            dependencies: [
+                "PeelUI", "PeelCore", "AgentKit", "PeelAgent", .product(name: "LiveKit", package: "client-sdk-swift"),
+            ],
             // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),

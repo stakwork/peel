@@ -2,6 +2,7 @@
 import AppKit
 #endif
 import SwiftUI
+import PeelUI
 
 // MARK: - Presenting
 

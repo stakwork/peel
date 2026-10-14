@@ -69,7 +69,7 @@ struct CallTicketCheckTests {
 
     @Test(arguments: [
         "wss://evil.example.com", "wss://chat.sphinx.chat.evil.com", "wss://x.chat.sphinx.chat", "wss://sphinx.livekit.cloud",
-        "ws://chat.sphinx.chat", "https://chat.sphinx.chat", "wss://chat.sphinx.chat:7880", "wss://u:p@chat.sphinx.chat",
+        "ws://chat.sphinx.chat", "http://chat.sphinx.chat", "wss://chat.sphinx.chat:7880", "wss://u:p@chat.sphinx.chat",
         "wss://chat.sphinx.chat?x=1", "wss://chat.sphinx.chat#x", "", "not a url",
     ])
     func refusesAnyOtherMediaServer(serverURL: String) {
@@ -78,10 +78,12 @@ struct CallTicketCheckTests {
         }
     }
 
-    @Test(arguments: ["wss://livekit.sphinx.chat", "wss://LIVEKIT.sphinx.chat:443", "wss://livekit.sphinx.chat/rtc"])
+    @Test(arguments: ["wss://livekit.sphinx.chat", "wss://LIVEKIT.sphinx.chat:443", "wss://livekit.sphinx.chat/rtc",
+                      "https://livekit.sphinx.chat"])
     func acceptsTheOfficialMediaServer(serverURL: String) throws {
         let ticket = try CallServer.ticket(serverURL: serverURL, token: token(claims()), room: room, callServer: production)
         #expect(ticket.serverURL.host?.lowercased() == "livekit.sphinx.chat")
+        #expect(ticket.serverURL.scheme == "wss")
     }
 
     @Test(arguments: [
@@ -89,7 +91,7 @@ struct CallTicketCheckTests {
         "wss://livekit.sphinx.chat.", "wss://livekit.sphinx.chat.evil", "wss://sphinx.chat.evil", "wss://sphinx.chat",
         "wss://livekit.sphinx.chat@evil.com", "wss://evil.com@livekit.sphinx.chat", "wss://u:p@livekit.sphinx.chat",
         "wss://evil.com#@livekit.sphinx.chat", "wss://evil.com?@livekit.sphinx.chat", "wss://livekit.sphinx.chat%2eevil.com",
-        "wss://livekit.sphinx.chat:8443", "ws://livekit.sphinx.chat", "https://livekit.sphinx.chat", "//livekit.sphinx.chat",
+        "wss://livekit.sphinx.chat:8443", "ws://livekit.sphinx.chat", "http://livekit.sphinx.chat", "//livekit.sphinx.chat",
     ])
     func refusesLookalikesOfTheOfficialMediaServer(serverURL: String) {
         #expect(throws: CallServer.Failure.self) {

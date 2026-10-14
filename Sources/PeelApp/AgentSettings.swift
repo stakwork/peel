@@ -12,6 +12,7 @@ struct AgentSettingsSection: View {
     let agent: AgentSession
 
     @State private var problem: String?
+    @State private var removingKey = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -38,9 +39,12 @@ struct AgentSettingsSection: View {
                             .accessibilityLabel("Key ending \(connection.keyHint)")
                     } trailing: {
                         HStack(spacing: 8) {
-                            AgentConnectButton(source: .accountKey, title: "Replace")
+                            // Replace steps aside while Remove asks.
+                            if !removingKey {
+                                AgentConnectButton(source: .accountKey, title: "Replace")
+                            }
                             InlineConfirm(trigger: "Remove", prompt: "Remove the key? The agent will stop.",
-                                          confirm: "Remove") {
+                                          confirm: "Remove", confirming: $removingKey) {
                                 attempt { try agent.removeKey() }
                             }
                         }

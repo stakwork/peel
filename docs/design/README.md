@@ -655,7 +655,10 @@ Built so far:
   13 pt name in a column (100 wide, 150 on the Account page with
   `labelWidth`), its value beside it and an optional action at the end
   (Edit, Copy), on the first line's baseline, 12 by 9 of padding, 36
-  tall at least, a full-width hairline between facts.
+  tall at least, a full-width hairline between facts. The action keeps
+  its own width and the value wraps beside it; with under 96 left for
+  the value, the action goes under it (`FactValueLayout`, one layout so
+  an open confirm survives the move).
   `Fact("Amount", text: …, symbol:, tint:, monospaced:)` is a value in
   words, selectable and wrapping, with an icon; `tint` colours both
   (a payment's green Received, an invoice's amber Expired). Tribe
@@ -924,6 +927,7 @@ The surfaces are the existing tokens:
 - **`InlineConfirm(trigger:prompt:explanation:confirm:confirmKind:style:alignment:confirming:action:)`.** The one in-place confirm: the trigger, then the prompt with Cancel and the action, off while it runs.
   - `.buttons` (form buttons: Clear website data, Leave tribe, Cancel invite), `.text` (a row's text buttons: Remove a member, Discard, the lock screen's Forget), `.section` (`FormDestructiveSection`).
   - `confirmKind: .primary` for a second click that loses nothing (Copy words). `confirming` hands the state out, so the row can hide what stands beside it, or cancel it.
+  - The buttons never shrink. The prompt sits beside them on one line when it fits, else above them, wrapping (`alignment` sets its side). A `confirming` binding is set back to false when the confirm goes away.
 
 Renders of every form (at rest, focused, after a click outside, with a
 problem and confirming), and Create a tribe beside a recreation of

@@ -170,6 +170,8 @@ struct FactList<Content: View>: View {
 /// One fact of a `FactList`: its name, the value, and an action at the end
 /// (Edit, Copy). Name, value and action share the first line's baseline,
 /// so a value with a note under it, or one that wraps, reads from the top.
+/// The action takes the width it needs and the value wraps in the rest;
+/// with too little left for the value, the action goes under it.
 struct Fact<Value: View, Trailing: View>: View {
     @Environment(\.factLabelWidth) private var labelWidth
     private let label: String
@@ -187,14 +189,95 @@ struct Fact<Value: View, Trailing: View>: View {
             Text(label)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: labelWidth, alignment: .leading)
-            value
-                .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
+            FactValueLayout {
+                value
+                trailing
+            }
         }
         .font(Theme.font(13))
         .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, 9)
         .frame(minHeight: 36)
+    }
+}
+
+/// A fact's value and its action: side by side, sharing the first
+/// baseline, while the action at its own width leaves the value at least
+/// `valueMinWidth`; else the action under the value. One layout, not
+/// `ViewThatFits`, so the action keeps its state (an open confirm) when it
+/// moves.
+private struct FactValueLayout: Layout {
+    /// About two short words: narrower, a value would break inside one.
+    static let valueMinWidth: CGFloat = 96
+    let spacing = Theme.Space.md
+    let stackSpacing = Theme.Space.sm
+
+    private struct Frames {
+        var size: CGSize
+        var value: CGRect
+        var trailing: CGRect?
+        /// The row's first baseline, from the top.
+        var baseline: CGFloat
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        frames(proposal, subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = frames(ProposedViewSize(width: bounds.width, height: proposal.height), subviews)
+        place(subviews[0], at: frames.value, in: bounds)
+        if let trailing = frames.trailing { place(subviews[1], at: trailing, in: bounds) }
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? {
+        guard guide == .firstTextBaseline else { return nil }
+        return bounds.minY + frames(ProposedViewSize(width: bounds.width, height: proposal.height), subviews).baseline
+    }
+
+    private func place(_ subview: LayoutSubview, at frame: CGRect, in bounds: CGRect) {
+        subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                      proposal: ProposedViewSize(frame.size))
+    }
+
+    private func frames(_ proposal: ProposedViewSize, _ subviews: Subviews) -> Frames {
+        guard let value = subviews.first else { return Frames(size: .zero, value: .zero, baseline: 0) }
+        let width = proposal.width ?? .infinity
+        guard subviews.count > 1 else {
+            let size = value.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+            let filled = CGSize(width: proposal.width ?? size.width, height: size.height)
+            let baseline = value.dimensions(in: ProposedViewSize(filled))[.firstTextBaseline]
+            return Frames(size: filled, value: CGRect(origin: .zero, size: filled), baseline: baseline)
+        }
+        let trailing = subviews[1]
+        let action = trailing.sizeThatFits(.unspecified)
+        let room = width - action.width - spacing
+        if room >= Self.valueMinWidth {
+            // Side by side, on the first baseline.
+            let valueWidth = proposal.width == nil ? value.sizeThatFits(.unspecified).width : room
+            let valueSize = value.sizeThatFits(ProposedViewSize(width: valueWidth, height: nil))
+            let valueBaseline = value.dimensions(in: ProposedViewSize(valueSize))[.firstTextBaseline]
+            let actionBaseline = trailing.dimensions(in: ProposedViewSize(action))[.firstTextBaseline]
+            let top = max(valueBaseline, actionBaseline)
+            let valueFrame = CGRect(x: 0, y: top - valueBaseline, width: valueWidth, height: valueSize.height)
+            let actionFrame = CGRect(x: valueWidth + spacing, y: top - actionBaseline, width: action.width, height: action.height)
+            let size = CGSize(width: actionFrame.maxX, height: max(valueFrame.maxY, actionFrame.maxY))
+            return Frames(size: size, value: valueFrame, trailing: actionFrame, baseline: top)
+        }
+        // The action under the value, at most the full width.
+        let valueSize = value.sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let actionSize = trailing.sizeThatFits(ProposedViewSize(width: min(action.width, width), height: nil))
+        let valueFrame = CGRect(x: 0, y: 0, width: width, height: valueSize.height)
+        // An empty value (a spacer) leaves the first line to the action.
+        let empty = valueSize.height == 0
+        let actionFrame = CGRect(x: 0, y: empty ? 0 : valueSize.height + stackSpacing,
+                                 width: actionSize.width, height: actionSize.height)
+        let baseline = empty
+            ? trailing.dimensions(in: ProposedViewSize(actionSize))[.firstTextBaseline]
+            : value.dimensions(in: ProposedViewSize(valueSize))[.firstTextBaseline]
+        return Frames(size: CGSize(width: width, height: actionFrame.maxY), value: valueFrame, trailing: actionFrame,
+                      baseline: baseline)
     }
 }
 

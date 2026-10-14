@@ -22,8 +22,8 @@ struct CallCard: View {
 
     var body: some View {
         let message = row.message
-        let presence = model.presence(of: link.room)
-        let onIt = model.isOnCall(link.room)
+        let presence = model.calls.presence(of: link.room)
+        let onIt = model.calls.isOnCall(link.room)
         let notSent = message.notSent
         Card(.inset) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
@@ -66,13 +66,13 @@ struct CallCard: View {
                     VStack(spacing: 0) {
                         Theme.divider.frame(height: 1).padding(.bottom, 10)
                         CallSwitchConfirm(
-                            other: leaving, joining: true, working: model.joiningRoom == link.room,
+                            other: leaving, joining: true, working: model.calls.joiningRoom == link.room,
                             cancel: { self.leaving = nil }, confirm: join
                         )
                     }
                     .padding(.top, 2)
                 }
-                if let failure = model.callFailures[link.room] {
+                if let failure = model.calls.failures[link.room] {
                     Text(failure)
                         .muted()
                         .textSelection(.enabled)
@@ -88,7 +88,7 @@ struct CallCard: View {
         // Only while the card is drawn, and only for a recent call.
         .task(id: link.room) {
             guard CallLink.mayBeLive(message) else { return }
-            await model.watchCall(link, in: message.chat)
+            await model.calls.watch(link, in: message.chat)
         }
     }
 
@@ -117,21 +117,21 @@ struct CallCard: View {
                 .buttonStyle(.peel(.outline, size: .sm))
                 .help("Bring the call window forward")
         } else {
-            let joining = model.joiningRoom == link.room
+            let joining = model.calls.joiningRoom == link.room
             Button {
-                if let other = model.otherCall(than: link.room) { leaving = other } else { join() }
+                if let other = model.calls.otherCall(than: link.room) { leaving = other } else { join() }
             } label: {
                 Text("Join").buttonProgress(joining)
             }
             .buttonStyle(.peel(.primary, size: .sm))
-            .disabled(model.joiningRoom != nil && !joining)
+            .disabled(model.calls.joiningRoom != nil && !joining)
             .help("Join with your microphone and camera off")
         }
     }
 
     private func join() {
-        model.openingCallWindow({ openWindow(id: CallWindow.id) }) {
-            let joined = await model.joinCall(link, in: row.message.chat)
+        model.calls.openingWindow({ openWindow(id: CallWindow.id) }) {
+            let joined = await model.calls.join(link, in: row.message.chat)
             leaving = nil
             return joined
         }
@@ -220,70 +220,70 @@ struct CallHeaderButton: View {
 
     var body: some View {
         // An account with no call server has no calls to start.
-        if model.callServer != nil { content }
+        if model.calls.server != nil { content }
     }
 
     @ViewBuilder private var content: some View {
-        let recent = model.recentCalls
-        let live = recent.first { model.presence(of: $0.room).isLive }
+        let recent = model.calls.recent
+        let live = recent.first { model.calls.presence(of: $0.room).isLive }
         HStack(spacing: Theme.Space.sm) {
             if let pending {
                 let joining: Bool = if case .join = pending.action { true } else { false }
                 CallSwitchConfirm(
                     other: pending.other, joining: joining, inline: true,
-                    working: model.joiningRoom != nil || model.startingCallIn == chat,
+                    working: model.calls.joiningRoom != nil || model.calls.startingIn == chat,
                     cancel: { self.pending = nil }, confirm: { run(pending.action) }
                 )
             } else if let live {
                 pill(live)
             } else {
-                IconButton("phone", help: "Start a call", lit: menuOpen, working: model.startingCallIn == chat) {
+                IconButton("phone", help: "Start a call", lit: menuOpen, working: model.calls.startingIn == chat) {
                     showMenu(header: false)
                 }
                 .menuAnchor(anchor)
             }
         }
         // ⌥⌘A and ⌥⌘V start a call from anywhere in the chat.
-        .hiddenShortcut(KeyboardShortcut("a", modifiers: [.option, .command]), enabled: model.startingCallIn == nil) {
+        .hiddenShortcut(KeyboardShortcut("a", modifiers: [.option, .command]), enabled: model.calls.startingIn == nil) {
             start(audioOnly: true)
         }
-        .hiddenShortcut(KeyboardShortcut("v", modifiers: [.option, .command]), enabled: model.startingCallIn == nil) {
+        .hiddenShortcut(KeyboardShortcut("v", modifiers: [.option, .command]), enabled: model.calls.startingIn == nil) {
             start(audioOnly: false)
         }
         // A tribe's header is kept when another tribe opens: a question
         // asked in one chat is never answered in the next.
         .onChange(of: chat) { pending = nil }
-        // The header's own watch, while the chat is open: the model watches
-        // only each chat's newest call (`refreshCallWatches`), this the next two.
+        // The header's own watch, while the chat is open: `CallStore` watches
+        // only each chat's newest call, this the next two.
         .task(id: recent.map(\.room)) {
             await withTaskGroup(of: Void.self) { group in
                 for link in recent {
-                    group.addTask { await model.watchCall(link, in: chat) }
+                    group.addTask { await model.calls.watch(link, in: chat) }
                 }
             }
         }
     }
 
     private func pill(_ live: CallLink) -> some View {
-        let count = model.presence(of: live.room).people?.count ?? 0
-        let onIt = model.isOnCall(live.room)
-        let joining = model.joiningRoom == live.room
+        let count = model.calls.presence(of: live.room).people?.count ?? 0
+        let onIt = model.calls.isOnCall(live.room)
+        let joining = model.calls.joiningRoom == live.room
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
         // One outline box split in two: Join as a ghost `.sm` button, the
         // chevron as a ghost icon button.
         return HStack(spacing: 0) {
             Button {
-                ask(.join(live), leaving: model.otherCall(than: live.room))
+                ask(.join(live), leaving: model.calls.otherCall(than: live.room))
             } label: {
                 HStack(spacing: 7) {
                     OnlineDot()
                     Text("\(onIt ? "Open" : "Join") · \(count)")
                         .monospacedDigit()
                 }
-                .buttonProgress(joining || model.startingCallIn == chat)
+                .buttonProgress(joining || model.calls.startingIn == chat)
             }
             .buttonStyle(.peel(.ghost, size: .sm))
-            .disabled(model.joiningRoom != nil && !joining)
+            .disabled(model.calls.joiningRoom != nil && !joining)
             .help(onIt ? "Bring the call window forward" : "Join the newest live call")
             .accessibilityLabel(onIt ? "Open the call, \(count) on it" : "Join the call, \(count) on it")
             Theme.inputBorder.frame(width: 1, height: PeelButton.Size.sm.height)
@@ -312,7 +312,7 @@ struct CallHeaderButton: View {
     }
 
     private func start(audioOnly: Bool) {
-        ask(.start(audioOnly: audioOnly), leaving: model.otherCall(than: nil))
+        ask(.start(audioOnly: audioOnly), leaving: model.calls.otherCall(than: nil))
     }
 
     /// Runs `action` at once, or first asks to leave the call you are on.
@@ -321,10 +321,10 @@ struct CallHeaderButton: View {
     }
 
     private func run(_ action: Pending) {
-        model.openingCallWindow({ openWindow(id: CallWindow.id) }) {
+        model.calls.openingWindow({ openWindow(id: CallWindow.id) }) {
             let done = switch action {
-            case .join(let link): await model.joinCall(link, in: chat, failureInChat: true)
-            case .start(let audioOnly): await model.startCall(in: chat, audioOnly: audioOnly)
+            case .join(let link): await model.calls.join(link, in: chat, failureInChat: true)
+            case .start(let audioOnly): await model.calls.start(in: chat, audioOnly: audioOnly)
             }
             pending = nil
             return done

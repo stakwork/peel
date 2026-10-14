@@ -44,7 +44,7 @@ private struct InviteRow: View {
                 Text(invite.nickname ?? "Invite")
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(shortStatus)
+                Text(invite.shortStatus)
                     .font(Theme.font(12))
                     .monospacedDigit()
                     .foregroundStyle(Theme.tertiaryText)
@@ -55,33 +55,6 @@ private struct InviteRow: View {
         .peelPopover(isPresented: $showing) {
             InviteDetail(code: invite.code, done: { showing = false })
         }
-    }
-}
-
-private extension InviteRow {
-    /// What the row says beside the name: the amount once it can be shared.
-    var shortStatus: String {
-        switch invite.status {
-        case .sending: "Sending…"
-        case .cancelling: "Cancelling…"
-        default: Sats.format(msat: invite.amountMsat)
-        }
-    }
-}
-
-/// An invite is a person who is not here yet: a dashed circle, as Payments
-/// draws someone not known.
-private struct InviteIcon: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle().strokeBorder(Theme.tertiaryText, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
-            Image(systemName: "envelope")
-                .font(.system(size: size * 0.45))
-                .foregroundStyle(Theme.secondaryText)
-        }
-        .frame(width: size, height: size)
     }
 }
 
@@ -134,7 +107,7 @@ struct AddContactForm: View {
                         .keyboardShortcut(.defaultAction)
                 }
             } else {
-                FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? tribeProblem) {
+                FormFooter(problem: problem ?? attempt.problem ?? (text == scannedText ? codeProblem : nil) ?? code?.addRefusal) {
                     Button("Cancel", action: done)
                         .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
@@ -144,7 +117,7 @@ struct AddContactForm: View {
                     ) { confirmed in
                         let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
                         if added == false { done() }
-                        if added == true { sentTo = name.trimmed.nilIfEmpty ?? code?.inviterName ?? "them" }
+                        if added == true { sentTo = AppModel.addedName(alias: name, code: code) }
                         return outcome
                     }
                 }
@@ -170,13 +143,7 @@ struct AddContactForm: View {
                 problem = nil
                 attempt.armed = nil
                 attempt.problem = nil
-                do {
-                    code = try ContactCode.read(text)
-                    codeProblem = nil
-                } catch {
-                    code = nil
-                    codeProblem = PeelError.problem(error)
-                }
+                (code, codeProblem) = AppModel.readContactCode(text)
             }
         scanZone
             .padding(.top, 10)
@@ -219,10 +186,6 @@ struct AddContactForm: View {
         )
     }
 
-    private var tribeProblem: String? {
-        if case .tribe = code { PeelError.problem(Engine.Failure.tribeLinkNotContact) } else { nil }
-    }
-
     /// Puts the first code that names someone into the field; else says
     /// why none does.
     private func read(_ codes: @escaping () async throws -> [String]) async {
@@ -261,20 +224,13 @@ private struct CodePreview: View {
                     Text(code.inviterName ?? Formatting.shortKey(pubkey))
                         .font(Theme.font(13, .medium))
                         .foregroundStyle(Theme.text)
-                    Text(detail)
+                    Text(code.previewDetail)
                         .muted()
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, 9)
-        }
-    }
-
-    private var detail: String {
-        switch code {
-        case .invite: "Adds whoever sent this invite."
-        default: "Contact info"
         }
     }
 }
@@ -428,7 +384,7 @@ private struct InviteDetail: View {
                     Text(Sats.format(msat: invite.amountMsat))
                         .font(Theme.font(15, .semibold))
                         .monospacedDigit()
-                    Text(Self.statusLine(invite))
+                    Text(invite.statusLine)
                         .muted()
                     if let message = invite.message {
                         Text(message)
@@ -498,18 +454,6 @@ private struct InviteDetail: View {
             } else {
                 Button("Done", action: done).buttonStyle(.peel(.outline))
             }
-        }
-    }
-
-    static func statusLine(_ invite: InviteRecord) -> String {
-        let made = "Made \(Formatting.dateAndTime(invite.created))"
-        return switch invite.status {
-        case .sending: "Setting up…"
-        case .ready: "\(made) · waiting to be used"
-        case .cancelling: "Cancelling, sats not back yet"
-        case .cancelled: "Cancelled, sats returned"
-        case .used: "Used"
-        case .failed: "Payment failed"
         }
     }
 }

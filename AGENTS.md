@@ -229,14 +229,18 @@ is a short plan. Update the status and the journal when you finish something.
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
   `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
-  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (join, start, leave,
-  presence and the watches of recent calls; the view passes the call
-  window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
+  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (a call's
+  avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
-  (adding by code, invites), `AppModel+TimeZones` (sender zones, local
-  times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
+  (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
+  times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
+  the recent calls across chats watched while unlocked and the open chat's,
+  the call you are on, join, start, leave; the view passes the call
+  window's opening in; `AppModel` attaches it with the account, says when
+  it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
@@ -246,7 +250,11 @@ is a short plan. Update the status and the journal when you finish something.
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
-  PIN's words and a PIN field's digits, Forget's warning); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
+  PIN's words and a PIN field's digits, Forget's warning, an invite's
+  status, a tribe's details lines and price to join, what a contact code
+  adds); `TribeForms` (`TribeSettingsDraft`, Create and Edit tribe's
+  fields and their problems; `TribeLookup`, Join a tribe's link and
+  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -258,7 +266,7 @@ is a short plan. Update the status and the journal when you finish something.
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
-  `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
+  `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
   automations, which `AppModel` reaches as `macAgent`; opening the
   account's `AgentSession`, its tools and
@@ -280,7 +288,7 @@ is a short plan. Update the status and the journal when you finish something.
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
-  `Avatar` (people's and tribes' icons, `AppIcon`),
+  `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
@@ -381,7 +389,8 @@ is a short plan. Update the status and the journal when you finish something.
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
   the selected tab and each tab's path, `openChat`, `open(_ message:)`,
-  `openThread`, `openPayment`, `openFromNotification`, the thread sheet's
+  `openThread`, `openDetails` (a chat's details over it), `openMembers`,
+  `openPayment`, `openFromNotification`, the thread sheet's
   binding; it writes `AppModel.destination` from what is on screen and
   follows it when the model moves it), `PhoneTheme` (`PhoneFont`, the
   Mac's sizes on Dynamic Type styles, `.phoneFont`; `Surface` and
@@ -399,14 +408,23 @@ is a short plan. Update the status and the journal when you finish something.
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
   (`BalanceHeader`, `PaymentRow`), `PaymentDetail` (`FactRow`),
   `SendSheet` (an invoice pasted or scanned, or a contact),
-  `ReceiveSheet`, `InvoiceScanner` (VisionKit, QR only), `TouchWatch` (each touch is use, for the PIN timeout), `PayControls`
+  `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `TouchWatch` (each touch is use, for the PIN timeout), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
-  the swipe actions and long-press menu, pull to refresh,
-  `chatsDestinations`, `ComingScreen`), `ChatsConnection` (the orange
-  countdown under the title and the bolt's `ConnectionPanel`),
+  the swipe actions and long-press menu, pull to refresh, the sections'
+  actions (Join and Create a tribe, pending invites, Add contact, Invite
+  someone), `chatsDestinations`), `ChatsConnection` (`ConnectionBolt`,
+  green or orange, the orange countdown under the title and the bolt's
+  `ConnectionPanel`), `PeopleControls` (`PeopleSheet`, `SheetStack`,
+  `ActionRow`, `PendingInviteRow`, `CodeEntry`: a code typed, pasted,
+  scanned or read from a photo; `ConfirmInPlace`; `ShareableCode`, a QR
+  code to copy and share), `ContactSheets` (`AddContactSheet`,
+  `InviteSheet`, `InviteDetailScreen`), `TribeSheets` (`JoinTribeSheet`,
+  `TribeSettingsSheet`: create and edit), `ChatDetails`
+  (`ChatDetailsScreen`: a contact's or a tribe's, how you appear in a
+  tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
   `ConversationScreen` (the header with Call and More in one capsule, the
@@ -614,8 +632,11 @@ is a short plan. Update the status and the journal when you finish something.
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS
-- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests
-  and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
+- `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
+  engine and profile, no window or server: `CallStoreTests` (each chat's
+  busiest watched call, the call you are on, locking stops the watches)
+- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
+  PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
   `withTestEngine`) and `HTTPStub.swift` (a loopback HTTP server that
   records each whole request); a library target, since a test target
@@ -921,6 +942,12 @@ parsers, markup in linear time against a reference, link labels, names,
 hosts, codes and the attachment cipher). Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
+
+`Tests/PeelUITests` tests `AppModel`'s stores through their public API,
+offline, on a real engine and a temporary profile (a call server on
+127.0.0.1:9 that never answers, so a test says who is on a call):
+`CallStore`'s counts per chat, the call you are on, and its watches
+stopping on lock.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883

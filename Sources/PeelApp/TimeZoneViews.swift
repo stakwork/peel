@@ -208,9 +208,8 @@ struct ChatInfoPanel: View {
     }
 
     private func load() async {
-        guard let engine = model.engine else { return }
         let chat = conversation.chat
-        since = (try? engine.storage.firstMessageTime(in: chat)).flatMap { $0 }.map(Date.init(millisecondsSince1970:))
+        since = model.contactSince(chat)
         local = await model.localTime(of: chat, member: nil)
     }
 }
@@ -222,45 +221,29 @@ struct ChatTimeZoneSection: View {
     let conversation: Conversation
     let tribe: Tribe?
 
-    @State private var sharing: Bool?
-    @State private var problem: String?
+    /// The switch's state (`TimeZoneSharingSwitch`).
+    @State private var zone = TimeZoneSharingSwitch()
 
-    private var isPublicTribe: Bool { conversation.isTribe && tribe?.isPrivate != true }
     private var target: String { conversation.title }
 
     var body: some View {
-        if !isPublicTribe {
+        if conversation.offersTimeZoneSwitch(tribe: tribe) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 SectionHeader("Time zone")
-                if let sharing {
+                if let sharing = zone.sharing {
                     FormSwitchRow(
                         label: "Share my time zone with \(target)",
-                        isOn: Binding(get: { sharing }, set: { on in Task { await set(on) } })
+                        isOn: Binding(get: { sharing }, set: { on in
+                            Task { await zone.set(on, in: conversation.chat, with: model) }
+                        })
                     )
-                    if let problem {
+                    if let problem = zone.problem {
                         ProblemText(problem)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .task(id: conversation.chat) { await load() }
-        }
-    }
-
-    private func load() async {
-        guard let engine = model.engine else { return }
-        sharing = (try? await engine.timeZoneSharing(in: conversation.chat)) ?? true
-    }
-
-    private func set(_ on: Bool) async {
-        let was = sharing
-        sharing = on
-        problem = nil
-        do {
-            try await model.signedIn().setTimeZoneSharing(on, in: conversation.chat)
-        } catch {
-            sharing = was
-            problem = PeelError.problem(error, couldNot: "change time zone sharing")
+            .task(id: conversation.chat) { await zone.load(conversation.chat, with: model) }
         }
     }
 }

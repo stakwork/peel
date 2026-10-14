@@ -36,8 +36,8 @@ ask_secret() {
     printf '%s' "$answer"
 }
 
-# First run is "no strut keys yet", not "no .env": the README's
-# STRUT_IMAGE=strut:local line may already be in it.
+# First run is "no strut keys yet", not "no .env": a STRUT_IMAGE line from
+# the README may already be in it.
 if ! grep -q '^STRUT_API_KEY=' .env 2>/dev/null; then
     echo "First run: writing .env"
     anthropic=$(ask_secret "Anthropic API key (Enter to add it later in strut's Secrets): ")

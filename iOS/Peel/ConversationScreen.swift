@@ -87,7 +87,7 @@ struct ConversationScreen: View {
                 // Through the model, which says calls aren't on the phone yet
                 // (`CallProvider.unavailable`) before posting anything.
                 Button("Call", systemImage: "phone") {
-                    Task { _ = await model.startCall(in: chat, audioOnly: true) }
+                    Task { _ = await model.calls.start(in: chat, audioOnly: true) }
                 }
             }
             Menu("More", systemImage: "ellipsis") { moreMenu(tribe: tribe) }

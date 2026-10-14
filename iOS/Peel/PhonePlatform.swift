@@ -68,7 +68,7 @@ final class PhoneWeb: WebPresenting {
 
 /// Calls come with I6; joining one says so in the chat.
 struct PhoneCalls: CallProvider {
-    /// The model asks first (`startCall`, `joinCall`), so nothing is
+    /// The model asks first (`CallStore.start`, `join`), so nothing is
     /// posted or fetched for a call the phone cannot join.
     var unavailable: String? { "Calls aren't on iPhone yet. Join from the Mac." }
 

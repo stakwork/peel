@@ -17,6 +17,9 @@
 		B20000000000000000000116 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000216 /* Card.swift */; };
 		B20000000000000000000117 /* IconButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000217 /* IconButton.swift */; };
 		B20000000000000000000118 /* PeelButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000218 /* PeelButton.swift */; };
+		C2F2C000000000000000F121 /* PaymentKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F2C000000000000000F221 /* PaymentKit.swift */; };
+		C2F2C000000000000000F122 /* QRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F2C000000000000000F222 /* QRCode.swift */; };
+		C2F2C000000000000000F123 /* CopyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F2C000000000000000F223 /* CopyButton.swift */; };
 		B20000000000000000000103 /* AgentKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000903 /* AgentKit */; };
 		B20000000000000000000121 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000221 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
@@ -32,6 +35,9 @@
 		B20000000000000000000216 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/Card.swift; sourceTree = "<group>"; };
 		B20000000000000000000217 /* IconButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/IconButton.swift; sourceTree = "<group>"; };
 		B20000000000000000000218 /* PeelButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/PeelButton.swift; sourceTree = "<group>"; };
+		C2F2C000000000000000F221 /* PaymentKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/PaymentKit.swift; sourceTree = "<group>"; };
+		C2F2C000000000000000F222 /* QRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCode.swift; sourceTree = "<group>"; };
+		C2F2C000000000000000F223 /* CopyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyButton.swift; sourceTree = "<group>"; };
 		B20000000000000000000221 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = ../Assets/AppIcon.icon; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -74,6 +80,9 @@
 				B20000000000000000000216 /* Card.swift */,
 				B20000000000000000000217 /* IconButton.swift */,
 				B20000000000000000000218 /* PeelButton.swift */,
+				C2F2C000000000000000F221 /* PaymentKit.swift */,
+				C2F2C000000000000000F222 /* QRCode.swift */,
+				C2F2C000000000000000F223 /* CopyButton.swift */,
 				B20000000000000000000221 /* AppIcon.icon */,
 			);
 			name = "Shared with the Mac";
@@ -172,6 +181,9 @@
 				B20000000000000000000116 /* Card.swift in Sources */,
 				B20000000000000000000117 /* IconButton.swift in Sources */,
 				B20000000000000000000118 /* PeelButton.swift in Sources */,
+				C2F2C000000000000000F121 /* PaymentKit.swift in Sources */,
+				C2F2C000000000000000F122 /* QRCode.swift in Sources */,
+				C2F2C000000000000000F123 /* CopyButton.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,7 +243,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -259,7 +272,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -396,6 +396,93 @@ nothing passes it until the model knows the agent's chat.
 rows in a scratch screen, not committed. The list does not yet hold its
 bottom when the keyboard rises; the long-press menu was not driven.
 
+### F2c: Payments, You and Lock (built 2026-10-14, `ios/f2c-payments-you`)
+
+**Done means:** screens 6, 7 and 8 of [../design/iphone.md](../design/iphone.md),
+Send and Receive, and Face ID, with every money rule the Mac's model's.
+
+**Built.**
+- **Payments** (`PaymentsTab`): the large title, the balance (tabular) and
+  what waits on people offline, Receive (outline) and Send (filled), the
+  history by calendar day (`Formatting.dayHeading`) with the Mac's paging
+  (`PaymentPaging`), refresh triggers and lighting of payments received
+  since it was last shown; pull to refresh; a success haptic when sats land
+  while it is open; the tab's "+350" badge for sats not yet seen (the
+  Mac's Payments row). A row: the bolt on `attention` at 14% (a clock on
+  grey while it waits), the name, the note, the signed amount over the
+  time. `PaymentDetail` is the Mac's detail pane as a pushed list.
+- **Send** (`SendSheet`): paste or scan (VisionKit's
+  `DataScannerViewController`, QR only, only an invoice taken) an invoice,
+  read by `Invoice`, checked by `invoiceProblem`, its blocker's words now
+  `AppModel.invoiceBlocker` (shared with the Mac's Pay pane); or send to a
+  contact (amount and note, `sendPayment`). **Receive** (`ReceiveSheet`):
+  amount and note, `createInvoice`, the QR (`QRCodeTile`, now compiled
+  into the phone), Copy, Share, the expiry, Paid with a haptic.
+- **The touch-safe confirm** (`TouchPayButton` over `PaymentAttempt`): over
+  the threshold the first tap gives way to Cancel and an orange "Pay 2,000
+  sats" that takes taps only after 0.7 s, so a double tap is never the
+  confirmation; the second tap sends exactly that amount.
+- **You** (`YouTab`): the 64 pt photo, the name (tap to change), the
+  balance; Agent (Peel, "Set up on your Mac" until the remote track brings
+  the brain's status, or the model when one is connected); Account: Twelve
+  words, Change PIN, Face ID, Ask for the PIN (the PIN timeout), Boost
+  amount (pushed: presets, or another amount through the touch-safe
+  confirm), Confirm payments (the threshold), Server; Forget this account
+  in red, confirmed in place (the spec's rule, not a sheet).
+- **Lock** (`LockScreen`, `PinPad`): the board's keypad (78 pt keys, six
+  dots that VoiceOver reads "2 of 6 digits entered"), Face ID bottom left
+  when on (asked once as the screen appears), Delete bottom right,
+  "Forgot your PIN?" confirming Forget in place. Change PIN, the words'
+  PIN and Face ID's switch use the same pad (`PinPrompt`), which folds
+  I2's three PIN prompts into one.
+- **The PIN timeout on the phone**: `noteActivity` on going to the
+  background and on coming back, so the timeout counts time away and
+  `becameActive` locks when it is due.
+- `SignedAmount`, `BigAmount` and `UntilExpiry` moved to
+  `Sources/PeelApp/UI/PaymentKit.swift`, which the phone compiles; a
+  payment's detail words (`context`, `quoted`, `statusFact`,
+  `timeWithStatus`, `notSettled`) moved to `PaymentItem+Display`.
+
+**Face ID** (`PeelCore/BiometricUnlock.swift`). Opt-in per device. Turned
+on with the PIN, once the PIN opens the words, it keeps that PIN in a
+data-protection Keychain item (`dev.peel.biometric`) with
+`.biometryCurrentSet` access control and
+`WhenPasscodeSetThisDeviceOnly`, never synchronised. Face ID releases
+exactly what typing would: the words stay sealed under the PIN in
+`PINBox`, and the released PIN goes through `unlock(pin:)` or
+`revealWords(pin:)` as a typed one. A face added or removed or the
+passcode turned off makes the item unreadable; a PIN changed elsewhere
+makes it wrong; either way it is removed and the PIN is asked for. Change
+PIN keeps the new PIN (or removes the item if that fails); Forget, a
+restore and a new account remove it. The keeper is a protocol so the rules
+are tested (`BiometricUnlockTests`); the Keychain item itself needs a
+device (or a simulator with an account) to exercise.
+
+**Not verified:** no account on the simulator (agents never make one), so
+Payments, Send, Receive, You and Face ID were seen only with made-up rows
+in a scratch screen, not committed; Face ID was never turned on with a real
+PIN, and the scanner never saw a camera.
+
+**Not done, and why:**
+- The tab badge "+350" is the tab bar's one badge colour (blue), not the
+  Mac's green: a tab item's badge colour is global.
+- No cover over the app switcher's snapshot of chats when a PIN timeout is
+  set; the words still cover themselves (I2). A scene-wide cover flashes
+  under Face ID's sheet; left for Tom.
+- Payment requests (type 2) are not in Payments' list, as on the Mac.
+- `Callout` keeps the Mac's fixed 13 and 12 pt; it does not scale with
+  Dynamic Type yet.
+
+**Review findings not applied (2026-10-14):** the history grouped by day
+in each screen's body rather than once in `PaymentsFeed` (the Mac groups
+by `PaymentSection`, the phone by day); the Pay screens' payment found in
+the paged history rather than by hash in storage (as on the Mac); the
+receive countdown redrawing each second also when an hour or more is left
+(as the Mac's); Face ID's outcome as an enum rather than a Keychain look
+before and after; `SheetPage` beside `StepPage`; the Mac's and the
+phone's preset lists and the countdown's words still written twice. Each
+is a cleanup across both apps, left for a pass of its own.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

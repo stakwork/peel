@@ -19,8 +19,10 @@ struct MainTabs: View {
             // The Dock badge's count; blue (the tab bar appearance, `PeelPhoneApp`).
             .badge(model.unreadCount)
             Tab("Payments", systemImage: "bolt", value: PhoneTab.payments) {
-                PaymentsTab()
+                PaymentsTab(model: model)
             }
+            // Sats just received, "+350", as the Mac's Payments row shows them.
+            .badge(model.money.recentMsat > 0 ? Text(Sats.signed(msat: model.money.recentMsat, incoming: true)) : nil)
             Tab(value: PhoneTab.you) {
                 YouTab()
             } label: {
@@ -90,42 +92,6 @@ private struct YouTabIcon: View {
         let renderer = ImageRenderer(content: icon.environment(\.colorScheme, key.scheme))
         renderer.scale = key.scale
         return renderer.uiImage?.withRenderingMode(.alwaysOriginal)
-    }
-}
-
-/// Payments: the balance for now. F2c builds the screen (docs/design/iphone.md,
-/// screen 6): Receive and Send, and the history by day.
-private struct PaymentsTab: View {
-    @Environment(AppModel.self) private var model
-    @Environment(PhoneRouter.self) private var router
-
-    var body: some View {
-        @Bindable var router = router
-        NavigationStack(path: $router.payments) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Text("Balance")
-                        .phoneFont(.secondary)
-                        .foregroundStyle(Theme.tertiaryText)
-                    Text(model.balanceText ?? "–")
-                        .phoneFont(PhoneFont(size: 40, weight: .bold, style: .largeTitle))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.text)
-                    Text("Sending, receiving and the history come next.")
-                        .phoneFont(.secondary)
-                        .foregroundStyle(Theme.tertiaryText)
-                        .padding(.top, Theme.Space.lg)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // The large title's margins.
-                .scenePadding(.horizontal)
-            }
-            .background(Theme.background)
-            .navigationTitle("Payments")
-            .navigationDestination(for: PaymentsRoute.self) { _ in
-                ComingScreen(title: "Payment", detail: "A payment's details show here.")
-            }
-        }
     }
 }
 

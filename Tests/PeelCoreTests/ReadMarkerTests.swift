@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Read markers: the server's are the truth unless one set here is still pending.
 struct ReadMarkerTests {

@@ -15,6 +15,13 @@
 #                                   a new core. Override the checkouts with
 #                                   SPHINX_RS and SPHINX_MAC, and with SPHINX the
 #                                   core's own, which the security check reads.
+#
+# For iOS, set both SPHINX_IOS_LIB (an ios-arm64 static library) and
+# SPHINX_IOS_SIM_LIB (ios-arm64-simulator), built from the sphinx-rs commit
+# the lock names; the xcframework (made by xcodebuild -create-xcframework)
+# then gets those two slices beside the Mac one. The lock does not pin them
+# yet, so the script prints their sha256 rather than checking it. Without
+# them it writes the Mac slice alone, and a later run without them drops the iOS slices.
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -136,49 +143,51 @@ if [ -n "$MISSING$UNCHECKED" ]; then
 fi
 
 XCF="$ROOT/Vendor/sphinxrsFFI.xcframework"
-SLICE="$XCF/macos-arm64_x86_64"
-rm -rf "$XCF"
-mkdir -p "$SLICE/Headers"
-
-cp "$LIB" "$SLICE/libsphinxrs.a"
-cp "$HEADER" "$SLICE/Headers/sphinxrsFFI.h"
-cat > "$SLICE/Headers/module.modulemap" <<'EOF'
+IOS_LIB="${SPHINX_IOS_LIB:-}"
+IOS_SIM_LIB="${SPHINX_IOS_SIM_LIB:-}"
+# One staging folder per slice, so each library keeps the same name and every
+# slice shares the header and module map.
+STAGE="$CACHE/xcframework-stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/Headers"
+cp "$HEADER" "$STAGE/Headers/sphinxrsFFI.h"
+cat > "$STAGE/Headers/module.modulemap" <<'EOF'
 module sphinxrsFFI {
     header "sphinxrsFFI.h"
     export *
 }
 EOF
-
-cat > "$XCF/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>AvailableLibraries</key>
-    <array>
-        <dict>
-            <key>HeadersPath</key>
-            <string>Headers</string>
-            <key>LibraryIdentifier</key>
-            <string>macos-arm64_x86_64</string>
-            <key>LibraryPath</key>
-            <string>libsphinxrs.a</string>
-            <key>SupportedArchitectures</key>
-            <array>
-                <string>arm64</string>
-                <string>x86_64</string>
-            </array>
-            <key>SupportedPlatform</key>
-            <string>macos</string>
-        </dict>
-    </array>
-    <key>CFBundlePackageType</key>
-    <string>XFWK</string>
-    <key>XCFrameworkFormatVersion</key>
-    <string>1.0</string>
-</dict>
-</plist>
-EOF
+stage() { # slice library
+  [ -f "$2" ] || die "missing: $2"
+  mkdir -p "$STAGE/$1"
+  cp "$2" "$STAGE/$1/libsphinxrs.a"
+}
+stage macos "$LIB"
+set -- -library "$STAGE/macos/libsphinxrs.a" -headers "$STAGE/Headers"
+IDS="macos-arm64_x86_64"
+if [ -n "$IOS_LIB$IOS_SIM_LIB" ]; then
+  [ -n "$IOS_LIB" ] && [ -n "$IOS_SIM_LIB" ] || die "set both SPHINX_IOS_LIB and SPHINX_IOS_SIM_LIB, or neither"
+  stage ios "$IOS_LIB"
+  stage ios-simulator "$IOS_SIM_LIB"
+  echo "unpinned iOS library $(sha256 "$IOS_LIB") $IOS_LIB" >&2
+  echo "unpinned iOS library $(sha256 "$IOS_SIM_LIB") $IOS_SIM_LIB" >&2
+  set -- "$@" -library "$STAGE/ios/libsphinxrs.a" -headers "$STAGE/Headers" \
+    -library "$STAGE/ios-simulator/libsphinxrs.a" -headers "$STAGE/Headers"
+  IDS="$IDS ios-arm64 ios-arm64-simulator"
+fi
+# xcodebuild reads each library's platform from its load commands and writes
+# the Info.plist from them. The new framework is built and checked beside the
+# old one, which stays until the new one is good.
+xcodebuild -create-xcframework "$@" -output "$STAGE/sphinxrsFFI.xcframework" >/dev/null
+# A simulator library built for x86_64 only, say, lands under another
+# identifier, so check each slice is where it belongs.
+for id in $IDS; do
+  [ -f "$STAGE/sphinxrsFFI.xcframework/$id/libsphinxrs.a" ] \
+    || die "the xcframework has no $id slice; check the libraries' platforms and architectures"
+done
+rm -rf "$XCF"
+mv "$STAGE/sphinxrsFFI.xcframework" "$XCF"
+rm -rf "$STAGE"
 
 mkdir -p "$ROOT/Sources/Sphinxrs"
 cp "$BINDINGS" "$ROOT/Sources/Sphinxrs/sphinxrs.swift"

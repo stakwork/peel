@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Video and audio read from files named as the cache names them: no extension.
 struct MediaInfoTests {

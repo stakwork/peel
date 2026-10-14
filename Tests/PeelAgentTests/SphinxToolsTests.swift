@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import PeelAgent
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private let kate = "02k1"
 private let tribe = "02t1"

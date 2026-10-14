@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import PeelAgent
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// `send_sphinx_message` over a real engine on a connection that takes
 /// every write: the plan (names, threads, replies, the card's words and

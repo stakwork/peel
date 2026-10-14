@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Payment templates against the official Mac app's format
 /// (`SphinxOnionManager.formatMsg` for a type 5, `getPaymentTemplates`).

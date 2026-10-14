@@ -2,59 +2,11 @@ import Foundation
 import Sphinxrs
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
-// Fixtures shared by the PeelCore tests. `TempProfile` lives in
-// StorageTests.swift; `uuid`, `dm` and `Message.fixture` in MessageTests.swift.
-
-let abandon = Array(repeating: "abandon", count: 11) + ["about"]
-
-/// An engine for the "abandon ... about" words on `storage`.
-func testEngine(_ storage: Storage) throws -> Engine {
-    try Engine(mnemonic: abandon.joined(separator: " "), storage: storage)
-}
-
-func hex(_ text: String) -> Data {
-    var data = Data()
-    var index = text.startIndex
-    while index < text.endIndex {
-        let next = text.index(index, offsetBy: 2)
-        data.append(UInt8(text[index..<next], radix: 16)!)
-        index = next
-    }
-    return data
-}
-
-/// A number as the core's state stores it: eight bytes, big-endian.
-func be64(_ n: UInt64) -> Data { withUnsafeBytes(of: n.bigEndian) { Data($0) } }
-
-/// Real curve points (G, 2G, 3G), for the keys the core parses.
-let keyG = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-let key2G = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-let key3G = "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
-/// A well-formed key no fixture puts in the core's state.
-let strangerKey = "03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-
-/// A contact record as the core stores it (`rmp_utils::serialize_contact`):
-/// version, child index, LSP key, scid and, once the key exchange is done,
-/// the contact key. A person has one; a tribe never does.
-func coreContact(_ pubkey: String, contactKey: String?, lsp: String = key3G, index: UInt64 = 1) -> [String: Data] {
-    ["c/\(pubkey)": Data([0]) + be64(index) + hex(lsp) + be64(0) + (contactKey.map(hex) ?? Data())]
-}
-
-/// Sender details as the core and a tribes server put them on a message.
-func sender(
-    _ pubkey: String = "02cc", alias: String? = nil, photo: String? = nil, host: String? = nil, role: Int? = nil
-) -> String {
-    struct Fields: Encodable {
-        let pubkey: String
-        let alias: String?
-        let photo_url: String?
-        let host: String?
-        let role: Int?
-    }
-    let fields = Fields(pubkey: pubkey, alias: alias, photo_url: photo, host: host, role: role)
-    return String(decoding: try! JSONEncoder().encode(fields), as: UTF8.self)
-}
+// Fixtures the PeelCore tests alone use. The ones the PeelAgent tests share
+// (`TempProfile`, `rows`, `uuid`, `dm`, `Message.fixture`, `sender`, the
+// keys, `registeredStorage`, `withTestEngine`) live in Tests/PeelTestSupport.
 
 /// Someone's text message, numbered for its uuid and time.
 func text(_ n: Int, chat: String = dm, fromMe: Bool = false) -> Message {
@@ -76,13 +28,6 @@ func request(fromMe: Bool, id: Int = 1, chat: String? = nil) -> Message {
         amountMsat: 250_000_000
     )
 }
-
-/// What the core needs in its state to make payments and invites with no
-/// server: the account's short channel id, the server's key (`key3G`), a
-/// block height and the device id its topics carry.
-let registeredState: [String: Data] = [
-    "my_scid": be64(1), "server_pubkey": hex(key3G), "blockheight": be64(800_000), "device": Data("dev".utf8),
-]
 
 /// An invoice the core makes for another account (payee and server alike,
 /// `registeredState`), valid for an hour.
@@ -135,35 +80,6 @@ extension Msg {
         Msg(message: message, type: type, uuid: uuid, tag: nil, index: index, sender: sender, msat: msat,
             timestamp: timestamp, sentTo: sentTo, fromMe: fromMe, paymentHash: nil, error: nil)
     }
-}
-
-/// A registered account (`registeredState`) on a server nothing dials, with
-/// `contact` as a ready contact at child index 1, and what else `commit` holds.
-func registeredStorage(
-    _ profile: TempProfile, contact: String? = nil, _ commit: Storage.Commit = Storage.Commit()
-) throws -> Storage {
-    let storage = try profile.storage()
-    var commit = commit
-    commit.state = registeredState.merging(contact.map { coreContact($0, contactKey: key3G) } ?? [:]) { $1 }
-    commit.settings[.server] = "mqtt://127.0.0.1:1"
-    commit.contacts = contact.map { [($0, true)] }
-    _ = try storage.apply(commit)
-    return storage
-}
-
-/// Runs `body` on an engine for `storage` on `transport`, and disconnects
-/// after, even when it throws: that shuts the transport's client down,
-/// which mqtt-nio requires before one is freed.
-func withTestEngine(_ storage: Storage, on transport: Transport, _ body: (Engine) async throws -> Void) async throws {
-    let engine = try testEngine(storage)
-    await engine.useTransportForTesting(transport)
-    do {
-        try await body(engine)
-    } catch {
-        await engine.disconnect()
-        throw error
-    }
-    await engine.disconnect()
 }
 
 /// One onion of a page of history as the server frames it (`encode_onion`):

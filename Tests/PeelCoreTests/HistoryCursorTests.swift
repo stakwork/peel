@@ -4,6 +4,7 @@ import Sphinxrs
 import Synchronization
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private typealias Run = HistoryCursor.Run
 

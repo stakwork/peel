@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The secrets audit (docs/reviews/2026-10-08-audit-keys-money.md): the
 /// twelve words sealed under the PIN, the development profile's plain file,

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 struct MessageTests {
     @Test(arguments: [
@@ -101,36 +102,3 @@ struct MessageTests {
     }
 }
 
-/// A uuid as the core issues them: 64 hex characters.
-func uuid(_ n: Int) -> String { String(format: "%064x", n) }
-
-/// A direct-message chat for tests.
-let dm = "02aa"
-
-extension Message {
-    static func fixture(
-        uuid: String? = "uuid-1",
-        serverIndex: Int64? = nil,
-        type: Int = MessageType.text,
-        chat: String = "02aa",
-        fromMe: Bool = false,
-        sender: String? = nil,
-        body: String? = nil,
-        content: String? = "hi",
-        msat: Int64? = nil,
-        timestamp: Int64? = 1_000,
-        tag: String? = nil,
-        paymentHash: String? = nil,
-        status: String? = nil,
-        replyUUID: String? = nil,
-        threadUUID: String? = nil,
-        amountMsat: Int64? = nil
-    ) -> Message {
-        Message(
-            id: nil, uuid: uuid, serverIndex: serverIndex, type: type, chat: chat, fromMe: fromMe,
-            sender: sender, body: body, content: content, msat: msat, timestamp: timestamp, tag: tag,
-            paymentHash: paymentHash, status: status, replyUUID: replyUUID, threadUUID: threadUUID,
-            amountMsat: amountMsat
-        )
-    }
-}

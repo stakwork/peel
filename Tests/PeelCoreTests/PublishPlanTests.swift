@@ -2,6 +2,7 @@ import Foundation
 import Sphinxrs
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private func topics(_ publishes: [Engine.Publish]) -> [String] {
     publishes.map(\.topic)

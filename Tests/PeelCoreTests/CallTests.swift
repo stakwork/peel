@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 private let server = "chat.sphinx.chat"
 private let room = "sphinx.call.781603422.512"

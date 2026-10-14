@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Refusals surface as `Engine.Failure` cases, so the app, the CLI or an
 /// agent can match them, and keep their words for `PeelError.readable`.

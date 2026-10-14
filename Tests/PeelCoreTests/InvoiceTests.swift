@@ -3,6 +3,7 @@ import GRDB
 import Sphinxrs
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// A media token as the core writes it, selling for `price` sats when given.
 private func token(muid: String = "muid1", price: UInt64? = nil) -> String {

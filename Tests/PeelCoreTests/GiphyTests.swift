@@ -3,6 +3,7 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import PeelCore
+@testable import PeelTestSupport
 
 struct GiphyTests {
     /// A message as the Mac app writes one (`GiphyHelper.getMessageStringFrom`):

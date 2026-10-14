@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// A seeded generator, so a failing timeline can be made again from its seed.
 struct SplitMix64: RandomNumberGenerator {

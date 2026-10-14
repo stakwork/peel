@@ -5,6 +5,7 @@ import Testing
 @testable import peel
 @testable import PeelAgent
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// The one way the app and `peel agent` put the agent's tools and prompt
 /// together (`AgentSetup`), and what `peel agent --memory` starts.

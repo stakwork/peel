@@ -5,6 +5,7 @@ import GRDB
 import Sphinxrs
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// Contact info for `keyG` on `key3G`'s server.
 private let info = "\(keyG)_\(key3G)_1234"

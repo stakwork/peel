@@ -3,6 +3,7 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// How many source pixels a still is decoded from (`ImageDecoding.isTooLarge`).
 /// ImageIO reports no size for a header that claims more than its bytes
@@ -319,6 +320,9 @@ struct UserFilesTests {
         #expect(UserFiles.cleanName(".hidden") == "hidden")
         #expect(UserFiles.cleanName("") == "file")
         #expect(UserFiles.cleanName(" .zshrc") == "zshrc")
+        // Quarantine is the Mac's alone (`UserFiles.quarantine`).
+        #if os(macOS)
         #expect(try first.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties != nil)
+        #endif
     }
 }

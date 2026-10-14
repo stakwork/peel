@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
 
 // Regression tests for the network and calls audit
 // (docs/reviews/2026-10-08-audit-network-calls.md). Each one pins a threat

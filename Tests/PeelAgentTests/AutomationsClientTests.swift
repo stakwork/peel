@@ -3,6 +3,7 @@ import Testing
 import AgentKit
 import PeelCore
 @testable import PeelAgent
+@testable import PeelTestSupport
 
 /// strut's automation endpoints as Peel reads them (`AutomationsClient`),
 /// and the agent's tools over them (`AutomationTools`). The JSON is strut's,
@@ -66,6 +67,155 @@ struct AutomationsClientTests {
         let failed = try AgentKit.JSONValue(parsing: #"{"runId":"2","status":"error","error":{"message":"HTTP POST returned 500"}}"#)
         #expect(AutomationRunRecord(failed)?.error == "HTTP POST returned 500")
         #expect(AutomationRunRecord(failed)?.reply == nil)
+    }
+
+    /// A system automation's run ends in strut, with its agent's last words
+    /// and their cost; not Peel's reply.
+    @Test func aSystemRunReadsBackItsTextAndCost() throws {
+        let run = try #require(AutomationRunRecord(try AgentKit.JSONValue(parsing: #"""
+            {"runId":"3","status":"success","automation":{"id":"tidy"},"output":{"text":"Kate into Katie Moss: same sister","cost":0.0042}}
+            """#)))
+        #expect(run.text == "Kate into Katie Moss: same sister")
+        #expect(run.cost == 0.0042)
+        #expect(run.reply == nil)
+        let free = try #require(AutomationRunRecord(try AgentKit.JSONValue(parsing: #"{"runId":"4","status":"success","output":{"text":"Nothing to merge"}}"#)))
+        #expect(free.text == "Nothing to merge" && free.cost == nil)
+        // strut's template may write the cost as text.
+        let templated = #"{"runId":"5","status":"success","output":{"text":"Nothing to merge","cost":"0.0013"}}"#
+        #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: templated))?.cost == 0.0013)
+    }
+
+    // MARK: System automations
+
+    /// strut's listing across workflows, with each automation's workflow
+    /// and its category; the workflow's description and the PATCH's reply
+    /// in the same body, since the stub answers every request alike.
+    static let everyWorkflow = #"""
+        {"automations":[
+          {"id":"a-1","name":"Friday list","enabled":true,"trigger":{"every":"week"},"workflow":"peel-automation","category":"peel",
+           "input":{"prompt":"Make my list"},"summary":"Every Friday"},
+          {"id":"tidy","name":"Tidy memory","enabled":false,"trigger":{"every":"day","at":["12:30"]},"workflow":"tidy-memory",
+           "category":"system","summary":"Every day at 12:30 PM"},
+          {"id":"done-before","name":"Turned off","enabled":false,"trigger":{"every":"day"},"workflow":"tidy-memory","category":"system"},
+          {"id":"on-already","name":"On","enabled":true,"trigger":{"every":"day"},"workflow":"other-system","category":"system"}
+        ],
+         "automation":{"id":"tidy","name":"Tidy memory","enabled":true,"workflow":"tidy-memory","category":"system"},
+         "active":"s-1","versions":{"s-1":{"description":"Once a day, merges people and things saved twice."}}}
+        """#
+
+    private func strut() async throws -> (HTTPStub, AutomationsClient) {
+        let stub = try await HTTPStub { _ in Self.everyWorkflow }
+        let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
+        let server = try #require(MemoryServer(base: base, key: "k"))
+        return (stub, AutomationsClient(server: server))
+    }
+
+    /// The request lines strut saw: "PATCH /workflows/…".
+    private func lines(_ stub: HTTPStub) -> [String] {
+        stub.requests.map { String(($0.components(separatedBy: "\r\n").first ?? "").dropLast(" HTTP/1.1".count)) }
+    }
+
+    @Test func everyWorkflowsAutomationsAreListedWithTheirWorkflow() async throws {
+        let (stub, client) = try await strut()
+        defer { stub.stop() }
+        let list = try await client.list()
+        #expect(list.map(\.workflow) == ["peel-automation", "tidy-memory", "tidy-memory", "other-system"])
+        #expect(list.map(\.isSystem) == [false, true, true, true])
+        #expect(list[1].about == "Once a day, merges people and things saved twice.")
+        #expect(list[0].about == nil)
+        // One read of each system workflow, none of Peel's.
+        #expect(Set(lines(stub)) == ["GET /automations", "GET /workflows/tidy-memory", "GET /workflows/other-system"])
+        // An automation strut lists without one (an older strut) is Peel's.
+        let older = try automations()[1]
+        #expect(older.workflow == AutomationsClient.workflow && !older.isSystem)
+    }
+
+    @Test func eachAutomationIsAddressedOnItsOwnWorkflow() async throws {
+        let (stub, client) = try await strut()
+        defer { stub.stop() }
+        let tidy = try await client.list()[1]
+        let before = stub.requests.count
+        try await client.runNow(tidy)
+        _ = try await client.update(tidy, enabled: true)
+        _ = try await client.runs(of: tidy)
+        try await client.delete(tidy)
+        #expect(Array(lines(stub).dropFirst(before)) == [
+            "POST /workflows/tidy-memory/automations/tidy/fire", "PATCH /workflows/tidy-memory/automations/tidy",
+            "GET /workflows/tidy-memory/runs", "DELETE /workflows/tidy-memory/automations/tidy",
+        ])
+    }
+
+    /// The agent sees only the person's automations, and every tool that
+    /// changes or runs one refuses a system automation before strut hears
+    /// of it.
+    @Test func theAgentCannotTouchASystemAutomation() async throws {
+        let (stub, client) = try await strut()
+        defer { stub.stop() }
+        let tools = AutomationTools(client: client)
+        let list = try #require(tools.tools.first { $0.name == "list_automations" })
+        guard case .result = try await list.plan([:]) else {
+            Issue.record("expected a result")
+            return
+        }
+        #expect(lines(stub).first == "GET /automations?workflow=peel-automation")
+        for name in ["update_automation", "delete_automation", "run_automation_now"] {
+            let tool = try #require(tools.tools.first { $0.name == name })
+            await #expect(throws: PeelError.self, "\(name)") { _ = try await tool.plan(["id": "tidy", "enabled": false]) }
+        }
+        #expect(lines(stub).allSatisfy { $0.hasPrefix("GET ") })
+        // The person's own still gets as far as its card.
+        let runNow = try #require(tools.tools.first { $0.name == "run_automation_now" })
+        guard case .action = try await runNow.plan(["id": "a-1"]) else {
+            Issue.record("expected a card")
+            return
+        }
+    }
+
+    /// Each system automation is turned on once: one strut lists off and
+    /// Peel never turned on is turned on, one already on counts as done,
+    /// and one done before stays as the person left it.
+    @Test func systemAutomationsAreTurnedOnOnce() async throws {
+        let (stub, client) = try await strut()
+        defer { stub.stop() }
+        let list = try await client.list()
+        let before = stub.requests.count
+        let (turned, now) = await client.turnOnSystem(in: list, done: ["done-before"])
+        #expect(now == ["tidy", "on-already"])
+        #expect(turned.map(\.enabled) == [true, true, false, true])
+        let sent = Array(stub.requests.dropFirst(before))
+        #expect(sent.count == 1)
+        #expect(sent.first?.hasPrefix("PATCH /workflows/tidy-memory/automations/tidy ") == true)
+        #expect(sent.first?.hasSuffix(#"{"enabled":true}"#) == true)
+        // Once all are done, nothing more is sent.
+        #expect(await client.turnOnSystem(in: turned, done: now.union(["done-before"])).done.isEmpty)
+        #expect(stub.requests.count == before + 1)
+    }
+
+    /// The connected model and its key go to strut's secret store, the other
+    /// providers' keys come out; disconnected, the model and every key do.
+    @Test(arguments: [
+        (AgentProvider.anthropic, "claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY"),
+        (.openAI, "gpt-5", "openai/gpt-5", "OPENAI_API_KEY"),
+        (.openRouter, "anthropic/claude-sonnet-5.5", "openrouter/anthropic/claude-sonnet-5.5", "OPENROUTER_API_KEY"),
+    ])
+    func theConnectedModelIsHandedToStrut(provider: AgentProvider, model: String, named: String, secret: String) async throws {
+        let (stub, client) = try await strut()
+        defer { stub.stop() }
+        try await client.setModel(AgentCredential(provider: provider, model: model, apiKey: "sk-test-1234"))
+        let sent = stub.requests
+        #expect(sent.first?.hasPrefix("PUT /secrets/STRUT_DEFAULT_MODEL ") == true)
+        #expect(sent.first?.hasSuffix(#"{"value":"\#(named)"}"#) == true)
+        #expect(sent.dropFirst().first?.hasPrefix("PUT /secrets/\(secret) ") == true)
+        #expect(sent.dropFirst().first?.hasSuffix(#"{"value":"sk-test-1234"}"#) == true)
+        let others = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"].filter { $0 != secret }
+        #expect(Array(lines(stub).dropFirst(2)) == others.map { "DELETE /secrets/\($0)" })
+
+        let before = sent.count
+        try await client.setModel(nil)
+        #expect(Array(lines(stub).dropFirst(before)) == [
+            "DELETE /secrets/STRUT_DEFAULT_MODEL", "DELETE /secrets/ANTHROPIC_API_KEY",
+            "DELETE /secrets/OPENAI_API_KEY", "DELETE /secrets/OPENROUTER_API_KEY",
+        ])
     }
 
     /// strut's refusals reach the agent in strut's words, on one line.

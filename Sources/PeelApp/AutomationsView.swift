@@ -3,16 +3,19 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// The person's automations (`docs/phases/12-automations.md`): what the
-/// agent runs on its own, read from strut. One-offs still to come, then
-/// recurring ones, then one-offs done. They are made by asking the agent,
-/// so the page only lists them; until the agent and strut are set up, it
-/// says what to set up instead.
+/// The automations (`docs/phases/12-automations.md`), read from strut, in
+/// two tabs. Yours: what the agent runs on its own, one-offs still to come,
+/// then recurring ones, then one-offs done; made by asking the agent, so
+/// the page only lists them. System: the ones strut ships and runs alone
+/// (`docs/system-automations.md`), each turned on or off here. Until the
+/// agent and strut are set up, it says what to set up instead.
 struct AutomationsView: View {
+    enum Tab: Hashable { case yours, system }
+
     @Environment(AppModel.self) private var model
-    @State private var expanded: String?
 
     var body: some View {
+        @Bindable var model = model
         let state = model.automations
         VStack(spacing: 0) {
             DetailHeader(title: "Automations")
@@ -24,19 +27,14 @@ struct AutomationsView: View {
                 EmptyState("It keeps the schedule.", title: "Connect strut") {
                     Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.primary))
                 }
-            } else if state.loaded, state.list.isEmpty, state.problem == nil {
-                EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
-                    Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
-                }
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Space.lg) {
-                        notices(state)
-                        group("Upcoming", state.upcoming)
-                        group("Recurring", state.recurring)
-                        group("Done", state.done)
-                    }
-                    .padding(Theme.Space.lg)
+                SegmentedChoice(selection: $model.automationsTab, options: [(.yours, "Yours"), (.system, "System")])
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Space.lg)
+                    .padding(.top, Theme.Space.md)
+                switch model.automationsTab {
+                case .yours: yours(state)
+                case .system: system(state)
                 }
             }
         }
@@ -45,6 +43,54 @@ struct AutomationsView: View {
             while !Task.isCancelled {
                 await model.refreshAutomations()
                 try? await Task.sleep(for: .seconds(30))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func yours(_ state: AutomationsState) -> some View {
+        if state.loaded, state.yours.isEmpty, state.problem == nil {
+            EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
+                Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
+            }
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                    notices(state)
+                    group("Upcoming", state.upcoming)
+                    group("Recurring", state.recurring)
+                    group("Done", state.done)
+                }
+                .padding(Theme.Space.lg)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func system(_ state: AutomationsState) -> some View {
+        if state.loaded, state.system.isEmpty, state.problem == nil {
+            EmptyState("This strut ships none. A newer one will.", title: "No system automations")
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                    notices(state)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let connection = model.agent?.connection {
+                            Text("Runs on your connected model (\(connection.provider.modelName(connection.model))). "
+                                + "Sends parts of your memory to \(connection.provider.name).")
+                                .muted()
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, Theme.Space.sm)
+                                .padding(.bottom, Theme.Space.sm)
+                        }
+                        ForEach(state.system) { automation in
+                            SystemAutomationRow(automation: automation, expanded: model.openedAutomation == automation.id) {
+                                model.openedAutomation = model.openedAutomation == automation.id ? nil : automation.id
+                            }
+                        }
+                    }
+                }
+                .padding(Theme.Space.lg)
             }
         }
     }
@@ -66,8 +112,8 @@ struct AutomationsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 SectionHeader(title).padding(.horizontal, Theme.Space.sm).padding(.bottom, Theme.Space.xs)
                 ForEach(automations) { automation in
-                    AutomationRow(automation: automation, expanded: expanded == automation.id) {
-                        expanded = expanded == automation.id ? nil : automation.id
+                    AutomationRow(automation: automation, expanded: model.openedAutomation == automation.id) {
+                        model.openedAutomation = model.openedAutomation == automation.id ? nil : automation.id
                     }
                 }
             }
@@ -97,7 +143,7 @@ private struct AutomationRow: View {
             } detail: {
                 Text(automation.summary).muted()
             } trailing: {
-                status
+                AutomationStatus(automation: automation)
             }
             .peelMenu { menu }
             if expanded {
@@ -109,21 +155,6 @@ private struct AutomationRow: View {
         }
     }
 
-    /// When it runs next, or why it will not: a column of times on the right.
-    @ViewBuilder private var status: some View {
-        let (text, attention): (String, Bool) =
-            if automation.running { ("Running…", false) }
-            else if !automation.enabled { ("Paused", false) }
-            else if automation.lastRunFailed { ("Didn't finish", true) }
-            else if automation.isMissed { ("Missed", false) }
-            else if let next = automation.nextRun { (Formatting.dateAndTime(next), false) }
-            else if let last = automation.lastRun?.startedAt { ("Ran " + Formatting.dateAndTime(last), false) }
-            else { ("", false) }
-        Text(text)
-            .font(Theme.font(11))
-            .monospacedDigit()
-            .foregroundStyle(attention ? Theme.attention : Theme.secondaryText)
-    }
 
     private var menu: [MenuEntry] {
         [
@@ -178,12 +209,94 @@ private struct AutomationDetail: View {
                 }
                 Text("To change when it runs, ask the agent.").muted()
             }
-            runs
+            AutomationRuns(automation: automation)
         }
-        .task(id: automation.lastRun?.runId) { await model.refreshRuns(of: automation.id) }
+        .task(id: automation.lastRun) { await model.refreshRuns(of: automation) }
+    }
+}
+
+/// A system automation: its name and its workflow's description, how it
+/// last ran and its switch; opened, when it runs, Run now and its runs. Its
+/// prompt is the workflow's, edited in strut, and it is never deleted.
+private struct SystemAutomationRow: View {
+    @Environment(AppModel.self) private var model
+    let automation: Automation
+    let expanded: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ListRow(size: .md, selected: expanded, action: toggle) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(width: 20)
+            } title: {
+                Text(automation.name)
+                    .font(Theme.font(13, .medium))
+                    .foregroundStyle(automation.enabled ? Theme.text : Theme.secondaryText)
+            } detail: {
+                Text(automation.about ?? automation.summary).muted()
+            } trailing: {
+                HStack(spacing: Theme.Space.md) {
+                    AutomationStatus(automation: automation)
+                    PeelSwitch(isOn: enabled)
+                        .accessibilityRepresentation { Toggle(automation.name, isOn: enabled) }
+                }
+            }
+            if expanded {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
+                    Text(automation.summary)
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.text)
+                    Button("Run now") { Task { await model.runAutomationNow(automation) } }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                        .disabled(automation.running)
+                    AutomationRuns(automation: automation)
+                }
+                .task(id: automation.lastRun) { await model.refreshRuns(of: automation) }
+                .padding(.leading, 44)
+                .padding(.trailing, Theme.Space.md)
+                .padding(.vertical, Theme.Space.sm)
+            }
+        }
     }
 
-    @ViewBuilder private var runs: some View {
+    private var enabled: Binding<Bool> {
+        Binding(get: { automation.enabled }, set: { on in Task { await model.setAutomation(automation, enabled: on) } })
+    }
+}
+
+/// Where an automation stands, at the end of its row: when it runs next or
+/// why it will not, a column of times; a system automation's, how it last
+/// ran (its switch says whether it is on).
+private struct AutomationStatus: View {
+    let automation: Automation
+
+    var body: some View {
+        let system = automation.isSystem
+        let (text, attention): (String, Bool) =
+            if automation.running { ("Running…", false) }
+            else if !automation.enabled, !system { ("Paused", false) }
+            else if automation.lastRunFailed { ("Didn't finish", true) }
+            else if automation.isMissed, !system { ("Missed", false) }
+            else if let next = automation.nextRun, !system { (Formatting.dateAndTime(next), false) }
+            else if let last = automation.lastRun?.startedAt { ("Ran " + Formatting.dateAndTime(last), false) }
+            else { ("", false) }
+        Text(text)
+            .font(Theme.font(11))
+            .monospacedDigit()
+            .foregroundStyle(attention ? Theme.attention : Theme.secondaryText)
+    }
+}
+
+/// An automation's runs, newest first, as its opened row read them: what
+/// each said, and for a system automation's what it cost.
+private struct AutomationRuns: View {
+    @Environment(AppModel.self) private var model
+    let automation: Automation
+
+    @ViewBuilder var body: some View {
         let runs = model.automations.runs[automation.id] ?? []
         if !runs.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
@@ -205,6 +318,15 @@ private struct AutomationDetail: View {
     @ViewBuilder
     private func outcome(_ run: AutomationRunRecord) -> some View {
         switch (run.status, run.reply?.status) {
+        case ("success", nil) where run.text != nil:
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                MessageText(text: run.text ?? "", chat: nil, agentLinks: true)
+                if let cost = run.cost {
+                    Text(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4)))).muted()
+                }
+            }
+        case ("success", nil) where automation.isSystem:
+            Text("Finished").muted()
         case (_, .delivered?):
             MessageText(text: run.reply?.text ?? "", chat: nil, agentLinks: true)
         case (_, .nothing?):

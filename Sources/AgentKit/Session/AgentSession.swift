@@ -152,7 +152,9 @@ public final class AgentSession {
     /// The latest summary of earlier turns, if the conversation has grown
     /// long enough for one.
     public private(set) var summary: Summary?
-    public private(set) var connection: Connection?
+    public private(set) var connection: Connection? {
+        didSet { credentialChanged?() }
+    }
     /// What the agent is called in the sidebar, its header and its messages.
     public private(set) var name = AgentSession.defaultName
     /// A failure to save or read the conversation, said once in the chat.
@@ -179,6 +181,9 @@ public final class AgentSession {
     /// Called before each reply is asked for (a send or a retry), so the
     /// app can change `tools` and `systemPrompt` first.
     @ObservationIgnored public var willRun: (() -> Void)?
+    /// Called whenever `connection` is set (a key or model kept, or the
+    /// key gone), so the app can hand the change on.
+    @ObservationIgnored public var credentialChanged: (() -> Void)?
 
     private let store: any AgentStore
     private let rules: ApprovalRules

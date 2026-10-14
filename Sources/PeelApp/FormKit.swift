@@ -236,32 +236,41 @@ struct FormSwitchRow: View {
     }
 }
 
-/// Peel's switch: 30 by 18, the button colour when on.
+/// The switch in a `FormSwitchRow`, its label on the left.
 private struct FormSwitchStyle: ToggleStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Theme.Space.md) {
             configuration.label.frame(maxWidth: .infinity, alignment: .leading)
-            Button { configuration.isOn.toggle() } label: {
-                Capsule()
-                    .fill(configuration.isOn ? Theme.button : Theme.switchOff)
-                    .frame(width: 30, height: 18)
-                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
-                        Circle()
-                            .fill(Theme.switchKnob)
-                            .frame(width: 14, height: 14)
-                            .shadow(color: .black.opacity(0.35), radius: 1, y: 1)
-                            .padding(2)
-                    }
-                    .animation(.spring(response: 0.22, dampingFraction: 0.8), value: configuration.isOn)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .opacity(isEnabled ? 1 : 0.5)
+            PeelSwitch(isOn: configuration.$isOn)
         }
         // One element for VoiceOver: the label, read once, as a switch.
         .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
+    }
+}
+
+/// Peel's switch: 30 by 18, the button colour when on. Alone, as at the
+/// end of a row, it needs an accessibility label of its own.
+struct PeelSwitch: View {
+    @Binding var isOn: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            Capsule()
+                .fill(isOn ? Theme.button : Theme.switchOff)
+                .frame(width: 30, height: 18)
+                .overlay(alignment: isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(Theme.switchKnob)
+                        .frame(width: 14, height: 14)
+                        .shadow(color: .black.opacity(0.35), radius: 1, y: 1)
+                        .padding(2)
+                }
+                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isOn)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.5)
     }
 }
 

@@ -1,6 +1,8 @@
 # Automations
 
-Last updated 2026-10-13. **v1 built** (PR #221); "Later" and the open questions are what is left. Builds on
+Last updated 2026-10-14. **v1 built** (PR #221); **system automations
+built** (Peel's half, [../system-automations.md](../system-automations.md));
+"Later" and the open questions are what is left. Builds on
 [agent-brain.md](../agent-brain.md) (the Mac is the brain, strut owns the
 graph) and strut's automations (`strut/plans/automations.md`, implemented
 2026-09-20).
@@ -179,6 +181,14 @@ use the same strut base URL and the same `Web.isThisMac` check:
   changed by asking the agent, which shows strut's sentence on its card.
 - Reads come from strut, every 30 seconds while the view is on screen.
   Nothing is cached in `peel.sqlite`.
+- **System automations** ([../system-automations.md](../system-automations.md)):
+  a "Yours" | "System" choice under the header (`SegmentedChoice`). Yours
+  is the above, `peel-automation`'s only. System lists strut's
+  `category: system` automations: name, the workflow's description, the
+  last run and a switch; opened, the schedule, Run now and the runs (the
+  agent's text and its cost). No prompt and no Delete. One muted line
+  says which model they run on and which provider sees the memory. The
+  badge counts both tabs' failures.
 
 ## Delivery
 
@@ -262,9 +272,44 @@ POST /automations/run   Authorization: Bearer <token>
    history and the failure badge.
 6. **Later:** `deliver_at`, delivery to the phone, `sphinx-automation`,
    `peel serve` on the home server, and strut jobs for heavy work.
-   Built-in automations: strut workflows every user gets, toggled in
-   Peel, starting with a daily "Tidy memory"
-   ([../system-automations.md](../system-automations.md)).
+7. **Peel: system automations** (2026-10-14,
+   [../system-automations.md](../system-automations.md)).
+   - Done: `AutomationsClient.list` reads every workflow's automations
+     (`workflow`, `category`; a system one's description from its active
+     version, `GET /workflows/<name>`, read once per strut); toggle, Run
+     now and runs on each automation's own workflow; a system run's
+     `{ text, cost }`. `setModel` puts `STRUT_DEFAULT_MODEL`
+     (`<provider>/<model>`) and the provider's key in strut's secret
+     store, and takes the other providers' keys out (all of them, and the
+     model, with none connected); last in `install`, and again on every
+     change of `AgentSession.connection` (`credentialChanged`). With a
+     model connected, each system automation Peel never turned on is
+     turned on once (`Setting.systemAutomationsOn`, per profile); one the
+     person switches is recorded too, so it stays as they left it. The
+     agent's tools see and change `peel-automation`'s only and refuse any
+     other id. `PeelSwitch` came out of `FormSwitchStyle` for the row.
+   - Checked: `AutomationsClientTests` against a loopback `HTTPStub`
+     (moved to PeelTestSupport): workflow and category, a system run's
+     text and cost, paths per workflow, the agent refusing a system id,
+     the turn-on rule, the secrets per provider and on disconnect. The
+     full suite. Offscreen on a development profile with strut's
+     `feat/system-automations` (f2ac642) staged in a scratch
+     `PEEL_STRUT_STAGE` and the Anthropic stub: Connect, the System tab,
+     the opened row, Run now (strut ran the agent with the stored model
+     and key; Anthropic refused the stub key, shown as "Didn't finish"),
+     the switch. Idle on the System tab: 0% CPU.
+   - Learned: a `.task` on a view that renders nothing never runs, so the
+     runs are read from the opened row, not from the list inside it; and
+     keyed on the whole last run, or a run that finishes after it was
+     first seen never shows. strut's `pack` step may write the cost as
+     text.
+   - Not applied from review: deleting provider keys Peel did not write
+     (the bundled strut's store is Peel's alone); one row view for both
+     tabs (they share the status, but differ in menu, prompt and switch);
+     the switch inside the row's button (as other rows' own buttons);
+     running `setModel`'s few loopback calls side by side.
+   - Next: Tidy memory's real run once strut ships it; undo
+     (`memory/unmerge`) is out of v1.
 
 ## Risks
 

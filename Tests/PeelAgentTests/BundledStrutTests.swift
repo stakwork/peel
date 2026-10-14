@@ -167,18 +167,18 @@ struct BundledStrutTests {
         defer { Task { await peel.stop() } }
 
         let client = AutomationsClient(server: try await strut.start())
-        try await client.install(port: peel.port, token: peel.token)
+        try await client.install(port: peel.port, token: peel.token, model: nil)
         let automation = try await client.create(
             name: "Daily", prompt: "Summarise",
             trigger: ["type": "schedule", "every": "day", "at": ["09:00"], "tz": "Europe/London"])
-        let first = try await fire(automation.id, on: client)
+        let first = try await fire(automation, on: client)
         #expect(first.status == "success", "\(first.error ?? "")")
         #expect(seen.withLock { $0 } == [AutomationRequest(name: "Daily", prompt: "Summarise")])
 
         // Started again with the same key, nothing installed: the stored token still decrypts.
         strut.stop()
         let again = AutomationsClient(server: try await strut.start())
-        let second = try await fire(automation.id, on: again, after: first.id)
+        let second = try await fire(automation, on: again, after: first.id)
         #expect(second.status == "success", "\(second.error ?? "")")
         #expect(seen.withLock { $0.count } == 2)
 
@@ -214,10 +214,10 @@ struct BundledStrutTests {
     }
 
     /// Runs it now and waits for that run to end: its record.
-    func fire(_ id: String, on client: AutomationsClient, after earlier: String? = nil) async throws -> AutomationRunRecord {
-        try await client.runNow(id)
+    func fire(_ automation: Automation, on client: AutomationsClient, after earlier: String? = nil) async throws -> AutomationRunRecord {
+        try await client.runNow(automation)
         for _ in 0..<100 {
-            if let run = try await client.runs(of: id).first, run.id != earlier, run.status != "running" { return run }
+            if let run = try await client.runs(of: automation).first, run.id != earlier, run.status != "running" { return run }
             try await Task.sleep(for: .milliseconds(100))
         }
         throw PeelError("the run did not end")

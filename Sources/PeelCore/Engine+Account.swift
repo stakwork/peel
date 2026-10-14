@@ -253,6 +253,15 @@ extension Engine {
         try storage.set(String(decoding: try JSONEncoder().encode(layout), as: UTF8.self), for: .sidebarLayout)
     }
 
+    /// The system automations Peel has turned on once (`Setting.systemAutomationsOn`).
+    public func systemAutomationsOn() throws -> Set<String> {
+        JSON.decode(Set<String>.self, from: try storage.value(for: .systemAutomationsOn)) ?? []
+    }
+
+    public func setSystemAutomationsOn(_ ids: Set<String>) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(ids.sorted()), as: UTF8.self), for: .systemAutomationsOn)
+    }
+
     /// What an app shows of the account when it opens, read in one call off
     /// its actor. A setting that cannot be read is nil, as each getter's
     /// failure would be.

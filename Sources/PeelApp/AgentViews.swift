@@ -176,9 +176,14 @@ private struct AgentMessageList: View {
                             DayDivider(date: turn.date)
                                 .padding(.horizontal, 20)
                         }
-                        AgentTurnRow(turn: turn, name: agent.name)
-                            .id(turn.id)
-                            .laidOut(turn.id, in: end, space: Self.contentSpace)
+                        // A turn is two rows (its tool calls, then its text): kept
+                        // as the lazy stack placed them, at the leading edge, in
+                        // one view the id and its place can be given to.
+                        VStack(alignment: .leading, spacing: 0) {
+                            AgentTurnRow(turn: turn, name: agent.name)
+                        }
+                        .id(turn.id)
+                        .laidOut(turn.id, in: end, space: Self.contentSpace)
                         if let summary, summary.through == turn.id { AgentSummaryRow(summary: summary) }
                         if let problem, problem.turnID == turn.id {
                             AgentProblemRow(agent: agent, failure: problem.failure)

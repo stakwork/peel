@@ -885,6 +885,12 @@ padded end with the log off). Tom: "much smoother now".
 Not checked: a reply streaming (no model key in the check app), the
 composer growing on the agent list.
 
+After merging (#262), Tom: the tool rows sat centred. `AgentTurnRow` is two
+views (its tool calls, then its text); the id and the place given to it
+put them in one container, which centred the narrower tool rows. Each turn
+is now a leading `VStack` given those (branch `fix/agent-tool-rows-leading`);
+checked on `gate-alice`, the rows at the leading edge as on main before.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

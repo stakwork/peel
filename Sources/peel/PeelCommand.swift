@@ -119,6 +119,9 @@ struct PeelCommand {
                                       search). With --send it connects and may also send messages, each one
                                       asked about first (y = once, a = always for that chat, n = no; the
                                       "always" answers are the app's, Account › Peel agent revokes them).
+                                      With --memory (and --profile) it starts Peel's strut, the one
+                                      scripts/stage-strut.sh staged, with its data in that profile's folder,
+                                      and adds the memory tools; it stops when the agent does.
                                       The key comes from PEEL_AGENT_API_KEY only.
                                       --provider anthropic|openai|openrouter (default anthropic), --model <id>
                                       (needed but for anthropic), --base-url <url>, --max-steps <n>.
@@ -164,36 +167,9 @@ struct PeelCommand {
         let name = arguments.option("--profile")
         let reserved = PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
         if name?.lowercased() == "default" { throw reserved }
-        // The agent needs no profile; with one it reads its chats, read-only;
-        // with --send it connects and may send, each send asked about.
         if arguments.first == "agent" {
             _ = arguments.next()
-            if arguments.flag("--send") {
-                guard let name else { throw PeelError("agent --send needs --profile <name>") }
-                let invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
-                return try await AgentCommand.run(invocation.arguments) {
-                    let engine = try await invocation.load()
-                    do {
-                        try await engine.connect(allowUntrustedCertificate: invocation.insecure)
-                    } catch {
-                        print("not connected: \(PeelError.readable(error)); sends are kept as failed")
-                    }
-                    do {
-                        return try AgentCommand.Sending(engine: engine, profile: invocation.profile)
-                    } catch {
-                        await engine.disconnect()
-                        throw error
-                    }
-                }
-            }
-            let storage = try name.map { name in
-                let directory = try Profile(name: name, kind: .development).directory
-                guard Storage.exists(in: directory) else {
-                    throw PeelError("no development profile named \(name)")
-                }
-                return try Storage(directory: directory, readOnly: true)
-            }
-            return try await AgentCommand.run(arguments, storage: storage)
+            return try await AgentCommand.run(arguments, profile: name)
         }
         guard let name else { throw reserved }
         var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)

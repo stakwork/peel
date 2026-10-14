@@ -62,8 +62,8 @@ let package = Package(
         ),
         .testTarget(
             name: "PeelCoreTests",
-            // PeelAgent's tests live here too, to share the storage fixtures.
-            dependencies: ["PeelCore", "PeelAgent", "AgentKit", .product(name: "GRDB", package: "GRDB.swift")]
+            // PeelAgent's tests live here too, to share the storage fixtures, and `peel agent`'s.
+            dependencies: ["PeelCore", "PeelAgent", "AgentKit", "peel", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .testTarget(
             name: "AgentKitTests",

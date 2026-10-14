@@ -27,11 +27,11 @@ struct BundledStrutTests {
         let data = URL(filePath: "/tmp/peel-strut")
         let environment = BundledStrut.environment(
             ["PATH": "/usr/bin", "HOME": "/Users/x", "DYLD_INSERT_LIBRARIES": "/evil.dylib", "NODE_OPTIONS": "--inspect",
-             "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0"],
+             "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0", "PEEL_AGENT_API_KEY": "model key"],
             key: key, data: data)
         #expect(environment["PATH"] == "/usr/bin" && environment["HOME"] == "/Users/x")
         #expect(environment["DYLD_INSERT_LIBRARIES"] == nil && environment["NODE_OPTIONS"] == nil
-                && environment["STRUT_CONNECTION_FILE"] == nil)
+                && environment["STRUT_CONNECTION_FILE"] == nil && environment["PEEL_AGENT_API_KEY"] == nil)
         #expect(environment["STRUT_HOST"] == "127.0.0.1" && environment["STRUT_PORT"] == "0")
         #expect(environment["STRUT_API_KEY"] == key && environment["STRUT_READY_KEY"] == "1")
         #expect(environment["STRUT_EXIT_ON_STDIN_EOF"] == "1")
@@ -101,13 +101,13 @@ struct BundledStrutTests {
 
     /// The staged strut, run as the app runs it: ready with Peel's key,
     /// answering the memory steps, and gone once stopped.
-    @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrutTests.staged.path)))
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrut.staged.path)))
     func theStagedStrutStartsAnswersAndStops() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "peel-strut-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let app = root.appending(path: "Peel.app")
         try FileManager.default.createDirectory(at: app.appending(path: "Contents"), withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(at: app.appending(path: "Contents/Strut"), withDestinationURL: Self.staged)
+        try FileManager.default.createSymbolicLink(at: app.appending(path: "Contents/Strut"), withDestinationURL: BundledStrut.staged)
         let bundle = try #require(Bundle(url: app))
         let strut = try #require(BundledStrut(in: bundle, data: root.appending(path: "data")))
         defer { strut.stop(quietly: true) }
@@ -119,11 +119,6 @@ struct BundledStrutTests {
         #expect(strut.server == nil)
         await #expect(throws: (any Error).self) { _ = try await server.run("ontology", [:]) }
     }
-
-    /// Where scripts/stage-strut.sh leaves it, for every checkout.
-    nonisolated static let staged = ProcessInfo.processInfo.environment["PEEL_STRUT_STAGE"].map { URL(filePath: $0) }
-        .map { $0.appending(path: "strut") }
-        ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/dev.peel.build/strut/strut")
 
     private final class Marker {}
 }

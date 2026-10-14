@@ -215,11 +215,12 @@ is a short plan. Update the status and the journal when you finish something.
   attachment), `AppModel+Contacts` (adding by code, invites) and
   `AppModel+TimeZones` (sender zones, local times, the zone setting) and
   `AppModel+Agent` (opening the account's `AgentSession`, its tools and
-  system prompt, the key kept through `Profile.agentCredential`, the tool
+  system prompt through `AgentSetup`, the key kept through `Profile.agentCredential`, the tool
   rows' titles, and the memory tools once its strut is running: Peel's
   own (`BundledStrut`), started with the agent and started again before
   a reply if it stopped; a development profile's only with `-strut YES`,
-  its data in the profile's folder: an experiment, `docs/agent-brain.md`);
+  its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
+  experiment, `docs/agent-brain.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, stepping through matches with
   `focus(on:inThread:)`, the highlight in message text);
@@ -362,6 +363,11 @@ is a short plan. Update the status and the journal when you finish something.
     rules (`approvalRules`, `revoke`)
 - `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
   and PeelCore; no AppKit or UIKit)
+  - `AgentSetup.swift` — the agent's tools and system prompt, the one way
+    the app and `peel agent` put them together: the time; with storage, the
+    read tools; with an engine, the send tool; with a `MemoryServer`, the
+    memory tools, and the automation tools where asked (the app only); the
+    `unattended` prompt for an automation's run
   - `SphinxTools.swift` — the read tools under the official Mac app's names
     (`get_contacts_and_tribes`, `read_recent_messages`,
     `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
@@ -380,7 +386,9 @@ is a short plan. Update the status and the journal when you finish something.
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app and the CLI open it
-  - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut`:
+  - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
+    for `peel agent --memory`, the one staged for this Mac, `staged`, through
+    `init(folder:data:)`):
     started when an app account opens its agent (and again before a reply
     if it stopped), erased with the account (`erase`: what the agent
     remembered and its automations), its key made by Peel for
@@ -390,7 +398,8 @@ is a short plan. Update the status and the journal when you finish something.
     `SSL_CERT_*` dropped, and
     its OpenSSL (Ladybug's, built for Homebrew's folders) given no
     configuration, engines or providers; its workspace and memory
-    graph in `~/Library/Application Support/Peel/Strut`; its log read and
+    graph in `~/Library/Application Support/Peel/Strut`, a development
+    profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
     two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
@@ -422,10 +431,17 @@ is a short plan. Update the status and the journal when you finish something.
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
   - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
-    the terminal (the key from `PEEL_AGENT_API_KEY` only); with
-    `--profile`, the Sphinx read tools over that profile, read-only; with
-    `--send`, connected, and the send tool, each send asked in the
-    terminal (`TerminalLines`, stdin shared by the prompt and the question)
+    the terminal (the key from `PEEL_AGENT_API_KEY` only), with the app's
+    tools and prompt (`AgentSetup`); with `--profile`, the Sphinx read
+    tools over that profile, read-only; with `--send`, connected, and the
+    send tool, each send asked in the terminal (`TerminalLines`, stdin
+    shared by the prompt and the question); with `--memory`, the staged
+    strut started for that profile (its data in the profile's folder, as
+    the app's `-strut YES`) and stopped on exit, or gone by itself (stdin
+    EOF); not started again if it stops mid-session (the app does that
+    before each reply); and the memory tools (no automations: they need
+    the app). `--base-url http://127.0.0.1:<port>`
+    points it at a local scripted model
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -447,9 +463,12 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters) and
   `AgentMessageLinkTests` (the agent's message links and a send row's
-  link, only the one at the end) and `MemoryToolsTests` (this Mac only,
-  the POST included; the key never printed; strut's replies and refusals; which tools write; the
-  rows' lines; the markers; `created_by`); the audits'
+  link, only the one at the end), `AgentSetupTests` (the tools and prompt
+  by what the caller has, `peel agent`'s arguments, and with a staged
+  strut `--memory`'s remember and recall, the model scripted) and
+  `MemoryToolsTests` (this Mac only, the POST included; the key never
+  printed; strut's replies and refusals; which tools write; the rows'
+  lines; the markers; `created_by`); the audits'
   `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (shared fixtures)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,

@@ -107,11 +107,10 @@ extension AppModel {
         } catch {
             return .failed("Could not read the connected model's key.")
         }
-        let memory = memoryServer
+        let setup = Self.agentSetup(engine, memory: memoryServer)
         let loop = AgentLoop(
             provider: Self.agentClient(credential, profile: profile),
-            tools: Self.agentTools(engine, memory: memory), model: credential.model,
-            systemPrompt: Self.agentSystemPrompt(remembers: memory != nil, unattended: true))
+            tools: setup.tools, model: credential.model, systemPrompt: setup.systemPrompt(unattended: true))
         let reply = await AutomationRun.run(request, with: loop)
         // The account may have closed while it ran: nothing is kept for it.
         guard self.agent === agent else { return .failed("Peel's account closed during the run.") }

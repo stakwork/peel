@@ -12,30 +12,11 @@ enum AgentConnectSource: Hashable {
 extension AppModel {
     // MARK: The agent chat (docs/phases/09-agents.md, PR 5)
 
-    /// `unattended`, for an automation's run: nothing about sending or
-    /// scheduling, whose tools a run without an approver is not offered.
-    static func agentSystemPrompt(remembers: Bool, unattended: Bool = false) -> String {
-        """
-        You are Peel's agent, a helper inside Peel, a Sphinx chat app on the user's Mac. Answer plainly and \
-        briefly, in Markdown when it helps. Use a tool when it gives a better answer than guessing. When the \
-        tools you have cannot do what is asked, say so.
-        """ + " " + AgentMessageLink.instruction + " " + SphinxTools.systemPrompt + (unattended ? "" : " " + SphinxTools.sendPrompt)
-            + (remembers ? " " + MemoryTools.systemPrompt : "")
-            + (remembers && !unattended ? " " + AutomationTools.systemPrompt : "")
-    }
-
-    /// The tools the agent may use over the account's `engine`: the time,
-    /// the Sphinx read tools and the send tool (`PeelAgent`), which waits on
-    /// the person's approval for each message; and the memory and automation
-    /// tools when a strut on this Mac has the memory steps. A run with no
-    /// approver (an automation's) is not offered the tools that ask.
-    static func agentTools(_ engine: Engine, memory: MemoryServer?) -> ToolRegistry {
-        let sphinx = SphinxTools(storage: engine.storage)
-        var tools = [.currentTime] + sphinx.tools + [sphinx.send(through: engine)]
-        if let memory {
-            tools += MemoryTools(server: memory).tools + AutomationTools(client: AutomationsClient(server: memory)).tools
-        }
-        return ToolRegistry(tools)
+    /// The agent's tools and prompt over the account's `engine`
+    /// (`AgentSetup`): the read tools, the send tool, and the memory and
+    /// automation tools when a strut on this Mac has the memory steps.
+    static func agentSetup(_ engine: Engine, memory: MemoryServer?) -> AgentSetup {
+        AgentSetup(sending: engine, memory: memory, automations: true)
     }
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
@@ -72,9 +53,10 @@ extension AppModel {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             if strut == nil { strut = Self.strut(for: profile) }
+            let setup = Self.agentSetup(engine, memory: nil)
             let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
-                tools: Self.agentTools(engine, memory: nil), systemPrompt: Self.agentSystemPrompt(remembers: false)
+                tools: setup.tools, systemPrompt: setup.systemPrompt()
             ) { Self.agentClient($0, profile: profile) }
             agent.willRun = { [weak self] in self?.lookForMemory() }
             self.agent = agent
@@ -100,8 +82,9 @@ extension AppModel {
         guard memory != memoryServer else { return }
         memoryServer = memory
         closeMemory()
-        agent.tools = Self.agentTools(engine, memory: memory)
-        agent.systemPrompt = Self.agentSystemPrompt(remembers: memory != nil)
+        let setup = Self.agentSetup(engine, memory: memory)
+        agent.tools = setup.tools
+        agent.systemPrompt = setup.systemPrompt()
         stopAutomations()
         startAutomations(profile, engine: engine)
     }
@@ -123,7 +106,7 @@ extension AppModel {
         switch profile.kind {
         case .app: BundledStrut()
         case .development:
-            UserDefaults.standard.bool(forKey: "strut") ? BundledStrut(data: profile.directory.appending(path: "strut")) : nil
+            UserDefaults.standard.bool(forKey: "strut") ? BundledStrut(data: BundledStrut.dataFolder(for: profile)) : nil
         }
     }
 

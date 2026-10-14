@@ -58,7 +58,8 @@ struct Receipt: Sendable {
 
 /// Turns money events into what the sidebar shows: the balance, which rolls
 /// up when a payment explains its rise; the latest arrival, for the bolt's
-/// glow; and what Payments has not shown yet, summed on its row. A rise
+/// glow and the Payments row's passing "+350"; and what Payments has not
+/// shown yet, for it to light. A rise
 /// nothing explains (the first balance, a restore, sats with no message)
 /// just appears; a fall is never animated.
 @MainActor @Observable
@@ -75,7 +76,10 @@ final class MoneyArrivals {
     private(set) var arrivals = 0
     /// Received since Payments was last on screen.
     private(set) var unseen: [Receipt] = []
-    var unseenMsat: Int64 { Receipt.totalMsat(unseen) }
+    /// The latest arrival, summed on the Payments row for a moment
+    /// (`showing`) and then gone: one that comes while it shows adds to it.
+    private(set) var recent: [Receipt] = []
+    var recentMsat: Int64 { Receipt.totalMsat(recent) }
 
     /// Called once per arrival, with every payment in it.
     @ObservationIgnored var arrived: (([Receipt]) -> Void)?
@@ -84,6 +88,7 @@ final class MoneyArrivals {
     @ObservationIgnored private var burstStarted: ContinuousClock.Instant?
     @ObservationIgnored private var flushTask: Task<Void, Never>?
     @ObservationIgnored private var settleTask: Task<Void, Never>?
+    @ObservationIgnored private var recentTask: Task<Void, Never>?
     /// A payment came before its balance: the next rise rolls at once.
     @ObservationIgnored private var expectRiseUntil: ContinuousClock.Instant?
 
@@ -98,6 +103,8 @@ final class MoneyArrivals {
     /// How long after an arrival its balance may still come and roll.
     private static let expectRise: Duration = .seconds(5)
     private static let roll: Animation = .smooth(duration: 0.7)
+    /// How long an arrival's sum shows on the Payments row.
+    private static let showing: Duration = .seconds(3)
 
     func balance(_ msat: UInt64) {
         let previous = balanceMsat
@@ -151,9 +158,11 @@ final class MoneyArrivals {
     func reset() {
         flushTask?.cancel()
         settleTask?.cancel()
+        recentTask?.cancel()
         shownMsat = nil
         balanceMsat = nil
         unseen = []
+        recent = []
         burst = []
         burstStarted = nil
         expectRiseUntil = nil
@@ -167,6 +176,13 @@ final class MoneyArrivals {
         guard !receipts.isEmpty else { return }
         arrivals += 1
         unseen += receipts
+        recent += receipts
+        recentTask?.cancel()
+        recentTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.showing)
+            guard !Task.isCancelled else { return }
+            self?.recent = []
+        }
         arrived?(receipts)
         if let balance = balanceMsat, let shown = shownMsat, balance > shown {
             withAnimation(Self.roll) { shownMsat = balance }
@@ -223,17 +239,18 @@ struct BalanceLabel: View {
 }
 
 /// The Payments row in the sidebar, its own view so an arrival redraws only
-/// it. Its badge while something received is unseen: "+350",
-/// the sum, in the green of received amounts. It pops in with a short scale
-/// and fade, rolls to "+420" as more comes, and leaves when Payments opens.
-/// Under Reduce Motion it is a plain badge with the final number.
+/// it. Its badge for a moment after sats arrive: "+350", the sum, in the
+/// green of received amounts. It pops in with a short scale and fade, rolls
+/// to "+420" as more comes, and fades away a few seconds later; it never
+/// stays to be cleared. Under Reduce Motion it is a plain badge with the
+/// final number.
 struct PaymentsLink: View {
     let money: MoneyArrivals
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let msat = money.unseenMsat
+        let msat = money.recentMsat
         SidebarLink("Payments", to: .payments, unread: msat > 0) {
             Image(systemName: "bolt").font(.system(size: 13))
         } accessory: {
@@ -241,7 +258,7 @@ struct PaymentsLink: View {
                 Badge(Sats.signed(msat: msat, incoming: true), .success)
                     .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
                     .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
-                    .accessibilityLabel("Received \(Sats.format(msat: msat)), not seen yet")
+                    .accessibilityLabel("Received \(Sats.format(msat: msat))")
             }
         }
         .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0), value: msat)

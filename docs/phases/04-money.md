@@ -1328,9 +1328,11 @@ for every case below.
   build: the pill wrapped the balance and moved it).
 - **Payments row:** "+350" in the badge slot (`ReceivedBadge`, the green of
   received amounts, `Theme.confirmed`; no new colour token), popping in with
-  scale and fade, summing what follows, cleared once Payments is on screen
-  with the window in front, which also takes away the money notifications
-  and lights the matching rows (by payment hash or message row; checked
+  scale and fade, summing what follows, and fading away 3 s after the last
+  arrival (2026-10-14: it used to stay until Payments opened, so "+7" stood
+  after sends had spent some of it). Payments on screen with the window in
+  front still takes away the money notifications and lights the matching
+  rows (by payment hash or message row; checked
   that history rows' `rhash` equals the message's `paymentHash`).
 - **Notifications** (`Notifier.moneyReceived`): one per arrival, title
   "+21 sats" or "+350 sats · 3 payments", body "From MrAlice: lunch",

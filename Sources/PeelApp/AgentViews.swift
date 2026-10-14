@@ -20,21 +20,6 @@ struct PeelLogo: View {
     }
 }
 
-/// "AGENT" beside an agent's name: its sidebar row, header and messages.
-struct AgentTag: View {
-    var body: some View {
-        Text("AGENT")
-            .font(Theme.font(10, .semibold))
-            .tracking(0.4)
-            .foregroundStyle(Theme.secondaryText)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.divider))
-            .fixedSize()
-            .accessibilityLabel("Agent")
-    }
-}
-
 /// Peel's row at the top of Direct messages: "Set up" in link blue until a
 /// model is connected, then AGENT; bold with a count for replies that
 /// came while it was not open; "Waiting on you" in orange while a send's

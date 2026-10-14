@@ -210,20 +210,3 @@ private struct SearchResultRow: View {
         }
     }
 }
-
-extension AttributedString {
-    /// With every occurrence of each of `terms` behind the search
-    /// highlight, found as the index finds them (case and accents aside).
-    func highlighting(_ terms: [String]) -> AttributedString {
-        var result = self
-        for term in terms where !term.isEmpty {
-            var start = result.startIndex
-            while start < result.endIndex,
-                  let range = result[start...].range(of: term, options: MessageQuery.compareOptions) {
-                result[range].backgroundColor = Theme.searchMatch
-                start = range.upperBound
-            }
-        }
-        return result
-    }
-}

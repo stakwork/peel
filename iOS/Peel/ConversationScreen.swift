@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The open chat's newest messages, read only: the model's rows
 /// (`AppModel.chatRows`), flat as on the Mac, newest at the bottom. No
-/// composer, attachments, threads or older pages yet (I3).
+/// composer, attachments, threads or older pages yet (F2b).
 struct ConversationScreen: View {
     @Environment(AppModel.self) private var model
     let chat: String
@@ -111,9 +111,8 @@ private struct PhoneRow: View {
     }
 }
 
-/// A message's words, block by block, with the marks taken out: the Mac's
-/// styled renderer (`MessageText`, links, mentions, emphasis) is AppKit-side
-/// for now and comes to the phone with I3. Attachments say what they are.
+/// A message's words through the Mac's renderer (`MessageText`: links,
+/// mentions, emphasis, lists, code). Attachments say what they are.
 private struct MessageBody: View {
     let row: ChatRow
 
@@ -128,7 +127,7 @@ private struct MessageBody: View {
                             .foregroundStyle(Theme.secondaryText)
                     }
                     let text = message.shownText
-                    if !text.isEmpty { MarkupText(text: text) }
+                    if !text.isEmpty { MessageText(text: text, chat: message.chat, size: PhoneFont.message.size) }
                 }
             }
             if let summary = row.summary {
@@ -149,39 +148,6 @@ private struct MessageBody: View {
     private func attachment(_ message: Message) -> String {
         let what = message.giphy != nil ? "GIF" : message.preview
         return "\(what), shown on the Mac for now"
-    }
-}
-
-/// Text as `MessageMarkup.blocks` reads it, each block's marks removed
-/// (`MessageMarkup.plainText`): list items keep a bullet, code its face.
-private struct MarkupText: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(MessageMarkup.blocks(text).enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .paragraph(let line), .quote(let line):
-                    Text(MessageMarkup.plainText(line))
-                case .item(let line):
-                    Text("•  \(MessageMarkup.plainText(line))")
-                case .numbered(let number, let line):
-                    Text("\(number).  \(MessageMarkup.plainText(line))")
-                case .heading(_, let line):
-                    Text(MessageMarkup.plainText(line)).fontWeight(.semibold)
-                case .code(let code):
-                    Text(code)
-                        .font(Theme.code(14))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                }
-            }
-        }
-        .foregroundStyle(Theme.text)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -206,7 +172,9 @@ private struct PaymentBody: View {
                     Image(systemName: "bolt.fill").foregroundStyle(Theme.attention)
                 }
                 .monospacedDigit()
-                if let note = message.content?.trimmed.nilIfEmpty { MarkupText(text: note) }
+                if let note = message.content?.trimmed.nilIfEmpty {
+                    MessageText(text: note, chat: message.chat, size: PhoneFont.message.size)
+                }
             }
         }
         .font(Theme.font(16))

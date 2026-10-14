@@ -195,7 +195,7 @@ iPhone yet, in the chat, rather than faking a call.
 **Not yet, and why.**
 - Message text shows without its marks (`MessageMarkup.blocks` and
   `plainText`): the styled renderer (`MessageText`, `LinkText`) lives in
-  the Mac's views. F1 moves it where both can use it.
+  the Mac's views. F1 moved it where both can use it (done).
 - No composer, attachments (a row says what it is), threads (the count
   shows), older pages, chat previews in the list (the stored last content
   is raw: a GIF's JSON, a call link) or pull to refresh.
@@ -224,6 +224,93 @@ Review findings not applied (2026-10-14):
   and `WordsScreen`'s flags could be one mode; left for F2c.
 - Nothing covers the chats in the app switcher's snapshot: with no PIN
   timeout on the phone there is nothing it would be hiding from.
+
+### F1: the phone foundation (built 2026-10-14, `ios/f1-foundation`)
+
+**Done means:** the shared pieces F2a, F2b and F2c build on, to
+[../design/iphone.md](../design/iphone.md), with the Mac unchanged.
+
+**Built.**
+- **The tab shell** (`MainTabs`): Chats, Payments, You and the system's
+  search tab (`role: .search`), each its own `NavigationStack` with large
+  titles. The Chats badge is the unread count in Sphinx blue. You's icon
+  is your 30 pt photo (your initial on your colour without one), larger
+  than a glyph (Tom); selected, a 2 pt accent ring and a thin gap sit
+  inside its edge, since a ring outside it ran into the tab's label. It
+  is rendered to an image, since a tab bar draws only images. A conversation hides the
+  tab bar. Payments is a placeholder with the balance until F2c; I2's
+  Account moved into You as it was. Search filters the chat list by name
+  (`searchQuery`, cleared on leaving the tab).
+- **Navigation** (`PhoneRouter`): the tab and a typed path per tab
+  (`ChatsRoute`, `PaymentsRoute`, `YouRoute`), with `openChat`,
+  `open(_ message:inThread:)`, `openThread`, `openPayment`,
+  `openFromNotification` and the thread sheet's binding over
+  `AppModel.openThread`. `AppModel.destination` stays what is open (it
+  marks chats read, closes another chat's thread, keeps money
+  notifications off Payments): the router writes it from what is on
+  screen and follows it when the model moves it (`focus(on:)`,
+  `openThread`, a notification, a chat removed). A chat opened from
+  Threads or Mentions goes on top of that list. A thread open when Chats
+  is left comes back with it.
+- **Surfaces**: `.phoneList(.plain / .grouped)` on every list or form
+  (Peel's page behind it and its navigation bar, never the system's black
+  or grey) and `.phoneRows(…)` on its sections (`background` rows, or
+  `quote` cells grouped, `divider` hairlines).
+- **Theme** (`PhoneTheme`): `PhoneFont`, the Mac's sizes on Dynamic Type
+  text styles (`.phoneFont(.row)`, `.message`, `.name`, `.time`, …);
+  `Surface` and `Theme.quietText(on:)`, `tertiaryText` on the background
+  and `secondaryText` on a raised surface. No phone colours.
+- **Glass** (`Glass.swift`): `GlassCapsule` with `GlassCapsuleButton`s
+  (one capsule in a `GlassEffectContainer`, 44 tall, 46 wide slots),
+  `GlassButton` (round, 44), `.floatingBar(edge)` (`safeAreaBar`: content
+  scrolls under it with the system's scroll-edge effect) and
+  `.scrollEdges()`. In a navigation bar the system draws the glass: put
+  neighbours in one `ToolbarItemGroup`.
+- **Components** (`PhoneComponents`): `CountBadge` (min 22, blue, gold
+  `.mention`, orange `.attention`), `PhoneSectionHeader` (collapsible, a
+  44 pt full-width button, a heading), `NavRow` (Automations, Threads,
+  Mentions), `ChatListRow` (tribe square, person round, AGENT, the
+  counts, VoiceOver's "3 unread, mentions you" or "waiting on you"; the
+  count goes under the name at accessibility sizes), `PhoneCard`
+  (`Card(.inset)` at radius 12, telling its content it is raised).
+  `PeelButton` has a `.touch` size (44 pt at least, 16 pt on Dynamic
+  Type) and `Badge` an `.attention` style, both shared with the Mac;
+  `Badge`, `Card`/`Callout`, `IconButton` and `PeelButton` compile into
+  the phone. `AgentTag` moved into `Badge.swift`.
+- **Markdown**: `MessageText`, `LinkText` and the search highlight moved
+  to `Sources/PeelApp/MessageText.swift`, which the phone compiles. Its
+  size is a parameter (14 on the Mac, unchanged; 15 on the phone, scaled
+  with `@ScaledMetric`); text is selectable on the Mac only, since on the
+  phone a long press is the message's menu. `AgentMessageLink` moved from
+  PeelAgent to AgentKit so the shared file can read it. The read-only
+  conversation now renders Markdown through it.
+- `ThreadRef` is `Identifiable`, for `.sheet(item:)`.
+
+**For F2.** F2a replaces Chats' list with the design (the top rows,
+`PhoneSectionHeader`s, swipe actions) and fills `ChatsRoute`'s Threads,
+Mentions and Automations (`ComingScreen` now). F2b builds the
+conversation, the composer on `.floatingBar(.bottom)` and the thread
+sheet on `router.thread`; a link in message text opens the system
+browser until it routes (the agent's message links among them). F2c
+builds Payments, You's groups and `YouRoute`'s screens.
+
+**Review findings applied:** the router holds publishing while `follow`
+changes a tab and a stack together, so focus and a thread set by the
+model survive the hop; it follows the model from `RootView`, locked or
+not; the first chat no longer opens by itself on the phone
+(`Platform.opensFirstChat`, true on the Mac); a thread left on Chats or
+Search is kept per tab; the You icon renders once per change.
+
+**Not applied, and why:** the new pieces have no callers yet (they are
+F2's foundation); the AGENT row and orange count are not wired into
+Chats (no agent DM on the phone until the remote track; F2a); message
+text is not selectable on the phone until F2b's long-press menu brings
+Copy; `CountBadge` stays beside `Badge` so the Mac's badge keeps its size.
+
+**Not verified** past the lock screen with an account: the throwaway on
+the simulator is locked and no PIN was entered by the agent. The shell
+and the components were checked with made-up rows in a scratch screen,
+not committed.
 
 ### The project
 

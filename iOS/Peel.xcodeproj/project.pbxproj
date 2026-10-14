@@ -12,6 +12,12 @@
 		B20000000000000000000111 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000211 /* Theme.swift */; };
 		B20000000000000000000112 /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000212 /* Avatar.swift */; };
 		B20000000000000000000113 /* Clipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000213 /* Clipboard.swift */; };
+		B20000000000000000000114 /* MessageText.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000214 /* MessageText.swift */; };
+		B20000000000000000000115 /* Badge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000215 /* Badge.swift */; };
+		B20000000000000000000116 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000216 /* Card.swift */; };
+		B20000000000000000000117 /* IconButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000217 /* IconButton.swift */; };
+		B20000000000000000000118 /* PeelButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000218 /* PeelButton.swift */; };
+		B20000000000000000000103 /* AgentKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000903 /* AgentKit */; };
 		B20000000000000000000121 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000221 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
@@ -21,6 +27,11 @@
 		B20000000000000000000211 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B20000000000000000000212 /* Avatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avatar.swift; sourceTree = "<group>"; };
 		B20000000000000000000213 /* Clipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clipboard.swift; sourceTree = "<group>"; };
+		B20000000000000000000214 /* MessageText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageText.swift; sourceTree = "<group>"; };
+		B20000000000000000000215 /* Badge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/Badge.swift; sourceTree = "<group>"; };
+		B20000000000000000000216 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/Card.swift; sourceTree = "<group>"; };
+		B20000000000000000000217 /* IconButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/IconButton.swift; sourceTree = "<group>"; };
+		B20000000000000000000218 /* PeelButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/PeelButton.swift; sourceTree = "<group>"; };
 		B20000000000000000000221 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = ../Assets/AppIcon.icon; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -35,6 +46,7 @@
 			files = (
 				B20000000000000000000101 /* PeelUI in Frameworks */,
 				B20000000000000000000102 /* PeelCore in Frameworks */,
+				B20000000000000000000103 /* AgentKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -57,6 +69,11 @@
 				B20000000000000000000211 /* Theme.swift */,
 				B20000000000000000000212 /* Avatar.swift */,
 				B20000000000000000000213 /* Clipboard.swift */,
+				B20000000000000000000214 /* MessageText.swift */,
+				B20000000000000000000215 /* Badge.swift */,
+				B20000000000000000000216 /* Card.swift */,
+				B20000000000000000000217 /* IconButton.swift */,
+				B20000000000000000000218 /* PeelButton.swift */,
 				B20000000000000000000221 /* AppIcon.icon */,
 			);
 			name = "Shared with the Mac";
@@ -93,6 +110,7 @@
 			packageProductDependencies = (
 				B20000000000000000000901 /* PeelUI */,
 				B20000000000000000000902 /* PeelCore */,
+				B20000000000000000000903 /* AgentKit */,
 			);
 			productName = Peel;
 			productReference = B20000000000000000000201 /* Peel.app */;
@@ -149,6 +167,11 @@
 				B20000000000000000000111 /* Theme.swift in Sources */,
 				B20000000000000000000112 /* Avatar.swift in Sources */,
 				B20000000000000000000113 /* Clipboard.swift in Sources */,
+				B20000000000000000000114 /* MessageText.swift in Sources */,
+				B20000000000000000000115 /* Badge.swift in Sources */,
+				B20000000000000000000116 /* Card.swift in Sources */,
+				B20000000000000000000117 /* IconButton.swift in Sources */,
+				B20000000000000000000118 /* PeelButton.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -292,6 +315,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B20000000000000000000951 /* XCLocalSwiftPackageReference ".." */;
 			productName = PeelCore;
+		};
+		B20000000000000000000903 /* AgentKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000951 /* XCLocalSwiftPackageReference ".." */;
+			productName = AgentKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

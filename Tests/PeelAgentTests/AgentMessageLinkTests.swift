@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import PeelAgent
+import AgentKit
 @testable import PeelTestSupport
 
 /// The agent's links to messages (`AgentMessageLink`), which the app opens in place of the web.

@@ -19,10 +19,14 @@ public struct Platform {
     public var calls: any CallProvider
     /// The agent's tools, memory and automations; nil where there are none.
     public var agent: (any AgentHost)?
+    /// Whether the first chat opens while nothing is open: the Mac's detail
+    /// pane is never empty; the iPhone's Chats list is a screen of its own.
+    public var opensFirstChat: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
-        web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?
+        web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
+        opensFirstChat: Bool = true
     ) {
         self.presence = presence
         self.files = files
@@ -31,6 +35,7 @@ public struct Platform {
         self.web = web
         self.calls = calls
         self.agent = agent
+        self.opensFirstChat = opensFirstChat
     }
 }
 

@@ -4,12 +4,15 @@ import SwiftUI
 
 /// You: your name and balance, the server, and the PIN and twelve words that
 /// guard the account on this iPhone (the Mac's `AccountView`, in part).
-/// Every change is an `AppModel` operation.
-struct AccountTab: View {
+/// Every change is an `AppModel` operation. F2c gives it the design's
+/// groups (docs/design/iphone.md, screen 7).
+struct YouTab: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
 
     var body: some View {
-        NavigationStack {
+        @Bindable var router = router
+        NavigationStack(path: $router.you) {
             List {
                 Section {
                     HStack(spacing: 14) {
@@ -27,6 +30,7 @@ struct AccountTab: View {
                     .padding(.vertical, 6)
                     .accessibilityElement(children: .combine)
                 }
+                .phoneRows(.grouped)
                 Section("Account") {
                     NavigationLink {
                         NameEditor()
@@ -45,6 +49,7 @@ struct AccountTab: View {
                         }
                     }
                 }
+                .phoneRows(.grouped)
                 Section("Security") {
                     if model.profile?.requiresPIN == true {
                         NavigationLink("Change PIN") { ChangePIN() }
@@ -55,6 +60,7 @@ struct AccountTab: View {
                         LabeledContent("Twelve words", value: model.wordsConfirmed ? "Checked" : "Not checked yet")
                     }
                 }
+                .phoneRows(.grouped)
                 Section {
                     ForgetAccount(
                         trigger: "Forget this account on this iPhone",
@@ -62,11 +68,10 @@ struct AccountTab: View {
                     )
                     .padding(.vertical, 4)
                 }
+                .phoneRows(.grouped)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Theme.background)
-            .navigationTitle("Account")
+            .phoneList(.grouped)
+            .navigationTitle("You")
         }
     }
 }

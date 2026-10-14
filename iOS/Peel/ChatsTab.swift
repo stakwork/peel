@@ -3,38 +3,63 @@ import PeelUI
 import SwiftUI
 
 /// Unread, then tribes, then direct messages, in the Mac sidebar's order
-/// (`AppModel.sidebarSections`). A chat pushes in; the open one is the
-/// model's `destination`, so it is read as on the Mac.
+/// (`AppModel.sidebarSections`). Its stack is the router's `chats`; F2a
+/// gives it the design's top rows, sections and swipe actions
+/// (docs/design/iphone.md, screen 1).
 struct ChatsTab: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
 
     var body: some View {
-        @Bindable var model = model
-        NavigationStack(path: openChat) {
+        @Bindable var router = router
+        NavigationStack(path: $router.chats) {
             ChatList()
                 .navigationTitle("Chats")
                 .navigationSubtitle(model.connection == .connected ? "" : model.connection.label)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { ConnectionButton() }
                 }
-                .searchable(text: $model.searchQuery, prompt: "Search chats")
-                .navigationDestination(for: String.self) { chat in
-                    ConversationScreen(chat: chat)
-                }
-        }
-    }
-
-    /// The pushed chat, as the model's `destination`.
-    private var openChat: Binding<[String]> {
-        Binding {
-            model.selectedChat.map { [$0] } ?? []
-        } set: { path in
-            model.destination = path.last.map { .chat($0) }
+                .chatsDestinations()
         }
     }
 }
 
-private struct ChatList: View {
+extension View {
+    /// What Chats and Search push, by `ChatsRoute`: a conversation hides
+    /// the tab bar. Threads, Mentions and Automations come with F2a.
+    func chatsDestinations() -> some View {
+        navigationDestination(for: ChatsRoute.self) { route in
+            switch route {
+            case .chat(let chat):
+                ConversationScreen(chat: chat)
+                    .toolbar(.hidden, for: .tabBar)
+            case .threads:
+                ComingScreen(title: "Threads", detail: "Threads you started or replied in show here.")
+            case .mentions:
+                ComingScreen(title: "Mentions", detail: "Messages that mention you show here.")
+            case .automations:
+                ComingScreen(title: "Automations", detail: "What your home Mac runs for you shows here.")
+            }
+        }
+    }
+}
+
+/// A screen the design has and this build does not yet: its title and
+/// what it will hold, never an empty page.
+struct ComingScreen: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        ContentUnavailableView(title, systemImage: "hourglass", description: Text(detail))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct ChatList: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -46,6 +71,7 @@ private struct ChatList: View {
                 Section("Unread") {
                     ForEach(sections.unread) { ChatLink(conversation: $0, state: states[$0.chat]) }
                 }
+                .phoneRows()
             }
             if !sections.tribes.isEmpty {
                 Section("Tribes") {
@@ -54,6 +80,7 @@ private struct ChatList: View {
                         ShowAll(what: "\(all) tribes", all: $model.sidebarLayout.allTribes)
                     }
                 }
+                .phoneRows()
             }
             if !sections.direct.isEmpty {
                 Section("Direct messages") {
@@ -62,11 +89,10 @@ private struct ChatList: View {
                         ShowAll(what: Formatting.people(all), all: $model.sidebarLayout.allDirect)
                     }
                 }
+                .phoneRows()
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .phoneList()
         .overlay {
             if model.conversations.isEmpty {
                 ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.bubble.right",
@@ -78,47 +104,15 @@ private struct ChatList: View {
     }
 }
 
-/// One chat: its picture and name, when it last moved, and its count.
+/// One chat, pushed as a `ChatsRoute`.
 private struct ChatLink: View {
     let conversation: Conversation
     let state: ChatReadState?
 
     var body: some View {
-        let level = state?.mute ?? .all
-        let unread = state?.sidebarCount ?? 0
-        NavigationLink(value: conversation.chat) {
-            HStack(spacing: Theme.Space.md) {
-                ConversationIcon(conversation: conversation, size: 36)
-                Text(conversation.name)
-                    .font(Theme.font(16, unread > 0 ? .semibold : .regular))
-                    .foregroundStyle(unread > 0 ? Theme.text : Theme.secondaryText)
-                    .lineLimit(1)
-                Spacer(minLength: Theme.Space.sm)
-                if unread > 0 {
-                    CountBadge(count: unread, mentionsYou: state?.mentions ?? 0 > 0)
-                } else if state?.isNew == true {
-                    // Someone who added you; nothing to answer.
-                    Text("New")
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(Theme.accent)
-                } else if level == .muted {
-                    Image(systemName: "bell.slash").font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
-                } else if level == .mentionsOnly {
-                    Image(systemName: "at").font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
-                }
-                if let date = conversation.lastDate {
-                    Text(Formatting.when(date))
-                        .font(Theme.font(13))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .frame(minWidth: 52, alignment: .trailing)
-                }
-            }
-            .opacity(level == .muted && unread == 0 ? 0.6 : 1)
+        NavigationLink(value: ChatsRoute.chat(conversation.chat)) {
+            ChatListRow(conversation: conversation, state: state)
         }
-        .listRowBackground(Theme.background)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(unread > 0 ? "\(unread) unread" + (state?.mentions ?? 0 > 0 ? ", mentions you" : "") : "")
     }
 }
 
@@ -132,7 +126,6 @@ private struct ShowAll: View {
         Button(all ? "Show fewer" : "Show all \(what)") { all.toggle() }
             .font(Theme.font(15))
             .foregroundStyle(Theme.accent)
-            .listRowBackground(Theme.background)
     }
 }
 

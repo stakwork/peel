@@ -3,9 +3,12 @@ import Observation
 import PeelCore
 
 /// A thread, by its chat and its original's uuid.
-public struct ThreadRef: Hashable, Sendable {
+public struct ThreadRef: Hashable, Sendable, Identifiable {
     public let chat: String
     public let uuid: String
+
+    /// Itself, so a sheet can be presented for one.
+    public var id: Self { self }
 
     public init(chat: String, uuid: String) {
         self.chat = chat

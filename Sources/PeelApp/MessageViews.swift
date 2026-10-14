@@ -626,7 +626,6 @@ struct RepliesDivider: View {
     }
 }
 
-
 /// One message as a flat row (Tom, 2026-10-07: "try it out"): no bubbles.
 /// The first of a run shows the sender's photo, name and time once; the
 /// rest of the run sits under it, with its time in the left gutter on
@@ -1018,80 +1017,6 @@ struct MessageContent: View {
 private extension View {
     @ViewBuilder func rowMenu(_ source: String, _ entries: (@MainActor () -> [MenuEntry])?) -> some View {
         if let entries { peelMenu(source: source, entries) } else { self }
-    }
-}
-
-/// Message text as `MessageMarkup` reads it: links, mentions, inline code
-/// and emphasis marked, list items with a hanging indent, headings larger,
-/// quotes behind a bar, ``` blocks as code. Its own view, so hovering the
-/// row does not redo the parsing.
-struct MessageText: View {
-    @Environment(AppModel.self) private var model
-    let text: String
-    /// Where it was said, for what a mention of you looks like there; nil
-    /// in the agent chat.
-    let chat: String?
-    /// The agent's reply: its links to messages open them (`LinkText`).
-    var agentLinks = false
-
-    var body: some View {
-        let blocks = MessageMarkup.blocks(text)
-        let myAliases = chat.map(model.mentionAliases(in:)) ?? []
-        let found = model.search.flatMap { chat != nil && $0.chat == chat ? $0.query?.terms : nil } ?? []
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .paragraph(let line):
-                    styled(line, myAliases, found)
-                case .item(let line):
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
-                        Text("•").foregroundStyle(Theme.secondaryText)
-                        styled(line, myAliases, found)
-                    }
-                    .padding(.leading, Theme.Space.xs)
-                case .numbered(let number, let line):
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(number).")
-                            .font(Theme.font(14))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
-                        styled(line, myAliases, found)
-                    }
-                    .padding(.leading, Theme.Space.xs)
-                case .heading(let level, let line):
-                    styled(line, myAliases, found, font: Theme.font(level == 1 ? 20 : level == 2 ? 17 : 15, .semibold))
-                        .padding(.top, 2)
-                case .quote(let line):
-                    styled(line, myAliases, found)
-                        .padding(.leading, Theme.Space.md)
-                        .overlay(alignment: .leading) {
-                            Capsule().fill(Theme.secondaryText.opacity(0.4)).frame(width: 3)
-                        }
-                case .code(let code):
-                    Text(AttributedString(code).highlighting(found))
-                        .font(Theme.code(13))
-                        .lineSpacing(2)
-                        .foregroundStyle(Theme.text)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, Theme.Space.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                }
-            }
-        }
-    }
-
-    /// A line of text, with what the chat's search `found` lit.
-    private func styled(_ line: String, _ myAliases: Set<String>, _ found: [String],
-                        font: Font = Theme.font(14)) -> some View {
-        Text(LinkText.attributed(line, myAliases: myAliases, agentLinks: agentLinks).highlighting(found))
-            .font(font)
-            .lineSpacing(3)
-            .foregroundStyle(Theme.text)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -1240,7 +1240,7 @@ public final class AppModel {
                 let changed = old?.alias != new?.alias || old?.photoURL != new?.photoURL || old?.isTribe != new?.isTribe
                 conversations = rows
                 if changed { rebuildRows() }
-                if destination == nil, let first = rows.first {
+                if destination == nil, platform.opensFirstChat, let first = rows.first {
                     destination = .chat(first.chat)
                 }
             }

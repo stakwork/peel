@@ -98,7 +98,7 @@ public struct MemoryTools: Sendable {
                     "ref_id": ["type": "string", "description": "A ref_id a memory result gave you."],
                     "reason": ["type": "string", "description": "Why, in a few words."],
                 ], required: ["ref_id", "reason"]),
-            tool("merge_memory", verb: "merge", effect: .write, summary: Summary.merged, """
+            tool("merge_memory", verb: "merge", effect: .write, summary: Summary.merged, prepare: Self.byTheAgent, """
                 Merge two entities that are the same person or thing: the duplicate's facts and mentions move to the \
                 one kept, its names become aliases, and its ref_id leads to the kept one. A repeated fact, or a \
                 one-value predicate now held twice, keeps the newest. Nothing is deleted.

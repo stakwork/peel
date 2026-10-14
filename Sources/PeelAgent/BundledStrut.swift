@@ -199,7 +199,9 @@ public final class BundledStrut {
     /// Peel's own environment without anything that would change how Node,
     /// strut or its OpenSSL runs (`DYLD_*`, `NODE_*`, `STRUT_*`, `OPENSSL_*`,
     /// `SSL_CERT_*`) or that is Peel's own (`PEEL_*`, the CLI's model key
-    /// among them), and then strut's: this Mac only, a port the OS picks,
+    /// among them), without a model provider's key (strut takes the connected
+    /// model's from its secret store, `AutomationsClient.setModel`, so one
+    /// disconnected is gone), and then strut's: this Mac only, a port the OS picks,
     /// Peel's keys and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
     /// configuration and loads no engine or provider: it was built for
     /// Homebrew's folders, which another user may own.
@@ -208,6 +210,7 @@ public final class BundledStrut {
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
             name == "NODE_EXTRA_CA_CERTS"
                 || !["DYLD_", "NODE_", "STRUT_", "OPENSSL_", "SSL_CERT_", "PEEL_"].contains { name.hasPrefix($0) }
+                && !AutomationsClient.keySecrets.contains(name)
         }
         environment.merge([
             "STRUT_HOST": "127.0.0.1",

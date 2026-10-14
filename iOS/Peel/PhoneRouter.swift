@@ -15,6 +15,10 @@ enum ChatsRoute: Hashable {
     /// A tribe or a direct message, by its chat id. The agent is a DM, so
     /// its chat is one of these too.
     case chat(String)
+    /// A chat's details: a contact's, or a tribe's (`openDetails`).
+    case details(String)
+    /// A tribe's members, from its details.
+    case members(String)
 
     /// The model's destination while this route is on top.
     var destination: AppModel.Destination {
@@ -22,7 +26,7 @@ enum ChatsRoute: Hashable {
         case .automations: .automations
         case .threads: .threads
         case .mentions: .mentions
-        case .chat(let chat): .chat(chat)
+        case .chat(let chat), .details(let chat), .members(let chat): .chat(chat)
         }
     }
 
@@ -37,9 +41,13 @@ enum ChatsRoute: Hashable {
         }
     }
 
-    /// A conversation: the tab bar hides while it is shown.
+    /// A conversation or a screen of one (its details, its members): the
+    /// tab bar hides while it is shown, and it goes when its chat does.
     var isConversation: Bool {
-        if case .chat = self { true } else { false }
+        switch self {
+        case .chat, .details, .members: true
+        case .automations, .threads, .mentions: false
+        }
     }
 }
 
@@ -111,6 +119,36 @@ final class PhoneRouter {
         model.focus(on: message, inThread: inThread)
     }
 
+    /// A chat's details (a contact's or a tribe's), pushed over its
+    /// conversation: on top of it when it is the one shown, else with it
+    /// under, in the tab showing chats.
+    func openDetails(_ chat: String) {
+        changeChatStack { stack in
+            if stack.last != ChatsRoute.chat(chat) {
+                stack = stack.filter { !$0.isConversation } + [.chat(chat)]
+            }
+            stack.append(.details(chat))
+        }
+    }
+
+    /// A tribe's members, over its details.
+    func openMembers(_ chat: String) {
+        changeChatStack { $0.append(.members(chat)) }
+    }
+
+    /// Changes the stack chats are shown in: Search's while it is the tab,
+    /// else Chats', which it brings to the front.
+    private func changeChatStack(_ change: (inout [ChatsRoute]) -> Void) {
+        if tab == .search {
+            change(&search)
+        } else {
+            var stack = chats
+            change(&stack)
+            tab = .chats
+            chats = stack
+        }
+    }
+
     /// A thread: its chat with the thread sheet over it.
     func openThread(_ thread: ThreadRef) {
         model.openThread(thread)
@@ -168,10 +206,7 @@ final class PhoneRouter {
         holding = true
         switch destination {
         case .chat(let chat):
-            let inSearch = tab == .search
-            var stack = (inSearch ? search : chats).filter { !$0.isConversation }
-            stack.append(.chat(chat))
-            if inSearch { search = stack } else { tab = .chats; chats = stack }
+            changeChatStack { $0 = $0.filter { !$0.isConversation } + [.chat(chat)] }
         case .threads, .mentions, .automations:
             tab = .chats
             chats = destination.flatMap(ChatsRoute.init).map { [$0] } ?? []

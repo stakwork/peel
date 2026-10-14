@@ -35,6 +35,23 @@ struct TribeIcon: View {
     }
 }
 
+/// An invite is a person who is not here yet: a dashed circle, as Payments
+/// draws someone not known: a pending invite's row on the Mac and the
+/// iPhone.
+struct InviteIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(Theme.tertiaryText, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            Image(systemName: "envelope")
+                .font(.system(size: size * 0.45))
+                .foregroundStyle(Theme.secondaryText)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 /// A person's photo, or their initials on their colour (`PersonHue`, from
 /// `AppModel.hue`); a tribe's the same on a rounded square, coloured by its
 /// key. Only https photos are ever loaded.

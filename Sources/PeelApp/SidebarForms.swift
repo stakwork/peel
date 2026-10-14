@@ -7,35 +7,31 @@ struct JoinTribeForm: View {
     @Environment(AppModel.self) private var model
     let done: () -> Void
 
-    @State private var link: String
-    @State private var info: TribeInfo?
-    @State private var lookingUp = false
-    @State private var problem: String?
+    /// The link and the tribe it names (`TribeLookup`).
+    @State private var lookup: TribeLookup
     @State private var attempt = PaymentAttempt()
 
     /// Opened from a link card: the link filled in, and the tribe when the
     /// card has read it. Joining reads it again and pays only this price.
     init(link: String = "", info: TribeInfo? = nil, done: @escaping () -> Void) {
-        _link = State(initialValue: link)
-        _info = State(initialValue: info)
+        _lookup = State(initialValue: TribeLookup(link: link, info: info))
         self.done = done
     }
 
     var body: some View {
+        @Bindable var lookup = lookup
         // The compact form (one field): the link, then the tribe.
         Panel("Join a tribe", compact: true, close: done) {
             FormItem(label: "Tribe link") {
-                FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $link, axis: .vertical)
+                FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link, axis: .vertical)
             }
             // Return looks up, then joins once the preview is up, as the buttons would.
             .onSubmit { Task { await submit() } }
-            .onChange(of: link) {
-                info = nil
-                problem = nil
+            .onChange(of: lookup.link) {
                 attempt.armed = nil
                 attempt.problem = nil
             }
-            if let info {
+            if let info = lookup.info {
                 Card {
                     HStack(alignment: .top, spacing: 10) {
                         TribeIcon(name: info.name, url: info.img, pubkey: info.pubkey, size: Theme.AvatarSize.lg)
@@ -48,7 +44,7 @@ struct JoinTribeForm: View {
                                     .foregroundStyle(Theme.secondaryText)
                                     .lineLimit(3)
                             }
-                            Text("Joining costs \(info.joinPrice.text) · \(info.messagePrice.text) a message")
+                            Text(info.priceLine)
                                 .monospacedDigit()
                                 .muted()
                         }
@@ -60,30 +56,30 @@ struct JoinTribeForm: View {
                 }
             }
         } footer: {
-            FormFooter(problem: problem ?? attempt.problem) {
+            FormFooter(problem: lookup.problem ?? attempt.problem) {
                 Button("Cancel", action: done)
                     .buttonStyle(.peel(.outline))
                     .disabled(attempt.working)
-                if let info {
+                if let info = lookup.info {
                     // Over the threshold the price is confirmed in place, as any payment.
                     PayButton(
                         verb: "Join", totalMsat: info.joinAmountMsat, attempt: attempt, send: join, sent: done,
                         namesAmount: false
                     )
                 } else {
-                    Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(lookingUp) }
+                    Button { Task { await lookUp() } } label: { Text("Look up").buttonProgress(lookup.lookingUp) }
                         .buttonStyle(.peel(.primary))
                         .keyboardShortcut(.defaultAction)
                         // Not off while it looks up, so it keeps its fill under
                         // the spinner; `lookUp` ignores a second click.
-                        .disabled(link.trimmed.isEmpty)
+                        .disabled(lookup.link.trimmed.isEmpty)
                 }
             }
         }
     }
 
     private func submit() async {
-        if info == nil {
+        if lookup.info == nil {
             await lookUp()
         } else if await attempt.run(join) {
             done()
@@ -91,23 +87,10 @@ struct JoinTribeForm: View {
     }
 
     private func lookUp() async {
-        guard !link.trimmed.isEmpty, !lookingUp else { return }
-        lookingUp = true
-        defer { lookingUp = false }
-        let looked = link
-        do {
-            let found = try await model.previewTribe(looked)
-            // A link edited during the lookup is looked up again, not shown with this answer.
-            guard link == looked else { return }
-            info = found
-            problem = nil
-        } catch {
-            if link == looked { problem = PeelError.problem(error) }
-        }
+        await lookup.lookUp(with: model)
     }
 
     private func join(_ confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let info else { return .busy }
-        return await model.joinTribe(link, agreedJoinMsat: info.joinAmountMsat, confirmedMsat: confirmedMsat)
+        await lookup.join(with: model, confirmedMsat: confirmedMsat)
     }
 }

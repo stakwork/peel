@@ -3,13 +3,35 @@ import SwiftUI
 import VisionKit
 
 /// The camera, looking for a QR code that holds an invoice
-/// (`DataScannerViewController`). Only an invoice is taken: anything else
-/// it reads is untrusted text and is passed over with a word. Without a
-/// camera (the simulator) or with access refused, it says so; Paste is the
-/// other way in.
+/// (`CodeScanner`). Only an invoice is taken: anything else it reads is
+/// untrusted text and is passed over with a word. Paste is the other way in.
 struct InvoiceScanner: View {
     let found: (String) -> Void
     let cancel: () -> Void
+
+    var body: some View {
+        CodeScanner(
+            title: "Scan an invoice", prompt: "Point the camera at an invoice's QR code.",
+            pasteInstead: "paste the invoice", cancel: cancel
+        ) { code in
+            guard (try? Invoice(code)) != nil else { return "That code isn't an invoice." }
+            found(code)
+            return nil
+        }
+    }
+}
+
+/// The camera, looking for a QR code `accept` takes: an invoice, contact
+/// info, a tribe link. What it reads is untrusted text; `accept` returns
+/// why it passes over one, or nil once it took it. Without a camera or
+/// with access refused, it says so, and to `pasteInstead`.
+struct CodeScanner: View {
+    let title: String
+    let prompt: String
+    /// "paste the invoice": the other way in, after "Allow it in Settings, or".
+    let pasteInstead: String
+    let cancel: () -> Void
+    let accept: (String) -> String?
     @State private var note: String?
 
     var body: some View {
@@ -17,15 +39,11 @@ struct InvoiceScanner: View {
             Group {
                 if DataScannerViewController.isSupported, DataScannerViewController.isAvailable {
                     ScannerView { code in
-                        if (try? Invoice(code)) != nil {
-                            found(code)
-                        } else {
-                            note = "That code isn't an invoice."
-                        }
+                        if let refused = accept(code) { note = refused }
                     }
                     .ignoresSafeArea()
                     .overlay(alignment: .bottom) {
-                        Text(note ?? "Point the camera at an invoice's QR code.")
+                        Text(note ?? prompt)
                             .phoneFont(.row)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -38,13 +56,13 @@ struct InvoiceScanner: View {
                         "Can't scan here",
                         systemImage: "camera",
                         description: Text(DataScannerViewController.isSupported
-                                          ? "Peel can't use the camera. Allow it in Settings, or paste the invoice."
-                                          : "This device has no camera Peel can scan with. Paste the invoice instead.")
+                                          ? "Peel can't use the camera. Allow it in Settings, or \(pasteInstead)."
+                                          : "This device has no camera Peel can scan with, so \(pasteInstead) instead.")
                     )
                     .background(Theme.background.ignoresSafeArea())
                 }
             }
-            .navigationTitle("Scan an invoice")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

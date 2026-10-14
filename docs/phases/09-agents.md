@@ -315,7 +315,7 @@ Neo4j, next to stakgraph and Jarvis.
    finds the newest in its own `GET /mymedia` and restores with
    `memory/import`. Daily while Peel runs, with no button until memory
    has a place on screen. Old copies pile up until the server can overwrite a
-   personal file in place.
+   personal file in place. The plan: `../memory-backup.md`.
 3. **Memory quality.** Fuzzy name matching and embeddings (MiniLM through
    strut's onnxruntime) for duplicates and recall; Ladybug's full-text and
    vector indexes instead of the word scan; a strut job that draws facts

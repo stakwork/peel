@@ -48,16 +48,33 @@ struct AutomationsView: View {
         }
     }
 
+    /// On a home server, which cannot reach this Mac: the agent makes none
+    /// there until automations by pull (`docs/peel-brain.md`, build order 3).
+    private var onHomeServer: Bool { model.automationsClient?.server.isHomeServer == true }
+
+    /// Why the agent makes none on a home server, wherever that is said.
+    static let homeServerNote = "Automations that run Peel's agent need the brain on This Mac for now."
+
     @ViewBuilder
     private func yours(_ state: AutomationsState) -> some View {
         if state.loaded, state.yours.isEmpty, state.problem == nil {
-            EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
-                Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
+            if onHomeServer {
+                EmptyState(Self.homeServerNote, title: "Not on a home server yet") {
+                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.outline))
+                }
+            } else {
+                EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
+                    Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
+                }
             }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
                     notices(state)
+                    if onHomeServer {
+                        Callout(detail: "These run on the home server, which cannot reach Peel on this Mac yet. "
+                            + Self.homeServerNote)
+                    }
                     group("Upcoming", state.upcoming)
                     group("Recurring", state.recurring)
                     group("Done", state.done)
@@ -76,7 +93,7 @@ struct AutomationsView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
                     notices(state)
                     VStack(alignment: .leading, spacing: 2) {
-                        if let connection = model.agent?.connection {
+                        if !onHomeServer, let connection = model.agent?.connection {
                             Text("Runs on your connected model (\(connection.provider.modelName(connection.model))). "
                                 + "Sends parts of your memory to \(connection.provider.name).")
                                 .muted()

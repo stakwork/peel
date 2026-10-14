@@ -9,8 +9,17 @@ import PeelUI
 /// through `AppModel.macAgent`.
 @MainActor @Observable
 final class MacAgent: AgentHost {
-    /// The agent's memory: the running strut's address and key (`lookForMemory`).
+    /// The agent's memory: the running strut's address and key, or the
+    /// home server's (`lookForMemory`).
     var memoryServer: MemoryServer?
+    /// The account's brain (`Profile.brain`), read when its agent opens;
+    /// nil when it could not be read, and then no strut at all.
+    var brain: Brain?
+    /// What the home server said when last checked; nil while checking or on this Mac.
+    var brainStatus: BrainStatus?
+    /// A home server a pairing link named, waiting for the person's yes in
+    /// Account › Brain.
+    var pairing: MemoryServer?
     /// The strut Peel ships, if this build has one, for this launch's
     /// profile (`strut(for:)`): started when its agent opens, stopped when
     /// Peel quits.
@@ -80,6 +89,21 @@ extension AppModel {
         set { macAgent.strut = newValue }
     }
 
+    var brain: Brain? {
+        get { macAgent.brain }
+        set { macAgent.brain = newValue }
+    }
+
+    var brainStatus: BrainStatus? {
+        get { macAgent.brainStatus }
+        set { macAgent.brainStatus = newValue }
+    }
+
+    var pairing: MemoryServer? {
+        get { macAgent.pairing }
+        set { macAgent.pairing = newValue }
+    }
+
     var memoryPanel: MemoryPanel? {
         get { macAgent.memoryPanel }
         set { macAgent.memoryPanel = newValue }
@@ -136,10 +160,12 @@ extension AppModel {
     // MARK: The agent chat (docs/phases/09-agents.md, PR 5)
 
     /// The agent's tools and prompt over the account's `engine`
-    /// (`AgentSetup`): the read tools, the send tool, and the memory and
-    /// automation tools when a strut on this Mac has the memory steps.
+    /// (`AgentSetup`): the read tools, the send tool, and the memory tools
+    /// with a strut; the automation tools only with Peel's own, since a home
+    /// server cannot reach this Mac's `AutomationServer` (until automations
+    /// by pull, `docs/peel-brain.md`).
     static func agentSetup(_ engine: Engine, memory: MemoryServer?) -> AgentSetup {
-        AgentSetup(sending: engine, memory: memory, automations: true)
+        AgentSetup(sending: engine, memory: memory, automations: memory?.isHomeServer == false)
     }
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
@@ -170,14 +196,20 @@ extension AppModel {
 
     /// Opens the account's agent chat: `agent.sqlite` beside its database,
     /// the connected model's key from this device's Keychain (a file on a
-    /// development profile), and the memory: the strut Peel ships, started
-    /// here if it is not running (`strut(for:)`).
+    /// development profile), and the memory: the account's home server, or
+    /// the strut Peel ships, started here if it is not running (`strut(for:)`).
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
             // One per account open, so every server and every PUT to strut agrees on it.
             automationToken = try AutomationServer.newKey()
-            if strut == nil { strut = Self.strut(for: profile) }
+            do {
+                brain = try Brain.kept(in: profile.brain)
+            } catch {
+                // Not taken for "this Mac": no strut is started until it is set again.
+                brain = nil
+                notice = PeelError.problem(error, couldNot: "read the agent's brain")
+            }
             let setup = Self.agentSetup(engine, memory: nil)
             let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
@@ -186,9 +218,11 @@ extension AppModel {
             agent.willRun = { [weak self] in self?.lookForMemory() }
             agent.credentialChanged = { [weak self] in self?.modelChanged() }
             self.agent = agent
-            // A strut that stopped is not started again from here, only before the next reply: no crash loop.
-            strut?.onChange = { [weak self] in self?.lookForMemory(restarting: false) }
+            if brain == .thisMac { useOwnStrut(profile) }
             lookForMemory(reporting: true)
+            checkBrain()
+            // A pairing link that came while the account was locked.
+            if pairing != nil { openAgentSettings() }
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
         }
@@ -200,11 +234,22 @@ extension AppModel {
     /// reply, which starts it again if it stopped (its port may now be
     /// anyone's, so the key and memory text are never sent to it). A failed
     /// start is said when `reporting`.
+    /// With a home server, its address always, reachable or not: the memory
+    /// tools then say the brain is offline, and Peel's own strut is never
+    /// started in its place.
     func lookForMemory(reporting: Bool = false, restarting: Bool = true) {
         guard let profile, let engine, let agent else { return }
-        let memory = strut?.server
-        // Not running yet, or stopped since: started, and here once ready.
-        if memory == nil, restarting, let strut { startStrut(strut, reporting: reporting) }
+        let memory: MemoryServer?
+        switch brain {
+        case .homeServer(let server)?:
+            memory = server
+        case .thisMac?:
+            memory = strut?.server
+            // Not running yet, or stopped since: started, and here once ready.
+            if memory == nil, restarting, let strut { startStrut(strut, reporting: reporting) }
+        case nil:
+            memory = nil
+        }
         guard memory != memoryServer else { return }
         memoryServer = memory
         closeMemory()
@@ -217,11 +262,67 @@ extension AppModel {
         startAutomations(profile, engine: engine)
     }
 
+    // MARK: The brain (docs/peel-brain.md)
+
+    /// Asks the home server how it is (`MemoryServer.health`), for Account › Brain.
+    func checkBrain() {
+        brainStatus = nil
+        guard let server = brain?.homeServer else { return }
+        Task {
+            let status = await server.health()
+            // The setting changed while it was asked.
+            guard brain?.homeServer == server else { return }
+            brainStatus = status
+        }
+    }
+
+    /// Keeps `new` as the account's brain and moves the agent to it: with a
+    /// home server Peel's own strut is stopped and never started; back on
+    /// this Mac it is started again. Nothing is moved between the two.
+    func setBrain(_ new: Brain) throws {
+        guard let profile else { throw PeelError("Peel's account is not open.") }
+        try new.keep(in: profile.brain)
+        brain = new
+        pairing = nil
+        switch new {
+        case .homeServer:
+            strut?.stop(quietly: true)
+            strut = nil
+        case .thisMac:
+            useOwnStrut(profile)
+        }
+        lookForMemory(reporting: true)
+        // The same server kept again (a new key for the same address) is checked again too.
+        checkBrain()
+    }
+
+    /// A `peel://brain?…` link (`Brain.pairing`): the home server it names
+    /// waits in Account › Brain for the person's yes. False for any other link.
+    func openPairingLink(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "peel" else { return false }
+        guard let server = Brain.pairing(url) else {
+            notice = "That pairing link is not one Peel can use. Copy it again from the home server's setup."
+            return true
+        }
+        pairing = server
+        if phase == .ready { openAgentSettings() }
+        return true
+    }
+
+    /// Peel's own strut for `profile`, made if there is none, and looked at
+    /// again when it starts or stops. A strut that stopped is not started
+    /// again from here, only before the next reply: no crash loop.
+    private func useOwnStrut(_ profile: Profile) {
+        if strut == nil { strut = Self.strut(for: profile) }
+        strut?.onChange = { [weak self] in self?.lookForMemory(restarting: false) }
+    }
+
     private func startStrut(_ strut: BundledStrut, reporting: Bool) {
         Task {
             do { _ = try await strut.start() } catch {
-                // Not said once the agent has closed (its account locked or forgotten).
-                if reporting, agent != nil { notice = PeelError.problem(error, couldNot: "start the agent's memory") }
+                // Not said once the agent has closed (its account locked or
+                // forgotten), or a home server took its place while it started.
+                if reporting, agent != nil, self.strut === strut { notice = PeelError.problem(error, couldNot: "start the agent's memory") }
             }
         }
     }

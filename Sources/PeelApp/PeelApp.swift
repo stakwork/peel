@@ -139,8 +139,25 @@ enum MainWindow {
 /// see you go at once rather than when the server gives up on you.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    weak var model: AppModel?
+    weak var model: AppModel? {
+        didSet { openLinks() }
+    }
     private var quitting = false
+    /// Links opened before the model was here (one that launched Peel).
+    private var links: [URL] = []
+
+    /// A `peel://` link (`AppModel.openPairingLink`): the only scheme Peel
+    /// registers (`scripts/bundle-app.sh`).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        links += urls
+        openLinks()
+    }
+
+    private func openLinks() {
+        guard let model else { return }
+        for url in links { _ = model.openPairingLink(url) }
+        links = []
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Offscreen.start()

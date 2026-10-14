@@ -444,8 +444,8 @@ public struct AutomationsClient: Sendable {
             throw PeelError("could not address \(what) on strut")
         }
         do {
-            return try await Web.requestThisMac(method, url, json: body.map { Data($0.jsonString.utf8) }, bearer: server.key,
-                                                limit: Self.replyLimit, what: what)
+            return try await Web.requestStrut(method, url, json: body.map { Data($0.jsonString.utf8) }, bearer: server.key,
+                                             limit: Self.replyLimit, what: what)
         } catch {
             throw PeelError(PeelError.problem(error, couldNot: "reach strut at \(server.base.absoluteString)")
                 + " Check that strut is running there.")

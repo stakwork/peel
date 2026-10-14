@@ -1,6 +1,7 @@
 # Peel Brain: remote strut and the home server
 
-Last updated 2026-10-14. **A proposal for Tom's review; nothing is built.**
+Last updated 2026-10-14. **A proposal for Tom's review; build order step 1
+is built.**
 It follows [agent-brain.md](agent-brain.md) (strut owns the graph; phase 6
 "move strut to a Mac mini or the cloud"), [memory-backup.md](memory-backup.md)
 ("Home server") and [phases/12-automations.md](phases/12-automations.md)
@@ -326,6 +327,18 @@ connection is for everything else.
    Tailscale addresses; the bundled strut is not started in home-server
    mode; a connection and version check. Memory and jobs then work against
    a home server.
+   *Built 2026-10-14 (Mac):* Account › Brain, This Mac or Home server
+   (address and key in the Keychain, `Profile.brain`); `peel://brain`
+   pairing links, confirmed in place; `MemoryServer` takes https anywhere
+   and http to `100.64.0.0/10` or `*.ts.net`. With a home server the
+   bundled strut is never started, the memory tools say "the brain is
+   offline" or that the key was refused, and Peel neither listens for
+   automations nor puts its token, port or model key in that strut (a
+   disconnect would take the brain's own key out); the agent has no
+   automation tools there and Automations says so. strut's `/health`
+   answers `{ok: true}` to any key and names no version, so a refused key
+   is read from the reply lacking `stepCount`, and the version check
+   waits for strut to add one. Nothing is moved: the local graph stays.
 2. **strut: `memory/export` and `memory/import`** (memory-backup.md). Backup
    and "Move memory to home server" from the same steps.
 3. **Peel and strut: automations by pull.** Waiting runs that Peel claims,

@@ -21,6 +21,9 @@ public struct Profile: Sendable {
     /// The key Peel's strut encrypts its secrets with (`STRUT_SECRET_KEY`),
     /// made when it first starts (`BundledStrut`).
     public let strutKey: any SecretItem
+    /// The account's home server, its address and `STRUT_API_KEY`
+    /// (`Brain`, `docs/peel-brain.md`); none kept is Peel's own strut.
+    public let brain: any SecretItem
     /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
     /// development profile, which has no PIN.
     public let biometrics: BiometricUnlock?
@@ -42,10 +45,11 @@ public struct Profile: Sendable {
             secrets = KeychainSecretStore(account: name)
             agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
             strutKey = KeychainItem(service: "dev.peel.strut", account: name)
+            brain = KeychainItem(service: "dev.peel.brain", account: name)
             biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            (secrets, agentCredential, strutKey) = Self.files(in: directory)
+            (secrets, agentCredential, strutKey, brain) = Self.files(in: directory)
             biometrics = nil
         }
     }
@@ -56,16 +60,17 @@ public struct Profile: Sendable {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        (secrets, agentCredential, strutKey) = Self.files(in: directory)
+        (secrets, agentCredential, strutKey, brain) = Self.files(in: directory)
         biometrics = nil
     }
 
-    /// A development profile's words, agent key and strut's key, in
-    /// files beside its database.
-    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem) {
+    /// A development profile's words, agent key, strut's key and home
+    /// server, in files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
          FileItem(file: directory.appendingPathComponent("agent-credential")),
-         FileItem(file: directory.appendingPathComponent("strut-key")))
+         FileItem(file: directory.appendingPathComponent("strut-key")),
+         FileItem(file: directory.appendingPathComponent("brain")))
     }
 
     /// Where the agent's database lives, beside the account's.
@@ -106,8 +111,8 @@ public struct Profile: Sendable {
         biometrics?.pinChanged(to: newPIN)
     }
 
-    /// Removes the words and everything stored with them, the agent's key
-    /// and strut's key first. A failure to remove any is reported, and
+    /// Removes the words and everything stored with them, the agent's key,
+    /// strut's key and the home server first. A failure to remove any is reported, and
     /// the database is then kept with them.
     public func delete() throws {
         try agentCredential.delete()
@@ -116,6 +121,7 @@ public struct Profile: Sendable {
         // The automation token #221 kept; strut is now handed one per launch.
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         try strutKey.delete()
+        try brain.delete()
         try biometrics?.turnOff()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

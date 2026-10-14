@@ -55,13 +55,21 @@ extension AppModel {
         memoryServer.map(AutomationsClient.init(server:))
     }
 
+    /// The same, only for Peel's own strut: the one place a home server is
+    /// left out of what Peel hands strut (the automation token and port,
+    /// the connected model's key), which it keeps its own of.
+    private var ownStrutClient: AutomationsClient? {
+        automationsClient.flatMap { $0.server.isHomeServer ? nil : $0 }
+    }
+
     /// While the agent chat is open with a strut found: listens for strut
     /// with the token made when the agent opened, hands it to strut's secret store
     /// and points strut's `peel-automation` workflow here. The connected
     /// model goes to strut apart from this (`modelChanged`). A development profile listens only
-    /// with an `automationPort` of its own, never on the app's.
+    /// with an `automationPort` of its own, never on the app's. Never for a
+    /// home server, which cannot reach this Mac: it is not given the token or port.
     func startAutomations(_ profile: Profile, engine: Engine) {
-        guard let memory = memoryServer, let token = automationToken,
+        guard let memory = memoryServer, !memory.isHomeServer, let token = automationToken,
               profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
         let port = Self.automationPort
         let stopping = automationStopping
@@ -95,7 +103,7 @@ extension AppModel {
     /// Points strut's workflow at the listening server; says why when it
     /// cannot, and then nothing fires (no token but strut's store's).
     private func installAutomations() async {
-        guard let client = automationsClient, let server = automationServer else { return }
+        guard let client = ownStrutClient, let server = automationServer else { return }
         do {
             try await client.install(port: server.port, token: server.token)
             guard automationServer === server else { return }
@@ -130,8 +138,11 @@ extension AppModel {
 
     /// Gives strut the connected model, or takes it out with none; then,
     /// with one, reads the list, which turns the system automations on.
+    /// Only Peel's own: a home server keeps its own model and key
+    /// (`docs/peel-brain.md`, "Keys live on the brain"), which a disconnect
+    /// here must not take out.
     private func handModelToStrut() async {
-        guard let client = automationsClient else { return }
+        guard let client = ownStrutClient else { return }
         let credential: AgentCredential?
         do {
             credential = try connectedCredential()
@@ -189,17 +200,18 @@ extension AppModel {
             automations = AutomationsState(loaded: true)
             return
         }
-        if !automations.installed { await installAutomations() }
+        let own = ownStrutClient != nil
+        if own, !automations.installed { await installAutomations() }
         // Not handed to this strut yet, or it failed: tried again.
-        if strutModel?.server != client.server { modelChanged() }
+        if own, strutModel?.server != client.server { modelChanged() }
         do {
             var descriptions = automations.descriptions
             var list = try await client.list(descriptions: &descriptions)
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
             automations.descriptions = descriptions
-            // A failed install stays said until one succeeds.
-            if automations.installed, automations.problem != nil { automations.problem = nil }
+            // A failed install stays said until one succeeds (a home server has none).
+            if automations.installed || !own, automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }

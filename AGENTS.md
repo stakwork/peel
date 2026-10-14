@@ -201,7 +201,9 @@ is a short plan. Update the status and the journal when you finish something.
     share) and `FileItem` (an owner-only file) behind `SecretItem`; the
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
-    or `strut-key` on a development profile; gone with the profile) and
+    or `strut-key` on a development profile; gone with the profile),
+    `brain` (the home server's address and key, `Brain`: Keychain
+    `dev.peel.brain`, or `brain` on a development profile) and
     `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
@@ -209,9 +211,11 @@ is a short plan. Update the status and the journal when you finish something.
     size-limited `Transfer` (also the memes and call servers') and its
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
     "public https, or http to this machine" (`isAllowed`, `isThisMac`);
-    `postToThisMac`, a JSON POST with an optional bearer key to a server on
-    this Mac only, following no redirect and through no proxy (the
-    agent's memory)
+    `postToStrut` and `requestStrut`, a request with an optional bearer
+    key to a strut only (`isStrut`: http to this Mac or a Tailscale
+    address, https anywhere), following no redirect, through the system's
+    proxy only over https (the agent's memory, Peel's strut or a home
+    server)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -262,7 +266,11 @@ is a short plan. Update the status and the journal when you finish something.
   own (`BundledStrut`), started with the agent and started again before
   a reply if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
-  experiment, `docs/agent-brain.md`) and `AppModel+Automations`;
+  experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
+  `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
+  which `AppDelegate` hands it), that server's, Peel's own never started
+  and no automation tools, token or model key for it) and
+  `AppModel+Automations`;
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -300,7 +308,9 @@ is a short plan. Update the status and the journal when you finish something.
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
   model and the test call) and `AgentSettings` (Account › Peel agent, with
-  the "Always allowed" rules and Revoke);
+  the "Always allowed" rules and Revoke; Account › Brain, `BrainSection`:
+  This Mac or a home server's address and key, its status, and a pairing
+  link's server waiting for a yes);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
@@ -544,14 +554,20 @@ is a short plan. Update the status and the journal when you finish something.
     workflow, and turns each system automation on once (`turnOnSystem`,
     `docs/system-automations.md`); the agent's `AutomationTools` see and
     change `peel-automation`'s only
+  - `Brain.swift` — where the agent's memory lives (`docs/peel-brain.md`):
+    this Mac or the account's home server, kept in `Profile.brain` (one
+    that cannot be read is never taken for this Mac), and the pairing link
+    `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
-    strut on this Mac owns (`docs/agent-brain.md`): its address and
-    `STRUT_API_KEY`, from Peel's own strut's ready line (`BundledStrut`;
+    strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
+    from a home server (`Brain`, `isHomeServer`; `health` reads its
+    `/health`: connected, offline, key not accepted) or from Peel's own
+    strut's ready line (`BundledStrut`;
     looked at again by `AppModel.lookForMemory` before each reply, which
     drops a strut that stopped; the key never printed, dumped or
     reflected); one memory
     step run by
-    `POST /steps/memory/<verb>/run` through `Web.postToThisMac`, the
+    `POST /steps/memory/<verb>/run` through `Web.postToStrut`, the
     arguments as the run's `input` under the config `{{ input }}` (strut
     templates any config, so memory text never goes as one), strut's reply
     read back, a step's own refusal as the failure, cleaned to one line
@@ -610,11 +626,13 @@ is a short plan. Update the status and the journal when you finish something.
   tool over a real engine: the card's words, the price cap through the
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters),
+  `BrainTests` (the pairing link, what is kept, `/health` read),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged
   strut `--memory`'s remember and recall, the model scripted) and
-  `MemoryToolsTests` (this Mac only, the POST included; the key never
+  `MemoryToolsTests` (where a strut may be, the POST included; a home
+  server offline or refusing the key; the key never
   printed; strut's replies and refusals; which tools write; the rows'
   lines; the markers; `created_by`)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
@@ -768,6 +786,7 @@ quitting before any window opens.
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
+  {"link": "peel://brain?url=…&key=…"}    // a link macOS hands Peel, through its app delegate
   {"type": "green"}
   {"wait": 0.5}
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …

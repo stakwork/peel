@@ -191,7 +191,7 @@ struct BundledStrutTests {
         let elsewhere: AgentKit.JSONValue = ["peel_url": "http://example.invalid", "port": 1, "name": "Elsewhere", "prompt": "x"]
         #expect(try await runStep(elsewhere, on: again.server) == "success")
         #expect(seen.withLock { $0.last?.name } == "Elsewhere" && seen.withLock { $0.count } == 3)
-        let (deleted, _) = try await Web.requestThisMac(
+        let (deleted, _) = try await Web.requestStrut(
             "DELETE", again.server.base.appending(path: "secrets/PEEL_AUTOMATION_PORT"), bearer: again.server.key,
             limit: 100_000, what: "the secret")
         #expect(deleted == 200)
@@ -210,7 +210,7 @@ struct BundledStrutTests {
 
     /// Peel's step run on its own with `config`, as any workflow could: the run's status.
     func runStep(_ config: AgentKit.JSONValue, on server: MemoryServer) async throws -> String? {
-        let (_, data) = try await Web.requestThisMac(
+        let (_, data) = try await Web.requestStrut(
             "POST", server.base.appending(path: "steps/peel/run-automation/run"),
             json: Data(AgentKit.JSONValue.object(["config": config]).jsonString.utf8), bearer: server.key,
             limit: 1_000_000, what: "the step")

@@ -20,7 +20,7 @@ import PeelUI
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
-        var select, open, notification, key, type, snapshot: String?
+        var select, open, notification, key, type, snapshot, link: String?
         var mods: [String]?
         var wait: Double?
     }
@@ -60,7 +60,8 @@ final class OffscreenDriver {
                 line += 1
                 let text = text.trimmingCharacters(in: .whitespaces)
                 guard !text.isEmpty, !text.hasPrefix("//") else { continue }
-                Offscreen.log("drive: \(line): \(text)")
+                // A pairing link's key never reaches the log.
+                Offscreen.log("drive: \(line): " + text.replacing(/key=[^&"\s]*/, with: "key=[redacted]"))
                 let step = try JSONDecoder().decode(Step.self, from: Data(text.utf8))
                 try await perform(step)
                 try await Task.sleep(for: .milliseconds(300))
@@ -104,6 +105,14 @@ final class OffscreenDriver {
             try await notification(name)
         } else if let key = step.key {
             try post(key, modifiers: try modifiers(step.mods ?? []))
+        } else if let link = step.link {
+            // As macOS hands Peel a `peel://` link it was opened with.
+            // Through SwiftUI's own delegate, which hands it to `AppDelegate`.
+            guard let url = URL(string: link), let open = NSApp.delegate?.application(_:open:) else {
+                throw Failure(description: "no link to open")
+            }
+            open(NSApp, [url])
+            Offscreen.log("drive: opened a \(url.scheme ?? "") link")
         } else if let text = step.type {
             for character in text { try post(String(character), modifiers: []) }
         } else if let name = step.snapshot {
@@ -165,7 +174,9 @@ final class OffscreenDriver {
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
-    /// Resume on the sidebar's paused restore.
+    /// Resume on the sidebar's paused restore; `brain-use`, Use home server on
+    /// a pairing link's callout in Account › Brain; `brain-this-mac`, Use
+    /// this Mac once confirmed; `brain-check`, Check.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -242,6 +253,13 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "brain-use":
+            guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
+            try model.setBrain(.homeServer(pairing))
+        case "brain-this-mac":
+            try model.setBrain(.thisMac)
+        case "brain-check":
+            model.checkBrain()
         case "agent-rows":
             // A click on every tool row's chevron.
             model.agentRowsOpened += 1

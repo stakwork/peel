@@ -224,23 +224,6 @@ extension AppModel {
     }
 }
 
-/// The credential as JSON in one `SecretItem`: the Keychain in the app.
-struct KeptCredential: AgentCredentialStore {
-    let item: any SecretItem
-
-    func read() throws -> AgentCredential? {
-        try item.read().map { try JSONDecoder().decode(AgentCredential.self, from: $0) }
-    }
-
-    func write(_ credential: AgentCredential) throws {
-        try item.write(JSONEncoder().encode(credential))
-    }
-
-    func delete() throws {
-        try item.delete()
-    }
-}
-
 /// How the agent's tools read in its chat: "Read the time · 0.1 s".
 enum AgentToolTitle {
     private static let titles = [

@@ -126,6 +126,13 @@ struct PeelCommand {
                                       --provider anthropic|openai|openrouter (default anthropic), --model <id>
                                       (needed but for anthropic), --base-url <url>, --max-steps <n>.
                                       Ctrl-C stops a reply, Ctrl-D quits
+          eval memory                 the agent's memory measured: each scenario in evals/memory.json said to
+                                      the agent (the app's prompt and memory tools, nothing sent) on a fresh
+                                      temporary memory (the staged strut), --runs times (default 3); prints
+                                      each check's pass rate and its failures, and fails when a check passes
+                                      in under 2/3 of runs. Needs a model: PEEL_AGENT_API_KEY (with
+                                      --provider, --model) or --profile <dev profile>'s connected model;
+                                      without one it says how to run and skips. --scenario <name>
 
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
@@ -170,6 +177,10 @@ struct PeelCommand {
         if arguments.first == "agent" {
             _ = arguments.next()
             return try await AgentCommand.run(arguments, profile: name)
+        }
+        if arguments.first == "eval" {
+            _ = arguments.next()
+            return try await EvalCommand.run(arguments, profile: name)
         }
         guard let name else { throw reserved }
         var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)

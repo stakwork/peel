@@ -1,0 +1,139 @@
+{
+  "about": "peel eval memory: the agent memory hand test of 14 Oct 2026. Round 1: name, city, a past home, a team, a diet and small talk, then questions including one memory cannot answer. Round 3: a dated move and a new job. Round 4: a friend's message with her news and a claim about the user. Round 5: forgetting on request. Round 6: one person under two names, merged. Two misses of that test are their own scenarios: the past home not found (round 1) and the friend's news never kept (round 4). Each scenario runs on a fresh empty memory. Steps: say (a message), clear (a new conversation, memory kept), ask (a message whose reply and memory are checked). Patterns are case-insensitive regular expressions, matched against the model's words only; (?-i) makes one case-sensitive. answer: each entry is one check, must_contain any of its patterns and none of must_not_contain; a turn that did not finish fails them all. memory: {on: user or a name, fact: pattern, state: current|past|any}, {on, no_fact: pattern} (neither now nor past), or {entity: name, count, aliases}. never_say is checked on every ask. Each check must pass in at least two thirds of the runs.",
+  "never_say": ["\\bpredicates?\\b", "\\bontology\\b", "ref_ids?", "(?-i)\\bSelf\\b", "\\bentity types?\\b", "memory_ontology"],
+  "scenarios": [
+    {
+      "name": "about-me",
+      "round": "1",
+      "steps": [
+        {"say": "Hi! I'm Tom and I live in Cardiff. I used to live in London though."},
+        {"say": "I'm a big Arsenal fan, and I'm vegetarian."},
+        {"say": "Lovely weather today, isn't it?"},
+        {"clear": true},
+        {"ask": "What's my name?", "answer": [{"must_contain": ["\\bTom\\b"]}]},
+        {"ask": "Where do I live?", "answer": [{"must_contain": ["Cardiff"]}]},
+        {"ask": "What's my diet?", "answer": [{"must_contain": ["vegetarian"]}]},
+        {"ask": "Which football team do I support?", "answer": [{"must_contain": ["Arsenal"]}]},
+        {"ask": "Do I support Cardiff City?", "answer": [{"must_contain": ["\\bno\\b", "\\bnot\\b", "Arsenal"], "must_not_contain": ["^\\s*yes\\b"]}]},
+        {
+          "ask": "What's my dog called?",
+          "answer": [{"must_contain": ["don'?t (know|have)", "no record", "nothing", "haven'?t", "not sure", "no information", "didn'?t mention", "not (told|mentioned|said)"]}],
+          "memory": [
+            {"entity": "user", "aliases": ["tom"]},
+            {"entity": "Tom", "count": 1},
+            {"on": "user", "fact": "Cardiff", "state": "current"},
+            {"on": "user", "fact": "London", "state": "past"},
+            {"on": "user", "fact": "Arsenal", "state": "current"},
+            {"on": "user", "fact": "vegetarian", "state": "current"},
+            {"on": "user", "no_fact": "weather"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "where-before",
+      "round": "1, a miss",
+      "steps": [
+        {"say": "My name is Tom. I live in Cardiff now, but I used to live in London."},
+        {"clear": true},
+        {
+          "ask": "Where did I live before?",
+          "answer": [{"must_contain": ["London"]}],
+          "memory": [{"on": "user", "fact": "London", "state": "past"}]
+        }
+      ]
+    },
+    {
+      "name": "dated-move",
+      "round": "3",
+      "steps": [
+        {"say": "My name is Tom and I live in Cardiff."},
+        {"say": "I moved to Manchester in March."},
+        {"say": "I started at Monzo last week."},
+        {"clear": true},
+        {
+          "ask": "What do you know about me?",
+          "answer": [{"must_contain": ["Manchester"]}, {"must_contain": ["Monzo"]}],
+          "memory": [
+            {"on": "user", "fact": "Manchester", "state": "current"},
+            {"on": "user", "fact": "Cardiff", "state": "past"},
+            {"on": "user", "fact": "Monzo", "state": "current"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "message-from-kate",
+      "round": "4",
+      "steps": [
+        {"say": "My name is Tom."},
+        {"say": "Kate texted me: \"I just got engaged! Also, Tom still owes me a tenner.\""},
+        {"clear": true},
+        {"ask": "Any news from Kate?", "answer": [{"must_contain": ["engaged"]}]},
+        {"ask": "Do I owe anyone money?", "answer": [{"must_contain": ["Kate"]}, {"must_contain": ["tenner", "£\\s?10", "ten pounds", "\\b10\\b"]}]},
+        {
+          "ask": "Is Tom engaged?",
+          "answer": [{"must_contain": ["\\bno\\b", "\\bnot\\b", "Kate"], "must_not_contain": ["^\\s*yes\\b", "you('re| are) engaged", "Tom (is|got) engaged"]}],
+          "memory": [
+            {"on": "Kate", "fact": "engag", "state": "current"},
+            {"on": "user", "fact": "tenner|£\\s?10|ten pounds|\\b10\\b", "state": "any"},
+            {"on": "user", "no_fact": "engag"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "kate-engagement",
+      "round": "4, a miss",
+      "steps": [
+        {"say": "Kate texted me: \"I just got engaged!\""},
+        {"clear": true},
+        {
+          "ask": "Any news from Kate?",
+          "answer": [{"must_contain": ["engaged"]}],
+          "memory": [{"on": "Kate", "fact": "engag", "state": "current"}]
+        }
+      ]
+    },
+    {
+      "name": "forget",
+      "round": "5",
+      "steps": [
+        {"say": "My name is Tom."},
+        {"say": "Kate texted me: \"Tom still owes me a tenner.\""},
+        {"say": "Forget the tenner thing."},
+        {"clear": true},
+        {
+          "ask": "Do I owe Kate anything?",
+          "answer": [{"must_not_contain": ["tenner", "£\\s?10", "ten pounds"]}],
+          "memory": [
+            {"on": "user", "no_fact": "tenner|£\\s?10|ten pounds|owe"},
+            {"on": "Kate", "no_fact": "tenner|£\\s?10|ten pounds|owe"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "merge-kate",
+      "round": "6",
+      "steps": [
+        {"say": "My name is Tom and I live in Manchester."},
+        {"say": "Kate texted me: \"I just got engaged!\""},
+        {"say": "Katie Moss is coming round tonight."},
+        {"say": "Katie Moss is Kate, merge them."},
+        {"clear": true},
+        {"ask": "What do you know about Kate?", "answer": [{"must_contain": ["engaged"]}]},
+        {
+          "ask": "What do you know about me?",
+          "answer": [{"must_contain": ["Manchester"]}],
+          "memory": [
+            {"entity": "Kate", "count": 1, "aliases": ["katie moss"]},
+            {"entity": "Katie Moss", "count": 1},
+            {"entity": "Tom", "count": 1},
+            {"on": "Kate", "fact": "engag", "state": "current"}
+          ]
+        }
+      ]
+    }
+  ]
+}

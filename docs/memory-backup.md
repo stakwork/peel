@@ -188,7 +188,8 @@ No merge of two graphs in v1. That is the sync problem.
 ## Home server
 
 When strut moves to an always-on Mac mini (agent-brain.md phase 6;
-12-automations.md "Home server later"):
+12-automations.md "Home server later"; the setting and the move are in
+[peel-brain.md](peel-brain.md)):
 
 - The graph lives on the server's disk, in its strut data folder. Memory
   stays its own Ladybug file there (Evan, 2026-10-13); strut's own graph

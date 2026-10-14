@@ -35,6 +35,9 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// The address; never the key, however it is printed (`print`,
     /// `debugPrint`, `dump`).
     public var description: String { base.absoluteString }
+    /// Where it is, as Account › Brain names it: its host with any port
+    /// (`MessageMarkup.host(of:)`), else the whole address.
+    public var host: String { MessageMarkup.host(of: base) ?? description }
     public var debugDescription: String { description }
     public var customMirror: Mirror { Mirror(self, children: [:]) }
 

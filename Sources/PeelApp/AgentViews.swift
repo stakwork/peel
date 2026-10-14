@@ -563,21 +563,7 @@ private struct AgentDisclosureRow<Label: View, Detail: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button {
-                open.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                    label
-                }
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            DisclosureButton(open: $open) { label }
             if open {
                 Card(.inset) {
                 detail()

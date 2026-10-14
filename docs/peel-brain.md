@@ -343,13 +343,16 @@ connection is for everything else.
    and "Move memory to home server" from the same steps.
    *Peel's side built 2026-10-14 (Mac):* Account › Brain offers the move
    when switching to a home server (on unless this Mac's memory is known
-   empty) and as "Move from this Mac" while on one: Peel's own strut is
+   empty) and as "Copy from this Mac" while on one: Peel's own strut is
    started for it and stopped after, the export read from its folder and
    deleted, the import refused unless the home server is empty, the rows
-   counted on both. Switching back to This Mac offers "Bring the home
-   server's memory to this Mac" (inline export there, import here, only
-   into an empty graph), also offered as "Bring it back" for the rest of
-   that launch. Neither side's memory is deleted; the memory tools wait
+   counted on both. Switching back to This Mac offers "Bring what your
+   home server remembers to this Mac" (inline export there, import here,
+   only into an empty graph), also offered as "Copy it here" for the rest
+   of that launch. The form (2026-10-14, for people who never saw a
+   terminal): "Connect a home server", one field for the pairing link
+   (dots, its host shown under it once it parses), the copy switch, and
+   "Enter address and key instead" for typing them. Neither side's memory is deleted; the memory tools wait
    while a move runs, and a move waits for a reply in progress.
 3. **Peel and strut: automations by pull.** Waiting runs that Peel claims,
    instead of strut calling `AutomationServer`.

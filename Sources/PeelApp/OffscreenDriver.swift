@@ -261,9 +261,10 @@ final class OffscreenDriver {
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
-    /// Resume on the sidebar's paused restore; `brain-use`, Use home server on
-    /// a pairing link's callout in Account › Brain; `brain-this-mac`, Use
-    /// this Mac once confirmed; `brain-check`, Check.
+    /// Resume on the sidebar's paused restore; `brain-form`, Account ›
+    /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
+    /// a pairing link's callout there; `brain-this-mac`, Use this Mac once
+    /// confirmed; `brain-check`, Check.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -340,6 +341,8 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "brain-form":
+            model.brainFormOpened += 1
         case "brain-use":
             guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
             try model.setBrain(.homeServer(pairing))

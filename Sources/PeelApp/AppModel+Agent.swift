@@ -362,7 +362,7 @@ extension AppModel {
     func openPairingLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
         guard let server = Brain.pairing(url) else {
-            notice = "That pairing link is not one Peel can use. Copy it again from the home server's setup."
+            notice = "That home server link doesn't work. Copy it again from your home server."
             return true
         }
         pairing = server

@@ -53,7 +53,7 @@ struct AutomationsView: View {
     private var onHomeServer: Bool { model.automationsClient?.server.isHomeServer == true }
 
     /// Why the agent makes none on a home server, wherever that is said.
-    static let homeServerNote = "Automations that run Peel's agent need the brain on This Mac for now."
+    static let homeServerNote = "Automations that use Peel's agent still need this Mac for now."
 
     @ViewBuilder
     private func yours(_ state: AutomationsState) -> some View {

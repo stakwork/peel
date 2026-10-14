@@ -43,15 +43,7 @@ struct PeelApp: App {
                 .task { await model.lockWhenIdle() }
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    model.lockIfDue()
-                    // Asked first, so the open chat's `read` goes after the
-                    // ask and its answer is not applied over it.
-                    Task {
-                        await model.engine?.refreshReadsAndMutes()
-                        model.markSelectedChatRead()
-                    }
-                    Task { await model.engine?.refreshPreferences() }
-                    Task { await model.notifier.refreshPermission() }
+                    model.becameActive()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     model.willTerminate()

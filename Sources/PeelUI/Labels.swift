@@ -38,3 +38,29 @@ extension Tribe.Exit {
         }
     }
 }
+
+extension Message {
+    /// A tribe's note of who joined, left or was let in, as its row says
+    /// it; `sender` is the row's (`People.sender(of:inTribe:)`).
+    public func membershipNote(by sender: Sender) -> String {
+        let who = sender.label
+        switch type {
+        case MessageType.groupLeave: return "\(who) left"
+        case MessageType.groupKick: return "The owner removed you from this tribe"
+        case MessageType.memberRequest: return "You asked to join"
+        // The tribe names the approved member as the sender.
+        case MessageType.memberApprove: return "\(Sender(member: self).name) was approved"
+        case MessageType.memberReject:
+            return fromMe ? "You declined a request to join" : "The owner declined your request to join"
+        case MessageType.tribeDelete: return "The owner deleted this tribe"
+        default: return "\(who) joined"
+        }
+    }
+}
+
+extension PIN {
+    /// What to show when a PIN was not accepted.
+    public static func problem(_ error: any Error) -> String {
+        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
+    }
+}

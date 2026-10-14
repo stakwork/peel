@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelUI
 
 /// An empty place: shadcn's `Empty`, the words a screen, pane or list
 /// shows when it has nothing to show (or could not load it), centred in

@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// The thread beside its conversation: the original, "N replies", the
 /// replies, and a composer that posts into the thread only.

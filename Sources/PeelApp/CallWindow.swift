@@ -1,6 +1,7 @@
 import SwiftUI
 import LiveKit
 import PeelCore
+import PeelUI
 
 /// The call window (board C3): the chat and the running time on top, one
 /// tile per person, and the control bar. Closing it (⌘W) leaves the call;
@@ -13,7 +14,7 @@ struct CallWindow: View {
 
     var body: some View {
         Group {
-            if let call = model.call {
+            if let call = model.callSession {
                 CallRoomView(call: call)
             } else {
                 Color.clear

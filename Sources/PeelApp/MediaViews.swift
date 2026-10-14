@@ -1,6 +1,7 @@
 import AVKit
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// The one video or recording playing, so starting another pauses it. A
 /// row's player pauses when the row leaves the screen (another chat, or

@@ -1,24 +1,6 @@
 import SwiftUI
 import PeelCore
-
-/// What a tribe linked in a message is, as its card last read it
-/// (`AppModel.loadLinkedTribe`).
-enum LinkedTribe: Equatable {
-    case loading
-    case loaded(TribeInfo)
-    /// Listed on a host other than the account's own: not read.
-    case elsewhere
-    case deleted
-    case failed(String)
-
-    var info: TribeInfo? {
-        if case .loaded(let info) = self { info } else { nil }
-    }
-
-    var problem: String? {
-        if case .failed(let problem) = self { problem } else { nil }
-    }
-}
+import PeelUI
 
 /// A tribe link in a message: the tribe's image, name, description and
 /// price when the account's own tribes host lists it (its members only

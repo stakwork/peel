@@ -4,21 +4,21 @@ import PeelCore
 /// Sats that reached this account: a payment or boost to it
 /// (`Engine.Event.moneyReceived`), or an invoice made here, paid
 /// (`.invoicePaid`). The engine tells each payment once.
-struct Receipt: Sendable {
-    enum Kind: Sendable { case payment, boost, invoice }
+public struct Receipt: Sendable {
+    public enum Kind: Sendable { case payment, boost, invoice }
 
-    let kind: Kind
-    let msat: Int64
-    let chat: String?
-    let messageID: Int64?
-    let paymentHash: String?
+    public let kind: Kind
+    public let msat: Int64
+    public let chat: String?
+    public let messageID: Int64?
+    public let paymentHash: String?
     /// Who sent it, as the message names them (`Sender(member:)`; only its
     /// name is read, the member's in a tribe); nil for an invoice.
-    let member: Sender?
+    public let member: Sender?
     /// A payment's note or an invoice's memo.
-    let note: String?
+    public let note: String?
 
-    init(_ message: Message) {
+    public init(_ message: Message) {
         kind = message.type == MessageType.boost ? .boost : .payment
         msat = message.msat ?? 0
         chat = message.chat
@@ -28,7 +28,7 @@ struct Receipt: Sendable {
         note = message.preview.nilIfEmpty
     }
 
-    init(_ invoice: InvoiceRecord) {
+    public init(_ invoice: InvoiceRecord) {
         kind = .invoice
         // Underpaid by an amount not known: nothing to count.
         msat = invoice.paidMsat ?? (invoice.status == .paid ? invoice.amountMsat : 0)
@@ -41,16 +41,16 @@ struct Receipt: Sendable {
     }
 
     /// Whether a row of the payment history is this payment.
-    func matches(_ item: PaymentItem) -> Bool {
+    public func matches(_ item: PaymentItem) -> Bool {
         (paymentHash != nil && item.paymentHash == paymentHash) || (messageID != nil && item.message?.id == messageID)
     }
 
-    static func totalMsat(_ receipts: [Receipt]) -> Int64 {
+    public static func totalMsat(_ receipts: [Receipt]) -> Int64 {
         receipts.reduce(0) { $0 + $1.msat }
     }
 
     /// "+350 sats", with "· 3 payments" for more than one.
-    static func label(_ receipts: [Receipt]) -> String {
+    public static func label(_ receipts: [Receipt]) -> String {
         let total = "+\(Sats.format(msat: totalMsat(receipts)))"
         return receipts.count > 1 ? "\(total) · \(Formatting.count(receipts.count, "payment"))" : total
     }
@@ -63,26 +63,26 @@ struct Receipt: Sendable {
 /// nothing explains (the first balance, a restore, sats with no message)
 /// just appears; a fall is never animated.
 @MainActor @Observable
-final class MoneyArrivals {
+public final class MoneyArrivals {
     /// What the sidebar header shows. A rise is held back for a moment (it
     /// is then below `balanceMsat`), so that it and the payment behind it,
     /// whichever comes first, roll as one.
-    private(set) var shownMsat: UInt64?
+    public private(set) var shownMsat: UInt64?
     /// The balance as the server last gave it.
-    private(set) var balanceMsat: UInt64?
+    public private(set) var balanceMsat: UInt64?
     /// Arrivals so far: payments close together (a catch-up on connect
     /// brings several at once) are one, with one count-up, one glow and one
     /// notification. The bolt glows when it changes.
-    private(set) var arrivals = 0
+    public private(set) var arrivals = 0
     /// Received since Payments was last on screen.
-    private(set) var unseen: [Receipt] = []
+    public private(set) var unseen: [Receipt] = []
     /// The latest arrival, summed on the Payments row for a moment
     /// (`showing`) and then gone: one that comes while it shows adds to it.
-    private(set) var recent: [Receipt] = []
-    var recentMsat: Int64 { Receipt.totalMsat(recent) }
+    public private(set) var recent: [Receipt] = []
+    public var recentMsat: Int64 { Receipt.totalMsat(recent) }
 
     /// Called once per arrival, with every payment in it.
-    @ObservationIgnored var arrived: (([Receipt]) -> Void)?
+    @ObservationIgnored public var arrived: (([Receipt]) -> Void)?
 
     @ObservationIgnored private var burst: [Receipt] = []
     @ObservationIgnored private var burstStarted: ContinuousClock.Instant?
@@ -106,7 +106,7 @@ final class MoneyArrivals {
     /// How long an arrival's sum shows on the Payments row.
     private static let showing: Duration = .seconds(3)
 
-    func balance(_ msat: UInt64) {
+    public func balance(_ msat: UInt64) {
         let previous = balanceMsat
         balanceMsat = msat
         guard shownMsat != nil, let previous, msat > previous else {
@@ -133,7 +133,7 @@ final class MoneyArrivals {
         }
     }
 
-    func received(_ receipt: Receipt) {
+    public func received(_ receipt: Receipt) {
         guard receipt.msat > 0 else { return }
         burst.append(receipt)
         let now = ContinuousClock.now
@@ -150,12 +150,12 @@ final class MoneyArrivals {
     }
 
     /// What Payments should light, and no longer counts as unseen.
-    func takeUnseen() -> [Receipt] {
+    public func takeUnseen() -> [Receipt] {
         defer { unseen = [] }
         return unseen
     }
 
-    func reset() {
+    public func reset() {
         flushTask?.cancel()
         settleTask?.cancel()
         recentTask?.cancel()
@@ -189,103 +189,5 @@ final class MoneyArrivals {
         } else {
             expectRiseUntil = .now + Self.expectRise
         }
-    }
-}
-
-/// The balance under your name in the sidebar header: it rolls up, digit by
-/// digit, when a payment arrives. Nothing moves: the line keeps the width of
-/// the larger of the two numbers from the start, in tabular digits. Under
-/// Reduce Motion the number just changes. Sats promised to people still
-/// offline follow it as the pending clock and the amount, or the clock alone
-/// where the header has no room (the tooltip, VoiceOver and Payments say it
-/// in words).
-struct BalanceLabel: View {
-    let money: MoneyArrivals
-    var waitingMsat: UInt64 = 0
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        if let shown = money.shownMsat {
-            Group {
-                if waitingMsat > 0 {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 0) { balance(shown); Text(" · ") + clock + Text(" \(Sats.number(msat: waitingMsat))") }
-                        HStack(spacing: 0) { balance(shown); Text(" · ") + clock }
-                    }
-                    .help("\(Sats.format(msat: waitingMsat)) held for people who are offline")
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(Sats.format(msat: shown)), \(Sats.format(msat: waitingMsat)) waiting")
-                } else {
-                    balance(shown)
-                }
-            }
-            .font(Theme.font(12))
-            .monospacedDigit()
-            .lineLimit(1)
-            .foregroundStyle(Theme.secondaryText)
-        }
-    }
-
-    private var clock: Text { Text(Image(systemName: "clock")) }
-
-    private func balance(_ shown: UInt64) -> some View {
-        ZStack(alignment: .leading) {
-            Text(Sats.format(msat: max(shown, money.balanceMsat ?? 0))).hidden()
-            Text(Sats.format(msat: shown))
-                .contentTransition(reduceMotion ? .identity : .numericText(value: Double(shown)))
-        }
-    }
-}
-
-/// The Payments row in the sidebar, its own view so an arrival redraws only
-/// it. Its badge for a moment after sats arrive: "+350", the sum, in the
-/// green of received amounts. It pops in with a short scale and fade, rolls
-/// to "+420" as more comes, and fades away a few seconds later; it never
-/// stays to be cleared. Under Reduce Motion it is a plain badge with the
-/// final number.
-struct PaymentsLink: View {
-    let money: MoneyArrivals
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let msat = money.recentMsat
-        SidebarLink("Payments", to: .payments, unread: msat > 0) {
-            Image(systemName: "bolt").font(.system(size: 13))
-        } accessory: {
-            if msat > 0 {
-                Badge(Sats.signed(msat: msat, incoming: true), .success)
-                    .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
-                    .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
-                    .accessibilityLabel("Received \(Sats.format(msat: msat))")
-            }
-        }
-        .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0), value: msat)
-    }
-}
-
-extension View {
-    /// A glow behind the connection bolt for a moment when sats arrive.
-    func receivedGlow(_ money: MoneyArrivals) -> some View {
-        modifier(ReceivedGlow(arrivals: money.arrivals))
-    }
-}
-
-private struct ReceivedGlow: ViewModifier {
-    let arrivals: Int
-
-    @State private var glowing = false
-
-    func body(content: Content) -> some View {
-        content
-            .shadow(color: Theme.confirmed.opacity(glowing ? 0.9 : 0), radius: glowing ? 5 : 0)
-            .onChange(of: arrivals) {
-                withAnimation(.easeOut(duration: 0.2)) { glowing = true }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(400))
-                    withAnimation(.easeOut(duration: 0.8)) { glowing = false }
-                }
-            }
     }
 }

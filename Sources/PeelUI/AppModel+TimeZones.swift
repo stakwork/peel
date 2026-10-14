@@ -8,7 +8,7 @@ extension AppModel {
     /// off the main thread, one answer per sender, kept in `senderZoneCache`;
     /// the rows are worked out again when it comes back); the rest of a run
     /// take their own offset or the run's. Never on yours.
-    func withSenderZones(_ rows: [ChatRow], in chat: String) -> [ChatRow] {
+    public func withSenderZones(_ rows: [ChatRow], in chat: String) -> [ChatRow] {
         var rows = rows
         // The chat open and its thread share a chat; others are let go.
         if senderZoneCache[chat] == nil { senderZoneCache = senderZoneCache.filter { $0.key == selectedChat } }
@@ -67,32 +67,32 @@ extension AppModel {
     /// Their offset minus yours at `date`, in seconds: positive when they
     /// are ahead. Yours is this Mac's, the zone every time on screen is in
     /// (a zone chosen in Account is what you send, not what you see).
-    func difference(_ zone: TimeZone, at date: Date = .now) -> Int {
+    public func difference(_ zone: TimeZone, at date: Date = .now) -> Int {
         zone.secondsFromGMT(for: date) - TimeZone.autoupdatingCurrent.secondsFromGMT(for: date)
     }
 
     /// "20:02 your time · 02:02 for Evan", for a message's time when the
     /// sender's offset then was not yours.
-    func timeTooltip(_ date: Date, zone: TimeZone?, name: String) -> String? {
+    public func timeTooltip(_ date: Date, zone: TimeZone?, name: String) -> String? {
         guard let zone, difference(zone, at: date) != 0 else { return nil }
         return "\(Formatting.time(date, in: .autoupdatingCurrent)) your time · \(Formatting.time(date, in: zone)) for \(name)"
     }
 
     /// "02:14 local time · 6 h ahead": someone's time now, when their
     /// offset is not yours.
-    func localTimeLine(_ local: LocalTime?, at now: Date) -> String? {
+    public func localTimeLine(_ local: LocalTime?, at now: Date) -> String? {
         guard let local, let offset = Formatting.offset(difference(local.zone, at: now)) else { return nil }
         return "\(Formatting.time(now, in: local.zone)) local time · \(offset)"
     }
 
     /// A contact's local time, or with `member` a tribe member's; nil when
     /// they have not shared one in 90 days.
-    func localTime(of chat: String, member: String?) async -> LocalTime? {
+    public func localTime(of chat: String, member: String?) async -> LocalTime? {
         try? await engine?.localTime(of: chat, member: member)
     }
 
     /// Chooses this account's zone (an IANA name), or nil for this Mac's.
-    func setTimeZone(_ identifier: String?) async throws {
+    public func setTimeZone(_ identifier: String?) async throws {
         try await signedIn().setTimeZone(identifier)
     }
 }

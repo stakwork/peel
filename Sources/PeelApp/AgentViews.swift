@@ -2,6 +2,7 @@ import AgentKit
 import PeelAgent
 import SwiftUI
 import PeelCore
+import PeelUI
 
 // MARK: - Pieces
 

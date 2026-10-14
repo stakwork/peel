@@ -11,12 +11,12 @@ import SwiftUI
 /// numbers, row indices, path names and a short hash of the chat: never
 /// message text, names, keys, ids or amounts. How to capture it:
 /// `docs/testing.md`, "Timeline log".
-enum TimelineLog {
-    static let enabled = UserDefaults.standard.bool(forKey: "PeelTimelineLog")
+public enum TimelineLog {
+    public static let enabled = UserDefaults.standard.bool(forKey: "PeelTimelineLog")
     private static let logger = Logger(subsystem: "dev.peel.mac", category: "timeline")
 
     /// Built only when enabled. Public: the line holds nothing private.
-    static func log(_ line: @autoclosure () -> String) {
+    public static func log(_ line: @autoclosure () -> String) {
         guard enabled else { return }
         let text = line()
         logger.debug("\(text, privacy: .public)")
@@ -29,19 +29,19 @@ enum TimelineLog {
     /// A chat named by six hex characters of a keyed hash of its key: one
     /// chat's lines can be told from another's within a run, and the key
     /// is neither written nor recoverable from a pasted log.
-    static func tag(_ chat: String) -> String {
+    public static func tag(_ chat: String) -> String {
         HMAC<SHA256>.authenticationCode(for: Data(chat.utf8), using: salt)
             .prefix(3).map { String(format: "%02x", $0) }.joined()
     }
 
     /// A list's composer: the chat, a thread in it, or the agent chat.
-    static func tag(_ composer: ComposerID) -> String {
+    public static func tag(_ composer: ComposerID) -> String {
         guard let chat = composer.chat else { return "agent" }
         return composer.thread == nil ? tag(chat) : "\(tag(chat))/thread"
     }
 
     /// One decimal place, enough for points.
-    static func points(_ value: CGFloat) -> String {
+    public static func points(_ value: CGFloat) -> String {
         String(format: "%.1f", Double(value))
     }
 }
@@ -50,7 +50,7 @@ extension View {
     /// With the timeline log on, reports the list's whole scroll geometry and
     /// which rows are in view; off, the view as it is.
     @ViewBuilder
-    func timelineProbe(geometry: @escaping (ScrollGeometry) -> Void,
+    public func timelineProbe(geometry: @escaping (ScrollGeometry) -> Void,
                        visible: @escaping ([String]) -> Void) -> some View {
         if TimelineLog.enabled {
             self

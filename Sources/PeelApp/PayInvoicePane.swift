@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// Pay an invoice: paste (or drop on the window) a BOLT11, see what it asks
 /// and who it pays, and pay with the shared confirmation; what stops it

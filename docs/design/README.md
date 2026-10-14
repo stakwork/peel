@@ -442,7 +442,7 @@ build: nothing in the header may move or wrap.
 ### Copy feedback
 
 Every copy says it worked (Tom, 2026-10-07: "all copy buttons should have
-feedback"). Built in `Sources/PeelApp/CopyFeedback.swift`; use it for any new
+feedback"). Built in `Sources/PeelUI/CopyFeedback.swift` and `Sources/PeelApp/CopyButton.swift`; use it for any new
 copy (the Payments screen's invoice and payment hash included), never a bare
 `Clipboard.copy`:
 

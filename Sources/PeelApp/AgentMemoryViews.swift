@@ -1,6 +1,7 @@
 import AgentKit
 import PeelAgent
 import PeelCore
+import PeelUI
 import SwiftUI
 
 // MARK: - A memory tool's row, opened

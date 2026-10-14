@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 #if os(macOS)
 import AppKit
 #else

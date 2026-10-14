@@ -1,5 +1,6 @@
 import SwiftUI
 import PeelCore
+import PeelUI
 
 /// A contact's photo, or a tribe's icon.
 struct ConversationIcon: View {

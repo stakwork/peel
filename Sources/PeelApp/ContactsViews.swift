@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import PeelCore
+import PeelUI
 #if os(macOS)
 import AppKit
 #endif

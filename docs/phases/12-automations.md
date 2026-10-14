@@ -281,11 +281,18 @@ POST /automations/run   Authorization: Bearer <token>
      `{ text, cost }`. `setModel` puts `STRUT_DEFAULT_MODEL`
      (`<provider>/<model>`) and the provider's key in strut's secret
      store, and takes the other providers' keys out (all of them, and the
-     model, with none connected); last in `install`, and again on every
-     change of `AgentSession.connection` (`credentialChanged`). With a
-     model connected, each system automation Peel never turned on is
-     turned on once (`Setting.systemAutomationsOn`, per profile); one the
-     person switches is recorded too, so it stays as they left it. The
+     model, with none connected); `AppModel.modelChanged` calls it apart
+     from `install` and the automation server, one at a time, when strut
+     starts and on each change of `AgentSession.connection`
+     (`credentialChanged`; the same credential handed to the same strut
+     again is skipped); a Keychain that cannot be read leaves the store
+     alone. strut is started with no provider key of the shell's. Once
+     strut has a model, each system automation Peel never turned on is
+     turned on once (`Setting.systemAutomationsOn`, by workflow, per
+     profile: strut makes a deleted one again under a new id), at agent
+     open too; one the person switches is recorded once strut took it, so
+     it stays as they left it, and a record that cannot be read or kept is
+     said. The
      agent's tools see and change `peel-automation`'s only and refuse any
      other id. `PeelSwitch` came out of `FormSwitchStyle` for the row.
    - Checked: `AutomationsClientTests` against a loopback `HTTPStub`

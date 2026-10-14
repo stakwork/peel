@@ -83,6 +83,9 @@ struct AutomationsClientTests {
         // strut's template may write the cost as text.
         let templated = #"{"runId":"5","status":"success","output":{"text":"Nothing to merge","cost":"0.0013"}}"#
         #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: templated))?.cost == 0.0013)
+        // Nothing said reads as no text, so the row says "Finished".
+        let silent = #"{"runId":"7","status":"success","output":{"text":""}}"#
+        #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: silent))?.text == nil)
     }
 
     /// A failed model call reads as the provider's reason, not its raw reply.
@@ -104,7 +107,7 @@ struct AutomationsClientTests {
            "input":{"prompt":"Make my list"},"summary":"Every Friday"},
           {"id":"tidy","name":"Tidy memory","enabled":false,"trigger":{"every":"day","at":["12:30"]},"workflow":"tidy-memory",
            "category":"system","summary":"Every day at 12:30 PM"},
-          {"id":"done-before","name":"Turned off","enabled":false,"trigger":{"every":"day"},"workflow":"tidy-memory","category":"system"},
+          {"id":"done-before","name":"Turned off","enabled":false,"trigger":{"every":"day"},"workflow":"turned-off","category":"system"},
           {"id":"on-already","name":"On","enabled":true,"trigger":{"every":"day"},"workflow":"other-system","category":"system"}
         ],
          "automation":{"id":"tidy","name":"Tidy memory","enabled":true,"workflow":"tidy-memory","category":"system"},
@@ -127,12 +130,13 @@ struct AutomationsClientTests {
         let (stub, client) = try await strut()
         defer { stub.stop() }
         let list = try await client.list()
-        #expect(list.map(\.workflow) == ["peel-automation", "tidy-memory", "tidy-memory", "other-system"])
+        #expect(list.map(\.workflow) == ["peel-automation", "tidy-memory", "turned-off", "other-system"])
         #expect(list.map(\.isSystem) == [false, true, true, true])
         #expect(list[1].about == "Once a day, merges people and things saved twice.")
         #expect(list[0].about == nil)
         // One read of each system workflow, none of Peel's.
-        #expect(Set(lines(stub)) == ["GET /automations", "GET /workflows/tidy-memory", "GET /workflows/other-system"])
+        #expect(Set(lines(stub)) == ["GET /automations", "GET /workflows/tidy-memory", "GET /workflows/turned-off",
+                                     "GET /workflows/other-system"])
         // An automation strut lists without one (an older strut) is Peel's.
         let older = try automations()[1]
         #expect(older.workflow == AutomationsClient.workflow && !older.isSystem)
@@ -147,7 +151,7 @@ struct AutomationsClientTests {
         _ = try await client.update(tidy, enabled: true)
         _ = try await client.runs(of: tidy)
         try await client.delete(tidy)
-        #expect(Array(lines(stub).dropFirst(before)) == [
+        #expect(Set(lines(stub).dropFirst(before)) == [
             "POST /workflows/tidy-memory/automations/tidy/fire", "PATCH /workflows/tidy-memory/automations/tidy",
             "GET /workflows/tidy-memory/runs", "DELETE /workflows/tidy-memory/automations/tidy",
         ])
@@ -179,28 +183,33 @@ struct AutomationsClientTests {
         }
     }
 
-    /// Each system automation is turned on once: one strut lists off and
-    /// Peel never turned on is turned on, one already on counts as done,
-    /// and one done before stays as the person left it.
+    /// Each system automation is turned on once, by workflow: one strut
+    /// lists off and Peel never turned on is turned on, one already on
+    /// counts as done, and one done before stays as the person left it.
     @Test func systemAutomationsAreTurnedOnOnce() async throws {
         let (stub, client) = try await strut()
         defer { stub.stop() }
         let list = try await client.list()
         let before = stub.requests.count
-        let (turned, now) = await client.turnOnSystem(in: list, done: ["done-before"])
-        #expect(now == ["tidy", "on-already"])
+        let (turned, now) = await client.turnOnSystem(in: list, done: ["turned-off"])
+        #expect(now == ["tidy-memory", "other-system"])
         #expect(turned.map(\.enabled) == [true, true, false, true])
         let sent = Array(stub.requests.dropFirst(before))
         #expect(sent.count == 1)
         #expect(sent.first?.hasPrefix("PATCH /workflows/tidy-memory/automations/tidy ") == true)
         #expect(sent.first?.hasSuffix(#"{"enabled":true}"#) == true)
         // Once all are done, nothing more is sent.
-        #expect(await client.turnOnSystem(in: turned, done: now.union(["done-before"])).done.isEmpty)
+        #expect(await client.turnOnSystem(in: turned, done: now.union(["turned-off"])).done.isEmpty)
+        #expect(stub.requests.count == before + 1)
+        // Deleted and made again by strut under a new id ("tidy" here), it
+        // is the same workflow's: left off.
+        #expect(await client.turnOnSystem(in: list, done: ["tidy-memory", "turned-off"]).done == ["other-system"])
         #expect(stub.requests.count == before + 1)
     }
 
     /// The connected model and its key go to strut's secret store, the other
     /// providers' keys come out; disconnected, the model and every key do.
+    /// Read as the store ends up, from one that held every key before.
     @Test(arguments: [
         (AgentProvider.anthropic, "claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY"),
         (.openAI, "gpt-5", "openai/gpt-5", "OPENAI_API_KEY"),
@@ -209,21 +218,30 @@ struct AutomationsClientTests {
     func theConnectedModelIsHandedToStrut(provider: AgentProvider, model: String, named: String, secret: String) async throws {
         let (stub, client) = try await strut()
         defer { stub.stop() }
+        let held = ["STRUT_DEFAULT_MODEL": "old/model", "ANTHROPIC_API_KEY": "old", "OPENAI_API_KEY": "old",
+                    "OPENROUTER_API_KEY": "old", "PEEL_AUTOMATION_TOKEN": "token"]
         try await client.setModel(AgentCredential(provider: provider, model: model, apiKey: "sk-test-1234"))
-        let sent = stub.requests
-        #expect(sent.first?.hasPrefix("PUT /secrets/STRUT_DEFAULT_MODEL ") == true)
-        #expect(sent.first?.hasSuffix(#"{"value":"\#(named)"}"#) == true)
-        #expect(sent.dropFirst().first?.hasPrefix("PUT /secrets/\(secret) ") == true)
-        #expect(sent.dropFirst().first?.hasSuffix(#"{"value":"sk-test-1234"}"#) == true)
-        let others = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"].filter { $0 != secret }
-        #expect(Array(lines(stub).dropFirst(2)) == others.map { "DELETE /secrets/\($0)" })
-
-        let before = sent.count
+        #expect(secrets(stub, from: held) == ["STRUT_DEFAULT_MODEL": named, secret: "sk-test-1234", "PEEL_AUTOMATION_TOKEN": "token"])
         try await client.setModel(nil)
-        #expect(Array(lines(stub).dropFirst(before)) == [
-            "DELETE /secrets/STRUT_DEFAULT_MODEL", "DELETE /secrets/ANTHROPIC_API_KEY",
-            "DELETE /secrets/OPENAI_API_KEY", "DELETE /secrets/OPENROUTER_API_KEY",
-        ])
+        #expect(secrets(stub, from: held) == ["PEEL_AUTOMATION_TOKEN": "token"])
+    }
+
+    /// strut's secret store after the PUTs and DELETEs it saw, from `held`.
+    private func secrets(_ stub: HTTPStub, from held: [String: String]) -> [String: String] {
+        var store = held
+        for request in stub.requests {
+            let parts = (request.components(separatedBy: "\r\n").first ?? "").split(separator: " ")
+            guard parts.count > 1, parts[1].hasPrefix("/secrets/") else { continue }
+            let name = String(parts[1].dropFirst("/secrets/".count))
+            switch parts[0] {
+            case "PUT":
+                let body = request.components(separatedBy: "\r\n\r\n").last ?? ""
+                store[name] = (try? AgentKit.JSONValue(parsing: body))?["value"]?.string
+            case "DELETE": store[name] = nil
+            default: break
+            }
+        }
+        return store
     }
 
     /// strut's refusals reach the agent in strut's words, on one line.

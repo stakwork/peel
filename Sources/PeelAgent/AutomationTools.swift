@@ -207,8 +207,11 @@ public struct AutomationTools: Sendable {
         let id = try SphinxTools.required("id", in: input)
         let matches = try await client.list().filter { $0.id == id }
         if let found = matches.first(where: \.isYours) { return found }
+        if let system = matches.first(where: \.isSystem) {
+            throw PeelError("\u{201C}\(system.name)\u{201D} is a system automation: only the person can turn it on or off, in Automations.")
+        }
         if let other = matches.first {
-            throw PeelError("\u{201C}\(other.name)\u{201D} is a system automation: only the person can turn it on or off, in Automations.")
+            throw PeelError("\u{201C}\(other.name)\u{201D} is not one of Peel's automations; list_automations shows them.")
         }
         throw PeelError("No automation has the id \(id); list_automations shows them.")
     }

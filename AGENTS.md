@@ -504,9 +504,12 @@ is a short plan. Update the status and the journal when you finish something.
     config can neither carry the token nor change where it goes; strut
     keeps one version per content)
     and then the `peel-automation` workflow, which runs that step and says
-    nothing about Peel, so its content-hash version never changes; last,
-    `setModel` (the connected model as `STRUT_DEFAULT_MODEL` and its
-    provider's key, for the system automations; taken out on disconnect).
+    nothing about Peel, so its content-hash version never changes.
+    `setModel` puts the connected model as `STRUT_DEFAULT_MODEL` and its
+    provider's key in the store, for the system automations, and takes
+    them out on disconnect; `AppModel.modelChanged` calls it apart from
+    `install`, one at a time, whenever strut starts or the model changes
+    (a Keychain that cannot be read leaves the store alone).
     It lists every workflow's automations (a system one, `category:
     system`, with its workflow's description), addresses each on its own
     workflow, and turns each system automation on once (`turnOnSystem`,

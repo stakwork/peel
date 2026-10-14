@@ -100,7 +100,8 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         status = json["status"]?.string ?? "running"
         startedAt = json["startedAt"]?.string.flatMap(Automation.date)
         reply = json["output"]?["body"].flatMap { try? $0.decoded(as: AutomationReply.self) }
-        text = json["output"]?["text"]?.string
+        // An empty one says nothing: "Finished".
+        text = json["output"]?["text"]?.string.flatMap { $0.isEmpty ? nil : $0 }
         // A number, or one a template wrote as text.
         cost = switch json["output"]?["cost"] {
         case .number(let dollars)?: dollars
@@ -230,18 +231,19 @@ public struct AutomationsClient: Sendable {
     }
 
     /// Turns on, once, each system automation Peel has not turned on before
-    /// (`done`): strut ships them off, since it cannot know a model is
+    /// (`done`, by workflow: strut makes a deleted one again under a new
+    /// id): strut ships them off, since it cannot know a model is
     /// connected. One already on counts as done, so either way one the
     /// person turns off later stays off. Returns `list` as it is now and the
-    /// ids done now; one strut refused is tried again next time.
+    /// workflows done now; one strut refused is tried again next time.
     public func turnOnSystem(in list: [Automation], done: Set<String>) async -> (list: [Automation], done: Set<String>) {
         var list = list, now: Set<String> = []
-        for index in list.indices where list[index].isSystem && !done.contains(list[index].id) {
+        for index in list.indices where list[index].isSystem && !done.contains(list[index].workflow) {
             if !list[index].enabled {
                 guard (try? await update(list[index], enabled: true)) != nil else { continue }
                 list[index].enabled = true
             }
-            now.insert(list[index].id)
+            now.insert(list[index].workflow)
         }
         return (list, now)
     }
@@ -300,9 +302,9 @@ public struct AutomationsClient: Sendable {
     /// version per content, so the same source is a no-op), then makes sure
     /// its `peel-automation` workflow is the current one: published when
     /// missing, or as a new version when Peel's changed. Each version is
-    /// named for its content, so the check is one read. Last, the connected
-    /// model (`setModel`), so a failure there leaves Peel's own in place.
-    public func install(port: Int, token: String, model credential: AgentCredential?) async throws {
+    /// named for its content, so the check is one read. The connected model
+    /// is not part of it (`setModel`): it is handed over whether or not Peel listens.
+    public func install(port: Int, token: String) async throws {
         _ = try await call("PUT", "secrets/\(Self.tokenSecret)", ["value": .string(token)], what: "the automation token")
         _ = try await call("PUT", "secrets/\(Self.portSecret)", ["value": .string(String(port))], what: "the automation port")
         _ = try await call("POST", "steps", ["name": .string(Self.step), "code": .string(Self.stepSource),
@@ -324,11 +326,9 @@ public struct AutomationsClient: Sendable {
         } else {
             active = try Self.read(status, data)["active"]?.string
         }
-        if active != version {
-            _ = try await call("POST", "workflows/\(Self.workflow)", ["version": .string(version), "yaml": .string(yaml)],
-                               what: "the workflow")
-        }
-        try await setModel(credential)
+        guard active != version else { return }
+        _ = try await call("POST", "workflows/\(Self.workflow)", ["version": .string(version), "yaml": .string(yaml)],
+                           what: "the workflow")
     }
 
     /// The secret a system automation's `agent` step takes its model from
@@ -344,10 +344,14 @@ public struct AutomationsClient: Sendable {
         }
     }
 
+    /// Every provider's (`keySecret`).
+    static let keySecrets = AgentProvider.allCases.map(keySecret)
+
     /// Puts the connected model and its key in strut's secret store, for
     /// the system automations, and takes out any other provider's key;
     /// with no model connected, takes out the model and every key. Called
-    /// on install and whenever the connected model changes.
+    /// whenever strut starts or the connected model changes, apart from
+    /// `install` (`AppModel.modelChanged`).
     public func setModel(_ credential: AgentCredential?) async throws {
         if let credential {
             _ = try await call("PUT", "secrets/\(Self.modelSecret)",

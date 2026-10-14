@@ -50,8 +50,9 @@ public enum Setting: String, Sendable {
     /// themselves. An account with no record has not been checked.
     case wordsConfirmed
 
-    /// The system automations Peel has turned on once (their ids, as a
-    /// JSON array), so one the person turns off stays off.
+    /// The system automations Peel has turned on once (their workflows'
+    /// names, as a JSON array: strut makes a deleted one again under a new
+    /// id), so one the person turns off stays off.
     case systemAutomationsOn
 }
 

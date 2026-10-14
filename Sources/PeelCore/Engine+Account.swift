@@ -253,13 +253,14 @@ extension Engine {
         try storage.set(String(decoding: try JSONEncoder().encode(layout), as: UTF8.self), for: .sidebarLayout)
     }
 
-    /// The system automations Peel has turned on once (`Setting.systemAutomationsOn`).
+    /// The system automations Peel has turned on once, by workflow
+    /// (`Setting.systemAutomationsOn`).
     public func systemAutomationsOn() throws -> Set<String> {
         JSON.decode(Set<String>.self, from: try storage.value(for: .systemAutomationsOn)) ?? []
     }
 
-    public func setSystemAutomationsOn(_ ids: Set<String>) throws {
-        try storage.set(String(decoding: try JSONEncoder().encode(ids.sorted()), as: UTF8.self), for: .systemAutomationsOn)
+    public func setSystemAutomationsOn(_ workflows: Set<String>) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(workflows.sorted()), as: UTF8.self), for: .systemAutomationsOn)
     }
 
     /// What an app shows of the account when it opens, read in one call off

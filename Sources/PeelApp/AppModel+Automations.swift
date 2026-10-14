@@ -17,8 +17,8 @@ struct AutomationsState: Equatable {
     var runs: [String: [AutomationRunRecord]] = [:]
     /// System workflows' descriptions, read once (`AutomationsClient.list`).
     var descriptions: [String: String] = [:]
-    /// The system automations Peel has turned on once, as last read or
-    /// written (`Engine.systemAutomationsOn`).
+    /// The system automations Peel has turned on once, by workflow, as
+    /// last read or written (`Engine.systemAutomationsOn`).
     var turnedOn: Set<String>?
 
     /// The person's own: one-offs still to come, then everything
@@ -57,7 +57,8 @@ extension AppModel {
 
     /// While the agent chat is open with a strut found: listens for strut
     /// with the token made when the agent opened, hands it to strut's secret store
-    /// and points strut's `peel-automation` workflow here. A development profile listens only
+    /// and points strut's `peel-automation` workflow here. The connected
+    /// model goes to strut apart from this (`modelChanged`). A development profile listens only
     /// with an `automationPort` of its own, never on the app's.
     func startAutomations(_ profile: Profile, engine: Engine) {
         guard let memory = memoryServer, let token = automationToken,
@@ -91,17 +92,12 @@ extension AppModel {
         automationStopping = Task { await server.stop() }
     }
 
-    /// Points strut's workflow at the listening server and hands strut the
-    /// connected model; says why when it cannot, and then nothing fires (no
-    /// token but strut's store's).
+    /// Points strut's workflow at the listening server; says why when it
+    /// cannot, and then nothing fires (no token but strut's store's).
     private func installAutomations() async {
         guard let client = automationsClient, let server = automationServer else { return }
         do {
-            let credential = connectedCredential()
-            try await client.install(port: server.port, token: server.token, model: credential)
-            // The model changed while it installed.
-            let now = connectedCredential()
-            if now != credential { try await client.setModel(now) }
+            try await client.install(port: server.port, token: server.token)
             guard automationServer === server else { return }
             automations.installed = true
         } catch {
@@ -109,21 +105,53 @@ extension AppModel {
         }
     }
 
-    /// The connected model, read from the Keychain; nil without one or
-    /// when it cannot be read.
-    private func connectedCredential() -> AgentCredential? {
-        guard let profile else { return nil }
-        return try? KeptCredential(item: profile.agentCredential).read()
+    /// The connected model, read from the Keychain; nil without one. Throws
+    /// when it cannot be read or no account is open: not known to be gone.
+    private func connectedCredential() throws -> AgentCredential? {
+        guard let profile else { throw PeelError("Peel's account is not open.") }
+        return try KeptCredential(item: profile.agentCredential).read()
     }
 
-    /// The connected model changed (connected, another model, removed):
-    /// installed again, which hands strut the model last, for the system
-    /// automations, then the list is read, so a model just connected turns
-    /// them on.
+    /// strut started, or the connected model changed (connected, another
+    /// model, removed): strut's secret store is given the model, for the
+    /// system automations, whether or not Peel listens for automations.
+    /// One hand-over at a time; a change while one runs is handed over after it.
     func modelChanged() {
-        guard automationsClient != nil else { return }
-        automations.installed = false
-        Task { await refreshAutomations() }
+        modelHandingAgain = true
+        guard modelHanding == nil else { return }
+        modelHanding = Task {
+            while modelHandingAgain {
+                modelHandingAgain = false
+                await handModelToStrut()
+            }
+            modelHanding = nil
+        }
+    }
+
+    /// Gives strut the connected model, or takes it out with none; then,
+    /// with one, reads the list, which turns the system automations on.
+    private func handModelToStrut() async {
+        guard let client = automationsClient else { return }
+        let credential: AgentCredential?
+        do {
+            credential = try connectedCredential()
+        } catch {
+            // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
+            automations.problem = PeelError.problem(error, couldNot: "read the connected model's key")
+            return
+        }
+        // This strut has it already (`connection` set again to the same).
+        if let handed = strutModel, handed.server == client.server, handed.credential == credential { return }
+        do {
+            try await client.setModel(credential)
+        } catch {
+            strutModel = nil
+            automations.problem = PeelError.problem(error, couldNot: "give strut the connected model")
+            return
+        }
+        guard automationsClient?.server == client.server else { return }
+        strutModel = (client.server, credential)
+        if credential != nil { await refreshAutomations() }
     }
 
     /// One run: the agent with the read and memory tools and no send, its
@@ -162,45 +190,60 @@ extension AppModel {
             return
         }
         if !automations.installed { await installAutomations() }
+        // Not handed to this strut yet, or it failed: tried again.
+        if strutModel?.server != client.server { modelChanged() }
         do {
             var descriptions = automations.descriptions
             var list = try await client.list(descriptions: &descriptions)
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
             automations.descriptions = descriptions
+            // A failed install stays said until one succeeds.
+            if automations.installed, automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }
-            // A failed install stays said until one succeeds.
-            if automations.installed, automations.problem != nil { automations.problem = nil }
         } catch {
             automations.problem = PeelError.problem(error, couldNot: "read the automations")
         }
         if !automations.loaded { automations.loaded = true }
     }
 
-    /// With a model connected, turns on each system automation Peel never
-    /// turned on before, once per profile; `list` as it is then.
+    /// Once strut has a model (`handModelToStrut`), turns on each system
+    /// automation Peel never turned on before, once per profile; `list` as
+    /// it is then. Says why when what was turned on cannot be read or kept.
     private func turnOnSystemAutomations(in list: [Automation], with client: AutomationsClient) async -> [Automation] {
-        guard agent?.connection != nil, let done = await systemTurnedOn(),
-              list.contains(where: { $0.isSystem && !done.contains($0.id) }) else { return list }
-        let (list, now) = await client.turnOnSystem(in: list, done: done)
-        await markTurnedOn(now)
-        return list
+        guard let handed = strutModel, handed.server == client.server, handed.credential != nil,
+              list.contains(where: \.isSystem) else { return list }
+        do {
+            let done = try await systemTurnedOn()
+            guard list.contains(where: { $0.isSystem && !done.contains($0.workflow) }) else { return list }
+            let (list, now) = await client.turnOnSystem(in: list, done: done)
+            try await markTurnedOn(now)
+            return list
+        } catch {
+            automations.problem = PeelError.problem(error, couldNot: "keep which system automations are turned on")
+            return list
+        }
     }
 
-    /// The system automations Peel has turned on once (`Engine.systemAutomationsOn`),
-    /// read once per strut.
-    private func systemTurnedOn() async -> Set<String>? {
-        if automations.turnedOn == nil { automations.turnedOn = try? await engine?.systemAutomationsOn() }
-        return automations.turnedOn
+    /// The system automations Peel has turned on once, by workflow
+    /// (`Engine.systemAutomationsOn`), read once per strut.
+    private func systemTurnedOn() async throws -> Set<String> {
+        if let done = automations.turnedOn { return done }
+        guard let engine else { throw PeelError("Peel's account is not open.") }
+        let done = try await engine.systemAutomationsOn()
+        automations.turnedOn = done
+        return done
     }
 
-    /// Records `ids` as turned on once: never turned on for the person again.
-    private func markTurnedOn(_ ids: Set<String>) async {
-        guard let done = await systemTurnedOn(), !ids.isSubset(of: done) else { return }
-        automations.turnedOn = done.union(ids)
-        try? await engine?.setSystemAutomationsOn(done.union(ids))
+    /// Records `workflows` as turned on once: never turned on for the person again.
+    private func markTurnedOn(_ workflows: Set<String>) async throws {
+        let done = try await systemTurnedOn()
+        guard !workflows.isSubset(of: done) else { return }
+        guard let engine else { throw PeelError("Peel's account is not open.") }
+        try await engine.setSystemAutomationsOn(done.union(workflows))
+        automations.turnedOn = done.union(workflows)
     }
 
     func refreshRuns(of automation: Automation) async {
@@ -209,9 +252,11 @@ extension AppModel {
     }
 
     func setAutomation(_ automation: Automation, enabled: Bool) async {
-        // The person's own choice: never turned on for them after it.
-        if automation.isSystem { await markTurnedOn([automation.id]) }
-        await changeAutomations("change \u{201C}\(automation.name)\u{201D}") { _ = try await $0.update(automation, enabled: enabled) }
+        await changeAutomations("change \u{201C}\(automation.name)\u{201D}") {
+            _ = try await $0.update(automation, enabled: enabled)
+            // The person's own choice, once strut took it: never turned on for them after it.
+            if automation.isSystem { try await markTurnedOn([automation.workflow]) }
+        }
     }
 
     func runAutomationNow(_ automation: Automation) async {

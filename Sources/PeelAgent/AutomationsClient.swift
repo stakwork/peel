@@ -91,7 +91,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     public let text: String?
     /// What that run's model calls cost, in US dollars, as strut counted it.
     public let cost: Double?
-    /// Why it failed, in strut's words.
+    /// Why it failed, in strut's words, without the provider's raw reply.
     public let error: String?
 
     init?(_ json: AgentKit.JSONValue) {
@@ -107,7 +107,17 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         case .string(let text)?: Double(text)
         default: nil
         }
-        error = json["error"]?["message"]?.string
+        error = json["error"]?["message"]?.string.map(Self.shortened)
+    }
+
+    /// strut's words for a failed model call, as a person reads them:
+    /// "agent failed after 0 step(s): invalid x-api-key (HTTP 401: {…})"
+    /// is "invalid x-api-key".
+    static func shortened(_ message: String) -> String {
+        var text = message
+        if let http = text.range(of: " (HTTP ") { text = String(text[..<http.lowerBound]) }
+        if let prefix = text.firstMatch(of: #/^agent failed after \d+ step\(s\): /#) { text.removeSubrange(prefix.range) }
+        return text.isEmpty ? message : text
     }
 }
 

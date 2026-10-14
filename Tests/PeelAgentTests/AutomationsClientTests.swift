@@ -85,6 +85,14 @@ struct AutomationsClientTests {
         #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: templated))?.cost == 0.0013)
     }
 
+    /// A failed model call reads as the provider's reason, not its raw reply.
+    @Test func aFailedRunSaysWhyInAFewWords() throws {
+        let failed = try AgentKit.JSONValue(parsing: #"""
+            {"runId":"6","status":"error","error":{"message":"agent failed after 0 step(s): invalid x-api-key (HTTP 401: {\"type\":\"error\"})"}}
+            """#)
+        #expect(AutomationRunRecord(failed)?.error == "invalid x-api-key")
+    }
+
     // MARK: System automations
 
     /// strut's listing across workflows, with each automation's workflow

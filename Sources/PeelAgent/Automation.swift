@@ -56,7 +56,8 @@ public enum AutomationRun {
             ?? "This is its first run; \"new\" means the last 7 days."
         return """
             This is a scheduled automation, "\(request.name)", running on its own at \(now.formatted(format)). \
-            No one is watching and no one can answer a question or approve an action. \(since)
+            No one is watching and no one can answer a question or approve an action. \(since) Peel keeps \
+            each run's time for you, so keep nothing about the run itself in memory.
 
             Carry out the task below with the tools you have, then reply with exactly what the person should \
             be told: it is delivered to them as it is, so write it for them, not about the run. If there is \

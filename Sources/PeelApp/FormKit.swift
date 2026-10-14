@@ -237,7 +237,7 @@ struct FormSwitchRow: View {
 }
 
 /// The switch in a `FormSwitchRow`, its label on the left.
-private struct FormSwitchStyle: ToggleStyle {
+struct FormSwitchStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Theme.Space.md) {
             configuration.label.frame(maxWidth: .infinity, alignment: .leading)

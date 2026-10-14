@@ -47,12 +47,33 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// `{{ … }}` anywhere in a config, so memory text sent as config would be
     /// evaluated ("Hi {{ name }}" stored as "Hi "), while a whole-string
     /// template's value is used as it is.
-    public func run(_ verb: String, _ arguments: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
-        let url = base.appending(path: "steps/memory/\(verb)/run")
+    /// `snapshot`: the step carries a whole memory snapshot (`MemoryMove`),
+    /// so its reply may be one too and it is given minutes, not seconds.
+    public func run(_ verb: String, _ arguments: AgentKit.JSONValue, snapshot: Bool = false) async throws -> AgentKit.JSONValue {
         let body = Data(AgentKit.JSONValue.object(["input": arguments, "config": "{{ input }}"]).jsonString.utf8)
+        return try await post(verb, body: body, snapshot: snapshot)
+    }
+
+    /// `memory/import` of a snapshot as base64 text. The body is put together
+    /// as bytes: base64 needs no JSON escaping, and a 100 MB snapshot is not
+    /// copied through an encoder.
+    public func importSnapshot(base64: Data) async throws -> AgentKit.JSONValue {
+        var body = Data(#"{"config":"{{ input }}","input":{"data":""#.utf8)
+        body.append(base64)
+        body.append(contentsOf: #""}}"#.utf8)
+        return try await post("import", body: body, snapshot: true)
+    }
+
+    /// The most a reply carrying a whole snapshot may be: 100 MB is about
+    /// 134 MB of base64.
+    static let snapshotReplyLimit = 150 * 1024 * 1024
+
+    private func post(_ verb: String, body: Data, snapshot: Bool) async throws -> AgentKit.JSONValue {
+        let url = base.appending(path: "steps/memory/\(verb)/run")
         let reply: Data
         do {
-            reply = try await Web.postToStrut(url, json: body, bearer: key, limit: Self.replyLimit, what: "memory/\(verb)")
+            reply = try await Web.postToStrut(url, json: body, bearer: key, limit: snapshot ? Self.snapshotReplyLimit : Self.replyLimit,
+                                              what: "memory/\(verb)", slow: snapshot)
         } catch {
             let action = "run memory/\(verb) on the memory server at \(base.absoluteString)"
             // A home server is never stood in for (`docs/peel-brain.md`): a
@@ -74,7 +95,7 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// step's own `{error}` (nothing found, bad input) is a failure too. Its
     /// words are cleaned to one capped line: they may echo memory text.
     static func output(of reply: Data) throws -> AgentKit.JSONValue {
-        guard let value = try? AgentKit.JSONValue(parsing: String(decoding: reply, as: UTF8.self)) else {
+        guard let value = try? JSONDecoder().decode(AgentKit.JSONValue.self, from: reply) else {
             throw PeelError("The memory server's reply was not strut's. Check that strut is running there with the memory steps.")
         }
         let words = { (text: String) in ChatData.clean(text, max: ChatData.maxText) }
@@ -83,14 +104,15 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
         }
         guard let output = value["output"] else { throw PeelError("The memory server's step returned nothing.") }
         if let refusal = output["error"]?.string {
-            throw refusal.hasPrefix("not_found") ? NotFound(description: words(refusal)) : PeelError(words(refusal))
+            throw Refusal(code: String(refusal.prefix { $0 != ":" }), description: words(refusal))
         }
         return output
     }
 
-    /// Strut's `not_found`: no such node, or it was forgotten. Told as a
-    /// `PeelError` is, in strut's words.
-    public struct NotFound: LocalizedError, CustomStringConvertible, Sendable {
+    /// A step's own refusal, `code: words` (`not_found`: no such node, or it
+    /// was forgotten). Told as a `PeelError` is, in strut's words.
+    public struct Refusal: LocalizedError, CustomStringConvertible, Sendable {
+        public let code: String
         public let description: String
         /// The model reads errors as `localizedDescription`.
         public var errorDescription: String? { description }
@@ -103,7 +125,7 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
                 throw PeelError("Memory gave back something Peel cannot show.")
             }
             return node
-        } catch is NotFound {
+        } catch let refusal as Refusal where refusal.code == "not_found" {
             return nil
         }
     }

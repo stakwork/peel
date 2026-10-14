@@ -1,4 +1,3 @@
-import PeelAgent
 import SwiftUI
 import PeelCore
 import PeelUI
@@ -548,58 +547,3 @@ struct UndeliveredActions: View {
         _ = await attempt.run { await model.retryPayment(message, confirmedMsat: $0) }
     }
 }
-
-/// Styles the inline markup of message text (`MessageMarkup.inlines`): https
-/// links clickable, mentions and inline code set apart, emphasis in bold,
-/// italic or struck through. Anything else stays plain text.
-enum LinkText {
-    /// Mentions as a soft chip, gold when it names you (by one of `myAliases`,
-    /// `AppModel.mentionAliases`) or @all; inline code in a monospaced face
-    /// on a soft fill, without its backticks; https links in the link
-    /// colour, as `MessageMarkup.linkLabel` words them (the host always
-    /// whole; the full address is what opens); a `[text](https://…)` link as
-    /// its text with its host beside it, so where it goes is never hidden.
-    /// With `agentLinks`, in the agent's replies, a link to a message
-    /// (`AgentMessageLink`) shows its text alone: it opens in Peel.
-    static func attributed(_ text: String, myAliases: Set<String>, agentLinks: Bool = false) -> AttributedString {
-        var result = AttributedString()
-        for inline in MessageMarkup.inlines(text) {
-            var shown = AttributedString(inline.text)
-            switch inline.kind {
-            case nil:
-                break
-            case .mention:
-                let you = mentions(inline.text, aliases: myAliases)
-                shown.font = Theme.font(14, you ? .semibold : .medium)
-                shown.foregroundColor = you ? Theme.mentionYouText : Theme.mentionText
-                shown.backgroundColor = you ? Theme.mentionYouFill : Theme.mentionFill
-            case .code:
-                shown.font = Theme.code(13)
-                shown.backgroundColor = Theme.codeFill
-            case .link(let url):
-                shown = AttributedString(MessageMarkup.linkLabel(inline.text, url: url))
-                shown.link = url
-                shown.foregroundColor = Theme.link
-            case .namedLink(let url) where agentLinks && AgentMessageLink(url) != nil:
-                shown.foregroundColor = Theme.link
-                shown.link = url
-            case .namedLink(let url):
-                shown.foregroundColor = Theme.link
-                // Isolated left to right, so a direction override in the
-                // text before it cannot turn the host around.
-                var host = AttributedString(" (\u{2066}\(MessageMarkup.host(of: url) ?? url.absoluteString)\u{2069})")
-                host.foregroundColor = Theme.secondaryText
-                shown += host
-                shown.link = url
-            }
-            var intent: InlinePresentationIntent = []
-            if inline.emphasis.contains(.bold) { intent.insert(.stronglyEmphasized) }
-            if inline.emphasis.contains(.italic) { intent.insert(.emphasized) }
-            if inline.emphasis.contains(.strikethrough) { intent.insert(.strikethrough) }
-            if !intent.isEmpty { shown.inlinePresentationIntent = intent }
-            result += shown
-        }
-        return result
-    }
-}
-

@@ -1,4 +1,5 @@
 #if os(macOS)
+import AgentKit
 import PeelAgent
 import AppKit
 import PeelCore

@@ -325,7 +325,9 @@ struct InlineConfirm<Trigger: View>: View {
     private var isAsking: Binding<Bool> { confirming ?? $asking }
 
     var body: some View {
-        Group {
+        // A container, not a Group: `onDisappear` then means this confirm
+        // went, not the trigger giving way to the question.
+        ZStack {
             if isAsking.wrappedValue {
                 question
             } else {
@@ -333,6 +335,8 @@ struct InlineConfirm<Trigger: View>: View {
             }
         }
         .disabled(working)
+        // A `confirming` binding outlives this view: gone, it no longer asks.
+        .onDisappear { confirming?.wrappedValue = false }
     }
 
     @ViewBuilder private var triggerButton: some View {
@@ -351,7 +355,7 @@ struct InlineConfirm<Trigger: View>: View {
                     Text(explanation)
                         .font(Theme.font(style == .section ? 12 : 13))
                         .foregroundStyle(Theme.secondaryText)
-                        .multilineTextAlignment(alignment == .center ? .center : .leading)
+                        .multilineTextAlignment(textAlignment)
                         .fixedSize(horizontal: false, vertical: true)
                     answers
                 }
@@ -363,18 +367,53 @@ struct InlineConfirm<Trigger: View>: View {
         .padding(.vertical, style == .section ? 9 : 0)
     }
 
-    private var answers: some View {
-        HStack(spacing: style == .text ? 12 : 8) {
-            if let prompt {
-                // A row's prompt takes the row's font.
-                if style == .text {
-                    Text(prompt).foregroundStyle(Theme.secondaryText)
-                } else {
-                    Text(prompt)
-                        .muted()
+    /// The prompt beside the buttons when it fits on one line, else above
+    /// them (wrapping, set by `alignment`). The buttons never shrink.
+    @ViewBuilder private var answers: some View {
+        if let prompt {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: spacing) {
+                    promptText(prompt).fixedSize(horizontal: true, vertical: false)
+                    if style == .section { Spacer(minLength: 8) }
+                    buttons
+                }
+                VStack(alignment: alignment, spacing: 6) {
+                    promptText(prompt)
+                        .multilineTextAlignment(textAlignment)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // A section's buttons stay at its right edge.
+                    buttons.frame(maxWidth: style == .section ? .infinity : nil, alignment: .trailing)
                 }
             }
-            if style == .section { Spacer(minLength: 8) }
+        } else {
+            HStack(spacing: spacing) {
+                if style == .section { Spacer(minLength: 8) }
+                buttons
+            }
+        }
+    }
+
+    private var spacing: CGFloat { style == .text ? 12 : 8 }
+
+    private var textAlignment: TextAlignment {
+        switch alignment {
+        case .center: .center
+        case .trailing: .trailing
+        default: .leading
+        }
+    }
+
+    /// A row's prompt takes the row's font.
+    @ViewBuilder private func promptText(_ prompt: String) -> some View {
+        if style == .text {
+            Text(prompt).foregroundStyle(Theme.secondaryText)
+        } else {
+            Text(prompt).muted()
+        }
+    }
+
+    private var buttons: some View {
+        HStack(spacing: spacing) {
             styled(Button("Cancel") { isAsking.wrappedValue = false }, .outline)
             styled(
                 Button {
@@ -390,6 +429,7 @@ struct InlineConfirm<Trigger: View>: View {
                 confirmKind
             )
         }
+        .fixedSize()
     }
 
     /// Form buttons, or text in the colour of what the button does.

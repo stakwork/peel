@@ -37,7 +37,7 @@ extension AppModel {
     public func deleteContact(_ pubkey: String) async throws {
         let direct = sidebarSections.direct.map(\.chat)
         try await signedIn().deleteContact(pubkey)
-        if call?.chat == pubkey { leaveCall() }
+        if calls.call?.chat == pubkey { calls.leave() }
         if openThread?.chat == pubkey { openThread = nil }
         let composers = Set(drafts.keys).union(replyTargets.keys).union(pendingFiles.keys).union(attachmentPrices.keys)
         for composer in composers where composer.chat == pubkey {

@@ -107,7 +107,7 @@ struct Sidebar: View {
             }
             // Its own view: each page restored redraws the bar, not the sidebar.
             RestoreBar()
-            if let call = model.callSession {
+            if let call = model.calls.session {
                 OnCallBar(call: call)
             }
         }
@@ -417,7 +417,7 @@ struct ConversationLink: View {
     var body: some View {
         let level = state?.mute ?? .all
         let unread = state?.sidebarCount ?? 0
-        let onCall = model.liveCallCount(in: conversation.chat)
+        let onCall = model.calls.liveCount(in: conversation.chat)
         // A muted chat that mentions you is in Unread at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
                     dimmed: level == .muted && unread == 0) {

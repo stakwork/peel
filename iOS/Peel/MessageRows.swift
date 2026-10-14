@@ -258,7 +258,7 @@ private struct CallBlock: View {
                     .phoneFont(.row)
                     .foregroundStyle(Theme.text)
                 Spacer(minLength: Theme.Space.sm)
-                Button("Join") { Task { _ = await model.joinCall(link, in: chat, failureInChat: true) } }
+                Button("Join") { Task { _ = await model.calls.join(link, in: chat, failureInChat: true) } }
                     .buttonStyle(.peel(.outline, size: .touch))
                     .fixedSize()
             }

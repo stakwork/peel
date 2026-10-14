@@ -228,14 +228,18 @@ is a short plan. Update the status and the journal when you finish something.
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
   `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
-  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (join, start, leave,
-  presence and the watches of recent calls; the view passes the call
-  window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
+  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (a call's
+  avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
   (adding by code, invites), `AppModel+TimeZones` (sender zones, local
   times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
+  the recent calls across chats watched while unlocked and the open chat's,
+  the call you are on, join, start, leave; the view passes the call
+  window's opening in; `AppModel` attaches it with the account, says when
+  it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
@@ -257,7 +261,7 @@ is a short plan. Update the status and the journal when you finish something.
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
-  `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
+  `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
   automations, which `AppModel` reaches as `macAgent`; opening the
   account's `AgentSession`, its tools and
@@ -613,8 +617,11 @@ is a short plan. Update the status and the journal when you finish something.
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS
-- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests
-  and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
+- `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
+  engine and profile, no window or server: `CallStoreTests` (each chat's
+  busiest watched call, the call you are on, locking stops the watches)
+- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
+  PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
   `withTestEngine`) and `HTTPStub.swift` (a loopback HTTP server that
   records each whole request); a library target, since a test target
@@ -920,6 +927,12 @@ parsers, markup in linear time against a reference, link labels, names,
 hosts, codes and the attachment cipher). Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
+
+`Tests/PeelUITests` tests `AppModel`'s stores through their public API,
+offline, on a real engine and a temporary profile (a call server on
+127.0.0.1:9 that never answers, so a test says who is on a call):
+`CallStore`'s counts per chat, the call you are on, and its watches
+stopping on lock.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883

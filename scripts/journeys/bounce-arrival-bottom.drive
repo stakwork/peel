@@ -1,0 +1,13 @@
+// needs: peer
+// The tribe left at its bottom, then the direct chat while the peer posts
+// in the tribe; back to the tribe: at its newest, the new message included.
+// check: back land=end
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2.5}
+{"probe": "back", "for": 8}
+{"select": "{{chat}}"}
+{"signal": "peer-posts-tribe"}
+{"wait": 4}
+{"select": "{{tribe}}"}
+{"wait": 2.5}

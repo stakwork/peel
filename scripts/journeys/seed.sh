@@ -62,7 +62,8 @@ line() {
     printf 'm%03d %s' "$n" "$text"
 }
 # Again after a failed run: on from the newest message sent.
-last=$(peer messages "$ME_KEY" | grep -o ' m[0-9]\{3\} ' | tr -d ' m' | sort -n | tail -n 1)
+# On a fresh pair there is none yet: grep finds nothing, which is no failure.
+last=$(peer messages "$ME_KEY" | { grep -o ' m[0-9]\{3\} ' || true; } | tr -d ' m' | sort -n | tail -n 1)
 last=$((10#${last:-0}))
 for n in $(seq 1 320); do
     if [ "$n" -gt "$last" ]; then
@@ -72,7 +73,8 @@ for n in $(seq 1 320); do
             peer send "$ME_KEY" "$(line "$n")" --wait 1 >/dev/null
         fi
     fi
-    if [ $((n % 25)) -eq 0 ] && ! peer messages "$ME_KEY" | grep -q "reply one to m$n "; then
+    # Its thread made already (the original then shows only in threads).
+    if [ $((n % 25)) -eq 0 ] && ! peer threads | grep " m$(printf '%03d' "$n") " >/dev/null; then
         # Two replies in the thread this message starts, from the peer,
         # which sent it: the other side may not have it yet.
         uuid=$(peer messages "$ME_KEY" | awk -v tag=" m$(printf '%03d' "$n") " '$0 ~ tag { print $3 }' | tail -n 1)
@@ -82,4 +84,52 @@ for n in $(seq 1 320); do
     fi
 done
 me read "$PEER_KEY" --wait 3 >/dev/null
-echo "seeded \"$ME\" and \"$PEER\"; peer key $PEER_KEY"
+
+# A tribe <me> owns, "journeys", with <peer> in it: ~300 messages from both,
+# a thread every 30 (5 to 20 replies), long messages and images.
+TRIBE=$(me tribes | awk '$2 == "#journeys" { print $1 }' | head -n 1)
+if [ -z "$TRIBE" ]; then
+    created=$(me tribe-create journeys --description "list journeys" --price-per-message 0 --wait 3)
+    TRIBE=$(printf '%s\n' "$created" | sed -n 's/^created #journeys \([0-9a-f]*\)$/\1/p')
+    [ -n "$TRIBE" ] || die "no tribe made: $created"
+fi
+LINK=$(me tribes | awk -v key="$TRIBE" 'found { print $1; exit } $1 == key { found = 1 }')
+peer tribes | grep "$TRIBE" >/dev/null || peer tribe-join "$LINK" --yes --wait 5 >/dev/null
+IMAGE=$ROOT/docs/design/layout-light.png
+long() { local text=""; for i in $(seq 1 12); do text+="$(line "$1") "; done; printf '%s' "$text"; }
+tlast=$(peer messages "$TRIBE" | { grep -o ' t[0-9]\{3\} ' || true; } | tr -d ' t' | sort -n | tail -n 1)
+tlast=$((10#${tlast:-0}))
+for n in $(seq 1 300); do
+    if [ "$n" -gt "$tlast" ]; then
+        text="t$(printf '%03d' "$n") $(line "$n")"
+        [ $((n % 17)) -eq 0 ] && text="t$(printf '%03d' "$n") $(long "$n")"
+        who=peer
+        [ $((n % 5)) -eq 0 ] && [ $((n % 30)) -ne 0 ] && who=me
+        if [ $((n % 41)) -eq 0 ]; then
+            $who send-file "$TRIBE" "$IMAGE" --text "$text" --wait 2 >/dev/null
+        else
+            $who send "$TRIBE" "$text" --wait 1 >/dev/null
+        fi
+    fi
+    if [ $((n % 30)) -eq 0 ] && ! peer threads | grep " t$(printf '%03d' "$n") " >/dev/null; then
+        uuid=$(peer messages "$TRIBE" | awk -v tag=" t$(printf '%03d' "$n") " '$0 ~ tag { print $3 }' | tail -n 1)
+        [ -n "$uuid" ] || die "no uuid for tribe message $n"
+        # From the peer, which has the original (<me> may not yet).
+        # Each again a few times while the original is not delivered yet.
+        for r in $(seq 1 $((5 + (n / 30 % 4) * 5))); do
+            for try in 1 2 3 4 5; do
+                peer send "$TRIBE" "t$(printf '%03d' "$n") reply $r $(line $((n + r)))" --thread "$uuid" --wait 1 \
+                    >/dev/null 2>&1 && break
+                [ "$try" -lt 5 ] || die "no reply $r in the thread of tribe message $n"
+                sleep 2
+            done
+        done
+    fi
+done
+# <me> writes in one thread, so its Threads list has one.
+if ! me threads | grep " t030 " >/dev/null; then
+    uuid=$(peer threads | awk '/ t030 / { print prev } { prev = $2 }' | head -n 1)
+    me send "$TRIBE" "t030 reply from me" --thread "$uuid" --wait 2 >/dev/null
+fi
+me read "$TRIBE" --wait 3 >/dev/null
+echo "seeded \"$ME\" and \"$PEER\"; peer key $PEER_KEY; tribe journeys $TRIBE"

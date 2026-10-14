@@ -1,0 +1,12 @@
+// needs: peer
+// The tribe scrolled up; the peer replies in a thread whose "N replies" row
+// is above the rows you read (its row moves to the newest). Nothing moves.
+// check: reply hold=chat
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 1500}
+{"wait": 1}
+{"probe": "reply", "for": 6}
+{"signal": "peer-replies-thread"}
+{"wait": 5.5}

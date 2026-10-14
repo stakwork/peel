@@ -417,6 +417,9 @@ extension View {
     /// An image or video tile's corners and edge.
     func attachmentTile() -> some View {
         clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            // Clipping hides a filled picture's overflow but not from clicks:
+            // in a grid it would take the neighbouring tile's.
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.divider))
     }
 

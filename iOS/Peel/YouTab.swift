@@ -4,12 +4,15 @@ import SwiftUI
 
 /// You: your name and balance, the server, and the PIN and twelve words that
 /// guard the account on this iPhone (the Mac's `AccountView`, in part).
-/// Every change is an `AppModel` operation.
-struct AccountTab: View {
+/// Every change is an `AppModel` operation. F2c gives it the design's
+/// groups (docs/design/iphone.md, screen 7).
+struct YouTab: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
 
     var body: some View {
-        NavigationStack {
+        @Bindable var router = router
+        NavigationStack(path: $router.you) {
             List {
                 Section {
                     HStack(spacing: 14) {
@@ -66,7 +69,7 @@ struct AccountTab: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Theme.background)
-            .navigationTitle("Account")
+            .navigationTitle("You")
         }
     }
 }

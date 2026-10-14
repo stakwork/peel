@@ -5,13 +5,17 @@ import UIKit
 
 @main
 struct PeelPhoneApp: App {
-    @State private var model = AppModel(platform: .phone())
+    @State private var model: AppModel
+    @State private var router: PhoneRouter
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Everything this process creates (database, journal) is private to the user.
         umask(0o077)
-        // Unread is Sphinx blue, as on the Mac's rows, not the system's red.
+        let model = AppModel(platform: .phone())
+        _model = State(initialValue: model)
+        _router = State(initialValue: PhoneRouter(model: model))
+        // The tab badge is Sphinx blue, as on the Mac's rows, not the system's red.
         UITabBarItem.appearance().badgeColor = UIColor(Theme.accent)
     }
 
@@ -19,6 +23,7 @@ struct PeelPhoneApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(router)
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
@@ -33,8 +38,18 @@ struct PeelPhoneApp: App {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
 
     var body: some View {
+        phase
+            // Here, not in the tabs, so a chat opened while locked (a
+            // notification) is the one shown after the PIN.
+            .onChange(of: model.destination) { _, destination in
+                router.follow(destination)
+            }
+    }
+
+    @ViewBuilder private var phase: some View {
         switch model.phase {
         case .loading:
             ProgressView()
@@ -46,44 +61,6 @@ struct RootView: View {
             Onboarding()
         case .ready:
             MainTabs()
-        }
-    }
-}
-
-/// Chats and Account; more tabs come with what they hold
-/// (docs/phases/07-iphone.md, "The app").
-struct MainTabs: View {
-    @Environment(AppModel.self) private var model
-    enum Name { case chats, account }
-    @State private var selection = Name.chats
-    /// The chat open under Chats while Account is shown.
-    @State private var chatAway: AppModel.Destination?
-
-    var body: some View {
-        TabView(selection: $selection) {
-            Tab("Chats", systemImage: "bubble.left.and.bubble.right", value: Name.chats) {
-                ChatsTab()
-            }
-            .badge(model.unreadCount)
-            Tab("Account", systemImage: "person.crop.circle", value: Name.account) {
-                AccountTab()
-            }
-        }
-        // Account is a destination, as on the Mac, so a chat behind it is
-        // not read while out of sight; it is back on returning to Chats.
-        .onChange(of: selection) { _, tab in
-            var quietly = Transaction()
-            quietly.disablesAnimations = true
-            withTransaction(quietly) {
-                switch tab {
-                case .account:
-                    chatAway = model.destination
-                    model.destination = .account
-                case .chats:
-                    model.destination = chatAway
-                    chatAway = nil
-                }
-            }
         }
     }
 }

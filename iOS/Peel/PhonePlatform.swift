@@ -14,7 +14,9 @@ extension Platform {
     static func phone() -> Platform {
         Platform(
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: PhonePasteboard(),
-            playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: PhoneCalls(), agent: nil
+            playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: PhoneCalls(), agent: nil,
+            // Chats is a list to come back to, not a pane to fill.
+            opensFirstChat: false
         )
     }
 }

@@ -323,19 +323,3 @@ struct WordCheckBoxes: View {
         }
     }
 }
-
-/// A count on a row: the accent, or the gold of a mention of you.
-struct CountBadge: View {
-    let count: Int
-    var mentionsYou = false
-
-    var body: some View {
-        Text(count > 99 ? "99+" : "\(count)")
-            .font(Theme.font(12, .semibold))
-            .monospacedDigit()
-            .foregroundStyle(mentionsYou ? Theme.mentionYouText : .white)
-            .padding(.horizontal, 7)
-            .frame(minWidth: 22, minHeight: 20)
-            .background(mentionsYou ? Theme.mentionYouFill : Theme.accent, in: Capsule())
-    }
-}

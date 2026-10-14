@@ -34,12 +34,16 @@ struct PeelButton: ButtonStyle {
         case md
         /// 40 tall, 14 pt: onboarding.
         case lg
+        /// 44 tall at least, 16 pt growing with Dynamic Type, two lines at
+        /// most: every text button on the iPhone (docs/design/iphone.md).
+        case touch
 
         var height: CGFloat {
             switch self {
             case .sm: 28
             case .md: 32
             case .lg: 40
+            case .touch: 44
             }
         }
 
@@ -47,7 +51,7 @@ struct PeelButton: ButtonStyle {
             switch self {
             case .sm: 10
             case .md: 12
-            case .lg: 16
+            case .lg, .touch: 16
             }
         }
 
@@ -56,6 +60,7 @@ struct PeelButton: ButtonStyle {
             case .sm: 12
             case .md: 13
             case .lg: 14
+            case .touch: 16
             }
         }
     }
@@ -100,13 +105,35 @@ struct PeelButton: ButtonStyle {
             } else {
                 configuration.label
                     .foregroundStyle(filled ? Theme.buttonText : Theme.text)
-                    .lineLimit(1)
-                    .padding(.horizontal, style.size.padding)
-                    .frame(height: style.size.height)
+                    .modifier(Sizing(size: style.size))
                     .background(background, in: shape)
                     .overlay {
                         if variant == .outline { shape.strokeBorder(Theme.inputBorder) }
                     }
+            }
+        }
+
+        /// One line at its fixed height; `.touch` grows with its text.
+        private struct Sizing: ViewModifier {
+            let size: Size
+            /// How far Dynamic Type has grown the text: `.touch` only.
+            @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+
+            func body(content: Content) -> some View {
+                if size == .touch {
+                    content
+                        .font(Theme.font(size.fontSize * scale, .medium))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, size.padding)
+                        .padding(.vertical, Theme.Space.sm)
+                        .frame(minHeight: size.height)
+                } else {
+                    content
+                        .lineLimit(1)
+                        .padding(.horizontal, size.padding)
+                        .frame(height: size.height)
+                }
             }
         }
 

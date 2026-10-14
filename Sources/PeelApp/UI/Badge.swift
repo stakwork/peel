@@ -8,6 +8,7 @@ import SwiftUI
 /// ```swift
 /// Badge(count: 12)                 // the unread count, accent
 /// Badge(count: 3, .mention)        // gold: it mentions you
+/// Badge(count: 1, .attention)      // orange: waiting on you
 /// Badge("New")
 /// Badge("+350", .success)
 /// Badge("Today", .outline)         // the day divider
@@ -18,6 +19,8 @@ struct Badge: View {
         case `default`
         /// `mentionYouText` on `mentionYouFill`: unread that mentions you.
         case mention
+        /// `buttonText` on `attention`: waiting on you (the agent's card).
+        case attention
         /// The green of received amounts on a soft green.
         case success
         /// 12 pt regular `secondaryText` inside a `divider` hairline, no
@@ -50,29 +53,48 @@ struct Badge: View {
             .font(outline ? Theme.font(12) : Theme.font(11, .bold).monospacedDigit())
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(foreground)
+            .foregroundStyle(style.foreground)
             .padding(.horizontal, outline ? 10 : 6)
             .padding(.vertical, outline ? 2 : 1)
-            .background(fill, in: shape)
+            .background(style.fill, in: shape)
             .overlay { if outline { shape.strokeBorder(Theme.divider) } }
     }
+}
 
-    private var foreground: Color {
-        switch style {
-        case .default: Theme.buttonText
+extension Badge.Style {
+    /// Its text colour; the iPhone's `CountBadge` draws with these too.
+    var foreground: Color {
+        switch self {
+        case .default, .attention: Theme.buttonText
         case .mention: Theme.mentionYouText
         case .success: Theme.confirmed
         case .outline: Theme.secondaryText
         }
     }
 
-    private var fill: Color {
-        switch style {
+    var fill: Color {
+        switch self {
         case .default: Theme.accent
+        case .attention: Theme.attention
         case .mention: Theme.mentionYouFill
         case .success: Theme.confirmed.opacity(0.16)
         case .outline: .clear
         }
+    }
+}
+
+/// "AGENT" beside an agent's name: its sidebar row, header and messages.
+struct AgentTag: View {
+    var body: some View {
+        Text("AGENT")
+            .font(Theme.font(10, .semibold))
+            .tracking(0.4)
+            .foregroundStyle(Theme.secondaryText)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.divider))
+            .fixedSize()
+            .accessibilityLabel("Agent")
     }
 }
 

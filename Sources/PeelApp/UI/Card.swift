@@ -19,15 +19,18 @@ struct Card<Content: View>: View {
     }
 
     private let style: Style
+    private let radius: CGFloat
     private let content: Content
 
-    init(_ style: Style = .raised, @ViewBuilder content: () -> Content) {
+    /// `radius` is `Theme.Radius.card`; the iPhone's groups take `panel`'s 12.
+    init(_ style: Style = .raised, radius: CGFloat = Theme.Radius.card, @ViewBuilder content: () -> Content) {
         self.style = style
+        self.radius = radius
         self.content = content()
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         content
             .background {
                 switch style {

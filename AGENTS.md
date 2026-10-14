@@ -267,7 +267,10 @@ is a short plan. Update the status and the journal when you finish something.
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard`,
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `LinkCards` (the tribe and contact link
+  for the chat: `MessageViews`, `MessageText` (message text over
+  `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
+  plain SwiftUI that the iPhone compiles too, its size a parameter, 14
+  here), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
   `ComposerField` (the message field: Return sends, `@` mentions),
@@ -279,7 +282,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MenuRow`), `Controls` (`MenuButton`, `PeelDropdown`,
   `.hiddenShortcut`, `SettingDropdown`, and the forms' `ProblemText` and `FormFooter`) and `FloatingWindow` (the borderless window menus and panels open in);
   `CopyButton` (`CopyButton`, `CopyLabel` and the menu's "Copied" pill, for every copy, over `CopyFeedback`);
-  the agent chat: `AgentViews` (`PeelLogo`, `AgentTag`, the sidebar's
+  the agent chat: `AgentViews` (`PeelLogo`, the sidebar's
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
   card, the turn rows, tool rows (an acting tool's outcome and View) and
   the failure row, `AgentApprovalCard` (a send waiting on you, where its
@@ -297,7 +300,8 @@ is a short plan. Update the status and the journal when you finish something.
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
   "Component library"): `PeelButton`, shadcn's button (variants primary,
-  secondary, outline, ghost, destructive, link; sizes sm, md, lg;
+  secondary, outline, ghost, destructive, link; sizes sm, md, lg, and
+  `touch`, the iPhone's 44 pt one that grows with Dynamic Type;
   `.buttonStyle(.peel(...))`; every text button but the small ones inside
   rows), with `buttonProgress`, the spinner inside a running button;
   `IconButton`, shadcn's icon button (ghost or outline, 28 or 24 square,
@@ -312,8 +316,9 @@ is a short plan. Update the status and the journal when you finish something.
   notices, a tribe you cannot post in, an amber note, a download, the
   words reminder);
   `Badge` (`Badge`, a word or count in a capsule: unread counts, gold
-  when it mentions you, "New", Payments' "+350", the day divider; `Chip`,
-  a tag on and off, and a message's boosts);
+  when it mentions you, orange `.attention` for waiting on you, "New",
+  Payments' "+350", the day divider; `AgentTag`, AGENT beside an
+  agent's name; `Chip`, a tag on and off, and a message's boosts);
   `Rows` (`ListRow`, shadcn's item: hover and the one selected fill,
   `Theme.selection`; search results, time zones, members, boosters,
   Payments' rows, mentions; `FactList` and `Fact`, a description list on
@@ -345,23 +350,37 @@ is a short plan. Update the status and the journal when you finish something.
   and WebRTC)
 - `iOS/` — the iPhone app (phase 7, I2), the only thing outside SwiftPM:
   `Peel.xcodeproj` (hand-written; target `Peel`, iOS 26, iPhone only, over
-  the package's `PeelUI` and `PeelCore` through a local package reference
+  the package's `PeelUI`, `PeelCore` and `AgentKit` through a local package reference
   to the repo root; its `Package.resolved` is a copy of the root's, copy it
   again when the pins move), `Signing.xcconfig` (bundle ID `dev.peel.ios`,
   no team: a team goes in the ignored `Local.xcconfig`, see
   `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
-  in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase,
-  `MainTabs`: Chats and Account), `PhonePlatform` (`Platform.phone()`:
+  in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase),
+  `MainTabs` (the tab shell: Chats, Payments, You with your photo as its
+  icon, and the system's search tab; Payments' placeholder and Search),
+  `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
+  the selected tab and each tab's path, `openChat`, `open(_ message:)`,
+  `openThread`, `openPayment`, `openFromNotification`, the thread sheet's
+  binding; it writes `AppModel.destination` from what is on screen and
+  follows it when the model moves it), `PhoneTheme` (`PhoneFont`, the
+  Mac's sizes on Dynamic Type styles, `.phoneFont`; `Surface` and
+  `Theme.quietText(on:)`, the grey for a raised surface; the gutter and
+  touch target), `Glass` (`GlassCapsule`, `GlassCapsuleButton`,
+  `GlassButton`, `.floatingBar`, `.scrollEdges`: Liquid Glass on chrome
+  only), `PhoneComponents` (`CountBadge`, `PhoneSectionHeader`, `NavRow`,
+  `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
   their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
-  `WordEntry`, `WordCheckBoxes`, `CountBadge`, the button styles),
+  `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (`AppModel.sidebarSections`,
-  search, the connection bolt and subtitle), `ConversationScreen` (the
-  newest page of `chatRows`, read only, text without its marks) and
-  `AccountTab` (name, balance, server, Change PIN, the words, Forget). It
-  also compiles `Theme`, `Avatar` and `Clipboard` from `Sources/PeelApp`
+  the connection bolt and subtitle, `chatsDestinations`, `ComingScreen`),
+  `ConversationScreen` (the newest page of `chatRows`, read only, its
+  text through `MessageText`) and `YouTab` (name, balance, server, Change
+  PIN, the words, Forget). It also compiles `Theme`, `Avatar`,
+  `Clipboard`, `MessageText` and `UI/`'s `Badge`, `Card`, `IconButton`
+  and `PeelButton` from `Sources/PeelApp`
   (the project's "Shared with the Mac" group) and takes its icon from
   `Assets/AppIcon.icon`; `Peel/Assets.xcassets` holds `Logo`, a link to
   `Assets/peel.svg`, for `AppIcon` on the phone
@@ -372,6 +391,11 @@ is a short plan. Update the status and the journal when you finish something.
     and arguments, the model clients' bodies) and `StableJSON`, the one
     encoding AgentKit writes (keys sorted); `JSONValue+Access.swift` — its
     literals, `init(parsing:)`, `jsonString` and accessors
+  - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
+    message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
+    model is told to write it, and the one at the end of a send row's
+    line; the app opens it in place of the web. Here rather than in
+    PeelAgent so the iPhone's message text (`MessageText`) can read it
   - `HLC.swift` — the hybrid logical clock: `tick` for a local event,
     `receive` for a remote one
   - `Event.swift` — `Event`, the only write: its JSON (the contract with
@@ -492,10 +516,6 @@ is a short plan. Update the status and the journal when you finish something.
     strut's; `created_by` is set here, never by the model; a result is one
     cleaned line (the row's summary) then the JSON between the chat-data
     markers
-  - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
-    message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
-    model is told to write it, and the one at the end of a send row's
-    line; the app opens it in place of the web
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the

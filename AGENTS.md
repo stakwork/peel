@@ -79,6 +79,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `ListBottom.swift` — a message list against its bottom, for its jump
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
+  - `MentionQuery.swift` — the `@word` before a composer's cursor and who
+    it matches, for the Mac's composer and the iPhone's (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states and the unread messages behind them, tribes and their senders,
     mentions, payments, the shared SQL
@@ -382,8 +384,18 @@ is a short plan. Update the status and the journal when you finish something.
   countdown under the title and the bolt's `ConnectionPanel`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
-  `ConversationScreen` (the newest page of `chatRows`, read only, its
-  text through `MessageText`) and `YouTab` (name, balance, server, Change
+  `ConversationScreen` (the header with Call and More in one capsule, the
+  rows, the composer on `.floatingBar`, the thread sheet on
+  `router.thread`), `MessageList` (opening at "New messages", following
+  the newest at the bottom, the "N new messages" pill over `ListBottom`,
+  older pages through `AppModel.loadOlder`), `MessageRows` (the flat rows:
+  messages, payments, requests, notes, quotes, boosts, thread summaries,
+  Retry and Discard), `MessageMedia` (images, GIFs' first frame, files
+  named), `MessageMenu` (`MessageActions`: the long-press menu, swipe
+  right to reply in the thread, VoiceOver's actions), `ThreadSheet`,
+  `Composer` (`PhoneComposer`: the glass capsule over a `UITextView`,
+  attach from Photos, the camera or Files, `@` mentions, the mic and the
+  bolt saying what is coming) and `YouTab` (name, balance, server, Change
   PIN, the words, Forget). It also compiles `Theme`, `Avatar`,
   `Clipboard`, `MessageText` and `UI/`'s `Badge`, `Card`, `IconButton`
   and `PeelButton` from `Sources/PeelApp`

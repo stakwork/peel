@@ -354,6 +354,48 @@ unchanged): `MuteLevel.choices(isTribe:)` with `title` and `short`;
 mentions in a scratch launch mode, removed before the commit; the
 Threads list's rows were not drawn (`ThreadSummary` has no public init).
 
+### F2b: Conversation, Thread sheet and composer (built 2026-10-14, `ios/f2b-conversation`)
+
+**Done means:** a chat, its threads and the composer on the phone, to
+[../design/iphone.md](../design/iphone.md) screens 2, 3 and 10.
+
+**Built.**
+- **Conversation** (`ConversationScreen`, `MessageList`, `MessageRows`,
+  `MessageMedia`): the header (name, a tribe's member count or a
+  person's local time, Call and More in one capsule), the Mac's flat rows
+  over `chatRows` (runs, sender colours, day badges, New messages, quotes,
+  boosts, thread summaries opening the sheet, payments and requests,
+  deleted, Retry and Discard by the Mac's rules), images and a GIF's first
+  frame. It opens at New messages, follows the newest only at the bottom,
+  and counts what comes below on the "N new messages" pill (`ListBottom`).
+  Older pages load near the top (`AppModel.loadOlder`, a page more of the
+  newest, back to one page at the bottom).
+- **Long press** (`MessageMenu`): Reply in thread, Boost (a light
+  haptic), Copy, Copy link, Delete; Retry and Discard when undelivered.
+  Swipe right replies in the thread. One VoiceOver element per message
+  with the same entries as actions.
+- **Thread sheet** (`ThreadSheet`): large detent, grabber, its own
+  composer; the draft is the model's per thread.
+- **Composer** (`Composer`): a glass capsule over a `UITextView`, six
+  lines then scrolling; attach (+) from Photos (redrawn as JPEG, no
+  metadata), the camera or Files through `addFiles`; `@` mentions from
+  `MentionQuery` (shared with the Mac's composer, tested); Send once
+  typed.
+- **Calls** ask `CallProvider.unavailable` first, so the phone says calls
+  aren't here yet before posting a call message.
+
+**Not built, and why:** voice messages (the mic says they are coming);
+the send-sats bolt in a DM says sending from a chat is coming (no phone
+send sheet yet, F2c); link cards (the Mac's are AppKit forms; the link
+stays in the text); members and details under More; playing video and
+audio, saving and buying attachments, the full-size viewer; GIFs do not
+animate; the agent DM has `isAgent` (AGENT, "Ask Peel", no bolt) but
+nothing passes it until the model knows the agent's chat.
+
+**Not verified:** with an account. Checked in the simulator with made-up
+rows in a scratch screen, not committed. The list does not yet hold its
+bottom when the keyboard rises; the long-press menu was not driven.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

@@ -7,12 +7,15 @@
 #   scripts/journeys/run.sh <dev profile> [--peer <profile>] [--chat <name>]
 #       [--other <name>] [journey ...]
 #
-# --chat is the long chat the journeys read (default the peer's name), --other a
-# second chat to leave it for (default "bank"); scripts/journeys/seed.sh
-# makes both. With --peer, each journey starts with the chat read, and
-# the journeys marked `// needs: peer` run too: that profile sends into
-# the chat when a drive signals it, and its key marks the chat unread for
-# `// before: unread <n>`. Without it they are skipped. Results go to .build/journeys/<journey>/. Exits 1 if any failed.
+# --chat is the long chat the journeys read (default the peer's name),
+# --other a second chat to leave it for (default "bank");
+# scripts/journeys/seed.sh makes both. With --peer, each journey starts
+# with the chat read, and the journeys marked `// needs: peer` run too:
+# that profile sends into the chat when a drive signals it, and its key
+# marks the chat unread for `// before: unread <n>`. Without it they are
+# skipped. Results go to .build/journeys/<journey>/. Exits 1 if any
+# failed. PEEL_BUILD_LOCK names the build lock (default
+# $TMPDIR/peel-build.lock).
 set -euo pipefail
 
 usage() { echo "usage: scripts/journeys/run.sh <dev profile> [--peer <profile>] [--chat <name>] [--other <name>] [journey ...]" >&2; exit 2; }
@@ -39,7 +42,8 @@ done
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 cd "$ROOT"
-LOCK=/private/tmp/claude-501/peel-build.lock
+# The build lock other checkouts on this Mac share.
+LOCK=${PEEL_BUILD_LOCK:-${TMPDIR:-/tmp}/peel-build.lock}
 lockf "$LOCK" swift build --product peel >/dev/null
 peel() { .build/debug/peel --profile "$@"; }
 key() { peel "$1" whoami | sed -n 's/^contact info: //p' | cut -d_ -f1; }
@@ -64,7 +68,12 @@ for drive in "$HERE"/*.drive; do
     OUT=.build/journeys/$journey
     rm -rf "$OUT"
     mkdir -p "$OUT"
-    sed -e "s/{{chat}}/$CHAT/g" -e "s/{{other}}/$OTHER/g" "$drive" >"$OUT/journey.drive"
+    # As JSON strings, so a name with quotes, slashes or "&" stays one.
+    python3 -c 'import json, sys
+text = open(sys.argv[1]).read()
+for key, name in (("chat", sys.argv[2]), ("other", sys.argv[3])):
+    text = text.replace("\"{{%s}}\"" % key, json.dumps(name))
+sys.stdout.write(text)' "$drive" "$CHAT" "$OTHER" >"$OUT/journey.drive"
 
     # Each journey starts read to the newest: one before may have left
     # messages unread.

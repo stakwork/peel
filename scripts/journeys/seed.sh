@@ -9,7 +9,7 @@
 #
 # <stack dir> is a running stack (`scripts/test-stack.sh start`). Takes
 # about fifteen minutes: funding, then a send a second or two each. Pass
-# SPHINX_BIN_DIR as for fund-dev.sh. Never `default` or `throwaway`.
+# SPHINX_BIN_DIR as for fund-dev.sh, and PEEL_BUILD_LOCK as for run.sh. Never `default` or `throwaway`.
 set -euo pipefail
 
 die() { echo "seed: $*" >&2; exit 1; }
@@ -23,7 +23,8 @@ done
 setting() { sed -n "s/^$1=//p" "$STACK/env" | head -n 1; }
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
-LOCK=/private/tmp/claude-501/peel-build.lock
+# The build lock other checkouts on this Mac share.
+LOCK=${PEEL_BUILD_LOCK:-${TMPDIR:-/tmp}/peel-build.lock}
 lockf "$LOCK" swift build --product peel >/dev/null
 HOSTS=(--server "$(setting PEEL_BROKER)" --tribe-host "$(setting PEEL_TRIBES)" --memes-host "$(setting PEEL_MEMES)")
 me() { .build/debug/peel --profile "$ME" "$@"; }

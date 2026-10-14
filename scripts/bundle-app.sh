@@ -61,6 +61,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Peel uses the microphone so people on a call can hear you.</string>
     <key>NSCameraUsageDescription</key><string>Peel uses the camera when you turn on video in a call.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key><string>Peel pairing link</string>
+            <key>CFBundleURLSchemes</key><array><string>peel</string></array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST

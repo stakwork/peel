@@ -43,8 +43,12 @@ struct AccountView: View {
                         }
                     }
                     if let agent = model.agent {
-                        AgentSettingsSection(agent: agent)
-                            .id(AgentSettingsSection.id)
+                        // One place to scroll to: the agent's settings, and a pairing link's home server.
+                        VStack(alignment: .leading, spacing: 18) {
+                            AgentSettingsSection(agent: agent)
+                            BrainSection()
+                        }
+                        .id(AgentSettingsSection.id)
                     }
                     SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {

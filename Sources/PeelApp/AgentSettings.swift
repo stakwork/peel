@@ -1,5 +1,6 @@
 import AgentKit
 import SwiftUI
+import PeelAgent
 import PeelCore
 import PeelUI
 
@@ -20,11 +21,8 @@ struct AgentSettingsSection: View {
                     if let connection = agent.connection {
                         HStack(spacing: 8) {
                             Text(connection.provider.name)
-                            Label("Connected", systemImage: "circle.fill")
-                                .labelStyle(.titleAndIcon)
+                            ConnectedLabel()
                                 .font(Theme.font(12))
-                                .foregroundStyle(Theme.confirmed)
-                                .imageScale(.small)
                         }
                     } else {
                         Text("No model connected")
@@ -146,6 +144,193 @@ private struct AgentNameRow: View {
             editing = false
         } catch {
             problem = PeelError.readable(error)
+        }
+    }
+}
+
+/// Account › Brain (`docs/peel-brain.md`): This Mac, Peel's own strut, or
+/// the account's home server by address and key, with what it said when
+/// last checked. A pairing link's server waits above it for a yes. Nothing
+/// is moved between the two: each keeps its own memory.
+struct BrainSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var editing = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let pairing = model.pairing {
+                Callout(
+                    .neutral, "Use the home server at \(pairing.base.host ?? pairing.description)?",
+                    detail: "From a pairing link. The agent will use that server's memory; what it remembered on this Mac stays here."
+                ) {
+                    HStack(spacing: 8) {
+                        Button("Use home server") { attempt { try model.setBrain(.homeServer(pairing)) } }
+                            .buttonStyle(.peel(.primary))
+                        Button("Cancel") { model.pairing = nil }
+                            .buttonStyle(.peel(.outline))
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.top, Theme.Space.md)
+            }
+            SettingsSection("Brain") {
+                if editing {
+                    HomeServerForm { editing = false }
+                } else {
+                    rows
+                }
+            }
+            if let problem {
+                Text(problem)
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.attention)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    @ViewBuilder private var rows: some View {
+        switch model.brain {
+        case .thisMac?:
+            Fact("Brain") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("This Mac")
+                    Text("The agent's memory and automations run in Peel on this Mac.").muted()
+                }
+            } trailing: {
+                Button("Use a home server…") { editing = true }
+                    .buttonStyle(.peel(.outline))
+            }
+        case .homeServer(let server)?:
+            Fact("Brain") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Home server")
+                    Text(server.description)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.secondaryText)
+                        .textSelection(.enabled)
+                }
+            } trailing: {
+                HStack(spacing: 8) {
+                    Button("Change") { editing = true }
+                        .buttonStyle(.peel(.outline))
+                    InlineConfirm(trigger: "Use this Mac", prompt: "The home server keeps its memory.",
+                                  confirm: "Use this Mac", confirmKind: .primary) {
+                        attempt { try model.setBrain(.thisMac) }
+                    }
+                }
+            }
+            Fact("Status") {
+                BrainStatusText(status: model.brainStatus)
+            } trailing: {
+                Button("Check") { model.checkBrain() }
+                    .buttonStyle(.peel(.outline))
+                    .disabled(model.brainStatus == nil)
+            }
+        case nil:
+            Fact("Brain") {
+                Text("Peel could not read this setting, so the agent has no memory.").muted()
+            } trailing: {
+                Button("Use this Mac") { attempt { try model.setBrain(.thisMac) } }
+                    .buttonStyle(.peel(.outline))
+            }
+        }
+    }
+
+    private func attempt(_ change: () throws -> Void) {
+        do {
+            try change()
+            problem = nil
+        } catch {
+            problem = PeelError.problem(error, couldNot: "change the brain")
+        }
+    }
+}
+
+/// A home server's state in words: amber when it cannot be used, never red.
+private struct BrainStatusText: View {
+    let status: BrainStatus?
+
+    var body: some View {
+        switch status {
+        case nil:
+            Text("Checking…").foregroundStyle(Theme.secondaryText)
+        case .connected:
+            ConnectedLabel()
+        case .offline(let why):
+            line("Brain offline", why + " Memory waits for it; this Mac's is not used in its place.")
+        case .badKey:
+            line("Key not accepted", "The home server answered but did not take this key. Copy it again from its setup.")
+        }
+    }
+
+    private func line(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).foregroundStyle(Theme.attention)
+            Text(detail)
+                .muted()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// "Connected" with a green dot: a model, a home server.
+private struct ConnectedLabel: View {
+    var body: some View {
+        Label("Connected", systemImage: "circle.fill")
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(Theme.confirmed)
+            .imageScale(.small)
+    }
+}
+
+/// The home server's address and key, typed or pasted.
+private struct HomeServerForm: View {
+    @Environment(AppModel.self) private var model
+    let done: () -> Void
+    @State private var address = ""
+    @State private var key = ""
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            FormItem(label: "Address", helper: "https, or http to a Tailscale address") {
+                FormTextField(label: "Address", prompt: "https://brain.your-tailnet.ts.net", text: $address,
+                              monospaced: true, focusOnAppear: true)
+            }
+            FormItem(label: "Key", helper: "STRUT_API_KEY, as the home server's setup printed it") {
+                FormTextField(label: "Key", text: $key, secure: true)
+                    .onSubmit(save)
+            }
+            Text("The agent will use the home server's memory. What it remembered on this Mac stays here. "
+                + AutomationsView.homeServerNote)
+                .muted()
+                .fixedSize(horizontal: false, vertical: true)
+            FormFooter(problem: problem) {
+                Button("Cancel", action: done)
+                    .buttonStyle(.peel(.outline))
+                Button("Use home server", action: save)
+                    .buttonStyle(.peel(.primary))
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(address.trimmed.isEmpty || key.trimmed.isEmpty)
+            }
+        }
+        .padding(settingsRowPadding)
+        .onAppear { address = model.brain?.homeServer?.description ?? "" }
+    }
+
+    private func save() {
+        guard let url = URL(string: address.trimmed), let server = MemoryServer(base: url, key: key.trimmed, home: true) else {
+            problem = "Use an https address, or http to a Tailscale address, and the key as it was printed."
+            return
+        }
+        do {
+            try model.setBrain(.homeServer(server))
+            done()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "keep the home server")
         }
     }
 }

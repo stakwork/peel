@@ -104,6 +104,8 @@ struct Sidebar: View {
                 model.sidebarHasKeys = true
                 focused = true
             }
+            // Its own view: each page restored redraws the bar, not the sidebar.
+            RestoreBar()
             if let call = model.call {
                 OnCallBar(call: call)
             }
@@ -729,5 +731,58 @@ private struct AutomationsLink: View {
         } accessory: {
             if failed > 0 { Badge(count: failed, .outline) }
         }
+    }
+}
+
+// MARK: - Restore
+
+/// A restore's progress at the sidebar's foot, or why history paused and
+/// Resume (offered while connected: a reconnect resumes by itself).
+struct RestoreBar: View {
+    @Environment(AppModel.self) private var model
+
+    private var connected: Bool { model.connection == .connected }
+
+    var body: some View {
+        let progress = model.restoreProgress
+        Group {
+            if let reason = progress.paused {
+                // A restore paused leaves the account incomplete; a catch-up's
+                // blocks nothing, so it stays quiet.
+                Callout(progress.restoring ? .attention : .neutral,
+                        progress.restoring ? "Restore paused" : "Catching up paused",
+                        detail: connected ? reason : reason + " It resumes when connected.",
+                        icon: progress.restoring ? nil : .symbol("pause.circle", Theme.secondaryText)) {
+                    if connected {
+                        Button("Resume") { Task { await model.resumeHistory() } }
+                            .buttonStyle(.peel(.outline, size: .sm))
+                            .padding(.top, Theme.Space.xs)
+                    }
+                }
+            } else if progress.restoring {
+                running(progress)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: progress.restoring || progress.paused != nil)
+    }
+
+    /// Contacts first, then messages: how far, once the server says how many.
+    private func running(_ progress: AppModel.RestoreProgress) -> some View {
+        // Contacts at 100% means the messages run has begun, before its first page.
+        let onContacts = progress.messages == nil && (progress.contacts?.fraction ?? 0) < 1
+        let fraction = connected ? (onContacts ? progress.contacts : progress.messages)?.fraction : nil
+        let detail = connected
+            ? fraction.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "This can take a few minutes"
+            : "Waiting for a connection"
+        return Callout(.neutral, onContacts ? "Restoring contacts" : "Restoring messages", detail: detail,
+                       icon: connected ? .progress : .symbol("wifi.slash", Theme.secondaryText)) {
+            if let fraction {
+                ProgressView(value: fraction)
+                    .tint(Theme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Space.xs)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

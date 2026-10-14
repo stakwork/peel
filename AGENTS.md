@@ -55,7 +55,9 @@ is a short plan. Update the status and the journal when you finish something.
       after a change, `refreshPreferences` when the app comes to the
       front), `.preferencesChanged`
     - `Engine+History.swift` — restore and catch-up: asks for the pages
-      `HistoryCursor` names, the stall watchdog, a page the core refuses
+      `HistoryCursor` names, `resumeHistory` (the one way history picks up
+      again: on coming online and from Resume after a stall),
+      the stall watchdog, a page the core refuses
       whole read again without what it cannot read (`readablePart`, found
       by halves in `readable`), recovering the account's own photo
     - `HistoryCursor.swift` — the history machine without the network: the
@@ -228,7 +230,7 @@ is a short plan. Update the status and the journal when you finish something.
   `focus(on:inThread:)`, the highlight in message text);
   `FilePicking` (the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus,
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),

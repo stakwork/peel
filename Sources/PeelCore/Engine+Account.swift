@@ -272,6 +272,8 @@ extension Engine {
         public let sidebarLayout: ChatSections.Layout?
         public let wordsConfirmed: Bool?
         public let connection: ConnectionState
+        /// A restore from the words has not finished (`Setting.needsRestore`).
+        public let restoring: Bool
     }
 
     public func settings() -> Settings {
@@ -282,7 +284,7 @@ extension Engine {
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
             notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
-            wordsConfirmed: try? wordsConfirmed(), connection: connection
+            wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )
     }
 

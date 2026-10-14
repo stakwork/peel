@@ -62,6 +62,8 @@ struct Session {
             "history complete"
         case .historyFailed(let reason):
             "history failed: \(reason)"
+        case .historyResumed(let restart):
+            restart ? "history restarting" : "history resuming"
         case .conversationError(let chat, let message):
             "error in \(chat.prefix(12)): \(message)"
         case .connectionError(let message):

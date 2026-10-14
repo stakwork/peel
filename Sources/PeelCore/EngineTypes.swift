@@ -13,6 +13,9 @@ extension Engine {
         /// The server has nothing more; after a restore, the account is complete.
         case historyDone
         case historyFailed(String)
+        /// History is being asked for again (`resumeHistory`); `restart`: a
+        /// restore's plan from its first page, so its counts start over.
+        case historyResumed(restart: Bool)
         /// An error that belongs to one conversation, such as a send the server refused.
         case conversationError(chat: String, message: String)
         /// Why the last attempt to connect failed.

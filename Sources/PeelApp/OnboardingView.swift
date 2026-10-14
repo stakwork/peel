@@ -286,7 +286,7 @@ struct RestoreProgressView: View {
                                fraction: progress.messages?.fraction)
                 }
             }
-            if case .failed(let failure) = progress.outcome {
+            if let failure = progress.paused {
                 Text(failure)
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)

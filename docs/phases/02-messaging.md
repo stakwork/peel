@@ -11,7 +11,8 @@ restore, and `run-app.sh` quitting Peel first ("Still open in this phase",
 items 0 and 6–11, all done). Item 12, sends across a dropped connection
 (resend on reconnect, a keep-alive that notices, network changes), is
 built on its branch. Item 13, the twelve words checked (finding N5), is
-built on its branch.
+built on its branch. Item 15, a restore you can see from the app (the
+sidebar's progress, a stall paused with Resume), is built on its branch.
 
 **Open:**
 - Signing up with a fresh invite in the app (proven only from the CLI): "Tasks, in order", item 3.
@@ -882,6 +883,93 @@ restore is the point of this phase; the Keychain is what makes it allowed.
      takes answers by place, as the CLI or an agent would pass them.
    - Read-only `Storage` still creates and sets 0700 on the folder;
      `Storage.exists(in:)` keeps it from being called without a database.
+
+15. **A restore you can see from the app.** Built 2026-10-13 (branch
+   `claude/restore-progress-ui`), asked by Tom. "Open Peel" works before
+   history finishes, but once past onboarding nothing said a restore was
+   still running, how far it had got, or that it had stalled: a stall
+   (30 s with no page) was silent and nothing retried until the next
+   connection, a relaunch mid-restore showed no progress at all, and the
+   Dock badge climbed with every restored page (read markers apply only
+   once the restore ends) before falling back.
+
+   Built:
+   - **Engine.** `resumeHistory()`, the one way history picks up again:
+     the page in flight, a restore's plan from its first page, or a
+     catch-up from where history stands. Coming online calls it, and so
+     does Resume. It emits `historyResumed(restart:)`, so the app clears a
+     pause and, when a restore starts over, its counts, without inferring
+     either. `Settings.restoring` says at open whether a restore is
+     unfinished (`needsRestore`), across launches. The stall reason reads
+     "30 seconds", not `Duration`'s "30.0 seconds".
+   - **Sidebar.** `RestoreBar` at its foot, above the call bar, built on
+     `Callout`: while a restore runs, "Restoring contacts" or "Restoring
+     messages" with the spinner, the percentage and a thin bar (the
+     onboarding row's `ProgressView`); offline, a still `wifi.slash` and
+     "Waiting for a connection"; on a stall or failure, a restore's or a
+     catch-up's, the `.attention` "Restore paused" (or "Catching up
+     paused") with the reason and Resume while connected. It goes when
+     history is in. Its own view, so a page redraws the bar, not the
+     sidebar. Onboarding's failure line reads the same `paused`.
+   - **Driver.** `{"open": "resume-history"}`, what Resume does.
+
+   Checked in the app (`scripts/check-app.sh` on a local stack, an
+   account with 111 messages restored into a fresh profile, the network
+   frozen and thawed with `test-stack.sh tap`): waiting for a connection,
+   88% with its bar, the reconnect resuming by itself and the bar going
+   with history in; with the stall cut to 3 s for that run only, "Restore
+   paused", Resume, and the restore finishing (`needsRestore` 0, every
+   message back). Idle: a minute on the waiting bar stayed at 0% CPU.
+
+   Tests: `ConnectionDropTests.resumeAfterAStallAsksTheServerAgain` (a
+   restore asks for its counts and says it restarts; a catch-up asks for
+   its page), failing with the restore branch removed or `restart`
+   always false.
+
+   Review (2026-10-13): `/code-review`, `/simplify`, `/security-review`.
+   Fixed: the paused card stayed while a reconnect resumed; the old
+   percentage showed after Resume restarted a restore; both now follow
+   the engine's `historyResumed`, not the app's guess; a transition that
+   never ran; a working state on Resume that never drew (the card goes as
+   it is pressed); the driver step half-copying the view's condition; the
+   bar's modifiers, unlike onboarding's; the restoring flag now comes
+   with `settings()` rather than a second hop. `/security-review`: no
+   finding (Resume only asks for history; a restore cannot apply twice).
+   Then an independent review (risk high: the sidebar, `Engine.swift`,
+   `Engine+Account`). Fixed: a restore whose read markers could not be
+   asked for at its end (the connection going right then) never said
+   "history done", leaving the bar at 100% (the ask is now best effort);
+   an ask that does not leave paused nothing, so a restore could wait on
+   counts it never asked for (now `historyFailed`, so Resume is offered,
+   and the app reads failures from the events alone); a catch-up's stall
+   showed amber to every account (now the neutral callout: it blocks
+   nothing); paused while offline said nothing of what comes next (now
+   "It resumes when connected."); a stall in the first sync turned on
+   notifications, so what Resume brought in was notified (only "history
+   done" ends the first sync); "Restoring contacts 100%" while messages
+   were being asked for. Integration journeys run: `HistoryJourneys`,
+   `AccountJourneys`, `ReconnectJourneys`, all passed. Not applied:
+   - **Resume on a stalled restore starts it over** from its counts and
+     contacts, as a reconnect after a stall did before: the cursor drops a
+     stalled run (as decided above, "a restore still fetches everything
+     from the first"). Keeping the stalled run to resume from would change
+     `HistoryCursor`; worth doing if long restores stall in practice.
+   - Resume during a reconnect, before coming online asks again, or
+     clicked twice, sends a second ask; the second counts reply and a
+     repeated page are already dropped. A guard on "history moving" would
+     leave Resume dead after an ask that failed with its run kept.
+   - Onboarding's restore page shows the pause but no Resume ("Open Peel"
+     leads to it).
+   - **The Dock badge and unread counts still climb during a restore.**
+     Holding the badge until "history done" would still flash the
+     inflated count: the read markers asked for at the end land after
+     it, with the mention rescan's writes between. The fix is the engine
+     applying read markers before it declares a restore finished.
+   - **A restore's counts request has no watchdog.** A counts reply that
+     never comes leaves "Restoring contacts" up with no pause or Resume
+     until the next connection (as before this change).
+   - The spinner stays while a restore runs; offline it is a still icon.
+   - `RestoreProgress.Outcome.failed` was not renamed to `paused`.
 
 ## Done criteria
 

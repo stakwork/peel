@@ -12,7 +12,8 @@ import PeelCore
 final class AppModel {
     enum Phase { case loading, locked, onboarding, ready }
 
-    /// How far a restore from twelve words has got.
+    /// How far a restore from twelve words has got, and why history (a
+    /// restore's or a catch-up's) stopped, until it resumes.
     struct RestoreProgress {
         struct Count {
             var reached: UInt64
@@ -26,12 +27,18 @@ final class AppModel {
 
         enum Outcome { case finished, failed(String) }
 
+        /// A restore from the words has not finished, this launch or an earlier one.
+        var restoring = false
         var contacts: Count?
         var messages: Count?
         var outcome: Outcome?
 
         var finished: Bool {
             if case .finished = outcome { true } else { false }
+        }
+
+        var paused: String? {
+            if case .failed(let reason) = outcome { reason } else { nil }
         }
     }
 
@@ -644,6 +651,12 @@ final class AppModel {
         await attach(engine)
     }
 
+    /// Resume after history stalled: the engine picks it up where it stands,
+    /// or says why not (`historyFailed`).
+    func resumeHistory() async {
+        try? await engine?.resumeHistory()
+    }
+
     /// Opens the main window, from onboarding or the lock screen.
     func enterApp() {
         lastActiveAt = .now
@@ -1131,6 +1144,7 @@ final class AppModel {
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
         sidebarLayout = savedLayout
         connection = settings.connection
+        restoreProgress.restoring = settings.restoring
         // Forgotten while loading.
         guard self.engine === engine else { return }
         if let profile { openAgent(profile, engine: engine) }
@@ -1184,7 +1198,11 @@ final class AppModel {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
                 case .messages: restoreProgress.messages = .init(reached: reached, end: end)
                 }
+            case .historyResumed(let restart):
+                if restoreProgress.paused != nil { restoreProgress.outcome = nil }
+                if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }
             case .historyDone:
+                restoreProgress.restoring = false
                 restoreProgress.outcome = .finished
                 notifier.historyEnded()
             case .profile(let alias, let photoURL):
@@ -1196,8 +1214,8 @@ final class AppModel {
                 echoedAliases = echoed
                 refreshMentionAliases()
             case .historyFailed(let reason):
+                // Not the end of the first sync: what Resume brings in is not notified.
                 restoreProgress.outcome = .failed(PeelError.problem(reason))
-                notifier.historyEnded()
             case .transfer(let id, _, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
             case .message(let row, _) where row.deleted:

@@ -5,6 +5,29 @@ extension Engine {
     /// True while a restore or catch-up is still asking the server for history.
     public var isSyncingHistory: Bool { history.isSyncing }
 
+    /// Picks history up where it stands; coming online does this, and so
+    /// does Resume after a stall. An ask that does not leave pauses history
+    /// again (`historyFailed`), so Resume is offered for it.
+    public func resumeHistory() async throws {
+        emit.yield(.historyResumed(restart: history.active == nil && restoring))
+        do {
+            if let run = history.active {
+                try await request(run)
+            } else if restoring {
+                history.awaitingCounts = true
+                try await run { time, state in
+                    try Sphinxrs.getMsgsCounts(seed: seed, uniqueTime: time, state: state)
+                }
+            } else {
+                try await syncMessages()
+            }
+        } catch {
+            history.awaitingCounts = false
+            emit.yield(.historyFailed(PeelError.readable(error)))
+            throw error
+        }
+    }
+
     /// Asks the server for every message from where history stands
     /// (`HistoryCursor.from`): a catch-up cut short, by a quit or a stall,
     /// leaves nothing behind.
@@ -106,8 +129,13 @@ extension Engine {
             restoring = false
             recoverOwnPhoto()
             // The first ask came before the restore rebuilt the contacts, and
-            // the core drops markers for contacts it does not know.
-            try await fetchReadsAndMutes()
+            // the core drops markers for contacts it does not know. Best
+            // effort: the restore is done, and the next connection asks again.
+            do {
+                try await fetchReadsAndMutes()
+            } catch {
+                emit.yield(.coreError("reading restored read markers: \(PeelError.readable(error))"))
+            }
             // Our restored sends carry no status (payments review F4): the
             // server's record of each, by its tag, says how it went.
             do {
@@ -137,6 +165,6 @@ extension Engine {
 
     private func historyStalled(at expected: UInt64) {
         guard let run = history.stalled(at: expected) else { return }
-        emit.yield(.historyFailed("no answer from the server for \(Self.historyStall) while fetching \(run.phase)"))
+        emit.yield(.historyFailed("no answer from the server for \(Self.historyStall.components.seconds) seconds while fetching \(run.phase)"))
     }
 }

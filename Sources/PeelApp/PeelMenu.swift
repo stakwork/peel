@@ -154,8 +154,9 @@ extension View {
 
     /// Peel's popover: `content`, a `Panel`, below this view while
     /// `isPresented` is true; a click elsewhere or Escape sets it false.
-    func peelPopover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
-        modifier(PopoverModifier(isPresented: isPresented, content: content))
+    func peelPopover<Content: View>(isPresented: Binding<Bool>, edge: PopoverEdge = .leading,
+                                    @ViewBuilder content: @escaping () -> Content) -> some View {
+        modifier(PopoverModifier(isPresented: isPresented, edge: edge, content: content))
     }
 
     /// Marks this view as where the menu, panel or card it opens belongs.
@@ -271,6 +272,7 @@ private struct HoverCardModifier<Card: View>: ViewModifier {
 private struct PopoverModifier<Panel: View>: ViewModifier {
     @Environment(\.menuPresenter) private var presenter
     @Binding var isPresented: Bool
+    let edge: PopoverEdge
     let content: () -> Panel
 
     @State private var anchor = MenuAnchor()
@@ -282,7 +284,7 @@ private struct PopoverModifier<Panel: View>: ViewModifier {
             .onChange(of: isPresented) { _, shown in
                 if shown {
                     let binding = $isPresented
-                    presenter?.showPanel(AnyView(content()), at: anchor, id: id) { binding.wrappedValue = false }
+                    presenter?.showPanel(AnyView(content()), at: anchor, id: id, edge: edge) { binding.wrappedValue = false }
                 } else {
                     presenter?.dismissPanel(id: id)
                 }
@@ -453,3 +455,12 @@ struct WindowReader: NSViewRepresentable {
     }
 }
 #endif
+
+/// Where a popover sits across its trigger. `.leading` starts at the
+/// trigger's left edge (and flips left only to stay in the window).
+/// `.trailing(inset:)` grows leftward: the point `inset` in from the panel's
+/// right edge sits under the trigger's horizontal centre.
+enum PopoverEdge {
+    case leading
+    case trailing(inset: CGFloat)
+}

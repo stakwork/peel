@@ -537,7 +537,7 @@ struct ConnectionBolt: View {
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
                 .receivedGlow(model.money)
         }
-        .peelPopover(isPresented: $model.showingConnection) {
+        .peelPopover(isPresented: $model.showingConnection, edge: .trailing(inset: ConnectionCard.refreshCenterInset)) {
             ConnectionCard()
         }
         .accessibilityLabel("Connection: \(model.connection.label)")
@@ -547,6 +547,12 @@ struct ConnectionBolt: View {
 struct ConnectionCard: View {
     @Environment(AppModel.self) private var model
 
+    /// From the card's right edge to the refresh button's centre; the bolt
+    /// opens the card so this point sits under its own centre. The bolt's
+    /// size, so the card's right edge meets the sidebar's (both 10 in).
+    static let refreshCenterInset = PanelMetrics.actionInset + refreshSize.side / 2
+    private static let refreshSize = IconButton<Image>.Size.sm
+
     private var offline: Bool {
         if case .offline = model.connection { true } else { false }
     }
@@ -554,7 +560,7 @@ struct ConnectionCard: View {
     private var busy: Bool { model.checkingConnection || model.connection == .connecting }
 
     var body: some View {
-        Panel(nil, compact: true, close: {}) {
+        Panel(nil, compact: true, fit: true, close: {}) {
             HStack(spacing: Theme.Space.sm) {
                 Image(systemName: busy ? "arrow.triangle.2.circlepath" : model.connection == .connected ? "checkmark.circle" : "wifi.slash")
                     .foregroundStyle(model.connection == .connected ? Theme.confirmed : Theme.attention)
@@ -569,7 +575,7 @@ struct ConnectionCard: View {
                     label(model.connection.label)
                 }
                 Spacer(minLength: Theme.Space.sm)
-                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", working: busy) {
+                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", size: Self.refreshSize, working: busy) {
                     Task { await model.checkConnection() }
                 }
                 .disabled(busy)
@@ -581,6 +587,7 @@ struct ConnectionCard: View {
         Text(text)
             .font(Theme.font(13))
             .monospacedDigit()
+            .lineLimit(1)
             .accessibilityValue(model.connectionError ?? "")
     }
 }

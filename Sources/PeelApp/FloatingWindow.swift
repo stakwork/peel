@@ -6,7 +6,8 @@ import SwiftUI
 #if os(macOS)
 /// A borderless window for a menu or a panel: sized to its content, placed
 /// below its anchor (above, or to the left, when that would leave the parent
-/// window), a child of the window it opened from so it moves with it.
+/// window), a child of the window it opened from so it moves with it. A
+/// panel may instead grow leftward from the anchor's centre (`PopoverEdge`).
 @MainActor
 final class FloatingWindow: NSPanel {
     /// Room around the content for its shadow.
@@ -16,6 +17,8 @@ final class FloatingWindow: NSPanel {
     /// On the screen.
     private var anchor: CGRect = .zero
     private var size: CGSize = .zero
+    /// Reset on each `present`, so menus and cards keep the default.
+    private var edge = PopoverEdge.leading
     private weak var host: NSWindow?
     /// The trigger it moves with as its list moves, and what to do once the
     /// trigger is out of sight (nil: stay, at the list's edge).
@@ -46,10 +49,11 @@ final class FloatingWindow: NSPanel {
     /// that trigger as the list it sits in moves; once the trigger is out of
     /// sight `lost` runs, or with none the window stays at the list's edge.
     func present(_ content: AnyView, anchor: CGRect, from host: NSWindow, following: MenuAnchor? = nil,
-                 lost: (@MainActor () -> Void)? = nil) {
+                 lost: (@MainActor () -> Void)? = nil, edge: PopoverEdge = .leading) {
         if let old = self.host, old !== host { old.removeChildWindow(self) }
         self.host = host
         self.anchor = anchor
+        self.edge = edge
         // Unplaced until the new content reports its size.
         size = .zero
         follow(following.map { ($0, lost) })
@@ -127,7 +131,12 @@ final class FloatingWindow: NSPanel {
         let content = CGSize(width: size.width - Self.margin * 2, height: size.height - Self.margin * 2)
         let bounds = (host?.frame ?? screen?.visibleFrame ?? .zero).insetBy(dx: 8, dy: 8)
         var x = anchor.minX
-        if x + content.width > bounds.maxX { x = (anchor.width > 0 ? anchor.maxX : anchor.minX) - content.width }
+        switch edge {
+        case .leading:
+            if x + content.width > bounds.maxX { x = (anchor.width > 0 ? anchor.maxX : anchor.minX) - content.width }
+        case .trailing(let inset):
+            x = anchor.midX + inset - content.width
+        }
         let gap = anchor.height > 0 ? Self.gap : 0
         // Screen coordinates grow upwards: below the anchor is under its minY.
         var bottom = anchor.minY - gap - content.height

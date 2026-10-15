@@ -550,12 +550,13 @@ Built so far:
   `IconButton` close, the body, the footer. The actions may be left out,
   or the actions and the footer; a footer whose condition is false takes
   no room. 372 wide, or 320 with `compact` (a short form with no
-  sections, or a short list). Radius `panel` 12 on `sidebar`, a
-  `formEdge` hairline, `popoverShadow` on the box only (so the labels
-  cast none). A click outside a field ends editing. It is the only box a
-  popover has: the presenter adds none. `PanelHero` is the top of a
-  details panel (the picture, the name in 16 bold, muted lines), shared
-  by a contact's and a tribe's details. The placement rule:
+  sections, or a short list); `fit` takes the content's own width.
+  Radius `panel` 12 on `sidebar`, a `formEdge` hairline, `popoverShadow`
+  on the box only (so the labels cast none). A click outside a field
+  ends editing. It is the only box a popover has: the presenter adds
+  none. `PanelHero` is the top of a details panel (the picture, the name
+  in 16 bold, muted lines), shared by a contact's and a tribe's details.
+  The placement rule:
   - A panel's own utility actions (the members panel's Copy link) go top
     right, beside the title, as icon buttons. Copy buttons that belong to
     a card in the body (a QR code's Copy link, Copy key) stay with it.
@@ -566,8 +567,11 @@ Built so far:
     last card of its body (Delete tribe).
   - Every panel has a title and a close button, the same box, and one of
     the two widths: 372 for the forms, Tribe details and a contact's
-    Details; 320 for Join a tribe, Members, Boosts, Connection and the
-    Account's Time zone.
+    Details; 320 for Join a tribe, Members, Boosts and the Account's
+    Time zone. The connection card is the exception: it fits its one
+    line, drops under the bolt and grows leftward (`PopoverEdge.trailing`)
+    so its refresh button sits directly under the click; the button is
+    10 in, as a header's close, so the card stays within the sidebar.
 - **Section headers** (batch 10). `SectionHeader("Members")` in
   `UI/Section.swift`: 12 pt semibold in `secondaryText`, placed by its
   caller. Every heading over a group is one: a form's sections

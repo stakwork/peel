@@ -1469,6 +1469,15 @@ chat's title); `refreshCallWatches`, `stopWatchingCalls` and
 (`watchesRecent`), resets and rebuilds the open chat's rows. Its tests are
 `Tests/PeelUITests/CallStoreTests`.
 
+## Share opens on the screen (2026-10-15)
+
+Share now opens macOS's picker in screen mode, so the entire screen is the
+easy default. A chevron beside it offers Entire screen, A window and An
+app. Each uses `present(using:)` with the matching style and only that
+kind's `allowedPickerModes`; a window or an app may still be several. No
+new permission. While sharing, the button is
+still the one filled Stop sharing.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

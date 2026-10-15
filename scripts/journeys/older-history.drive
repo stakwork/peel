@@ -1,0 +1,13 @@
+// Older history: the chat scrolled up near the top of its newest 200 with
+// one flick; the next page loads above without moving the row you read,
+// and the list goes past 200 rows (review table "Older history"; rule 2:
+// a prepend holds the reading row).
+// check: older hold=chat from=grow more=200
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scrollTo": 20}
+{"wait": 1}
+{"probe": "older", "for": 5}
+{"scroll": 1000, "steps": 1}
+{"wait": 4.5}

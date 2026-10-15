@@ -1,0 +1,17 @@
+// Overscroll at the top: the direct chat scrolled to its oldest message,
+// every older page loaded, a trackpad pushes 80 pt past its top over
+// 0.3 s and lets go; the rubber band follows the fingers out and eases
+// back with nothing pulling against it.
+// check: top overscroll=top more=300
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scrollTo": 0}
+{"wait": 3}
+{"scrollTo": 0}
+{"wait": 3}
+{"scroll": 3000}
+{"wait": 1}
+{"probe": "top", "for": 2}
+{"overscroll": 80, "over": 0.3}
+{"wait": 1.5}

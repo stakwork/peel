@@ -246,6 +246,13 @@ final class MenuPresenter {
         }
     }
 
+    /// A menu's trigger went away (its row's views made anew, its bar
+    /// gone): its menu goes with it.
+    func menuTriggerGone(_ source: AnyHashable?) {
+        guard let source, open != nil, self.source == source else { return }
+        dismiss()
+    }
+
     /// A trigger went away (scrolled off, its panel closed): only its own
     /// card goes, shown or about to show.
     func triggerGone(_ source: AnyHashable) {

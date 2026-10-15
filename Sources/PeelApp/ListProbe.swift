@@ -1,16 +1,44 @@
+import AppKit
 import CryptoKit
 import Foundation
 import PeelUI
 
+/// What a message list reports of where its rows are, as of its last move:
+/// the chat's and a thread's table (`MessageTableEngine`), the agent's lazy
+/// list (`ListEnd`). Frames and the view are in the content, from its top.
+@MainActor protocol ListGeometry: AnyObject {
+    /// The rows, oldest first.
+    var ids: [String] { get }
+    /// The content in view.
+    var view: Range<CGFloat> { get }
+    /// The content's height.
+    var content: CGFloat { get }
+    /// Shown, no longer hidden until placed.
+    var shown: Bool { get }
+    /// Where the rows around the view are.
+    var frames: [String: CGRect] { get }
+    /// The list has gone: its scroll view is another list's, or none.
+    var gone: Bool { get }
+    /// Its scroll view, when it knows it.
+    var scrollView: NSScrollView? { get }
+    /// The width its rows are laid out at; 0 when it does not say.
+    var width: CGFloat { get }
+}
+
+extension ListEnd: ListGeometry {
+    var scrollView: NSScrollView? { nil }
+    var width: CGFloat { 0 }
+}
+
 /// Offscreen only: the message lists a drive's `probe` step reads each
-/// frame (`OffscreenDriver`). Each list hands over the `ListEnd` it keeps
-/// anyway, and a sample reads what that already holds (where its rows are
-/// laid out, the content in view, whether it is shown), so a probe adds no
+/// frame (`OffscreenDriver`). Each list hands over the `ListGeometry` it
+/// keeps anyway, and a sample reads what that already holds (where its rows
+/// are, the content in view, whether it is shown), so a probe adds no
 /// observer, modifier or state to the list: it runs as it does unprobed.
 /// Registering does nothing outside the offscreen mode.
 @MainActor enum ListProbe {
     @MainActor private final class Entry {
-        weak var end: ListEnd?
+        weak var end: ListGeometry?
         let kind: String
         let serial: Int
         let ignored: String?
@@ -19,14 +47,14 @@ import PeelUI
         private var source: [String] = []
         private var rows: [String] = []
 
-        init(end: ListEnd, kind: String, serial: Int, ignored: String?) {
+        init(end: ListGeometry, kind: String, serial: Int, ignored: String?) {
             self.end = end
             self.kind = kind
             self.serial = serial
             self.ignored = ignored
         }
 
-        func ids(of end: ListEnd) -> [String] {
+        func ids(of end: ListGeometry) -> [String] {
             if end.ids != source {
                 source = end.ids
                 rows = ignored.map { ignored in source.filter { $0 != ignored } } ?? source
@@ -40,7 +68,7 @@ import PeelUI
 
     /// A list appeared: `kind` is chat, thread or agent; `ignoring`, a row
     /// id that is not a row (the agent list's end marker).
-    static func register(_ end: ListEnd, kind: String, ignoring: String? = nil) {
+    static func register(_ end: ListGeometry, kind: String, ignoring: String? = nil) {
         guard Offscreen.isOn else { return }
         entries.removeAll { $0.end == nil }
         guard !entries.contains(where: { $0.end === end }) else { return }
@@ -63,6 +91,7 @@ import PeelUI
         /// Which list this is: a list made again has a new number.
         let list: Int
         let rows: Int
+        let width: Double
         let shown: Bool
         let atEnd: Bool
         /// The view's top in the content, and how far the content goes
@@ -95,6 +124,7 @@ import PeelUI
         let ids: [String]
         let view: Range<CGFloat>
         let content: CGFloat
+        let width: CGFloat
         let shown: Bool
         let frames: [String: CGRect]
     }
@@ -104,7 +134,7 @@ import PeelUI
         entries.compactMap { entry in
             guard let end = entry.end, !end.gone else { return nil }
             return Capture(kind: entry.kind, serial: entry.serial, ids: entry.ids(of: end), view: end.view,
-                           content: end.content, shown: end.shown, frames: end.frames)
+                           content: end.content, width: end.width, shown: end.shown, frames: end.frames)
         }
     }
 
@@ -126,7 +156,7 @@ import PeelUI
         let below = capture.content - view.upperBound
         func find(_ id: String?) -> Row? { id.flatMap { id in capture.frames[id].flatMap { row(id, $0) } } }
         return List(
-            kind: capture.kind, list: capture.serial, rows: capture.ids.count, shown: capture.shown,
+            kind: capture.kind, list: capture.serial, rows: capture.ids.count, width: Double(capture.width), shown: capture.shown,
             atEnd: below <= 0.5, offset: Double(view.lowerBound), below: Double(below), container: Double(height),
             inView: inView.count, blank: !capture.ids.isEmpty && (!capture.shown || inView.isEmpty),
             top: top.flatMap { row($0.0, $0.1) },
@@ -149,13 +179,13 @@ import PeelUI
 
 extension ListProbe {
     /// The newest list of `kind` now in a window, for the driver's scrolls.
-    static func end(kind: String) -> ListEnd? {
+    static func geometry(kind: String) -> ListGeometry? {
         entries.last { $0.kind == kind && $0.end?.gone == false }?.end
     }
 
     /// The rows of the newest list of `kind` laid out and in view, by id.
     static func inView(kind: String) -> [String] {
-        guard let end = end(kind: kind) else { return [] }
+        guard let end = geometry(kind: kind) else { return [] }
         let view = end.view
         return end.ids.filter { id in end.frames[id].map { $0.maxY > view.lowerBound && $0.minY < view.upperBound } ?? false }
     }

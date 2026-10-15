@@ -63,6 +63,10 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
     /// The column has made room for the open panel: from the end of its
     /// slide in, so the column is never narrowed beside an empty strip.
     @State private var roomMade = false
+    /// The panel is in, sliding or slid; its slide's end makes the room.
+    @State private var panelShown = false
+    /// Each slide in's number: only the latest one's end makes the room.
+    @State private var slide = 0
     /// The panel's slide in, which the column's fade and its room follow.
     private static var slideIn: Double { 0.2 }
 
@@ -95,7 +99,7 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
             .transaction(value: isOpen) { $0.animation = nil }
             .overlay(alignment: .trailing) {
                 ZStack {
-                    if isOpen {
+                    if isOpen, panelShown {
                         HStack(spacing: 0) {
                             if both {
                                 PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
@@ -107,15 +111,25 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
                         .transition(.move(edge: .trailing))
                     }
                 }
-                .animation(isOpen ? .easeOut(duration: Self.slideIn) : .easeIn(duration: 0.15), value: isOpen)
+                // The slide in is `onChange`'s, which knows when it ends.
+                .animation(isOpen ? nil : .easeIn(duration: 0.15), value: isOpen)
             }
         }
-        .onAppear { roomMade = isOpen }
+        .onAppear {
+            panelShown = isOpen
+            roomMade = isOpen
+        }
         .onChange(of: isOpen) { _, open in
-            guard open else { return roomMade = false }
-            Task {
-                try? await Task.sleep(for: .seconds(Self.slideIn))
-                if isOpen { roomMade = true }
+            guard open else {
+                panelShown = false
+                return roomMade = false
+            }
+            slide += 1
+            let number = slide
+            withAnimation(.easeOut(duration: Self.slideIn)) {
+                panelShown = true
+            } completion: {
+                if isOpen, slide == number { roomMade = true }
             }
         }
     }

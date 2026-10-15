@@ -20,6 +20,7 @@ struct MenuButton<Label: View>: View {
             label()
         }
         .menuAnchor(anchor)
+        .onDisappear { presenter?.menuTriggerGone(source) }
     }
 }
 

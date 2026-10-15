@@ -328,8 +328,9 @@ comes, while the steps after it run: the top row wholly in view (a keyed
 hash of its id and its index, never its text), its offset from the list's
 top, the rows laid out around it, whether the list is at its end, shown,
 or blank (rows to show, hidden or none in view), and where "New messages"
-and a jump's target sit. It reads only what the list already keeps
-(`ListEnd`'s frames and scroll geometry), so a probe does not change how
+and a jump's target sit. It reads only what the list already reports
+(`ListGeometry`: the table engine's report after each move, the agent
+list's `ListEnd`), so a probe does not change how
 the list runs, unlike the timeline log's `scrollTargetLayout`; outside
 the offscreen mode nothing is registered. `scripts/journeys/evaluate.py`
 judges the probe files against each drive's `// check:` lines: any frame
@@ -346,9 +347,25 @@ The seed makes two development profiles on the stack, contacts, with a
 ~320-message chat (threads every 25, one "needle"). The runner reads the
 chat before each journey, marks it unread for `open-unread`, and sends
 from the peer when a drive signals it; results land in `.build/journeys/<journey>/`.
+Beyond the review's table: `older-history` (a flick into the top screen;
+the older page lands above with nothing moving), `late-image` (a jump to
+the message under an image older than the newest 200, the image sizing
+itself after the list is placed; the target must not move) and
+`thread-flicker` (a thread opened, closed and opened again inside one
+0.2 s slide in, the chat scrolled up; the chat holds, and its column
+narrows once, after the last slide ends), `overscroll-bottom` and
+`overscroll-top` (a trackpad's rubber band: 80 pt past the end, or the
+top, over 0.3 s, let go and eased back; every frame must follow the
+gesture, and the direct chat then follows a new message) and
+`overscroll-arrival` (the peer's message during a slow ease back, your own
+send during the pull: once back in range, the list ends at the newest). A step waits
+0.3 s after it, or its `"next"` seconds.
+
 A scroll is a live scroll on the list's own scroll view (its start, a
 step a frame, its end), which the list sees as a scroll by hand (the
 timeline log shows `phase interacting`); wheel events cannot be aimed at
-a window off the screens. A resize steps the window's frame a frame
+a window off the screens. An `overscroll` step does the same past an end, with the
+list's clip view let past its content (`ListClipView.elastic`), as AppKit
+lets it only during a real trackpad gesture. A resize steps the window's frame a frame
 apart. While a probe runs, the app leaves the background priority band
 and App Nap, whose timer coalescing would sample a few frames a second.

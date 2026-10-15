@@ -28,28 +28,41 @@ import PeelUI
 /// `{"note": "thread"}` (or `"focus"`) logs the thread open (or where the
 /// keys go); `{"reveal": "replies"}` scrolls the chat up until its
 /// middle "N replies" row is in view, a few rows below the top;
+/// `{"appearance": "light"}` (or `"dark"`) sets the app's appearance;
 /// `{"scroll": 600}` scrolls the chat's list up 600 points as a live scroll
-/// by hand (`"in": "thread"` for the thread's, negative for down),
-/// `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
+/// by hand (`"in": "thread"` for the thread's, negative for down; `"steps":
+/// 1` in one frame, a flick),
+/// `{"overscroll": -80, "over": 0.3}` pushes the chat's list 80 points
+/// past its end (positive past its top) over that long as a live scroll,
+/// as an elastic drag does, then lets go and eases it back as AppKit's
+/// rubber band does (over `"back"` seconds, 0.4 by default); `{"hover": 0}` puts the pointer on the chat's top
+/// row in view, whole or in part (1 the next down, -1 the bottom one), as a mouse moved there
+/// does; `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
 /// 0.3}` resizes the window, as a drag would over that long; `{"jump": 150}`
-/// goes to the 150th newest message, as a search match does;
+/// goes to the 150th newest message, as a search match does (`{"jump":
+/// {"older": 200, "below": "image"}}`: to the message under the newest
+/// image older than the newest 200, a window made with the image not yet
+/// loaded, so it sizes itself after the list is placed);
 /// `{"expect": "search"}` notes the first search match as where a probe
 /// should land; `{"signal": "send"}` writes `signal-send` in the out dir for
 /// the script running the drive; `{"type": "text", "return": true}` types
-/// and presses Return with no pause between.
+/// and presses Return with no pause between. Each step is followed by
+/// 0.3 s, or `"next"` seconds.
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
-        var probe, thread, close, expect, signal, list, note, reveal: String?
+        var probe, thread, close, expect, signal, list, note, reveal, appearance: String?
         var mods: [String]?
-        var wait, duration, scroll, width, over: Double?
-        var scrollTo, jump: Int?
+        var wait, duration, scroll, overscroll, width, over, back, next: Double?
+        var scrollTo, steps, hover: Int?
+        var jump: JumpTarget?
         var submit: Bool?
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case mods, wait, scroll, width, over, scrollTo, jump
+            case appearance
+            case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
     }
@@ -131,7 +144,7 @@ final class OffscreenDriver {
                     self.probe?.events.append(event)
                 }
                 try await perform(step)
-                try await Task.sleep(for: .milliseconds(300))
+                try await Task.sleep(for: .seconds(min(step.next ?? 0.3, 60)))
                 if step.key != nil || step.type != nil { Offscreen.log("drive: \(line): focus \(focus)") }
             }
             // A probe still running records to its end.
@@ -196,16 +209,27 @@ final class OffscreenDriver {
             // As the thread's X and Escape do.
             ThreadPanel.closing { model()?.closeThread() }
         } else if let points = step.scroll {
-            try await scroll(by: points, in: step.list ?? "chat")
+            try await scroll(by: points, in: step.list ?? "chat", steps: step.steps)
+        } else if let points = step.overscroll {
+            try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3, back: step.back ?? 0.4)
+        } else if let index = step.hover {
+            try hover(row: index, in: step.list ?? "chat")
         } else if let row = step.scrollTo {
             try await scroll(toRow: row, in: step.list ?? "chat")
         } else if let width = step.width {
             try await resize(to: width, over: step.over ?? 0)
-        } else if let back = step.jump {
-            try await jump(back)
+        } else if let target = step.jump {
+            try await jump(target)
         } else if step.expect == "search" {
             try await until("search matches", timeout: 10) { !(self.model()?.search?.matches.isEmpty ?? true) }
             target = model()?.search?.matches.first?.uuid
+        } else if let name = step.appearance {
+            // The whole app's, as System Settings' Appearance would change it.
+            guard let appearance = NSAppearance(named: name == "light" ? .aqua : .darkAqua) else {
+                throw Failure(description: "no appearance \(name)")
+            }
+            NSApp.appearance = appearance
+            Offscreen.log("drive: appearance \(name)")
         } else if step.reveal == "replies" {
             guard let rows = model()?.chatRows else { throw Failure(description: "no account open") }
             let threads = rows.indices.filter { rows[$0].summary != nil }
@@ -599,9 +623,9 @@ final class OffscreenDriver {
     /// frame and says it ended, as it does for a trackpad. (Wheel events
     /// cannot be aimed at a window off the screens: their place is held to
     /// the displays.)
-    private func scroll(by points: Double, in kind: String) async throws {
+    private func scroll(by points: Double, in kind: String, steps: Int? = nil) async throws {
         let view = try scrollView(kind)
-        let steps = max(1, Int((abs(points) / 40).rounded(.up)))
+        let steps = max(1, steps ?? Int((abs(points) / 40).rounded(.up)))
         let delta = points / Double(steps)
         let center = NotificationCenter.default
         center.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
@@ -618,10 +642,75 @@ final class OffscreenDriver {
         center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
     }
 
+    /// Past the list's end (down, negative) or its top by `points` over
+    /// `seconds`, a frame at a time, as a live scroll whose position runs
+    /// out of the content's range; then, the gesture ended, back to that
+    /// end over `back` seconds, easing out, as AppKit's rubber band returns.
+    private func overscroll(by points: Double, in kind: String, over seconds: Double, back: Double) async throws {
+        let view = try scrollView(kind)
+        guard let clip = view.contentView as? ListClipView else { throw Failure(description: "the \(kind) list has no rubber band") }
+        let center = NotificationCenter.default
+        let range = max((view.documentView?.frame.height ?? 0) - clip.bounds.height, 0)
+        // Up is towards the document's top.
+        let dy = clip.isFlipped ? -points : points
+        let edge = dy < 0 ? 0 : range
+        let start = clip.bounds.origin.y
+        let far = edge + dy
+        func set(_ y: Double) {
+            clip.setBoundsOrigin(NSPoint(x: clip.bounds.origin.x, y: y))
+            view.reflectScrolledClipView(clip)
+        }
+        // AppKit lets the clip past the content only for a trackpad's
+        // gesture, which cannot be made off the screens: its stand-in.
+        clip.elastic = true
+        defer { clip.elastic = false }
+        let push = max(1, Int((seconds * 60).rounded()))
+        center.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
+        for step in 1...push {
+            set(start + (far - start) * Double(step) / Double(push))
+            center.post(name: NSScrollView.didLiveScrollNotification, object: view)
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
+        let frames = max(1, Int((back * 60).rounded()))
+        for step in 1...frames {
+            let t = Double(step) / Double(frames)
+            set(far + (edge - far) * (1 - pow(1 - t, 3)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        Offscreen.log("drive: overscroll \(Int(points)) pt, back at \(Int(clip.bounds.origin.y)) of \(Int(range))")
+    }
+
+    /// The pointer moved onto the middle of the `index`th row in view,
+    /// from the top (negative from the bottom), whole or in part, as the
+    /// list's tracking area reports a mouse moved there. A window off the
+    /// screens gets no tracking events of its own.
+    private func hover(row index: Int, in kind: String) throws {
+        let view = try scrollView(kind)
+        guard let window = view.window, let table = view.documentView else { throw Failure(description: "no \(kind) list") }
+        let clip = view.contentView
+        let visible = clip.convert(clip.bounds, to: nil)
+        let rows = table.subviews.compactMap { $0 as? NSTableRowView }
+            .filter { $0.view(atColumn: 0) is HostCell }
+            .map { $0.convert($0.bounds, to: nil) }
+            .filter { $0.intersects(visible) && $0.height > 0 }
+            .sorted { $0.maxY > $1.maxY }
+        let at = index < 0 ? rows.count + index : index
+        guard rows.indices.contains(at) else { throw Failure(description: "no row \(index) in view of \(rows.count)") }
+        let frame = rows[at].intersection(visible)
+        guard let event = NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        ) else { throw Failure(description: "no mouse event") }
+        view.mouseMoved(with: event)
+        Offscreen.log("drive: hover row \(index) of \(rows.count) in view, \(Int(visible.maxY - rows[at].maxY)) pt below the top")
+    }
+
     /// Scrolls until row `index` is laid out, then puts its top at the list's top.
     private func scroll(toRow index: Int, in kind: String) async throws {
         for _ in 0..<40 {
-            guard let end = ListProbe.end(kind: kind), end.ids.indices.contains(index) else {
+            guard let end = ListProbe.geometry(kind: kind), end.ids.indices.contains(index) else {
                 throw Failure(description: "no row \(index) in the \(kind) list")
             }
             let height = end.view.upperBound - end.view.lowerBound
@@ -641,9 +730,10 @@ final class OffscreenDriver {
     /// The scroll view showing the list, found by what the list last
     /// reported: its content's height, its own height and its offset.
     private func scrollView(_ kind: String) throws -> NSScrollView {
-        guard let end = ListProbe.end(kind: kind), let root = main?.contentView else {
+        guard let end = ListProbe.geometry(kind: kind), let root = main?.contentView else {
             throw Failure(description: "no \(kind) list")
         }
+        if let view = end.scrollView { return view }
         var found: [NSScrollView] = []
         func walk(_ view: NSView) {
             if let scroll = view as? NSScrollView { found.append(scroll) }
@@ -678,19 +768,50 @@ final class OffscreenDriver {
         Offscreen.log("drive: window \(Int(window.frame.width)) wide")
     }
 
-    /// To the `back`th newest message of the open chat, as a search match
-    /// or a notification goes (`focus(on:)`).
-    private func jump(_ back: Int) async throws {
+    /// A jump step: the `back`th newest message, or the one under the
+    /// newest image older than the newest `older`.
+    private struct JumpTarget: Decodable {
+        var back: Int?
+        var older: Int?
+        var below: String?
+
+        private enum CodingKeys: String, CodingKey { case older, below }
+
+        init(from decoder: Decoder) throws {
+            if let back = try? decoder.singleValueContainer().decode(Int.self) {
+                self.back = back
+                return
+            }
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            older = try container.decodeIfPresent(Int.self, forKey: .older)
+            below = try container.decodeIfPresent(String.self, forKey: .below)
+        }
+    }
+
+    /// To a message of the open chat, as a search match or a notification
+    /// goes (`focus(on:)`).
+    private func jump(_ to: JumpTarget) async throws {
         guard let model = model(), case .chat(let chat) = model.destination, let storage = model.engine?.storage else {
             throw Failure(description: "no chat open")
         }
         var messages: [Message] = []
-        for try await timeline in storage.timeline(in: chat, limit: max(Storage.pageSize, back)) {
+        for try await timeline in storage.timeline(in: chat, limit: to.back.map { max(Storage.pageSize, $0) } ?? 1_000) {
             messages = timeline.messages
             break
         }
-        guard back >= 1, messages.count >= back else { throw Failure(description: "fewer than \(back) messages") }
-        let message = messages[messages.count - back]
+        let message: Message
+        if let back = to.back {
+            guard back >= 1, messages.count >= back else { throw Failure(description: "fewer than \(back) messages") }
+            message = messages[messages.count - back]
+        } else {
+            guard to.below == "image" else { throw Failure(description: "a jump below \(to.below ?? "nothing")") }
+            let older = messages.dropLast(to.older ?? 0)
+            guard let index = older.indices.last(where: { older[$0].attachmentKind == .image && $0 + 1 < older.endIndex }) else {
+                throw Failure(description: "no image older than the newest \(to.older ?? 0)")
+            }
+            message = messages[index + 1]
+            Offscreen.log("drive: to the message under image \(index) of \(messages.count)")
+        }
         target = message.uuid
         model.focus(on: message)
     }

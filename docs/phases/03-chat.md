@@ -2996,3 +2996,151 @@ before the correction, where the review's same-pass correction needs the
 list engine (PR 4). thread-hop and escape-repeat can still end off the row
 when the stack's estimate swings during the hold's passes. The opening
 blanks (hidden until placed) are unchanged. The iPhone is PR 3.
+
+## The list controller and the Mac table (branch `feat/list-controller`, 2026-10-15)
+
+PR 4 of the message-list review (`docs/reviews/2026-10-14-message-lists.md`,
+"Layer 2"), on PR 2. Done means: the chat's and a thread's lists hold the
+row you read through every change, open placed with no blank frame, follow
+only by the latch, and load older history on the Mac; the journeys show it.
+
+Built:
+
+- `ChatListController` (PeelUI, `ChatList/`): the state machine T1–T27 of
+  the design, engine-agnostic over `ChatListEngine` and `ListAnchorStore`
+  (`AppModel`). Own sends are judged from the row's message; the following
+  latch is set only by your own arrival, a scroll by hand ending at the
+  newest, and the pill; while a scroll by hand moves the list it holds
+  where the rows are (`placement` is `.keep`), for a resize as for any
+  change the engine makes by itself. A jump says whether its message is
+  here, waiting for a window (older than the first row) or not loaded;
+  what to do then (its thread, or give up) is `AppModel.jumpMissed`, for
+  every engine. 27 tests in `ChatListControllerTests`.
+- `MessageTable` (PeelApp): the spike's engine made the only one. A
+  non-flipped `NSTableView` of reused hosting cells, heights cached per row
+  (a row is stale when new, changed, or at a new width, and only stale rows
+  are measured), rows in view measured through their own cells before
+  they are drawn, the rest in idle time (8 ms a turn, then nothing). Every
+  change applies the controller's placement in the same pass. Updates are
+  incremental (one `CollectionDifference`: rows inserted and removed,
+  changed cells shown again), so a selection in an unchanged row survives.
+  A cell reused for another row makes its views anew (`.id`), so a menu,
+  card or panel the old row opened goes with them. 12 pt above and below;
+  a short thread starts at the top; the pill reads the controller (its
+  count from `ListBottom`); VoiceOver reads the rows top down; Page Up and
+  Page Down scroll the chat's list.
+- A row that resizes itself after the list is placed (an image's size
+  arriving) holds what the controller holds, the row jumped to included,
+  not only the rows on the screen; the cell laid out at another height
+  than its row's is corrected in the scroll view's next layout pass,
+  before anything is drawn, not on the next turn of the run loop.
+- Follows, jumps and the pill animate with AppKit's own animation of the
+  clip view on the screen (a far jump going to a view and a half short
+  first), and snap off the screens, where there are no frames to animate on.
+- Older history on the Mac: near the top, `loadOlder`; the page lands above
+  with nothing on the screen moving.
+- A trackpad's rubber band past either end is AppKit's: while the clip is
+  past the content, or easing back after the gesture ends, the engine
+  never sets its origin (it re-placed the rows in view each frame and
+  clamped, pulling the list back under the fingers at the bottom), and the
+  ease back is the same scroll by hand, not a new one; `overscroll-bottom`
+  (a tribe and a direct chat, then a message that follows) and
+  `overscroll-top` judge it with the driver's `overscroll` step.
+  `overscroll-bottom` fails without the fix (the list never leaves its
+  end: 0 of 80 pt); `overscroll-top` passes either way, since at the top
+  the row across the edge is the table's padding row, so nothing was
+  placed there, and it stays as a guard.
+- The hover bar is one view the table engine owns, floating over the rows
+  as Slack's does (in a row's cell, the row above drew over its top). One
+  tracking area on the scroll view reports the pointer; the engine finds
+  the row under it (`row(at:)`), puts the bar across that row's top-right
+  edge, or inside the view at its top, and moves it with every report. It
+  stays on the row whose menu it opened while that is open, hides while
+  another menu is, and hides while the list moves (back once it is still,
+  on the row then under the pointer). Rows read the hovered id from
+  `ListHover` for their highlight and gutter time. Right-click on a row is
+  unchanged: its menu sits on the row's content (`rowMenu`, an AppKit
+  catcher over the text, quote or attachment), never the blank area to the
+  right, so the dropped `contentShape` (only `onHover` used it) changes
+  nothing there.
+- Review follow-ups (2026-10-15): a placement asked for while a rubber band
+  runs (an arrival, your own send, a jump) is no longer dropped: the
+  controller's placement is put in place once the band is back in range
+  (`overscroll-arrival`). `ListClipView` is installed only in the
+  offscreen check. The scroll's end is AppKit's own where it gives one: the
+  live-scroll notifications for a trackpad's gesture and its momentum, and
+  the band back in range for its ease back; the 0.15 s and 0.3 s timers
+  stay only as fallbacks for scrolls with no end signal (a plain mouse
+  wheel, keys, the scroller's track, a still band).
+- The jump pill sits at the bottom centre, above the composer, as Slack's
+  "Jump to recent", clear of the newest row's Reply, Boost and More.
+- `ListProbe` reads a `ListGeometry` report: the table's, and the agent
+  list's `ListEnd`.
+- `SidePanelSplit` narrows the column on the slide's own completion, not
+  after a 0.2 s sleep, and only on the latest slide in's.
+
+Deleted: `MessageList`'s lazy stack and everything holding it (its 15 state
+flags, `BottomDistance`, the open sequence with its sleeps, both geometry
+observers, the re-pin and its step loop, the reveal timer, `openAtDivider`,
+`jumpToNewest`/`scrollToNewest`, `takeFocus`, `go(to:)`, `ListTracking`,
+PR 2's `holdAcrossWidth`, `open(at:)`, `keepAnchor` and `ListEnd.topRow`),
+735 lines of `MessageViews.swift`. `ListEnd` stays for the agent chat (PR 5).
+
+Journeys: `older-history` is new (a flick into the top screen; the page
+arrives; judged from the frame before the rows grow, `from=grow more=200`).
+`search-into-thread` pressed Return before the matches came, which does
+nothing (search-early's bug), so it never opened the thread on either
+build; it now waits for them. A jump in a list too short to scroll passes
+when the target is wholly in view. `late-image` (a jump to the message
+under an image older than the newest 200; the image sizes itself once
+placed, and the target must not move) and `thread-flicker`
+(open, close, open again 60 ms apart inside one slide in; the chat holds
+and narrows once, after the last slide) are new. A drive step can set
+`"next"`, the pause after it (0.3 s otherwise).
+
+Simplify (`/simplify` over the PR). Applied: stale rows in a set, not
+whole-row compares per scroll frame; a running total for a thread's
+fill; the probe's frames built only offscreen, in the same pass as the
+rows in view; idle work returning at once when nothing is stale;
+`anchorable` reused; `ChatRow.heldUUIDs` as the one list of what a jump
+finds a row by; the model written only through the engine's `later`;
+`ListDiff` down to `inserted`, from the engine's one difference;
+`viewportWillResize`, `userExpanded` and `top(of:)` (no caller, no row
+disclosure in the chat) removed; one `land(on:)`, one `remeasure`; the
+flicker sequence written in its drive and the image jump folded into
+`jump`. The menu patch for reused cells (`dismiss(anchoredIn:)`) is gone
+for `.id` on the cell's root, measured on the long scroll at 1,000 rows
+(`lj-big`, three runs of two 6,000 pt scrolls, a 16 ms step): frame p95
+22.2 ms with `.id` against 21.8 without (p50 18.5 against 18.8; 3 frames
+over 33 ms of 894 against none), and 22.3 before the simplify. Not applied: the remaining O(n) passes per row change and a
+flags-only update path (optional, not on the scroll path); the
+unreachable `.opening` case in `contentWillChange` (the switch must be
+exhaustive; it says why); `openStarted` as a local (set in one update,
+read in a later layout).
+
+Run again after the review fixes and the simplify (2026-10-15), twice on
+each build: this branch 30 of 31 both times, main 2 and 3.
+
+| Journey | main (twice) | this branch (twice) |
+|---|---|---|
+| open-read, open-unread | 11; 30 blank frames | pass; pass |
+| return, bounce-* (5) | 50–101 blank, wrong landings | pass; pass |
+| arrival-scrolled, resize-scrolled | 876; 3,083 pt moved | pass; pass |
+| thread-* (8), escape-repeat, tribe-thread-close-* | fail (moves, blanks; no probe where main's driver lacks a step; thread-bottom-wide passed once) | pass; pass |
+| jump, jump-old | short of the target, blanks | pass; pass |
+| older-history | never grew past 200 | pass; pass |
+| late-image, thread-flicker | no probe (main's driver lacks the steps) | pass; pass |
+| tribe-reply-arrives-scrolled, arrival-bottom | pass | pass; pass |
+| search-early | fail | fail (the model: Return before matches) |
+
+Open and resize at 200 and 1,000 rows (`lj-big`, two runs): placed 28–29
+and 35–41 ms after the rows came (240–270 ms for the first list in a fresh
+process), first frame shown 123 and 162–169 ms after the click, 0 blank
+frames (the lazy stack: 430 and 520 ms, 30–34 blank). A resize pass 1.6
+and 2.8–3.1 ms at the median, 7 ms at most; drag frames 20 ms at the
+median, as the lazy stack's. Idle: 0% CPU after a minute on the chat.
+
+Needs Tom's hands: hover cards, right-click menus and text selection in
+the table's cells (sound in code: they anchor to AppKit views that follow
+the table's scroll view), VoiceOver's order, and the feel of the follow and
+jump animations.

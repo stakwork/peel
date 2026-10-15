@@ -161,6 +161,53 @@ extension Journeys {
             await carol.close()
         }
 
+        /// Bob, already Alice's contact, sends her the first message of a key
+        /// exchange (ContactKey, type 10) with no sats. Answering it pays 3
+        /// sats and a ping, so a core that answers an unpaid one lets anyone
+        /// drain an account a few sats at a time (upstream SR-016): Alice's
+        /// core must pay nothing. Fixed in sphinx v0.6.29; the core Peel links
+        /// (`bd9e140`) still answers, so this is a known issue until the lock
+        /// moves, and then fails until the `withKnownIssue` goes. A paid key
+        /// exchange still completing is `keyExchangeByContactInfo`.
+        @Test func anUnpaidContactKeyPaysNothing() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            try await Bank.shared.give(100, to: alice)
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await eventually("Alice and Bob to be contacts") {
+                try alice.isReadyContact(bob) && bob.isReadyContact(alice)
+            }
+            let a0 = try #require(try await alice.settledBalance())
+            let b0 = try #require(try await bob.settledBalance())
+            let rows = try await keyExchangeRows(alice, with: "bob")
+
+            let sent = try await bob.engine.deliver(
+                body: #"{"content":""}"#, to: try alice.pubkey, type: MessageType.contactKey, replacing: nil
+            )
+            let tag = try #require(sent)
+            // As for the contact record above: once Bob's word is in, Alice
+            // has read the ContactKey, and published any answer, before it.
+            try await eventually("the server to hand Bob's ContactKey to Alice") {
+                try bob.messages(in: alice.pubkey).first { $0.tag == tag }?.delivery == .delivered
+            }
+            let word = "after the key \(UUID().uuidString.prefix(6))"
+            try await bob.engine.sendText(word, to: try alice.pubkey)
+            try await eventually("Alice to receive Bob's word") {
+                try alice.messages(in: bob.pubkey).contains { $0.content == word }
+            }
+            let rowsAfter = try await keyExchangeRows(alice, with: "bob")
+            let a1 = try await alice.settledBalance()
+            let b1 = try await bob.settledBalance()
+            withKnownIssue("the linked core bd9e140 pays back an unpaid ContactKey (SR-016, fixed in sphinx v0.6.29)") {
+                #expect(rowsAfter == rows)
+                #expect(a1 == a0)
+                #expect(b1 == b0)
+            }
+
+            await alice.close()
+            await bob.close()
+        }
+
         /// Alice's words on a second device, then Alice adds Bob on the
         /// first: the contact record the first device signs reaches the
         /// second as it happens, and Bob is a contact there too.

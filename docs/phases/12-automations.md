@@ -1,6 +1,6 @@
 # Automations
 
-Last updated 2026-10-14. **v1 built** (PR #221); **system automations
+Last updated 2026-10-15. **v1 built** (PR #221); **system automations
 built** (Peel's half, [../system-automations.md](../system-automations.md));
 "Later" and the open questions are what is left. Builds on
 [agent-brain.md](../agent-brain.md) (the Mac is the brain, strut owns the
@@ -320,6 +320,79 @@ POST /automations/run   Authorization: Bearer <token>
 8. **No run bookkeeping in memory** (2026-10-14): a run had saved its
    "last checked" time as a Fact on Self; the automation, memory and run
    prompts now say each run is told when the last one finished.
+
+9. **Runs while the Mac is locked** (2026-10-15). Tom's "Missed messages
+   check" fired at 09:00 on a locked Mac and failed with "Peel answered
+   500: Could not read the connected model's key.": the agent's key was
+   `WhenUnlockedThisDeviceOnly`.
+   - Done: `KeychainItem.accessible`, chosen where `Profile` builds each
+     item: the agent's key (`dev.peel.agent`) is
+     `AfterFirstUnlockThisDeviceOnly`; everything else stays
+     `WhenUnlockedThisDeviceOnly`, strut's key (`dev.peel.strut`) among
+     it: strut starts with the account, behind the PIN (and after a crash
+     only on the next chat send), and the system automations use the
+     running strut's key in memory, so widening it would only add
+     exposure. An item kept under another class moves on its next read
+     (`SecItemUpdate` of `kSecAttrAccessible`, a failure logged once per
+     item and launch, status only, and tried again next read) or write,
+     so nobody reconnects; the agent reads its key when the account opens.
+     Development profiles keep their files. A locked Keychain
+     (`errSecInteractionNotAllowed`, the data-protection Keychain's only)
+     is `KeychainLocked` (a `LocalizedError`, so the agent chat's notice
+     reads plainly), never none kept; `handModelToStrut` still leaves
+     strut's store alone on any read error. `ModelError.invalidKey`
+     carries its status (401 by default) so a 403 is told apart without
+     changing the chat. Run failures read as one sentence
+     (`AutomationFailure`, `AutomationRunRecord.failure`, which masks
+     anything shaped like a key first, `ModelError.maskingKeys`):
+     - "Didn't run: your Mac was locked, so Peel couldn't use your
+       model's key."
+     - "Didn't run: Peel couldn't read your model's key."
+     - "Didn't run: no model is connected. Connect one in Account."
+       (Peel's runs and strut's)
+     - "Didn't run: Peel's account wasn't open."
+     - "Didn't run: Peel couldn't be reached (it may have been closed)."
+       (strut's `fetch failed` on `peel-automation`, or a run naming no
+       workflow)
+     - "Didn't run: Anthropic rejected the key. Replace it in Account."
+       (a 401: strut's agent step only, the provider named when its words
+       say which; Peel's runs with the connected provider)
+     - "Didn't run: OpenAI refused: <reason>" for a 403 in Peel's runs
+     - anything else after "Didn't finish: ", with strut's "Peel answered
+       500: " taken out. The view's colour stays `Theme.attention`.
+   - Checked: `AuditSecretsTests` (each item's class; a locked status is
+     not none kept), `AutomationsClientTests` (strut's and Peel's raw
+     failures to the words shown, another step's 401, masked keys, a run
+     with no workflow), `AutomationTests` (401, 403 and no provider in
+     Peel's runs), `ModelErrorTests`; the full suite. Offscreen on a
+     scratch development profile with `-strut YES`, the staged strut and
+     a stub key: Run now on the system automation showed "Didn't run:
+     Anthropic rejected the key. Replace it in Account." in the run list.
+     Not driven: a locked screen (cannot be offscreen) and the class move
+     itself (`swift test` and the offscreen check bundle have no Keychain
+     entitlement, so a driver step for it would not reach the
+     data-protection Keychain); a Peel run through the automation server
+     (its token lives in memory only).
+   - Not applied from review: a reason code in the reply instead of
+     sentences recognised by "Didn't " (a change to what strut stores);
+     the step throwing without "Peel answered NNN: " (old runs keep the
+     prefix, so the strip stays); one wording for a refused key across the
+     agent chat, `ModelError` and here (Tom chose these words); the
+     provider from the connected credential rather than a refusal's words
+     (a run read later may predate a change; OpenRouter's refusal names
+     nobody and reads "the model's provider"); "Didn't run" for a key
+     refused after some steps (the key is the same on every call); the
+     agent chat still treating a 403 as a dead key (`isKeyRefused`,
+     Replace key: a chat change, raised apart); `exists`, and so
+     `hasMnemonic`, taking a locked Keychain for no account (unchanged
+     here, raised apart); moving the agent's key apart from its first
+     read (it is read when the account opens, behind the PIN).
+     `/security-review`: no findings. `scripts/risk.sh` says medium: its
+     key pattern misses `SecretStore.swift`, where `KeychainItem` lives;
+     ranked high by hand (keys).
+   - Next, raised apart: strut's keys over stdin rather than the
+     environment; strut started again after a crash without waiting for a
+     chat send.
 
 ## Risks
 

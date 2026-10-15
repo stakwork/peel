@@ -3,8 +3,8 @@ import Foundation
 /// Why a model call failed, in cases the UI can word plainly. Provider
 /// messages are kept short and have anything that looks like a key removed.
 public enum ModelError: Error, Sendable, Hashable {
-    /// 401 or 403: the key was refused.
-    case invalidKey(String?)
+    /// 401 or 403: the key was refused, or (403) what it may do.
+    case invalidKey(String?, status: Int = 401)
     /// 429, with how long the provider asked to wait when it said.
     case rateLimited(retryAfter: TimeInterval?)
     /// 5xx, Anthropic's 529 (overloaded) among them.
@@ -33,7 +33,7 @@ public enum ModelError: Error, Sendable, Hashable {
         let error = (try? JSONDecoder().decode(JSONValue.self, from: body))?["error"]
         let message = (error?["message"]?.string ?? error?.string).map { Self.scrubbed($0, secret: secret) }
         switch status {
-        case 401, 403: self = .invalidKey(message)
+        case 401, 403: self = .invalidKey(message, status: status)
         case 408: self = .network("The provider took too long to answer.")
         // OpenAI's 429 for an account with no credit: waiting will not help.
         case 429 where error?["code"]?.string == "insufficient_quota" || error?["type"]?.string == "insufficient_quota":
@@ -69,7 +69,7 @@ public enum ModelError: Error, Sendable, Hashable {
             }
             }
         switch status {
-        case 401, 403: self = .invalidKey(message)
+        case 401, 403: self = .invalidKey(message, status: status)
         case 429: self = .rateLimited(retryAfter: nil)
         case 400..<500: self = .badRequest(status: status, message)
         default: self = .unavailable(status: status, message)
@@ -90,10 +90,17 @@ public enum ModelError: Error, Sendable, Hashable {
     /// anything shaped like one replaced (OpenAI's 401 quotes part of the
     /// key it was given).
     static func scrubbed(_ message: String, secret: String) -> String {
-        var text = message
-        if !secret.isEmpty { text = text.replacingOccurrences(of: secret, with: "[key]") }
-        text = text.replacingOccurrences(of: #"\b(sk|rk|pk)-[A-Za-z0-9_\-\*\.]{4,}"#, with: "[key]", options: .regularExpression)
+        let text = maskingKeys(secret.isEmpty ? message : message.replacingOccurrences(of: secret, with: "[key]"))
         return text.count > 300 ? String(text.prefix(300)) + "…" : text
+    }
+
+    /// `text` with anything shaped like a key replaced by "[key]": `sk-…`,
+    /// `sk-ant-…`, `sk-or-…` (and `rk-`, `pk-`), masked forms like
+    /// `sk-ab***yz` or `sk-…****abcd` too, glued to a word by `_` or `=`
+    /// as well, up to a space, quote or bracket; a full stop after one stays.
+    public static func maskingKeys(_ text: String) -> String {
+        text.replacingOccurrences(of: #"(?<![A-Za-z0-9])(sk|rk|pk)-[^\s"'(),:;\[\]{}<>]*[^\s"'(),:;\[\]{}<>.]"#,
+                                  with: "[key]", options: .regularExpression)
     }
 
     /// A provider's message as a sentence: "Overloaded" as "Overloaded.",
@@ -137,7 +144,7 @@ extension ModelError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidKey(let message):
+        case .invalidKey(let message, _):
             "The provider refused the API key." + (message.map { " (\($0))" } ?? "")
         case .rateLimited(let after):
             reason + " " + (after.map { "Try again in \(Int($0.rounded(.up))) seconds." } ?? "Try again in a moment.")

@@ -1,7 +1,9 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
+import os
 import Security
+import Synchronization
 
 /// Where an account's twelve words live, locked with the account's PIN.
 public protocol SecretStore: Sendable {
@@ -140,9 +142,19 @@ public protocol SecretItem: Sendable {
     func delete() throws
 }
 
+/// The Keychain could not be read because this Mac is locked
+/// (`errSecInteractionNotAllowed`): the secret may well be there, so this is
+/// never taken for none kept.
+public struct KeychainLocked: LocalizedError, Equatable, CustomStringConvertible {
+    public var description: String { "the Keychain cannot be read while this Mac is locked" }
+    public var errorDescription: String? { description }
+}
+
 /// A generic password in the data-protection Keychain: in the app's access
-/// group, `WhenUnlockedThisDeviceOnly` (wrapped by a key tied to this Mac,
-/// never synced to iCloud or restored from a backup onto another Mac).
+/// group, this device only (wrapped by a key tied to this Mac, never synced
+/// to iCloud or restored from a backup onto another Mac), and readable
+/// only while the Mac is unlocked unless the item says otherwise
+/// (`accessible`).
 /// Needs a bundle signed with a provisioning profile that grants the access
 /// group (`scripts/sign-app.sh`); anything else gets `errSecMissingEntitlement`.
 public struct KeychainItem: SecretItem {
@@ -151,16 +163,20 @@ public struct KeychainItem: SecretItem {
     /// The data-protection Keychain; false only to read and remove what
     /// earlier builds left in the file-based login keychain.
     let dataProtection: Bool
+    /// When it can be read: `WhenUnlockedThisDeviceOnly`, or
+    /// `AfterFirstUnlockThisDeviceOnly` for what Peel needs while the Mac is
+    /// locked (the agent's key, for a scheduled run).
+    /// An item kept under another class moves to this one when next read or
+    /// written.
+    let accessible: String
 
     /// Internal, so nothing outside PeelCore can name the words' item.
-    init(service: String, account: String) {
-        self.init(service: service, account: account, dataProtection: true)
-    }
-
-    init(service: String, account: String, dataProtection: Bool) {
+    init(service: String, account: String, dataProtection: Bool = true,
+         accessible: CFString = kSecAttrAccessibleWhenUnlockedThisDeviceOnly) {
         self.service = service
         self.account = account
         self.dataProtection = dataProtection
+        self.accessible = accessible as String
     }
 
     private var query: [String: Any] {
@@ -176,17 +192,46 @@ public struct KeychainItem: SecretItem {
         SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
 
+    /// The secret, or nil when none is kept; `KeychainLocked` while the Mac
+    /// is locked and the item's class does not allow a read then. One kept
+    /// under another class than `accessible` is moved to it.
     public func read() throws -> Data? {
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query.merging([kSecReturnData as String: true]) { $1 } as CFDictionary, &item)
+        let status = SecItemCopyMatching(
+            query.merging([kSecReturnData as String: true, kSecReturnAttributes as String: true]) { $1 } as CFDictionary, &item)
+        guard try Self.found(status, dataProtection: dataProtection) else { return nil }
+        guard let attributes = item as? [String: Any], let data = attributes[kSecValueData as String] as? Data else {
+            throw PeelError("the Keychain item for \(account) is unreadable")
+        }
+        if dataProtection, attributes[kSecAttrAccessible as String] as? String != accessible {
+            // Tried again on the next read if it fails: the secret is read either way.
+            let moved = SecItemUpdate(query as CFDictionary, [kSecAttrAccessible as String: accessible] as CFDictionary)
+            if moved != errSecSuccess { Self.logOnce(moved, moving: service) }
+        }
+        return data
+    }
+
+    private static let log = Logger(subsystem: "dev.peel.mac", category: "keychain")
+    private static let logged = Mutex<Set<String>>([])
+
+    /// A move to another class that failed, once per item and launch: a
+    /// move that never succeeds shows in the field. Names the service and
+    /// the status only.
+    private static func logOnce(_ status: OSStatus, moving service: String) {
+        guard logged.withLock({ $0.insert(service).inserted }) else { return }
+        log.error("could not move Keychain item \(service, privacy: .public) to its class: \(status, privacy: .public)")
+    }
+
+    /// A read's status: whether the item was found; a locked Mac is
+    /// `KeychainLocked`, never none kept, and anything else an error. Only
+    /// the data-protection Keychain's: the login keychain's says the same
+    /// of a prompt it may not show.
+    static func found(_ status: OSStatus, dataProtection: Bool = true) throws -> Bool {
         switch status {
-        case errSecSuccess:
-            guard let data = item as? Data else { throw PeelError("the Keychain item for \(account) is unreadable") }
-            return data
-        case errSecItemNotFound:
-            return nil
-        default:
-            throw PeelError("Keychain read failed: \(Self.message(status))")
+        case errSecSuccess: true
+        case errSecItemNotFound: false
+        case errSecInteractionNotAllowed where dataProtection: throw KeychainLocked()
+        default: throw PeelError("Keychain read failed: \(message(status))")
         }
     }
 
@@ -199,7 +244,7 @@ public struct KeychainItem: SecretItem {
         let attributes = query.merging([
             kSecValueData as String: data,
             kSecAttrLabel as String: label,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: accessible,
             kSecAttrSynchronizable as String: false,
         ]) { $1 }
         let status = SecItemAdd(attributes as CFDictionary, nil)
@@ -208,8 +253,11 @@ public struct KeychainItem: SecretItem {
         return true
     }
 
+    /// Replaces the secret, and moves it to `accessible` if it was kept under another class.
     func update(_ data: Data) throws {
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        var changes: [String: Any] = [kSecValueData as String: data]
+        if dataProtection { changes[kSecAttrAccessible as String] = accessible }
+        let status = SecItemUpdate(query as CFDictionary, changes as CFDictionary)
         guard status == errSecSuccess else { throw PeelError("Keychain update failed: \(Self.message(status))") }
     }
 

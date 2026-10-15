@@ -42,6 +42,35 @@ public struct AutomationReply: Sendable, Equatable, Codable {
     public static func failed(_ error: String) -> Self { Self(status: .failed, error: error) }
 }
 
+/// Why a run never started, as the Automations view says it, whether
+/// Peel's run or strut's own (`AutomationRunRecord.failure`): a whole
+/// sentence, so the view adds no "Didn't finish" before it.
+public enum AutomationFailure {
+    public static let macLocked = "Didn't run: your Mac was locked, so Peel couldn't use your model's key."
+    public static let keyUnreadable = "Didn't run: Peel couldn't read your model's key."
+    public static let noModel = "Didn't run: no model is connected. Connect one in Account."
+    public static let accountClosed = "Didn't run: Peel's account wasn't open."
+    /// strut could not reach Peel: closed, quitting, its account closed, or
+    /// not listening for automations.
+    public static let peelUnreachable = "Didn't run: Peel couldn't be reached (it may have been closed)."
+
+    /// The provider refused the key (HTTP 401): an expired or revoked one.
+    public static func keyRejected(by provider: AgentProvider?) -> String {
+        "Didn't run: \(name(of: provider)) rejected the key. Replace it in Account."
+    }
+
+    /// The provider refused what the key asked for (HTTP 403): a model or
+    /// region it may not use, not the key itself.
+    public static func refused(by provider: AgentProvider?, _ reason: String?) -> String {
+        "Didn't run: \(name(of: provider)) refused" + (reason.map { ": " + $0 } ?? " the request.")
+    }
+
+    private static func name(of provider: AgentProvider?) -> String { provider?.name ?? "the model's provider" }
+
+    /// Already a sentence of its own, not a reason to put after "Didn't finish".
+    static func isSentence(_ text: String) -> Bool { text.hasPrefix("Didn't ") }
+}
+
 /// One automation run: the agent's loop with no one watching. It is given
 /// no approver, so a tool that asks (a send) is refused, and a read message
 /// cannot steer it into acting for anyone.
@@ -76,25 +105,26 @@ public enum AutomationRun {
     /// Runs `request` once with `loop` and says what came of it; stopped,
     /// and failed, at `deadline`.
     public static func run(
-        _ request: AutomationRequest, with loop: AgentLoop, now: Date = .now, deadline: Duration = deadline
+        _ request: AutomationRequest, with loop: AgentLoop, provider: AgentProvider? = nil, now: Date = .now,
+        deadline: Duration = deadline
     ) async -> AutomationReply {
         var unattended = loop
         unattended.approver = nil
         let run = unattended
         let message = instruction(for: request, now: now)
         return await withTaskGroup(of: AutomationReply?.self) { group in
-            group.addTask { reply(to: await run.run(history: [], message: message)) }
+            group.addTask { reply(to: await run.run(history: [], message: message), provider: provider) }
             group.addTask {
                 try? await Task.sleep(for: deadline)
                 return nil
             }
             let first = await group.next() ?? nil
             group.cancelAll()
-            return first ?? .failed("Stopped: the run took longer than \(Int(deadline / .seconds(60))) minutes.")
+            return first ?? .failed("The run took longer than \(Int(deadline / .seconds(60))) minutes.")
         }
     }
 
-    static func reply(to result: TurnResult) -> AutomationReply {
+    static func reply(to result: TurnResult, provider: AgentProvider?) -> AutomationReply {
         let text = result.messages.last { $0.role == .assistant }?.text
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         switch result.outcome {
@@ -104,6 +134,10 @@ public enum AutomationRun {
         case .finished(.maxTokens) where !text.isEmpty:
             // Cut off, but most of it is better than nothing.
             return AutomationReply(status: .delivered, text: text + "\n\n(Cut off at its length limit.)")
+        case .failed(.invalidKey(_, status: 401)):
+            return .failed(AutomationFailure.keyRejected(by: provider))
+        case .failed(.invalidKey(let reason, _)):
+            return .failed(AutomationFailure.refused(by: provider, reason))
         default:
             return .failed(result.summary ?? "The run ended without a reply.")
         }

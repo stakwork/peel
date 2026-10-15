@@ -10,7 +10,7 @@ struct ModelErrorTests {
     @Test func statusesMapToPlainCases() {
         let anthropic = #"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#
         #expect(error(401, anthropic) == .invalidKey("invalid x-api-key"))
-        #expect(error(403) == .invalidKey(nil))
+        #expect(error(403) == .invalidKey(nil, status: 403))
         #expect(error(429, retryAfter: "17") == .rateLimited(retryAfter: 17))
         #expect(error(408).isRetryable)
         #expect(error(429, retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT") == .rateLimited(retryAfter: nil))
@@ -28,7 +28,7 @@ struct ModelErrorTests {
 
     @Test func messagesNeverCarryTheKey() {
         let quoted = #"{"error":{"message":"Incorrect API key provided: sk-proj-abc1****wxyz. You can find your API key at https://platform.openai.com.","type":"invalid_request_error"}}"#
-        guard case .invalidKey(let message?) = error(401, quoted) else { Issue.record("not invalidKey"); return }
+        guard case .invalidKey(let message?, _) = error(401, quoted) else { Issue.record("not invalidKey"); return }
         #expect(!message.contains("sk-proj"))
         #expect(!message.contains("abc1"))
 

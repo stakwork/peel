@@ -781,7 +781,7 @@ private struct AgentProblemRow: View {
             "No model connected."
         case .unreadableKey(let reason):
             PeelError.problem(reason, couldNot: "read the API key on this Mac")
-        case .model(.invalidKey(let message)):
+        case .model(.invalidKey(let message, _)):
             "Your \(agent.connection?.provider.name ?? "provider's") key stopped working."
                 + (message.map { " (\($0))" } ?? "")
         case .model(let error):

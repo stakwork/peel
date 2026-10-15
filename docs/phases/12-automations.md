@@ -394,6 +394,39 @@ POST /automations/run   Authorization: Bearer <token>
    - Next, raised apart: strut's keys over stdin rather than the
      environment; strut started again after a crash without waiting for a
      chat send.
+10. **The workspace on Ladybug** (2026-10-15, #284 and its review). strut
+   now keeps workflows, steps and automations in one Ladybug file
+   (`workspace/graph/graph.lbug`), and its desktop package boots on it.
+   Peel had pinned `fs`, so nothing moved until Peel asked.
+   - Done: `BundledStrut` sets `STRUT_WORKSPACE_BACKEND=ladybug`. At its
+     first start strut imports the filesystem workspace (every version,
+     the active one, owner, cap, automations) and moves the files to
+     `workspace/fs-workspace.imported-<time>/`; runs stay where they were.
+     `stage-strut.sh` and `bundle-app.sh` refuse a stage whose
+     `desktop.json` does not say `ladybug`: a signed app cannot download
+     the two extensions, and an older stage would have come up without
+     its strut. Peel's step is written out to `steps/_graph/`.
+   - Checked: the full suite against strut `ae64fde`; on a copy of a
+     development profile's strut folder, fs then two Ladybug starts, every
+     workflow version and hash, the active versions, the automation and
+     its trigger and the runs matched, the second start imported nothing
+     and the memory graph was untouched. Offscreen with `-strut YES` on
+     a development profile holding an fs workspace and a model: the app
+     migrated it at launch, the System tab showed Merge duplicates with
+     its last run from before the move ("Didn't finish"), and Peel turned
+     it on, a write into the new graph.
+   - Not applied from review: an automated test of the migration (it
+     would need a test-only way to start the staged strut on `fs`); the
+     test naming strut's `steps/_graph/` (it is where the token scan must
+     look); a longer ready timeout for a first start that imports (Peel's
+     workspaces hold a few workflows; raised if a start is seen to time
+     out); a build from before #284 run against a migrated profile shows
+     no automations, and coming back imports its files again, replacing
+     the graph's automations with that build's (strut's import; Tom's
+     builds only, so told rather than guarded); leaving the backend to
+     `desktop.js` instead of pinning it (Tom chose explicit: a stage
+     without Ladybug falling back to `fs` would show an empty workspace).
+     `/security-review`: no findings. `scripts/risk.sh` says medium.
 
 ## Risks
 

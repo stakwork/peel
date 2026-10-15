@@ -90,6 +90,8 @@ final class PhoneRouter {
     /// Set while `follow` changes the tab and a stack together, so the
     /// model hears the outcome once rather than the tab with the old stack.
     @ObservationIgnored private var holding = false
+    /// The thread whose sheet is going down (`thread`).
+    private var closingThread: ThreadRef?
 
     init(model: AppModel) {
         self.model = model
@@ -160,14 +162,27 @@ final class PhoneRouter {
         payments = [.payment(id)]
     }
 
-    /// The thread sheet's binding: the model's open thread, closed (its
-    /// draft kept, as the model keeps drafts) when the sheet goes.
+    /// The thread sheet's binding: the model's open thread. Dismissed, it
+    /// stays open in the model, rows and all, until the sheet has gone
+    /// (`threadDismissed`), so it never slides down blank.
     var thread: Binding<ThreadRef?> {
-        Binding { [model] in
-            model.openThread
-        } set: { [model] thread in
-            if let thread { model.openThread(thread) } else { model.closeThread() }
+        Binding { [self] in
+            model.openThread == closingThread ? nil : model.openThread
+        } set: { [self] thread in
+            if let thread {
+                closingThread = nil
+                model.openThread(thread)
+            } else {
+                closingThread = model.openThread
+            }
         }
+    }
+
+    /// The thread sheet has gone: its thread closes (its draft kept, as the
+    /// model keeps drafts), unless it was opened again meanwhile.
+    func threadDismissed() {
+        if let closingThread, model.openThread == closingThread { model.closeThread() }
+        closingThread = nil
     }
 
     // MARK: Keeping the model and the stacks together

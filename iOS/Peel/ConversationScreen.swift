@@ -22,27 +22,51 @@ struct ConversationScreen: View {
         model.conversations.first { $0.chat == chat }
     }
 
+    /// The rows last shown while the chat was open: the model clears its
+    /// rows as the chat is left (Back, another tab) and while a window
+    /// reloads, and the list keeps showing these through the pop and the
+    /// reload rather than going blank. Not observed.
+    @State private var held = HeldRows()
+    /// Where the list opens, worked out once, as its messages first load:
+    /// here, not in the body, which would then follow what it reads.
+    @State private var start: MessageList.Start?
+
     var body: some View {
-        let shown = model.selectedChat == chat
+        let live = isLive
         let tribe = model.tribes[chat]
         Group {
-            if shown, !model.timeline.messages.isEmpty || !model.chatRows.isEmpty {
-                MessageList(rows: model.chatRows, composer: .chat(chat))
-                    // A fresh list per chat, made once its messages are in,
-                    // so it opens at their bottom (the Mac's rule).
+            if let start {
+                // Made once per chat, with its messages, so it opens placed
+                // among them; kept, with its place, while the chat is away.
+                MessageList(rows: live ? model.chatRows : held.rows, composer: .chat(chat), live: live, start: start)
                     .id(chat)
             } else {
                 Color.clear
             }
+        }
+        .onChange(of: live, initial: true) { _, live in
+            if live, start == nil { start = MessageList.start(of: .chat(chat), rows: model.chatRows, in: model) }
+        }
+        .onChange(of: model.chatRows, initial: true) { _, rows in
+            if isLive { held.rows = rows }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .floatingBar(.bottom) { footer(tribe: tribe) }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { header(tribe: tribe) }
-        .sheet(item: threadHere) { thread in
+        .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in
             ThreadSheet(thread: thread, conversation: conversation)
         }
+    }
+
+    /// The model's rows are this chat's, loaded.
+    private var isLive: Bool {
+        model.selectedChat == chat && model.loadedChat == chat
+    }
+
+    final class HeldRows {
+        var rows: [ChatRow] = []
     }
 
     /// The thread sheet's item: the router's, for this chat only.

@@ -11,6 +11,10 @@ import PeelCore
 /// account keeps (`Profile.strutKey`), made on its first start.
 /// Its workspace and the memory graph are in the folder it is given (the app
 /// account's under Application Support), and go with the account (`erase`).
+/// The workspace (workflows, steps, automations, claims) is one Ladybug file,
+/// `workspace/graph/graph.lbug`; at its first start on one, strut imports a
+/// filesystem workspace it finds there and moves its files aside to
+/// `workspace/fs-workspace.imported-<time>/`.
 @MainActor
 public final class BundledStrut {
     /// The running strut's address and key; nil until it is ready and
@@ -228,7 +232,7 @@ public final class BundledStrut {
             "STRUT_API_KEY": key,
             "STRUT_READY_KEY": "1",
             "STRUT_SECRET_KEY": secretKey,
-            "STRUT_WORKSPACE_BACKEND": "fs",
+            "STRUT_WORKSPACE_BACKEND": "ladybug",
             "STRUT_WORKSPACE": data.appending(path: "workspace").path,
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",

@@ -21,7 +21,9 @@ struct MessageList: View {
             reachesNewest: composer.thread != nil || model.timelineReachesNewest,
             hasOlder: composer.thread == nil && model.mayHaveOlder, link: link
         )
-        .overlay(alignment: .bottomTrailing) {
+        // Bottom centre, above the composer, as Slack's "Jump to recent":
+        // clear of the newest row's hover bar at the right.
+        .overlay(alignment: .bottom) {
             if let controller = link.controller {
                 JumpPill(controller: controller, composer: composer)
             }
@@ -103,7 +105,6 @@ private struct JumpPill: View {
         ZStack {
             if let pill {
                 JumpToNewestButton(count: pill.count, composer: composer) { controller.jumpToPresent() }
-                    .padding(.trailing, Theme.Space.xl)
                     .padding(.bottom, Theme.Space.md)
                     .transition(.opacity)
             }

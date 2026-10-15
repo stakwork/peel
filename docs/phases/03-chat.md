@@ -3055,6 +3055,8 @@ Built:
   cell's tracking area now owns the hover, brings its row view above its
   neighbours, and keeps the bar inside the row, below the view's top,
   when there is no room above it (the driver's `hover` step).
+- The jump pill sits at the bottom centre, above the composer, as Slack's
+  "Jump to recent", clear of the newest row's Reply, Boost and More.
 - `ListProbe` reads a `ListGeometry` report: the table's, and the agent
   list's `ListEnd`.
 - `SidePanelSplit` narrows the column on the slide's own completion, not

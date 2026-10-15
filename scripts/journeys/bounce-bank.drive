@@ -1,0 +1,20 @@
+// Bounce, judged at the bank chat, left at its bottom: back at its newest.
+// check: back land=end
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 1500}
+{"wait": 1}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"select": "{{other}}"}
+{"wait": 2}
+{"probe": "back", "for": 7.5}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"select": "{{other}}"}
+{"wait": 2.5}

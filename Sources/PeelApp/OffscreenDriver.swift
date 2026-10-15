@@ -21,8 +21,13 @@ import PeelUI
 /// For the list journeys (`scripts/journeys`): `{"probe": "name", "for": 2}`
 /// records every message list each frame for that long while the steps
 /// after it run, into `name.probe.json` (`ListProbe`); `{"thread":
-/// "newest"}` (or `"visible"`, or a row's index) opens a thread as its
-/// "N replies" does, `{"close": "thread"}` closes it as its X does;
+/// "newest"}` (or `"visible"`, `"visible2"` for the second row in view, or
+/// a row's index) opens a thread as its "N replies" does, `"from-threads"`
+/// the first in the Threads list as its card does (`{"open": "threads"}`
+/// shows that list), `{"close": "thread"}` closes it as its X does;
+/// `{"note": "thread"}` (or `"focus"`) logs the thread open (or where the
+/// keys go); `{"reveal": "replies"}` scrolls the chat up until its
+/// middle "N replies" row is in view, a few rows below the top;
 /// `{"scroll": 600}` scrolls the chat's list up 600 points as a live scroll
 /// by hand (`"in": "thread"` for the thread's, negative for down),
 /// `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
@@ -36,14 +41,14 @@ import PeelUI
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
-        var probe, thread, close, expect, signal, list: String?
+        var probe, thread, close, expect, signal, list, note, reveal: String?
         var mods: [String]?
         var wait, duration, scroll, width, over: Double?
         var scrollTo, jump: Int?
         var submit: Bool?
 
         enum CodingKeys: String, CodingKey {
-            case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal
+            case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
             case mods, wait, scroll, width, over, scrollTo, jump
             case list = "in", duration = "for", submit = "return"
         }
@@ -201,6 +206,21 @@ final class OffscreenDriver {
         } else if step.expect == "search" {
             try await until("search matches", timeout: 10) { !(self.model()?.search?.matches.isEmpty ?? true) }
             target = model()?.search?.matches.first?.uuid
+        } else if step.reveal == "replies" {
+            guard let rows = model()?.chatRows else { throw Failure(description: "no account open") }
+            let threads = rows.indices.filter { rows[$0].summary != nil }
+            guard !threads.isEmpty else { throw Failure(description: "no N replies row") }
+            let row = threads[threads.count / 2]
+            try await scroll(toRow: max(row - 3, 0), in: "chat")
+            Offscreen.log("drive: replies row \(row) in view")
+        } else if let what = step.note {
+            switch what {
+            case "thread":
+                let open = model()?.openThread.map { "open in \($0.chat.prefix(12))" } ?? "none open"
+                Offscreen.log("drive: thread \(open)")
+            default:
+                Offscreen.log("drive: focus \(focus)")
+            }
         } else if let name = step.signal {
             guard !name.isEmpty, !name.contains("/") else { throw Failure(description: "a signal's name is a plain word") }
             try Data().write(to: output.appendingPathComponent("signal-\(name)"))
@@ -278,6 +298,9 @@ final class OffscreenDriver {
         case "payments":
             // What the sidebar's Payments row sets.
             model.destination = .payments
+        case "threads":
+            // What the sidebar's Threads row sets.
+            model.destination = .threads
         case "automations":
             // What the sidebar's Automations row sets.
             model.destination = .automations
@@ -535,7 +558,14 @@ final class OffscreenDriver {
     /// newest row with one (else the newest message); `visible`, the newest in view with one, else
     /// the top message in view (the thread it would start); or a row's index.
     private func openThread(_ which: String) throws {
-        guard let model = model(), case .chat = model.destination else { throw Failure(description: "no chat open") }
+        guard let model = model() else { throw Failure(description: "no account open") }
+        if which == "from-threads" {
+            // As a card in the Threads list: at its first new reply, if any.
+            guard let summary = model.threads.first else { throw Failure(description: "no threads") }
+            ThreadPanel.opening { model.openThread(summary) }
+            return Offscreen.log("drive: thread from Threads in \(summary.chat.prefix(12))")
+        }
+        guard case .chat = model.destination else { throw Failure(description: "no chat open") }
         let rows = model.chatRows.enumerated().filter { $0.element.kind == .message }
         let row: ChatRow?
         switch which {
@@ -546,6 +576,9 @@ final class OffscreenDriver {
             let inView = Set(ListProbe.inView(kind: "chat"))
             let shown = rows.filter { inView.contains($0.element.id) }
             row = (shown.last { $0.element.summary != nil } ?? shown.first)?.element
+        case "visible2":
+            let inView = Set(ListProbe.inView(kind: "chat"))
+            row = rows.filter { inView.contains($0.element.id) }.dropFirst().first?.element
         default:
             guard let index = Int(which) else { throw Failure(description: "no thread \(which)") }
             row = rows.first { $0.offset == index }?.element

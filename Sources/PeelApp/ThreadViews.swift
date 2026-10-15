@@ -13,17 +13,18 @@ struct ThreadPanel: View {
 
     static let width: CGFloat = 360
 
-    /// Opens a thread with the panel's slide in. Every way to a thread from
-    /// a click (its "N replies", Threads, the offscreen driver) goes here,
-    /// so they all move as one.
+    /// Opens a thread. Every way to a thread from a click (its "N
+    /// replies", Threads, the offscreen driver) goes here, so they all move
+    /// as one. No animation of its own: `SidePanelSplit` slides the panel
+    /// and changes the chat's width once.
     static func opening<Result>(_ open: () throws -> Result) rethrows -> Result {
-        try withAnimation(.easeOut(duration: 0.2), open)
+        try open()
     }
 
-    /// Closes the thread with the panel's slide out: its X, Escape in its
-    /// composer, the offscreen driver.
+    /// Closes the thread: its X, Escape in its composer, the offscreen
+    /// driver. The slide out is `SidePanelSplit`'s, as for `opening`.
     static func closing<Result>(_ close: () throws -> Result) rethrows -> Result {
-        try withAnimation(.easeIn(duration: 0.15), close)
+        try close()
     }
 
     var body: some View {

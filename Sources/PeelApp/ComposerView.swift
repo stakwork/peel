@@ -78,7 +78,7 @@ struct Composer: View {
             escape: {
                 // The memory beside the agent chat first: the least to lose.
                 if composer == .agent, model.memoryPanel != nil {
-                    return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+                    return model.escape(in: composer)
                 }
                 if let stop {
                     stop()

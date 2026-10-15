@@ -57,7 +57,7 @@ struct AgentConnectPanel: View {
                         .disabled(checking)
                     }
                     Button("Get a key from \(provider.name)") {
-                        withAnimation(.easeOut(duration: 0.2)) { model.web.open(provider.keyPage) }
+                        model.web.open(provider.keyPage)
                     }
                     .buttonStyle(.peel(.link, size: .sm))
                 }

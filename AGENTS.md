@@ -228,7 +228,7 @@ is a short plan. Update the status and the journal when you finish something.
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
   `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
-  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (a call's
+  `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`

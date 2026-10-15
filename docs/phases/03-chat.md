@@ -2882,3 +2882,117 @@ main-thread samples in `refreshRecentCalls` before and 35 after; CPU per
 arriving message 152, 149, 148 ms before and 130, 143, 129 ms after
 (alternating runs, load average near 60). Idle on the tribe for a minute
 afterwards: 0.15%, the main thread waiting in `mach_msg`.
+
+## The list's structure: thread close, width changes, coming back (branch `fix/list-structure`, 2026-10-14)
+
+Layer 1 of the message-list review (`docs/reviews/2026-10-14-message-lists.md`),
+the Mac half. From Tom: closing a thread jumped the chat, on a narrow
+window and a wide one. The review confirmed both in code: on a narrow
+window `SidePanelSplit` removed the chat column while the thread was open,
+so closing it made a new `MessageList`, which opened afresh (hidden up to
+400 ms, then at the newest or at a stale "New messages"); on a wide one the
+close was animated, so every row wrapped again at each width on the way
+and nothing held the row being read.
+
+Done means: opening or closing a thread, on either width, leaves the chat
+where it was (the row you were reading at the same place, or the bottom
+flush); a chat come back to opens where you left it; the journeys of PR 1
+(`scripts/journeys`) show it.
+
+Changed:
+
+- `SidePanelSplit` always makes the column. On a narrow window the panel
+  covers it; the column fades under it and takes no clicks, VoiceOver or
+  keys (`.disabled`; the composer reads `coveredByPanel`: the field gives
+  up the keyboard and takes it back when shown again, if nothing else has
+  it).
+  The thread's, the web pane's and the agent memory's splits all go
+  through it.
+- The panel and its divider slide in an overlay over the column; the
+  column changes width once, unanimated (`.transaction(value: isOpen)`):
+  narrower once the panel has slid in (no empty strip beside it while it
+  slides), wider as it starts to slide out, under it. Narrowing at once
+  instead measured 1,203 and 12 pt on thread-scrolled-wide, 0 and 731 pt
+  on thread-bottom-wide; after the slide, 48 pt in 4 frames and 71 pt in
+  5, both runs. The split owns the slide: `ThreadPanel.opening` and
+  `closing` (#273) now only run their closure, and the `withAnimation`
+  around the web pane and the memory panel is gone. Closing the thread
+  gives the keys back to the chat's composer (they were left on the
+  window).
+- A width change while scrolled up holds the row you were reading: the
+  top row in view when the list last came to rest (`ListEnd.topRow`, never
+  "New messages"' row or a replies line) goes back to where it was on
+  screen, by its laid-out frame, or by its estimated place first when the
+  new width left it unmade (`open(at:)`, at most three moves; a later
+  width change, a drag, takes over). A width change no longer counts as
+  reaching the bottom when it clamps the offset there. At the bottom the
+  re-pin keeps it flush, now also on a width change. **Interim**: a
+  timed, bounded retry on the lazy stack's estimates, to be deleted by the
+  list controller (PR 4), not built on. The agent chat's list (beside its
+  memory panel) has no such hold: PR 5, when it moves to the controller.
+- The chat's list is made once, after its messages have loaded
+  (`AppModel.loadedChat`, also set when the load fails, so the list shows
+  empty under the notice), keyed by the chat: no empty list made and then
+  replaced (`.id(messages.isEmpty ? nil : chat)` is gone), so none of its
+  late tasks reach its replacement (F1, F14 in the history).
+- `ListAnchor` in PeelUI: `.newest` or a row and its offset from the top,
+  kept per chat and per thread (`AppModel.keep`, `anchor(of:)`), written
+  when the list comes to rest (a scroll's end, opening, a jump, the newest
+  reached), not per frame. A list made again opens at a message asked
+  for, else "New messages" while it still marks new unread, else where it
+  stood, else the newest. A row no longer loaded (it stood in a jump's
+  window, since left) opens at the newest. `showNewest` writes `.newest`.
+- "New messages" no longer decides where a list opens once the chat's list
+  has stood at its newest this visit (`opensAtNewMessages`); it stays drawn
+  until you leave or send, so nothing above you moves when it goes.
+- Your own newest message takes a list to it, judged by the message (sent
+  here, from another device, a payment or a boost alike), except in the
+  chat for a reply in the thread open beside it: only the thread's list
+  follows that.
+- A scroll by hand that ends short of the bottom stops following, even
+  when the move off the bottom came before its phase (it then counted as
+  by itself, and the next re-pin or own send took the list back down).
+
+Journeys: new ones for Tom's case (a tribe, bouncing between chats, a
+thread closed in a tribe) and the thread paths, on a pair seeded with a
+tribe (`seed.sh`: 300 tribe messages, 9 threads of 5 to 20 replies, long
+messages and images; driver steps `reveal`, `note`, `"visible2"`,
+`"from-threads"`, `open: threads`; `run.sh --tribe` and the tribe
+signals). All 28 run twice on main (with the journeys) and on this
+branch, `ls-me`/`ls-peer`, 2026-10-15. "Blank" there is mostly the list
+hidden until placed (`revealLimit`), which this branch keeps.
+
+| Journey | main (run 1; run 2) | this branch (run 1; run 2) |
+|---|---|---|
+| tribe-thread-close-narrow | 16; 15 blank, list made again, back 4,888 pt from the row | pass; pass |
+| tribe-thread-close-wide | 8,226; 8,693 pt over ~600 frames, ends 6,455 pt off | 604 pt in 6; 5 frames, back on the row |
+| bounce-tribe | 61; 59 blank, back at the newest | back on the row; 40; 74 blank |
+| bounce-dm | 61; 61 blank, back at the newest | back on the row; 46; 51 blank |
+| bounce-bank | 62; 60 blank, at the end | 47; 48 blank, at the end |
+| bounce-arrival-scrolled | 22; 23 blank, back at the newest | back on the row; 29; 61 blank |
+| bounce-arrival-bottom | 21; 23 blank, at the end | 23; 56 blank, at the end |
+| tribe-reply-arrives-scrolled | pass; pass | pass; pass |
+| thread-scrolled-narrow | 12; 42 blank, list made again | pass; pass |
+| thread-bottom-narrow | 12; 42 blank | pass; pass |
+| thread-scrolled-wide | 3,482; 3,382 pt over ~330 frames | 208 pt in 3; 1,752 in 11 frames, back on the row |
+| thread-bottom-wide | 2,755; 2,438 pt | pass; pass |
+| thread-send-scrolled | 886; 915 pt over ~536 frames | 62 pt in 5 (20 blank); pass |
+| thread-hop | 3,477; 3,202 pt over ~500 frames | 1,216 in 97; 1,752 in 15 frames |
+| thread-switch-chat | +40 pt; 377 blank, 921 pt off | -20; +40 pt (31; 23 blank); the thread is closed on return in both |
+| escape-repeat | 92 pt over 551 frames; held | 493 pt over 544; 1,205 in 9 frames; keys end in the chat's composer (main: the window) |
+| thread-from-threads | 15; 40 blank, at the end | 12; 46 blank, at the end |
+| search-into-thread | no thread opened (both) | no thread opened (both): the journey's match needs a look |
+| resize-scrolled | pass; 2,695 pt over 260 | 1,237 in 55; 1,216 in 92 frames (the drag) |
+| return | 50; 50 blank, back at the newest | back on the row; 31; 34 blank |
+| arrival-scrolled | 882; 860 pt | pass; pass |
+| arrival-bottom | pass; pass | 60 blank; pass |
+| jump, search-early | fail both (target outside the loaded rows) | same |
+| open-read, open-unread, jump-old | 11–41 blank, right landing | 11–42 blank, right landing |
+
+Not done: a live window drag still wobbles while it moves (the lazy
+stack's estimate swings with every width) and lands back on the row once
+it stops; a width change still shows a few frames at SwiftUI's offset
+before the correction, where the review's same-pass correction needs the
+list engine (PR 4). thread-hop and escape-repeat can still end off the row
+when the stack's estimate swings during the hold's passes. The opening
+blanks (hidden until placed) are unchanged. The iPhone is PR 3.

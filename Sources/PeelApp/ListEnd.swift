@@ -63,6 +63,15 @@ import SwiftUI
         return !frames.isEmpty && !frames.values.contains { $0.maxY > offset && $0.minY < view.upperBound }
     }
 
+    /// The row nearest the top of the view, of those laid out and not in
+    /// `skipping`, and how far its top is below the view's (negative: cut
+    /// off above).
+    func topRow(skipping: Set<String>) -> (id: String, offset: CGFloat)? {
+        frames.lazy.filter { id, frame in frame.maxY > self.view.lowerBound + 1 && frame.minY < self.view.upperBound && !skipping.contains(id) }
+            .min { $0.value.minY < $1.value.minY }
+            .map { ($0.key, $0.value.minY - view.lowerBound) }
+    }
+
     /// Where a re-pin scrolls by the rows laid out, nil with none: the
     /// newest row's bottom (plus `padding`) at the list's bottom while it
     /// is laid out; else the bottom of the newest row laid out or last

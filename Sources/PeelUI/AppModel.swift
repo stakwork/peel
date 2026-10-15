@@ -94,6 +94,10 @@ public final class AppModel {
     /// The open chat's main conversation: in a tribe with threads collapsed,
     /// plus the messages its replies quote.
     public var timeline = Timeline.empty
+    /// The chat whose messages `timeline` and `chatRows` hold: nil from a
+    /// reset until they have loaded, so the chat's list is made once, with
+    /// them, rather than empty and then again.
+    public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
             if selectedChat != oldValue?.chat {
@@ -230,7 +234,17 @@ public final class AppModel {
     /// The open chat's read marker as it was when it opened, before it was
     /// marked read: "New messages" goes above the first incoming message
     /// past it. `after` is nil when nothing was unread, and once you send.
-    private var newMessages: (chat: String, after: Int64?)?
+    private var newMessages: (chat: String, after: Int64?)? {
+        didSet { newMessagesReached = false }
+    }
+    /// The chat's list has stood at its newest since "New messages" was
+    /// placed: it stays drawn for the visit, but a list made again opens
+    /// where it was (`anchor(of:)`), not at it. Read only as a list is made.
+    @ObservationIgnored private var newMessagesReached = false
+    /// Where each list stood when last still, by its composer: the chat's
+    /// and each thread's, kept while Peel runs. Not observed: a list reads
+    /// it only when it is made.
+    @ObservationIgnored private var listAnchors: [ComposerID: ListAnchor] = [:]
     /// The open chat, marked unread by hand: it is not marked read again
     /// until you leave it, scroll to its bottom or send in it.
     private var keepsUnread: String?
@@ -795,7 +809,29 @@ public final class AppModel {
     public func showNewest() {
         guard timelineWindow != nil else { return }
         timelineWindow = nil
+        // The list made again with them opens at the newest.
+        if let chat = selectedChat { listAnchors[.chat(chat)] = .newest }
         observeMessages()
+    }
+
+    /// Where the list of `list`'s rows stood when last still, if it has been shown.
+    public func anchor(of list: ComposerID) -> ListAnchor? {
+        listAnchors[list]
+    }
+
+    /// The list of `list`'s rows came to rest at `anchor`. The chat's own
+    /// list at its newest has read past "New messages".
+    public func keep(_ anchor: ListAnchor, of list: ComposerID) {
+        listAnchors[list] = anchor
+        if anchor == .newest, !newMessagesReached, case .chat(let chat) = list, newMessages?.chat == chat {
+            newMessagesReached = true
+        }
+    }
+
+    /// Whether a list of `chat`'s rows made now opens at "New messages":
+    /// not once the chat's list has stood at its newest since it was placed.
+    public func opensAtNewMessages(in chat: String) -> Bool {
+        newMessages?.chat == chat && newMessages?.after != nil && !newMessagesReached
     }
 
     public func resend(_ message: Message) async {
@@ -1355,6 +1391,7 @@ public final class AppModel {
             pinTask?.cancel()
             timeline = .empty
             chatRows = []
+            loadedChat = nil
             pinnedMessage = nil
         }
         guard let storage = engine?.storage, let chat = selectedChat else { return }
@@ -1371,9 +1408,13 @@ public final class AppModel {
                     self.timeline = timeline
                     loadingOlder = false
                     rebuildChatRows()
+                    if loadedChat != chat { loadedChat = chat }
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load this chat's messages") }
+                guard !Task.isCancelled else { return }
+                notice = PeelError.problem(error, couldNot: "load this chat's messages")
+                // Its list shows, empty, rather than nothing at all.
+                if loadedChat != chat { loadedChat = chat }
             }
         }
         // The same chat's pin, still followed.

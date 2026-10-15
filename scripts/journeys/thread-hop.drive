@@ -1,0 +1,15 @@
+// Chat scrolled up, open one thread, then another straight from the chat
+// (no close between), then close. The chat does not move at any point.
+// check: hop hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "hop", "for": 5}
+{"thread": "visible"}
+{"wait": 1.2}
+{"thread": "visible2"}
+{"wait": 1.2}
+{"close": "thread"}
+{"wait": 1.5}

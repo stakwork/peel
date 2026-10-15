@@ -632,7 +632,7 @@ enum AgentToolTitle {
 /// (`MemoryServer.node`), so it shows what memory holds now. A fact or a
 /// name in it opens that one in its place; Back goes to the one before.
 @MainActor @Observable
-final class MemoryPanel {
+final class MemoryPanel: Identifiable {
     let server: MemoryServer
     /// What was opened, the newest last.
     private(set) var trail: [MemoryRef] = []

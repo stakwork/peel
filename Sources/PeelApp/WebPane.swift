@@ -14,7 +14,7 @@ import PeelUI
 /// injected scripts. Website data lives in one store per profile
 /// (`WebPage.storeIdentifier`), never the shared default one.
 @MainActor @Observable
-final class WebPane: NSObject {
+final class WebPane: NSObject, Identifiable {
     /// Open, with a page or (from the header's Browser) only its address field.
     private(set) var isOpen = false
     /// Nil until the first page loads; made again after a close, with the
@@ -563,10 +563,10 @@ private struct WebSplit: ViewModifier {
     private var minimumDetail: CGFloat { model.destination == .payments ? 760 : 400 }
 
     func body(content detail: Content) -> some View {
-        SidePanelSplit(isOpen: pane.isOpen, width: $paneWidth, range: Self.paneRange,
+        SidePanelSplit(item: pane.isOpen ? pane : nil, width: $paneWidth, range: Self.paneRange,
                        standard: WebPaneView.width, minimumMain: minimumDetail) {
             detail
-        } panel: { _ in
+        } panel: { pane, _ in
             WebPaneView(pane: pane)
         }
         .onDisappear { pane.close() }

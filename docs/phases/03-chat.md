@@ -3179,3 +3179,40 @@ commands and message-list journals alongside the connection panel commands
 and journal. The two conflicts were documentation/comment additions; executable
 connection changes merged unchanged. `swift build` passed against current main;
 independent review found no lost changes or conflict markers.
+
+## The thread panel sliding in around its rows (branch `fix/thread-panel-slide`, 2026-10-15)
+
+Tom saw a thread's messages already in place when he opened it, the
+panel's header and background then sliding in around them. The cause,
+measured: `SidePanelSplit` slid the panel with `.transition(.move(edge:
+.trailing))`, a drawn offset. AppKit views are placed by their frames
+and ignore it, so the thread's table (and the divider's resize handle)
+sat at the slide's end from its first frame while SwiftUI's chrome moved.
+A probe frame by frame (the panel found where it is drawn, by a mark the
+offscreen mode alone draws at its top left; the list's scroll view by its
+frame): opening beside the tribe at 1180 pt, the panel drawn at 1,179,
+1,030, 994 … 822, 819 pt over 0.2 s, the list at 820 pt and drawn in
+every one of those frames. Closing, the same the other way: a removed
+view is no longer laid out, so the rows stayed at 820 while the chrome
+slid out to 1,111. `reveal()` and the order of insertion were not the
+cause: the list was shown once placed, inside the panel, and only its
+place was wrong.
+
+The fix moves the panel by layout. Its slide in is a transition built on
+an animatable `Layout` (`TrailingSlide`), so each frame is a layout pass
+and everything in the panel, AppKit or SwiftUI, moves as one. Its slide
+out keeps the panel in and slides the same layout back out, taking it out
+at the animation's end; `SidePanelSplit` keeps the item it was opened for
+(a thread, a memory, the web pane) until then, and `ThreadPanel` keeps
+its rows as they were while open. The thread, the web pane and an agent
+memory all slide this way. The column still changes width once: at the
+end of the slide in, at the start of the slide out.
+
+New journey `thread-open-slide` (open and close beside the tribe, then
+over it at 760 pt): every frame the thread's list is drawn, the panel is
+drawn and the list sits where it does in the panel at rest, within 1 pt.
+On main it fails: apart by up to 360 pt in 17 frames beside, 498 pt in 18
+frames covering. On this branch: 0 pt, 0 frames, both. The full set (39
+checks) passed but for the known `search-early`; then the thread, close,
+flicker, escape, resize and bounce journeys again after the slide out
+and the review's changes.

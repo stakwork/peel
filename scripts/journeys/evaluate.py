@@ -38,6 +38,13 @@ reference is its last frame before the first step taken while it ran
   shrink back, never once moving against the gesture or the ease back (by
   over 0.5 pt) nor more than 12 pt in a frame; the last frame flush at
   that end again.
+- slide=<list>: a side panel slid in and out with that list in it, as one
+  piece. In every frame the list is drawn, the panel is drawn in the window
+  (never the list without it: before its slide in, or left behind after
+  its slide out), and the list sits where it does in the panel at rest
+  (the frame with the panel furthest in), within 1 pt across. The panel is
+  where its mark is drawn (`ListProbe.drawnPanel`), not where it is laid
+  out.
 - Always: no blank frame (a list with rows hidden, or none in view) in
   any list, at any time.
 
@@ -228,6 +235,33 @@ def judge(probe, options):
             notes.append(f"chat narrowed {changes[0] - first_step:.2f} s after the step, before the slide ended")
         else:
             notes.append(f"chat narrowed once, {changes[0] - first_step:.2f} s after the step")
+
+    slide = options.get("slide")
+    if slide:
+        both = [(s, entry) for s in samples
+                if s.get("panelX") is not None and (entry := newest(s, slide)) and entry.get("windowX") is not None]
+        if not both:
+            ok = False
+            notes.append(f"no frame with the panel and the {slide} list")
+        else:
+            settled, at_rest = min(both, key=lambda pair: pair[0]["panelX"])
+            rest = at_rest["windowX"] - settled["panelX"]
+            alone, apart, worst = 0, 0, 0.0
+            for sample in samples:
+                entry = newest(sample, slide)
+                if entry is None or not entry["visible"]:
+                    continue
+                panel = sample.get("panelX")
+                if panel is None:
+                    alone += 1
+                    continue
+                gap = abs(entry["windowX"] - panel - rest)
+                worst = max(worst, gap)
+                apart += gap > MOVE
+            if alone or apart:
+                ok = False
+            notes.append(f"{slide} list apart from the panel by up to {worst:,.0f} pt in {apart} frames; "
+                         f"drawn without the panel in {alone} frames")
 
     more = options.get("more")
     if more:

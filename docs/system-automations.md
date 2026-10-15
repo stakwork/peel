@@ -1,6 +1,8 @@
 # System automations
 
-Last updated 2026-10-14. **Agreed with Tom 2026-10-14; being built.**
+Last updated 2026-10-15. **Built** (stakwork/peel#256; stakwork/strut#167, #170, #172, #174, #175). The first
+built-in shipped as "Tidy memory" and was renamed **Merge duplicates** (strut#174); its workflow is still
+`tidy-memory`.
 It adds built-in automations to [phases/12-automations.md](phases/12-automations.md)
 (v1 built, PR #221). The first one is the duplicates janitor from
 [agent-brain.md](agent-brain.md) ("Janitors") and from strut's
@@ -9,7 +11,7 @@ It adds built-in automations to [phases/12-automations.md](phases/12-automations
 ## Goal
 
 Every user gets a few automations that ship with strut, and each user can
-turn them on or off in Peel. The first is **Tidy memory**: once a day it
+turn them on or off in Peel. The first is **Merge duplicates**: once a day it
 finds people and things saved twice and merges them when it is sure.
 
 **A built-in is a strut workflow plus an automation on it, shipped with
@@ -85,7 +87,7 @@ steps:
 
 ```json
 // automation.json: the automation on it
-{ "name": "Tidy memory", "trigger": { "every": "day", "at": ["12:30"] }, "enabled": false }
+{ "name": "Merge duplicates", "formerNames": ["Tidy memory"], "trigger": { "every": "day", "at": ["12:30"] }, "enabled": false }
 ```
 
 - **Name, description, prompt and tools** are in the workflow. The
@@ -162,7 +164,7 @@ This differs from strut's memory-ontology decision of 2026-10-14
 ("Background jobs will use the connected model … not v1"). See open
 question 1.
 
-## Tidy memory v1
+## Merge duplicates v1 (shipped as Tidy memory)
 
 ### When
 
@@ -253,7 +255,7 @@ instead of only `peel-automation`. The existing `AutomationsView` gains:
 This fits how automations work now and how the home server will work:
 
 - **Work that doesn't need Sphinx** runs inside strut, in its own
-  workflows. Tidy memory is one.
+  workflows. Merge duplicates is one.
 - **Work that needs Sphinx chats** goes to Peel. Today strut pushes it to
   Peel's loopback `AutomationServer`. With a home server, strut can't
   reach a laptop's loopback, so the run waits for Peel instead:
@@ -314,17 +316,28 @@ What is still open:
    - the System tab, with the switch, Run now and runs with their cost
 
    Done when:
-   - a fresh profile with a model connected gets Tidy memory switched on
+   - a fresh profile with a model connected gets Merge duplicates switched on
    - Run now merges the duplicate of the user into Self, and the run says
      so
-4. **Later.** Undo (`memory/unmerge`) and some QA of merges. More
-   built-ins (the Ontology janitor, the Facts janitor if it
-   needs a model), and the marketplace.
+4. **Later.**
+   - **A review system** (Tom, 2026-10-15): janitors propose the cases
+     they aren't sure of (a nickname, a bare first name, a pair with no
+     shared link) instead of acting. Peel shows them in a "Needs you" list
+     with Accept and Reject. Accept merges or adds the nickname. Reject
+     marks the pair as different, so it isn't offered again. This also
+     covers two gaps from strut#175: a nickname set on purpose ("Robert
+     goes by Bob") no longer resolves a bare "Bob" on a write, and a read
+     by name can still pick a different "Kate" than a write.
+   - Undo (`memory/unmerge`).
+   - A model choice per system automation: a dropdown whose default is
+     the connected model, stored on the automation's `input.model`.
+   - More built-ins (the Ontology janitor, the Facts janitor if it needs a
+     model, duplicate facts worded differently), and the marketplace.
 
 ## Open questions for Tom
 
 1. **The model in strut now?** strut's 2026-10-14 decision puts background
-   jobs on the connected model "not v1". Is Tidy memory fine to ship on
+   jobs on the connected model "not v1". Is Merge duplicates fine to ship on
    it, given that it sends memory text to the provider without the user
    asking?
 2. **Which model:** v1 uses the connected model (`STRUT_DEFAULT_MODEL`).

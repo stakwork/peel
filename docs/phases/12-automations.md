@@ -315,8 +315,9 @@ POST /automations/run   Authorization: Bearer <token>
      tabs (they share the status, but differ in menu, prompt and switch);
      the switch inside the row's button (as other rows' own buttons);
      running `setModel`'s few loopback calls side by side.
-   - Next: Tidy memory's real run once strut ships it; undo
-     (`memory/unmerge`) is out of v1.
+   - Next: done 2026-10-15. Its first real run merged a duplicate Kate;
+     it is now named Merge duplicates (strut#174). Undo (`memory/unmerge`)
+     is out of v1.
 8. **No run bookkeeping in memory** (2026-10-14): a run had saved its
    "last checked" time as a Fact on Self; the automation, memory and run
    prompts now say each run is told when the last one finished.

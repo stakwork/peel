@@ -1473,8 +1473,9 @@ chat's title); `refreshCallWatches`, `stopWatchingCalls` and
 
 Share now opens macOS's picker in screen mode, so the entire screen is the
 easy default. A chevron beside it offers Entire screen, A window and An
-app. Each uses `present(using:)` with the matching style and a single
-`allowedPickerModes` entry. No new permission. While sharing, the button is
+app. Each uses `present(using:)` with the matching style and only that
+kind's `allowedPickerModes`; a window or an app may still be several. No
+new permission. While sharing, the button is
 still the one filled Stop sharing.
 
 ## Decided (Tom, 2026-10-08)

@@ -23,10 +23,25 @@ final class ScreenShare {
             case .application: "You're sharing an app"
             }
         }
-    }
 
-    /// What to offer in the picker: the same three choices.
-    typealias Kind = Content
+        /// The picker's modes for this kind, one or several of it.
+        var pickerModes: SCContentSharingPickerMode {
+            switch self {
+            case .display: .singleDisplay
+            case .window: [.singleWindow, .multipleWindows]
+            case .application: [.singleApplication, .multipleApplications]
+            }
+        }
+
+        /// The style the picker opens on.
+        var style: SCShareableContentStyle {
+            switch self {
+            case .display: .display
+            case .window: .window
+            case .application: .application
+            }
+        }
+    }
 
     let content: Content
     /// The screen share track, publishable once the first frame is in.
@@ -48,32 +63,21 @@ final class ScreenShare {
     /// Shows macOS's sharing picker for one kind of content, so it opens in
     /// that mode; nil when it was cancelled or could not open. Peel's own
     /// windows and apps are not offered.
-    static func pick(_ kind: Kind) async -> SCContentFilter? {
+    static func pick(_ kind: Content) async -> SCContentFilter? {
         guard !Offscreen.refuses("the share picker") else { return nil }
         let shared = SCContentSharingPicker.shared
         var configuration = SCContentSharingPickerConfiguration()
         if let peel = Bundle.main.bundleIdentifier { configuration.excludedBundleIDs = [peel] }
         // A change of content from the menu bar would bypass this code.
         configuration.allowsChangingSelectedContent = false
-        let style: SCShareableContentStyle
-        switch kind {
-        case .display:
-            configuration.allowedPickerModes = .singleDisplay
-            style = .display
-        case .window:
-            configuration.allowedPickerModes = .singleWindow
-            style = .window
-        case .application:
-            configuration.allowedPickerModes = .singleApplication
-            style = .application
-        }
+        configuration.allowedPickerModes = kind.pickerModes
         shared.defaultConfiguration = configuration
         let filter = await picker.pick {
             shared.add(picker)
             // Active only while Peel asks, so nothing reaches Peel from the
             // system's own sharing menu unasked.
             shared.isActive = true
-            shared.present(using: style)
+            shared.present(using: kind.style)
         }
         shared.isActive = false
         shared.remove(picker)

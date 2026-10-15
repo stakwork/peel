@@ -279,8 +279,8 @@ final class CallSession {
 
     // MARK: Screen share
 
-    /// Opens macOS's picker, on the entire screen unless asked otherwise.
-    func startScreenShare(_ kind: ScreenShare.Kind = .display) {
+    /// Opens macOS's picker on `kind`.
+    func startScreenShare(_ kind: ScreenShare.Content) {
         Task { await startSharing(kind) }
     }
 
@@ -288,7 +288,7 @@ final class CallSession {
         Task { await stopSharing() }
     }
 
-    private func startSharing(_ kind: ScreenShare.Kind) async {
+    private func startSharing(_ kind: ScreenShare.Content) async {
         guard !switchingShare, !leaving, share == nil, state == .connected else { return }
         switchingShare = true
         defer { switchingShare = false }

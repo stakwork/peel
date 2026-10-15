@@ -329,31 +329,15 @@ private struct CallControls: View {
         let unavailable = call.state != .connected
         return HStack(spacing: 0) {
             Button { call.startScreenShare(.display) } label: {
-                HStack(spacing: Theme.Space.sm) {
-                    Image(systemName: "rectangle.inset.filled.and.person.filled").font(.system(size: 14))
-                    Text("Share").font(Theme.font(13, .medium))
-                }
-                .foregroundStyle(Theme.text)
-                .padding(.horizontal, 14)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                pill("rectangle.inset.filled.and.person.filled", "Share", weight: .medium, text: Theme.text, fill: .clear)
             }
             .buttonStyle(.plain)
             .keyboardShortcut("s", modifiers: [.command, .shift])
             .help("Share your entire screen (⌘⇧S)")
             Theme.callChevronLine.frame(width: 1)
-            Button { showShareMenu(at: shareChevron) } label: {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 26)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
+            chevron(shareChevron, help: "Share the screen, a window or an app", label: "Choose what to share") {
+                showShareMenu(at: shareChevron)
             }
-            .buttonStyle(.plain)
-            .help("Share a window or an app")
-            .accessibilityLabel("Choose what to share")
-            .menuAnchor(shareChevron)
         }
         .frame(height: 44)
         .background(Theme.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
@@ -394,22 +378,29 @@ private struct CallControls: View {
             .help("\(label) (⌘⇧\(key))")
             .accessibilityLabel(label)
             Theme.callChevronLine.frame(width: 1)
-            Button { showDevices(at: chevron) } label: {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 26)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
+            self.chevron(chevron, help: "Microphone, speaker and camera", label: "Choose devices") {
+                showDevices(at: chevron)
             }
-            .buttonStyle(.plain)
-            .help("Microphone, speaker and camera")
-            .accessibilityLabel("Choose devices")
-            .menuAnchor(chevron)
         }
         .frame(height: 44)
         .background(Theme.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
         .opacity(refused ? 0.45 : 1)
+    }
+
+    /// The chevron half of a segment, which opens a menu beside `anchor`.
+    private func chevron(_ anchor: MenuAnchor, help: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 26)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(label)
+        .menuAnchor(anchor)
     }
 
     /// Quiet lines under the bar: access macOS refused, a device that went,

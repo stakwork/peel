@@ -300,6 +300,26 @@ struct AutomationsClientTests {
         #expect(try AutomationsClient.read(201, Data(#"{"ok":true}"#.utf8))["ok"] == .bool(true))
     }
 
+    /// A strut that answers 500 was reached: the agent hears its answer,
+    /// not that strut is unreachable.
+    @Test(arguments: [
+        ("Internal Server Error", "strut refused: HTTP 500"),
+        (#"{"error":"FTS index is\ninconsistent"}"#, "strut refused: FTS index is inconsistent"),
+    ])
+    func aStrutThatFailsIsNotUnreachable(reply: String, shown: String) async throws {
+        let stub = try await HTTPStub(status: 500) { _ in reply }
+        defer { stub.stop() }
+        let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
+        let client = AutomationsClient(server: try #require(MemoryServer(base: base, key: "k")))
+        do {
+            _ = try await client.create(name: "Restart", prompt: "Restart the Mac", trigger: ["every": "day", "at": ["09:00"]])
+            Issue.record("expected a refusal")
+        } catch {
+            #expect("\(error)".contains(shown))
+            #expect(!"\(error)".contains("Could not reach"))
+        }
+    }
+
     /// Nothing about where Peel is or its token is in the workflow strut
     /// keeps in its workspace: Peel's step reads both from strut's secret
     /// store in code. So the workflow is the same on every launch.

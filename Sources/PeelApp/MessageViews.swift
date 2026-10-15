@@ -90,7 +90,6 @@ struct ListRowContent: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .coordinateSpace(.named(HoverBarLayout.cell))
     }
 }
 
@@ -209,15 +208,14 @@ struct RepliesDivider: View {
 /// is not drawn again when the list is.
 struct MessageRow: View, Equatable {
     @Environment(AppModel.self) private var model
-    @Environment(\.menuPresenter) private var presenter
     let row: ChatRow
     let composer: ComposerID
     var flashed = false
 
-    /// The table's cell's, which tracks the pointer; none when measured.
-    @Environment(RowHover.self) private var hover: RowHover?
+    /// The list's row under the pointer; none when measured.
+    @Environment(ListHover.self) private var hover: ListHover?
 
-    private var hovering: Bool { hover?.on ?? false }
+    private var hovering: Bool { hover?.id == row.id }
 
     nonisolated static func == (a: Self, b: Self) -> Bool {
         a.row == b.row && a.composer == b.composer && a.flashed == b.flashed
@@ -244,8 +242,6 @@ struct MessageRow: View, Equatable {
 
     private func content(now: Date) -> some View {
         let retryable = message.isRetryable(now: now)
-        let uploading = message.fromMe && message.uploadState == .pending
-        let menuOpen = presenter?.isOpen == true
         let openThread = row.summary.map { model.openThread == ThreadRef(chat: $0.chat, uuid: $0.uuid) } ?? false
         return HStack(alignment: .top, spacing: Self.gutterSpacing) {
             // The gutter: the photo on a run's first row, the time on hover after it.
@@ -302,21 +298,6 @@ struct MessageRow: View, Equatable {
         .padding(.top, row.startsRun ? 8 : 3)
         .padding(.bottom, row.endsRun ? 4 : 2)
         .rowChrome(row, lit: flashed || openThread, hovering: hovering)
-        // At the row's top-right, overlapping its top edge as Slack's does;
-        // never over the text, which stops well short of the right edge.
-        // Kept while this row's menu is open: its More is what the menu
-        // follows as the list moves.
-        .overlay(alignment: .topTrailing) {
-            if (hovering && !menuOpen) || presenter?.source == AnyHashable(row.id), !retryable, !uploading, !message.deleted {
-                // Below a day line the row starts lower in its cell.
-                GeometryReader { proxy in
-                    HoverBar(row: row, composer: composer)
-                        .padding(.trailing, Theme.Space.xl)
-                        .offset(y: HoverBarLayout.offset(room: (hover?.room ?? .infinity) + proxy.frame(in: .named(HoverBarLayout.cell)).minY))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
-        }
     }
 }
 
@@ -425,21 +406,19 @@ struct DeliveredBolt: View {
     }
 }
 
-/// Reply, Boost and More, over a hovered row's top-right corner.
-enum HoverBarLayout {
-    /// How far the bar reaches above its row's top edge.
+/// Reply, Boost and More, over the hovered row's top-right corner
+/// (`MessageTableEngine` places it), as in Slack.
+struct HoverBar: View {
+    /// How far it reaches above its row's top edge.
     static let overhang: CGFloat = 10
-    /// The row's cell, which the room above it is measured from.
-    static let cell = "row cell"
 
-    /// Across the row's top edge with `room` above it in view, else inside
-    /// the row, below the view's top, where the clip would cut it off.
-    static func offset(room: CGFloat) -> CGFloat {
-        room >= overhang ? -overhang : max(0, -room)
+    /// A message's row has one, unless deleted, waiting to be retried, or uploading.
+    static func shows(_ row: ChatRow) -> Bool {
+        let message = row.message
+        return row.kind == .message && !message.deleted && !message.isRetryable()
+            && !(message.fromMe && message.uploadState == .pending)
     }
-}
 
-private struct HoverBar: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
     let composer: ComposerID

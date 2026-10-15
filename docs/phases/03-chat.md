@@ -3050,11 +3050,28 @@ Built:
   end: 0 of 80 pt); `overscroll-top` passes either way, since at the top
   the row across the edge is the table's padding row, so nothing was
   placed there, and it stays as a guard.
-- The hover bar is drawn whole: each row is its own cell, so its `zIndex`
-  stopped at the cell and the row above drew over the bar's top; the
-  cell's tracking area now owns the hover, brings its row view above its
-  neighbours, and keeps the bar inside the row, below the view's top,
-  when there is no room above it (the driver's `hover` step).
+- The hover bar is one view the table engine owns, floating over the rows
+  as Slack's does (in a row's cell, the row above drew over its top). One
+  tracking area on the scroll view reports the pointer; the engine finds
+  the row under it (`row(at:)`), puts the bar across that row's top-right
+  edge, or inside the view at its top, and moves it with every report. It
+  stays on the row whose menu it opened while that is open, hides while
+  another menu is, and hides while the list moves (back once it is still,
+  on the row then under the pointer). Rows read the hovered id from
+  `ListHover` for their highlight and gutter time. Right-click on a row is
+  unchanged: its menu sits on the row's content (`rowMenu`, an AppKit
+  catcher over the text, quote or attachment), never the blank area to the
+  right, so the dropped `contentShape` (only `onHover` used it) changes
+  nothing there.
+- Review follow-ups (2026-10-15): a placement asked for while a rubber band
+  runs (an arrival, your own send, a jump) is no longer dropped: the
+  controller's placement is put in place once the band is back in range
+  (`overscroll-arrival`). `ListClipView` is installed only in the
+  offscreen check. The scroll's end is AppKit's own where it gives one: the
+  live-scroll notifications for a trackpad's gesture and its momentum, and
+  the band back in range for its ease back; the 0.15 s and 0.3 s timers
+  stay only as fallbacks for scrolls with no end signal (a plain mouse
+  wheel, keys, the scroller's track, a still band).
 - The jump pill sits at the bottom centre, above the composer, as Slack's
   "Jump to recent", clear of the newest row's Reply, Boost and More.
 - `ListProbe` reads a `ListGeometry` report: the table's, and the agent

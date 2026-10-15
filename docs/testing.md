@@ -356,7 +356,9 @@ itself after the list is placed; the target must not move) and
 narrows once, after the last slide ends), `overscroll-bottom` and
 `overscroll-top` (a trackpad's rubber band: 80 pt past the end, or the
 top, over 0.3 s, let go and eased back; every frame must follow the
-gesture, and the direct chat then follows a new message). A step waits
+gesture, and the direct chat then follows a new message) and
+`overscroll-arrival` (the peer's message during a slow ease back, your own
+send during the pull: once back in range, the list ends at the newest). A step waits
 0.3 s after it, or its `"next"` seconds.
 
 A scroll is a live scroll on the list's own scroll view (its start, a

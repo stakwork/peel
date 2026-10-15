@@ -859,7 +859,7 @@ quitting before any window opens.
   no click step: posted clicks do not reach SwiftUI's buttons in an app
   that is never active, so reach a control by its shortcut or add a
   named step like `select`. `{"hover": 0}` puts the pointer on a message
-  list's row (its cell's tracking area, entered as AppKit enters it).
+  list's row (the list's tracking area, moved over as AppKit reports it).
 - A new development profile on the local stack starts with 0 sats, and
   adding a contact needs 6. **The only allowed way to fund one** is
   `scripts/fund-dev.sh <stack dir> <dev profile> <sats>`: the

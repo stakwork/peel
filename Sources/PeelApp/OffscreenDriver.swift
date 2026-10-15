@@ -35,7 +35,7 @@ import PeelUI
 /// `{"overscroll": -80, "over": 0.3}` pushes the chat's list 80 points
 /// past its end (positive past its top) over that long as a live scroll,
 /// as an elastic drag does, then lets go and eases it back as AppKit's
-/// rubber band does; `{"hover": 0}` puts the pointer on the chat's top
+/// rubber band does (over `"back"` seconds, 0.4 by default); `{"hover": 0}` puts the pointer on the chat's top
 /// row in view, whole or in part (1 the next down, -1 the bottom one), as a mouse moved there
 /// does; `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
 /// 0.3}` resizes the window, as a drag would over that long; `{"jump": 150}`
@@ -54,7 +54,7 @@ final class OffscreenDriver {
         var select, open, notification, key, type, snapshot, link: String?
         var probe, thread, close, expect, signal, list, note, reveal, appearance: String?
         var mods: [String]?
-        var wait, duration, scroll, overscroll, width, over, next: Double?
+        var wait, duration, scroll, overscroll, width, over, back, next: Double?
         var scrollTo, steps, hover: Int?
         var jump: JumpTarget?
         var submit: Bool?
@@ -62,7 +62,7 @@ final class OffscreenDriver {
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
             case appearance
-            case mods, wait, scroll, overscroll, width, over, scrollTo, jump, steps, next, hover
+            case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
     }
@@ -211,7 +211,7 @@ final class OffscreenDriver {
         } else if let points = step.scroll {
             try await scroll(by: points, in: step.list ?? "chat", steps: step.steps)
         } else if let points = step.overscroll {
-            try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3)
+            try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3, back: step.back ?? 0.4)
         } else if let index = step.hover {
             try hover(row: index, in: step.list ?? "chat")
         } else if let row = step.scrollTo {
@@ -645,8 +645,8 @@ final class OffscreenDriver {
     /// Past the list's end (down, negative) or its top by `points` over
     /// `seconds`, a frame at a time, as a live scroll whose position runs
     /// out of the content's range; then, the gesture ended, back to that
-    /// end over 0.4 s, easing out, as AppKit's rubber band returns.
-    private func overscroll(by points: Double, in kind: String, over seconds: Double) async throws {
+    /// end over `back` seconds, easing out, as AppKit's rubber band returns.
+    private func overscroll(by points: Double, in kind: String, over seconds: Double, back: Double) async throws {
         let view = try scrollView(kind)
         guard let clip = view.contentView as? ListClipView else { throw Failure(description: "the \(kind) list has no rubber band") }
         let center = NotificationCenter.default
@@ -672,47 +672,39 @@ final class OffscreenDriver {
             try await Task.sleep(for: .milliseconds(16))
         }
         center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
-        let back = 24
-        for step in 1...back {
-            let t = Double(step) / Double(back)
+        let frames = max(1, Int((back * 60).rounded()))
+        for step in 1...frames {
+            let t = Double(step) / Double(frames)
             set(far + (edge - far) * (1 - pow(1 - t, 3)))
             try await Task.sleep(for: .milliseconds(16))
         }
         Offscreen.log("drive: overscroll \(Int(points)) pt, back at \(Int(clip.bounds.origin.y)) of \(Int(range))")
     }
 
-    /// The row the last `hover` step put the pointer on.
-    private weak var hovered: HostCell?
-
-    /// The pointer moved onto the `index`th row in view, from the top
-    /// (negative from the bottom), whole or in part: its cell's tracking area entered at
-    /// its middle, and the row hovered before left, as AppKit sends them.
-    /// A window off the screens gets no tracking events of its own.
+    /// The pointer moved onto the middle of the `index`th row in view,
+    /// from the top (negative from the bottom), whole or in part, as the
+    /// list's tracking area reports a mouse moved there. A window off the
+    /// screens gets no tracking events of its own.
     private func hover(row index: Int, in kind: String) throws {
         let view = try scrollView(kind)
         guard let window = view.window, let table = view.documentView else { throw Failure(description: "no \(kind) list") }
         let clip = view.contentView
         let visible = clip.convert(clip.bounds, to: nil)
-        let cells = table.subviews.compactMap { ($0 as? NSTableRowView)?.view(atColumn: 0) as? HostCell }
-            .map { ($0, $0.convert($0.bounds, to: nil)) }
-            .filter { $0.1.intersects(visible) && $0.1.height > 0 }
-            .sorted { $0.1.maxY > $1.1.maxY }
-        let at = index < 0 ? cells.count + index : index
-        guard cells.indices.contains(at) else { throw Failure(description: "no row \(index) in view of \(cells.count)") }
-        let (cell, whole) = cells[at]
-        let frame = whole.intersection(visible)
-        func event(_ type: NSEvent.EventType) throws -> NSEvent {
-            guard let event = NSEvent.enterExitEvent(
-                with: type, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
-                eventNumber: 0, trackingNumber: 0, userData: nil
-            ) else { throw Failure(description: "no mouse event") }
-            return event
-        }
-        if let last = hovered, last !== cell { last.mouseExited(with: try event(.mouseExited)) }
-        hovered = cell
-        cell.mouseEntered(with: try event(.mouseEntered))
-        Offscreen.log("drive: hover row \(index) of \(cells.count) in view, \(Int(visible.maxY - whole.maxY)) pt below the top")
+        let rows = table.subviews.compactMap { $0 as? NSTableRowView }
+            .filter { $0.view(atColumn: 0) is HostCell }
+            .map { $0.convert($0.bounds, to: nil) }
+            .filter { $0.intersects(visible) && $0.height > 0 }
+            .sorted { $0.maxY > $1.maxY }
+        let at = index < 0 ? rows.count + index : index
+        guard rows.indices.contains(at) else { throw Failure(description: "no row \(index) in view of \(rows.count)") }
+        let frame = rows[at].intersection(visible)
+        guard let event = NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        ) else { throw Failure(description: "no mouse event") }
+        view.mouseMoved(with: event)
+        Offscreen.log("drive: hover row \(index) of \(rows.count) in view, \(Int(visible.maxY - rows[at].maxY)) pt below the top")
     }
 
     /// Scrolls until row `index` is laid out, then puts its top at the list's top.

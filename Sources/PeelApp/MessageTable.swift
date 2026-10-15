@@ -19,6 +19,18 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     let scroll = ListScrollView()
     /// The row lit after a jump, read by every cell.
     private let flashed = ListFlash()
+    /// The row under the pointer, read by every cell.
+    private let hover = ListHover()
+    /// Reply, Boost and More: one bar over the hovered row's top-right, as
+    /// in Slack, floating over the rows (in a cell, the row above drew
+    /// over it), and inside the view at its top.
+    private let hoverBar = NSHostingView(rootView: AnyView(EmptyView()))
+    /// The row the bar shows, and its size.
+    private var barRow: ChatRow?
+    private var barSize = NSSize.zero
+    /// The pointer, in the window, while it is over the list.
+    private var pointer: NSPoint?
+    private var watchingMenu = false
 
     private weak var model: AppModel?
     private var environment = EnvironmentValues()
@@ -73,6 +85,9 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// A scroll by hand that ended past an end: its rubber band easing
     /// back, still that scroll, which ends once back in range (or still).
     private var settleEnd: DispatchWorkItem?
+    /// A placement asked for while a rubber band ran, which moves nothing
+    /// then: the controller's is put in place once it is back (`settled`).
+    private var deferred = false
     /// The animated move running, by number; 0 for none.
     private var animation = 0
     /// The message asked for last, by uuid, so a request is taken once.
@@ -130,7 +145,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         table.dataSource = self
         table.delegate = self
         scroll.engine = self
-        scroll.contentView = ListClipView()
+        // The driver's stand-in for a trackpad's rubber band, only offscreen.
+        if Offscreen.isOn { scroll.contentView = ListClipView() }
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -146,6 +162,10 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
                            object: scroll)
         center.addObserver(self, selector: #selector(liveScrollEnded), name: NSScrollView.didEndLiveScrollNotification,
                            object: scroll)
+        hoverBar.safeAreaRegions = []
+        hoverBar.isHidden = true
+        scroll.addSubview(hoverBar)
+        scroll.addTrackingArea(scroll.pointerArea)
     }
 
     private var kind: String { composer.thread == nil ? "chat" : "thread" }
@@ -161,6 +181,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         }
     }
     private var clip: NSClipView { scroll.contentView }
+    /// The clip's origin at the top of the content.
+    private var maxOrigin: CGFloat { max(table.frame.height - clip.bounds.height, 0) }
 
     // MARK: Updates
 
@@ -172,6 +194,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         let restyled = self.look != nil && look != self.look
         let resized = self.look.map { $0.dynamicType != look.dynamicType || $0.direction != look.direction } ?? false
         self.look = look
+        if restyled { barRow = nil }
         let redraw = canAnswer != self.canAnswer || restyled
         self.canAnswer = canAnswer
         let changed = new != rows || reachesNewest != self.reachesNewest || hasOlder != self.hasOlder
@@ -336,6 +359,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     private func place(_ target: ListPlacement, margin: CGFloat? = nil) {
         stopAnimation()
         guard target != .keep else { return }
+        // A rubber band is AppKit's to run to its end.
+        guard !banding else { return deferred = true }
         if case .center(let id) = target, let index = position[id], stale.contains(id) {
             measure(index)
             noteHeights([tableRow(index)])
@@ -367,7 +392,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
             guard let index = position[id] else { return nil }
             y = table.rect(ofRow: tableRow(index)).midY - height / 2
         }
-        return min(max(y, 0), max(table.frame.height - height, 0))
+        return min(max(y, 0), maxOrigin)
     }
 
     private func setOrigin(for target: ListPlacement) {
@@ -377,8 +402,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     private func setOrigin(_ y: CGFloat) {
         let bounds = clip.bounds
-        // A rubber band is AppKit's to run to its end.
-        guard abs(bounds.origin.y - y) > 0.01, !overscrolled, settleEnd == nil else { return }
+        guard abs(bounds.origin.y - y) > 0.01 else { return }
         adjust {
             clip.setBoundsOrigin(NSPoint(x: bounds.origin.x, y: y))
             scroll.reflectScrolledClipView(clip)
@@ -418,7 +442,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// over two views away, to a view and a half short of it at once.
     private func animate(to target: ListPlacement) {
         stopAnimation()
-        guard !overscrolled, settleEnd == nil else { return }
+        guard !banding else { return deferred = true }
         // Off the screens (the offscreen check) there is no frame to animate on.
         guard scroll.window?.screen != nil else { return place(target) }
         let height = clip.bounds.height
@@ -555,7 +579,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         controller.userScrollBegan()
         let height = clip.bounds.height
         let y = clip.bounds.origin.y + (up ? 1 : -1) * max(height - 40, height / 2)
-        setOrigin(min(max(y, 0), max(table.frame.height - height, 0)))
+        setOrigin(min(max(y, 0), maxOrigin))
         if let visual = captureVisual() { place(visual) }
         controller.userScrollEnded(report())
         queueIdle()
@@ -578,35 +602,40 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     @objc private func liveScrollEnded() {
         guard liveScrolling, !gone else { return }
         liveScrolling = false
-        if overscrolled { return settle() }
-        controller.userScrollEnded(report())
-        queueIdle()
+        settle()
     }
 
     /// Past the content's range at either end: a rubber band, pulled by
     /// the gesture or easing back.
     private var overscrolled: Bool {
         let bounds = clip.bounds
-        return bounds.origin.y < -0.01 || bounds.origin.y > max(table.frame.height - bounds.height, 0) + 0.01
+        return bounds.origin.y < -0.01 || bounds.origin.y > maxOrigin + 0.01
     }
+
+    /// A rubber band pulled or easing back: the list places nothing.
+    private var banding: Bool { overscrolled || settleEnd != nil }
 
     /// The scroll that ended past an end goes on while its rubber band
     /// eases back: over once back in range, or once nothing has moved.
     private func settle() {
         settleEnd?.cancel()
+        guard overscrolled else { return settled() }
         let end = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.settled() }
         }
         settleEnd = end
-        if !overscrolled { return settled() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: end)
     }
 
     private func settled() {
-        settleEnd?.cancel()
         settleEnd = nil
         guard !gone else { return }
         controller.userScrollEnded(report())
+        if deferred {
+            deferred = false
+            place(controller.placement)
+            report()
+        }
         queueIdle()
     }
 
@@ -618,15 +647,10 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
             report()
             return
         }
-        if settleEnd != nil {
-            // A rubber band easing back: the same scroll, left to AppKit.
-            settle()
-            report()
-            return
-        }
-        if overscrolled {
-            // Past an end: the origin is the gesture's (or AppKit's) alone.
-            if !liveScrolling, quietScrollEnd != nil { quietScroll() }
+        if banding {
+            // Past an end, or easing back: the origin is the gesture's (or
+            // AppKit's) alone, and the ease back the same scroll.
+            if settleEnd != nil { settle() } else if !liveScrolling, quietScrollEnd != nil { quietScroll() }
             report()
             return
         }
@@ -807,7 +831,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     private func idle() {
         guard !gone, placed, !stale.isEmpty else { return }
-        guard animation == 0, !liveScrolling, quietScrollEnd == nil, settleEnd == nil, !overscrolled else {
+        guard animation == 0, !liveScrolling, quietScrollEnd == nil, !banding else {
             return queueIdle(after: 0.2)
         }
         let deadline = ContinuousClock.now + .milliseconds(8)
@@ -903,7 +927,68 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         content = height
         self.frames = frames
         controller.scrolled(viewport)
+        placeHoverBar()
         return viewport
+    }
+
+    // MARK: Hover
+
+    /// The pointer moved over the list, or left it (nil).
+    func pointer(at point: NSPoint?) {
+        pointer = point
+        placeHoverBar()
+    }
+
+    /// The row under the pointer: the bar's while it is over the bar.
+    private func row(under point: NSPoint) -> ChatRow? {
+        if !hoverBar.isHidden, hoverBar.frame.contains(scroll.convert(point, from: nil)) { return barRow }
+        guard clip.bounds.contains(clip.convert(point, from: nil)),
+              let index = index(ofTableRow: table.row(at: table.convert(point, from: nil))) else { return nil }
+        return rows[index]
+    }
+
+    /// The bar over the row under the pointer, across its top edge, or
+    /// inside the view where that is above it; kept on the row whose menu
+    /// it opened while that menu is open (following it as the list moves),
+    /// hidden while another is.
+    private func placeHoverBar() {
+        let presenter = environment.menuPresenter
+        watchMenu(presenter)
+        // None while the list moves, as in Slack: back once it is still.
+        let moving = liveScrolling || quietScrollEnd != nil || banding || animation != 0
+        let hovered = moving ? nil : pointer.flatMap(row(under:))
+        if hover.id != hovered?.id { hover.id = hovered?.id }
+        let current = barRow.flatMap { position[$0.id].map { rows[$0] } }
+        let row = presenter?.isOpen == true
+            ? current.flatMap { presenter?.isOpen(from: $0.id) == true ? $0 : nil }
+            : hovered
+        guard let row, let index = position[row.id], HoverBar.shows(row) else { return hoverBar.isHidden = true }
+        if row != barRow {
+            barRow = row
+            hoverBar.rootView = AnyView(HoverBar(row: row, composer: composer).environment(\.self, environment))
+            barSize = hoverBar.fittingSize
+        }
+        let rect = table.rect(ofRow: tableRow(index))
+        let top = min(rect.maxY + HoverBar.overhang, clip.bounds.maxY)
+        let frame = NSRect(x: rect.maxX - Theme.Space.xl - barSize.width, y: top - barSize.height,
+                           width: barSize.width, height: barSize.height)
+        hoverBar.frame = scroll.convert(clip.convert(frame, from: table), from: clip)
+        hoverBar.isHidden = false
+    }
+
+    /// Places the bar again when a menu opens or closes.
+    private func watchMenu(_ presenter: MenuPresenter?) {
+        guard let presenter, !watchingMenu else { return }
+        watchingMenu = true
+        withObservationTracking {
+            _ = presenter.isOpen
+            _ = presenter.source
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.watchingMenu = false
+                self?.placeHoverBar()
+            }
+        }
     }
 
     // MARK: Cells
@@ -931,7 +1016,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         }
     }
 
-    private func content(_ row: ChatRow, hover: RowHover? = nil) -> AnyView {
+    private func content(_ row: ChatRow) -> AnyView {
         AnyView(
             ListRowContent(row: row, composer: composer, canAnswer: canAnswer)
                 .environment(\.goToMessage) { [weak self] message in self?.go(to: message) }
@@ -946,11 +1031,10 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// whatever the old row's views opened (a menu, a card, a panel) goes
     /// with them, as when they scroll away.
     private func show(_ row: ChatRow, in cell: HostCell) {
-        if cell.row?.id != row.id { cell.setHover(false) }
         cell.row = row
         let id = row.id
         cell.controller.rootView = AnyView(
-            content(row, hover: cell.hover)
+            content(row)
                 .id(id)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { [weak self] height in
@@ -1027,6 +1111,22 @@ final class BottomTable: NSTableView {
 /// the frame changes, put back in the same layout pass.
 final class ListScrollView: NSScrollView {
     weak var engine: MessageTableEngine?
+    /// The pointer over the rows, for the engine's hover.
+    private(set) lazy var pointerArea = NSTrackingArea(
+        rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self
+    )
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === pointerArea else { return super.mouseEntered(with: event) }
+        engine?.pointer(at: event.locationInWindow)
+    }
+
+    override func mouseMoved(with event: NSEvent) { engine?.pointer(at: event.locationInWindow) }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea === pointerArea else { return super.mouseExited(with: event) }
+        engine?.pointer(at: nil)
+    }
 
     override func layout() {
         engine?.layoutPass()
@@ -1061,8 +1161,6 @@ final class HostCell: NSView {
     let controller = NSHostingController(rootView: AnyView(EmptyView()))
     /// The row it shows now.
     var row: ChatRow?
-    /// The pointer over it, for its row's views.
-    let hover = RowHover()
 
     init(kind: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -1071,45 +1169,15 @@ final class HostCell: NSView {
         controller.safeAreaRegions = []
         controller.view.autoresizingMask = [.width, .height]
         controller.view.frame = bounds
-        // A row's hover bar crosses its top edge, into the row above.
-        clipsToBounds = false
-        controller.view.clipsToBounds = false
         addSubview(controller.view)
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self
-        ))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func mouseEntered(with event: NSEvent) { setHover(true) }
-    override func mouseMoved(with event: NSEvent) { setHover(true) }
-    override func mouseExited(with event: NSEvent) { setHover(false) }
-
-    /// Each cell is its own view, so a row's `zIndex` stops at its cell:
-    /// the hovered row's view goes over its neighbours, and at the top of
-    /// the view, where the clip would cut the bar off, the bar sits inside.
-    func setHover(_ on: Bool) {
-        if on, let clip = enclosingScrollView?.contentView {
-            hover.room = clip.convert(clip.bounds, to: nil).maxY - convert(bounds, to: nil).maxY
-        }
-        guard hover.on != on else { return }
-        hover.on = on
-        guard on, let rowView = superview, let table = rowView.superview else { return }
-        rowView.clipsToBounds = false
-        table.sortSubviews({ a, b, raised in
-            let raised = raised.map { Unmanaged<NSView>.fromOpaque($0).takeUnretainedValue() }
-            return a === raised ? .orderedDescending : b === raised ? .orderedAscending : .orderedSame
-        }, context: Unmanaged.passUnretained(rowView).toOpaque())
-    }
 }
 
-/// The pointer over a row, from its cell's tracking area.
-@MainActor @Observable final class RowHover {
-    var on = false
-    /// The view's height above the cell's top, as the pointer came, for
-    /// where its bar sits (`HoverBarLayout`).
-    var room = CGFloat.infinity
+/// The row under the pointer, from the list's tracking area.
+@MainActor @Observable final class ListHover {
+    var id: String?
 }
 
 /// The row lit after a jump.

@@ -3050,6 +3050,11 @@ Built:
   end: 0 of 80 pt); `overscroll-top` passes either way, since at the top
   the row across the edge is the table's padding row, so nothing was
   placed there, and it stays as a guard.
+- The hover bar is drawn whole: each row is its own cell, so its `zIndex`
+  stopped at the cell and the row above drew over the bar's top; the
+  cell's tracking area now owns the hover, brings its row view above its
+  neighbours, and keeps the bar inside the row, below the view's top,
+  when there is no room above it (the driver's `hover` step).
 - `ListProbe` reads a `ListGeometry` report: the table's, and the agent
   list's `ListEnd`.
 - `SidePanelSplit` narrows the column on the slide's own completion, not

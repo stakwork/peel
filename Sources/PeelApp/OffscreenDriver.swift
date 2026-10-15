@@ -35,7 +35,9 @@ import PeelUI
 /// `{"overscroll": -80, "over": 0.3}` pushes the chat's list 80 points
 /// past its end (positive past its top) over that long as a live scroll,
 /// as an elastic drag does, then lets go and eases it back as AppKit's
-/// rubber band does; `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
+/// rubber band does; `{"hover": 0}` puts the pointer on the chat's top
+/// row in view, whole or in part (1 the next down, -1 the bottom one), as a mouse moved there
+/// does; `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
 /// 0.3}` resizes the window, as a drag would over that long; `{"jump": 150}`
 /// goes to the 150th newest message, as a search match does (`{"jump":
 /// {"older": 200, "below": "image"}}`: to the message under the newest
@@ -53,14 +55,14 @@ final class OffscreenDriver {
         var probe, thread, close, expect, signal, list, note, reveal, appearance: String?
         var mods: [String]?
         var wait, duration, scroll, overscroll, width, over, next: Double?
-        var scrollTo, steps: Int?
+        var scrollTo, steps, hover: Int?
         var jump: JumpTarget?
         var submit: Bool?
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
             case appearance
-            case mods, wait, scroll, overscroll, width, over, scrollTo, jump, steps, next
+            case mods, wait, scroll, overscroll, width, over, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
     }
@@ -210,6 +212,8 @@ final class OffscreenDriver {
             try await scroll(by: points, in: step.list ?? "chat", steps: step.steps)
         } else if let points = step.overscroll {
             try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3)
+        } else if let index = step.hover {
+            try hover(row: index, in: step.list ?? "chat")
         } else if let row = step.scrollTo {
             try await scroll(toRow: row, in: step.list ?? "chat")
         } else if let width = step.width {
@@ -675,6 +679,40 @@ final class OffscreenDriver {
             try await Task.sleep(for: .milliseconds(16))
         }
         Offscreen.log("drive: overscroll \(Int(points)) pt, back at \(Int(clip.bounds.origin.y)) of \(Int(range))")
+    }
+
+    /// The row the last `hover` step put the pointer on.
+    private weak var hovered: HostCell?
+
+    /// The pointer moved onto the `index`th row in view, from the top
+    /// (negative from the bottom), whole or in part: its cell's tracking area entered at
+    /// its middle, and the row hovered before left, as AppKit sends them.
+    /// A window off the screens gets no tracking events of its own.
+    private func hover(row index: Int, in kind: String) throws {
+        let view = try scrollView(kind)
+        guard let window = view.window, let table = view.documentView else { throw Failure(description: "no \(kind) list") }
+        let clip = view.contentView
+        let visible = clip.convert(clip.bounds, to: nil)
+        let cells = table.subviews.compactMap { ($0 as? NSTableRowView)?.view(atColumn: 0) as? HostCell }
+            .map { ($0, $0.convert($0.bounds, to: nil)) }
+            .filter { $0.1.intersects(visible) && $0.1.height > 0 }
+            .sorted { $0.1.maxY > $1.1.maxY }
+        let at = index < 0 ? cells.count + index : index
+        guard cells.indices.contains(at) else { throw Failure(description: "no row \(index) in view of \(cells.count)") }
+        let (cell, whole) = cells[at]
+        let frame = whole.intersection(visible)
+        func event(_ type: NSEvent.EventType) throws -> NSEvent {
+            guard let event = NSEvent.enterExitEvent(
+                with: type, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, trackingNumber: 0, userData: nil
+            ) else { throw Failure(description: "no mouse event") }
+            return event
+        }
+        if let last = hovered, last !== cell { last.mouseExited(with: try event(.mouseExited)) }
+        hovered = cell
+        cell.mouseEntered(with: try event(.mouseEntered))
+        Offscreen.log("drive: hover row \(index) of \(cells.count) in view, \(Int(visible.maxY - whole.maxY)) pt below the top")
     }
 
     /// Scrolls until row `index` is laid out, then puts its top at the list's top.

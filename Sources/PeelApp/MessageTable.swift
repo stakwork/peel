@@ -931,11 +931,12 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         }
     }
 
-    private func content(_ row: ChatRow) -> AnyView {
+    private func content(_ row: ChatRow, hover: RowHover? = nil) -> AnyView {
         AnyView(
             ListRowContent(row: row, composer: composer, canAnswer: canAnswer)
                 .environment(\.goToMessage) { [weak self] message in self?.go(to: message) }
                 .environment(flashed)
+                .environment(hover)
                 // The list's own environment, under what the rows add to it.
                 .environment(\.self, environment)
         )
@@ -945,10 +946,11 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// whatever the old row's views opened (a menu, a card, a panel) goes
     /// with them, as when they scroll away.
     private func show(_ row: ChatRow, in cell: HostCell) {
+        if cell.row?.id != row.id { cell.setHover(false) }
         cell.row = row
         let id = row.id
         cell.controller.rootView = AnyView(
-            content(row)
+            content(row, hover: cell.hover)
                 .id(id)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { [weak self] height in
@@ -1059,6 +1061,8 @@ final class HostCell: NSView {
     let controller = NSHostingController(rootView: AnyView(EmptyView()))
     /// The row it shows now.
     var row: ChatRow?
+    /// The pointer over it, for its row's views.
+    let hover = RowHover()
 
     init(kind: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -1067,10 +1071,45 @@ final class HostCell: NSView {
         controller.safeAreaRegions = []
         controller.view.autoresizingMask = [.width, .height]
         controller.view.frame = bounds
+        // A row's hover bar crosses its top edge, into the row above.
+        clipsToBounds = false
+        controller.view.clipsToBounds = false
         addSubview(controller.view)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self
+        ))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseEntered(with event: NSEvent) { setHover(true) }
+    override func mouseMoved(with event: NSEvent) { setHover(true) }
+    override func mouseExited(with event: NSEvent) { setHover(false) }
+
+    /// Each cell is its own view, so a row's `zIndex` stops at its cell:
+    /// the hovered row's view goes over its neighbours, and at the top of
+    /// the view, where the clip would cut the bar off, the bar sits inside.
+    func setHover(_ on: Bool) {
+        if on, let clip = enclosingScrollView?.contentView {
+            hover.room = clip.convert(clip.bounds, to: nil).maxY - convert(bounds, to: nil).maxY
+        }
+        guard hover.on != on else { return }
+        hover.on = on
+        guard on, let rowView = superview, let table = rowView.superview else { return }
+        rowView.clipsToBounds = false
+        table.sortSubviews({ a, b, raised in
+            let raised = raised.map { Unmanaged<NSView>.fromOpaque($0).takeUnretainedValue() }
+            return a === raised ? .orderedDescending : b === raised ? .orderedAscending : .orderedSame
+        }, context: Unmanaged.passUnretained(rowView).toOpaque())
+    }
+}
+
+/// The pointer over a row, from its cell's tracking area.
+@MainActor @Observable final class RowHover {
+    var on = false
+    /// The view's height above the cell's top, as the pointer came, for
+    /// where its bar sits (`HoverBarLayout`).
+    var room = CGFloat.infinity
 }
 
 /// The row lit after a jump.

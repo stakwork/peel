@@ -88,6 +88,7 @@ struct ListRowContent: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .coordinateSpace(.named(HoverBarLayout.cell))
     }
 }
 
@@ -212,7 +213,10 @@ struct MessageRow: View, Equatable {
     let composer: ComposerID
     var flashed = false
 
-    @State private var hovering = false
+    /// The table's cell's, which tracks the pointer; none when measured.
+    @Environment(RowHover.self) private var hover: RowHover?
+
+    private var hovering: Bool { hover?.on ?? false }
 
     nonisolated static func == (a: Self, b: Self) -> Bool {
         a.row == b.row && a.composer == b.composer && a.flashed == b.flashed
@@ -303,14 +307,15 @@ struct MessageRow: View, Equatable {
         // follows as the list moves.
         .overlay(alignment: .topTrailing) {
             if (hovering && !menuOpen) || presenter?.source == AnyHashable(row.id), !retryable, !uploading, !message.deleted {
-                HoverBar(row: row, composer: composer)
-                    .padding(.trailing, Theme.Space.xl)
-                    .offset(y: -10)
+                // Below a day line the row starts lower in its cell.
+                GeometryReader { proxy in
+                    HoverBar(row: row, composer: composer)
+                        .padding(.trailing, Theme.Space.xl)
+                        .offset(y: HoverBarLayout.offset(room: (hover?.room ?? .infinity) + proxy.frame(in: .named(HoverBarLayout.cell)).minY))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
         }
-        .zIndex(hovering ? 1 : 0)
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
     }
 }
 
@@ -420,6 +425,19 @@ struct DeliveredBolt: View {
 }
 
 /// Reply, Boost and More, over a hovered row's top-right corner.
+enum HoverBarLayout {
+    /// How far the bar reaches above its row's top edge.
+    static let overhang: CGFloat = 10
+    /// The row's cell, which the room above it is measured from.
+    static let cell = "row cell"
+
+    /// Across the row's top edge with `room` above it in view, else inside
+    /// the row, below the view's top, where the clip would cut it off.
+    static func offset(room: CGFloat) -> CGFloat {
+        room >= overhang ? -overhang : max(0, -room)
+    }
+}
+
 private struct HoverBar: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow

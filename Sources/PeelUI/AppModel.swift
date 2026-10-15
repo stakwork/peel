@@ -771,6 +771,17 @@ public final class AppModel {
         if inThread { openThread(of: current) }
     }
 
+    /// A jump `list` could not make (`ChatListController.jump`): in the
+    /// chat's list, to the message's thread when one folds it away; else,
+    /// unless a window with it is coming, the request is given up.
+    public func jumpMissed(_ message: Message, in list: ComposerID, _ outcome: JumpOutcome) {
+        if list.thread == nil, message.threadUUID != nil {
+            focus(on: message, inThread: true)
+        } else if outcome == .notLoaded, focus?.message.uuid == message.uuid {
+            focus = nil
+        }
+    }
+
     /// Whether the open chat's timeline has a row for `message`: its own, or
     /// a collapsed thread's that it is the original of or a reply in.
     private func timelineShows(_ message: Message) -> Bool {

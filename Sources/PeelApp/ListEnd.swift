@@ -9,7 +9,10 @@ import SwiftUI
 /// out is scrolled to, can then be blank space past the rows, or older
 /// rows than the newest (`03-chat.md`, "Blank past the rows the stack
 /// placed"). A re-pin by these places goes where the rows really are.
-@MainActor class ListEnd {
+///
+/// The agent chat's only, until it moves onto `ChatListController` (PR 5
+/// of the list review); the chat and its threads are `MessageTable`'s.
+@MainActor final class ListEnd {
     /// Where each row laid out sits in the content, from its first layout
     /// until it disappears.
     var frames: [String: CGRect] = [:]
@@ -61,15 +64,6 @@ import SwiftUI
         view = offset..<(offset + container)
         self.content = content
         return !frames.isEmpty && !frames.values.contains { $0.maxY > offset && $0.minY < view.upperBound }
-    }
-
-    /// The row nearest the top of the view, of those laid out and not in
-    /// `skipping`, and how far its top is below the view's (negative: cut
-    /// off above).
-    func topRow(skipping: Set<String>) -> (id: String, offset: CGFloat)? {
-        frames.lazy.filter { id, frame in frame.maxY > self.view.lowerBound + 1 && frame.minY < self.view.upperBound && !skipping.contains(id) }
-            .min { $0.value.minY < $1.value.minY }
-            .map { ($0.key, $0.value.minY - view.lowerBound) }
     }
 
     /// Where a re-pin scrolls by the rows laid out, nil with none: the

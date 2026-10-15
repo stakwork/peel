@@ -93,8 +93,14 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     public let cost: Double?
     /// Why it failed, in strut's words, without the provider's raw reply.
     public let error: String?
+    /// Why it did not finish, as the Automations view says it: a sentence
+    /// of Peel's or strut's own ("Didn't run: …") as it is, any other
+    /// reason after "Didn't finish: ". Anything shaped like a key is masked
+    /// first, whoever wrote it.
+    public let failure: String
 
-    init?(_ json: AgentKit.JSONValue) {
+    /// `workflow`: the one its runs were read from, unless the record names its own.
+    init?(_ json: AgentKit.JSONValue, workflow: String = AutomationsClient.workflow) {
         guard let id = json["runId"]?.string else { return nil }
         self.id = id
         status = json["status"]?.string ?? "running"
@@ -108,20 +114,50 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         case .string(let text)?: Double(text)
         default: nil
         }
-        error = json["error"]?["message"]?.string.map(Self.shortened)
+        let peels = (json["workflow"]?.string ?? workflow) == AutomationsClient.workflow
+        error = json["error"]?["message"]?.string.map { Self.shortened($0, peels: peels) }
+        let why = ModelError.maskingKeys(reply?.error ?? error ?? "no reason given")
+        failure = AutomationFailure.isSentence(why) ? why : "Didn't finish: " + why
     }
 
-    /// strut's words for a failed model call, as a person reads them:
-    /// "agent failed after 0 step(s): invalid x-api-key (HTTP 401: {…})"
-    /// is "invalid x-api-key", and "agent: no model connected
-    /// (STRUT_DEFAULT_MODEL is not set)" is "no model connected".
-    static func shortened(_ message: String) -> String {
+
+
+    /// strut's words for a failed run, as a person reads them. Peel's own
+    /// reply without the step's "Peel answered 500: "; on Peel's workflow
+    /// (`peels`), strut's "fetch failed" from that step, Peel not
+    /// listening, as Peel not reached; the agent step's provider refusing
+    /// the key (HTTP 401) as that, never its raw reply (OpenAI's quotes part of the key);
+    /// "agent: no model connected (STRUT_DEFAULT_MODEL is not set)" as no
+    /// model connected; and any other model call's failure, "agent failed
+    /// after 0 step(s): overloaded (HTTP 529: {…})", as "overloaded".
+    static func shortened(_ message: String, peels: Bool) -> String {
+        if let peel = message.firstMatch(of: #/Peel answered \d{3}: /#) {
+            let words = message[peel.range.upperBound...]
+            return words.isEmpty ? message : String(words)
+        }
+        if peels, message.hasSuffix("fetch failed") { return AutomationFailure.peelUnreachable }
+        // The agent step's model call only, whose status strut puts last: other
+        // steps (git/push) print an HTTP 401 of their own.
+        if message.contains(#/^agent failed after \d+ step\(s\): .*\(HTTP 401\b/#.dotMatchesNewlines()) {
+            return AutomationFailure.keyRejected(by: provider(in: message))
+        }
+        if message.contains("(STRUT_DEFAULT_MODEL is not set)") { return AutomationFailure.noModel }
         var text = message
         for tail in [" (HTTP ", " (STRUT_"] {
             if let cut = text.range(of: tail) { text = String(text[..<cut.lowerBound]) }
         }
         if let prefix = text.firstMatch(of: #/^agent(?: failed after \d+ step\(s\))?: /#) { text.removeSubrange(prefix.range) }
         return text.isEmpty ? message : text
+    }
+
+    /// The provider a refusal names: Anthropic's header, OpenAI's or
+    /// OpenRouter's address; nil when it names none.
+    static func provider(in message: String) -> AgentProvider? {
+        let words = message.lowercased()
+        if words.contains("x-api-key") { return .anthropic }
+        if words.contains("openrouter") { return .openRouter }
+        if words.contains("openai.com") { return .openAI }
+        return nil
     }
 }
 
@@ -230,7 +266,7 @@ public struct AutomationsClient: Sendable {
     public func runs(of automation: Automation, limit: Int = 20) async throws -> [AutomationRunRecord] {
         let reply = try await call("GET", "workflows/\(Self.escaped(path: automation.workflow))/runs", what: "the runs")
         return (reply.array ?? []).filter { $0["automation"]?["id"]?.string == automation.id }.prefix(limit)
-            .compactMap(AutomationRunRecord.init)
+            .compactMap { AutomationRunRecord($0, workflow: automation.workflow) }
     }
 
     /// Turns on, once, each system automation Peel has not turned on before

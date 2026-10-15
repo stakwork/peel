@@ -168,21 +168,21 @@ extension AppModel {
     /// One run: the agent with the read and memory tools and no send, its
     /// result delivered to the agent chat with a notification.
     func runAutomation(_ request: AutomationRequest) async -> AutomationReply {
-        guard let profile, let engine, let agent else { return .failed("Peel's account is not open.") }
+        guard let profile, let engine, let agent else { return .failed(AutomationFailure.accountClosed) }
         let credential: AgentCredential
         do {
-            guard let kept = try KeptCredential(item: profile.agentCredential).read() else {
-                return .failed("No model is connected to Peel's agent.")
-            }
+            guard let kept = try connectedCredential() else { return .failed(AutomationFailure.noModel) }
             credential = kept
+        } catch is KeychainLocked {
+            return .failed(AutomationFailure.macLocked)
         } catch {
-            return .failed("Could not read the connected model's key.")
+            return .failed(AutomationFailure.keyUnreadable)
         }
         let setup = Self.agentSetup(engine, memory: memoryServer)
         let loop = AgentLoop(
             provider: Self.agentClient(credential, profile: profile),
             tools: setup.tools, model: credential.model, systemPrompt: setup.systemPrompt(unattended: true))
-        let reply = await AutomationRun.run(request, with: loop)
+        let reply = await AutomationRun.run(request, with: loop, provider: credential.provider)
         // The account may have closed while it ran: nothing is kept for it.
         guard self.agent === agent else { return .failed("Peel's account closed during the run.") }
         if reply.status == .delivered, let text = reply.text {

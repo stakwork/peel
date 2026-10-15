@@ -353,7 +353,7 @@ private struct AutomationRuns: View {
         case ("running", _):
             Text("Running…").muted()
         default:
-            Text("Didn't finish: " + (run.reply?.error ?? run.error ?? "no reason given"))
+            Text(run.failure)
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.attention)
                 .fixedSize(horizontal: false, vertical: true)

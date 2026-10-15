@@ -198,7 +198,11 @@ is a short plan. Update the status and the journal when you finish something.
     (moved there from the login Keychain on first unlock), `.development`
     profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
     data-protection Keychain item, which the words and the agent's key
-    share) and `FileItem` (an owner-only file) behind `SecretItem`; the
+    share; readable only while the Mac is unlocked but for the agent's key,
+    `AfterFirstUnlockThisDeviceOnly` for runs on a locked Mac; an item
+    moves to its class on the next read or write, a failed move logged
+    once; a locked read is `KeychainLocked`, never none kept) and `FileItem` (an owner-only file)
+    behind `SecretItem`; the
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),

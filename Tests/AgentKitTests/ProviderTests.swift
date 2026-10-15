@@ -173,7 +173,7 @@ struct ProviderTests {
         StubProtocol.serve(base.path + (provider == .anthropic ? "/messages" : "/chat/completions"), .init(status: 401, body: body))
         let (events, error) = await collect(client.stream(request))
         #expect(events.isEmpty)
-        guard case .invalidKey(let message) = error else {
+        guard case .invalidKey(let message, _) = error else {
             Issue.record("\(provider.name) answered a bad key with \(String(describing: error))")
             return
         }

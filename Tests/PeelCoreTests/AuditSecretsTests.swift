@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Testing
 @testable import PeelCore
 @testable import PeelTestSupport
@@ -77,6 +78,30 @@ struct AuditSecretsTests {
         try dev.delete()
         #expect(try dev.agentCredential.read() == nil && dev.strutKey.read() == nil)
         #expect(!FileManager.default.fileExists(atPath: dev.directory.path))
+    }
+
+    /// Only what a scheduled run needs while the Mac is locked, the agent's
+    /// key, is readable after the first unlock; everything else, strut's key
+    /// among it, only while the Mac is unlocked.
+    @Test func onlyTheAgentsKeyIsReadableWhileLocked() throws {
+        let app = try Profile(name: "default", kind: .app)
+        let accessible = { (item: any SecretItem) in (item as? KeychainItem)?.accessible }
+        let whenUnlocked = kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
+        #expect(accessible(app.agentCredential) == kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String)
+        #expect(accessible(app.strutKey) == whenUnlocked)
+        #expect(accessible(app.brain) == whenUnlocked)
+        #expect(KeychainItem(service: "dev.peel", account: "default").accessible == whenUnlocked)
+    }
+
+    /// A Keychain the locked Mac will not read is not a secret gone: a
+    /// caller that took it for none would act as if the model were removed.
+    @Test func aLockedKeychainIsNotNoneKept() throws {
+        #expect(try KeychainItem.found(errSecSuccess))
+        #expect(try !KeychainItem.found(errSecItemNotFound))
+        #expect(throws: KeychainLocked()) { try KeychainItem.found(errSecInteractionNotAllowed) }
+        #expect(throws: PeelError.self) { try KeychainItem.found(errSecMissingEntitlement) }
+        // The login keychain's, read only to move the words, says the same of a prompt it may not show.
+        #expect(throws: PeelError.self) { try KeychainItem.found(errSecInteractionNotAllowed, dataProtection: false) }
     }
 
     /// A profile folder made readable by others before is closed again.

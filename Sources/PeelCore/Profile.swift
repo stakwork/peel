@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// A local account: where its database lives and where its twelve words are kept.
 public struct Profile: Sendable {
@@ -43,7 +44,12 @@ public struct Profile: Sendable {
         case .app:
             directory = root.appendingPathComponent(name)
             secrets = KeychainSecretStore(account: name)
-            agentCredential = KeychainItem(service: "dev.peel.agent", account: name)
+            // Readable while the Mac is locked once it has been unlocked since
+            // it started: a scheduled run uses the agent's key then. The rest
+            // stays readable only unlocked: strut starts with the account,
+            // behind the PIN, and keeps its key in memory after.
+            agentCredential = KeychainItem(service: "dev.peel.agent", account: name,
+                                           accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
             strutKey = KeychainItem(service: "dev.peel.strut", account: name)
             brain = KeychainItem(service: "dev.peel.brain", account: name)
             biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))

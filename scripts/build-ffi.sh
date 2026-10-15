@@ -3,22 +3,24 @@
 #   Vendor/sphinxrsFFI.xcframework  - the Rust static library plus its C header
 #   Sources/Sphinxrs/sphinxrs.swift - the generated Swift bindings
 #
-# Vendor/sphinxrs.lock pins them: the library's sha256 and the sphinx-rs
-# release whose assets they are. sphinx-rs CI (build-all.yml) attaches the Mac
-# library, the Swift bindings and the header to every release.
+# Vendor/sphinxrs.lock pins them: the sha256 of the library, the Swift
+# bindings and the header, then the sphinx-rs release whose assets they are.
+# sphinx-rs CI (build-all.yml) attaches the Mac library, the Swift bindings and
+# the header to every release.
 #
 #   scripts/build-ffi.sh                downloads the pinned release's files
 #                                       (cached in .build/sphinx-core) and
-#                                       checks the library against the lock
+#                                       checks each against the lock
 #   scripts/build-ffi.sh --update <tag> downloads another release's files and
 #                                       records it in the lock: for moving to
 #                                       a new core
 #
 # Either way it then checks that the core the release pins (sphinx-ffi's
-# Cargo.toml at the tag) has upstream's client security fixes, in the
-# stakwork/sphinx checkout at $SPHINX (default ../sphinx). A missing fix only
-# warns, unless PEEL_REQUIRE_CORE_FIXES=1, which any build that ships sets:
-# then a missing or unchecked fix stops the build.
+# Cargo.toml at the tag) has upstream's client security fixes, asking GitHub's
+# compare API. stakwork/sphinx is private, so that needs a GITHUB_TOKEN that
+# can read it. A missing fix only warns, unless PEEL_REQUIRE_CORE_FIXES=1,
+# which any build that ships sets: then a missing or unchecked fix stops the
+# build.
 #
 # For iOS, set both SPHINX_IOS_LIB (an ios-arm64 static library) and
 # SPHINX_IOS_SIM_LIB (ios-arm64-simulator), built from the sphinx-rs release
@@ -34,7 +36,7 @@ CACHE="$ROOT/.build/sphinx-core"
 mkdir -p "$CACHE"
 die() { echo "build-ffi: $*" >&2; exit 1; }
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
-get() { # url, to stdout; CI passes GITHUB_TOKEN for the API's rate limit
+get() { # url, to stdout; with GITHUB_TOKEN set, sent authenticated
   if [ -n "${GITHUB_TOKEN:-}" ]; then
     curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -H "Authorization: Bearer $GITHUB_TOKEN" "$1"
   else
@@ -50,9 +52,11 @@ if [ "${1:-}" = "--update" ]; then
   LIB_SHA=""
 else
   [ -f "$LOCK" ] || die "missing $LOCK; run with --update <tag>"
-  read -r LIB_SHA TAG < "$LOCK"
-  printf '%s\n' "$LIB_SHA" | grep -qE '^[0-9a-f]{64}$' && valid_tag "$TAG" \
-    || die "$LOCK should hold a sha256 and a sphinx-rs release tag"
+  read -r LIB_SHA SWIFT_SHA HEADER_SHA TAG EXTRA < "$LOCK"
+  if printf '%s\n' "$LIB_SHA" "$SWIFT_SHA" "$HEADER_SHA" | grep -qvE '^[0-9a-f]{64}$' \
+    || ! valid_tag "$TAG" || [ -n "$EXTRA" ]; then
+    die "$LOCK should hold three sha256s (library, bindings, header) and a sphinx-rs release tag"
+  fi
 fi
 fetch() { # url destination
   [ -s "$2" ] && return
@@ -70,14 +74,18 @@ fetch "$RELEASE/sphinxrsFFI.h" "$HEADER"
 fetch "https://raw.githubusercontent.com/stakwork/sphinx-rs/$TAG/sphinx-ffi/Cargo.toml" "$CACHE/$TAG-Cargo.toml"
 if [ -z "$LIB_SHA" ]; then
   mkdir -p "$ROOT/Vendor"
-  printf '%s %s\n' "$(sha256 "$LIB")" "$TAG" > "$LOCK"
+  printf '%s %s %s %s\n' "$(sha256 "$LIB")" "$(sha256 "$BINDINGS")" "$(sha256 "$HEADER")" "$TAG" > "$LOCK"
 else
-  # Every signing and encryption step runs inside this library, so refuse a
-  # copy that differs from the one recorded in the lock.
-  if [ "$(sha256 "$LIB")" != "$LIB_SHA" ]; then
-    rm -f "$LIB"
-    die "the downloaded universal-sphinxrs-mac.a ($TAG) does not match Vendor/sphinxrs.lock"
-  fi
+  # Every signing and encryption step runs inside the library, and a release's
+  # assets can be replaced, so refuse any file that differs from the lock.
+  pinned() { # file sha256
+    [ "$(sha256 "$1")" = "$2" ] && return
+    rm -f "$1"
+    die "the downloaded $(basename "$1") does not match Vendor/sphinxrs.lock"
+  }
+  pinned "$LIB" "$LIB_SHA"
+  pinned "$BINDINGS" "$SWIFT_SHA"
+  pinned "$HEADER" "$HEADER_SHA"
 fi
 CARGO_TOML="$(cat "$CACHE/$TAG-Cargo.toml")"
 
@@ -86,19 +94,23 @@ CARGO_TOML="$(cat "$CACHE/$TAG-Cargo.toml")"
 # this warns for development builds; two stand in meanwhile:
 # Engine.cappedToArrived for SR-016's amount check, Engine.isForeignContactRecord
 # for SR-017 (docs/phases/08-audit.md, "N1, after", lists what goes then).
-SPHINX="${SPHINX:-$ROOT/../sphinx}"
 # As committed at the release tag the lock names.
 CORE_REV="$(printf '%s\n' "$CARGO_TOML" | sed -n 's/^sphinx = .*rev = "\([0-9a-f]*\)".*/\1/p')"
-CORE_KNOWN=no
-git -C "$SPHINX" cat-file -e "${CORE_REV:-none}^{commit}" 2>/dev/null && CORE_KNOWN=yes
+# GitHub's compare of fix...core says "ahead" or "identical" when the core has
+# the fix, "behind" or "diverged" when it lacks it. Any failure leaves the fix
+# unchecked: stakwork/sphinx is private, so without a token that can read it
+# the API answers 404.
 MISSING=""
 UNCHECKED=""
 while read -r commit name; do
-  if [ "$CORE_KNOWN" = no ] || ! git -C "$SPHINX" cat-file -e "$commit^{commit}" 2>/dev/null; then
-    UNCHECKED="$UNCHECKED $name"
-  elif ! git -C "$SPHINX" merge-base --is-ancestor "$commit" "$CORE_REV"; then
-    MISSING="$MISSING $name"
-  fi
+  status=""
+  [ -z "$CORE_REV" ] || status="$(get "https://api.github.com/repos/stakwork/sphinx/compare/$commit...$CORE_REV?per_page=1" 2>/dev/null \
+    | plutil -extract status raw -o - - 2>/dev/null)" || status=""
+  case "$status" in
+    ahead|identical) ;;
+    behind|diverged) MISSING="$MISSING $name" ;;
+    *) UNCHECKED="$UNCHECKED $name" ;;
+  esac
 done <<'EOF'
 c3ddbb7d02f26c70a96c50384dbd776d403fc229 SR-016(amount)
 031427c3062722a1e70be5437f084cb610c8b6f4 SR-016(keyx)
@@ -115,7 +127,9 @@ if [ -n "$MISSING$UNCHECKED" ]; then
     echo "************************************************************"
     echo "$LEVEL: the core sphinx-rs $TAG pins (sphinx ${CORE_REV:-unknown})"
     [ -z "$MISSING" ] || echo "  lacks upstream's client security fixes:$MISSING"
-    [ -z "$UNCHECKED" ] || echo "  could not be checked in $SPHINX for:$UNCHECKED"
+    [ -z "$UNCHECKED" ] || echo "  could not be checked for:$UNCHECKED"
+    [ -z "$UNCHECKED" ] || echo "  (GitHub's compare API failed; stakwork/sphinx is private, so set"
+    [ -z "$UNCHECKED" ] || echo "  GITHUB_TOKEN to a token that can read it)"
     echo "  Fixed upstream in v0.6.29; pin a sphinx-rs release with them."
     echo "************************************************************"
   } >&2

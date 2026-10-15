@@ -286,6 +286,8 @@ public final class AppModel {
     public var connectionError: String?
     /// When the engine will next try to reconnect, for a live countdown.
     public var reconnectAt: Date?
+    public private(set) var checkingConnection = false
+    public var showingConnection = false
     public var restoreProgress = RestoreProgress()
     /// Local notifications and the Dock badge.
     public let notifier: Notifier
@@ -884,6 +886,18 @@ public final class AppModel {
         await attempt("change notifications", in: chat) { try await $0.setMute(chat, level: level) }
     }
 
+    /// The connection panel's action: ping online, skip the retry wait offline.
+    public func checkConnection() async {
+        guard !checkingConnection, connection != .connecting, let engine else { return }
+        checkingConnection = true
+        defer { checkingConnection = false }
+        if connection == .connected {
+            _ = await engine.checkConnection()
+        } else {
+            await engine.reconnectNow()
+        }
+    }
+
     public func reconnectNow() async {
         await engine?.reconnectNow()
     }
@@ -1182,6 +1196,7 @@ public final class AppModel {
         connection = .offline(retryIn: nil)
         connectionError = nil
         reconnectAt = nil
+        showingConnection = false
         restoreProgress = RestoreProgress()
         myAlias = nil
         myPhotoURL = nil

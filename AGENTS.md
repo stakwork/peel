@@ -298,7 +298,7 @@ is a short plan. Update the status and the journal when you finish something.
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
@@ -844,6 +844,8 @@ quitting before any window opens.
   ```
   {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
   {"open": "send-sats"}                   // the open chat's Send sats panel, as its bolt opens it
+  {"open": "connection"}                  // the sidebar bolt’s status panel
+  {"open": "connection-check"}            // its check/reconnect action
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it

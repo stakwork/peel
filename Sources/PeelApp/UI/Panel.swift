@@ -8,7 +8,8 @@ import PeelUI
 /// right, never both (a form's is `FormFooter`). The actions may be left
 /// out, or both the actions and the footer. 372 wide, or 320 with
 /// `compact`, for a short form with no sections (Join a tribe) or a short
-/// list (Members).
+/// list (Members). A nil title omits the header for a single status row;
+/// the popover still dismisses on Escape or a click outside.
 ///
 /// ```swift
 /// Panel("Members", compact: true, close: done) {
@@ -20,7 +21,7 @@ import PeelUI
 /// }
 /// ```
 struct Panel<Content: View, Actions: View, Footer: View>: View {
-    private let title: String
+    private let title: String?
     private let compact: Bool
     private let close: () -> Void
     private let content: Content
@@ -28,7 +29,7 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
     private let footer: Footer
 
     init(
-        _ title: String, compact: Bool = false, close: @escaping () -> Void,
+        _ title: String?, compact: Bool = false, close: @escaping () -> Void,
         @ViewBuilder content: () -> Content, @ViewBuilder actions: () -> Actions,
         @ViewBuilder footer: () -> Footer
     ) {
@@ -42,27 +43,29 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Theme.Space.xs) {
-                Text(title).font(Theme.font(15, .bold))
-                Spacer(minLength: 8)
-                actions
-                IconButton("xmark", help: "Close", action: close)
+            if let title {
+                HStack(spacing: Theme.Space.xs) {
+                    Text(title).font(Theme.font(15, .bold))
+                    Spacer(minLength: 8)
+                    actions
+                    IconButton("xmark", help: "Close", action: close)
+                }
+                .padding(.leading, 18)
+                .padding(.trailing, 10)
+                .padding(.top, 10)
             }
-            .padding(.leading, 18)
-            .padding(.trailing, 10)
-            .padding(.top, 10)
             VStack(alignment: .leading, spacing: compact ? 12 : 0) {
                 content
             }
             .padding(.horizontal, 18)
-            .padding(.top, compact ? 10 : 2)
+            .padding(.top, title == nil ? 12 : compact ? 10 : 2)
             .padding(.bottom, Theme.Space.xs)
             // No footer (left out, or a condition that is false) takes no room.
             footer
                 .padding(.horizontal, 18)
                 .padding(.top, Theme.Space.lg)
         }
-        .padding(.bottom, Theme.Space.lg)
+        .padding(.bottom, title == nil ? 8 : Theme.Space.lg)
         .frame(width: compact ? 320 : 372)
         // The shadow on the box alone: on the whole view every label would cast one.
         .background {
@@ -77,7 +80,7 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
 
 extension Panel where Actions == EmptyView {
     init(
-        _ title: String, compact: Bool = false, close: @escaping () -> Void,
+        _ title: String?, compact: Bool = false, close: @escaping () -> Void,
         @ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer
     ) {
         self.init(title, compact: compact, close: close, content: content, actions: { EmptyView() }, footer: footer)
@@ -85,7 +88,7 @@ extension Panel where Actions == EmptyView {
 }
 
 extension Panel where Actions == EmptyView, Footer == EmptyView {
-    init(_ title: String, compact: Bool = false, close: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+    init(_ title: String?, compact: Bool = false, close: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.init(title, compact: compact, close: close, content: content, actions: { EmptyView() }, footer: { EmptyView() })
     }
 }

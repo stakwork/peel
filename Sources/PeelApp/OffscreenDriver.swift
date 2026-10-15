@@ -309,10 +309,15 @@ final class OffscreenDriver {
     /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
     /// a pairing link's callout there; `brain-leave`, its Use this Mac
     /// (asking first); `brain-this-mac`, Use this Mac once confirmed;
-    /// `brain-check`, Check.
+    /// `brain-check`, Check; `connection`, the sidebar bolt’s status panel;
+    /// `connection-check`, its check/reconnect action.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
+        case "connection":
+            model.showingConnection = true
+        case "connection-check":
+            Task { await model.checkConnection() }
         case "send-sats":
             guard case .chat(let chat) = model.destination else { throw Failure(description: "no chat open") }
             model.sendingSats = .chat(chat)

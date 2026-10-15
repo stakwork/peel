@@ -342,3 +342,6 @@ is active.
 - Production broker: `mqtt-broker.v2.sphinx.chat:8883` (valid Let's Encrypt
   certificate). Config endpoint:
   `https://config.config.sphinx.chat/api/config/bitcoin`.
+
+Connection control polish (2026-10-15): the Mac bolt now opens a single status
+row with a real server check or immediate reconnect. Phase 3 records validation.

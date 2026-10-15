@@ -1850,3 +1850,11 @@ writes no rows for chats nobody touched; turning a chat off writes
    (often on a UTC server) start with sharing off, or with no offset until
    its owner gives it a zone? Peel has no agent accounts yet; today one
    would share its host's offset.
+
+### Connection status (2026-10-15)
+
+The Mac sidebar's bolt opens a headerless `Panel`: one status line and an
+`IconButton` to check the server or reconnect now. A successful check returns to
+Connected with no timestamp or extra copy. Busy actions are disabled; offline
+keeps the retry countdown. The bolt's native tooltip is suppressed while the
+panel is open. Escape, clicking outside, or pressing the bolt closes it.

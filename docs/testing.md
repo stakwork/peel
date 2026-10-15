@@ -291,33 +291,15 @@ signed by another team reads `dev.peel.mac.<team>`, and one checked with
 `check-app.sh` reads `dev.peel.mac.check`.
 
 Each line starts with six hex characters of a hash of the chat's key, keyed
-afresh at each launch (the same chat has another tag after a relaunch), then
-the event, then the list's state (`rows`, `atBottom`, `atEnd`,
-`following`, `opening`, `pinning`, `phase`, and `realised`, the rows the
-lazy stack has made, which the list counts with the log off too). Events: the app's phase; the
-timeline reset, loaded (messages, threads, limit) and its rows built
-(count, the "New messages" row); the list's appear and disappear (the
-focus or divider row asked for); every placement (`place:` the bottom on
-appear, a divider pass, `go(to:)`, `scrollToNewest`, a re-pin) and why a
-re-pin ran or was skipped; scroll phase changes; `bottom state written`;
-the scroll geometry (offset, content and container heights, `below` the
-end, insets; not while scrolled by hand); and the rows in view by index,
-or `visible NONE with rows: blank`, the blank list itself. The geometry and
-visible lines end with the rows laid out and where they sit in the content
-(`laid out 183...188 at 31191.8...31946.8`, in the same points as the
-offset), and the last row's place is logged as it moves (`last row at`).
-Read together: rows realised and in view while the screen is empty is a
-drawing problem; none in view with the offset past the content (`below`
-negative) is a placement problem; rows laid out above the offset with the
-list at its end is the stack's estimate run past its rows (2026-10-14,
-`03-chat.md`); none realised at all is the lazy stack not making them. The
-agent chat's list logs as `agent` (turns laid out and in view, `end at`
-the conversation's last row, each placement and what asked for it). Never message
-text, names, keys, ids or amounts. With the log on, the lazy stack is a
-scroll target layout (`.scrollTargetLayout`) so its rows in view can be
-reported; off, it is not. So the list runs a little differently with the
-log on: a blank that will not come back with it on says that much, not
-that the bug is gone.
+afresh at each launch (the same chat has another tag after a relaunch;
+`/thread` for a thread's list, `agent` for the agent chat's), then the
+event. Events: the app's phase; the timeline reset, loaded (messages,
+threads, limit) and its rows built (count, the "New messages" row); and
+each list's table (`MessageTable`): its appear (rows, where it opens), each
+change of rows and the move it made (`rows 200->201 move newest
+animated`), each move outside a change (a jump, the pill) and its
+dismantle. Never message text, names, keys, ids or amounts. The log changes
+nothing about how a list runs.
 
 ## List journeys
 
@@ -330,8 +312,8 @@ hash of its id and its index, never its text), its offset from the list's
 top, the rows laid out around it, whether the list is at its end, shown,
 or blank (rows to show, hidden or none in view), and where "New messages"
 and a jump's target sit. It reads only what the list already reports
-(`ListGeometry`: the table engine's report after each move, the agent
-list's `ListEnd`), so a probe does not change how
+(`ListGeometry`: the table engine's report after each move, for the
+chat, a thread and the agent chat alike), so a probe does not change how
 the list runs, unlike the timeline log's `scrollTargetLayout`; outside
 the offscreen mode nothing is registered. `scripts/journeys/evaluate.py`
 judges the probe files against each drive's `// check:` lines: any frame
@@ -365,6 +347,18 @@ narrow window: each frame the thread's list is drawn, it sits where it
 does in the panel at rest, the panel found where it is drawn by a mark
 only the offscreen mode draws at its top left, `ListProbe.drawnPanel`). A step waits
 0.3 s after it, or its `"next"` seconds.
+
+The agent chat's journeys (`agent-*`) put the agent on a scripted model
+first (`{"agent": "script"}`, `OffscreenAgent`): its conversation in
+memory, a placeholder key, and answers streamed a word at a time at a
+set rate from this Mac, never from a provider. `agent-open` (placed, no
+hidden frame), `agent-stream-bottom` (flush every frame while a reply
+streams), `agent-stream-scroll-away` (one mouse wheel tick up mid-reply,
+then nothing moves while it grows), `agent-expand-tool` (a tool row
+opened at the bottom keeps its top, `keep=1@agent`),
+`agent-memory-panel` and `-narrow` (a memory opened and closed beside or
+over the chat), `agent-return` and `agent-reply-ends` (a reply saved while
+following: its row stays, in place, `keep=1@agent`).
 
 A scroll is a live scroll on the list's own scroll view (its start, a
 step a frame, its end), which the list sees as a scroll by hand (the

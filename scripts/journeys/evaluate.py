@@ -30,6 +30,10 @@ reference is its last frame before the first step taken while it ran
 - more: the last frame's list (the held one, else the chat) has over <n> rows.
 - still=target: from the reference, the message gone to (a jump's target)
   stays within 1 pt of where it was, in every frame it is laid out.
+- keep=<n>[@<list>]: the row <n>th from the newest laid out at the
+  reference (1, the newest) keeps its top within 1 pt in every frame it
+  is laid out, and is still there at the end (the same row, not one in
+  its place); with opens=yes, it is also taller at the end (opened in place).
 - narrows: the chat's list narrows once in all, no sooner than <s> seconds
   after the first step (the panel's slide in ended first).
 - overscroll=bottom|top[@<list>]: the drive's `overscroll` step pushed the
@@ -221,6 +225,28 @@ def judge(probe, options):
             if moved:
                 ok = False
             notes.append(f"target moved up to {worst:,.0f} pt in {moved} frames")
+
+    keep = options.get("keep")
+    if keep:
+        nth, _, kind = keep.partition("@")
+        kind = kind or "chat"
+        ref = newest(reference, kind)
+        laid = sorted(ref["laidOut"], key=lambda r: r["index"]) if ref else []
+        if len(laid) < int(nth):
+            ok = False
+            notes.append(f"no row {nth} from the newest laid out in {kind} at the reference")
+        else:
+            row = laid[-int(nth)]
+            shifts = [abs(r["y"] - row["y"]) for r in (find(newest(s, kind), row["row"]) for s in after if newest(s, kind)) if r]
+            worst = max(shifts, default=0)
+            moved = sum(1 for d in shifts if d > MOVE)
+            final = newest(samples[-1], kind)
+            grew = find(final, row["row"]) if final else None
+            opened = grew is not None and grew["height"] - row["height"] > MOVE
+            if moved or grew is None or (options.get("opens") == "yes" and not opened):
+                ok = False
+            notes.append(f"row {row['index']}'s top moved up to {worst:,.0f} pt in {moved} frames"
+                         + (f", {grew['height'] - row['height']:+,.0f} pt tall" if grew else ", gone at the end"))
 
     narrows = options.get("narrows")
     if narrows:

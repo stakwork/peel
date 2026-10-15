@@ -48,20 +48,36 @@ import PeelUI
 /// the script running the drive; `{"type": "text", "return": true}` types
 /// and presses Return with no pause between. Each step is followed by
 /// 0.3 s, or `"next"` seconds.
+///
+/// For the agent chat's journeys, with a scripted model and never a
+/// provider (`OffscreenAgent`): `{"agent": "script"}` puts an agent on the
+/// script in place of the account's, its conversation in memory;
+/// `{"agent": "seed", "turns": 12}` asks it that many questions, every
+/// fourth one answered with a tool row, waiting for each answer;
+/// `{"agent": "ask", "words": 240, "rate": 40}` asks one more and streams
+/// the answer that many words, `rate` a second, without waiting (`"tool":
+/// true` asks for a tool row first; `"hold": 2` keeps it open that many
+/// seconds after its last word); `{"agent": "done"}` waits for the
+/// answer to end; `{"agent": "expand"}` opens the newest tool row in view,
+/// as a click on its chevron does; `{"agent": "memory"}` opens a memory
+/// beside the chat, as a click on a remembered fact does (its server a
+/// stub that never answers), and `"memory-close"` closes it as its X does. `{"wheel": 40}` turns a mouse wheel one tick
+/// over a list (`"in"`, the agent's by default): 40 points up, negative
+/// for down, a scroll no gesture announces.
 @MainActor
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
-        var probe, thread, close, expect, signal, list, note, reveal, appearance: String?
+        var probe, thread, close, expect, signal, list, note, reveal, appearance, agent: String?
         var mods: [String]?
-        var wait, duration, scroll, overscroll, width, over, back, next: Double?
-        var scrollTo, steps, hover: Int?
+        var wait, duration, scroll, overscroll, width, over, back, next, rate, wheel, hold: Double?
+        var scrollTo, steps, hover, turns, words: Int?
         var jump: JumpTarget?
-        var submit: Bool?
+        var submit, tool: Bool?
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance
+            case appearance, agent, rate, wheel, turns, words, tool, hold
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -215,6 +231,10 @@ final class OffscreenDriver {
             try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3, back: step.back ?? 0.4)
         } else if let index = step.hover {
             try hover(row: index, in: step.list ?? "chat")
+        } else if let what = step.agent {
+            try await agent(what, step)
+        } else if let points = step.wheel {
+            try wheel(by: points, in: step.list ?? "agent")
         } else if let row = step.scrollTo {
             try await scroll(toRow: row, in: step.list ?? "chat")
         } else if let width = step.width {
@@ -408,7 +428,7 @@ final class OffscreenDriver {
             model.checkBrain()
         case "agent-rows":
             // A click on every tool row's chevron.
-            model.agentRowsOpened += 1
+            if let agent = model.agent { model.agentOpenRows.openTools(of: agent) }
         case "agent-memory":
             // A click on the first fact the newest Remembered row shows.
             let rows = model.agent?.turns.flatMap(\.tools).compactMap { tool in
@@ -639,16 +659,86 @@ final class OffscreenDriver {
         let center = NotificationCenter.default
         center.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
         for _ in 0..<steps {
-            let clip = view.contentView
-            let height = (view.documentView?.frame.height ?? 0) - clip.bounds.height
-            // Up is towards the document's top.
-            let y = min(max(clip.bounds.origin.y + (clip.isFlipped ? -delta : delta), 0), max(height, 0))
-            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
-            view.reflectScrolledClipView(clip)
+            move(view, by: delta)
             center.post(name: NSScrollView.didLiveScrollNotification, object: view)
             try await Task.sleep(for: .milliseconds(16))
         }
         center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
+    }
+
+    /// One tick of a mouse wheel: the clip moved once, with no live scroll
+    /// around it, as AppKit moves it for a wheel that is not a trackpad.
+    private func wheel(by points: Double, in kind: String) throws {
+        move(try scrollView(kind), by: points)
+        Offscreen.log("drive: wheel \(Int(points)) pt in the \(kind) list")
+    }
+
+    /// The list's clip `points` up (negative, down), within its content.
+    private func move(_ view: NSScrollView, by points: Double) {
+        let clip = view.contentView
+        let range = max((view.documentView?.frame.height ?? 0) - clip.bounds.height, 0)
+        // Up is towards the document's top.
+        let y = min(max(clip.bounds.origin.y + (clip.isFlipped ? -points : points), 0), range)
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        view.reflectScrolledClipView(clip)
+    }
+
+    // MARK: The agent chat
+
+    private func agent(_ what: String, _ step: Step) async throws {
+        guard let model = model() else { throw Failure(description: "no account open") }
+        if what == "script" {
+            model.agent?.close()
+            model.agent = try OffscreenAgent.session()
+            return Offscreen.log("drive: agent on the script")
+        }
+        guard let agent = model.agent else { throw Failure(description: "no agent") }
+        switch what {
+        case "seed":
+            for n in 1...max(step.turns ?? 12, 1) {
+                // Each a different length; every fourth with a tool row.
+                OffscreenAgent.pace.withLock { $0 = OffscreenAgent.Pace(words: 20 + (n * 37) % 90, delay: .zero) }
+                agent.send(n % 4 == 0 ? "Question \(n), with a tool" : "Question \(n)")
+                try await until("answer \(n)", timeout: 10) { !agent.isRunning }
+            }
+            Offscreen.log("drive: agent seeded, \(agent.turns.count) turns")
+        case "ask":
+            let words = step.words ?? 240, rate = step.rate ?? 40
+            OffscreenAgent.pace.withLock {
+                $0 = OffscreenAgent.Pace(words: words, delay: .seconds(1 / max(rate, 1)), end: .seconds(step.hold ?? 0))
+            }
+            agent.send(step.tool == true ? "One more, with a tool" : "One more")
+            Offscreen.log("drive: agent asked, \(words) words at \(Int(rate)) a second")
+        case "done":
+            try await until("the answer", timeout: 60) { !agent.isRunning }
+            Offscreen.log("drive: agent answered, \(agent.turns.count) turns")
+        case "expand":
+            // As a click on the chevron: the list told first, then opened.
+            guard let engine = ListProbe.geometry(kind: "agent") as? MessageTableEngine<AgentListRow> else {
+                throw Failure(description: "no agent list")
+            }
+            let inView = Set(ListProbe.inView(kind: "agent"))
+            guard let row = engine.rows.last(where: { row in
+                guard inView.contains(row.id), case .turn(let turn, _, _) = row.kind else { return false }
+                return !turn.tools.isEmpty
+            }) else { throw Failure(description: "no tool row in view") }
+            let disclosure = AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("tool0")
+            disclosure.toggle(expanding: engine.expanding)
+            Offscreen.log("drive: agent tool row \(engine.rows.firstIndex { $0.id == row.id } ?? -1) "
+                + (disclosure.isOpen ? "opened" : "closed"))
+        case "memory":
+            guard let server = MemoryServer(base: URL(string: "http://127.0.0.1:9")!, key: "offscreen") else {
+                throw Failure(description: "no stub memory server")
+            }
+            if model.memoryServer == nil { model.memoryServer = server }
+            model.openMemory(MemoryRef(id: "offscreen", name: "A remembered fact"))
+            Offscreen.log("drive: memory open beside the agent chat")
+        case "memory-close":
+            // As the memory's X does.
+            model.closeMemory()
+        default:
+            throw Failure(description: "no agent step \(what)")
+        }
     }
 
     /// Past the list's end (down, negative) or its top by `points` over

@@ -1,0 +1,16 @@
+// Open and close a memory over the agent chat on a narrow window, where it
+// takes the chat's place, scrolled up: the row you were reading does not
+// move (rule 8: a list's identity outlives panels and widths).
+// check: memory hold=agent
+{"width": 760}
+{"agent": "script"}
+{"agent": "seed", "turns": 14}
+{"select": "Peel"}
+{"wait": 1.5}
+{"scroll": 500, "in": "agent"}
+{"wait": 1}
+{"probe": "memory", "for": 3.5}
+{"agent": "memory"}
+{"wait": 1.2}
+{"agent": "memory-close"}
+{"wait": 1.5}

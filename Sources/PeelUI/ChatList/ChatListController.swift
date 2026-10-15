@@ -270,6 +270,17 @@ public final class ChatListController {
         settle()
     }
 
+    /// T26: the user is opening or closing part of a row (a tool's
+    /// details): the row keeps its top where it is as it changes height,
+    /// and the list stops following, so the row is never pushed out of view.
+    public func userExpanded(_ id: String) {
+        guard mode != .opening, has(id), let top = engine?.top(of: id) else { return }
+        pendingJump = nil
+        mode = .reading
+        anchor = (id, top)
+        updatePill()
+    }
+
     // MARK: Jumps
 
     /// To the message with this uuid (from `date`), centred and lit (T22),

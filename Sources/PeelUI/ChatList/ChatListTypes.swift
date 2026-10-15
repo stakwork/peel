@@ -143,6 +143,8 @@ public enum ListPill: Equatable, Sendable {
     func flash(_ id: String)
     /// Shows the list, once it has been placed the first time.
     func reveal()
+    /// The row's top below the view's top, measured; nil when it is not here.
+    func top(of id: String) -> Double?
 }
 
 /// Where each list stood, kept past the list (`AppModel` conforms).

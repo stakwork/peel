@@ -25,6 +25,9 @@ final class ScreenShare {
         }
     }
 
+    /// What to offer in the picker: the same three choices.
+    typealias Kind = Content
+
     let content: Content
     /// The screen share track, publishable once the first frame is in.
     let track: LocalVideoTrack
@@ -42,22 +45,35 @@ final class ScreenShare {
 
     private static let picker = PickerObserver()
 
-    /// Shows macOS's sharing picker; nil when it was cancelled or could
-    /// not open. Peel's own windows and apps are not offered.
-    static func pick() async -> SCContentFilter? {
+    /// Shows macOS's sharing picker for one kind of content, so it opens in
+    /// that mode; nil when it was cancelled or could not open. Peel's own
+    /// windows and apps are not offered.
+    static func pick(_ kind: Kind) async -> SCContentFilter? {
         guard !Offscreen.refuses("the share picker") else { return nil }
         let shared = SCContentSharingPicker.shared
         var configuration = SCContentSharingPickerConfiguration()
         if let peel = Bundle.main.bundleIdentifier { configuration.excludedBundleIDs = [peel] }
         // A change of content from the menu bar would bypass this code.
         configuration.allowsChangingSelectedContent = false
+        let style: SCShareableContentStyle
+        switch kind {
+        case .display:
+            configuration.allowedPickerModes = .singleDisplay
+            style = .display
+        case .window:
+            configuration.allowedPickerModes = .singleWindow
+            style = .window
+        case .application:
+            configuration.allowedPickerModes = .singleApplication
+            style = .application
+        }
         shared.defaultConfiguration = configuration
         let filter = await picker.pick {
             shared.add(picker)
             // Active only while Peel asks, so nothing reaches Peel from the
             // system's own sharing menu unasked.
             shared.isActive = true
-            shared.present()
+            shared.present(using: style)
         }
         shared.isActive = false
         shared.remove(picker)

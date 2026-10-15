@@ -537,7 +537,7 @@ struct ConnectionBolt: View {
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
                 .receivedGlow(model.money)
         }
-        .peelPopover(isPresented: $model.showingConnection) {
+        .peelPopover(isPresented: $model.showingConnection, edge: .trailing) {
             ConnectionCard()
         }
         .accessibilityLabel("Connection: \(model.connection.label)")
@@ -554,7 +554,7 @@ struct ConnectionCard: View {
     private var busy: Bool { model.checkingConnection || model.connection == .connecting }
 
     var body: some View {
-        Panel(nil, compact: true, close: {}) {
+        Panel(nil, compact: true, fit: true, close: {}) {
             HStack(spacing: Theme.Space.sm) {
                 Image(systemName: busy ? "arrow.triangle.2.circlepath" : model.connection == .connected ? "checkmark.circle" : "wifi.slash")
                     .foregroundStyle(model.connection == .connected ? Theme.confirmed : Theme.attention)
@@ -569,7 +569,7 @@ struct ConnectionCard: View {
                     label(model.connection.label)
                 }
                 Spacer(minLength: Theme.Space.sm)
-                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", working: busy) {
+                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", size: .sm, working: busy) {
                     Task { await model.checkConnection() }
                 }
                 .disabled(busy)
@@ -581,6 +581,7 @@ struct ConnectionCard: View {
         Text(text)
             .font(Theme.font(13))
             .monospacedDigit()
+            .lineLimit(1)
             .accessibilityValue(model.connectionError ?? "")
     }
 }

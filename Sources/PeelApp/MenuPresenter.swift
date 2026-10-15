@@ -135,7 +135,8 @@ final class MenuPresenter {
     /// elsewhere or Escape. It moves with its trigger and, unlike a menu or a
     /// card, stays at the list's edge while the trigger is out of sight; it
     /// goes only with the trigger's row (`PopoverModifier`).
-    func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, closed: @escaping @MainActor () -> Void) {
+    func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, edge: PopoverEdge = .leading,
+                   closed: @escaping @MainActor () -> Void) {
         #if os(macOS)
         // A trigger inside the open panel (none today) would name it; the host otherwise.
         guard let host = NSApp.keyWindow.flatMap({ $0 === panelWindow ? $0 : nil }) ?? hostWindow else { return closed() }
@@ -144,7 +145,7 @@ final class MenuPresenter {
         panelID = id
         panelClosed = closed
         panelWindow.present(environment(content), anchor: anchor.screenRect, from: host,
-                            following: anchor)
+                            following: anchor, edge: edge)
         startMonitoring()
         #endif
     }

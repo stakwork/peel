@@ -3216,3 +3216,10 @@ frames covering. On this branch: 0 pt, 0 frames, both. The full set (39
 checks) passed but for the known `search-early`; then the thread, close,
 flicker, escape, resize and bounce journeys again after the slide out
 and the review's changes.
+
+2026-10-15: the sidebar's connection card fits its one line (`Panel` `fit`),
+opens under the bolt and grows leftward (`PopoverEdge.trailing`), its right
+edge in line with the bolt's, so it stays within the sidebar. The row ends
+in a small (24) refresh 10 in from the card's edge, as a panel header's
+close, under the bolt. Every other popover is placed as before. Checked
+offscreen (connection snapshot): edges in line, card inside the sidebar.

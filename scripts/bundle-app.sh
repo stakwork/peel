@@ -38,6 +38,8 @@ cp Assets/AppIcon.icns Assets/Assets.car "$APP/Contents/Resources/"
 # signed nested bundles.
 if [ -d "$STRUT_STAGE" ]; then
   echo "bundle-app: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'strut, unknown source')" >&2
+  # Its workspace is on Ladybug, whose extensions a signed app cannot download: a stage without them is refused.
+  [ "$(plutil -extract ladybug raw -o - "$STRUT_STAGE/desktop.json" 2> /dev/null)" = true ] || { echo "bundle-app: the staged strut has no Ladybug; stage it again (scripts/stage-strut.sh <strut checkout>)" >&2; exit 1; }
   ditto "$STRUT_STAGE" "$APP/Contents/Strut"
 else
   echo "bundle-app: WARNING: no strut staged at $STRUT_STAGE (scripts/stage-strut.sh <strut checkout>); this Peel's agent has no memory or automations" >&2

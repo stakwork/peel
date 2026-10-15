@@ -545,7 +545,9 @@ is a short plan. Update the status and the journal when you finish something.
     `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
     `SSL_CERT_*` dropped, and
     its OpenSSL (Ladybug's, built for Homebrew's folders) given no
-    configuration, engines or providers; its workspace and memory
+    configuration, engines or providers; its workspace (one Ladybug file,
+    `workspace/graph/graph.lbug`; strut imports the old files once and
+    moves them to `workspace/fs-workspace.imported-<time>/`) and memory
     graph in `~/Library/Application Support/Peel/Strut`, a development
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
@@ -725,11 +727,12 @@ is a short plan. Update the status and the journal when you finish something.
   embeds the frameworks the app loads through `@rpath` (LiveKit's
   `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
   `stage-strut.sh` staged in `Contents/Strut` (without one it warns: that
-  Peel's agent has no memory or automations)
+  Peel's agent has no memory or automations; one without Ladybug it refuses)
 - `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
-  (`package-desktop.mjs --no-stt`, with Ladybug and the `memory/*` steps)
+  (`package-desktop.mjs --no-stt`, with Ladybug, its `vector` and `fts`
+  extensions and the `memory/*` steps)
   and Node, a pinned release checked against its SHA-256 (cached in
   `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
   Run it once, after strut changes, and again if macOS clears Caches

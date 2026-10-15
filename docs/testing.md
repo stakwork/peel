@@ -353,12 +353,17 @@ the message under an image older than the newest 200, the image sizing
 itself after the list is placed; the target must not move) and
 `thread-flicker` (a thread opened, closed and opened again inside one
 0.2 s slide in, the chat scrolled up; the chat holds, and its column
-narrows once, after the last slide ends). A step waits 0.3 s after it,
-or its `"next"` seconds.
+narrows once, after the last slide ends), `overscroll-bottom` and
+`overscroll-top` (a trackpad's rubber band: 80 pt past the end, or the
+top, over 0.3 s, let go and eased back; every frame must follow the
+gesture, and the direct chat then follows a new message). A step waits
+0.3 s after it, or its `"next"` seconds.
 
 A scroll is a live scroll on the list's own scroll view (its start, a
 step a frame, its end), which the list sees as a scroll by hand (the
 timeline log shows `phase interacting`); wheel events cannot be aimed at
-a window off the screens. A resize steps the window's frame a frame
+a window off the screens. An `overscroll` step does the same past an end, with the
+list's clip view let past its content (`ListClipView.elastic`), as AppKit
+lets it only during a real trackpad gesture. A resize steps the window's frame a frame
 apart. While a probe runs, the app leaves the background priority band
 and App Nap, whose timer coalescing would sample a few frames a second.

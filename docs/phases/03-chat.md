@@ -3039,6 +3039,17 @@ Built:
   first), and snap off the screens, where there are no frames to animate on.
 - Older history on the Mac: near the top, `loadOlder`; the page lands above
   with nothing on the screen moving.
+- A trackpad's rubber band past either end is AppKit's: while the clip is
+  past the content, or easing back after the gesture ends, the engine
+  never sets its origin (it re-placed the rows in view each frame and
+  clamped, pulling the list back under the fingers at the bottom), and the
+  ease back is the same scroll by hand, not a new one; `overscroll-bottom`
+  (a tribe and a direct chat, then a message that follows) and
+  `overscroll-top` judge it with the driver's `overscroll` step.
+  `overscroll-bottom` fails without the fix (the list never leaves its
+  end: 0 of 80 pt); `overscroll-top` passes either way, since at the top
+  the row across the edge is the table's padding row, so nothing was
+  placed there, and it stays as a guard.
 - `ListProbe` reads a `ListGeometry` report: the table's, and the agent
   list's `ListEnd`.
 - `SidePanelSplit` narrows the column on the slide's own completion, not

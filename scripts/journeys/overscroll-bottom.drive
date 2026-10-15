@@ -1,0 +1,22 @@
+// Overscroll at the bottom: in the tribe and in the direct chat, at the
+// newest, a trackpad pushes 80 pt past the end over 0.3 s and lets go; the
+// rubber band follows the fingers out and eases back with nothing pulling
+// against it, and the direct chat still follows a message that comes after.
+// needs: peer
+// check: tribe overscroll=bottom
+// check: dm overscroll=bottom
+// check: dm-follow hold=chat from=arrive land=end
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"probe": "tribe", "for": 2}
+{"overscroll": -80, "over": 0.3}
+{"wait": 1.5}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "dm", "for": 2}
+{"overscroll": -80, "over": 0.3}
+{"wait": 1.5}
+{"probe": "dm-follow", "for": 8}
+{"signal": "peer-sends"}
+{"wait": 7.5}

@@ -70,6 +70,9 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     private var liveScrolling = false
     /// One that did not (a mouse wheel, keys, AppKit's own): ends once still.
     private var quietScrollEnd: DispatchWorkItem?
+    /// A scroll by hand that ended past an end: its rubber band easing
+    /// back, still that scroll, which ends once back in range (or still).
+    private var settleEnd: DispatchWorkItem?
     /// The animated move running, by number; 0 for none.
     private var animation = 0
     /// The message asked for last, by uuid, so a request is taken once.
@@ -127,6 +130,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         table.dataSource = self
         table.delegate = self
         scroll.engine = self
+        scroll.contentView = ListClipView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -234,6 +238,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         gone = true
         idleGeneration += 1
         quietScrollEnd?.cancel()
+        settleEnd?.cancel()
         NotificationCenter.default.removeObserver(self)
         log("dismantle")
     }
@@ -372,7 +377,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     private func setOrigin(_ y: CGFloat) {
         let bounds = clip.bounds
-        guard abs(bounds.origin.y - y) > 0.01 else { return }
+        // A rubber band is AppKit's to run to its end.
+        guard abs(bounds.origin.y - y) > 0.01, !overscrolled, settleEnd == nil else { return }
         adjust {
             clip.setBoundsOrigin(NSPoint(x: bounds.origin.x, y: y))
             scroll.reflectScrolledClipView(clip)
@@ -412,6 +418,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// over two views away, to a view and a half short of it at once.
     private func animate(to target: ListPlacement) {
         stopAnimation()
+        guard !overscrolled, settleEnd == nil else { return }
         // Off the screens (the offscreen check) there is no frame to animate on.
         guard scroll.window?.screen != nil else { return place(target) }
         let height = clip.bounds.height
@@ -561,6 +568,9 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         liveScrolling = true
         quietScrollEnd?.cancel()
         quietScrollEnd = nil
+        // A new gesture during a rubber band's ease back: the same scroll goes on.
+        settleEnd?.cancel()
+        settleEnd = nil
         stopAnimation()
         controller.userScrollBegan()
     }
@@ -568,6 +578,34 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     @objc private func liveScrollEnded() {
         guard liveScrolling, !gone else { return }
         liveScrolling = false
+        if overscrolled { return settle() }
+        controller.userScrollEnded(report())
+        queueIdle()
+    }
+
+    /// Past the content's range at either end: a rubber band, pulled by
+    /// the gesture or easing back.
+    private var overscrolled: Bool {
+        let bounds = clip.bounds
+        return bounds.origin.y < -0.01 || bounds.origin.y > max(table.frame.height - bounds.height, 0) + 0.01
+    }
+
+    /// The scroll that ended past an end goes on while its rubber band
+    /// eases back: over once back in range, or once nothing has moved.
+    private func settle() {
+        settleEnd?.cancel()
+        let end = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.settled() }
+        }
+        settleEnd = end
+        if !overscrolled { return settled() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: end)
+    }
+
+    private func settled() {
+        settleEnd?.cancel()
+        settleEnd = nil
+        guard !gone else { return }
         controller.userScrollEnded(report())
         queueIdle()
     }
@@ -577,6 +615,18 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         if animation != 0 {
             // A frame of an animated move: what shows, reported.
             scroll.reflectScrolledClipView(clip)
+            report()
+            return
+        }
+        if settleEnd != nil {
+            // A rubber band easing back: the same scroll, left to AppKit.
+            settle()
+            report()
+            return
+        }
+        if overscrolled {
+            // Past an end: the origin is the gesture's (or AppKit's) alone.
+            if !liveScrolling, quietScrollEnd != nil { quietScroll() }
             report()
             return
         }
@@ -757,7 +807,9 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     private func idle() {
         guard !gone, placed, !stale.isEmpty else { return }
-        guard animation == 0, !liveScrolling, quietScrollEnd == nil else { return queueIdle(after: 0.2) }
+        guard animation == 0, !liveScrolling, quietScrollEnd == nil, settleEnd == nil, !overscrolled else {
+            return queueIdle(after: 0.2)
+        }
         let deadline = ContinuousClock.now + .milliseconds(8)
         let hold = holdNow()
         let count = rows.count
@@ -986,6 +1038,17 @@ final class ListScrollView: NSScrollView {
         super.setFrameSize(newSize)
         engine.adjusting -= 1
         engine.didResize(holding: held)
+    }
+}
+
+/// The list's clip view. `elastic` is the offscreen driver's stand-in for
+/// AppKit's rubber band, which lets the clip past the content only during
+/// a trackpad's gesture, one the driver cannot make off the screens.
+final class ListClipView: NSClipView {
+    var elastic = false
+
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        elastic ? proposedBounds : super.constrainBoundsRect(proposedBounds)
     }
 }
 

@@ -32,7 +32,10 @@ import PeelUI
 /// `{"scroll": 600}` scrolls the chat's list up 600 points as a live scroll
 /// by hand (`"in": "thread"` for the thread's, negative for down; `"steps":
 /// 1` in one frame, a flick),
-/// `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
+/// `{"overscroll": -80, "over": 0.3}` pushes the chat's list 80 points
+/// past its end (positive past its top) over that long as a live scroll,
+/// as an elastic drag does, then lets go and eases it back as AppKit's
+/// rubber band does; `{"scrollTo": 40}` until row 40 is at its top; `{"width": 760, "over":
 /// 0.3}` resizes the window, as a drag would over that long; `{"jump": 150}`
 /// goes to the 150th newest message, as a search match does (`{"jump":
 /// {"older": 200, "below": "image"}}`: to the message under the newest
@@ -49,7 +52,7 @@ final class OffscreenDriver {
         var select, open, notification, key, type, snapshot, link: String?
         var probe, thread, close, expect, signal, list, note, reveal, appearance: String?
         var mods: [String]?
-        var wait, duration, scroll, width, over, next: Double?
+        var wait, duration, scroll, overscroll, width, over, next: Double?
         var scrollTo, steps: Int?
         var jump: JumpTarget?
         var submit: Bool?
@@ -57,7 +60,7 @@ final class OffscreenDriver {
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
             case appearance
-            case mods, wait, scroll, width, over, scrollTo, jump, steps, next
+            case mods, wait, scroll, overscroll, width, over, scrollTo, jump, steps, next
             case list = "in", duration = "for", submit = "return"
         }
     }
@@ -205,6 +208,8 @@ final class OffscreenDriver {
             ThreadPanel.closing { model()?.closeThread() }
         } else if let points = step.scroll {
             try await scroll(by: points, in: step.list ?? "chat", steps: step.steps)
+        } else if let points = step.overscroll {
+            try await overscroll(by: points, in: step.list ?? "chat", over: step.over ?? 0.3)
         } else if let row = step.scrollTo {
             try await scroll(toRow: row, in: step.list ?? "chat")
         } else if let width = step.width {
@@ -631,6 +636,45 @@ final class OffscreenDriver {
             try await Task.sleep(for: .milliseconds(16))
         }
         center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
+    }
+
+    /// Past the list's end (down, negative) or its top by `points` over
+    /// `seconds`, a frame at a time, as a live scroll whose position runs
+    /// out of the content's range; then, the gesture ended, back to that
+    /// end over 0.4 s, easing out, as AppKit's rubber band returns.
+    private func overscroll(by points: Double, in kind: String, over seconds: Double) async throws {
+        let view = try scrollView(kind)
+        guard let clip = view.contentView as? ListClipView else { throw Failure(description: "the \(kind) list has no rubber band") }
+        let center = NotificationCenter.default
+        let range = max((view.documentView?.frame.height ?? 0) - clip.bounds.height, 0)
+        // Up is towards the document's top.
+        let dy = clip.isFlipped ? -points : points
+        let edge = dy < 0 ? 0 : range
+        let start = clip.bounds.origin.y
+        let far = edge + dy
+        func set(_ y: Double) {
+            clip.setBoundsOrigin(NSPoint(x: clip.bounds.origin.x, y: y))
+            view.reflectScrolledClipView(clip)
+        }
+        // AppKit lets the clip past the content only for a trackpad's
+        // gesture, which cannot be made off the screens: its stand-in.
+        clip.elastic = true
+        defer { clip.elastic = false }
+        let push = max(1, Int((seconds * 60).rounded()))
+        center.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
+        for step in 1...push {
+            set(start + (far - start) * Double(step) / Double(push))
+            center.post(name: NSScrollView.didLiveScrollNotification, object: view)
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        center.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
+        let back = 24
+        for step in 1...back {
+            let t = Double(step) / Double(back)
+            set(far + (edge - far) * (1 - pow(1 - t, 3)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        Offscreen.log("drive: overscroll \(Int(points)) pt, back at \(Int(clip.bounds.origin.y)) of \(Int(range))")
     }
 
     /// Scrolls until row `index` is laid out, then puts its top at the list's top.

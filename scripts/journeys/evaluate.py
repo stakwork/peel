@@ -23,6 +23,8 @@ reference is its last frame before the first step taken while it ran
   back where it was, within 1 pt).
 - from=grow: the reference is instead the last frame before the held
   list's rows first grew (older history arriving), not before the first step.
+- from=arrive: the last frame before the newest row laid out in the held
+  list became another (a message arriving), after the first step.
 - from=resize: the last frame before a row laid out in the held list
   changed height (a picture sizing itself late), after the first step.
 - more: the last frame's list (the held one, else the chat) has over <n> rows.
@@ -30,6 +32,12 @@ reference is its last frame before the first step taken while it ran
   stays within 1 pt of where it was, in every frame it is laid out.
 - narrows: the chat's list narrows once in all, no sooner than <s> seconds
   after the first step (the panel's slide in ended first).
+- overscroll=bottom|top[@<list>]: the drive's `overscroll` step pushed the
+  list past that end and let go. From the reference, how far past it is
+  must grow with the push, frame by frame, to within 10% of the push, then
+  shrink back, never once moving against the gesture or the ease back (by
+  over 0.5 pt) nor more than 12 pt in a frame; the last frame flush at
+  that end again.
 - Always: no blank frame (a list with rows hidden, or none in view) in
   any list, at any time.
 
@@ -41,6 +49,8 @@ import re
 import sys
 
 MOVE = 1.0
+# The most a rubber band moves in a frame, pushed or easing back.
+STRIDE = 12.0
 
 
 def newest(sample, kind):
@@ -84,6 +94,21 @@ def judge(probe, options):
         else:
             start = grew["t"]
             notes.append(f"{kind} grew from {first['rows']} to {newest(grew, kind)['rows']} rows")
+    if options.get("from") == "arrive":
+        kind = options.get("hold", "chat")
+
+        def last_row(s):
+            now = newest(s, kind)
+            return max(now["laidOut"], key=lambda r: r["index"])["row"] if now and now["laidOut"] else None
+
+        was = next((last_row(s) for s in reversed(samples) if s["t"] < start), None)
+        came = next((s for s in samples if s["t"] >= start and last_row(s) not in (None, was)), None)
+        if came is None:
+            ok = False
+            notes.append(f"no new row came at the end of {kind}")
+        else:
+            start = came["t"]
+            notes.append(f"a row came at {start - samples[0]['t']:.2f} s")
     if options.get("from") == "resize":
         kind = options.get("hold", "chat")
         resized, last = None, None
@@ -213,6 +238,35 @@ def judge(probe, options):
             notes.append(f"{kind} ended with {last['rows'] if last else 0} rows, not over {more}")
         else:
             notes.append(f"{kind} ended with {last['rows']} rows")
+
+    overscroll = options.get("overscroll")
+    if overscroll:
+        side, _, kind = overscroll.partition("@")
+        kind = kind or "chat"
+        push = next((e for e in probe["events"] if '"overscroll"' in e["step"]), None)
+        ref = newest(reference, kind)
+        if push is None or ref is None:
+            ok = False
+            notes.append("no overscroll step" if push is None else f"no {kind} list at the start")
+        else:
+            depth = abs(json.loads(push["step"])["overscroll"])
+
+            def past(entry):
+                # How far beyond the end the view is, from the reference.
+                return ref["below"] - entry["below"] if side == "bottom" else ref["offset"] - entry["offset"]
+
+            series = [past(newest(s, kind)) for s in samples if s["t"] >= push["t"] and newest(s, kind)
+                      and newest(s, kind)["list"] == ref["list"]]
+            peak = max(series, default=0)
+            top = series.index(peak) if series else 0
+            against = [b - a for a, b in zip(series[:top + 1], series[1:top + 1]) if b < a - 0.5]
+            against += [a - b for a, b in zip(series[top:], series[top + 1:]) if b > a + 0.5]
+            stride = max((abs(b - a) for a, b in zip(series, series[1:])), default=0)
+            last = series[-1] if series else 0
+            notes.append(f"pushed {peak:,.0f} of {depth:,.0f} pt past the {side}, {len(against)} frames against it, "
+                         f"at most {stride:,.1f} pt a frame, ended {last:+,.1f} pt")
+            if peak < depth * 0.9 or against or stride > STRIDE or abs(last) > MOVE:
+                ok = False
 
     land = options.get("land")
     if land:

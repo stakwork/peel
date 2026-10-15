@@ -569,9 +569,10 @@ Built so far:
     the two widths: 372 for the forms, Tribe details and a contact's
     Details; 320 for Join a tribe, Members, Boosts and the Account's
     Time zone. The connection card is the exception: it fits its one
-    line, drops under the bolt and grows leftward (`PopoverEdge.trailing`)
-    so its refresh button sits directly under the click; the button is
-    10 in, as a header's close, so the card stays within the sidebar.
+    line, drops under the bolt and grows leftward (`PopoverEdge.trailing`),
+    its right edge in line with the bolt's, so it stays within the sidebar
+    and its small refresh button (10 in, as a header's close) sits under
+    the click.
 - **Section headers** (batch 10). `SectionHeader("Members")` in
   `UI/Section.swift`: 12 pt semibold in `secondaryText`, placed by its
   caller. Every heading over a group is one: a form's sections

@@ -7,7 +7,7 @@ import SwiftUI
 /// A borderless window for a menu or a panel: sized to its content, placed
 /// below its anchor (above, or to the left, when that would leave the parent
 /// window), a child of the window it opened from so it moves with it. A
-/// panel may instead grow leftward from the anchor's centre (`PopoverEdge`).
+/// panel may instead grow leftward from the anchor's right edge (`PopoverEdge`).
 @MainActor
 final class FloatingWindow: NSPanel {
     /// Room around the content for its shadow.
@@ -134,8 +134,8 @@ final class FloatingWindow: NSPanel {
         switch edge {
         case .leading:
             if x + content.width > bounds.maxX { x = (anchor.width > 0 ? anchor.maxX : anchor.minX) - content.width }
-        case .trailing(let inset):
-            x = anchor.midX + inset - content.width
+        case .trailing:
+            x = anchor.maxX - content.width
         }
         let gap = anchor.height > 0 ? Self.gap : 0
         // Screen coordinates grow upwards: below the anchor is under its minY.

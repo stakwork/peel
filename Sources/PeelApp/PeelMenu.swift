@@ -458,9 +458,8 @@ struct WindowReader: NSViewRepresentable {
 
 /// Where a popover sits across its trigger. `.leading` starts at the
 /// trigger's left edge (and flips left only to stay in the window).
-/// `.trailing(inset:)` grows leftward: the point `inset` in from the panel's
-/// right edge sits under the trigger's horizontal centre.
+/// `.trailing` grows leftward, its right edge in line with the trigger's.
 enum PopoverEdge {
     case leading
-    case trailing(inset: CGFloat)
+    case trailing
 }

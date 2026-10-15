@@ -517,6 +517,7 @@ struct PinField: View {
     @Binding var pin: String
     let complete: () -> Void
     @FocusState private var focused: Bool
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         ZStack {
@@ -547,6 +548,15 @@ struct PinField: View {
             // Focus asked for during the screen change is ignored; ask once it has settled.
             try? await Task.sleep(for: .milliseconds(150))
             focused = true
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            // Disabling drops focus (a PIN being checked); take it back once
+            // enabled again so a retype after a wrong PIN needs no click.
+            guard enabled else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(50))
+                focused = true
+            }
         }
         .onChange(of: pin) { _, value in
             let digits = PIN.digits(value)

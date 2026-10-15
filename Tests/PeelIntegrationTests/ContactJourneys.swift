@@ -165,10 +165,8 @@ extension Journeys {
         /// exchange (ContactKey, type 10) with no sats. Answering it pays 3
         /// sats and a ping, so a core that answers an unpaid one lets anyone
         /// drain an account a few sats at a time (upstream SR-016): Alice's
-        /// core must pay nothing. Fixed in sphinx v0.6.29; the core Peel links
-        /// (`bd9e140`) still answers, so this is a known issue until the lock
-        /// moves, and then fails until the `withKnownIssue` goes. A paid key
-        /// exchange still completing is `keyExchangeByContactInfo`.
+        /// core must pay nothing (fixed in sphinx v0.6.29). A paid key exchange
+        /// still completing is `keyExchangeByContactInfo`.
         @Test func anUnpaidContactKeyPaysNothing() async throws {
             let alice = try await Person.create("alice")
             let bob = try await Person.create("bob")
@@ -198,11 +196,9 @@ extension Journeys {
             let rowsAfter = try await keyExchangeRows(alice, with: "bob")
             let a1 = try await alice.settledBalance()
             let b1 = try await bob.settledBalance()
-            withKnownIssue("the linked core bd9e140 pays back an unpaid ContactKey (SR-016, fixed in sphinx v0.6.29)") {
-                #expect(rowsAfter == rows)
-                #expect(a1 == a0)
-                #expect(b1 == b0)
-            }
+            #expect(rowsAfter == rows)
+            #expect(a1 == a0)
+            #expect(b1 == b0)
 
             await alice.close()
             await bob.close()

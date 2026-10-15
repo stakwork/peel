@@ -276,6 +276,7 @@ private struct CallControls: View {
     /// Each chevron's frame, to open the device menu beside.
     @State private var micChevron = MenuAnchor()
     @State private var cameraChevron = MenuAnchor()
+    @State private var shareChevron = MenuAnchor()
 
     var body: some View {
         VStack(spacing: 10) {
@@ -307,17 +308,57 @@ private struct CallControls: View {
         .padding(.bottom, 18)
     }
 
-    /// Share opens macOS's picker; while you share it is filled and stops it.
-    private var share: some View {
-        let on = call.sharing != nil
-        return Button { on ? call.stopScreenShare() : call.startScreenShare() } label: {
-            pill("rectangle.inset.filled.and.person.filled", on ? "Stop sharing" : "Share", weight: .medium,
-                 text: on ? Theme.buttonText : Theme.text, fill: on ? Theme.accent : Theme.hover)
+    /// Share starts on the entire screen, its chevron offers a window or an
+    /// app; while you share it is one filled button that stops it.
+    @ViewBuilder private var share: some View {
+        if call.sharing != nil {
+            Button { call.stopScreenShare() } label: {
+                pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
+                     text: Theme.buttonText, fill: Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .help("Stop sharing (⌘⇧S)")
+        } else {
+            shareSegment
         }
-        .buttonStyle(.plain)
-        .disabled(!on && call.state != .connected)
-        .keyboardShortcut("s", modifiers: [.command, .shift])
-        .help(on ? "Stop sharing (⌘⇧S)" : "Share your screen, a window or an app (⌘⇧S)")
+    }
+
+    /// The Share control and its chevron, which opens the share menu.
+    private var shareSegment: some View {
+        let unavailable = call.state != .connected
+        return HStack(spacing: 0) {
+            Button { call.startScreenShare(.display) } label: {
+                HStack(spacing: Theme.Space.sm) {
+                    Image(systemName: "rectangle.inset.filled.and.person.filled").font(.system(size: 14))
+                    Text("Share").font(Theme.font(13, .medium))
+                }
+                .foregroundStyle(Theme.text)
+                .padding(.horizontal, 14)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .help("Share your entire screen (⌘⇧S)")
+            Theme.callChevronLine.frame(width: 1)
+            Button { showShareMenu(at: shareChevron) } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(width: 26)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Share a window or an app")
+            .accessibilityLabel("Choose what to share")
+            .menuAnchor(shareChevron)
+        }
+        .frame(height: 44)
+        .background(Theme.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
+        .disabled(unavailable)
+        .opacity(unavailable ? 0.45 : 1)
     }
 
     /// A labelled control in the bar: Share and Leave.
@@ -420,5 +461,16 @@ private struct CallControls: View {
             section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera)
         )
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)
+    }
+
+    /// What the picker opens on: the entire screen, a window or an app.
+    private func showShareMenu(at anchor: MenuAnchor) {
+        let entries: [MenuEntry] = [
+            .header("Share"),
+            .button("Entire screen", systemImage: "display") { call.startScreenShare(.display) },
+            .button("A window", systemImage: "macwindow") { call.startScreenShare(.window) },
+            .button("An app", systemImage: "app") { call.startScreenShare(.application) },
+        ]
+        presenter?.show(entries, at: anchor, source: "call-share", minWidth: 200)
     }
 }

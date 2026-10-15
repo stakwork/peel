@@ -279,22 +279,22 @@ final class CallSession {
 
     // MARK: Screen share
 
-    /// Opens macOS's picker.
-    func startScreenShare() {
-        Task { await startSharing() }
+    /// Opens macOS's picker, on the entire screen unless asked otherwise.
+    func startScreenShare(_ kind: ScreenShare.Kind = .display) {
+        Task { await startSharing(kind) }
     }
 
     func stopScreenShare() {
         Task { await stopSharing() }
     }
 
-    private func startSharing() async {
+    private func startSharing(_ kind: ScreenShare.Kind) async {
         guard !switchingShare, !leaving, share == nil, state == .connected else { return }
         switchingShare = true
         defer { switchingShare = false }
         // Nothing is shared unless the picker returned something and the
         // call is still on when it did.
-        guard let filter = await ScreenShare.pick(), !leaving, state == .connected else { return }
+        guard let filter = await ScreenShare.pick(kind), !leaving, state == .connected else { return }
         let started: ScreenShare
         do {
             started = try await ScreenShare.start(filter) { [weak self] in self?.shareEnded() }

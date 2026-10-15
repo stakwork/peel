@@ -1,7 +1,10 @@
 # Agent Guide
 
+Read `docs/VISION.md` before anything else: Peel's guiding principles and
+the experience it must give. Every change serves it.
+
 Peel is a native Sphinx chat client written from scratch in Swift on the shared
-Rust core. Read `docs/PLAN.md` first (architecture and phase index), then the
+Rust core. Read `docs/PLAN.md` next (architecture and phase index), then the
 phase you are working on under `docs/phases/`. A phase with work done opens
 with a short status (built, open, decided) above its journal; a planned one
 is a short plan. Update the status and the journal when you finish something.

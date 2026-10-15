@@ -1,6 +1,20 @@
 # Peel
 
-A native Sphinx chat client, written from scratch on the shared Rust core.
+Peel is a private assistant that lives with you, remembers what you tell it,
+runs errands within limits you set, and answers to you alone. It is also a
+native Sphinx chat client, written from scratch on the shared Rust core.
+
+## Guiding principles
+
+1. **Privacy is a human right.**
+2. **Personal agents will be a powerful helper to humans.**
+3. **They must be controlled fully by the single human.**
+4. **Security and backups apply the lessons of bitcoin self-custody. Losing
+   data or a security fault is not allowed.**
+
+What these mean for the person using Peel, and what they ask of the system,
+are in [docs/VISION.md](docs/VISION.md). Read it before changing what Peel
+does.
 
 ## Layout
 

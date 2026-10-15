@@ -17,7 +17,8 @@
 # Either way it then checks that the core the release pins (sphinx-ffi's
 # Cargo.toml at the tag) has upstream's client security fixes, in the
 # stakwork/sphinx checkout at $SPHINX (default ../sphinx). A missing fix only
-# warns.
+# warns, unless PEEL_REQUIRE_CORE_FIXES=1, which any build that ships sets:
+# then a missing or unchecked fix stops the build.
 #
 # For iOS, set both SPHINX_IOS_LIB (an ios-arm64 static library) and
 # SPHINX_IOS_SIM_LIB (ios-arm64-simulator), built from the sphinx-rs release
@@ -109,6 +110,7 @@ c1a46181f38e6085fdef51e84d9a28b09b102cf0 SR-020
 EOF
 if [ -n "$MISSING$UNCHECKED" ]; then
   LEVEL=WARNING
+  [ "${PEEL_REQUIRE_CORE_FIXES:-}" = 1 ] && LEVEL=ERROR
   {
     echo "************************************************************"
     echo "$LEVEL: the core sphinx-rs $TAG pins (sphinx ${CORE_REV:-unknown})"
@@ -117,6 +119,7 @@ if [ -n "$MISSING$UNCHECKED" ]; then
     echo "  Fixed upstream in v0.6.29; pin a sphinx-rs release with them."
     echo "************************************************************"
   } >&2
+  [ "$LEVEL" = WARNING ] || die "PEEL_REQUIRE_CORE_FIXES=1: refusing a core without the fixes"
 fi
 
 XCF="$ROOT/Vendor/sphinxrsFFI.xcframework"

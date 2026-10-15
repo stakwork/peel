@@ -789,7 +789,8 @@ library with another hash. To move to a new core, run
 `scripts/build-ffi.sh --update <tag>`, which records the release and its
 library's hash. It then checks the core that release pins (`sphinx-ffi/Cargo.toml`
 at the tag) for upstream's client security fixes in a `stakwork/sphinx`
-checkout (`SPHINX`, default `../sphinx`) and warns on a missing fix.
+checkout (`SPHINX`, default `../sphinx`): a missing fix warns, and fails the
+run with `PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
 
 The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
 is no Xcode project for it. To check a build without replacing the

@@ -309,9 +309,6 @@ public final class AppModel {
     public private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     public var agent: AgentSession?
-    /// Bumped to open every tool row in the agent chat, as clicks on their
-    /// chevrons would (the offscreen driver's `agent-rows`).
-    public var agentRowsOpened = 0
     /// Bumped to open Account › Brain's home server form, as its "Connect a
     /// home server…" or "Change" would (the offscreen driver's `brain-form`).
     public var brainFormOpened = 0

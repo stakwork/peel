@@ -5,8 +5,8 @@ import PeelUI
 import SwiftUI
 
 /// What a message list reports of where its rows are, as of its last move:
-/// the chat's and a thread's table (`MessageTableEngine`), the agent's lazy
-/// list (`ListEnd`). Frames and the view are in the content, from its top.
+/// the chat's, a thread's and the agent chat's table (`MessageTableEngine`).
+/// Frames and the view are in the content, from its top.
 @MainActor protocol ListGeometry: AnyObject {
     /// The rows, oldest first.
     var ids: [String] { get }
@@ -26,11 +26,6 @@ import SwiftUI
     var width: CGFloat { get }
 }
 
-extension ListEnd: ListGeometry {
-    var scrollView: NSScrollView? { nil }
-    var width: CGFloat { 0 }
-}
-
 /// Offscreen only: the message lists a drive's `probe` step reads each
 /// frame (`OffscreenDriver`). Each list hands over the `ListGeometry` it
 /// keeps anyway, and a sample reads what that already holds (where its rows
@@ -42,39 +37,24 @@ extension ListEnd: ListGeometry {
         weak var end: ListGeometry?
         let kind: String
         let serial: Int
-        let ignored: String?
-        /// The list's rows as it last had them, and without `ignored`: made
-        /// again only when they change, not each frame.
-        private var source: [String] = []
-        private var rows: [String] = []
 
-        init(end: ListGeometry, kind: String, serial: Int, ignored: String?) {
+        init(end: ListGeometry, kind: String, serial: Int) {
             self.end = end
             self.kind = kind
             self.serial = serial
-            self.ignored = ignored
-        }
-
-        func ids(of end: ListGeometry) -> [String] {
-            if end.ids != source {
-                source = end.ids
-                rows = ignored.map { ignored in source.filter { $0 != ignored } } ?? source
-            }
-            return rows
         }
     }
 
     private static var entries: [Entry] = []
     private static var made = 0
 
-    /// A list appeared: `kind` is chat, thread or agent; `ignoring`, a row
-    /// id that is not a row (the agent list's end marker).
-    static func register(_ end: ListGeometry, kind: String, ignoring: String? = nil) {
+    /// A list appeared: `kind` is chat, thread or agent.
+    static func register(_ end: ListGeometry, kind: String) {
         guard Offscreen.isOn else { return }
         entries.removeAll { $0.end == nil }
         guard !entries.contains(where: { $0.end === end }) else { return }
         made += 1
-        entries.append(Entry(end: end, kind: kind, serial: made, ignored: ignoring))
+        entries.append(Entry(end: end, kind: kind, serial: made))
     }
 
     /// A row as a probe writes it: its tag (`tag`, never its text or id), its index in the list, and where it sits from the top of the
@@ -141,7 +121,7 @@ extension ListEnd: ListGeometry {
         entries.compactMap { entry in
             guard let end = entry.end, !end.gone else { return nil }
             let (windowX, visible) = placement(of: end.scrollView)
-            return Capture(kind: entry.kind, serial: entry.serial, ids: entry.ids(of: end), view: end.view,
+            return Capture(kind: entry.kind, serial: entry.serial, ids: end.ids, view: end.view,
                            content: end.content, width: end.width, shown: end.shown, frames: end.frames,
                            windowX: windowX, visible: visible && end.shown)
         }

@@ -145,6 +145,9 @@ public final class AgentSession {
     public private(set) var turns: [AgentTurn] = []
     /// The reply streaming now.
     public private(set) var reply: AgentTurn?
+    /// The id each reply of this session streamed under, by the id its turn
+    /// was saved as: a list keeps the reply's row as that turn.
+    public private(set) var streamedAs: [String: String] = [:]
     /// The reply's model call failed and is made again on its own after a
     /// wait; nil once anything else happens.
     public private(set) var retrying: Retrying?
@@ -470,7 +473,9 @@ public final class AgentSession {
         }
         // What the model sees next is this reply's words, not the tool
         // results (copies of chats Peel keeps); a reply that needs one names it.
-        turns.append(save(shown, answering: turn.id))
+        let saved = save(shown, answering: turn.id)
+        streamedAs[saved.id] = shown.id
+        turns.append(saved)
         if !isShown { unread += 1 }
     }
 
@@ -591,6 +596,7 @@ public final class AgentSession {
         let ids = turns.map(\.id)
         conversationID = nil
         turns = []
+        streamedAs = [:]
         summary = nil
         nextCompaction = 0
         problem = nil

@@ -3,7 +3,36 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// The chat's and a thread's list on the Mac (`ChatListEngine`): an
+/// A row a `MessageTableEngine` shows: a chat's or a thread's (`ChatRow`),
+/// or one of the agent chat's (`AgentListRow`). Two rows equal draw alike:
+/// a row unequal to the one measured is measured again, so equality is its
+/// version for the height cache.
+@MainActor protocol TableRow: Equatable {
+    var id: String { get }
+    /// Cells are reused among rows of one kind.
+    var reuse: NSUserInterfaceItemIdentifier { get }
+    /// Its height until it is measured.
+    var estimatedHeight: CGFloat { get }
+    /// The cell's SwiftUI content.
+    func content(in list: ComposerID, canAnswer: Bool) -> AnyView
+    /// The bar over it while the pointer is (Reply, Boost, More); nil for none.
+    func hoverBar(in list: ComposerID) -> AnyView?
+    /// The rows as the list's controller sees them.
+    static func listContent(_ rows: [Self], in list: ComposerID, reachesNewest: Bool, hasOlder: Bool) -> ListContent
+}
+
+/// What the views around a `MessageTableEngine` reach it by, whatever its rows.
+@MainActor protocol MessageTableHost: AnyObject {
+    var adjusting: Int { get set }
+    func layoutPass()
+    func willResize(to size: NSSize) -> ListPlacement?
+    func didResize(holding held: ListPlacement?)
+    func page(up: Bool)
+    func pointer(at point: NSPoint?)
+}
+
+/// A message list on the Mac (`ChatListEngine`): the chat's, a thread's or
+/// the agent chat's. An
 /// `NSTableView` whose document is not flipped, so its origin is the
 /// newest message and older rows above change nothing below them; each
 /// row a SwiftUI cell in a reused hosting controller; each row's height
@@ -12,7 +41,9 @@ import PeelUI
 /// the controller's placement in the same pass, so a row never moves on
 /// screen unless the list means it to (`docs/reviews/2026-10-14-message-lists.md`).
 @MainActor
-final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableViewDataSource, NSTableViewDelegate {
+final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeometry, MessageTableHost,
+    NSTableViewDataSource, NSTableViewDelegate
+{
     let composer: ComposerID
     let controller: ChatListController
     let table = BottomTable()
@@ -26,7 +57,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// over it), and inside the view at its top.
     private let hoverBar = NSHostingView(rootView: AnyView(EmptyView()))
     /// The row the bar shows, and its size.
-    private var barRow: ChatRow?
+    private var barRow: Row?
     private var barSize = NSSize.zero
     /// The pointer, in the window, while it is over the list.
     private var pointer: NSPoint?
@@ -57,7 +88,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     private var canAnswer = false
     private var reachesNewest = true
     private var hasOlder = false
-    private(set) var rows: [ChatRow] = []
+    private(set) var rows: [Row] = []
     private var position: [String: Int] = [:]
 
     // What the probe and the driver read (`ListGeometry`): the rows, the
@@ -110,7 +141,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     private var fill: CGFloat = 0
 
     /// Above the oldest row and below the newest.
-    static let padding = Theme.Space.md
+    static var padding: CGFloat { Theme.Space.md }
 
     init(composer: ComposerID, model: AppModel) {
         self.composer = composer
@@ -141,7 +172,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         table.allowsColumnResizing = false
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.autoresizingMask = [.width]
-        table.setAccessibilityLabel(composer.thread == nil ? "Messages" : "Thread")
+        table.setAccessibilityLabel(composer == .agent ? "Agent chat" : composer.thread == nil ? "Messages" : "Thread")
         table.dataSource = self
         table.delegate = self
         scroll.engine = self
@@ -168,7 +199,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         scroll.addTrackingArea(scroll.pointerArea)
     }
 
-    private var kind: String { composer.thread == nil ? "chat" : "thread" }
+    private var kind: String { composer == .agent ? "agent" : composer.thread == nil ? "chat" : "thread" }
 
     /// To the model past the update that asked (the model is not written
     /// during one), and only while this list is still its chat's: a call
@@ -186,7 +217,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     // MARK: Updates
 
-    func update(model: AppModel, rows new: [ChatRow], canAnswer: Bool, focus: FocusTarget?, reachesNewest: Bool,
+    func update(model: AppModel, rows new: [Row], canAnswer: Bool, focus: FocusTarget?, reachesNewest: Bool,
                 hasOlder: Bool, environment: EnvironmentValues) {
         self.model = model
         self.environment = environment
@@ -197,7 +228,11 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         if restyled { barRow = nil }
         let redraw = canAnswer != self.canAnswer || restyled
         self.canAnswer = canAnswer
-        let changed = new != rows || reachesNewest != self.reachesNewest || hasOlder != self.hasOlder
+        // The same rows in the same order (a reply growing, a row opened):
+        // those that changed, found in one pass; nil when the rows differ.
+        let inPlace = Self.changedInPlace(rows, new)
+        let changed = inPlace.map { !$0.isEmpty } ?? true || reachesNewest != self.reachesNewest
+            || hasOlder != self.hasOlder
         self.reachesNewest = reachesNewest
         self.hasOlder = hasOlder
         if !appeared {
@@ -221,10 +256,12 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
             let old = rows
             let visual = captureVisual()
             let oldIDs = ids
-            setRows(new)
-            let changedIDs = Self.changed(old, rows)
-            // Newest first, as the table's rows run.
-            let difference = ids.reversed().difference(from: oldIDs.reversed()).inferringMoves()
+            setRows(new, sameIDs: inPlace != nil)
+            let changedIDs = inPlace ?? Self.changed(old, rows)
+            // Newest first, as the table's rows run; none in place.
+            let difference = inPlace != nil
+                ? CollectionDifference<String>([])!
+                : ids.reversed().difference(from: oldIDs.reversed()).inferringMoves()
             let inserted = difference.insertions.compactMap { change -> String? in
                 if case .insert(_, let id, nil) = change { id } else { nil }
             }
@@ -267,18 +304,32 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     }
 
     private var listContent: ListContent {
-        ListContent(rows, in: composer, reachesNewest: reachesNewest, hasOlder: hasOlder)
+        Row.listContent(rows, in: composer, reachesNewest: reachesNewest, hasOlder: hasOlder)
     }
 
-    private func setRows(_ new: [ChatRow]) {
+    private func setRows(_ new: [Row], sameIDs: Bool = false) {
         rows = new
-        ids = new.map(\.id)
-        position = Dictionary(ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        if !sameIDs {
+            ids = new.map(\.id)
+            position = Dictionary(ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        }
         updateRowsHeight()
     }
 
+    /// With the same rows in the same order, the ids of those drawn
+    /// differently now; nil when the rows are not the same.
+    private static func changedInPlace(_ old: [Row], _ new: [Row]) -> [String]? {
+        guard old.count == new.count else { return nil }
+        var changed: [String] = []
+        for (was, row) in zip(old, new) {
+            guard was.id == row.id else { return nil }
+            if was != row { changed.append(row.id) }
+        }
+        return changed
+    }
+
     /// Kept rows drawn differently now.
-    private static func changed(_ old: [ChatRow], _ new: [ChatRow]) -> [String] {
+    private static func changed(_ old: [Row], _ new: [Row]) -> [String] {
         let was = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return new.compactMap { row in was[row.id].map { $0 == row ? nil : row.id } ?? nil }
     }
@@ -534,6 +585,20 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         scroll.alphaValue = 1
     }
 
+    /// The row's top below the view's, measured; nil when it is not in the table.
+    func top(of id: String) -> Double? {
+        guard placed, let index = position[id] else { return nil }
+        return Double(clip.bounds.maxY - table.rect(ofRow: tableRow(index)).maxY)
+    }
+
+    /// A row the user is about to open or close (a tool's details): it
+    /// keeps its top where it is, and the list stops following.
+    func expanding(_ id: String) {
+        guard placed, !gone else { return }
+        stopAnimation()
+        controller.userExpanded(id)
+    }
+
     // MARK: Jumps
 
     private func takeFocus(_ focus: FocusTarget?) {
@@ -718,8 +783,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
 
     // MARK: Heights
 
-    private func height(of row: ChatRow) -> CGFloat {
-        heights[row.id] ?? estimate(row)
+    private func height(of row: Row) -> CGFloat {
+        heights[row.id] ?? row.estimatedHeight
     }
 
     /// Records a row's height, keeping the total.
@@ -735,22 +800,6 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         rowsHeight = rows.reduce(0) { $0 + height(of: $1) } + 2 * Self.padding
     }
 
-    /// For a row never measured: by kind and length.
-    private func estimate(_ row: ChatRow) -> CGFloat {
-        var height: CGFloat = row.startsDay ? 40 : 0
-        if row.startsNew { height += 28 }
-        switch row.kind {
-        case .message:
-            let lines = max(1, (row.message.shownText.count + 69) / 70)
-            height += CGFloat(lines) * 18 + (row.startsRun ? 30 : 6)
-            if row.message.attachmentKind != nil { height += 220 }
-            if row.summary != nil { height += 28 }
-        default:
-            height += 28
-        }
-        return height
-    }
-
     /// Measures the row, by its own cell when it has one showing it (whose
     /// layout at this width then reuses the work), else by a sizer.
     @discardableResult
@@ -758,10 +807,10 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         let row = rows[index]
         let proposal = CGSize(width: width, height: 100_000)
         let size: CGSize
-        if let cell = table.view(atColumn: 0, row: tableRow(index), makeIfNecessary: false) as? HostCell, cell.row == row {
+        if let cell = table.view(atColumn: 0, row: tableRow(index), makeIfNecessary: false) as? HostCell, cell.row as? Row == row {
             size = cell.controller.sizeThatFits(in: proposal)
         } else {
-            let key = Self.reuse(row).rawValue
+            let key = row.reuse.rawValue
             let sizer = sizers[key] ?? {
                 let sizer = NSHostingController(rootView: AnyView(EmptyView()))
                 sizer.sizingOptions = []
@@ -940,7 +989,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     }
 
     /// The row under the pointer: the bar's while it is over the bar.
-    private func row(under point: NSPoint) -> ChatRow? {
+    private func row(under point: NSPoint) -> Row? {
         if !hoverBar.isHidden, hoverBar.frame.contains(scroll.convert(point, from: nil)) { return barRow }
         guard clip.bounds.contains(clip.convert(point, from: nil)),
               let index = index(ofTableRow: table.row(at: table.convert(point, from: nil))) else { return nil }
@@ -962,10 +1011,12 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         let row = presenter?.isOpen == true
             ? current.flatMap { presenter?.isOpen(from: $0.id) == true ? $0 : nil }
             : hovered
-        guard let row, let index = position[row.id], HoverBar.shows(row) else { return hoverBar.isHidden = true }
+        guard let row, let index = position[row.id], let bar = row.hoverBar(in: composer) else {
+            return hoverBar.isHidden = true
+        }
         if row != barRow {
             barRow = row
-            hoverBar.rootView = AnyView(HoverBar(row: row, composer: composer).environment(\.self, environment))
+            hoverBar.rootView = AnyView(bar.environment(\.self, environment))
             barSize = hoverBar.fittingSize
         }
         let rect = table.rect(ofRow: tableRow(index))
@@ -1008,18 +1059,11 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
         for t in range.location..<(range.location + range.length) { body(t, table.rect(ofRow: t)) }
     }
 
-    private static func reuse(_ row: ChatRow) -> NSUserInterfaceItemIdentifier {
-        switch row.kind {
-        case .message: .init("message")
-        case .payment, .paymentRequest: .init("payment")
-        default: .init("note")
-        }
-    }
-
-    private func content(_ row: ChatRow) -> AnyView {
+    private func content(_ row: Row) -> AnyView {
         AnyView(
-            ListRowContent(row: row, composer: composer, canAnswer: canAnswer)
+            row.content(in: composer, canAnswer: canAnswer)
                 .environment(\.goToMessage) { [weak self] message in self?.go(to: message) }
+                .environment(\.listRowExpanding) { [weak self] id in self?.expanding(id) }
                 .environment(flashed)
                 .environment(hover)
                 // The list's own environment, under what the rows add to it.
@@ -1030,7 +1074,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
     /// A cell reused for another row makes that row's views anew (`.id`):
     /// whatever the old row's views opened (a menu, a card, a panel) goes
     /// with them, as when they scroll away.
-    private func show(_ row: ChatRow, in cell: HostCell) {
+    private func show(_ row: Row, in cell: HostCell) {
         cell.row = row
         let id = row.id
         cell.controller.rootView = AnyView(
@@ -1067,13 +1111,13 @@ final class MessageTableEngine: NSObject, ChatListEngine, ListGeometry, NSTableV
             }()
         }
         let row = rows[index]
-        let kind = Self.reuse(row)
+        let kind = row.reuse
         let cell = tableView.makeView(withIdentifier: kind, owner: nil) as? HostCell ?? HostCell(kind: kind)
         show(row, in: cell)
         return cell
     }
 
-    private static let edge = NSUserInterfaceItemIdentifier("edge")
+    private static var edge: NSUserInterfaceItemIdentifier { .init("edge") }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
 
@@ -1110,7 +1154,7 @@ final class BottomTable: NSTableView {
 /// Holds the list's placement across its own size changes: captured before
 /// the frame changes, put back in the same layout pass.
 final class ListScrollView: NSScrollView {
-    weak var engine: MessageTableEngine?
+    weak var engine: MessageTableHost?
     /// The pointer over the rows, for the engine's hover.
     private(set) lazy var pointerArea = NSTrackingArea(
         rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self
@@ -1160,7 +1204,7 @@ final class ListClipView: NSClipView {
 final class HostCell: NSView {
     let controller = NSHostingController(rootView: AnyView(EmptyView()))
     /// The row it shows now.
-    var row: ChatRow?
+    var row: Any?
 
     init(kind: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -1189,22 +1233,22 @@ final class HostCell: NSView {
 /// the engine, for the keys.
 @MainActor @Observable final class ListLink {
     var controller: ChatListController?
-    @ObservationIgnored weak var engine: MessageTableEngine?
+    @ObservationIgnored weak var engine: MessageTableHost?
 }
 
-/// `MessageList`'s table.
-struct MessageTable: NSViewRepresentable {
+/// A message list's table: `MessageList`'s, or the agent chat's.
+struct MessageTable<Row: TableRow>: NSViewRepresentable {
     let model: AppModel
-    let rows: [ChatRow]
+    let rows: [Row]
     let composer: ComposerID
-    let canAnswer: Bool
-    let focus: FocusTarget?
-    let reachesNewest: Bool
-    let hasOlder: Bool
+    var canAnswer = false
+    var focus: FocusTarget?
+    var reachesNewest = true
+    var hasOlder = false
     let link: ListLink
 
-    func makeCoordinator() -> MessageTableEngine {
-        let engine = MessageTableEngine(composer: composer, model: model)
+    func makeCoordinator() -> MessageTableEngine<Row> {
+        let engine = MessageTableEngine<Row>(composer: composer, model: model)
         link.engine = engine
         link.controller = engine.controller
         return engine
@@ -1219,7 +1263,51 @@ struct MessageTable: NSViewRepresentable {
                                    hasOlder: hasOlder, environment: context.environment)
     }
 
-    static func dismantleNSView(_ view: NSScrollView, coordinator: MessageTableEngine) {
+    static func dismantleNSView(_ view: NSScrollView, coordinator: MessageTableEngine<Row>) {
         coordinator.dismantle()
     }
+}
+
+extension ChatRow: TableRow {
+    var reuse: NSUserInterfaceItemIdentifier {
+        switch kind {
+        case .message: .init("message")
+        case .payment, .paymentRequest: .init("payment")
+        default: .init("note")
+        }
+    }
+
+    /// For a row never measured: by kind and length.
+    var estimatedHeight: CGFloat {
+        var height: CGFloat = startsDay ? 40 : 0
+        if startsNew { height += 28 }
+        switch kind {
+        case .message:
+            let lines = max(1, (message.shownText.count + 69) / 70)
+            height += CGFloat(lines) * 18 + (startsRun ? 30 : 6)
+            if message.attachmentKind != nil { height += 220 }
+            if summary != nil { height += 28 }
+        default:
+            height += 28
+        }
+        return height
+    }
+
+    func content(in list: ComposerID, canAnswer: Bool) -> AnyView {
+        AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer))
+    }
+
+    func hoverBar(in list: ComposerID) -> AnyView? {
+        HoverBar.shows(self) ? AnyView(HoverBar(row: self, composer: list)) : nil
+    }
+
+    static func listContent(_ rows: [ChatRow], in list: ComposerID, reachesNewest: Bool, hasOlder: Bool) -> ListContent {
+        ListContent(rows, in: list, reachesNewest: reachesNewest, hasOlder: hasOlder)
+    }
+}
+
+extension EnvironmentValues {
+    /// A row in a message list about to open or close part of itself, by
+    /// its id: the list holds that row's top (`ChatListController.userExpanded`).
+    @Entry var listRowExpanding: @MainActor (String) -> Void = { _ in }
 }

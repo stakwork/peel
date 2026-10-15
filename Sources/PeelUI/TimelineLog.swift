@@ -39,25 +39,4 @@ public enum TimelineLog {
         guard let chat = composer.chat else { return "agent" }
         return composer.thread == nil ? tag(chat) : "\(tag(chat))/thread"
     }
-
-    /// One decimal place, enough for points.
-    public static func points(_ value: CGFloat) -> String {
-        String(format: "%.1f", Double(value))
-    }
-}
-
-extension View {
-    /// With the timeline log on, reports the list's whole scroll geometry and
-    /// which rows are in view; off, the view as it is.
-    @ViewBuilder
-    public func timelineProbe(geometry: @escaping (ScrollGeometry) -> Void,
-                       visible: @escaping ([String]) -> Void) -> some View {
-        if TimelineLog.enabled {
-            self
-                .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry(new) }
-                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01, visible)
-        } else {
-            self
-        }
-    }
 }

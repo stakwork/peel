@@ -44,6 +44,8 @@ final class MacAgent: AgentHost {
     @ObservationIgnored var strut: BundledStrut?
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
+    /// The agent chat's tool rows and summaries open, kept past its list.
+    let openRows = AgentOpenRows()
     /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
     @ObservationIgnored var automationServer: AutomationServer?
     /// The last server's close, which a new one waits for before taking its port.
@@ -149,6 +151,8 @@ extension AppModel {
     }
 
     var hasOwnStrut: Bool { macAgent.hasOwnStrut }
+
+    var agentOpenRows: AgentOpenRows { macAgent.openRows }
 
     var memoryPanel: MemoryPanel? {
         get { macAgent.memoryPanel }

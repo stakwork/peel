@@ -13,10 +13,13 @@ struct ChatListControllerTests {
         var moves: [ListMove] = []
         var flashed: [String] = []
         var reveals = 0
+        /// Each row's top below the view's, as measured.
+        var tops: [String: Double] = [:]
 
         func move(_ move: ListMove) { moves.append(move) }
         func flash(_ id: String) { flashed.append(id) }
         func reveal() { reveals += 1 }
+        func top(of id: String) -> Double? { tops[id] }
     }
 
     /// As `AppModel` keeps them: per list, and "New messages" opening the
@@ -410,5 +413,117 @@ struct ChatListControllerTests {
         list.disappear()
         #expect(store.anchors[Self.chat] == .row(id: "m3", offset: 5))
         #expect(controller().appear(content(0...9)) == ListMove(to: .row(id: "m3", offset: 5)))
+    }
+
+    // MARK: The agent chat (section 7 of the design)
+
+    /// The agent chat's rows as `AgentListRow` makes them: the intro, turns
+    /// `range` (yours where `own` says), and the reply streaming, none of
+    /// them but the turns holding the list, none counted by the pill.
+    private func agent(_ range: ClosedRange<Int>, own: Set<Int> = [], reply: Bool = false) -> ListContent {
+        ListContent(rows: [ChatListRow(id: "intro", canAnchor: false)]
+            + range.map { ChatListRow(id: "m\($0)", isOwn: own.contains($0)) }
+            + (reply ? [ChatListRow(id: "reply", canAnchor: false)] : []))
+    }
+
+    /// The agent list open at the newest, the reply in view at the bottom.
+    private func agentFollowing(_ rows: ListContent) -> ChatListController {
+        let list = controller(.agent)
+        _ = list.appear(rows)
+        list.scrolled(ListViewport(visibleIDs: ["m8", "m9", "reply"], visibleTops: [0, 40, 80], atBottom: true))
+        return list
+    }
+
+    @Test func aStreamingReplyHoldsTheNewestUnanimatedWhileFollowing() {
+        let streaming = agent(0...9, reply: true)
+        let list = agentFollowing(streaming)
+        for _ in 0..<5 {
+            #expect(change(list, from: streaming, to: streaming) == ListMove(to: .newest, animated: false))
+        }
+        #expect(list.isFollowing)
+    }
+
+    @Test func oneWheelTickStopsFollowingAndTheReplyThenMovesNothing() {
+        let streaming = agent(0...9, reply: true)
+        let list = agentFollowing(streaming)
+        list.userScrollBegan()
+        let away = ListViewport(visibleIDs: ["m8", "m9", "reply"], visibleTops: [12, 52, 92], atBottom: false)
+        list.userScrollEnded(away)
+        #expect(!list.isFollowing)
+        // The reply is never the reading row: the turn above it holds.
+        for _ in 0..<5 {
+            #expect(change(list, from: streaming, to: streaming) == ListMove(to: .row(id: "m8", offset: 12)))
+        }
+        // The reply ends as a turn of its own: an arrival, which holds too.
+        #expect(change(list, from: streaming, to: agent(0...10)) == ListMove(to: .row(id: "m8", offset: 12)))
+        #expect(!list.isFollowing)
+    }
+
+    @Test func theAgentFollowsAgainAtTheBottomByHandOrThePill() {
+        let streaming = agent(0...9, reply: true)
+        let byHand = agentFollowing(streaming)
+        byHand.userScrollBegan()
+        byHand.scrolled(ListViewport(visibleIDs: ["m8", "m9"], visibleTops: [12, 52], atBottom: false))
+        byHand.userScrollEnded(ListViewport(visibleIDs: ["m9", "reply"], visibleTops: [0, 40], atBottom: true))
+        #expect(byHand.isFollowing)
+        #expect(change(byHand, from: streaming, to: streaming) == ListMove(to: .newest))
+
+        let pill = agentFollowing(streaming)
+        pill.userScrollBegan()
+        pill.userScrollEnded(ListViewport(visibleIDs: ["m3", "m4"], visibleTops: [0, 40], atBottom: false, far: true))
+        #expect(pill.pill == .arrow)
+        pill.jumpToPresent()
+        #expect(pill.isFollowing && engine.moves.last == ListMove(to: .newest, animated: true))
+    }
+
+    /// Saved, the reply keeps its row: a change in place, not an arrival,
+    /// so it never asks for an animated move.
+    @Test func aReplySavedInItsOwnRowIsNoArrival() {
+        let streaming = agent(0...9, reply: true)
+        let list = agentFollowing(streaming)
+        var saved = streaming
+        saved.rows[saved.rows.count - 1].canAnchor = true
+        #expect(change(list, from: streaming, to: saved) == ListMove(to: .newest, animated: false))
+    }
+
+    @Test func yourMessageToTheAgentFollowsWhileReading() {
+        let list = agentFollowing(agent(0...9))
+        list.userScrollBegan()
+        list.userScrollEnded(ListViewport(visibleIDs: ["m3", "m4"], visibleTops: [5, 45], atBottom: false, far: true))
+        #expect(change(list, from: agent(0...9), to: agent(0...10, own: [10])) == ListMove(to: .newest, animated: true))
+        #expect(list.isFollowing)
+    }
+
+    @Test func theAgentsPillIsAnArrowWithNoCount() {
+        let list = agentFollowing(agent(0...9))
+        list.userScrollBegan()
+        list.userScrollEnded(ListViewport(visibleIDs: ["m3", "m4"], visibleTops: [5, 45], atBottom: false, far: true))
+        _ = change(list, from: agent(0...9), to: agent(0...12))
+        #expect(list.pill == .arrow)
+    }
+
+    // 24
+    @Test func openingARowHoldsItsTopAndStopsFollowing() {
+        let streaming = agent(0...9, reply: true)
+        let list = agentFollowing(streaming)
+        engine.tops["m9"] = 40
+        list.userExpanded("m9")
+        #expect(!list.isFollowing)
+        // The row grows: its top stays, whatever else streams below.
+        #expect(change(list, from: streaming, to: streaming) == ListMove(to: .row(id: "m9", offset: 40)))
+        // A row not measured, or not here, changes nothing.
+        let other = agentFollowing(streaming)
+        other.userExpanded("m42")
+        #expect(other.isFollowing)
+    }
+
+    @Test func anApprovalCardInPlaceOfAToolRowIsAResize() {
+        let streaming = agent(0...9, reply: true)
+        let following = agentFollowing(streaming)
+        #expect(change(following, from: streaming, to: streaming) == ListMove(to: .newest))
+        let reading = agentFollowing(streaming)
+        reading.userScrollBegan()
+        reading.userScrollEnded(ListViewport(visibleIDs: ["m4", "m5"], visibleTops: [-3, 37], atBottom: false))
+        #expect(change(reading, from: streaming, to: streaming) == ListMove(to: .row(id: "m5", offset: 37)))
     }
 }

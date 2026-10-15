@@ -95,7 +95,7 @@ struct ListRowContent: View {
 
 /// The controller's pill over the list: an arrow, "N new messages", or the
 /// way back to the newest from a jump's window.
-private struct JumpPill: View {
+struct JumpPill: View {
     let controller: ChatListController
     let composer: ComposerID
 

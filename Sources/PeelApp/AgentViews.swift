@@ -136,261 +136,47 @@ private struct AgentChatColumn: View {
     }
 }
 
-/// The conversation, newest at the bottom, following the reply as it
-/// streams while the list is at the bottom.
+/// The conversation, newest at the bottom: the shared list
+/// (`ChatListController` on `MessageTableEngine`), so the reply follows as
+/// it streams only while the list is at the bottom; any scroll by hand
+/// stops it, and reaching the bottom by hand or the pill takes it up again.
 private struct AgentMessageList: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
 
-    /// Taken down with the reply: until scrolled away by hand, and again
-    /// once back at the bottom.
-    @State private var following = true
-    @State private var phase = ScrollPhase.idle
-    /// Where the turns are laid out, to hold the list at its end by them.
-    @State private var end = ListEnd()
-    /// Only for a scroll to a point (`repin`).
-    @State private var position = ScrollPosition()
-    /// Shown once at the end and still, as the chat's list is
-    /// (`MessageList.revealed`); never later than `revealLimit`.
-    @State private var revealed = false
-    private static let revealLimit: Duration = .milliseconds(400)
-    /// The end marker, under the padding, for a jump with nothing laid out.
-    private static let bottom = "bottom"
-    /// The last row in the lazy stack, under the reply and any note: where
-    /// it is laid out is where the conversation really ends.
-    private static let lastRow = "end"
-    private static let contentSpace = "agentListContent"
-    private static let padding: CGFloat = 12
+    @State private var link = ListLink()
+    @State private var rows = AgentRows()
 
     var body: some View {
-        let turns = agent.turns
-        let problem = agent.problem
-        let summary = agent.summary
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    AgentIntro(agent: agent)
-                    ForEach(Array(turns.enumerated()), id: \.element.id) { index, turn in
-                        if index == 0 || !Calendar.current.isDate(turn.date, inSameDayAs: turns[index - 1].date) {
-                            DayDivider(date: turn.date)
-                                .padding(.horizontal, 20)
-                        }
-                        // A turn is two rows (its tool calls, then its text): kept
-                        // as the lazy stack placed them, at the leading edge, in
-                        // one view the id and its place can be given to.
-                        VStack(alignment: .leading, spacing: 0) {
-                            AgentTurnRow(turn: turn, name: agent.name)
-                        }
-                        .id(turn.id)
-                        .laidOut(turn.id, in: end, space: Self.contentSpace)
-                        if let summary, summary.through == turn.id { AgentSummaryRow(summary: summary) }
-                        if let problem, problem.turnID == turn.id {
-                            AgentProblemRow(agent: agent, failure: problem.failure)
-                        }
-                    }
-                    // Its own view: the reply growing redraws it alone.
-                    AgentReplyRow(agent: agent) { repin(proxy, "reply grew") }
-                    Color.clear.frame(height: 1)
-                        .laidOut(Self.lastRow, in: end, space: Self.contentSpace)
-                }
-                // Only for the timeline log's visible rows.
-                .scrollTargetLayout(isEnabled: TimelineLog.enabled)
-                .padding(.vertical, Self.padding)
-                .overlay(alignment: .bottom) { Color.clear.frame(height: 0).id(Self.bottom) }
-                .coordinateSpace(.named(Self.contentSpace))
-            }
-            .scrollPosition($position)
-            .opacity(revealed ? 1 : 0)
-            .timelineProbe(geometry: logGeometry, visible: logVisible)
-            // Short, it sits on the composer, as a chat does.
-            .defaultScrollAnchor(.bottom, for: .alignment)
-            .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .onScrollPhaseChange { _, new in
-                log("phase \(phase) -> \(new)")
-                phase = new
-                if new == .interacting { end.steps = 0 }
-            }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height) <= 24
-            } action: { _, bottom in
-                if bottom {
-                    following = true
-                } else if phase == .interacting || phase == .decelerating {
-                    following = false
+        MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows), composer: .agent, link: link)
+            // Bottom centre, above the composer, as in a chat.
+            .overlay(alignment: .bottom) {
+                if let controller = link.controller {
+                    JumpPill(controller: controller, composer: .agent)
                 }
             }
-            // The turns measured taller than estimated move down, the
-            // offset stays, and the list is left on older turns (or past
-            // them, blank); the composer growing takes room from it: back
-            // to the end, by where it is.
-            .onScrollGeometryChange(for: CGSize.self) { geometry in
-                CGSize(width: geometry.containerSize.height, height: geometry.contentSize.height)
-            } action: { _, _ in
-                if phase == .idle { repin(proxy, "resized") }
-            }
-            // Turns laid out, none in view: past them, blank. Keyed by the
-            // offset, so landing there again asks again.
-            .onScrollGeometryChange(for: CGFloat?.self) { geometry in
-                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height,
-                               content: geometry.contentSize.height)
-                    ? geometry.contentOffset.y : nil
-            } action: { _, out in
-                if out != nil, phase == .idle { repin(proxy, "turns laid out, none in view") }
-            }
-            .onChange(of: turns.map(\.id), initial: true) { _, ids in
-                end.ids = ids + [Self.lastRow]
-                end.steps = 0
-            }
-            .onAppear {
-                end.gone = false
-                ListProbe.register(end, kind: "agent", ignoring: Self.lastRow)
-                log("appear")
-                if turns.isEmpty {
-                    reveal("nothing to place")
-                } else {
-                    Task {
-                        try? await Task.sleep(for: Self.revealLimit)
-                        reveal("at the limit")
-                    }
-                }
-                // Nothing laid out yet: the end as the stack estimates it,
-                // then by the turns once they are.
-                proxy.scrollTo(Self.bottom, anchor: .bottom)
-                repin(proxy, "appear")
-            }
-            .onDisappear {
-                log("disappear")
-                end.gone = true
-            }
-            // A message sent always goes to the newest; a reply growing
-            // only while the list is at the bottom.
-            .onChange(of: turns.count) {
-                if turns.last?.author == .user { following = true }
-                repin(proxy, "turns \(turns.count)")
-            }
-            .onChange(of: problem) { repin(proxy, "problem") }
-        }
-    }
-
-    /// To the end while following, by where the turns are laid out
-    /// (`ListEnd`): the conversation's last row to the bottom once it is;
-    /// short of it, a step down from the newest turn laid out, then again;
-    /// with none, the end marker. One for a burst of requests (a reply
-    /// streaming), at most 100 ms late while they keep coming.
-    private func repin(_ proxy: ScrollViewProxy, _ why: String) {
-        guard following else { return }
-        let request = end.ask()
-        Task {
-            try? await Task.sleep(for: .milliseconds(20))
-            guard end.due(request) else { return }
-            guard !end.gone, following, phase == .idle else { return log("repin \(why) skipped") }
-            if end.endsInView(Self.lastRow, padding: Self.padding) {
-                end.steps = 0
-                log("repin \(why): the end in view")
-                // Shown once nothing has moved it for a while.
-                let moves = end.moves
-                try? await Task.sleep(for: .milliseconds(60))
-                if end.moves == moves { reveal("settled at the end") }
-                return
-            }
-            if let step = end.towardsNewest(padding: Self.padding), end.steps < ListEnd.stepLimit {
-                end.steps += 1
-                log("place: \(why), to y=\(TimelineLog.points(step.y))\(step.from == nil ? "" : " (a step)")")
-                end.moves += 1
-                position.scrollTo(y: max(step.y, 0))
-                repin(proxy, why)
-                return
-            }
-            end.steps = 0
-            log("place: \(why), scrollTo bottom")
-            end.moves += 1
-            proxy.scrollTo(Self.bottom, anchor: .bottom)
-        }
-    }
-
-    /// Shows the list, once.
-    private func reveal(_ why: String) {
-        guard !revealed, !end.gone else { return }
-        revealed = true
-        end.shown = true
-        log("revealed: \(why)")
-    }
-
-    // MARK: Timeline log (`TimelineLog`; nothing is built while it is off)
-
-    private func log(_ event: @autoclosure () -> String) {
-        TimelineLog.log("agent \(event()) | turns=\(agent.turns.count) reply=\(agent.reply != nil) "
-            + "following=\(following) phase=\(phase) \(laidOut)")
-    }
-
-    /// The turns laid out, by index, and where they sit in the content.
-    private var laidOut: String {
-        let positions = Dictionary(agent.turns.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let placed = end.frames.compactMap { id, frame in positions[id].map { (index: $0, frame: frame) } }
-        let last = end.frames[Self.lastRow].map { " end at \(TimelineLog.points($0.maxY))" } ?? ""
-        guard let first = placed.map(\.index).min(), let newest = placed.map(\.index).max() else { return "laid out none" + last }
-        let top = placed.map(\.frame.minY).min() ?? 0, bottom = placed.map(\.frame.maxY).max() ?? 0
-        return "laid out \(first)...\(newest) at \(TimelineLog.points(top))...\(TimelineLog.points(bottom))" + last
-    }
-
-    /// Not while scrolled by hand, which would be a line a frame.
-    private func logGeometry(_ geometry: ScrollGeometry) {
-        guard phase != .interacting, phase != .decelerating else { return }
-        let below = geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height)
-        log("geometry offset=\(TimelineLog.points(geometry.contentOffset.y)) "
-            + "content=\(TimelineLog.points(geometry.contentSize.height)) "
-            + "container=\(TimelineLog.points(geometry.containerSize.height)) below=\(TimelineLog.points(below))")
-    }
-
-    /// The turns in view by index; none with turns to show is the blank list.
-    private func logVisible(_ ids: [String]) {
-        let positions = Dictionary(agent.turns.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let shown = ids.compactMap { positions[$0] }
-        if let first = shown.min(), let last = shown.max() {
-            log("visible turns \(first)...\(last) (\(shown.count))")
-        } else {
-            log(agent.turns.isEmpty ? "visible none, no turns" : "visible NONE with turns: blank")
-        }
-    }
-}
-
-/// The reply streaming now, the only view that reads it, so the rest of
-/// the list is not drawn again as it grows; `grew` keeps it in view.
-private struct AgentReplyRow: View {
-    let agent: AgentSession
-    let grew: () -> Void
-
-    var body: some View {
-        if let reply = agent.reply {
-            AgentTurnRow(turn: reply, name: agent.name, writing: true, agent: agent)
-                .onChange(of: reply.text.count) { grew() }
-                .onChange(of: reply.tools.count) { grew() }
-                // A card replaces its row in place, taller: kept in view.
-                .onChange(of: agent.waiting) { grew() }
-            AgentRetryRow(agent: agent, grew: grew)
-        }
+            .hiddenShortcut(KeyboardShortcut(.pageUp, modifiers: [])) { link.engine?.page(up: true) }
+            .hiddenShortcut(KeyboardShortcut(.pageDown, modifiers: [])) { link.engine?.page(up: false) }
     }
 }
 
 /// A model call made again on its own, under the reply, until the reply
 /// goes on: "Rate limited by the provider. Retrying in 4 s…". Its own view,
 /// so the reply's row does not read `retrying`.
-private struct AgentRetryRow: View {
+struct AgentRetryRow: View {
     let agent: AgentSession
-    let grew: () -> Void
 
     var body: some View {
         if let retrying = agent.retrying {
             Callout(detail: RetryPolicy.note(after: retrying.after, retrying.reason), icon: .progress)
                 .agentNoteRow()
-                .onAppear { grew() }
         }
     }
 }
 
 /// Peel's first message: what it can do, and until a model is connected a
 /// card to connect one.
-private struct AgentIntro: View {
+struct AgentIntro: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
 
@@ -420,18 +206,22 @@ private struct AgentIntro: View {
 /// One message: the person's on a faint tint with their photo, or the
 /// agent's with its logo and AGENT; the tools a reply ran above it; how it
 /// ended when not on its own ("Stopped").
-private struct AgentTurnRow: View {
+struct AgentTurnRow: View {
     let turn: AgentTurn
     let name: String
     var writing = false
     /// The reply streaming now: answers a card that waits.
     var agent: AgentSession?
+    /// Its tool rows' open parts.
+    let disclosures: AgentDisclosures
 
     var body: some View {
         if !turn.tools.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 // By position: a provider may repeat a call id across steps.
-                ForEach(Array(turn.tools.enumerated()), id: \.offset) { AgentToolRow(tool: $0.element, agent: agent) }
+                ForEach(Array(turn.tools.enumerated()), id: \.offset) { index, tool in
+                    AgentToolRow(tool: tool, agent: agent, open: disclosures.open("tool\(index)"))
+                }
             }
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.trailing, 20)
@@ -545,25 +335,32 @@ private struct AgentRow<Content: View>: View {
 }
 
 /// One quiet line in the agent chat with a chevron; a click opens `detail`
-/// under it on an inset card. Tool rows and the summary row.
-/// The row that uses it keeps `open`, so a tool row stays open when its
-/// approval card comes and goes.
+/// under it on an inset card. Tool rows and the summary row. Whether it is
+/// open is kept beside the list (`AgentOpenRows`), so a tool row stays open
+/// when its approval card comes and goes, or its row scrolls away; a click
+/// first tells the list, which keeps the row's top where it is.
 private struct AgentDisclosureRow<Label: View, Detail: View>: View {
-    @Binding var open: Bool
+    @Environment(\.listRowExpanding) private var expanding
+    let disclosure: AgentDisclosure
     let label: Label
     /// Built only while open.
     let detail: () -> Detail
 
-    init(open: Binding<Bool>, @ViewBuilder label: () -> Label, @ViewBuilder detail: @escaping () -> Detail) {
-        _open = open
+    init(_ disclosure: AgentDisclosure, @ViewBuilder label: () -> Label, @ViewBuilder detail: @escaping () -> Detail) {
+        self.disclosure = disclosure
         self.label = label()
         self.detail = detail
     }
 
     var body: some View {
+        let open = Binding {
+            disclosure.isOpen
+        } set: { new in
+            if new != disclosure.isOpen { disclosure.toggle(expanding: expanding) }
+        }
         VStack(alignment: .leading, spacing: 4) {
-            DisclosureButton(open: $open) { label }
-            if open {
+            DisclosureButton(open: open) { label }
+            if disclosure.isOpen {
                 Card(.inset) {
                 detail()
                 .padding(.horizontal, 10)
@@ -578,12 +375,12 @@ private struct AgentDisclosureRow<Label: View, Detail: View>: View {
 /// Where the model's view of the conversation begins again: "Summarised
 /// earlier conversation", which opens to the summary it is sent instead of
 /// the turns above (they stay here in full).
-private struct AgentSummaryRow: View {
+struct AgentSummaryRow: View {
     let summary: AgentSession.Summary
-    @State private var open = false
+    let disclosures: AgentDisclosures
 
     var body: some View {
-        AgentDisclosureRow(open: $open) {
+        AgentDisclosureRow(disclosures.open("summary")) {
             Text("Summarised earlier conversation")
         } detail: {
             Text(summary.text)
@@ -606,19 +403,18 @@ private struct AgentToolRow: View {
     @Environment(AppModel.self) private var model
     let tool: ToolActivity
     var agent: AgentSession?
-    @State private var open = false
+    let open: AgentDisclosure
 
     var body: some View {
         if tool.isWaiting, let agent, let approval = tool.approval {
             AgentApprovalCard(agent: agent, intent: approval.intent)
         } else {
             row
-                .onChange(of: model.agentRowsOpened) { open = true }
         }
     }
 
     private var row: some View {
-        AgentDisclosureRow(open: $open) {
+        AgentDisclosureRow(open) {
             Text(tool.approval?.intent.action ?? AgentToolTitle.of(tool.name))
                 .layoutPriority(1)
             if let approval = tool.approval, let outcome = approval.outcome {
@@ -755,7 +551,7 @@ private struct AgentApprovalCard: View {
 /// Why a message got no reply, in the provider's plain words, with what
 /// helps: Retry, Replace key for a key that stopped working, Connect when
 /// none is. Quiet, not red: nothing was lost.
-private struct AgentProblemRow: View {
+struct AgentProblemRow: View {
     let agent: AgentSession
     let failure: AgentSession.Failure
 

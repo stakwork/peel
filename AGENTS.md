@@ -307,12 +307,11 @@ is a short plan. Update the status and the journal when you finish something.
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
   for the chat: `MessageViews` (`MessageList` with its pill and Page
-  keys, `ListRowContent`, the rows), `MessageTable` (the chat's and a
-  thread's list engine: a non-flipped `NSTableView` of reused hosting
+  keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
+  engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
   cells, heights cached per row, width and version, the controller's
   placement applied in the same pass, idle measuring, its own animated
-  moves), `ListEnd` (where the agent chat's lazy list's rows are laid
-  out, until it moves onto the controller), `ListProbe` (the frame probe
+  moves), `ListProbe` (the frame probe
   over each list's `ListGeometry`), `MessageText` (message text over
   `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
   plain SwiftUI that the iPhone compiles too, its size a parameter, 14
@@ -330,9 +329,12 @@ is a short plan. Update the status and the journal when you finish something.
   `CopyButton` (`CopyButton`, `CopyLabel` and the menu's "Copied" pill, for every copy, over `CopyFeedback`);
   the agent chat: `AgentViews` (`PeelLogo`, the sidebar's
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
-  card, the turn rows, tool rows (an acting tool's outcome and View) and
+  card, its list and pill, the turn rows, tool rows (an acting tool's outcome and View) and
   the failure row, `AgentApprovalCard` (a send waiting on you, where its
-  row will be), `AgentConnectButton`), `AgentMemoryViews` (a memory
+  row will be), `AgentConnectButton`), `AgentTable` (the agent chat's
+  rows for `MessageTable`, `AgentListRow`, and `AgentOpenRows`, which
+  tool rows are open), `OffscreenAgent` (the offscreen driver's scripted
+  model, never a provider), `AgentMemoryViews` (a memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
   model and the test call) and `AgentSettings` (Account › Peel agent, with

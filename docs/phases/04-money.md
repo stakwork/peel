@@ -45,7 +45,39 @@ notified (#51). Storage was at v13 then; it is at v21 now.
 again; one-tap boost with the account's amount, once per message; underpaid
 purchases are never refunded automatically.
 
+**Security (2026-10-15):** live contact-key exchanges must bring at least
+`priceToMeetMsat` before the core's automatic paid reply may be committed
+or published. The server's amount, not the onion's claim, decides.
+
 ## Journal
+
+### Unpaid contact-key replies (2026-10-15, built)
+
+`Engine.run` refuses a live contact-key result before commit or publish
+unless at least `priceToMeetMsat` (3,000 msat) actually arrived. It judges
+the already capped amount, so an inflated onion claim cannot pay for the
+reply, and absent evidence or an amount for another index fails closed.
+Nothing of a refused result is applied or published, including its settle,
+key registration, paid confirmation, ping and contact record. Underpaid
+HTLCs are left to time out rather than settled here. History is unchanged:
+the core's batch reader does not generate these paid replies.
+
+- Boundary tests: missing evidence, no payment, zero, 2,999 msat and funds
+  for another index change no state, persisted clock or messages and
+  publish nothing; 3,000 and 5,000 msat are admitted with their real amount.
+- Real core/local stack: all six contact journeys passed, including normal
+  code and invite exchanges. The new unpaid-exchange journey preserves the
+  recipient's balance. Removing the guard makes that same journey fail:
+  the unpaid message is committed and the recipient's balance falls.
+- Full offline suite passed (one existing known IPv6 parsing issue).
+  Independent correctness/simplification and separate security reviews
+  found no remaining issues. The review caught a test comparing raw contact
+  state after another message; it now compares stable key/index fields.
+- The session's `RUST_LOG=warn` hides the readiness marker the local stack
+  needs; run the journeys with `RUST_LOG=info`.
+- Next: rebuild and pin the upstream fixed core. The published wrapper
+  still pins `bd9e140`; this boundary guard deliberately keeps the existing
+  binary/hash, and does not address the core's other missing fixes.
 
 The build log, oldest first, kept as written. Branches named below have all
 merged.

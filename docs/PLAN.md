@@ -1,6 +1,6 @@
 # Peel
 
-Last updated 2026-10-11. This is the architecture and the phase index. Each phase
+Last updated 2026-10-15. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
 
@@ -68,6 +68,12 @@ that arrived, balance, reads, mutes, payments, errors. `Engine.run` is the whole
 contract: run the call, commit the returned state before anything else can run,
 then perform the network work in the order the core gave it. Everything the
 client does is a sequence of such calls.
+
+Before committing or publishing a live contact-key exchange, `Engine.run`
+requires at least 3,000 msat actually received, using the server's amount
+rather than the onion's claim. This guards the pinned core's unpaid
+automatic reply until its upstream fix is included (phase 4, "Unpaid
+contact-key replies").
 
 Reference implementations, in order of authority:
 

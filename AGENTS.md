@@ -18,7 +18,10 @@ is a short plan. Update the status and the journal when you finish something.
     `commit`, `complete`, `receive`, and `commitAndPublish` for every money
     send, whose `.none` alone may mark it failed): runs core calls, commits
     the state they return in one transaction, performs the subscribes and
-    publishes they ask for. The rest of the engine is extensions by area. Stored state, helpers
+    publishes they ask for. A live contact-key exchange is refused before
+    commit or publish unless at least `priceToMeetMsat` actually arrived
+    (the pinned core would pay its reply even to an unpaid exchange).
+    The rest of the engine is extensions by area. Stored state, helpers
     and nested types the extensions share are internal rather than private,
     so the module, not the file, is the boundary (`seed` among them: never
     read it, or call `run`/`commit`, from outside the engine files). What

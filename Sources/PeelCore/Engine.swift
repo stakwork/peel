@@ -578,6 +578,12 @@ public actor Engine {
         let time = clock.next()
         var result = try call(time, StateCodec.encode(state))
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
+        // The pinned core answers ContactKey with a paid confirmation even
+        // when the exchange was unpaid (upstream SR-016). Judge the capped
+        // amount, not the onion's claim, before any state or network work.
+        if live, result.msgs.contains(where: {
+            $0.type == UInt8(MessageType.contactKey) && (arrived == nil || ($0.msat ?? 0) < Self.priceToMeetMsat)
+        }) { return result }
         // Nothing of it is committed or published, not even the message, and
         // sats it carries are not settled.
         if live, try isForeignContactRecord(result, again: call) { return result }

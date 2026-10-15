@@ -4,6 +4,43 @@ import Testing
 
 extension Journeys {
     @Suite struct Contacts {
+        /// An existing contact can send another type 10 without paying.
+        /// The old core prepares a paid reply; Peel must discard it before
+        /// registering a key, publishing or changing the contact's state.
+        @Test func anUnpaidKeyExchangeCannotMakeTheRecipientPay() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            try await Bank.shared.give(100, to: alice)
+            try await Bank.shared.give(100, to: bob)
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await eventually("both sides to hold the other's key") {
+                try alice.isReadyContact(bob) && bob.isReadyContact(alice)
+            }
+            let a0 = try #require(try await alice.settledBalance())
+            let contact = try #require(Engine.contact(bob.pubkey, in: alice.storage.loadCoreState()))
+            let oldMessages = try alice.messages(in: bob.pubkey).filter { $0.type == MessageType.contactKey }.count
+            let tag = try #require(try await bob.engine.deliver(
+                body: #"{"content":""}"#, to: alice.pubkey, type: MessageType.contactKey, replacing: nil
+            ))
+            try await eventually("the unpaid exchange to be delivered") {
+                try bob.messages(in: alice.pubkey).first { $0.tag == tag }?.delivery == .delivered
+            }
+            // A later message on the same connection proves Alice has read
+            // the preceding exchange, without relying on a timed sleep.
+            let word = "after unpaid exchange \(UUID().uuidString)"
+            try await bob.engine.sendText(word, to: alice.pubkey)
+            try await eventually("Alice to read the next message") {
+                try alice.messages(in: bob.pubkey).contains { $0.content == word }
+            }
+            let after = try #require(Engine.contact(bob.pubkey, in: alice.storage.loadCoreState()))
+            #expect(after.childIndex == contact.childIndex && after.contactKey == contact.contactKey)
+            #expect(try alice.messages(in: bob.pubkey).filter { $0.type == MessageType.contactKey }.count == oldMessages)
+            try await alice.engine.refreshPaymentHistory()
+            #expect(try await alice.settledBalance() == a0)
+            await alice.close()
+            await bob.close()
+        }
+
         /// Alice adds Bob by his contact info: the key exchange completes on
         /// both sides, and each knows the other's name. Its sats (review F6):
         /// Alice pays 5 and a 1-sat ping, Bob's core pays 3 back with its own

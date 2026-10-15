@@ -545,6 +545,53 @@ invite's status words, a tribe's subtitle, escrow line and alias note,
 **Not built, and why:** a tribe's app and second brain (no web pane on
 the phone); pinned messages and mute in the details (G2's More menu).
 
+### Message lists, Layer 1 (2026-10-14, `fix/iphone-list-structure`)
+
+**Built** ([../reviews/2026-10-14-message-lists.md](../reviews/2026-10-14-message-lists.md),
+PR 3, rules 6 to 8). The thread sheet comes up on `openThread` with a
+spinner where its rows go until they load, and dismissed it stays open in
+the model until it has gone (`PhoneRouter.thread`, `threadDismissed`), so
+it never slides down blank. A chat's screen keeps the rows it last showed
+(`HeldRows`) and its list stays made, with its place, while the model
+clears them: through the pop, under another tab and while a jump's window
+reloads. The list is made once per chat, when `AppModel.loadedChat` says
+its messages are in, and where it opens is worked out then, once. It
+opens at a message asked for, else at "New messages"
+(`opensAtNewMessages`), else where it last stood (`ListAnchor`, kept with
+`keep(_:of:)` each time it comes to rest), else at the newest, and is
+hidden until that row is laid out where it belongs: no 80 ms timer, no
+jump to the divider after it shows. Back from another tab, "New messages"
+that came meanwhile wins; left at the newest, it goes to the newest past
+what came meanwhile. Rows report where they are in the content as they
+lay out, not on every scroll frame. `ListAnchor`, `loadedChat`,
+`anchor(of:)`, `keep(_:of:)` and `opensAtNewMessages(in:)` are PeelUI's,
+from the Mac's list PRs (2 and 4); the iPhone does not use
+`ChatListController` yet.
+
+**Interim:** `MessageList.place` is a timed retry (a frame at a time, at
+most a dozen) against the lazy stack's estimates. The shared list engine
+(the review's PR 6) deletes it.
+
+**Checked** in the simulator on a seeded local stack, frame by frame:
+thread close kept its rows (about 20 blank frames before, none after),
+Back kept the chat's rows (about 12 blank before, none), Back then the
+chat again and a tab switch and back came back to the row being read
+(before: the newest), and a chat with unread showed once, at "New
+messages", without the jump.
+
+**Not yet, and why:**
+- A chat pushed in is blank until its rows load (about 15 frames on a
+  warm database): nothing is held for a chat not yet open.
+- The keyboard keeps the old re-pin: the bottom snaps after the keyboard
+  rises, with a few frames of overlapping rows. `.sizeChanges` anchoring
+  rode the keyboard but blanked the top of the list (the Mac's F8), so it
+  waits for PR 6's engine.
+- With the keyboard up, a message arriving at the bottom lands a few
+  points short and shows "1 new message", as before.
+- Anchors live while Peel runs. Older pages are dropped when a chat is
+  left, so a place in them is not restored. Not checked: a jump from a
+  notification.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

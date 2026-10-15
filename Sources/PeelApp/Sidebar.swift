@@ -521,58 +521,58 @@ enum ConversationMenu {
 }
 
 /// Sphinx's bolt for the connection: green when connected, orange otherwise.
-/// Click for the state, the retry countdown and the last connection error.
+/// Click for one status row and a check/reconnect action.
 struct ConnectionBolt: View {
     @Environment(AppModel.self) private var model
-    @State private var showing = false
 
     private var connected: Bool { model.connection == .connected }
 
     var body: some View {
-        IconButton(help: model.connection.label, size: .sm, lit: showing) {
-            showing.toggle()
+        @Bindable var model = model
+        IconButton(help: model.showingConnection ? "" : "Connection: \(model.connection.label)",
+                   size: .sm, lit: model.showingConnection) {
+            model.showingConnection.toggle()
         } label: {
             Image(systemName: "bolt.fill")
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
                 .receivedGlow(model.money)
         }
-        .peelPopover(isPresented: $showing) {
-            ConnectionCard { showing = false }
+        .peelPopover(isPresented: $model.showingConnection) {
+            ConnectionCard()
         }
+        .accessibilityLabel("Connection: \(model.connection.label)")
     }
 }
 
 struct ConnectionCard: View {
     @Environment(AppModel.self) private var model
-    let done: () -> Void
 
     private var offline: Bool {
         if case .offline = model.connection { true } else { false }
     }
 
+    private var busy: Bool { model.checkingConnection || model.connection == .connecting }
+
     var body: some View {
-        Panel("Connection", compact: true, close: done) {
-            // Ticks only while counting down to a retry.
-            if offline, model.reconnectAt != nil {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    label(model.connection.label(retryAt: model.reconnectAt, now: context.date))
+        Panel(nil, compact: true, close: {}) {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: busy ? "arrow.triangle.2.circlepath" : model.connection == .connected ? "checkmark.circle" : "wifi.slash")
+                    .foregroundStyle(model.connection == .connected ? Theme.confirmed : Theme.attention)
+                    .accessibilityHidden(true)
+                if model.checkingConnection {
+                    label("Checking…")
+                } else if offline, model.reconnectAt != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        label(model.connection.label(retryAt: model.reconnectAt, now: context.date))
+                    }
+                } else {
+                    label(model.connection.label)
                 }
-            } else {
-                label(model.connection.label)
-            }
-            if let error = model.connectionError {
-                Text(error)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .textSelection(.enabled)
-                    .lineLimit(4)
-            }
-        } footer: {
-            if offline {
-                FormFooter(problem: nil) {
-                    Button("Reconnect now") { Task { await model.reconnectNow() } }
-                        .buttonStyle(.peel(.outline))
+                Spacer(minLength: Theme.Space.sm)
+                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", working: busy) {
+                    Task { await model.checkConnection() }
                 }
+                .disabled(busy)
             }
         }
     }
@@ -581,6 +581,7 @@ struct ConnectionCard: View {
         Text(text)
             .font(Theme.font(13))
             .monospacedDigit()
+            .accessibilityValue(model.connectionError ?? "")
     }
 }
 

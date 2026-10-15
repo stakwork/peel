@@ -20,6 +20,11 @@ message (#23, in `02-messaging.md` item 7).
 only from the account's own memes host, at most 100 MB, never opened for
 you. Paid attachments came later, in phase 4.
 
+**Connection control (2026-10-15):** built and verified, ready for review. A
+headerless status row and one check/reconnect icon; no explanatory copy or
+last-checked timestamp. Done means a real server ping when connected, immediate
+retry when offline, disabled action while busy, and the existing retry countdown.
+
 ## Journal
 
 The build log, oldest first, kept as written. Branches named below have all
@@ -2882,3 +2887,27 @@ main-thread samples in `refreshRecentCalls` before and 35 after; CPU per
 arriving message 152, 149, 148 ms before and 130, 143, 129 ms after
 (alternating runs, load average near 60). Idle on the tribe for a minute
 afterwards: 0.15%, the main thread waiting in `mach_msg`.
+
+### Connection control — 2026-10-15
+
+Built the approved minimal Mac connection panel: one status line and one native
+icon button, no heading, explanatory copy, footer or last-check timestamp. A nil
+`Panel` title reuses the existing shell without its header. The native bolt
+help is suppressed while the panel is open, with an explicit accessibility
+label retained. The status keeps the retry countdown; errors remain available
+to VoiceOver without adding visible copy.
+
+`Engine.checkConnection()` reuses the keep-alive ping and its existing timeout
+and reconnect path. `AppModel.checkConnection()` prevents duplicate requests,
+checks online, and skips the retry delay offline. The action is disabled while
+checking or connecting. The iPhone connection panel is unchanged.
+
+Validation: `swift build`; full `swift test` (975 tests, one pre-existing known
+IPv6 loopback issue); all five `Journeys/Reconnects` on an isolated loopback
+stack. The new journey checks a healthy broker, a frozen connection, recovery,
+and a closed engine. Offscreen app renders verified the compact panel, its
+Escape key path, and the one-minute idle check (0.0% CPU, sampled for 10 s).
+Independent correctness, simplicity/reuse and security review found no
+blocking findings. Risk is high by the repository rules (Engine and Sidebar);
+no money protocol, storage or credential behavior changed. Next: reviewer’s
+look at the diff and renders before merge.

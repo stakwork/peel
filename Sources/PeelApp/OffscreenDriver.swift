@@ -176,10 +176,15 @@ final class OffscreenDriver {
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-use`, Use home server on
     /// a pairing link's callout in Account › Brain; `brain-this-mac`, Use
-    /// this Mac once confirmed; `brain-check`, Check.
+    /// this Mac once confirmed; `brain-check`, Check; `connection`, the
+    /// sidebar bolt’s status panel; `connection-check`, its check/reconnect action.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
+        case "connection":
+            model.showingConnection = true
+        case "connection-check":
+            Task { await model.checkConnection() }
         case "send-sats":
             guard case .chat(let chat) = model.destination else { throw Failure(description: "no chat open") }
             model.sendingSats = .chat(chat)

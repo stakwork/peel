@@ -9,6 +9,32 @@ extension Journeys {
     /// and old messages wait for Retry; a connection that stops answering
     /// is noticed, and Retry on it says so.
     @Suite struct Reconnects {
+        @Test func aManualCheckConfirmsTheBrokerAndDetectsASilentConnection() async throws {
+            let alice = try await Person.create("connection-check", throughTap: true)
+            await alice.engine.start()
+            do {
+                #expect(await alice.engine.checkConnection())
+                #expect(await alice.engine.connection == .connected)
+                try await Stack.shared.tap(.freeze)
+                let checkedAt = ContinuousClock.now
+                #expect(await !alice.engine.checkConnection())
+                #expect(ContinuousClock.now - checkedAt <= Engine.pingTimeout + .seconds(2))
+                #expect(await alice.engine.connection != .connected)
+                try await Stack.shared.tap(.thaw)
+                await alice.engine.reconnectNow()
+                try await eventually("the checked connection to recover", timeout: .seconds(60)) {
+                    await alice.engine.connection == .connected
+                }
+                #expect(await alice.engine.checkConnection())
+                await alice.close()
+                #expect(await !alice.engine.checkConnection())
+            } catch {
+                try? await Stack.shared.tap(.thaw)
+                await alice.close()
+                throw error
+            }
+        }
+
         @Test func aRecentTextGoesAgainByItselfButNeverAPaymentOrAnOldText() async throws {
             let (alice, bob) = try await Person.contactsOnTap()
             let bobKey = try bob.pubkey

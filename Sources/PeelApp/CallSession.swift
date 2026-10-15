@@ -104,6 +104,11 @@ final class CallSession {
     /// it was read from: the room changes many times a second while people
     /// speak, their metadata almost never.
     @ObservationIgnored private var readPeople: [String: (name: String?, metadata: String?, person: CallParticipant?)] = [:]
+    /// The microphone and speaker picked, kept here since LiveKit reads
+    /// back no device once one is set; for the app, as LiveKit's are. Nil
+    /// follows the system's default.
+    private static var pickedMicrophone: String?
+    private static var pickedSpeaker: String?
     /// The session audio device changes go to: the newest.
     private static weak var audioDevicesOwner: CallSession?
 
@@ -354,6 +359,7 @@ final class CallSession {
     func chooseMicrophone(_ id: String) {
         guard let device = AudioManager.shared.inputDevices.first(where: { $0.deviceId == id }) else { return }
         AudioManager.shared.inputDevice = device
+        Self.pickedMicrophone = id
         deviceNotice = nil
         refreshAudioDevices()
     }
@@ -361,6 +367,7 @@ final class CallSession {
     func chooseSpeaker(_ id: String) {
         guard let device = AudioManager.shared.outputDevices.first(where: { $0.deviceId == id }) else { return }
         AudioManager.shared.outputDevice = device
+        Self.pickedSpeaker = id
         deviceNotice = nil
         refreshAudioDevices()
     }
@@ -374,21 +381,39 @@ final class CallSession {
 
     private func refreshAudioDevices() {
         let audio = AudioManager.shared
-        microphones = audio.inputDevices.map { Device(id: $0.deviceId, name: $0.name) }
-        speakers = audio.outputDevices.map { Device(id: $0.deviceId, name: $0.name) }
-        microphone = audio.inputDevice.deviceId
-        speaker = audio.outputDevice.deviceId
+        let inputs = audio.inputDevices, outputs = audio.outputDevices
+        microphones = inputs.map(Self.device)
+        speakers = outputs.map(Self.device)
+        microphone = Self.inUse(Self.pickedMicrophone, in: inputs)
+        speaker = Self.inUse(Self.pickedSpeaker, in: outputs)
     }
 
-    /// A microphone or speaker came or went: one in use that went is
+    /// WebRTC lists the system's default as an entry of its own, named
+    /// after the device it stands for, which is also listed by itself.
+    private static func device(_ device: AudioDevice) -> Device {
+        Device(id: device.deviceId, name: device.isDefault ? "System default (\(device.name))" : device.name)
+    }
+
+    /// The one picked while it is listed, else the system's default.
+    private static func inUse(_ picked: String?, in list: [AudioDevice]) -> String? {
+        list.contains { $0.deviceId == picked } ? picked : list.first { $0.isDefault }?.deviceId
+    }
+
+    /// A microphone or speaker came or went: one picked that went is
     /// replaced by the system's default, and the line under the bar says so.
     private func audioDevicesChanged() {
         guard !leaving else { return }
         let audio = AudioManager.shared
         let goneMic = audio.inputDevices.contains { $0.deviceId == microphone } ? nil : microphones.first { $0.id == microphone }
         let goneSpeaker = audio.outputDevices.contains { $0.deviceId == speaker } ? nil : speakers.first { $0.id == speaker }
-        if goneMic != nil { audio.inputDevice = audio.defaultInputDevice }
-        if goneSpeaker != nil { audio.outputDevice = audio.defaultOutputDevice }
+        if goneMic != nil {
+            audio.inputDevice = audio.defaultInputDevice
+            Self.pickedMicrophone = nil
+        }
+        if goneSpeaker != nil {
+            audio.outputDevice = audio.defaultOutputDevice
+            Self.pickedSpeaker = nil
+        }
         if let gone = goneMic ?? goneSpeaker {
             deviceNotice = "\(gone.name) was disconnected; using the default \(goneMic != nil ? "microphone" : "speaker")"
         }

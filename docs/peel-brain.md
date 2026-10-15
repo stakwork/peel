@@ -1,6 +1,6 @@
 # Peel Brain: remote strut and the home server
 
-Last updated 2026-10-14. **A proposal for Tom's review; build order step 1
+Last updated 2026-10-15 (the workspace on Ladybug). **A proposal for Tom's review; build order step 1
 is built.**
 It follows [agent-brain.md](agent-brain.md) (strut owns the graph; phase 6
 "move strut to a Mac mini or the cloud"), [memory-backup.md](memory-backup.md)
@@ -62,8 +62,15 @@ runs, and an account has exactly one.**
   (`AutomationsClient.swift`). This only works on one machine.
 - **strut runs on Linux.** strut's `Dockerfile` and `docker-compose.yml`
   exist; `@ladybugdb/core`, `onnxruntime-node` and `sherpa-onnx-node` have
-  linux-x64 and linux-arm64 builds. Ladybug is a file
-  (`<data>/memory/graph.lbug`, or `STRUT_MEMORY_DB`), not a service. strut
+  linux-x64 and linux-arm64 builds. Ladybug is a file, not a service:
+  memory is `<data>/memory/graph.lbug` (or `STRUT_MEMORY_DB`), and on
+  `STRUT_WORKSPACE_BACKEND=ladybug` the workspace (workflows, steps,
+  automations) is a second one, `<data>/graph/graph.lbug` (or
+  `STRUT_GRAPH_DB`). Peel's bundled strut runs on that backend (peel#284).
+  It needs Ladybug's `vector` and `fts` extensions to start: the desktop
+  tarball carries them (`STRUT_LADYBUG_EXTENSION_DIR`); elsewhere strut
+  downloads them from extension.ladybugdb.com into `~/.lbdb`, which has
+  linux_amd64 and linux_arm64 builds. strut
   publishes `ghcr.io/stakwork/strut` for amd64 and arm64 (strut#168).
 - **Peel's engine does not run on Linux.** The `peel` CLI links
   `Vendor/sphinxrsFFI.xcframework` and imports `Security`, `CommonCrypto`,
@@ -161,8 +168,8 @@ key). Only one strut may run per data folder: its scheduler is in-process.
 | Host | How | Notes |
 |---|---|---|
 | This Mac | Bundled strut, as today | The default |
-| An old Mac or a Mac mini | strut's desktop tarball (`strut-darwin-arm64`) under a launchd agent, or Docker/OrbStack | Needs Node 22.18+. Apple Silicon is tested; the x64 tarball is only cross-staged. Auto-login, no sleep, restart after power failure |
-| Any Linux box (old PC, NAS) | strut's `docker-compose.yml` with `STRUT_WORKSPACE_BACKEND=fs`, no Neo4j | Smoke-test that Ladybug loads in the image (it installs with `--ignore-scripts`) |
+| An old Mac or a Mac mini | strut's desktop tarball (`strut-darwin-arm64`) under a launchd agent, or Docker/OrbStack | The tarball's launcher (`scripts/desktop.js`) runs the workspace on Ladybug, as the bundled strut does, with the extensions it carries; a tarball staged without them (`package:desktop` on a machine with no openssl@3) falls back to fs, so check the package's `desktop.json` says `"ladybug": true`. Needs Node 22.18+. Apple Silicon is tested; the x64 tarball is only cross-staged. Auto-login, no sleep, restart after power failure |
+| Any Linux box (old PC, NAS) | The `brain/` bundle: strut's image with `STRUT_WORKSPACE_BACKEND=ladybug`, no Neo4j | The extensions download on first start and are kept in `data/ladybug/`. Not yet checked that they load in the image (it installs with `--ignore-scripts`) |
 | Sphinx Swarm | A `PEEL_BRAIN` preset with one strut node (below) | Later; makes Neo4j and Bifrost a toggle |
 
 ### Sphinx Swarm
@@ -182,8 +189,10 @@ Stacks are presets chosen by env var (`src/defaults.rs`); after first boot
 1. strut publishes `ghcr.io/stakwork/strut` for amd64 and arm64 from its
    `Dockerfile` (strut#168).
 2. Swarm gains a `Strut` image and a `PEEL_BRAIN=true` preset: one node, a
-   `/data` volume, `STRUT_WORKSPACE_BACKEND=fs`, `STRUT_API_KEY` and
-   `STRUT_SECRET_KEY` made at stack creation.
+   `/data` volume, `STRUT_WORKSPACE_BACKEND=ladybug`, the Ladybug extension
+   cache on a volume (or `STRUT_LADYBUG_EXTENSION_DIR` once the image
+   carries them), `STRUT_API_KEY` and `STRUT_SECRET_KEY` made at stack
+   creation.
 3. Later, `neo4j` and `bifrost` nodes are added to the preset and linked.
 
 With a `HOST` that has no `.`, Swarm runs without Traefik, so the Route53
@@ -193,8 +202,9 @@ and S3 wiring is not needed at home.
 
 One Docker Compose bundle, the same on every box: an old Intel or Apple
 Silicon Mac, a Raspberry Pi, an old PC or a NAS. It is always on and always
-online: strut calls hosted models, and fetches MiniLM and Ladybug's search
-extensions on first use.
+online: strut calls hosted models, and fetches MiniLM and Ladybug's
+`vector` and `fts` extensions on first use. Without the extensions strut
+doesn't start, because its workspace is on Ladybug.
 
 ```
 brain/
@@ -220,11 +230,13 @@ services:
     network_mode: service:tailscale        # no port open on the home network
     restart: unless-stopped
     environment:
-      STRUT_WORKSPACE_BACKEND: fs
+      STRUT_WORKSPACE_BACKEND: ladybug     # as Peel's bundled strut
       STRUT_API_KEY: ${STRUT_API_KEY}
       STRUT_SECRET_KEY: ${STRUT_SECRET_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-    volumes: [./data:/data]                # workspace, memory/graph.lbug, models
+    volumes:
+      - ./data:/data                       # workspace (graph/graph.lbug), memory/graph.lbug, models
+      - ./data/ladybug:/root/.lbdb         # vector and fts, kept across updates
 
 volumes: { ts-state: {} }
 ```
@@ -244,8 +256,10 @@ keeping is in `./data`. Updates are `docker compose pull && docker compose up -d
 
 The image is strut's existing `Dockerfile`, about 2 GB with ffmpeg, pandoc,
 tesseract and a Python venv for workflows. A slimmer brain image can come
-later. First check: that Ladybug and MiniLM load in the arm64 image, which
-installs with `--ignore-scripts`.
+later. First check: that Ladybug, its two extensions and MiniLM load in the
+amd64 and arm64 images, which install with `--ignore-scripts`. Then strut's
+image carries the extensions itself (a strut task, below), and the
+`~/.lbdb` volume goes.
 
 ### Ways to install
 
@@ -382,7 +396,10 @@ brain: [brain-handover.md](brain-handover.md).
    instead of strut calling `AutomationServer`.
 4. **iPhone: pairing** by QR code, remote only.
 5. **Packaging** (beside 1–4): strut publishes a multi-arch image with an
-   arm64 memory smoke test; Peel's `brain/` bundle and `setup.sh`; then
+   arm64 memory smoke test; **strut task:** the image INSTALLs `vector` and
+   `fts` at build time, sets `STRUT_LADYBUG_EXTENSION_DIR` to them and
+   loads them in its smoke test, the way `package:desktop` does, so the
+   brain needs no download and no `~/.lbdb` volume; Peel's `brain/` bundle and `setup.sh`; then
    `install.sh`, the setup page, Umbrel, the SD card image and the Swarm
    preset ("Where the install should get to").
 
@@ -390,7 +407,9 @@ brain: [brain-handover.md](brain-handover.md).
 
 1. Does the graph stay Ladybug on the server, or does strut's own graph go
    to Neo4j beside stakgraph and Jarvis (Evan, 2026-10-13)? Memory stays its
-   own Ladybug file either way.
+   own Ladybug file either way. For now the server's workspace is Ladybug,
+   the same as the bundled strut's (Tom, 2026-10-15), so a handover
+   between them never converts backends.
 2. Tailscale, WireGuard on the router, or both? memory-backup.md left remote
    access "to define with Tom".
 3. Should a device read memory while the brain is offline (a read-only

@@ -8,7 +8,9 @@ moving the whole brain. It builds on strut's `memory/export` and
 [memory-backup.md](memory-backup.md). Read on 2026-10-14 from Peel's `main`
 (ebcdc99), strut's `main` (5de0faf) and the bundled strut's workspace on
 Tom's Mac; three read-only planning passes (snapshot, handover, Peel)
-checked it against the code.
+checked it against the code. Updated 2026-10-15 for the bundled strut's
+workspace on Ladybug (peel#284, strut `main` ae64fde): workflows, steps
+and automations are in a graph file now, not in files.
 
 ## Goal
 
@@ -62,23 +64,30 @@ accepts, and pairing only has to carry an address.
 ## The brain is one strut workspace
 
 On disk a brain is strut's data folder (the bundled strut's on a Mac is
-`~/Library/Application Support/Peel/Strut/workspace`). Every file in it is
-one of two kinds:
+`~/Library/Application Support/Peel/Strut/workspace`). Every brain runs its
+workspace on Ladybug (`STRUT_WORKSPACE_BACKEND=ladybug`: the bundled strut,
+the `brain/` bundle, the desktop tarball), so it holds two graph files and
+the rest as files. Every file in it is one of two kinds:
 
 | Part | Kind | Paths |
 |---|---|---|
-| Workflows and their automations | portable | `workflows/<n>/v*.yaml`, `p-*`, `s-*`, `_metadata.json` |
-| Custom steps | portable | `steps/custom/**`, `steps/_history/**` |
-| Memory | portable, as `memory/export`'s output only | — |
+| Workspace graph: workflows, every version and the active one, automations, custom steps and their versions, claims, checks and evidence | portable, as a workspace export only | `graph/graph.lbug` (or `STRUT_GRAPH_DB`) |
+| Memory | portable, as `memory/export`'s output only | `memory/graph.lbug` |
 | Secrets, actor secrets | portable, minus host-bound names | `secrets.json`, `actor-secrets.json` |
 | Run history | portable, finished runs only, newest 20 per workflow | `workflows/<n>/runs/<id>/{run.json,events.jsonl}` |
 | strut builder chats, agent sessions, job records | portable | `chats/**`, `sessions/**`, `jobs/<id>.json` |
 | Dictation vocabulary | portable | `audio/hotwords/**` |
-| The raw graph, its backups and temp | host-bound | `memory/graph.lbug*`, `memory/backups/`, `memory/snapshots/` |
+| The raw graph files, their backups and temp | host-bound | `graph/graph.lbug*`, `memory/graph.lbug*`, `memory/backups/`, `memory/snapshots/` |
+| The file workspace from before Ladybug | host-bound, left where it is | `fs-workspace.imported-<time>/` |
 | Secrets that address this machine | host-bound | Peel's `PEEL_AUTOMATION_PORT`, `PEEL_AUTOMATION_TOKEN`, named by the host (`hostBoundSecrets`), not hard-coded in strut |
 | strut's own keys, brain state | host-bound | `STRUT_API_KEY`, `STRUT_SECRET_KEY` (environment), `brain.json` |
-| Runs in progress, callback, git caches, graph-backend cache, temp | host-bound | runs without `run.json`, `callback.json`, `repos/`, `worktrees/`, `steps/_graph`, `audio/tmp` |
+| Runs in progress, callback, git caches, temp | host-bound | runs without `run.json`, `callback.json`, `repos/`, `worktrees/`, `audio/tmp` |
+| Custom steps written out for the module loader | host-bound, written again from the graph | `steps/_graph/**` |
 | Models | host-bound, fetched again | `STRUT_MODEL_DIR`, outside the folder |
+
+On Ladybug `workflows/<n>/` holds only `runs/`; a `workflows/<n>/v*.yaml`,
+`_metadata.json` or `steps/custom/**` there is a file workspace strut
+hasn't imported yet (it does at its next start), so a snapshot refuses it.
 
 Open: artifacts, job working folders, dictation captures, cassettes,
 `peers.json`, `mothership.json` (see "Open questions").
@@ -99,13 +108,29 @@ One gzipped tar, the memory envelope widened:
 
 ```
 manifest.json      format 2 · kind "brain" · created_at · strut and Ladybug versions ·
-                   brain id · generation · parts {id: sha256, bytes, count} ·
-                   left_behind · secrets_encoding
+                   workspace backend ("ladybug") · brain id · generation ·
+                   parts {id: sha256, bytes, count} · left_behind · secrets_encoding
+workspace.tar.gz   workspace/export's output: the workspace graph's nodes and edges
 memory.tar.gz      memory/export's output, unchanged (format 1)
-workflows/** steps/custom/** steps/_history/** chats/** sessions/** jobs/*.json audio/hotwords/**
+workflows/<n>/runs/** chats/** sessions/** jobs/*.json audio/hotwords/**
 secrets.json       plaintext values (only inside a handover; see below)
 actor-secrets.json
 ```
+
+- **The workspace graph moves as an export, not as the file.** strut
+  needs a `workspace/export` and `workspace/import`, the memory snapshot's
+  format and checks applied to `graph/graph.lbug`'s handle: a dump of the
+  `Node` table and every rel table, read in one transaction while strut
+  runs, loaded into an empty graph and refused over a non-empty one. It
+  keeps what a file workspace can't: claims and their evidence, version
+  timestamps, soft-deleted nodes. Copying `graph/graph.lbug*` instead only
+  works with strut stopped on both sides and the same Ladybug version, and
+  a stopped bundled strut can't push, so it stays a manual backup, not a
+  handover. Exporting the graph as a file workspace and restoring it
+  through strut's fs import would lose claims and timestamps.
+- **Both sides on Ladybug.** A snapshot names its workspace backend, and
+  restore refuses another one. A brain still on fs (a home server set up
+  before 2026-10-15) is updated first; strut imports its files at boot.
 
 - **Routes, not steps.** `POST /brain/snapshot` and `POST /brain/restore`
   are owner-only routes. Steps can be an agent's tools, so a step that
@@ -144,8 +169,10 @@ the running process, never by swapping files under it:
 3. **Back up** what is there as a format-2 snapshot (local secrets
    encoding), newest 3 kept.
 4. **Replace part by part**: rename each folder aside and the staged one in;
-   secrets through the live store; memory last through the existing
-   `load()` with the Ladybug handle open.
+   secrets through the live store; the workspace graph through
+   `workspace/import`'s load with its handle open, then `steps/_graph`
+   written again from it; memory last through the existing `load()` with
+   its Ladybug handle open.
 5. **On failure, roll back** in reverse from step 4's set-aside folders and
    step 3's backup.
 6. **Reconcile** either way: rebuild the step registry, reseed system
@@ -265,19 +292,20 @@ The same sealed file is the off-machine backup memory-backup.md plans.
 |---|---|---|
 | 1 | strut | `parts.ts` and `dataPath`; every store moved onto it; the part test |
 | 2 | strut | `tar` prefix; shared snapshot helpers; `FileSecretStore.replacePortable`, `hostBoundSecrets` |
-| 3 | strut | `POST /brain/snapshot` (format 2) |
-| 4 | strut | `POST /brain/restore`: lock, backup, part-by-part, rollback, `automations.reload()` |
-| 5 | strut | Brain mode, `brain.json`, the brain key, `/brain`, `/health` with state, generation and version |
-| 6 | strut | The write gate, `writes: false`, launch and chat guards |
-| 7 | strut | Handover: begin, drain, snapshot stream, complete, abort, lease; pull and push; the kill-at-every-step tests |
-| 8 | peel | Pointer and brain id/key in PeelCore; following `moved` |
-| 9 | peel | Switch by handover; progress; MemoryMove and MemoryBackup removed |
-| 10 | peel | Automations secrets on activation; upgrading two active brains; quit guard |
-| 11 | both | Warm standby, sealed snapshots, shared with memory backup |
+| 3 | strut | `workspace/export` and `workspace/import` for the Ladybug workspace graph, on PR 2's helpers; restore reopens the handle and writes `steps/_graph` again |
+| 4 | strut | `POST /brain/snapshot` (format 2) |
+| 5 | strut | `POST /brain/restore`: lock, backup, part-by-part, rollback, `automations.reload()` |
+| 6 | strut | Brain mode, `brain.json`, the brain key, `/brain`, `/health` with state, generation and version |
+| 7 | strut | The write gate, `writes: false`, launch and chat guards |
+| 8 | strut | Handover: begin, drain, snapshot stream, complete, abort, lease; pull and push; the kill-at-every-step tests |
+| 9 | peel | Pointer and brain id/key in PeelCore; following `moved` |
+| 10 | peel | Switch by handover; progress; MemoryMove and MemoryBackup removed |
+| 11 | peel | Automations secrets on activation; upgrading two active brains; quit guard |
+| 12 | both | Warm standby, sealed snapshots, shared with memory backup |
 
 Each PR: tests, the live check it names, code review, simplify and security
-review. strut PRs 1–7 can go in while Peel keeps the current memory move;
-Peel switches over at 9.
+review. strut PRs 1–8 can go in while Peel keeps the current memory move;
+Peel switches over at 10.
 
 ## Decided
 
@@ -309,5 +337,7 @@ Peel switches over at 9.
    folders: portable or host-bound? Gate peer callers (hive) too?
 4. Run history: newest 20 per workflow, or none?
 5. Brain state and generation on keyless `/health`: acceptable?
+6. **For Evan:** do the `graph/*` steps write into the workspace graph on
+   Ladybug? If so, those nodes move with it in `workspace/export`.
 7. The brain key derived from the words means anyone with the words can
    reach the brain; that is already true of everything else the words hold.

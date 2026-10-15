@@ -6,7 +6,15 @@ and phone can use them while the Mac sleeps. The plan is in
 
 It runs strut (jobs, schedules, memory as a Ladybug file) behind Tailscale:
 reachable from your devices at home or away, with no port opened on your
-router. It needs to be online: strut calls hosted models.
+router. It needs to be online: strut calls hosted models, and on its first
+start fetches Ladybug's vector and fts extensions, without which it won't
+start (kept in `data/ladybug/`).
+
+Its workspace is on Ladybug, as Peel's bundled strut's is: workflows, steps
+and automations in `data/workspace/graph/graph.lbug`, run records still as
+files. A brain set up before that moves over by itself on its first start
+after an update: strut imports the file workspace into the graph and moves
+the files to `data/workspace/fs-workspace.imported-<time>/`.
 
 ## Boxes
 
@@ -50,5 +58,6 @@ echo STRUT_IMAGE=strut:local >> .env
 | Stop | `docker compose down` |
 | strut's UI | `https://peel-brain.<tailnet>.ts.net`, with the key from `.env` |
 
-Back up `data/` and `.env`. `.env` holds strut's keys: without
+Back up `data/` and `.env`, with strut stopped: the graph files are only
+consistent while nothing writes to them. `.env` holds strut's keys: without
 `STRUT_SECRET_KEY` the secrets in `data/` cannot be read.

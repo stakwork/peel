@@ -261,7 +261,15 @@ is a short plan. Update the status and the journal when you finish something.
   `MediaInfoCache`; `tileSide`, the chat's image size); `TimelineLog` (the
   opt-in log of the message list's placement, `defaults write dev.peel.mac
   PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
-  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
+  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied");
+  `ChatList/`, where a message list goes on any engine:
+  `ChatListController` (the anchor, the following latch, "New messages",
+  the pill over `ListBottom`, jumps, older pages and where a list opens,
+  T1–T27 of `docs/reviews/2026-10-14-message-lists.md`; no SwiftUI, AppKit
+  or UIKit) and `ChatListTypes` (`ChatListRow`, `ListContent`,
+  `ListPlacement`, `ListViewport`, `ListDiff`, `ListPill`, and the
+  `ChatListEngine` and `ListAnchorStore` protocols it takes; `AppModel` is
+  the store)
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
@@ -291,9 +299,14 @@ is a short plan. Update the status and the journal when you finish something.
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `ListEnd` (where a lazy list's rows are
-  laid out, so the chat's and the agent's lists are held at their end by
-  them, never by the stack's estimate), `MessageText` (message text over
+  for the chat: `MessageViews` (`MessageList` with its pill and Page
+  keys, `ListRowContent`, the rows), `MessageTable` (the chat's and a
+  thread's list engine: a non-flipped `NSTableView` of reused hosting
+  cells, heights cached per row, width and version, the controller's
+  placement applied in the same pass, idle measuring, its own animated
+  moves), `ListEnd` (where the agent chat's lazy list's rows are laid
+  out, until it moves onto the controller), `ListProbe` (the frame probe
+  over each list's `ListGeometry`), `MessageText` (message text over
   `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
   plain SwiftUI that the iPhone compiles too, its size a parameter, 14
   here), `LinkCards` (the tribe and contact link
@@ -646,6 +659,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
   engine and profile, no window or server: `CallStoreTests` (each chat's
   busiest watched call, the call you are on, locking stops the watches)
+  and `ChatListControllerTests` (the list controller's 25 cases on a fake
+  engine and store)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
@@ -968,7 +983,8 @@ server.
 offline, on a real engine and a temporary profile (a call server on
 127.0.0.1:9 that never answers, so a test says who is on a call):
 `CallStore`'s counts per chat, the call you are on, and its watches
-stopping on lock.
+stopping on lock; and `ChatListController`'s state machine against a fake
+engine and anchor store.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883

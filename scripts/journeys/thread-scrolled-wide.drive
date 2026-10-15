@@ -1,0 +1,14 @@
+// Open and close a thread scrolled up, the thread beside the chat. The
+// chat does not move: the row you were reading stays where it is (review
+// table row 5; rule 7: never animate a list's width).
+// check: thread hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "thread", "for": 3.5}
+{"thread": "visible"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1.5}

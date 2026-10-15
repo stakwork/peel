@@ -46,6 +46,7 @@ struct BundledStrutTests {
         #expect(environment["STRUT_SECRET_KEY"] == secretKey)
         #expect(environment["STRUT_EXIT_ON_STDIN_EOF"] == "1")
         #expect(environment["STRUT_WORKSPACE"] == "/tmp/peel-strut/workspace")
+        #expect(environment["STRUT_WORKSPACE_BACKEND"] == "ladybug")
     }
 
     /// strut's secret store key: made once, owner-only, the same on every
@@ -201,7 +202,8 @@ struct BundledStrutTests {
         // Nothing strut wrote holds the token as it is.
         let workspace = root.appending(path: "data/workspace")
         #expect(FileManager.default.fileExists(atPath: workspace.appending(path: "secrets.json").path))
-        #expect(FileManager.default.fileExists(atPath: workspace.appending(path: "steps/custom/peel/run-automation.ts").path))
+        // Peel's step is kept in the workspace's graph and written out here for strut to load.
+        #expect(FileManager.default.fileExists(atPath: workspace.appending(path: "steps/_graph/peel/run-automation.ts").path))
         let files = FileManager.default.enumerator(at: workspace, includingPropertiesForKeys: nil)?
             .compactMap { $0 as? URL } ?? []
         let holding = files.filter { (try? Data(contentsOf: $0))?.range(of: Data(peel.token.utf8)) != nil }

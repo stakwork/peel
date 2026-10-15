@@ -85,7 +85,7 @@ public final class AppModel {
         didSet {
             if phase != oldValue {
                 TimelineLog.log("app phase \(oldValue) -> \(phase)")
-                refreshCallWatches()
+                calls.watchesRecent = phase == .ready
             }
         }
     }
@@ -94,6 +94,10 @@ public final class AppModel {
     /// The open chat's main conversation: in a tribe with threads collapsed,
     /// plus the messages its replies quote.
     public var timeline = Timeline.empty
+    /// The chat whose messages `timeline` and `chatRows` hold: nil from a
+    /// reset until they have loaded, so the chat's list is made once, with
+    /// them, rather than empty and then again.
+    public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
             if selectedChat != oldValue?.chat {
@@ -146,7 +150,7 @@ public final class AppModel {
     /// The open chat's rows and the open thread's, worked out once per
     /// change of what they show rather than on every redraw.
     public private(set) var chatRows: [ChatRow] = [] {
-        didSet { refreshRecentCalls() }
+        didSet { calls.refreshRecent(from: chatRows) }
     }
     public private(set) var threadRows: [ChatRow] = []
     /// The engine's aliases each tribe echoed back on your messages
@@ -188,41 +192,6 @@ public final class AppModel {
     }
     /// The server this account talks to, as `host:port`.
     public var myServer: String?
-    /// The call server links are checked against (`Engine.callServer`);
-    /// nil when the account has none, and then no message is a call.
-    public var callServer: String?
-    /// Who is on each call being watched, by room: the recent calls across
-    /// chats (`callWatches`), and those a card or the header shows.
-    public var callPresence: [String: CallPresence] = [:] {
-        didSet { refreshLiveCallCounts() }
-    }
-    /// The views and model watches on each room and the chat each shows it
-    /// in; not observed, so a card scrolling in or out redraws nothing.
-    @ObservationIgnored public var callWatchers: [String: [UUID: String]] = [:]
-    /// The messages that may be recent calls, across chats, from storage.
-    @ObservationIgnored public var recentCallMessages: [Message] = []
-    /// The model's own watch of each `WatchedCall`, by chat and room,
-    /// whatever chat is open, and the wake-up for the next change.
-    @ObservationIgnored public var callWatches: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored public var callWatchExpiry: Task<Void, Never>?
-    /// The open chat's newest calls under 12 hours, at most three, newest
-    /// first: what the header watches. Set with the rows, when it changes.
-    public var recentCalls: [CallLink] = []
-    /// The call this Mac is on, and its window.
-    public var call: (any OngoingCall)?
-    /// The goodbye of the calls left, which a quit waits for.
-    @ObservationIgnored public var callLeaving: Task<Void, Never>?
-    /// How many are on each chat's watched calls (the busiest), for chats
-    /// with someone on one: the sidebar's green phone, with the call you
-    /// are on (`liveCallCount(in:)`). Kept apart so a presence tick that
-    /// changes no count redraws no row.
-    public var liveCallCounts: [String: Int] = [:]
-    /// Why the last join of a room failed, shown beside its Join.
-    public var callFailures: [String: String] = [:]
-    /// The room being joined and the chat a call is being started in, for
-    /// the spinner inside the button clicked.
-    public var joiningRoom: String?
-    public var startingCallIn: String?
     public var balanceMsat: UInt64? {
         didSet { if let balanceMsat { money.balance(balanceMsat) } }
     }
@@ -265,7 +234,17 @@ public final class AppModel {
     /// The open chat's read marker as it was when it opened, before it was
     /// marked read: "New messages" goes above the first incoming message
     /// past it. `after` is nil when nothing was unread, and once you send.
-    private var newMessages: (chat: String, after: Int64?)?
+    private var newMessages: (chat: String, after: Int64?)? {
+        didSet { newMessagesReached = false }
+    }
+    /// The chat's list has stood at its newest since "New messages" was
+    /// placed: it stays drawn for the visit, but a list made again opens
+    /// where it was (`anchor(of:)`), not at it. Read only as a list is made.
+    @ObservationIgnored private var newMessagesReached = false
+    /// Where each list stood when last still, by its composer: the chat's
+    /// and each thread's, kept while Peel runs. Not observed: a list reads
+    /// it only when it is made.
+    @ObservationIgnored private var listAnchors: [ComposerID: ListAnchor] = [:]
     /// The open chat, marked unread by hand: it is not marked read again
     /// until you leave it, scroll to its bottom or send in it.
     private var keepsUnread: String?
@@ -314,6 +293,8 @@ public final class AppModel {
     public let notifier: Notifier
     /// Sats arriving: the header's count-up and pill, Payments' unseen count.
     public let money = MoneyArrivals()
+    /// Calls: presence, the recent calls, and the call this device is on.
+    public let calls: CallStore
     /// What the app supplies: panels, the clipboard, playback, calls, presence.
     @ObservationIgnored public let platform: Platform
     /// The web pane beside the chat, with this profile's website data.
@@ -331,6 +312,12 @@ public final class AppModel {
     /// Bumped to open every tool row in the agent chat, as clicks on their
     /// chevrons would (the offscreen driver's `agent-rows`).
     public var agentRowsOpened = 0
+    /// Bumped to open Account › Brain's home server form, as its "Connect a
+    /// home server…" or "Change" would (the offscreen driver's `brain-form`).
+    public var brainFormOpened = 0
+    /// Bumped to ask "Switch back to this Mac?" in Account › Brain, as its
+    /// "Use this Mac" would (the offscreen driver's `brain-leave`).
+    public var brainLeaveOpened = 0
     /// Where the Connect panel is open from, if it is.
     public var agentConnectFrom: AgentConnectSource?
     /// Account opens at the Peel agent section (`openAgentSettings`).
@@ -355,6 +342,7 @@ public final class AppModel {
     public init(platform: Platform) {
         self.platform = platform
         notifier = Notifier(presence: platform.presence)
+        calls = CallStore(provider: platform.calls)
         do {
             if let development = UserDefaults.standard.string(forKey: "profile") {
                 profile = try Profile(name: development, kind: .development)
@@ -365,6 +353,13 @@ public final class AppModel {
             notice = PeelError.problem(error)
         }
         notifier.model = self
+        calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
+        calls.chatNotice = { [weak self] chat, change in
+            guard let self else { return }
+            let notice = change(conversationNotices[chat])
+            // An unchanged notice is not written, so the open chat does not redraw.
+            if notice != conversationNotices[chat] { conversationNotices[chat] = notice }
+        }
         money.arrived = { [weak self] receipts in
             guard let self else { return }
             notifier.moneyReceived(receipts)
@@ -509,20 +504,20 @@ public final class AppModel {
         let rows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
-            callServer: callServer, newAfter: newMessagesAfter(in: chat)
+            callServer: calls.server, newAfter: newMessagesAfter(in: chat)
         ), in: chat)
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.
         TimelineLog.log("\(TimelineLog.tag(chat)) rows built: \(rows.count) (changed \(rows != chatRows)), "
             + "new messages at \(rows.firstIndex(where: \.startsNew).map { "\($0)" } ?? "none")")
-        if rows != chatRows { chatRows = rows } else { refreshRecentCalls() }
+        if rows != chatRows { chatRows = rows } else { calls.refreshRecent(from: rows) }
     }
 
     private func rebuildThreadRows() {
         guard let open = openThread, let thread else { return threadRows = [] }
         let rows = withSenderZones(ChatRow.rows(
             thread.messages, parents: thread.parents, boosts: thread.boosts, purchases: thread.purchases,
-            inTribe: isTribe(open.chat), people: people(in: open.chat), callServer: callServer,
+            inTribe: isTribe(open.chat), people: people(in: open.chat), callServer: calls.server,
             threadRoot: open.uuid, original: thread.original,
             newAfter: newMessagesAfter(in: open.chat)
         ), in: open.chat)
@@ -778,6 +773,17 @@ public final class AppModel {
         if inThread { openThread(of: current) }
     }
 
+    /// A jump `list` could not make (`ChatListController.jump`): in the
+    /// chat's list, to the message's thread when one folds it away; else,
+    /// unless a window with it is coming, the request is given up.
+    public func jumpMissed(_ message: Message, in list: ComposerID, _ outcome: JumpOutcome) {
+        if list.thread == nil, message.threadUUID != nil {
+            focus(on: message, inThread: true)
+        } else if outcome == .notLoaded, focus?.message.uuid == message.uuid {
+            focus = nil
+        }
+    }
+
     /// Whether the open chat's timeline has a row for `message`: its own, or
     /// a collapsed thread's that it is the original of or a reply in.
     private func timelineShows(_ message: Message) -> Bool {
@@ -816,7 +822,29 @@ public final class AppModel {
     public func showNewest() {
         guard timelineWindow != nil else { return }
         timelineWindow = nil
+        // The list made again with them opens at the newest.
+        if let chat = selectedChat { listAnchors[.chat(chat)] = .newest }
         observeMessages()
+    }
+
+    /// Where the list of `list`'s rows stood when last still, if it has been shown.
+    public func anchor(of list: ComposerID) -> ListAnchor? {
+        listAnchors[list]
+    }
+
+    /// The list of `list`'s rows came to rest at `anchor`. The chat's own
+    /// list at its newest has read past "New messages".
+    public func keep(_ anchor: ListAnchor, of list: ComposerID) {
+        listAnchors[list] = anchor
+        if anchor == .newest, !newMessagesReached, case .chat(let chat) = list, newMessages?.chat == chat {
+            newMessagesReached = true
+        }
+    }
+
+    /// Whether a list of `chat`'s rows made now opens at "New messages":
+    /// not once the chat's list has stood at its newest since it was placed.
+    public func opensAtNewMessages(in chat: String) -> Bool {
+        newMessages?.chat == chat && newMessages?.after != nil && !newMessagesReached
     }
 
     public func resend(_ message: Message) async {
@@ -1176,14 +1204,7 @@ public final class AppModel {
         echoedAliases = [:]
         refreshMentionAliases()
         myServer = nil
-        callServer = nil
-        callPresence = [:]
-        callWatchers = [:]
-        stopWatchingCalls()
-        callFailures = [:]
-        joiningRoom = nil
-        startingCallIn = nil
-        leaveCall()
+        calls.reset()
         money.reset()
         balanceMsat = nil
         wordsConfirmed = true
@@ -1211,7 +1232,7 @@ public final class AppModel {
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()
         myServer = settings.server
-        callServer = settings.callServer
+        calls.attach(engine, server: settings.callServer)
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
         wordsConfirmed = settings.wordsConfirmed ?? false
@@ -1396,6 +1417,7 @@ public final class AppModel {
             pinTask?.cancel()
             timeline = .empty
             chatRows = []
+            loadedChat = nil
             pinnedMessage = nil
         }
         guard let storage = engine?.storage, let chat = selectedChat else { return }
@@ -1412,9 +1434,13 @@ public final class AppModel {
                     self.timeline = timeline
                     loadingOlder = false
                     rebuildChatRows()
+                    if loadedChat != chat { loadedChat = chat }
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load this chat's messages") }
+                guard !Task.isCancelled else { return }
+                notice = PeelError.problem(error, couldNot: "load this chat's messages")
+                // Its list shows, empty, rather than nothing at all.
+                if loadedChat != chat { loadedChat = chat }
             }
         }
         // The same chat's pin, still followed.
@@ -1445,6 +1471,12 @@ public final class AppModel {
             } catch {
                 if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the thread") }
             }
+        }
+    }
+
+    private func observeRecentCalls(_ storage: Storage) async {
+        do { try await calls.observeRecent(storage) } catch {
+            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load recent calls") }
         }
     }
 

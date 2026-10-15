@@ -151,7 +151,7 @@ public final class Notifier {
         case .history: guard !firstSync else { return }
         case .restore: return
         }
-        guard NotificationPolicy.kind(of: message, callServer: model?.callServer) != nil else { return }
+        guard NotificationPolicy.kind(of: message, callServer: model?.calls.server) != nil else { return }
         pending.append(message)
         if flushTask == nil {
             flushTask = Task { [weak self] in
@@ -175,7 +175,7 @@ public final class Notifier {
         for (chat, messages) in Dictionary(grouping: batch, by: \.chat) {
             let owns = model.tribes[chat]?.isOwner == true
             let shown = messages.filter {
-                policy.notifies($0, ownsTribe: owns, callServer: model.callServer) != nil
+                policy.notifies($0, ownsTribe: owns, callServer: model.calls.server) != nil
             }
             guard !shown.isEmpty else { continue }
             // A call always shows on its own; more than a few others become one summary.

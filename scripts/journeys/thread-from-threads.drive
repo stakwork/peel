@@ -1,0 +1,14 @@
+// From the Threads screen, with another chat selected, open a thread in
+// the long chat as its card does (at its first new reply, if any). The
+// chat opens at its newest, nothing blank; then the thread closes.
+// check: threads land=end
+{"width": 1180}
+{"select": "{{other}}"}
+{"wait": 1.5}
+{"open": "threads"}
+{"wait": 1.5}
+{"probe": "threads", "for": 5}
+{"thread": "from-threads"}
+{"wait": 2}
+{"close": "thread"}
+{"wait": 2}

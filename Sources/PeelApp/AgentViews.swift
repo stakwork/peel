@@ -69,7 +69,6 @@ struct AgentChatView: View {
         } panel: { _ in
             if let panel = model.memoryPanel { MemoryPanelView(panel: panel) }
         }
-        .animation(.easeOut(duration: 0.2), value: model.memoryPanel != nil)
         // A card waiting on the person must be in view: on a narrow window
         // the memory would hide it.
         .onChange(of: agent.waiting != nil) { _, waiting in
@@ -232,7 +231,8 @@ private struct AgentMessageList: View {
             // Turns laid out, none in view: past them, blank. Keyed by the
             // offset, so landing there again asks again.
             .onScrollGeometryChange(for: CGFloat?.self) { geometry in
-                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height)
+                end.noneInView(offset: geometry.contentOffset.y, container: geometry.containerSize.height,
+                               content: geometry.contentSize.height)
                     ? geometry.contentOffset.y : nil
             } action: { _, out in
                 if out != nil, phase == .idle { repin(proxy, "turns laid out, none in view") }
@@ -243,6 +243,7 @@ private struct AgentMessageList: View {
             }
             .onAppear {
                 end.gone = false
+                ListProbe.register(end, kind: "agent", ignoring: Self.lastRow)
                 log("appear")
                 if turns.isEmpty {
                     reveal("nothing to place")
@@ -311,6 +312,7 @@ private struct AgentMessageList: View {
     private func reveal(_ why: String) {
         guard !revealed, !end.gone else { return }
         revealed = true
+        end.shown = true
         log("revealed: \(why)")
     }
 
@@ -436,9 +438,11 @@ private struct AgentTurnRow: View {
             .padding(.top, 6)
         }
         if turn.author == .user || writing || !turn.text.isEmpty || turn.ending != nil {
-            AgentRow(author: turn.author, name: name, date: writing ? nil : turn.date, writing: writing) {
+            AgentRow(author: turn.author, name: name, date: writing ? nil : turn.date, writing: writing,
+                     menuID: turn.id, menu: menu) {
                 if !turn.text.isEmpty {
                     MessageText(text: turn.text, chat: nil, agentLinks: turn.author == .agent)
+                        .rowMenu(turn.id, menu)
                 }
                 if let ending = turn.ending {
                     Text(Self.words(for: ending))
@@ -447,6 +451,14 @@ private struct AgentTurnRow: View {
                 }
             }
         }
+    }
+
+    /// The turn's menu, as a message's: Copy text, once it is said; the
+    /// reply still writing has none.
+    private var menu: (@MainActor () -> [MenuEntry])? {
+        guard !writing, !turn.text.isEmpty else { return nil }
+        let text = turn.text
+        return { [.copyText(text)] }
     }
 
     static func words(for ending: AgentTurn.Ending) -> String {
@@ -462,13 +474,18 @@ private struct AgentTurnRow: View {
 
 /// A row of the agent chat in a message row's shape (`MessageRow`): the
 /// photo or logo in the gutter, then the name, AGENT and the time, then
-/// the body; yours on the faint accent tint.
+/// the body; yours on the faint accent tint. With a `menu`, More over its
+/// top-right corner on hover, as a message row has (`HoverBar`), and the
+/// same menu on a right-click of the text.
 private struct AgentRow<Content: View>: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
     let author: AgentTurn.Author
     let name: String
     var date: Date?
     var writing = false
+    var menuID: String?
+    var menu: (@MainActor () -> [MenuEntry])?
     @ViewBuilder let content: Content
 
     @State private var hovering = false
@@ -510,7 +527,19 @@ private struct AgentRow<Content: View>: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 6)
-        .rowChrome(id: nil, fromMe: author == .user, hovering: hovering)
+        .rowChrome(id: menu == nil ? nil : menuID, fromMe: author == .user, hovering: hovering)
+        // Kept while this row's menu is open, as a message row keeps its own.
+        .overlay(alignment: .topTrailing) {
+            if let menu, let menuID,
+               (hovering && presenter?.isOpen != true) || presenter?.source == AnyHashable(menuID) {
+                MenuButton(systemImage: "ellipsis", help: "More", source: menuID, entries: menu)
+                    .padding(2)
+                    .menuBoxed(cornerRadius: Theme.Radius.control, shadow: false)
+                    .padding(.trailing, 20)
+                    .offset(y: -10)
+            }
+        }
+        .zIndex(hovering ? 1 : 0)
         .onHover { hovering = $0 }
     }
 }
@@ -533,21 +562,7 @@ private struct AgentDisclosureRow<Label: View, Detail: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button {
-                open.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                    label
-                }
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.secondaryText)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            DisclosureButton(open: $open) { label }
             if open {
                 Card(.inset) {
                 detail()
@@ -765,7 +780,7 @@ private struct AgentProblemRow: View {
             "No model connected."
         case .unreadableKey(let reason):
             PeelError.problem(reason, couldNot: "read the API key on this Mac")
-        case .model(.invalidKey(let message)):
+        case .model(.invalidKey(let message, _)):
             "Your \(agent.connection?.provider.name ?? "provider's") key stopped working."
                 + (message.map { " (\($0))" } ?? "")
         case .model(let error):

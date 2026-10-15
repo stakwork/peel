@@ -78,13 +78,14 @@ struct Composer: View {
             escape: {
                 // The memory beside the agent chat first: the least to lose.
                 if composer == .agent, model.memoryPanel != nil {
-                    return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+                    return model.escape(in: composer)
                 }
                 if let stop {
                     stop()
                     return true
                 }
-                return withAnimation(.easeIn(duration: 0.15)) { model.escape(in: composer) }
+                // A reply cancelled, else the thread closed, with its slide.
+                return ThreadPanel.closing { model.escape(in: composer) }
             },
             attach: { if composer.takesFiles { model.attach($0, to: composer) } },
             dropTargeted: { if composer.takesFiles { model.dropTargeted($0, composer: composer) } }

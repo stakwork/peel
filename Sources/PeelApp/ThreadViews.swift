@@ -13,6 +13,20 @@ struct ThreadPanel: View {
 
     static let width: CGFloat = 360
 
+    /// Opens a thread. Every way to a thread from a click (its "N
+    /// replies", Threads, the offscreen driver) goes here, so they all move
+    /// as one. No animation of its own: `SidePanelSplit` slides the panel
+    /// and changes the chat's width once.
+    static func opening<Result>(_ open: () throws -> Result) rethrows -> Result {
+        try open()
+    }
+
+    /// Closes the thread: its X, Escape in its composer, the offscreen
+    /// driver. The slide out is `SidePanelSplit`'s, as for `opening`.
+    static func closing<Result>(_ close: () throws -> Result) rethrows -> Result {
+        try close()
+    }
+
     var body: some View {
         let composer = ComposerID.thread(ref)
         let tribe = conversation.isTribe ? model.tribes[conversation.chat] : nil
@@ -21,7 +35,7 @@ struct ThreadPanel: View {
                 EmptyView()
             } trailing: {
                 IconButton("xmark", help: "Close thread (Escape)") {
-                    withAnimation(.easeIn(duration: 0.15)) { model.closeThread() }
+                    ThreadPanel.closing { model.closeThread() }
                 }
             }
             if model.thread != nil {
@@ -51,9 +65,7 @@ struct ThreadSummaryLine: View {
 
     var body: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.2)) {
-                model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
-            }
+            ThreadPanel.opening { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
         } label: {
             HStack(spacing: Theme.Space.sm) {
                 ParticipantAvatars(participants: summary.participants, chat: summary.chat, inTribe: inTribe)
@@ -86,9 +98,7 @@ struct ThreadSummaryLine: View {
         .onHover { hovering = $0 }
         .peelMenu {
             [.button("Open thread", systemImage: "bubble.left") {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
-                }
+                ThreadPanel.opening { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
             }]
         }
         .help("Open thread")
@@ -164,7 +174,7 @@ private struct ThreadCard: View {
         let author = model.sender(of: original)
         let unread = summary.unread > 0
         Button {
-            withAnimation(.easeOut(duration: 0.2)) { model.openThread(summary) }
+            ThreadPanel.opening { model.openThread(summary) }
         } label: {
             HStack(alignment: .top, spacing: Theme.Space.md) {
                 Circle()
@@ -222,7 +232,7 @@ private struct ThreadCard: View {
         .onHover { hovering = $0 }
         .peelMenu {
             var entries: [MenuEntry] = [.button("Open thread", systemImage: "bubble.left") {
-                withAnimation(.easeOut(duration: 0.2)) { model.openThread(summary) }
+                ThreadPanel.opening { model.openThread(summary) }
             }]
             if summary.unread > 0 {
                 entries.append(.button("Mark as read", systemImage: "checkmark.circle") {

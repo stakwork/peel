@@ -1,7 +1,8 @@
 #!/bin/sh
 # Stages the strut Peel ships, for bundle-app.sh to copy into
 # Contents/Strut: strut's desktop package (scripts/package-desktop.mjs in a
-# strut checkout, without dictation, with Ladybug and the memory/* steps) and
+# strut checkout, without dictation, with Ladybug, its extensions and the
+# memory/* steps) and
 # the Node that runs it, a pinned release checked against its SHA-256 on every
 # run. Apple silicon only. It installs the checkout's dependencies and builds
 # it, so the checkout's node_modules, build/ and web/dist change.
@@ -47,9 +48,11 @@ NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
   node scripts/package-desktop.mjs --no-stt --out "$WORK"
 )
 STAGE="$WORK/strut"
-for needed in native/lbugjs.node build/steps/lib/memory/remember.js desktop.js; do
+for needed in native/lbugjs.node build/steps/lib/memory/remember.js desktop.js desktop.json; do
   [ -e "$STAGE/$needed" ] || { echo "stage-strut: the package has no $needed; this strut checkout lacks the memory steps or the desktop Ladybug package" >&2; exit 1; }
 done
+# The package's own word that it carries Ladybug and its extensions, which the workspace needs.
+[ "$(plutil -extract ladybug raw -o - "$STAGE/desktop.json")" = true ] || { echo "stage-strut: the package left Ladybug out (is openssl@3 installed? brew install openssl@3)" >&2; exit 1; }
 cp "$NODE_DIR/bin/node" "$STAGE/native/node"
 {
   echo "strut $(git -C "$STRUT_SRC" rev-parse HEAD 2>/dev/null || echo unknown)$(git -C "$STRUT_SRC" diff --quiet HEAD || echo ' (with uncommitted changes)')"

@@ -11,11 +11,11 @@ import SwiftUI
 // composer's buttons, a close button over a sheet.
 
 /// Neighbouring glass buttons in one capsule, 44 tall, that morphs as a
-/// button joins or leaves (the orange bolt joining New message):
+/// button joins or leaves:
 ///
 ///     GlassCapsule {
-///         if offline { GlassCapsuleButton("bolt.fill", label: "Not connected", tint: Theme.attention) { … } }
-///         GlassCapsuleButton("square.and.pencil", label: "New message") { … }
+///         GlassCapsuleButton("phone", label: "Call") { … }
+///         GlassCapsuleButton("ellipsis", label: "More") { … }
 ///     }
 struct GlassCapsule<Content: View>: View {
     @ViewBuilder let content: Content

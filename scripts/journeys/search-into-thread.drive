@@ -1,0 +1,16 @@
+// A search match that is a reply in a thread opens the thread at it; the
+// chat beside it, scrolled up, does not move. Return waits for the matches:
+// pressed before they come it does nothing (search-early's bug), which is
+// not what this journey checks.
+// check: search hold=chat land=target@thread
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"key": "f", "mods": ["cmd"]}
+{"probe": "search", "for": 5}
+{"type": "reply one to m300"}
+{"expect": "search"}
+{"key": "return"}
+{"wait": 4}

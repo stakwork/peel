@@ -412,7 +412,9 @@ sats use tabular figures. Text in dark mode is `#E3E7EC`, not white; links
 Panes: the sidebar (220–420 pt) and the thread panel (300–560 pt) resize by
 dragging their dividers; a double-click puts the standard width back, and
 the widths are remembered on this Mac. Below about 740 pt for the chat and
-the panel together, the thread panel takes the chat's place.
+the panel together, the thread panel covers the chat, which stays as it
+was under it. The panel slides in and out; the chat column changes width
+once, never animated.
 
 ## Motion
 
@@ -655,7 +657,10 @@ Built so far:
   13 pt name in a column (100 wide, 150 on the Account page with
   `labelWidth`), its value beside it and an optional action at the end
   (Edit, Copy), on the first line's baseline, 12 by 9 of padding, 36
-  tall at least, a full-width hairline between facts.
+  tall at least, a full-width hairline between facts. The action keeps
+  its own width and the value wraps beside it; with under 96 left for
+  the value, the action goes under it (`FactValueLayout`, one layout so
+  an open confirm survives the move).
   `Fact("Amount", text: …, symbol:, tint:, monospaced:)` is a value in
   words, selectable and wrapping, with an icon; `tint` colours both
   (a payment's green Received, an invoice's amber Expired). Tribe
@@ -924,6 +929,7 @@ The surfaces are the existing tokens:
 - **`InlineConfirm(trigger:prompt:explanation:confirm:confirmKind:style:alignment:confirming:action:)`.** The one in-place confirm: the trigger, then the prompt with Cancel and the action, off while it runs.
   - `.buttons` (form buttons: Clear website data, Leave tribe, Cancel invite), `.text` (a row's text buttons: Remove a member, Discard, the lock screen's Forget), `.section` (`FormDestructiveSection`).
   - `confirmKind: .primary` for a second click that loses nothing (Copy words). `confirming` hands the state out, so the row can hide what stands beside it, or cancel it.
+  - The buttons never shrink. The prompt sits beside them on one line when it fits, else above them, wrapping (`alignment` sets its side). A `confirming` binding is set back to false when the confirm goes away.
 
 Renders of every form (at rest, focused, after a click outside, with a
 problem and confirming), and Create a tribe beside a recreation of
@@ -1192,7 +1198,7 @@ app's browser pane, without its tabs (decided 2026-10-08, restyled
 - **Where:** right of the detail column, 560 pt at first, dragged on its
   divider between 360 pt and what leaves the column 400 pt (remembered on
   this Mac; double-click for the standard width). On a window too narrow for
-  both, the pane takes the column's place rather than covering it. It stays
+  both, the pane covers the column, which stays as it was under it. It stays
   open across chats, threads and Payments until closed: the toolbar's ×,
   or ⌘W while the page or the address field has the keyboard (⌘W
   elsewhere still closes the window). Closing it, or locking Peel, ends the

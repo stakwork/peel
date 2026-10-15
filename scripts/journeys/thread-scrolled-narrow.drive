@@ -1,0 +1,15 @@
+// Open and close a thread scrolled up, on a detail column under 681 pt,
+// where the thread takes the chat's place. The chat does not move: the row
+// you were reading stays where it is (review table row 5; rule 8: a list's
+// identity outlives panels and widths).
+// check: thread hold=chat
+{"width": 760}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "thread", "for": 3.5}
+{"thread": "visible"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1.5}

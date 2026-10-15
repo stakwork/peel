@@ -1,0 +1,192 @@
+import AppKit
+import CryptoKit
+import Foundation
+import PeelUI
+
+/// What a message list reports of where its rows are, as of its last move:
+/// the chat's and a thread's table (`MessageTableEngine`), the agent's lazy
+/// list (`ListEnd`). Frames and the view are in the content, from its top.
+@MainActor protocol ListGeometry: AnyObject {
+    /// The rows, oldest first.
+    var ids: [String] { get }
+    /// The content in view.
+    var view: Range<CGFloat> { get }
+    /// The content's height.
+    var content: CGFloat { get }
+    /// Shown, no longer hidden until placed.
+    var shown: Bool { get }
+    /// Where the rows around the view are.
+    var frames: [String: CGRect] { get }
+    /// The list has gone: its scroll view is another list's, or none.
+    var gone: Bool { get }
+    /// Its scroll view, when it knows it.
+    var scrollView: NSScrollView? { get }
+    /// The width its rows are laid out at; 0 when it does not say.
+    var width: CGFloat { get }
+}
+
+extension ListEnd: ListGeometry {
+    var scrollView: NSScrollView? { nil }
+    var width: CGFloat { 0 }
+}
+
+/// Offscreen only: the message lists a drive's `probe` step reads each
+/// frame (`OffscreenDriver`). Each list hands over the `ListGeometry` it
+/// keeps anyway, and a sample reads what that already holds (where its rows
+/// are, the content in view, whether it is shown), so a probe adds no
+/// observer, modifier or state to the list: it runs as it does unprobed.
+/// Registering does nothing outside the offscreen mode.
+@MainActor enum ListProbe {
+    @MainActor private final class Entry {
+        weak var end: ListGeometry?
+        let kind: String
+        let serial: Int
+        let ignored: String?
+        /// The list's rows as it last had them, and without `ignored`: made
+        /// again only when they change, not each frame.
+        private var source: [String] = []
+        private var rows: [String] = []
+
+        init(end: ListGeometry, kind: String, serial: Int, ignored: String?) {
+            self.end = end
+            self.kind = kind
+            self.serial = serial
+            self.ignored = ignored
+        }
+
+        func ids(of end: ListGeometry) -> [String] {
+            if end.ids != source {
+                source = end.ids
+                rows = ignored.map { ignored in source.filter { $0 != ignored } } ?? source
+            }
+            return rows
+        }
+    }
+
+    private static var entries: [Entry] = []
+    private static var made = 0
+
+    /// A list appeared: `kind` is chat, thread or agent; `ignoring`, a row
+    /// id that is not a row (the agent list's end marker).
+    static func register(_ end: ListGeometry, kind: String, ignoring: String? = nil) {
+        guard Offscreen.isOn else { return }
+        entries.removeAll { $0.end == nil }
+        guard !entries.contains(where: { $0.end === end }) else { return }
+        made += 1
+        entries.append(Entry(end: end, kind: kind, serial: made, ignored: ignoring))
+    }
+
+    /// A row as a probe writes it: its tag (`tag`, never its text or id), its index in the list, and where it sits from the top of the
+    /// list's view.
+    struct Row: Encodable {
+        let row: String
+        let index: Int
+        let y: Double
+        let height: Double
+    }
+
+    /// One list in one frame.
+    struct List: Encodable {
+        let kind: String
+        /// Which list this is: a list made again has a new number.
+        let list: Int
+        let rows: Int
+        let width: Double
+        let shown: Bool
+        let atEnd: Bool
+        /// The view's top in the content, and how far the content goes
+        /// past its bottom.
+        let offset: Double
+        let below: Double
+        let container: Double
+        /// Rows laid out and in view.
+        let inView: Int
+        /// Rows to show and none seen: hidden, or none in view.
+        let blank: Bool
+        /// The top row wholly in view (else the one across the view's top).
+        let top: Row?
+        /// The rows laid out from a view's height above to one below.
+        let laidOut: [Row]
+        /// "New messages" and the message a jump or search went to, if laid out.
+        let divider: Row?
+        let target: Row?
+        /// The target's index, laid out or not.
+        let targetIndex: Int?
+    }
+
+    /// One list in one frame as read, nothing derived: a frame's work is
+    /// copying what the list holds (the arrays and the frames are shared,
+    /// not copied, until the list changes them). `List` is made from it
+    /// once, when the probe is written.
+    struct Capture {
+        let kind: String
+        let serial: Int
+        let ids: [String]
+        let view: Range<CGFloat>
+        let content: CGFloat
+        let width: CGFloat
+        let shown: Bool
+        let frames: [String: CGRect]
+    }
+
+    /// Every list now in a window.
+    static func capture() -> [Capture] {
+        entries.compactMap { entry in
+            guard let end = entry.end, !end.gone else { return nil }
+            return Capture(kind: entry.kind, serial: entry.serial, ids: entry.ids(of: end), view: end.view,
+                           content: end.content, width: end.width, shown: end.shown, frames: end.frames)
+        }
+    }
+
+    /// What a probe writes, made after it ends. `divider` and `target` give
+    /// the row id of "New messages" and of the message gone to, if any.
+    static func list(_ capture: Capture, divider: String?, target: String?, index: [String: Int],
+                     tag: (String) -> String) -> List {
+        let view = capture.view
+        let height = view.upperBound - view.lowerBound
+        func row(_ id: String, _ frame: CGRect) -> Row? {
+            guard let place = index[id] else { return nil }
+            return Row(row: tag(id), index: place, y: Double(frame.minY - view.lowerBound), height: Double(frame.height))
+        }
+        let placed = capture.frames.compactMap { id, frame in index[id] != nil ? (id, frame) : nil }
+        let inView = placed.filter { $0.1.maxY > view.lowerBound && $0.1.minY < view.upperBound }
+        let whole = inView.filter { $0.1.minY >= view.lowerBound - 0.5 && $0.1.maxY <= view.upperBound + 0.5 }
+        let top = (whole.isEmpty ? inView : whole).min { $0.1.minY < $1.1.minY }
+        let near = placed.filter { $0.1.maxY > view.lowerBound - height && $0.1.minY < view.upperBound + height }
+        let below = capture.content - view.upperBound
+        func find(_ id: String?) -> Row? { id.flatMap { id in capture.frames[id].flatMap { row(id, $0) } } }
+        return List(
+            kind: capture.kind, list: capture.serial, rows: capture.ids.count, width: Double(capture.width), shown: capture.shown,
+            atEnd: below <= 0.5, offset: Double(view.lowerBound), below: Double(below), container: Double(height),
+            inView: inView.count, blank: !capture.ids.isEmpty && (!capture.shown || inView.isEmpty),
+            top: top.flatMap { row($0.0, $0.1) },
+            laidOut: near.compactMap { row($0.0, $0.1) }.sorted { $0.index < $1.index },
+            divider: find(divider), target: find(target), targetIndex: target.flatMap { index[$0] }
+        )
+    }
+
+    /// A key made for each run, so a probe's tags match nothing outside it.
+    private static let salt = SymmetricKey(size: .bits128)
+
+    /// A row's tag in a probe: sixteen hex characters of a keyed hash of its
+    /// id, long enough that two rows never share one; the id itself (a
+    /// message's uuid) is not written.
+    static func tag(_ id: String) -> String {
+        HMAC<SHA256>.authenticationCode(for: Data(id.utf8), using: salt)
+            .prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+extension ListProbe {
+    /// The newest list of `kind` now in a window, for the driver's scrolls.
+    static func geometry(kind: String) -> ListGeometry? {
+        entries.last { $0.kind == kind && $0.end?.gone == false }?.end
+    }
+
+    /// The rows of the newest list of `kind` laid out and in view, by id.
+    static func inView(kind: String) -> [String] {
+        guard let end = geometry(kind: kind) else { return [] }
+        let view = end.view
+        return end.ids.filter { id in end.frames[id].map { $0.maxY > view.lowerBound && $0.minY < view.upperBound } ?? false }
+    }
+}

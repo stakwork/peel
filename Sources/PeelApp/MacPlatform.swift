@@ -62,11 +62,13 @@ struct LiveKitCalls: CallProvider {
 
 extension CallSession: OngoingCall {}
 
-extension AppModel {
+extension CallStore {
     /// The call you are on, with its media, for the call window and the
     /// sidebar's bar.
-    var callSession: CallSession? { call as? CallSession }
+    var session: CallSession? { call as? CallSession }
+}
 
+extension AppModel {
     /// The web pane beside the chat: on the Mac, always a `WebPane`
     /// (`Platform.mac()`).
     var web: WebPane { webPresenter as! WebPane }

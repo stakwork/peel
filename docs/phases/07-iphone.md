@@ -512,6 +512,39 @@ Not applied, proposals for a later pass:
 - `scripts/build-ffi.sh` stages and rebuilds the xcframework on every run
   even when nothing changed: a stamp of its inputs would skip it.
 
+### G1: the bolt, contacts, invites and tribes (2026-10-14, `ios/g1-people`)
+
+**Built** (Tom's decisions, 2026-10-14; [../design/iphone.md](../design/iphone.md)
+decisions 4, 13 and 17, screens 1, 9 and 11): the connection bolt always
+in Chats' title capsule, green when connected and orange when not, always
+opening its panel (connected, it says so; Reconnect now only offline); New
+message and its `ComingScreen` gone. Tribes ends in Join a tribe and
+Create a tribe, Direct messages in the pending invites, Add contact and
+Invite someone, each a sheet, as the Mac's sidebar ends them; the sections
+show with nothing in them, for their actions. Codes come typed, pasted,
+scanned with the camera (`CodeScanner`, which `InvoiceScanner` is now) or
+read from a photo of a QR code (`QRImage`). Money goes through
+`TouchPayButton`: the key exchange, an invite (always confirmed) and a
+join. A chat's details are pushed over it (`ChatsRoute.details`,
+`PhoneRouter.openDetails(_:)`, for the conversation's More menu):
+a contact's key with its QR to copy and share, their local time, the time
+zone switch and Remove contact; a tribe's facts, link, members (with the
+owner's Approve, Decline and Remove), how you appear in it, Edit tribe and
+Leave. Removing a contact on the phone goes back to Chats rather than to
+the next chat (`deleteContact(_:movesSelection:)`).
+
+**Shared with the Mac** (moved out of its views, the Mac unchanged):
+`TribeSettingsDraft`, `TribeLookup`, `TribeIdentityDraft` and
+`TimeZoneSharingSwitch` (`PeelUI/TribeForms.swift`), `InviteIcon`
+(`Avatar.swift`), `AppModel.readContactCode` and `addedName`, an
+invite's status words, a tribe's subtitle, escrow line and alias note,
+`TribeInfo.priceLine`, `ContactCode.previewDetail` and `addRefusal`,
+`Conversation.offersTimeZoneSwitch`, `AppModel.contactSince`,
+`timeZoneSharing(in:)` and `setTimeZoneSharing`.
+
+**Not built, and why:** a tribe's app and second brain (no web pane on
+the phone); pinned messages and mute in the details (G2's More menu).
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

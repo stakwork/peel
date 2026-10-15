@@ -130,6 +130,21 @@ private struct ComposerTextView: NSViewRepresentable {
             context.coordinator.insertedID = insertion.id
             context.coordinator.insert(insertion.alias, in: textView)
         }
+        // Covered by a panel (`SidePanelSplit`): the keyboard leaves it, and
+        // comes back once it shows again if nothing else has taken it.
+        let enabled = !context.environment.coveredByPanel
+        if textView.isEditable != enabled, let window = textView.window {
+            textView.isEditable = enabled
+            if !enabled, window.firstResponder === textView {
+                context.coordinator.hadKeysWhenCovered = true
+                window.makeFirstResponder(nil)
+            } else if enabled, context.coordinator.hadKeysWhenCovered {
+                context.coordinator.hadKeysWhenCovered = false
+                DispatchQueue.main.async {
+                    if window.firstResponder == nil || window.firstResponder === window { window.makeFirstResponder(textView) }
+                }
+            }
+        }
         if context.coordinator.focusedRequest != focusRequest {
             context.coordinator.focusedRequest = focusRequest
             DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
@@ -141,6 +156,8 @@ private struct ComposerTextView: NSViewRepresentable {
         var parent: ComposerTextView
         var focusedRequest: Int?
         var insertedID: Int?
+        /// It had the keyboard when a panel covered it.
+        var hadKeysWhenCovered = false
         /// Where the `@word` before the cursor sits, while there is one.
         private var mentionRange: NSRange?
 

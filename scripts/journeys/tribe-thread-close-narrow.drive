@@ -1,0 +1,15 @@
+// As tribe-thread-close-wide, on a detail column too narrow for both,
+// where the thread covers the tribe.
+// check: close hold=chat land=anchor
+{"width": 760}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"reveal": "replies"}
+{"wait": 1}
+{"probe": "close", "for": 6}
+{"thread": "visible"}
+{"wait": 1.2}
+{"scroll": 300, "in": "thread"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1.5}

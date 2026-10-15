@@ -2,16 +2,13 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// Chats (docs/design/iphone.md, screen 1): the large title with its glass
-/// capsule (the orange bolt only when not connected, then New message), the
-/// top rows, then Unread, Tribes and Direct messages in the Mac sidebar's
-/// order and trimming (`AppModel.sidebarSections`). Its stack is the
-/// router's `chats`.
+/// Chats (docs/design/iphone.md, screen 1): the large title with the
+/// connection bolt in its glass capsule (green when connected, orange when
+/// not), the top rows, then Unread, Tribes and Direct messages in the Mac
+/// sidebar's order and trimming (`AppModel.sidebarSections`), each section
+/// ending in its actions as on the Mac. Its stack is the router's `chats`.
 struct ChatsTab: View {
-    @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
-    @State private var connectionShown = false
-    @State private var newMessageShown = false
 
     var body: some View {
         @Bindable var router = router
@@ -20,41 +17,9 @@ struct ChatsTab: View {
                 .navigationTitle("Chats")
                 .modifier(ConnectionSubtitle())
                 .toolbar {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        if model.connection != .connected {
-                            Button { connectionShown = true } label: {
-                                Image(systemName: "bolt.fill").foregroundStyle(Theme.attention)
-                            }
-                            .tint(Theme.attention)
-                            .accessibilityLabel(model.connection == .connecting ? "Connecting" : "Not connected")
-                            .accessibilityHint("Shows the connection and Reconnect now")
-                            .popover(isPresented: $connectionShown) {
-                                ConnectionPanel()
-                                    .presentationCompactAdaptation(.popover)
-                            }
-                        }
-                        Button { newMessageShown = true } label: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                        .accessibilityLabel("New message")
-                    }
-                }
-                .sheet(isPresented: $newMessageShown) {
-                    NavigationStack {
-                        ComingScreen(title: "New message",
-                                     detail: "Starting a chat from the phone comes next. Add people and join tribes on your Mac for now.")
-                            .toolbar {
-                                ToolbarItem(placement: .topBarTrailing) {
-                                    Button("Close", systemImage: "xmark") { newMessageShown = false }
-                                }
-                            }
-                    }
+                    ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
                 }
                 .chatsDestinations()
-        }
-        // Connected again: nothing to show the panel about.
-        .onChange(of: model.connection == .connected) { _, connected in
-            if connected { connectionShown = false }
         }
     }
 }
@@ -68,6 +33,12 @@ extension View {
             case .chat(let chat):
                 ConversationScreen(chat: chat)
                     .toolbar(.hidden, for: .tabBar)
+            case .details(let chat):
+                ChatDetailsScreen(chat: chat)
+                    .toolbar(.hidden, for: .tabBar)
+            case .members(let chat):
+                TribeMembersScreen(chat: chat)
+                    .toolbar(.hidden, for: .tabBar)
             case .threads:
                 ThreadsScreen()
             case .mentions:
@@ -79,25 +50,15 @@ extension View {
     }
 }
 
-/// A screen the design has and this build does not yet: its title and
-/// what it will hold, never an empty page.
-struct ComingScreen: View {
-    let title: String
-    let detail: String
-
-    var body: some View {
-        ContentUnavailableView(title, systemImage: "hourglass", description: Text(detail))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.background)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-/// The top rows, then the chats by section. Search shows it too, filtered
-/// by name: then only the matching chats, every section open.
+/// The top rows, then the chats by section, Tribes ending in Join and
+/// Create a tribe and Direct messages in the pending invites, Add contact
+/// and Invite someone, as the Mac's sidebar ends them. Search shows it too,
+/// filtered by name: then only the matching chats, every section open, no
+/// actions.
 struct ChatList: View {
     @Environment(AppModel.self) private var model
+    /// The form or invite open over the list, as a sheet.
+    @State private var sheet: PeopleSheet?
 
     var body: some View {
         @Bindable var model = model
@@ -122,35 +83,48 @@ struct ChatList: View {
                 .listRowInsets(.vertical, 2)
                 .navigationLinkIndicatorVisibility(.hidden)
             }
+            if model.conversations.isEmpty, !sections.searching {
+                Section { NoChats() }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
             if !sections.unread.isEmpty {
                 ChatsSection(title: "Unread") {
                     ForEach(sections.unread) { ChatLink(conversation: $0, state: states[$0.chat]) }
                 }
             }
-            // Searching shows every match: no chevron to say otherwise or
-            // to change the saved layout.
-            if !sections.tribes.isEmpty || !sections.tribesOpen {
+            // Searching shows every match, a section only with matches,
+            // with no chevron to say otherwise or to change the saved
+            // layout, and no actions. Otherwise a section is always there,
+            // for its actions.
+            if !sections.searching || !sections.tribes.isEmpty {
                 ChatsSection(title: "Tribes",
                              expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
                     ForEach(sections.tribes) { ChatLink(conversation: $0, state: states[$0.chat]) }
                     if let all = sections.allTribes {
                         ShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
                     }
+                    if sections.tribesOpen, !sections.searching {
+                        ActionRow(title: "Join a tribe") { sheet = .joinTribe }
+                        ActionRow(title: "Create a tribe") { sheet = .createTribe }
+                    }
                 }
             }
-            if !sections.direct.isEmpty || !sections.directOpen {
+            if !sections.searching || !sections.direct.isEmpty {
                 ChatsSection(title: "Direct messages",
                              expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
                     ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
                     if let all = sections.allDirect {
                         ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
                     }
+                    if sections.directOpen, !sections.searching {
+                        ForEach(model.pendingInvites) { invite in
+                            PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
+                        }
+                        ActionRow(title: "Add contact") { sheet = .addContact }
+                        ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                    }
                 }
-            }
-            if model.conversations.isEmpty, !sections.searching {
-                Section { NoChats() }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
             }
         }
         .phoneList()
@@ -162,6 +136,7 @@ struct ChatList: View {
                 ContentUnavailableView.search(text: model.searchQuery)
             }
         }
+        .sheet(item: $sheet) { $0.screen }
     }
 }
 
@@ -201,7 +176,7 @@ private struct NoChats: View {
             ContentUnavailableView {
                 Label("No chats yet", systemImage: "bubble.left.and.bubble.right")
             } description: {
-                Text("Tribes you join and people you add show here.")
+                Text("Join a tribe or add someone below, and they show here.")
             }
         }
     }

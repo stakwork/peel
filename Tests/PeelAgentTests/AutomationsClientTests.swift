@@ -88,14 +88,56 @@ struct AutomationsClientTests {
         #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: silent))?.text == nil)
     }
 
-    /// A failed model call reads as the provider's reason, not its raw reply.
-    @Test func aFailedRunSaysWhyInAFewWords() throws {
-        let failed = try AgentKit.JSONValue(parsing: #"""
-            {"runId":"6","status":"error","error":{"message":"agent failed after 0 step(s): invalid x-api-key (HTTP 401: {\"type\":\"error\"})"}}
-            """#)
-        #expect(AutomationRunRecord(failed)?.error == "invalid x-api-key")
-        let unconnected = try AgentKit.JSONValue(parsing: #"{"runId":"7","status":"error","error":{"message":"agent: no model connected (STRUT_DEFAULT_MODEL is not set)"}}"#)
-        #expect(AutomationRunRecord(unconnected)?.error == "no model connected")
+    /// A failed run reads as one plain sentence: never strut's step prefix,
+    /// a provider's raw reply or an internal name.
+    @Test(arguments: [
+        // Peel's runs, through strut's step.
+        ("Peel answered 500: " + AutomationFailure.macLocked, AutomationFailure.macLocked),
+        ("Peel answered 500: " + AutomationFailure.noModel, AutomationFailure.noModel),
+        ("Peel answered 500: Peel's account closed during the run.", "Didn't finish: Peel's account closed during the run."),
+        ("fetch failed", AutomationFailure.peelUnreachable),
+        ("step peel failed: Peel answered 500: " + AutomationFailure.macLocked, AutomationFailure.macLocked),
+        // strut's own runs.
+        (#"agent failed after 0 step(s): invalid x-api-key (HTTP 401: {"type":"error","error":{"type":"authentication_error"}})"#,
+         "Didn't run: Anthropic rejected the key. Replace it in Account."),
+        (#"agent failed after 0 step(s): Incorrect API key provided: sk-ab***yz. See https://platform.openai.com/account/api-keys. (HTTP 401: {})"#,
+         "Didn't run: OpenAI rejected the key. Replace it in Account."),
+        (#"agent failed after 0 step(s): User not found. (HTTP 401: {"error":{"code":401}})"#,
+         "Didn't run: the model's provider rejected the key. Replace it in Account."),
+        ("agent: no model connected (STRUT_DEFAULT_MODEL is not set)", AutomationFailure.noModel),
+        (#"agent failed after 2 step(s): Overloaded (HTTP 529: {"type":"error"})"#, "Didn't finish: Overloaded"),
+        // A refusal that is not about the key keeps the provider's reason.
+        (#"agent failed after 0 step(s): Your organization does not have access (HTTP 403: {})"#,
+         "Didn't finish: Your organization does not have access"),
+        // Another step's 401 is that step's, not the model's key.
+        ("git push failed (HTTP 401: Bad credentials)", "Didn't finish: git push failed"),
+        (#"agent failed after 0 step(s): max_tokens: 401 is too many (HTTP 400: {})"#,
+         "Didn't finish: max_tokens: 401 is too many"),
+        // A key someone's words quote is masked, whatever the path.
+        ("Peel answered 500: Incorrect API key provided: sk-…****abcd.",
+         "Didn't finish: Incorrect API key provided: [key]."),
+        ("Peel answered 500: bad sk-ant-api03-abcdef and sk-or-v1-123 and sk-ab***yz", "Didn't finish: bad [key] and [key] and [key]"),
+        ("Peel answered 500: key_sk-proj-abcd1234 {\"k\":\"sk-abc\"}", "Didn't finish: key_[key] {\"k\":\"[key]\"}"),
+    ])
+    func aFailedRunSaysWhyPlainly(message: String, shown: String) throws {
+        let json: AgentKit.JSONValue = ["runId": "6", "status": "error", "error": ["message": .string(message)]]
+        #expect(try #require(AutomationRunRecord(json)).failure == shown)
+    }
+
+    /// A run whose record names no workflow is Peel's (the runs are read per workflow).
+    @Test func aRunNamingNoWorkflowIsPeels() throws {
+        let json: AgentKit.JSONValue = ["runId": "9", "status": "error", "error": ["message": "fetch failed"]]
+        #expect(try #require(AutomationRunRecord(json)).failure == AutomationFailure.peelUnreachable)
+    }
+
+    /// Only Peel's workflow reaches Peel: a system run's failed fetch was to somewhere else.
+    @Test func aSystemRunsFailedFetchIsNotPeelUnreachable() throws {
+        let json: AgentKit.JSONValue = ["runId": "8", "status": "error", "workflow": "tidy-memory",
+                                        "error": ["message": "fetch failed"]]
+        #expect(try #require(AutomationRunRecord(json)).failure == "Didn't finish: fetch failed")
+        // Read from a system workflow's runs, naming none of its own.
+        let unnamed: AgentKit.JSONValue = ["runId": "8", "status": "error", "error": ["message": "fetch failed"]]
+        #expect(try #require(AutomationRunRecord(unnamed, workflow: "tidy-memory")).failure == "Didn't finish: fetch failed")
     }
 
     // MARK: System automations

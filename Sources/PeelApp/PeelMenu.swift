@@ -243,6 +243,7 @@ private struct ContextMenuModifier: ViewModifier {
                 presenter?.show(entries(), at: point, in: window, source: source)
             }
         }
+        .onDisappear { [source] in presenter?.menuTriggerGone(source) }
         #else
         content
         #endif

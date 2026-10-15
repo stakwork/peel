@@ -20,6 +20,7 @@ struct MenuButton<Label: View>: View {
             label()
         }
         .menuAnchor(anchor)
+        .onDisappear { presenter?.menuTriggerGone(source) }
     }
 }
 
@@ -139,5 +140,30 @@ struct FormFooter<Buttons: View>: View {
             Spacer()
             buttons
         }
+    }
+}
+
+/// A quiet line with a chevron that opens what is under it: the agent
+/// chat's tool rows, a form's "Enter address and key instead".
+struct DisclosureButton<Label: View>: View {
+    @Binding var open: Bool
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Button {
+            open.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                label
+            }
+            .font(Theme.font(13))
+            .foregroundStyle(Theme.secondaryText)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(open ? "Expanded" : "Collapsed")
     }
 }

@@ -1,0 +1,11 @@
+// A jump to the message under an image older than the newest 200 (a
+// window around it, the image not yet loaded): once placed, the image
+// above sizes itself, and the message gone to does not move (rule 2; the
+// correction lands in the next layout pass, before anything is drawn).
+// check: image from=resize still=target land=target
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"probe": "image", "for": 6}
+{"jump": {"older": 200, "below": "image"}}
+{"wait": 5.5}

@@ -22,6 +22,15 @@ public struct FocusTarget: Equatable, Sendable {
     public let inThread: Bool
 }
 
+/// Where a message list stood when last still: following the newest, or a
+/// row (never a divider) with its top `offset` points below the list's top,
+/// negative when it is cut off above. Kept per list (`AppModel.anchor(of:)`)
+/// so a list made again, or a chat come back to, opens where it was.
+public enum ListAnchor: Equatable, Sendable {
+    case newest
+    case row(id: String, offset: Double)
+}
+
 /// Which composer: a chat's own, a thread panel's, or the agent chat's.
 public enum ComposerID: Hashable, Sendable {
     case chat(String)

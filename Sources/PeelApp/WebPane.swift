@@ -65,7 +65,7 @@ final class WebPane: NSObject {
         guard let self, let page = WebPage.address(url), !NSEvent.modifierFlags.contains(.command) else {
             return .systemAction
         }
-        withAnimation(.easeOut(duration: 0.2)) { open(page) }
+        open(page)
         return .handled
     }
 
@@ -500,7 +500,7 @@ extension View {
 enum WebMenuEntries {
     static func entries(for tribe: Tribe?, pane: WebPane) -> [MenuEntry] {
         let browser = MenuEntry.button("Browser", systemImage: "globe") {
-            withAnimation(.easeOut(duration: 0.2)) { pane.show() }
+            pane.show()
         }
         return [browser] + (tribe?.pages ?? []).map { page in
             .item(MenuItem(title: page.title, systemImage: page.systemImage, detailSystemImage: "arrow.up.right") {
@@ -532,7 +532,7 @@ extension WebPane {
     /// Opens a tribe's page beside the chat: the one way the menu and the
     /// details open one.
     func open(_ page: TribePage) {
-        withAnimation(.easeOut(duration: 0.2)) { open(page.url) }
+        open(page.url)
     }
 }
 
@@ -546,8 +546,8 @@ extension View {
 }
 
 /// The detail column with the web pane beside it, resizable on its
-/// divider. On a window too narrow for both, the pane takes the column's
-/// place rather than covering it. The pane lives as long as the main
+/// divider. On a window too narrow for both, the pane covers the column
+/// (`SidePanelSplit`). The pane lives as long as the main
 /// window shows the account: closing the window or locking Peel (which
 /// replaces this view) ends the page.
 private struct WebSplit: ViewModifier {
@@ -637,7 +637,7 @@ private struct WebToolbar: View {
             .disabled(page.url == nil)
             MoreMenu(pane: pane, url: page.url)
             IconButton("xmark", help: "Close (⌘W)") {
-                withAnimation(.easeIn(duration: 0.15)) { pane.close() }
+                pane.close()
             }
         }
         .padding(.leading, Theme.Space.sm)

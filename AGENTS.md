@@ -1,7 +1,10 @@
 # Agent Guide
 
+Read `docs/VISION.md` before anything else: Peel's guiding principles and
+the experience it must give. Every change serves it.
+
 Peel is a native Sphinx chat client written from scratch in Swift on the shared
-Rust core. Read `docs/PLAN.md` first (architecture and phase index), then the
+Rust core. Read `docs/PLAN.md` next (architecture and phase index), then the
 phase you are working on under `docs/phases/`. A phase with work done opens
 with a short status (built, open, decided) above its journal; a planned one
 is a short plan. Update the status and the journal when you finish something.
@@ -198,7 +201,11 @@ is a short plan. Update the status and the journal when you finish something.
     (moved there from the login Keychain on first unlock), `.development`
     profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
     data-protection Keychain item, which the words and the agent's key
-    share) and `FileItem` (an owner-only file) behind `SecretItem`; the
+    share; readable only while the Mac is unlocked but for the agent's key,
+    `AfterFirstUnlockThisDeviceOnly` for runs on a locked Mac; an item
+    moves to its class on the next read or write, a failed move logged
+    once; a locked read is `KeychainLocked`, never none kept) and `FileItem` (an owner-only file)
+    behind `SecretItem`; the
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),
@@ -228,14 +235,18 @@ is a short plan. Update the status and the journal when you finish something.
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
   `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
-  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (join, start, leave,
-  presence and the watches of recent calls; the view passes the call
-  window's opening in), `AppModel+Payments` (`PaymentOutcome`, boosts,
+  `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
+  avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
-  (adding by code, invites), `AppModel+TimeZones` (sender zones, local
-  times, the zone setting) and `AppModel+Search` (`ChatSearch`, ⌘F's
+  (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
+  times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
+  the recent calls across chats watched while unlocked and the open chat's,
+  the call you are on, join, start, leave; the view passes the call
+  window's opening in; `AppModel` attaches it with the account, says when
+  it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
@@ -245,7 +256,11 @@ is a short plan. Update the status and the journal when you finish something.
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
-  PIN's words and a PIN field's digits, Forget's warning); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
+  PIN's words and a PIN field's digits, Forget's warning, an invite's
+  status, a tribe's details lines and price to join, what a contact code
+  adds); `TribeForms` (`TribeSettingsDraft`, Create and Edit tribe's
+  fields and their problems; `TribeLookup`, Join a tribe's link and
+  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -253,11 +268,19 @@ is a short plan. Update the status and the journal when you finish something.
   `MediaInfoCache`; `tileSide`, the chat's image size); `TimelineLog` (the
   opt-in log of the message list's placement, `defaults write dev.peel.mac
   PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
-  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
+  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied");
+  `ChatList/`, where a message list goes on any engine:
+  `ChatListController` (the anchor, the following latch, "New messages",
+  the pill over `ListBottom`, jumps, older pages and where a list opens,
+  T1–T27 of `docs/reviews/2026-10-14-message-lists.md`; no SwiftUI, AppKit
+  or UIKit) and `ChatListTypes` (`ChatListRow`, `ListContent`,
+  `ListPlacement`, `ListViewport`, `ListDiff`, `ListPill`, and the
+  `ChatListEngine` and `ListAnchorStore` protocols it takes; `AppModel` is
+  the store)
 - `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
-  `AppModel.callSession` and `.web`, the Mac's own types), `AppModel+Agent`
+  `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
   automations, which `AppModel` reaches as `macAgent`; opening the
   account's `AgentSession`, its tools and
@@ -279,13 +302,18 @@ is a short plan. Update the status and the journal when you finish something.
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
-  `Avatar` (people's and tribes' icons, `AppIcon`),
+  `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `ListEnd` (where a lazy list's rows are
-  laid out, so the chat's and the agent's lists are held at their end by
-  them, never by the stack's estimate), `MessageText` (message text over
+  for the chat: `MessageViews` (`MessageList` with its pill and Page
+  keys, `ListRowContent`, the rows), `MessageTable` (the chat's and a
+  thread's list engine: a non-flipped `NSTableView` of reused hosting
+  cells, heights cached per row, width and version, the controller's
+  placement applied in the same pass, idle measuring, its own animated
+  moves), `ListEnd` (where the agent chat's lazy list's rows are laid
+  out, until it moves onto the controller), `ListProbe` (the frame probe
+  over each list's `ListGeometry`), `MessageText` (message text over
   `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
   plain SwiftUI that the iPhone compiles too, its size a parameter, 14
   here), `LinkCards` (the tribe and contact link
@@ -380,7 +408,8 @@ is a short plan. Update the status and the journal when you finish something.
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
   the selected tab and each tab's path, `openChat`, `open(_ message:)`,
-  `openThread`, `openPayment`, `openFromNotification`, the thread sheet's
+  `openThread`, `openDetails` (a chat's details over it), `openMembers`,
+  `openPayment`, `openFromNotification`, the thread sheet's
   binding; it writes `AppModel.destination` from what is on screen and
   follows it when the model moves it), `PhoneTheme` (`PhoneFont`, the
   Mac's sizes on Dynamic Type styles, `.phoneFont`; `Surface` and
@@ -398,14 +427,23 @@ is a short plan. Update the status and the journal when you finish something.
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
   (`BalanceHeader`, `PaymentRow`), `PaymentDetail` (`FactRow`),
   `SendSheet` (an invoice pasted or scanned, or a contact),
-  `ReceiveSheet`, `InvoiceScanner` (VisionKit, QR only), `PayControls`
+  `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
-  the swipe actions and long-press menu, pull to refresh,
-  `chatsDestinations`, `ComingScreen`), `ChatsConnection` (the orange
-  countdown under the title and the bolt's `ConnectionPanel`),
+  the swipe actions and long-press menu, pull to refresh, the sections'
+  actions (Join and Create a tribe, pending invites, Add contact, Invite
+  someone), `chatsDestinations`), `ChatsConnection` (`ConnectionBolt`,
+  green or orange, the orange countdown under the title and the bolt's
+  `ConnectionPanel`), `PeopleControls` (`PeopleSheet`, `SheetStack`,
+  `ActionRow`, `PendingInviteRow`, `CodeEntry`: a code typed, pasted,
+  scanned or read from a photo; `ConfirmInPlace`; `ShareableCode`, a QR
+  code to copy and share), `ContactSheets` (`AddContactSheet`,
+  `InviteSheet`, `InviteDetailScreen`), `TribeSheets` (`JoinTribeSheet`,
+  `TribeSettingsSheet`: create and edit), `ChatDetails`
+  (`ChatDetailsScreen`: a contact's or a tribe's, how you appear in a
+  tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
   `ConversationScreen` (the header with Call and More in one capsule, the
@@ -523,7 +561,9 @@ is a short plan. Update the status and the journal when you finish something.
     `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
     `SSL_CERT_*` dropped, and
     its OpenSSL (Ladybug's, built for Homebrew's folders) given no
-    configuration, engines or providers; its workspace and memory
+    configuration, engines or providers; its workspace (one Ladybug file,
+    `workspace/graph/graph.lbug`; strut imports the old files once and
+    moves them to `workspace/fs-workspace.imported-<time>/`) and memory
     graph in `~/Library/Application Support/Peel/Strut`, a development
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
@@ -558,6 +598,18 @@ is a short plan. Update the status and the journal when you finish something.
     this Mac or the account's home server, kept in `Profile.brain` (one
     that cannot be read is never taken for this Mac), and the pairing link
     `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
+  - `MemoryBackup.swift` — this Mac's graph files renamed aside into
+    `memory/backups/graph-<time>.lbug…` before the home server's memory is
+    brought back in their place, put back on failure, the newest three kept
+  - `MemoryMove.swift` — moving the memory between Peel's own strut and a
+    home server ("Move, not sync"): `memory/export` on one (this Mac's by
+    a file in its own folder, read only from there and deleted after; a
+    home server's `inline`), `memory/import` as `data` on the other, which
+    takes only an empty graph (or, to a home server, `replace`s its graph,
+    which strut there backs up first: "Reconnecting" in
+    `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
+    (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
+    option, holding the memory tools until it ends
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
     from a home server (`Brain`, `isHomeServer`; `health` reads its
@@ -613,8 +665,13 @@ is a short plan. Update the status and the journal when you finish something.
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS
-- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests
-  and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
+- `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
+  engine and profile, no window or server: `CallStoreTests` (each chat's
+  busiest watched call, the call you are on, locking stops the watches)
+  and `ChatListControllerTests` (the list controller's 25 cases on a fake
+  engine and store)
+- `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
+  PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
   `withTestEngine`) and `HTTPStub.swift` (a loopback HTTP server that
   records each whole request); a library target, since a test target
@@ -627,6 +684,11 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters),
   `BrainTests` (the pairing link, what is kept, `/health` read),
+  `MemoryMoveTests` (both moves against stub struts: what goes where,
+  refusals in words, counts that differ, a home server gone mid-way, the
+  export file deleted and never read outside strut's folder; bringing
+  memory back in place of this Mac's: the graph kept as a backup, put back
+  on any failure, a linked graph left alone, the newest three kept),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged
@@ -683,11 +745,12 @@ is a short plan. Update the status and the journal when you finish something.
   embeds the frameworks the app loads through `@rpath` (LiveKit's
   `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
   `stage-strut.sh` staged in `Contents/Strut` (without one it warns: that
-  Peel's agent has no memory or automations)
+  Peel's agent has no memory or automations; one without Ladybug it refuses)
 - `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
-  (`package-desktop.mjs --no-stt`, with Ladybug and the `memory/*` steps)
+  (`package-desktop.mjs --no-stt`, with Ladybug, its `vector` and `fts`
+  extensions and the `memory/*` steps)
   and Node, a pinned release checked against its SHA-256 (cached in
   `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
   Run it once, after strut changes, and again if macOS clears Caches
@@ -794,15 +857,21 @@ quitting before any window opens.
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …
   ```
 
+  The message list journeys add a frame probe and the steps they need
+  (`probe`, `thread`, `close`, `scroll`, `scrollTo`, `width`, `jump`,
+  `expect`, `signal`; `OffscreenDriver`'s header): `docs/testing.md`,
+  "List journeys".
+
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own
   event queue, so key monitors and shortcuts see them as typed (a key
   with ⌘ is offered to the window's views first, as AppKit does for a key
   window, which an app never active has none of); `keyCode`
   is real only for the US-layout letters, digits, punctuation and named
   keys above (other characters are sent with code 0). There is
-  no mouse step: posted clicks do not reach SwiftUI's buttons in an app
+  no click step: posted clicks do not reach SwiftUI's buttons in an app
   that is never active, so reach a control by its shortcut or add a
-  named step like `select`.
+  named step like `select`. `{"hover": 0}` puts the pointer on a message
+  list's row (the list's tracking area, moved over as AppKit reports it).
 - A new development profile on the local stack starts with 0 sats, and
   adding a contact needs 6. **The only allowed way to fund one** is
   `scripts/fund-dev.sh <stack dir> <dev profile> <sats>`: the
@@ -922,6 +991,13 @@ parsers, markup in linear time against a reference, link labels, names,
 hosts, codes and the attachment cipher). Nothing talks to
 a broker: anything protocol-level is still verified against the local test
 server.
+
+`Tests/PeelUITests` tests `AppModel`'s stores through their public API,
+offline, on a real engine and a temporary profile (a call server on
+127.0.0.1:9 that never answers, so a test says who is on a call):
+`CallStore`'s counts per chat, the call you are on, and its watches
+stopping on lock; and `ChatListController`'s state machine against a fake
+engine and anchor store.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883

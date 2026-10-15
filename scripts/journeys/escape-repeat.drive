@@ -1,0 +1,23 @@
+// A thread open beside the chat scrolled up: Escape three times, then the
+// thread's X twice with nothing left to close. Nothing moves or blanks;
+// the keys end in the chat's composer (`drive: focus ...`).
+// check: escape hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"thread": "visible"}
+{"wait": 1.5}
+{"probe": "escape", "for": 5}
+{"key": "escape"}
+{"wait": 0.5}
+{"key": "escape"}
+{"wait": 0.5}
+{"key": "escape"}
+{"wait": 0.5}
+{"close": "thread"}
+{"wait": 0.5}
+{"close": "thread"}
+{"wait": 1}
+{"note": "focus"}

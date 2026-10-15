@@ -891,6 +891,39 @@ put them in one container, which centred the narrower tool rows. Each turn
 is now a leading `VStack` given those (branch `fix/agent-tool-rows-leading`);
 checked on `gate-alice`, the rows at the leading edge as on main before.
 
+### Account rows squeezed (branch `fix/account-settings-layout`, 2026-10-14)
+
+From Tom's screenshot: Account › Peel agent › API key, Remove asked
+"Remove the key? The agent will stop." in a column a word wide, Cancel and
+Remove cut to "…" and "R…". Cause: a `Fact`'s value was full width and its
+action had no priority, so the HStack split the row between them and
+squeezed the action; the confirm's prompt and buttons all shrank. At the
+window's narrowest (760) the same cut Replace, Remove, Check words, Show
+words and Use a home server… with nothing open.
+
+Changed: `Fact` lays out its value and action with `FactValueLayout`: the
+action at its own width, the value wrapping beside it, and the action
+under the value once less than 96 pt would be left for it. One layout,
+not `ViewThatFits`, so an open confirm keeps its state when the row
+changes shape (review caught that two branches lost it). `InlineConfirm`'s
+buttons never shrink; its prompt sits beside them on one line or above
+them, wrapping; a `confirming` binding goes back to false when the
+confirm goes away. The key row hides Replace while Remove asks
+(`confirming`).
+
+Checked offscreen on a new development profile with a stub key (not a
+real one), every Account confirm opened at 1180, 900 and 760 wide, and
+closed; a confirm opened after the row had laid out stays open as the row
+re-lays (Replace hidden); the contact details' Remove and tribe details'
+facts. The full suite. Not checked: a click (the driver has none), a
+tribe's Delete section with a long name.
+
+Not applied from review: one shared beside-or-below layout for the
+confirm too (its `ViewThatFits` holds no state; the two rules differ), a
+measurement cache in the layout (a few extra measurements per detail
+screen). Rebased on #274 and checked again: at 760 the Brain row's
+Connect a home server… goes under its description.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

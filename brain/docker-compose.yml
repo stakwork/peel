@@ -29,9 +29,10 @@ services:
     network_mode: service:tailscale
     restart: unless-stopped
     environment:
-      # No Neo4j: workflows and runs on disk; memory is its own Ladybug file
-      # under /data/workspace/memory.
-      STRUT_WORKSPACE_BACKEND: fs
+      # No Neo4j, as Peel's bundled strut: workflows, steps and automations in
+      # one Ladybug file (/data/workspace/graph/graph.lbug), runs on disk;
+      # memory is its own Ladybug file under /data/workspace/memory.
+      STRUT_WORKSPACE_BACKEND: ladybug
       STRUT_WORKSPACE: /data/workspace
       STRUT_MODEL_DIR: /data/models
       # Loopback only: tailscale serve is the one way in, not :3000 on the
@@ -44,6 +45,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./data:/data
+      # strut won't start without Ladybug's vector and fts extensions. The
+      # image doesn't carry them, so Ladybug downloads them into ~/.lbdb on
+      # first start; kept here, they survive an image update.
+      - ./data/ladybug:/root/.lbdb
 
 volumes:
   ts-state:

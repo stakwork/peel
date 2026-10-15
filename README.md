@@ -39,7 +39,7 @@ swift test --filter PeelCoreTests
 `build-ffi.sh` downloads the Sphinx core Peel links: the prebuilt Rust library,
 its Swift bindings and header from the
 [sphinx-rs](https://github.com/stakwork/sphinx-rs) release pinned in
-`Vendor/sphinxrs.lock`, and checks the library's hash. Run it again whenever
+`Vendor/sphinxrs.lock`, and checks each file's hash. Run it again whenever
 the lock changes.
 
 ## Run the app

@@ -781,16 +781,18 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 .build/debug/peel --profile <dev> listen             # CLI
 ```
 
-`Vendor/sphinxrs.lock` pins the core: the static library's sha256 and the
-`sphinx-rs` release tag whose assets (`universal-sphinxrs-mac.a`,
-`sphinxrs.swift`, `sphinxrsFFI.h`) Peel links. `scripts/build-ffi.sh`
-downloads exactly those files (cached in `.build/sphinx-core`) and refuses a
-library with another hash. To move to a new core, run
+`Vendor/sphinxrs.lock` pins the core: the sha256 of each asset Peel links
+(`universal-sphinxrs-mac.a`, `sphinxrs.swift`, `sphinxrsFFI.h`, in that
+order) and the `sphinx-rs` release tag they come from. `scripts/build-ffi.sh`
+downloads exactly those files (cached in `.build/sphinx-core`) and refuses,
+and deletes, any with another hash. To move to a new core, run
 `scripts/build-ffi.sh --update <tag>`, which records the release and its
-library's hash. It then checks the core that release pins (`sphinx-ffi/Cargo.toml`
-at the tag) for upstream's client security fixes in a `stakwork/sphinx`
-checkout (`SPHINX`, default `../sphinx`): a missing fix warns, and fails the
-run with `PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
+three hashes. It then checks the core that release pins (`sphinx-ffi/Cargo.toml`
+at the tag) for upstream's client security fixes through GitHub's compare
+API. `stakwork/sphinx` is private, so set `GITHUB_TOKEN` to a token that can
+read it (`GITHUB_TOKEN=$(gh auth token)`); without one every fix is
+unchecked. A missing or unchecked fix warns, and fails the run with
+`PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
 
 The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
 is no Xcode project for it. To check a build without replacing the

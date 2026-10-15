@@ -3,21 +3,25 @@
 #   Vendor/sphinxrsFFI.xcframework  - the Rust static library plus its C header
 #   Sources/Sphinxrs/sphinxrs.swift - the generated Swift bindings
 #
-# Vendor/sphinxrs.lock pins them: the library's sha256, the sphinx-rs commit the
-# bindings come from, and the sphinx-mac-v2 commit that ships that library, so
-# Peel links exactly what the official Mac app ships.
+# Vendor/sphinxrs.lock pins them: the library's sha256 and the sphinx-rs
+# release whose assets they are. sphinx-rs CI (build-all.yml) attaches the Mac
+# library, the Swift bindings and the header to every release.
 #
-#   scripts/build-ffi.sh            downloads the pinned files from GitHub
-#                                   (cached in .build/sphinx-core) and checks
-#                                   the library against the lock
-#   scripts/build-ffi.sh --update   takes them from sibling checkouts instead
-#                                   and records them in the lock: for moving to
-#                                   a new core. Override the checkouts with
-#                                   SPHINX_RS and SPHINX_MAC, and with SPHINX the
-#                                   core's own, which the security check reads.
+#   scripts/build-ffi.sh                downloads the pinned release's files
+#                                       (cached in .build/sphinx-core) and
+#                                       checks the library against the lock
+#   scripts/build-ffi.sh --update <tag> downloads another release's files and
+#                                       records it in the lock: for moving to
+#                                       a new core
+#
+# Either way it then checks that the core the release pins (sphinx-ffi's
+# Cargo.toml at the tag) has upstream's client security fixes, in the
+# stakwork/sphinx checkout at $SPHINX (default ../sphinx). A missing fix only
+# warns, unless PEEL_REQUIRE_CORE_FIXES=1, which any build that ships sets:
+# then a missing or unchecked fix stops the build.
 #
 # For iOS, set both SPHINX_IOS_LIB (an ios-arm64 static library) and
-# SPHINX_IOS_SIM_LIB (ios-arm64-simulator), built from the sphinx-rs commit
+# SPHINX_IOS_SIM_LIB (ios-arm64-simulator), built from the sphinx-rs release
 # the lock names; the xcframework (made by xcodebuild -create-xcframework)
 # then gets those two slices beside the Mac one. The lock does not pin them
 # yet, so the script prints their sha256 rather than checking it. Without
@@ -37,80 +41,53 @@ get() { # url, to stdout; CI passes GITHUB_TOKEN for the API's rate limit
     curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 "$1"
   fi
 }
-# GitHub serves a fork's commits under the upstream repo's URLs, so a commit
-# is taken only once stakwork's own master has it.
-on_master() { # repo commit
-  [ -f "$CACHE/$2.on-master" ] && return
-  compare="$(get "https://api.github.com/repos/stakwork/$1/compare/master...$2")" \
-    || die "could not ask GitHub whether stakwork/$1 master has $2 (offline or rate-limited?)"
-  status="$(printf '%s\n' "$compare" | grep -o '"status": *"[a-z]*"' | head -1 | sed 's/.*"\([a-z]*\)"$/\1/')"
-  case "$status" in
-    identical|behind) : > "$CACHE/$2.on-master" ;;
-    *) die "$2 is not on stakwork/$1 master${status:+ ($status)}; push it there first" ;;
-  esac
-}
+# Release tags only: they go into URLs and file names.
+valid_tag() { printf '%s\n' "$1" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; }
 
 if [ "${1:-}" = "--update" ]; then
-  SPHINX_RS="${SPHINX_RS:-$ROOT/../sphinx-rs}"
-  SPHINX_MAC="${SPHINX_MAC:-$ROOT/../sphinx-mac-v2}"
-  LIB="$SPHINX_MAC/universal-sphinxrs-mac.a"
-  BINDINGS="$SPHINX_RS/sphinx-ffi/src/sphinxrs.swift"
-  HEADER="$SPHINX_RS/sphinx-ffi/src/sphinxrsFFI.h"
-  for f in "$LIB" "$BINDINGS" "$HEADER"; do
-    [ -f "$f" ] || die "missing: $f"
-  done
-  # The Mac app keeps its own copy of the bindings; refuse to mix versions.
-  MAC_BINDINGS="$SPHINX_MAC/com.stakwork.sphinx.desktop/Crypter/sphinxrs.swift"
-  if [ -f "$MAC_BINDINGS" ] && ! cmp -s "$BINDINGS" "$MAC_BINDINGS"; then
-    die "bindings in sphinx-rs and sphinx-mac-v2 differ; the static library may not match"
-  fi
-  # Others download by these commits, so both must be committed as they are here.
-  git -C "$SPHINX_MAC" diff --quiet HEAD -- universal-sphinxrs-mac.a \
-    || die "universal-sphinxrs-mac.a has uncommitted changes in $SPHINX_MAC"
-  git -C "$SPHINX_RS" diff --quiet HEAD -- sphinx-ffi/src \
-    || die "sphinx-ffi/src has uncommitted changes in $SPHINX_RS"
-  RS_COMMIT="$(git -C "$SPHINX_RS" rev-parse HEAD)"
-  MAC_COMMIT="$(git -C "$SPHINX_MAC" log -1 --format=%H -- universal-sphinxrs-mac.a)"
-  on_master sphinx-rs "$RS_COMMIT"
-  on_master sphinx-mac-v2 "$MAC_COMMIT"
-  mkdir -p "$ROOT/Vendor"
-  printf '%s %s %s\n' "$(sha256 "$LIB")" "$RS_COMMIT" "$MAC_COMMIT" > "$LOCK"
-  CARGO_TOML="$(git -C "$SPHINX_RS" show HEAD:sphinx-ffi/Cargo.toml)"
+  TAG="${2:-}"
+  valid_tag "$TAG" || die "usage: build-ffi.sh --update <sphinx-rs release tag, e.g. v0.8.36>"
+  LIB_SHA=""
 else
-  [ -f "$LOCK" ] || die "missing $LOCK; run with --update from sibling checkouts"
-  read -r LIB_SHA RS_COMMIT MAC_COMMIT < "$LOCK"
-  printf '%s %s %s\n' "$LIB_SHA" "$RS_COMMIT" "$MAC_COMMIT" | grep -qE '^[0-9a-f]{64} [0-9a-f]{40} [0-9a-f]{40}$' \
-    || die "$LOCK should hold a sha256 and two commit hashes"
-  on_master sphinx-rs "$RS_COMMIT"
-  on_master sphinx-mac-v2 "$MAC_COMMIT"
-  fetch() { # repo commit path destination
-    [ -s "$4" ] && return
-    echo "downloading $1/$3 at $(printf '%.7s' "$2")" >&2
-    get "https://raw.githubusercontent.com/stakwork/$1/$2/$3" > "$4.part"
-    mv "$4.part" "$4"
-  }
-  LIB="$CACHE/$LIB_SHA.a"
-  BINDINGS="$CACHE/$RS_COMMIT-sphinxrs.swift"
-  HEADER="$CACHE/$RS_COMMIT-sphinxrsFFI.h"
-  fetch sphinx-mac-v2 "$MAC_COMMIT" universal-sphinxrs-mac.a "$LIB"
-  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/src/sphinxrs.swift "$BINDINGS"
-  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/src/sphinxrsFFI.h "$HEADER"
-  fetch sphinx-rs "$RS_COMMIT" sphinx-ffi/Cargo.toml "$CACHE/$RS_COMMIT-Cargo.toml"
+  [ -f "$LOCK" ] || die "missing $LOCK; run with --update <tag>"
+  read -r LIB_SHA TAG < "$LOCK"
+  printf '%s\n' "$LIB_SHA" | grep -qE '^[0-9a-f]{64}$' && valid_tag "$TAG" \
+    || die "$LOCK should hold a sha256 and a sphinx-rs release tag"
+fi
+fetch() { # url destination
+  [ -s "$2" ] && return
+  echo "downloading $1" >&2
+  get "$1" > "$2.part" || { rm -f "$2.part"; die "could not download $1"; }
+  mv "$2.part" "$2"
+}
+RELEASE="https://github.com/stakwork/sphinx-rs/releases/download/$TAG"
+LIB="$CACHE/$TAG-universal-sphinxrs-mac.a"
+BINDINGS="$CACHE/$TAG-sphinxrs.swift"
+HEADER="$CACHE/$TAG-sphinxrsFFI.h"
+fetch "$RELEASE/universal-sphinxrs-mac.a" "$LIB"
+fetch "$RELEASE/sphinxrs.swift" "$BINDINGS"
+fetch "$RELEASE/sphinxrsFFI.h" "$HEADER"
+fetch "https://raw.githubusercontent.com/stakwork/sphinx-rs/$TAG/sphinx-ffi/Cargo.toml" "$CACHE/$TAG-Cargo.toml"
+if [ -z "$LIB_SHA" ]; then
+  mkdir -p "$ROOT/Vendor"
+  printf '%s %s\n' "$(sha256 "$LIB")" "$TAG" > "$LOCK"
+else
   # Every signing and encryption step runs inside this library, so refuse a
   # copy that differs from the one recorded in the lock.
   if [ "$(sha256 "$LIB")" != "$LIB_SHA" ]; then
     rm -f "$LIB"
-    die "the downloaded universal-sphinxrs-mac.a does not match Vendor/sphinxrs.lock"
+    die "the downloaded universal-sphinxrs-mac.a ($TAG) does not match Vendor/sphinxrs.lock"
   fi
-  CARGO_TOML="$(cat "$CACHE/$RS_COMMIT-Cargo.toml")"
 fi
+CARGO_TOML="$(cat "$CACHE/$TAG-Cargo.toml")"
 
-# The core rev sphinx-rs pins must carry upstream's client security fixes
-# (merged 2026-09-25). The pinned bd9e140 has none of them, so for now this
-# warns rather than stops. Two stand in meanwhile: Engine.cappedToArrived for
-# SR-016's amount check, Engine.isForeignContactRecord for SR-017.
+# The core rev the release pins must carry upstream's client security fixes
+# (merged 2026-09-25, in sphinx v0.6.29). Until a sphinx-rs release has them
+# this warns for development builds; two stand in meanwhile:
+# Engine.cappedToArrived for SR-016's amount check, Engine.isForeignContactRecord
+# for SR-017 (docs/phases/08-audit.md, "N1, after", lists what goes then).
 SPHINX="${SPHINX:-$ROOT/../sphinx}"
-# As committed, the sphinx-rs commit the lock names.
+# As committed at the release tag the lock names.
 CORE_REV="$(printf '%s\n' "$CARGO_TOML" | sed -n 's/^sphinx = .*rev = "\([0-9a-f]*\)".*/\1/p')"
 CORE_KNOWN=no
 git -C "$SPHINX" cat-file -e "${CORE_REV:-none}^{commit}" 2>/dev/null && CORE_KNOWN=yes
@@ -132,14 +109,17 @@ c1a46181f38e6085fdef51e84d9a28b09b102cf0 SR-020
 480b3ae35fe511fb777b2f2ab3d72b0683ebb1e6 SR-022
 EOF
 if [ -n "$MISSING$UNCHECKED" ]; then
+  LEVEL=WARNING
+  [ "${PEEL_REQUIRE_CORE_FIXES:-}" = 1 ] && LEVEL=ERROR
   {
     echo "************************************************************"
-    echo "WARNING: the core this library pins (sphinx ${CORE_REV:-unknown})"
+    echo "$LEVEL: the core sphinx-rs $TAG pins (sphinx ${CORE_REV:-unknown})"
     [ -z "$MISSING" ] || echo "  lacks upstream's client security fixes:$MISSING"
     [ -z "$UNCHECKED" ] || echo "  could not be checked in $SPHINX for:$UNCHECKED"
-    echo "  Fixed upstream in v0.6.29; sphinx-rs must move its pin."
+    echo "  Fixed upstream in v0.6.29; pin a sphinx-rs release with them."
     echo "************************************************************"
   } >&2
+  [ "$LEVEL" = WARNING ] || die "PEEL_REQUIRE_CORE_FIXES=1: refusing a core without the fixes"
 fi
 
 XCF="$ROOT/Vendor/sphinxrsFFI.xcframework"
@@ -192,4 +172,4 @@ rm -rf "$STAGE"
 mkdir -p "$ROOT/Sources/Sphinxrs"
 cp "$BINDINGS" "$ROOT/Sources/Sphinxrs/sphinxrs.swift"
 
-echo "bindings ready: sphinx-rs $(printf '%.7s' "$RS_COMMIT"), library from sphinx-mac-v2 $(printf '%.7s' "$MAC_COMMIT")"
+echo "bindings ready: sphinx-rs $TAG (core ${CORE_REV:-unknown})"

@@ -164,6 +164,7 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Key exchange by contact info; both sides ready; no second exchange; the adder −3 sats, the added +1, and Payments labels the four rows (review F6, journey 3) | `Contacts.keyExchangeByContactInfo` | pass |
 | Key exchange from an invite's code (inviter added, invite untouched) | `Contacts.keyExchangeByInvite` | pass |
 | A contact's record (type 33) naming another contact changes nothing (bug hunt N1) | `Contacts.aContactRecordSomeoneElseSentChangesNothing` | pass (2026-10-11); fails without `Engine.isForeignContactRecord` |
+| An unpaid ContactKey (type 10) from a contact pays nothing back; the paid exchange is `keyExchangeByContactInfo` (upstream SR-016) | `Contacts.anUnpaidContactKeyPaysNothing` | known issue (2026-10-15): the linked core `bd9e140` answers it, Alice −4 sats and a 3-sat key exchange row; drop the `withKnownIssue` once the lock names a core with SR-016 |
 | The account's other device adds a contact; its record adds them here as it happens | `Contacts.aContactRecordFromTheAccountsOtherDeviceAddsTheContact` | pass (2026-10-11) |
 | DMs both ways through the wire tap; the plain text never on the wire (raw, base64, hex, a 16-byte run) | `DirectMessages` | pass |
 | Create a free and a paid tribe; join free (1 sat) and paid (50); a paid post (10) and a paid file (10, one row, which the tribe's copy finds); a boost (20 + 10, all to the author, owner unchanged) | `Tribes` | pass |

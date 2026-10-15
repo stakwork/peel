@@ -738,8 +738,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
 - `scripts/build-ffi.sh` — assembles the bindings: downloads the pinned
-  `sphinx-rs` and `sphinx-mac-v2` files from GitHub, or with `--update` takes
-  them from sibling checkouts
+  `sphinx-rs` release's library, bindings and header from GitHub, or with
+  `--update <tag>` another release's, recording it in the lock
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
@@ -781,12 +781,16 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 .build/debug/peel --profile <dev> listen             # CLI
 ```
 
-`Vendor/sphinxrs.lock` pins the core: the static library's sha256, the
-`sphinx-rs` commit and the `sphinx-mac-v2` commit that ships the library.
-`scripts/build-ffi.sh` downloads exactly those files (cached in
-`.build/sphinx-core`) and refuses a library with another hash. To move to a new
-core, check out the new commits in sibling `sphinx-rs` and `sphinx-mac-v2`
-checkouts, push them, and run `scripts/build-ffi.sh --update`.
+`Vendor/sphinxrs.lock` pins the core: the static library's sha256 and the
+`sphinx-rs` release tag whose assets (`universal-sphinxrs-mac.a`,
+`sphinxrs.swift`, `sphinxrsFFI.h`) Peel links. `scripts/build-ffi.sh`
+downloads exactly those files (cached in `.build/sphinx-core`) and refuses a
+library with another hash. To move to a new core, run
+`scripts/build-ffi.sh --update <tag>`, which records the release and its
+library's hash. It then checks the core that release pins (`sphinx-ffi/Cargo.toml`
+at the tag) for upstream's client security fixes in a `stakwork/sphinx`
+checkout (`SPHINX`, default `../sphinx`): a missing fix warns, and fails the
+run with `PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
 
 The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
 is no Xcode project for it. To check a build without replacing the

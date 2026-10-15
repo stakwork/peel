@@ -1,0 +1,23 @@
+// A thread opened and closed beside the tribe, then over it on a narrow
+// window: the panel slides in and out with its list in it, one piece. The
+// list is never drawn without the panel (before it starts in, or left
+// behind once it has slid out), nor apart from it on the way.
+// check: beside slide=thread hold=chat
+// check: covering slide=thread
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"reveal": "replies"}
+{"wait": 1}
+{"probe": "beside", "for": 2.5}
+{"thread": "visible"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1}
+{"width": 760}
+{"wait": 1}
+{"probe": "covering", "for": 2.5}
+{"thread": "visible"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1}

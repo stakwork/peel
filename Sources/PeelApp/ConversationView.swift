@@ -18,14 +18,12 @@ struct ConversationView: View {
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
-        SidePanelSplit(isOpen: thread != nil, width: $threadWidth, range: Self.threadRange,
+        SidePanelSplit(item: thread, width: $threadWidth, range: Self.threadRange,
                        standard: ThreadPanel.width, minimumMain: Self.minimumWidth) {
             // Its draft lives in the model, so it survives being covered.
             ChatColumn(conversation: conversation)
-        } panel: { beside in
-            if let thread {
-                ThreadPanel(conversation: conversation, ref: thread, beside: beside)
-            }
+        } panel: { thread, beside in
+            ThreadPanel(conversation: conversation, ref: thread, beside: beside)
         }
         // The thread closed (its X, Escape): the keys go back to the chat's
         // composer, not left on the window. Not when the sidebar has them.
@@ -42,12 +40,15 @@ struct ConversationView: View {
 /// (its list where you left it) when the panel closes. Made again, a list
 /// opened afresh and lost its place.
 ///
-/// The panel slides in and out over the column; the column changes width
-/// once, unanimated: narrower once the panel has slid in, wider as it
-/// starts to slide out. Animated, every row of a list in it wrapped again
-/// at each width on the way, and the list moved under you.
-struct SidePanelSplit<Main: View, Panel: View>: View {
-    let isOpen: Bool
+/// The panel slides in and out over the column, laid out each frame
+/// (`TrailingSlide`) so its AppKit views move with it; it shows the item it
+/// was opened for until it has slid out. The column changes width once,
+/// unanimated: narrower once the panel has slid in, wider as it starts to
+/// slide out. Animated, every row of a list in it wrapped again at each
+/// width on the way, and the list moved under you.
+struct SidePanelSplit<Main: View, Panel: View, Item: Identifiable>: View {
+    /// What the panel shows; nil closes it.
+    let item: Item?
     /// Dragged on the divider.
     @Binding var width: Double
     /// How narrow and how wide the panel may be dragged.
@@ -58,17 +59,24 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
     let minimumMain: CGFloat
     @ViewBuilder let main: () -> Main
     /// Told whether it is beside the column, or in its place.
-    @ViewBuilder let panel: (_ beside: Bool) -> Panel
+    @ViewBuilder let panel: (_ item: Item, _ beside: Bool) -> Panel
 
     /// The column has made room for the open panel: from the end of its
     /// slide in, so the column is never narrowed beside an empty strip.
     @State private var roomMade = false
     /// The panel is in, sliding or slid; its slide's end makes the room.
     @State private var panelShown = false
-    /// Each slide in's number: only the latest one's end makes the room.
+    /// Sliding out: still in, until its slide's end takes it out.
+    @State private var leaving = false
+    /// The item last shown, which the panel shows while it slides out.
+    @State private var kept: Item?
+    /// Each slide's number: only the latest one's end makes the room, or
+    /// takes the panel out.
     @State private var slide = 0
     /// The panel's slide in, which the column's fade and its room follow.
     private static var slideIn: Double { 0.2 }
+
+    private var isOpen: Bool { item != nil }
 
     var body: some View {
         // Always inside the reader and always made, so neither opening the
@@ -99,39 +107,91 @@ struct SidePanelSplit<Main: View, Panel: View>: View {
             .transaction(value: isOpen) { $0.animation = nil }
             .overlay(alignment: .trailing) {
                 ZStack {
-                    if isOpen, panelShown {
-                        HStack(spacing: 0) {
-                            if both {
-                                PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
-                                            standard: standard, growsTo: .leading)
+                    if panelShown || leaving, let shown = item ?? kept {
+                        TrailingSlide(shown: leaving ? 0 : 1) {
+                            HStack(spacing: 0) {
+                                if both {
+                                    PaneDivider(width: $width, range: range.lowerBound...min(range.upperBound, room),
+                                                standard: standard, growsTo: .leading)
+                                }
+                                panel(shown, both)
+                                    .frame(width: both ? min(width, room) : nil)
                             }
-                            panel(both)
-                                .frame(width: both ? min(width, room) : nil)
+                            .probedPanel()
                         }
-                        .transition(.move(edge: .trailing))
+                        // In by its transition; out by `leaving`, taken out
+                        // only once slid out, so laid out the whole way.
+                        .transition(AsymmetricTransition(insertion: PanelSlide(), removal: .identity))
                     }
                 }
-                // The slide in is `onChange`'s, which knows when it ends.
-                .animation(isOpen ? nil : .easeIn(duration: 0.15), value: isOpen)
             }
         }
         .onAppear {
             panelShown = isOpen
             roomMade = isOpen
         }
+        .onChange(of: item?.id, initial: true) {
+            if let item { kept = item }
+        }
         .onChange(of: isOpen) { _, open in
-            guard open else {
-                panelShown = false
-                return roomMade = false
-            }
             slide += 1
             let number = slide
+            guard open else {
+                panelShown = false
+                roomMade = false
+                withAnimation(.easeIn(duration: 0.15)) {
+                    leaving = true
+                } completion: {
+                    if slide == number {
+                        leaving = false
+                        kept = nil
+                    }
+                }
+                return
+            }
+            // Opened again while sliding out: back in from where it is.
             withAnimation(.easeOut(duration: Self.slideIn)) {
                 panelShown = true
+                leaving = false
             } completion: {
-                if isOpen, slide == number { roomMade = true }
+                if slide == number { roomMade = true }
             }
         }
+    }
+}
+
+/// A side panel's slide in from the trailing edge. Its place is moved by
+/// layout (`TrailingSlide`), not by a drawn offset as `.move(edge:)` moves
+/// it: the AppKit views in the panel (a list's table, the divider's handle)
+/// are placed by its frame and ignore a drawn offset, so under `.move` the
+/// thread's rows sat where the slide ends while its header and background
+/// slid in around them. Not for the slide out: a removed view is no longer
+/// laid out, so its AppKit views would stay put (`SidePanelSplit` keeps
+/// the panel in until it has slid out).
+private struct PanelSlide: Transition {
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        TrailingSlide(shown: phase.isIdentity ? 1 : 0) { content }
+    }
+}
+
+/// Lays its one view out at its own size, moved right by the part of its
+/// width not `shown` (0 past the trailing edge, 1 in place). Animatable, so
+/// a slide is a layout each frame that every view in it follows.
+private struct TrailingSlide: Layout {
+    var shown: Double
+
+    var animatableData: Double {
+        get { shown }
+        set { shown = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.minX + bounds.width * (1 - shown), y: bounds.minY),
+                              anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
     }
 }
 

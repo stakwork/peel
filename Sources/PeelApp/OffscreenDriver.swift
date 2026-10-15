@@ -75,6 +75,7 @@ final class OffscreenDriver {
         struct Sample {
             let t: Double
             let width: Double
+            let panelX: CGFloat?
             let lists: [ListProbe.Capture]
             let chatRows: [ChatRow]
             let threadRows: [ChatRow]
@@ -532,7 +533,8 @@ final class OffscreenDriver {
             return
         }
         let sample = Probe.Sample(
-            t: Date.now.timeIntervalSince(probe.start), width: Double(main?.frame.width ?? 0), lists: ListProbe.capture(),
+            t: Date.now.timeIntervalSince(probe.start), width: Double(main?.frame.width ?? 0), panelX: ListProbe.drawnPanel(in: main),
+            lists: ListProbe.capture(),
             chatRows: model.chatRows, threadRows: model.threadRows, target: target
         )
         self.probe?.samples.append(sample)
@@ -551,6 +553,8 @@ final class OffscreenDriver {
         struct Sample: Encodable {
             let t: Double
             let width: Double
+            /// Where a side panel is drawn, if one is (`ListProbe.drawnPanel`).
+            let panelX: Double?
             let lists: [ListProbe.List]
         }
         struct File: Encodable {
@@ -568,7 +572,7 @@ final class OffscreenDriver {
             return tag
         }
         let samples = probe.samples.map { sample in
-            Sample(t: sample.t, width: sample.width, lists: sample.lists.map { capture in
+            Sample(t: sample.t, width: sample.width, panelX: sample.panelX.map(Double.init), lists: sample.lists.map { capture in
                 let rows = capture.kind == "chat" ? sample.chatRows : capture.kind == "thread" ? sample.threadRows : []
                 let index = indices[capture.ids] ?? Dictionary(capture.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
                 indices[capture.ids] = index

@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Foundation
 import PeelUI
+import SwiftUI
 
 /// What a message list reports of where its rows are, as of its last move:
 /// the chat's and a thread's table (`MessageTableEngine`), the agent's lazy
@@ -112,6 +113,10 @@ extension ListEnd: ListGeometry {
         let target: Row?
         /// The target's index, laid out or not.
         let targetIndex: Int?
+        /// Its scroll view's x in the window, and whether it is drawn: in
+        /// the window, not hidden, not transparent.
+        let windowX: Double?
+        let visible: Bool
     }
 
     /// One list in one frame as read, nothing derived: a frame's work is
@@ -127,14 +132,18 @@ extension ListEnd: ListGeometry {
         let width: CGFloat
         let shown: Bool
         let frames: [String: CGRect]
+        let windowX: CGFloat?
+        let visible: Bool
     }
 
     /// Every list now in a window.
     static func capture() -> [Capture] {
         entries.compactMap { entry in
             guard let end = entry.end, !end.gone else { return nil }
+            let (windowX, visible) = placement(of: end.scrollView)
             return Capture(kind: entry.kind, serial: entry.serial, ids: entry.ids(of: end), view: end.view,
-                           content: end.content, width: end.width, shown: end.shown, frames: end.frames)
+                           content: end.content, width: end.width, shown: end.shown, frames: end.frames,
+                           windowX: windowX, visible: visible && end.shown)
         }
     }
 
@@ -161,7 +170,8 @@ extension ListEnd: ListGeometry {
             inView: inView.count, blank: !capture.ids.isEmpty && (!capture.shown || inView.isEmpty),
             top: top.flatMap { row($0.0, $0.1) },
             laidOut: near.compactMap { row($0.0, $0.1) }.sorted { $0.index < $1.index },
-            divider: find(divider), target: find(target), targetIndex: target.flatMap { index[$0] }
+            divider: find(divider), target: find(target), targetIndex: target.flatMap { index[$0] },
+            windowX: capture.windowX.map(Double.init), visible: capture.visible
         )
     }
 
@@ -188,5 +198,67 @@ extension ListProbe {
         guard let end = geometry(kind: kind) else { return [] }
         let view = end.view
         return end.ids.filter { id in end.frames[id].map { $0.maxY > view.lowerBound && $0.minY < view.upperBound } ?? false }
+    }
+}
+
+// MARK: Where a list and a side panel are drawn
+
+extension ListProbe {
+    /// A side panel's (`SidePanelSplit`) frame in the window, from its top
+    /// left, as laid out; nil with none in. Set only offscreen.
+    static var panel: CGRect?
+
+    /// Drawn at the panel's top left, offscreen only: a colour nothing else
+    /// in Peel draws.
+    static let mark = SwiftUI.Color(red: 1, green: 0, blue: 1)
+
+    /// Where the panel is drawn now: the x its mark is drawn at in the
+    /// window's row through the mark (a drawn offset, as
+    /// `.move(edge:)`'s, moves what is drawn but not the frame laid out);
+    /// nil with no panel in, or none drawn in the window (slid past its
+    /// edge). The whole row is read, wherever the frame says it is.
+    static func drawnPanel(in window: NSWindow?) -> CGFloat? {
+        guard let panel, let root = window?.contentView else { return nil }
+        let y = root.isFlipped ? panel.minY : root.bounds.height - panel.minY - 1
+        let strip = CGRect(x: 0, y: y, width: root.bounds.width, height: 1)
+        guard let bitmap = root.bitmapImageRepForCachingDisplay(in: strip) else { return nil }
+        root.cacheDisplay(in: strip, to: bitmap)
+        // A pixel a point: the mark is two points wide.
+        let scale = max(bitmap.pixelsWide / Int(strip.width), 1)
+        for x in stride(from: 0, to: bitmap.pixelsWide, by: scale) {
+            guard let color = bitmap.colorAt(x: x, y: 0) else { continue }
+            if color.redComponent > 0.8, color.greenComponent < 0.4, color.blueComponent > 0.8 {
+                return CGFloat(x / scale)
+            }
+        }
+        return nil
+    }
+
+    /// The scroll view's x in its window, and whether it is drawn there.
+    private static func placement(of scroll: NSScrollView?) -> (CGFloat?, Bool) {
+        guard let scroll, let root = scroll.window?.contentView else { return (nil, false) }
+        let frame = root.convert(scroll.bounds, from: scroll)
+        var drawn = frame.intersects(root.bounds)
+        var view: NSView? = scroll
+        while let each = view, drawn {
+            drawn = !each.isHidden && each.alphaValue > 0
+            view = each.superview
+        }
+        return (frame.minX, drawn)
+    }
+}
+
+extension View {
+    /// Offscreen only: the panel's frame, and a mark drawn at its top left
+    /// that a drive's probe finds in what is drawn each frame
+    /// (`ListProbe.drawnPanel`). Nothing outside the offscreen mode.
+    @ViewBuilder func probedPanel() -> some View {
+        if Offscreen.isOn {
+            overlay(alignment: .topLeading) { ListProbe.mark.frame(width: 2, height: 1) }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ListProbe.panel = $0 }
+                .onDisappear { ListProbe.panel = nil }
+        } else {
+            self
+        }
     }
 }

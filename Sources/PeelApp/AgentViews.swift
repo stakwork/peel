@@ -63,11 +63,11 @@ struct AgentChatView: View {
 
     var body: some View {
         // One memory a row opened, beside the chat as a thread is.
-        SidePanelSplit(isOpen: model.memoryPanel != nil, width: $memoryWidth, range: ConversationView.threadRange,
+        SidePanelSplit(item: model.memoryPanel, width: $memoryWidth, range: ConversationView.threadRange,
                        standard: ThreadPanel.width, minimumMain: ConversationView.minimumWidth) {
             AgentChatColumn(agent: agent)
-        } panel: { _ in
-            if let panel = model.memoryPanel { MemoryPanelView(panel: panel) }
+        } panel: { panel, _ in
+            MemoryPanelView(panel: panel)
         }
         // A card waiting on the person must be in view: on a narrow window
         // the memory would hide it.

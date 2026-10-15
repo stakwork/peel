@@ -13,6 +13,10 @@ struct ThreadPanel: View {
 
     static let width: CGFloat = 360
 
+    /// Its rows as they were while open, shown while the panel slides out
+    /// after it closes (`SidePanelSplit`): the model's go with the close.
+    @State private var closingRows: [ChatRow] = []
+
     /// Opens a thread. Every way to a thread from a click (its "N
     /// replies", Threads, the offscreen driver) goes here, so they all move
     /// as one. No animation of its own: `SidePanelSplit` slides the panel
@@ -38,8 +42,10 @@ struct ThreadPanel: View {
                     ThreadPanel.closing { model.closeThread() }
                 }
             }
-            if model.thread != nil {
-                MessageList(rows: model.threadRows, composer: composer, canAnswer: tribe?.canManage == true)
+            let open = model.openThread == ref
+            if open ? model.thread != nil : !closingRows.isEmpty {
+                MessageList(rows: open ? model.threadRows : closingRows, composer: composer,
+                            canAnswer: tribe?.canManage == true)
                     .id(ref)
             } else {
                 Spacer()
@@ -51,6 +57,9 @@ struct ThreadPanel: View {
         }
         .background(Theme.panel)
         .fileDrop(into: composer)
+        .onChange(of: model.threadRows, initial: true) { _, rows in
+            if model.openThread == ref { closingRows = rows }
+        }
     }
 }
 

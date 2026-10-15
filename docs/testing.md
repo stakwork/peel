@@ -358,7 +358,11 @@ narrows once, after the last slide ends), `overscroll-bottom` and
 top, over 0.3 s, let go and eased back; every frame must follow the
 gesture, and the direct chat then follows a new message) and
 `overscroll-arrival` (the peer's message during a slow ease back, your own
-send during the pull: once back in range, the list ends at the newest). A step waits
+send during the pull: once back in range, the list ends at the newest) and
+`thread-open-slide` (a thread opened beside the tribe, then over it on a
+narrow window: each frame the thread's list is drawn, it sits where it
+does in the panel at rest, the panel found where it is drawn by a mark
+only the offscreen mode draws at its top left, `ListProbe.drawnPanel`). A step waits
 0.3 s after it, or its `"next"` seconds.
 
 A scroll is a live scroll on the list's own scroll view (its start, a

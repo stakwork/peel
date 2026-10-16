@@ -126,7 +126,7 @@ knows the core.
 
 | Part | State after the spike | Missing | Size |
 |---|---|---|---|
-| Key exchange | Works both ways; the core answers a paid ContactKey on its own | **The agent pays to answer.** The core's answer to a ContactKey costs PRICE_TO_MEET (3,000 msat) plus a ping. Here the `fund` mixer hid that; on a real server an unfunded agent cannot accept its owner. Something must fund the agent account: the owner keysends it on pairing, or the bridge adds the owner itself, so the owner pays. | S, plus a product decision |
+| Key exchange | Works both ways; the core answers a paid ContactKey on its own | **The agent pays to answer.** The core's answer to a ContactKey costs PRICE_TO_MEET (3,000 msat) plus a ping. Here the `fund` mixer hid that; on a real server an unfunded agent cannot accept its owner. Something must fund the agent account: the owner keysends it on pairing, or the bridge adds the owner itself, so the owner pays. | S (funding: "Who funds the agent" below) |
 | Contact handling | Answers anyone who completes a key exchange | Only the owner (and later allowlisted people) start strut runs. `db/senders.rs` is the allowlist runner already has. The owner's key is known at pairing. The alias is from `RUNNER_ALIAS`; a photo goes through the same call (`my_img`). | S |
 | Reconnect and catch-up | Catch-up by server index works across restarts | Retry and move the index only on success (finding 3); an outbox for publishes made while disconnected (finding 4); fresh broker credentials on reconnect: `mqtt_client` reuses the signed timestamp it was started with (not tested whether the broker rejects an old one). The last two are in the core's `mqtt_client`, which the mixer and tribes server share, or runner owns its own client loop. | M |
 | Store | Whole state as one blob, rewritten on every call | One redb row per state key (the graph and hops entries grow); `runId -> message` for jobs; nothing else. The conversation itself lives in strut and on the owner's devices. The bridge keeps no chat history. | S |
@@ -168,6 +168,54 @@ Against, or to settle with Evan:
   the spike copies 25 lines of it. Exporting it would be a one-word core
   change.
 - Old dependencies (Rocket `0.5.0-rc.1`, reqwest 0.11); not a blocker.
+
+## Recommended answers for Evan
+
+These are recommendations to put to Evan, not decisions. Tom agreed the
+funding flow on 2026-10-16.
+
+**1. Where the bridge lives: a new crate beside runner, say
+`sphinx/bridge`, not a mode inside runner.** It keeps what makes runner a
+good base: it builds against the core in the same workspace, runs on
+Linux, and gets a Dockerfile. Runner's db, admin-token HTTP and seed
+endpoint can be copied across, and its Jarvis and podcast work stays out.
+Evan reviews it in his repo, but it ships on its own and cannot break
+runner.
+
+**2. How the agent's account is derived: one keyed hash of the account's
+seed, with a fixed label and a number.** For example, HMAC-SHA256 keyed
+with the account's 32-byte seed over `sphinx-agent/0`, with the number
+leaving room for more agents later (foundation.md's `agent/<n>` entry).
+The words always recover the agent's account, and the brain only ever
+holds the agent's seed (decision 3, A). It stays out of the core's own key
+tree, which numbers a child key per contact, so it can never collide with
+one. Shared test vectors in Swift and Rust prove that Peel and the bridge
+reach the same account. The question for Evan is whether he knows a
+reason to use the core's key tree instead.
+
+**3. Changes to the core's connection code: mostly none; the bridge runs
+its own connection loop.** The fixes the spike needs (a send queue while
+disconnected, fresh broker credentials on reconnect, following the
+blockheight, moving the index only after a reply is out) can all live in
+the bridge, so nothing changes for the mixer or tribes server. The one
+core change to ask for is exporting the state encoding
+(`bindings::rmp_utils`), so the bridge does not keep a copy.
+
+### Who funds the agent
+
+Setting up the agent is one step, like pasting an API key the first time:
+
+1. In Peel, "Set up agent".
+2. Peel derives the agent's account and hands its seed to the brain
+   through the bridge's admin endpoint.
+3. The account pays the agent a starting balance the person picks (say
+   1,000 sats). It shows as a payment in the chat with the agent.
+4. The agent adds its owner as a contact, and Peel answers on its own.
+
+Creating a Sphinx account does not change: the agent costs nothing until
+it is set up. The starting balance covers the agent's side of the key
+exchange (3,000 msat plus a ping) and what it pays for later (tribe
+messages, the pay tool).
 
 ## Left behind
 

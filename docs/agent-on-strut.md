@@ -18,7 +18,9 @@ official apps: one DM, the same thread everywhere. A small Rust bridge,
 bundled in Peel.app and started by Peel as strut is today, holds the
 agent's own Sphinx account. Each message you send it becomes one turn of a
 strut workflow, `peel-agent`, on strut's core `agent` step, which keeps
-the conversation as a strut session and compacts it. Memory and
+the conversation as a strut session and compacts it. That workflow is
+the orchestrator: it answers small things itself and starts or continues
+strut's `job` for bigger work, as Jamie does in Hive. Memory and
 automations are strut steps already, so they run there. Your chats, sends
 as you and Calendar are not: only your devices hold your keys and
 EventKit. So a step asks your Mac, with a hidden control message in the
@@ -48,6 +50,11 @@ From [foundation.md](foundation.md), and the group added later that day:
 9. **Only the Mac answers device requests in Phase 1.**
 10. **Brain mode is off by default.** The Mac is the brain while it is
     awake.
+11. **The contact is a pipe; the orchestrator is a strut workflow**
+    (Tom, later on 2026-10-16). The bridge decides nothing: every message
+    goes to the orchestrator, `peel-agent`, an agent in strut. It answers
+    small things itself and starts or continues a `job` for bigger work,
+    as Jamie does in Hive. Reuse strut's jobs as they are.
 
 Pending Evan: whether the bridge is a strut mode of `sphinx/runner`, and
 the key derivation scheme. Section 4 keeps both behind one seam each.
@@ -81,6 +88,28 @@ Three processes on the Mac, all started by Peel: Peel itself (your
 account), strut (bundled today) and the bridge (new). Brain mode, where
 strut and the bridge run on a box without Peel, is Phase 2; nothing here
 assumes the brain is the Mac except who answers device requests.
+
+## The layers
+
+| Layer | What | Decides? | In Hive |
+|---|---|---|---|
+| 1. Your devices | Peel on the Mac (and the phone later): read your chats, send as you, Calendar, approval cards | No | The browser |
+| 2. The contact | The bridge: the agent's keys, the inbox, replies and files back, requests to your Mac | **No.** Every message from you goes to strut | Hive's server |
+| 3. The orchestrator | `peel-agent`: strut's `agent` step with Peel's prompt and a small set of tools. Answers from memory and your chats, makes automations, and starts or continues jobs | **Yes** | Jamie |
+| 4. Jobs | strut's `job` workflow, unchanged: a folder per job, artifacts, `ask`, the job index | Yes, within one task | Hive's jobs |
+
+Why the bridge is not the orchestrator: it would be a second agent loop
+in Rust (model calls, history, compaction, prompts) beside strut's; its
+conversation would sit outside the strut data a backup or handover moves;
+and text from other people's chats would reach a model in the process that
+holds the agent's keys.
+
+Why every message is not a job turn: `job` always has bash, file editing
+and the web (its built-ins are always on, and a host can only add tools).
+On your Mac that bash could read Peel's database around the device
+requests and their cards. And "when is Kate's birthday?" does not need a
+job folder. The orchestrator stays small; jobs do the heavy work, as in
+Hive.
 
 ## 1. The agent loop as a strut workflow
 
@@ -151,9 +180,14 @@ steps:
       agentTools: "{{ params.tools }}"
       model: "{{ params.model }}"
       cacheTtl: 1h
-      schema: { text }                          # tool rows come from the run's events
+      schema: { text, artifacts, ask? }         # job's reply shape; tool rows come from the run's events
 ```
 
+- **The reply** has `job`'s shape (`src/workflows/job.yaml`): `text`, the
+  `artifacts` it produced (a file, an image, a link, short inline
+  content) and an optional `ask`. One shape for the orchestrator and its
+  jobs, so the bridge and the Mac handle both the same way. Its files go
+  in the workflow's own folder (`cwd`); a job's go in the job's.
 - **The system prompt** is today's, from `AgentSetup.systemPrompt` and
   the sections it adds (`AgentMessageLink.instruction`,
   `SphinxTools.systemPrompt`, `sendPrompt`, `MemoryTools.systemPrompt`,
@@ -196,6 +230,7 @@ steps:
 | `list_automations`, `preview_schedule` | read | strut steps over strut's automation store |
 | `create_automation`, `update_automation`, `delete_automation`, `run_automation_now` | send (asks) | strut steps that first send an `approve` device request; they act only on "allow" |
 | Calendar (none today; jobs-architecture P4 planned it) | read, send | Device requests `calendar.*` (`calendar/*`), new in Phase 1 |
+| (new) `start_job`, `continue_job`, as in Hive | act | strut steps `job/start` and `job/continue`: launch `job` detached with the bridge as its `callback`, and return the job id at once. `job/list`, `job/get`, `job/read` exist already |
 
 The step names `sphinx/send` and `sphinx/read` are the ones
 [automations-and-jobs.md](automations-and-jobs.md) already uses, so `job`
@@ -406,6 +441,12 @@ so it needs the same chunking both ways (open question 4).
   (strut emits one per tool call), not from what the model says it did;
   capped at 2 KB, so the Mac draws today's
   quiet rows. Device requests show as their cards.
+- **Files and images.** A reply's or a job's `artifacts` come to the DM
+  as Sphinx attachments, uploaded by the bridge to the memes server as
+  Peel's own attachments are; a link artifact is a link in the text.
+- **A job's progress.** A job's result or question arrives as an agent
+  message naming the job (`metadata.peel.job`). Your next message goes to
+  the orchestrator, which continues the job when that is what you meant.
 - **Automation results** arrive as agent messages carrying the
   automation's name (`metadata.peel.automation`), as
   `AgentSession.deliver` titles them today, with a notification.
@@ -455,7 +496,10 @@ by the shared test vectors foundation.md asks for. Until then:
 
 - **Dev builds** use a throwaway agent account on the local stack: a
   random seed kept in the Keychain and marked throwaway, signed up with an
-  invite from the test account (`scripts/test-stack.sh`).
+  invite from the test account (`scripts/test-stack.sh`), and funded by
+  it, since the agent pays to answer your key exchange
+  ([research/runner-bridge-spike.md](research/runner-bridge-spike.md),
+  when #304 merges).
 - **Nothing derived ships** until the scheme is decided. The PR that
   turns the agent on for real accounts waits on Evan.
 
@@ -472,7 +516,7 @@ build order gets smaller.
 |---|---|---|
 | — The fire path | strut fires `peel-automation`, whose step posts to Peel's `AutomationServer` on loopback; Peel runs a headless Swift loop | **Goes.** Automations fire `peel-automation-run` in strut directly, with no session. `AutomationServer`, its token and port in strut's secrets, `peel/run-automation` and the headless run are removed |
 | 1. Sends from automations | `send_sphinx_message` in the headless Swift run, limited to approved chats | **Simpler.** The `send` device request with a send grant (section 2). Same card, same three safeguards, enforced on the Mac |
-| 2. Jobs (C) | Peel's `start_job` / `continue_job`, `Job` records in Peel, callbacks to Peel, Needs you cards (jobs-architecture P1–P3) | **Smaller.** The front agent is in strut, so it starts `job` itself. Not with `meta/run-workflow`, which waits for the child run and would hold the DM's session (`session_busy`) for the whole job: a detached launch with the bridge as its `callback` (a small strut step, with the jobs work). Job records stay in strut's job index. A job's `ask` comes back by `run.end` to the bridge and lands in the DM; your reply continues the job. Peel keeps only the card. strut's J1 (`effect` + the approval stop) is still needed for connectors that act |
+| 2. Jobs (C) | Peel's `start_job` / `continue_job`, `Job` records in Peel, callbacks to Peel, Needs you cards (jobs-architecture P1–P3) | **Smaller.** The orchestrator is in strut, so it starts `job` itself with `job/start` (PR S2). Not with `meta/run-workflow`, which waits for the child run and would hold the DM's session (`session_busy`) for the whole job: `job/start` launches it detached, with the bridge as its `callback`. Job records stay in strut's job index. A job's `ask` comes back by `run.end` to the bridge and lands in the DM; your reply goes to the orchestrator, which calls `job/continue`. Peel keeps no job records. strut's J1 (`effect` + the approval stop) is still needed for connectors that act |
 | 3. `sphinx/read` for `job` | A new loopback path from strut to Peel | **Disappears.** Grant `job` the same `sphinx/*` device steps |
 | 4. Authoring (D) | strut | Unchanged |
 | 5. Home server | The Sphinx bridge, the agent's identity, claims for sends as you | **Mostly done by Phase 1.** The bridge and the identity are built; the device channel is the claim. What is left is running strut and the bridge without Peel: Phase 2 |
@@ -508,17 +552,19 @@ would give the same change.
 |---|---|---|---|---|---|
 | 0 | peel | This doc, foundation.md's answers, the PLAN.md row | Tom agrees | low | — |
 | S1 | strut | The four `agent` step gaps: `system: latest` for a session, a tool output that stops the turn, a `callback` on automations, a retain text of its own for compaction; the no-built-ins check | Tests for each; a `peel-agent`-shaped workflow runs two turns in one session against a stand-in model; Hive unaffected (all opt-in) | medium | — |
-| B1 | bridge | The bridge: seed and sender, store-then-ack inbox, a strut run per message with the callback, the reply as a talk message, the request ledger and `POST /device/request`, late results as new turns, `status` lines ("Waiting for your Mac"), `cancel` to strut, the turn's time stamp, tool rows from run events, chunking both ways, `GET /health` | On the local stack: a throwaway account messages the bridge's account and gets a model reply from strut; a request round-trips to a stub device; a redelivered message and a repeated request do nothing twice | high (keys, untrusted input) | Evan: where it lives (built on the spike branch until then) |
+| B1 | bridge | The bridge: seed and sender, the one workflow it launches (named by Peel), store-then-ack inbox, a strut run per message with the callback, the reply as a talk message, the request ledger and `POST /device/request`, late results as new turns, `status` lines ("Waiting for your Mac"), `cancel` to strut, the turn's time stamp, tool rows from run events, chunking both ways, `GET /health` | On the local stack: a throwaway account messages the bridge's account and gets a model reply from strut; a request round-trips to a stub device; a redelivered message and a repeated request do nothing twice | high (keys, untrusted input) | Evan: where it lives (built on the spike branch until then) |
 | 1 | peel | The control envelope in PeelCore: encode and decode `metadata.peel`, keep `tz`, hide control messages in the Mac's and the phone's message lists behind a quiet line, never as a bubble | Unit tests on the envelope; a control message from a test account shows as a line on Mac and phone and as text in the official app; nothing else in the list changes | high (message list, untrusted input) | — |
 | 2 | peel | `DeviceRequests` on the Mac: the table, the handler for `chats.*` (reusing `SphinxTools`), `ack`/`result`/`expired`, dedupe, trust (agent pubkey, device id). Reads only | Journey on the local stack: a throwaway agent account sends `chats.unseen`; the Mac answers once, a repeat gets the stored result, a wrong sender gets nothing | high (untrusted input, storage) | 1 |
 | 3 | peel | Sends and approvals by request: `send` and `approve` with the card in the DM, expiry, `unknown` after a crash, send grants and their list in Account › Agent (shown only with the preview on) | Journey: a send request shows a card; allow sends once; a repeat after allow sends nothing; an expired card does nothing; a kill between send and record answers `unknown` | high (sends, money) | 2 |
 | 4 | peel | Launch the bridge: stage it beside strut, `BundledBridge`, the throwaway agent account in dev builds (random seed in the Keychain, invite, add as contact), behind the preview setting | A dev build with the setting on starts strut and the bridge, and the agent contact appears in Direct messages; off, nothing starts | high (keys) | B1 |
+| S2 | strut | `job/start` and `job/continue`: launch `job` detached with a `callback`, return the job id; the orchestrator's (non-job) run returns `artifacts` the same way `job` does in the callback | Tests; an agent step granted them starts a job, ends its turn, and the job's `run.end` reaches the callback with resolved artifacts | medium | — |
 | 5 | peel + strut | The `peel-agent` and `peel-automation-run` workflows: Peel installs them with today's prompts and publishes the `sphinx/*` steps; strut's automation steps upstream (`automation/list`, `preview`, `create`, `update`, `delete`, `run-now`), the acting ones behind `approve` | Preview on: "what did I miss?" in the DM reads through the Mac and answers; "remember…" writes to memory; a new automation shows a card before it exists | medium | S1, 2, 3, 4 |
 | 6 | peel | The Agent chat is the DM (preview on): `AgentTable` reads the DM, Stop sends `cancel`, tool rows from metadata, cards for requests, "Waiting for your Mac", "Earlier, on this Mac" for the old history | Preview on: one agent row; type, see the reply, approve a send, stop a turn, read the old history; preview off: today's Agent chat unchanged | high (message list) | 5 |
+| 6b | peel + bridge | Jobs and files from the DM: grant the orchestrator `job/start`, `job/continue` and the `job/*` reads; the bridge sends job results, questions and artifacts into the DM, files as attachments | Preview on: "research flights to Lisbon" starts a job and the chat stays free; its result and a screenshot arrive in the DM; answering its question continues the same job | high (attachments, untrusted input) | S2, 6 |
 | 7 | peel | Automations on `peel-automation-run`: new ones are made on it; turning the preview on moves existing ones (same schedule and prompt, workflow changed), turning it off moves them back; sends from automations with grants (automations-and-jobs step 1) | Preview on: the Hive test posts at the minute it said, `[Agent]` first, nobody at the Mac; the weekly report lands in the DM; preview off: the same automations run on `peel-automation` as before | high (sends) | 5, 3 |
 | 8 | peel | Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
 | 9 | peel | iPhone: the agent DM shows talk and hides control (on PR 1's envelope), "Waiting for your approval on your Mac" | From the phone, with the Mac awake: message the agent and get the answer in the same thread as the Mac | medium | 1, 6 |
-| 10 | peel | **Turn it on.** The agent's account from `AgentAccount.seed(n:)` with the decided scheme and its test vectors; first-run setup ("Give your assistant its own account", one invite, the 5-sat key exchange); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | Evan: key derivation |
+| 10 | peel | **Turn it on.** The agent's account from `AgentAccount.seed(n:)` with the decided scheme and its test vectors; first-run setup ("Give your assistant its own account", one invite, and a small keysend to the agent: it pays about 3 sats, `PRICE_TO_MEET` plus a ping, to accept you as a contact, per the runner spike); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | Evan: key derivation |
 | 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | medium (over 400 lines) | 10, plus a week of use |
 
 ```
@@ -526,7 +572,8 @@ now       S1   B1 (spike branch)   1
 then      2    4
 then      3
 then      5
-then      6    7    8    9
+then      6    7    8    9    S2
+then      6b
 when Evan answers the scheme: 10, then 11
 ```
 
@@ -584,3 +631,8 @@ seconds slower (open question 3).
 8. **Two Macs on one account.** Only the Mac that runs the bridge answers
    (requests carry its device id). The other Mac shows the DM like the
    phone. *Recommended:* fine for Phase 1; device claims are Phase 2.
+9. **The bridge launches the orchestrator, not `job`.** The runner spike
+   (#304) sketches the bridge posting each message to
+   `/workflows/job/run`. With the layers above it posts to `peel-agent`,
+   and only the orchestrator starts jobs. *Recommended:* the bridge knows
+   one workflow name, set by Peel at launch.

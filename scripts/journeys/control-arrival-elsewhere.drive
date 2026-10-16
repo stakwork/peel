@@ -1,0 +1,16 @@
+// A control message in the direct chat while reading the tribe scrolled
+// up: the chat opens at it (unread, under "New messages") as a quiet line,
+// never a bubble.
+// needs: peer
+// check: open land=divider
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 1500}
+{"wait": 1}
+{"signal": "peer-sends-control"}
+{"wait": 5}
+{"probe": "open", "for": 3}
+{"select": "{{chat}}"}
+{"wait": 2.5}
+{"snapshot": "dm"}

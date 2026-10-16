@@ -1,0 +1,11 @@
+// A control message while at the bottom: the list follows it to the
+// newest, where it shows as a quiet line between the messages.
+// needs: peer
+// check: arrival land=end
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "arrival", "for": 10}
+{"signal": "peer-sends-control"}
+{"wait": 9}
+{"snapshot": "line"}

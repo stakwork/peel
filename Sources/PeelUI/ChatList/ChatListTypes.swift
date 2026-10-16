@@ -176,8 +176,10 @@ extension ChatRow {
         }
         let newest = shown.last
         // In the chat's list, a reply of yours in a thread is the thread's
-        // send, not this list's.
-        let own = newest?.fromMe == true && (list.thread != nil || newest?.threadUUID == nil)
+        // send, not this list's. A control message your device sent is the
+        // device's, not yours: it never pulls the list down.
+        let fromDevice = if case .control = kind { true } else { false }
+        let own = newest?.fromMe == true && (list.thread != nil || newest?.threadUUID == nil) && !fromDevice
         return ChatListRow(id: id, canAnchor: anchors, isOwn: own, shown: shown, holds: heldUUIDs, date: date)
     }
 }

@@ -58,14 +58,12 @@ public enum TimeZoneOffset {
         return Int(text)
     }
 
-    /// `body` (one of Peel's own, a JSON object of strings) with `metadata`
-    /// set to `offset`, or taken out when `offset` is nil, so a message sent
-    /// again follows the switch as it is now.
+    /// `body` (one of Peel's own, a JSON object of strings) with its
+    /// metadata's `tz` set to `offset`, or taken out when `offset` is nil,
+    /// so a message sent again follows the switch as it is now. Other keys
+    /// in the metadata (a control envelope's `peel`) stay.
     static func setting(_ offset: String?, in body: String) throws -> String {
-        guard offset != nil || body.contains("\"metadata\""),
-              var fields = JSON.decode([String: String].self, from: body) else { return body }
-        fields["metadata"] = try offset.map { try Engine.json(["tz": $0]) }
-        return try Engine.json(fields)
+        try MessageMetadata.setting("tz", to: offset.map(JSONValue.string), in: body)
     }
 }
 

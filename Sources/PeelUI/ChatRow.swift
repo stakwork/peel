@@ -47,6 +47,8 @@ public enum Quote: Equatable, Sendable {
 public struct ChatRow: Identifiable, Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case message, request, note
+        /// A control message's quiet line (`Message.controlLine(by:)`), never a bubble.
+        case control(String)
         /// Sats sent in a direct message (type 5).
         case payment
         /// A payment request with its invoice (type 2).
@@ -150,14 +152,20 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         // A thread's rows start with its original (or, when only its replies
         // are stored, a note in its place) and the reply count.
         if let threadRoot, let anchor = original ?? messages.first {
-            rows.append(row(anchor, kind: original == nil ? .missingOriginal : .message, id: "o\(threadRoot)",
-                            inTribe: inTribe, people: people))
+            let kind: Kind = original == nil ? .missingOriginal
+                : anchor.isControlLine(inTribe: inTribe) ? .control(anchor.controlLine(by: people.sender(of: anchor, inTribe: inTribe)))
+                : .message
+            rows.append(row(anchor, kind: kind, id: "o\(threadRoot)", inTribe: inTribe, people: people))
             rows.append(row(anchor, kind: .replies(messages.count), id: "r\(threadRoot)", inTribe: inTribe, people: people))
         }
         var newAfter = newAfter
         for message in messages {
+            // A control message is only its line, never a thread's row.
+            let controlLine = message.isControlLine(inTribe: inTribe)
+                ? message.controlLine(by: people.sender(of: message, inTribe: inTribe)) : nil
+            if controlLine?.isEmpty == true { continue }
             // A collapsed thread's row stands for its newest message, which this is.
-            let collapsed = message.standsForThread ? message.threadUUID.flatMap { threads[$0] } : nil
+            let collapsed = message.standsForThread && controlLine == nil ? message.threadUUID.flatMap { threads[$0] } : nil
             // No row that would draw nothing (blank space under the last
             // row, Tom 2026-10-08), or only "Original message not
             // available": "New messages" goes to the next.
@@ -176,10 +184,10 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 rows.append(row)
                 continue
             }
-            let kind: Kind = message.isSaid ? .message
+            let kind: Kind = controlLine.map(Kind.control) ?? (message.isSaid ? .message
                 : message.type == MessageType.directPayment ? .payment
                 : message.type == MessageType.invoice ? .paymentRequest
-                : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
+                : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note)
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
             if kind == .message, !startsNew, let last = rows.last,
                last.takes(message, sender: row.sender, boosted: { boostsOn($0) != nil }) {
@@ -250,14 +258,18 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     ) -> Quote? {
         guard let reply = message.replyUUID, reply != threadRoot else { return nil }
         guard let parent = parents[reply] else { return .missing }
-        guard parent.isContent, !parent.isBlank else { return nil }
+        // A control message is a line, never quoted as talk.
+        guard parent.isContent, !parent.isBlank, !parent.isControlLine(inTribe: inTribe) else { return nil }
         return .message(parent, people.sender(of: parent, inTribe: inTribe))
     }
 
     /// The uuids a jump finds this row by: its own, its run of images', and
     /// the original of its thread. None for a row that is not a message's.
     public var heldUUIDs: [String] {
-        guard [.message, .payment, .paymentRequest].contains(kind) else { return [] }
+        switch kind {
+        case .message, .payment, .paymentRequest, .control: break
+        default: return []
+        }
         return ([message.uuid] + images.map(\.uuid) + [summary?.original.uuid]).compactMap { $0 }
     }
 

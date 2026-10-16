@@ -71,6 +71,28 @@ extension Message {
         default: return "\(who) joined"
         }
     }
+
+    /// The longest control line shown; the sender means it to be short.
+    static let controlLineLength = 200
+
+    /// Whether this is drawn as a control message's quiet line
+    /// (docs/agent-on-strut.md, "Two kinds of message in the DM"), never a
+    /// bubble: only in a direct message, the device channel's (in a tribe
+    /// the same metadata leaves a member's message a message), and not one
+    /// of ours that failed, which keeps its bubble for Retry and Discard.
+    public func isControlLine(inTribe: Bool) -> Bool {
+        !inTribe && control != nil && !(fromMe && delivery == .failed)
+    }
+
+    /// A control message's line: who sent it, so nobody's text passes for
+    /// Peel's own, and its text as the official apps show it, on one line
+    /// as a preview shows it; empty when it has no words.
+    public func controlLine(by sender: Sender) -> String {
+        let text = MessageMarkup.plainText(shownText)
+        guard !text.isEmpty else { return "" }
+        let line = "\(sender.label): \(text)"
+        return line.count > Self.controlLineLength ? String(line.prefix(Self.controlLineLength - 1)) + "…" : line
+    }
 }
 
 extension PIN {

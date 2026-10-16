@@ -58,6 +58,9 @@ struct PeelCommand {
           share-timezone <pubkey> [yes|no]  whether this account's offset goes with what it sends in a
                                       direct message or private tribe (on unless turned off; never in
                                       a public tribe); sets it when given
+          send-control <pubkey> <envelope json> <text>  send a control message to a contact: the
+                                      device channel's envelope in its metadata, the text the line
+                                      it shows (for tests; docs/agent-on-strut.md)
           send-file <pubkey> <path>...  send files to a contact or a tribe, one message each (--text <caption>
                                       on the last, --reply, --thread, --price <sats> to sell them: buyers pay
                                       to get the key)

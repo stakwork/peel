@@ -74,7 +74,10 @@ struct ListRowContent: View {
                 JoinRequestNote(message: row.message, sender: row.sender, approved: row.approved, canAnswer: canAnswer)
                     .padding(.horizontal, Theme.Space.xl)
             case .note:
-                MembershipNote(message: row.message, sender: row.sender)
+                NoteLine(text: row.message.membershipNote(by: row.sender))
+                    .padding(.horizontal, Theme.Space.xl)
+            case .control(let line):
+                NoteLine(text: line)
                     .padding(.horizontal, Theme.Space.xl)
             case .payment:
                 PaymentRow(row: row, flashed: flashed)

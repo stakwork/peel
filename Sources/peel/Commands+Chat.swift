@@ -18,6 +18,19 @@ extension Invocation {
             )
             try await session.finish(after: wait)
 
+        case "send-control":
+            guard let pubkey = arguments.next(), let json = arguments.next(), !arguments.isEmpty else {
+                throw PeelError("send-control needs a pubkey, an envelope and some text")
+            }
+            guard let envelope = try? JSONDecoder().decode(ControlEnvelope.self, from: Data(json.utf8)),
+                  envelope.isReadable else {
+                throw PeelError("the envelope is not one this Peel writes")
+            }
+            let session = try await Session(load())
+            await session.connectIfPossible(insecure: insecure)
+            try await session.engine.sendControl(envelope, text: arguments.rest().joined(separator: " "), to: pubkey)
+            try await session.finish(after: wait)
+
         case "send-file":
             guard let pubkey = arguments.next(), !arguments.isEmpty else {
                 throw PeelError("send-file needs a pubkey and a file")

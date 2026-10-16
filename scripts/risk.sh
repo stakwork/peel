@@ -14,10 +14,10 @@ files=$(git diff --name-only "$base"...HEAD)
 # the message list, and keyboard and focus handling.
 high='Engine\+Payments|Engine\+Account|Invoice|PaymentHistory|Sats\.swift|MoneyArrivals|Pay[A-Za-z]*\.swift|StateCodec|Keychain|PIN|Mnemonic|Clipboard|Storage\+Migrations|Storage\+Writes|Web\.swift|WebPage|ServerAddress|MessageMarkup|Contacts\.swift|Sources/Sphinxrs|Engine\.swift|ConversationView|MessageViews|ChatSearch|Sidebar\.swift|KeyMonitor|PeelMenu|MenuPresenter'
 # Everything else that runs: engine, storage, app code, scripts.
-medium='^Sources/|^scripts/|^Package'
+medium='^Sources/|^Apps/|^scripts/|^Package'
 
 # Only shipped code can be high: a test or doc named after a risky file is not.
-reasons_high=$(printf '%s\n' "$files" | grep -E '^(Sources|scripts)/' | grep -E "$high" || true)
+reasons_high=$(printf '%s\n' "$files" | grep -E '^(Sources|Apps|scripts)/' | grep -E "$high" || true)
 reasons_medium=$(printf '%s\n' "$files" | grep -E "$medium" || true)
 lines=$(git diff --shortstat "$base"...HEAD | awk '{print $4 + $6}')
 

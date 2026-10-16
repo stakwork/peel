@@ -277,7 +277,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ListPlacement`, `ListViewport`, `ListDiff`, `ListPill`, and the
   `ChatListEngine` and `ListAnchorStore` protocols it takes; `AppModel` is
   the store)
-- `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
+- `Apps/Mac/Peel/` — the SwiftUI Mac app over `PeelUI` (the target "Peel macOS" of `Apps/Peel.xcodeproj`, see `Apps/`): `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
   `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
@@ -396,16 +396,29 @@ is a short plan. Update the status and the journal when you finish something.
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
-  `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
+  `OffscreenDriver` (its `-drive` script), see "Checking the app". The Mac app is the only target that links LiveKit
   and WebRTC)
-- `iOS/` — the iPhone app (phase 7, I2), the only thing outside SwiftPM:
-  `Peel.xcodeproj` (hand-written; target `Peel`, iOS 26, iPhone only, over
-  the package's `PeelUI`, `PeelCore` and `AgentKit` through a local package reference
-  to the repo root; its `Package.resolved` is a copy of the root's, copy it
-  again when the pins move), `Signing.xcconfig` (bundle ID `dev.peel.ios`,
-  no team: a team goes in the ignored `Local.xcconfig`, see
-  `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
-  in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase),
+- `Apps/` — the two apps and what they share, in one Xcode project,
+  `Apps/Peel.xcodeproj` (hand-written; targets "Peel macOS" and "Peel iOS",
+  schemes of the same names, over the package's libraries through a local
+  package reference to the repo root, plus LiveKit for the Mac only. Its
+  `Package.resolved`, under `project.xcworkspace/xcshareddata/swiftpm`, is
+  a copy of the root's with LiveKit's pins added; copy again when the
+  pins move). Both apps are `com.sphinx.peel`; `Config/Peel.xcconfig` holds
+  that, the version and build number and the team, and an ignored
+  `Config/Local.xcconfig` (see `Local.xcconfig.example`) puts your own
+  team and bundle ID over them. `Assets/AppIcon.icon` is the icon Xcode
+  compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
+  flat logo for docs and pages. `Shared/` holds the files both apps
+  compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
+  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
+  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`);
+  they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
+  `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
+  Keychain access group, microphone and camera) and `Mac/Info.plist` (the
+  `peel:` link). `Apps/iOS/Peel/` is the iPhone app (phase 7, I2; iOS 26, iPhone
+  only), a synchronized folder (every file in it is in the target):
+  `PeelPhoneApp` (the app, `RootView` by phase),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
@@ -461,14 +474,9 @@ is a short plan. Update the status and the journal when you finish something.
   attach from Photos, the camera or Files, `@` mentions, the mic and the
   bolt saying what is coming) and `YouTab` (photo, name and balance;
   Agent; the words, Change PIN, Face ID, the PIN timeout, boost amount,
-  the confirmation threshold, server; Forget). It also compiles `Theme`,
-  `Avatar`, `Clipboard`, `CopyButton`, `MessageText`, `QRCode` and
-  `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and `PaymentKit`
-  (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) from
-  `Sources/PeelApp`
-  (the project's "Shared with the Mac" group) and takes its icon from
-  `Assets/AppIcon.icon`; `Peel/Assets.xcassets` holds `Logo`, a link to
-  `Assets/peel.svg`, for `AppIcon` on the phone
+  the confirmation threshold, server; Forget).
+  `Peel/Assets.xcassets` holds `Logo`, a link to
+  `Apps/Assets/peel.svg`, for the phone's own use
 - `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
   and iOS; the plan is `docs/agent-architecture.md`, the phase
   `docs/phases/09-agents.md`)
@@ -771,9 +779,8 @@ is a short plan. Update the status and the journal when you finish something.
   allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
-- `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon
-  Composer) into `Assets/Assets.car` and `Assets/AppIcon.icns`; rerun after
-  changing the icon. `Assets/peel.svg` is the flat logo for docs and pages
+- `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged
+  strut in `Contents/Strut` (and signs its native code, when Xcode signs)
 
 ## Build and run
 
@@ -797,9 +804,13 @@ read it (`GITHUB_TOKEN=$(gh auth token)`); without one every fix is
 unchecked. A missing or unchecked fix warns, and fails the run with
 `PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
 
-The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
-is no Xcode project for it. To check a build without replacing the
-installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+The Mac app is the "Peel macOS" target of `Apps/Peel.xcodeproj`; `scripts/bundle-app.sh`
+builds it with `xcodebuild` (unsigned, into `.build/xcode`), then signs it for
+the weekly re-sign below (`run-app.sh` installs the result). To check a build
+without replacing the installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick "Peel macOS"
+and Product > Archive for a build to distribute: the scheme's Release signs
+with the team in `Apps/Config`, and `scripts/stage-strut.sh` must have run.
 
 ### The iPhone app
 
@@ -807,19 +818,19 @@ installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
 SPHINX_IOS_LIB=<sphinx-rs-ios>/out/ios-arm64/libsphinxrs.a \
 SPHINX_IOS_SIM_LIB=<sphinx-rs-ios>/out/ios-arm64-simulator/libsphinxrs.a \
   ./scripts/build-ffi.sh                      # the core with its iOS slices
-xcodebuild -project iOS/Peel.xcodeproj -scheme Peel \
+xcodebuild -project Apps/Peel.xcodeproj -scheme 'Peel iOS' \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   -derivedDataPath .build/xcode build
 xcrun simctl boot 'iPhone 18 Pro'
 xcrun simctl install booted .build/xcode/Build/Products/Debug-iphonesimulator/Peel.app
-xcrun simctl launch booted dev.peel.ios
-xcodebuild -project iOS/Peel.xcodeproj -scheme Peel -destination 'generic/platform=iOS' \
+xcrun simctl launch booted com.sphinx.peel
+xcodebuild -project Apps/Peel.xcodeproj -scheme 'Peel iOS' -destination 'generic/platform=iOS' \
   -derivedDataPath .build/xcode CODE_SIGNING_ALLOWED=NO build   # device, unsigned
 ```
 
-Or open `iOS/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
-`Peel` scheme and a simulator, and Run. A simulator needs no team; for a
-phone, copy `iOS/Local.xcconfig.example` to `iOS/Local.xcconfig` and set
+Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
+`Peel iOS` scheme and a simulator, and Run. A simulator needs no team; for a
+phone, copy `Apps/Config/Local.xcconfig.example` to `Apps/Config/Local.xcconfig` and set
 the team. The phone's profile is `default` in the app's own container,
 its words in the app's Keychain; agents never put an account's words,
 an invite or the throwaway account into it (Tom does that himself).
@@ -916,7 +927,7 @@ overrides it), with its own, empty Keychain. So:
 - So: **run `./scripts/run-app.sh` at least once a week** (it prints the
   expiry). If the installed app has already stopped launching, the same
   command fixes it.
-- The entitlements are `scripts/provision/Provision.entitlements`: the access
+- The entitlements are `Apps/Mac/Peel.entitlements`: the access
   group, plus `com.apple.security.device.audio-input` and `.camera` for
   calls (hardened runtime blocks the devices without them). Adding a key
   there makes `sign-app.sh` build the stub again once, keeping a profile
@@ -929,9 +940,13 @@ overrides it), with its own, empty Keychain. So:
   the Keychain. (Before calls, an ad-hoc bundle ran without the Keychain.)
 - A free team may register at most 10 App IDs in 7 days; do not change the
   bundle ID casually.
-- The iPhone app is `dev.peel.ios` under the team in `iOS/Local.xcconfig`
-  (ignored; `PEEL_BUNDLE_ID = dev.peel.ios.<team>` for any team but
-  Peel's). It keeps the words in its own Keychain, with no access group
+- Both apps are `com.sphinx.peel` (`Apps/Config/Peel.xcconfig`) under the
+  App Store team, for TestFlight. A build under any other team needs a
+  bundle ID of its own in the ignored `Apps/Config/Local.xcconfig`
+  (`PEEL_BUNDLE_ID = dev.peel.ios` for Tom's phone, whose Keychain stays in
+  that ID; `dev.peel.ios.<team>` for any team but Peel's). The scripts build
+  the Mac app as `dev.peel.mac` (above), so they never touch that file. The
+  iPhone app keeps the words in its own Keychain, with no access group
   until the notification extension needs one (I5). A Personal Team build
   on a phone also lasts 7 days.
 
@@ -1038,7 +1053,7 @@ PEEL_BENCH=1 PEEL_BENCH_OUT=.build/bench/before.json swift test -Xswiftc -O --fi
 
 ### Local LiveKit server
 
-For the development test room (`Sources/PeelApp/CallTestRoom.swift`;
+For the development test room (`Apps/Mac/Peel/CallTestRoom.swift`;
 details in `docs/phases/06-calls.md`, PR 3 journal). It opens a visible
 window and asks for the microphone, so only with Tom at the Mac, never
 from an agent unasked:
@@ -1136,7 +1151,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   its redirects go anywhere): fetch with `Web.get` (size-limited; a public
   https host, or loopback http for the local test stack), or through the memes
   server. A photo someone else chose goes through `Web.photo`.
-- Swift 6 language mode with strict concurrency in `PeelCore`, `PeelUI` and `PeelApp`.
+- Swift 6 language mode with strict concurrency in `PeelCore`, `PeelUI` and the apps.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Tom works on this Mac while agents run. Run builds, tests and test

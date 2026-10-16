@@ -20,7 +20,9 @@ does.
 
 - `Sources/PeelCore` — the client engine: state store, broker connection, and the
   handler for what the core returns. No UI.
-- `Sources/PeelApp` — the SwiftUI Mac app.
+- `Apps/` — the Mac and iPhone apps, one Xcode project (`Apps/Peel.xcodeproj`),
+  and the SwiftUI they share (`Apps/Shared`).
+- `brain/` — Peel Brain, your own strut and memory on an always-on box.
 - `Sources/peel` — a command-line harness for PeelCore. It keeps the mnemonic in a
   plain file, so use it with throwaway accounts only.
 - `Sources/Sphinxrs`, `Vendor/` — the core's Swift bindings and static library,

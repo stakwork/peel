@@ -1,0 +1,8 @@
+// Copy to Apps/Config/Local.xcconfig (git ignores it) to build under your own team.
+
+// Your team, as Xcode > Settings > Accounts shows it.
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Any team but the App Store's: a bundle ID of its own. The scripts that
+// build the Mac app (scripts/run-app.sh) choose theirs, dev.peel.mac.
+// PEEL_BUNDLE_ID = dev.peel.abcde12345

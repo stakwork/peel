@@ -15,7 +15,7 @@ mkdir -p "$HOME/Applications"
 # a second copy on the same profile fails on the profile lock. Quit with an Apple
 # Event, not a signal, so the app's willTerminate cleanup runs (clipboard,
 # delivered notifications).
-BINARY="$INSTALLED/Contents/MacOS/PeelApp"
+BINARY="$INSTALLED/Contents/MacOS/Peel"
 PATTERN="^$(printf '%s' "$BINARY" | sed 's/[][\.*^$+?(){}|]/\\&/g')( |\$)"
 USER_ID="$(id -u)"
 running() { pgrep -U "$USER_ID" -f "$PATTERN"; }

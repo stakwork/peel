@@ -33,3 +33,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - run: swift build --build-tests
       - run: swift test --skip-build
+      # The Mac app, which `swift build` no longer builds (Apps/Peel.xcodeproj).
+      - run: >
+          xcodebuild -project Apps/Peel.xcodeproj -scheme "Peel macOS" -destination 'platform=macOS'
+          -derivedDataPath .build/xcode -quiet CODE_SIGNING_ALLOWED=NO build

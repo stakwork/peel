@@ -188,6 +188,7 @@ design and PR plan are in [agent-on-strut.md](agent-on-strut.md).
 | 8 | Where the bridge runs | Bundled in Peel.app and launched by Peel, as strut is today |
 | 9 | Which devices answer the agent's requests | Only the Mac, in Phase 1 |
 | 10 | Brain mode | Off by default: the Mac is the brain while it is awake |
+| 11 | Is the contact an agent? | No. The bridge is a pipe; every message goes to the orchestrator, a strut workflow on the `agent` step, which starts or continues strut's `job` for bigger work, as Jamie does in Hive |
 
 Still pending Evan: whether the bridge is a strut mode of `sphinx/runner`
 or its own crate, and the key derivation scheme (decision 2).

@@ -69,9 +69,14 @@ public enum Web {
     /// proxy in the clear.
     private static let directSession = session(requestTimeout: 30, resourceTimeout: 60, direct: true) { _, _ in nil }
     private static let proxiedSession = session(requestTimeout: 30, resourceTimeout: 60) { _, _ in nil }
+    /// The same for a memory snapshot moved whole (`MemoryMove`): up to
+    /// 100 MB each way, and a strut that takes its time loading one.
+    private static let slowDirectSession = session(requestTimeout: 300, resourceTimeout: 1800, direct: true) { _, _ in nil }
+    private static let slowProxiedSession = session(requestTimeout: 300, resourceTimeout: 1800) { _, _ in nil }
 
-    private static func strutSession(for url: URL) -> URLSession {
-        url.scheme == "https" ? proxiedSession : directSession
+    private static func strutSession(for url: URL, slow: Bool = false) -> URLSession {
+        let https = url.scheme == "https"
+        return slow ? (https ? slowProxiedSession : slowDirectSession) : (https ? proxiedSession : directSession)
     }
 
     /// Bytes moved so far and in all, reported at most every 5% or 250 ms
@@ -195,23 +200,28 @@ public enum Web {
     /// `limit` bytes. Anywhere else is refused before anything is sent, and
     /// a redirect is never followed (nor a proxy used for plain http).
     /// `bearer` is the server's key: anything on this Mac can reach a
-    /// loopback port, so the key is what makes it Peel's.
-    public static func postToStrut(_ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String) async throws -> Data {
+    /// loopback port, so the key is what makes it Peel's. `slow`: a memory
+    /// snapshot, given minutes rather than seconds.
+    public static func postToStrut(
+        _ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String, slow: Bool = false
+    ) async throws -> Data {
         let request = try strutRequest("POST", url, json: body, bearer: bearer)
-        return try await Transfer(limit: limit, what: what, progress: nil).run(strutSession(for: url).dataTask(with: request)).0
+        return try await Transfer(limit: limit, what: what, progress: nil)
+            .run(strutSession(for: url, slow: slow).dataTask(with: request)).0
     }
 
-    /// One request to strut, as `postToStrut` makes it, with its status: a
-    /// 2xx or 4xx reply comes back with its body, so a refusal's own words
-    /// reach the caller; anything else throws. `timeout` cuts a request
-    /// short (a check that should not wait half a minute for a box that is off).
+    /// One request to strut, as `postToStrut` makes it, with its status: any
+    /// reply comes back with its body, so a refusal's or a failure's own words
+    /// reach the caller; only a request that got no usable reply
+    /// (none, too large, unreadable) throws. `timeout` cuts a request short
+    /// (a check that should not wait half a minute for a box that is off).
     public static func requestStrut(
         _ method: String, _ url: URL, json body: Data? = nil, bearer: String? = nil, limit: Int, what: String,
         timeout: TimeInterval? = nil
     ) async throws -> (status: Int, data: Data) {
         var request = try strutRequest(method, url, json: body, bearer: bearer)
         if let timeout { request.timeoutInterval = timeout }
-        let (data, response) = try await Transfer(limit: limit, what: what, progress: nil, accepting: Set(200..<500))
+        let (data, response) = try await Transfer(limit: limit, what: what, progress: nil, accepting: Set(100..<600))
             .run(strutSession(for: url).dataTask(with: request))
         return (response.statusCode, data)
     }

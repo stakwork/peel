@@ -132,3 +132,72 @@ pinned core lacks upstream's seven client fixes; `cappedToArrived` and
   - Caching `accountPubkey()`: its three callers are rare.
   - One upstream merge commit instead of the seven in `build-ffi.sh`: the
     list names what is missing.
+
+### N1, after: dropping the stand-ins once the core is fixed (planned, not done)
+
+`Vendor/sphinxrs.lock` now names a `sphinx-rs` release (`v0.8.35`, the
+same library as before, still core `bd9e140`). `build-ffi.sh` fails with
+`PEEL_REQUIRE_CORE_FIXES=1` on a core without the seven fixes; set it for
+any build that ships. Peel has no release workflow yet, so nothing sets it.
+`Contacts.anUnpaidContactKeyPaysNothing` reproduces the ContactKey autopay
+against `bd9e140` (Alice −4 sats) and is a known issue until the core
+moves.
+
+Do this only once the lock names a release whose core passes
+`PEEL_REQUIRE_CORE_FIXES=1`. sphinx-rs#97 pins `2e9bbec1`, which has
+SR-016 to SR-019 but not SR-020 (`c1a46181`) or SR-022 (`480b3ae3`):
+those merged after it. `caa76a1` (v0.6.29) has all seven.
+
+1. `scripts/build-ffi.sh --update <tag>`, then run it with
+   `PEEL_REQUIRE_CORE_FIXES=1` and `SPHINX` set to a current
+   `stakwork/sphinx` checkout. It must pass. Commit the lock.
+2. `Contacts.anUnpaidContactKeyPaysNothing`: remove the `withKnownIssue`
+   (it fails while it records nothing) and run the journeys. Change its
+   `docs/testing.md` row to pass.
+3. Remove `Engine.cappedToArrived` (`Engine.swift`, near the end of the
+   core contract) and its call in `run`, and the `arrived:` parameter
+   with it. The core now peels against the HTLC amount for live messages
+   (`handle_msg.rs`, topic index 9) and history (`handle_batch.rs`,
+   `o.amt`), and fails an onion that claims more. Check in a journey that
+   a failed `handle` for such an onion is dropped and does not stall the
+   stream or the history cursor. Peel's cap kept that message at the
+   capped amount.
+4. Remove `Engine.isForeignContactRecord` and its call in `run`, and the
+   `live:` parameter with it if nothing else reads it. SR-017 checks the
+   signer of a live record in the core.
+5. Tests: `StateCodecTests.aReceivedAmountIsNeverMoreThanArrived` goes.
+   The `.msat` assertions in `aLiveMessagesTopicNamesWhatArrived` go if
+   the `msat` half of `Engine.arrived` goes. `ContactRecordTests` in
+   `ContactsTests.swift` (the core's answers made up) goes. The journeys
+   `aContactRecordSomeoneElseSentChangesNothing` and
+   `aContactRecordFromTheAccountsOtherDeviceAddsTheContact` stay: they now
+   prove the core's check. Update the comment on the first journey, which
+   names `isForeignContactRecord`.
+6. Prose: `AGENTS.md`, "How the core works" (the contact-record paragraph
+   and the `build-ffi.sh` warning sentence). `docs/phases/04-money.md`,
+   the 2026-10-09 F3 correction (the core Peel links now peels against the
+   HTLC amount). The N1 section above ("Until `sphinx-rs` moves its pin").
+   The `docs/testing.md` row that says the journey fails without
+   `isForeignContactRecord`. Its "Which server this is" paragraph (the core
+   is no longer 70 commits older). `docs/reviews/2026-10-09-payments-correctness.md`
+   F3 (core half done). The comments that name `cappedToArrived`:
+   `Engine.run`'s doc, `Engine.swift` where a message's `amountMsat` is
+   set, and `Message.isRetryable`.
+   Also the comment above the fix list in `build-ffi.sh`.
+
+What stays:
+
+- The `indices` half of `Engine.arrived(...)`: every message's index,
+  those the core cannot read too, moves where history stands.
+- Server-history reconciliation (`refreshPaymentHistory`, arrived and
+  not-received rows). It answers other questions than the amount.
+- `StateCodec.paymentAmounts`, while anything reads it. Its only caller is
+  the `msat` half of `Engine.arrived`, so it goes when that half goes.
+- The "ours" check in `Engine` (kept only when signed by `accountKey` or by
+  a known tribe in its own chat). `dec_ts_matches` is unchanged in v0.6.29
+  (`handle_msg.rs`, `dec_tag_or_ts_matches`): no SR commit fixes it, so the
+  core still calls a message ours by a date a sender can arrange. That no
+  longer matters for amounts, because the core reports the HTLC-bound
+  amount whether or not it calls the message ours. So the "from me" reason
+  in `cappedToArrived`'s comment no longer argues for the cap, but the
+  "ours" check is still needed.

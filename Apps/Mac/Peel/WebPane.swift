@@ -1,0 +1,847 @@
+import AppKit
+import SwiftUI
+import WebKit
+import PeelCore
+import PeelUI
+
+/// The web pane: a link from a message, or a tribe's app or second brain,
+/// opens beside the chat rather than in the browser, like the browser pane
+/// in the Claude desktop app (design README, "Web pane"). One page at a
+/// time; the next link replaces it. It stays open across chats until closed,
+/// and closing it ends the page.
+///
+/// A page is only a page: no `sphinx` bridge, no message handlers and no
+/// injected scripts. Website data lives in one store per profile
+/// (`WebPage.storeIdentifier`), never the shared default one.
+@MainActor @Observable
+final class WebPane: NSObject, Identifiable {
+    /// Open, with a page or (from the header's Browser) only its address field.
+    private(set) var isOpen = false
+    /// Nil until the first page loads; made again after a close, with the
+    /// same store, so sign-ins survive.
+    private(set) var webView: PaneWebView?
+    /// What the toolbar shows, read off the web view as it changes.
+    private(set) var page = Page()
+    /// Why the last page did not load, until the next one does.
+    private(set) var problem: Problem?
+    /// The last download, until dismissed.
+    var download: Download?
+
+    struct Page: Equatable {
+        /// The web address on show; nil for an HTML attachment, which has
+        /// none to copy or open elsewhere.
+        var url: URL?
+        /// An HTML attachment's name, shown in the address's place.
+        var fileName: String?
+        var title = ""
+        var canGoBack = false
+        var canGoForward = false
+        var isLoading = false
+        var progress = 0.0
+        var hasOnlySecureContent = false
+
+        /// https with nothing on the page fetched over plain http.
+        var isSecure: Bool { url?.scheme?.lowercased() == "https" && hasOnlySecureContent }
+    }
+
+    struct Problem: Equatable {
+        /// The address that failed, which the pane is no longer showing; nil
+        /// for an address Peel would not open, which has nothing to try again.
+        let url: URL?
+        let message: String
+    }
+
+    enum Download: Equatable {
+        case saving(String)
+        case saved(URL)
+        case failed(String, reason: String)
+    }
+
+    /// Every link SwiftUI opens in the main window (`opensLinksInWebPane`):
+    /// an http or https page comes here, or goes to the default browser with
+    /// ⌘ held; any other scheme keeps the system's handling. Made once, so
+    /// the views that read it are not invalidated by a new closure.
+    @ObservationIgnored private(set) lazy var linkAction = OpenURLAction { [weak self] url in
+        guard let self, let page = WebPage.address(url), !NSEvent.modifierFlags.contains(.command) else {
+            return .systemAction
+        }
+        open(page)
+        return .handled
+    }
+
+    @ObservationIgnored private let profile: Profile?
+    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    /// Downloads in flight: where WebKit writes each, and the name the server gave.
+    @ObservationIgnored private var downloads: [ObjectIdentifier: (file: URL, name: String)] = [:]
+    /// When the page's web content process last ended under it.
+    @ObservationIgnored private var lastTermination: ContinuousClock.Instant?
+    /// The HTML attachment on show (`openDocument`): Peel's copy, removed
+    /// with the page, and the name the address field shows.
+    @ObservationIgnored private var document: (file: URL, name: String)?
+
+    init(profile: Profile?) {
+        self.profile = profile
+    }
+
+    // MARK: Opening and closing
+
+    /// Opens `url` in the pane, replacing what it showed. Only what
+    /// `WebPage.address` accepts; the caller sends anything else elsewhere.
+    func open(_ url: URL) {
+        guard let url = WebPage.address(url) else { return }
+        // An HTML attachment's web view is not for the web: a new one replaces it.
+        if document != nil { endPage() }
+        let view = webView ?? makeWebView()
+        isOpen = true
+        problem = nil
+        view.load(URLRequest(url: url))
+    }
+
+    /// Shows an HTML attachment as a page, replacing what the pane showed.
+    /// It is someone else's, so it is shown offline: a copy in its own temp
+    /// folder that is the only file the page may read, no script, a store
+    /// that keeps nothing, and every load but the copy itself blocked
+    /// (`offlineRules`), so opening it cannot fetch, track or send anything.
+    /// A link clicked in it goes where a message's link goes (`linkAction`).
+    /// The address field shows `name`; the copy goes when the page does.
+    func openDocument(_ file: URL, named name: String) async throws {
+        let rules = try await Self.offlineRules()
+        let root = Self.pagesRoot
+        let copy = try await Task.detached {
+            let copy = try IncomingFiles.newFolder(in: root).appendingPathComponent("page.html")
+            do {
+                try FileManager.default.copyItem(at: file, to: copy)
+            } catch {
+                IncomingFiles.discard(copy, root: root)
+                throw error
+            }
+            return copy
+        }.value
+        endPage()
+        document = (copy, name)
+        let view = makeWebView(offline: rules)
+        isOpen = true
+        problem = nil
+        view.loadFileURL(copy, allowingReadAccessTo: copy)
+    }
+
+    /// The header's Browser: the page as it is, or the pane with only its
+    /// address field, which then has the keyboard.
+    func show() {
+        isOpen = true
+    }
+
+    /// What was typed into the address field and Return pressed: a web
+    /// address or a search (`WebPage.typed`); anything else is refused in
+    /// the page's place. The page then has the keyboard.
+    func go(to typed: String) {
+        guard let url = WebPage.typed(typed) else {
+            problem = Problem(url: nil, message: "Only http and https addresses open here.")
+            return
+        }
+        open(url)
+        if let webView { webView.window?.makeFirstResponder(webView) }
+    }
+
+    /// Closes the pane and ends its page, media and all.
+    func close() {
+        isOpen = false
+        problem = nil
+        download = nil
+        endPage()
+    }
+
+    /// Ends the page and its web view; an HTML attachment's copy goes with it.
+    private func endPage() {
+        page = Page()
+        if let document { IncomingFiles.discard(document.file, root: Self.pagesRoot) }
+        document = nil
+        guard let view = webView else { return }
+        view.stopLoading()
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+        observations = []
+        webView = nil
+    }
+
+    func goBack() { webView?.goBack() }
+    func goForward() { webView?.goForward() }
+
+    func reloadOrStop() {
+        guard let webView else { return }
+        if page.isLoading {
+            webView.stopLoading()
+        } else {
+            webView.reload()
+        }
+    }
+
+    /// Loads the address that failed again.
+    func retry() {
+        guard let failed = problem?.url else { return reloadOrStop() }
+        open(failed)
+    }
+
+    // MARK: Website data
+
+    /// Signs out of every site opened in the pane on this profile and
+    /// clears their cookies, storage and cache. An open page is loaded again.
+    func clearWebsiteData() async {
+        // The profile's store, not an HTML attachment's, which keeps nothing.
+        guard let store = storeID(create: false).map(WKWebsiteDataStore.init) else { return }
+        await Self.removeAllData(from: store)
+        webView?.reload()
+    }
+
+    /// Before the profile itself is removed: closes the pane, clears the
+    /// store's data, then removes the store. WebKit refuses the removal
+    /// while a web content process still holds the store; its emptied
+    /// folder is then left behind, with nothing in it to sign anyone in.
+    func forgetWebsiteData() async {
+        close()
+        guard let id = storeID(create: false) else { return }
+        await Self.removeAllData(from: WKWebsiteDataStore(forIdentifier: id))
+        try? await WKWebsiteDataStore.remove(forIdentifier: id)
+    }
+
+    /// This profile's store identifier; with `create`, made on first use.
+    private func storeID(create: Bool) -> UUID? {
+        profile.flatMap { try? WebPage.storeIdentifier(in: $0.directory, create: create) }
+    }
+
+    private static func removeAllData(from store: WKWebsiteDataStore) async {
+        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+    }
+
+    /// A web view for the web, or with `offline` rules for an HTML attachment.
+    private func makeWebView(offline rules: WKContentRuleList? = nil) -> PaneWebView {
+        let configuration = WKWebViewConfiguration()
+        if let rules {
+            // Someone else's page: no script, nothing kept, nothing fetched.
+            configuration.websiteDataStore = .nonPersistent()
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+            configuration.userContentController.add(rules)
+        } else {
+            // Without a profile folder, a store that keeps nothing: never the
+            // default store other apps' pages and other profiles would share.
+            configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
+        }
+        // No message handlers, no user scripts: the controller holds at most the rules.
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        // As in Safari: video plays, but nothing starts making sound until clicked.
+        configuration.mediaTypesRequiringUserActionForPlayback = .audio
+        let view = PaneWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = self
+        view.uiDelegate = self
+        view.allowsBackForwardNavigationGestures = true
+        // A force click's preview would load the link outside the rules.
+        view.allowsLinkPreview = rules == nil
+        view.close = { [weak self] in self?.close() }
+        func watch<Value>(_ keyPath: KeyPath<PaneWebView, Value>) -> NSKeyValueObservation {
+            view.observe(keyPath) { [weak self] _, _ in MainActor.assumeIsolated { self?.sync() } }
+        }
+        observations = [
+            watch(\.url), watch(\.title), watch(\.canGoBack), watch(\.canGoForward),
+            watch(\.isLoading), watch(\.estimatedProgress), watch(\.hasOnlySecureContent),
+        ]
+        webView = view
+        return view
+    }
+
+    /// Reads the page's state off the web view; writes only a change.
+    /// While a load is under way `webView.url` already names where it is
+    /// going, though the old page is still on screen and in use: a page
+    /// could start a load that never arrives and wear another site's host.
+    /// So the address changes only once the new page commits (`committed`),
+    /// or while nothing is loading (a page's own history changes); the
+    /// first load, which Peel started, shows where it goes. An HTML
+    /// attachment shows its name, never its copy's path.
+    private func sync(committed: Bool = false) {
+        guard let webView else { return }
+        let url = document != nil ? nil
+            : committed || !webView.isLoading || page.url == nil ? webView.url ?? page.url : page.url
+        let new = Page(
+            url: url, fileName: document?.name, title: webView.title ?? "",
+            canGoBack: webView.canGoBack, canGoForward: webView.canGoForward,
+            isLoading: webView.isLoading, progress: webView.estimatedProgress,
+            hasOnlySecureContent: webView.hasOnlySecureContent
+        )
+        if new != page { page = new }
+    }
+
+    /// Where downloads wait until they are finished and put in Downloads.
+    private static let downloadsRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Peel Web Downloads", isDirectory: true)
+
+    /// Where an HTML attachment's copy waits while it is on show.
+    private static let pagesRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Peel Web Pages", isDirectory: true)
+
+    /// Blocks every load but a file's, whatever its kind: images, styles,
+    /// fonts, media, frames, pings, preloads and preconnects. With the page
+    /// allowed to read only itself, nothing outside it reaches the screen.
+    private static let offlineRuleList = """
+        [{"trigger": {"url-filter": ".*"}, "action": {"type": "block"}},
+         {"trigger": {"url-filter": "^file:"}, "action": {"type": "ignore-previous-rules"}}]
+        """
+
+    /// `offlineRuleList`, compiled for each page (milliseconds), so a list
+    /// WebKit kept from an older Peel is never the one used.
+    private static func offlineRules() async throws -> WKContentRuleList {
+        guard let rules = try await WKContentRuleListStore.default()?.compileContentRuleList(
+            forIdentifier: "peel-offline", encodedContentRuleList: offlineRuleList
+        ) else { throw PeelError("the page could not be made safe to show") }
+        return rules
+    }
+}
+
+// MARK: - What a page may do
+
+extension WebPane: WKNavigationDelegate, WKUIDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
+        if let document { return documentPolicy(for: action, file: document.file) }
+        if action.shouldPerformDownload { return .download }
+        guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
+        let mainFrame = action.targetFrame?.isMainFrame ?? true
+        switch scheme {
+        case "http", "https":
+            // ⌘-click goes to the browser, as from a message.
+            if action.navigationType == .linkActivated, action.modifierFlags.contains(.command) {
+                if WebPage.address(url) != nil { NSWorkspace.shared.open(url) }
+                return .cancel
+            }
+            // The page the pane shows names its host plainly: no `user@host`.
+            return !mainFrame || WebPage.address(url) != nil ? .allow : .cancel
+        case "about":
+            return .allow
+        case "data", "blob":
+            // A whole page from one of these has no host of its own to show.
+            return mainFrame ? .cancel : .allow
+        default:
+            // file:, sphinx.chat:, mailto: and every app's scheme: not from a page.
+            return .cancel
+        }
+    }
+
+    /// An HTML attachment loads only itself (its own `#` links among it)
+    /// and its `srcdoc` frames. A web link clicked in it opens as one
+    /// clicked in a message would; nothing else it asks for goes anywhere:
+    /// no other scheme, no form, no refresh, no download.
+    private func documentPolicy(for action: WKNavigationAction, file: URL) -> WKNavigationActionPolicy {
+        guard let url = action.request.url else { return .cancel }
+        if url.isFileURL, url.path == file.path { return .allow }
+        if url.scheme?.lowercased() == "about", action.targetFrame?.isMainFrame == false { return .allow }
+        if action.navigationType == .linkActivated { follow(url) }
+        return .cancel
+    }
+
+    /// A web link clicked in an HTML attachment, through the message links'
+    /// router once WebKit has its answer, since the page it leaves is ended.
+    private func follow(_ url: URL) {
+        guard WebPage.address(url) != nil else { return }
+        let open = linkAction
+        Task { @MainActor in open(url) }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+        let attachment = disposition?.lowercased().hasPrefix("attachment") == true
+        return response.isForMainFrame && (attachment || !response.canShowMIMEType) ? .download : .allow
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        problem = nil
+        sync(committed: true)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        failed(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        failed(error)
+    }
+
+    /// A load that was stopped, or that the policies above refused or made
+    /// a download, is not a failure.
+    private func failed(_ error: any Error) {
+        let error = error as NSError
+        if error.domain == NSURLErrorDomain, error.code == NSURLErrorCancelled { return }
+        if error.domain == WebKitErrorDomain, error.code == WebKitErrorFrameLoadInterruptedByPolicyChange { return }
+        // An HTML attachment's copy is never offered to try again as an address.
+        let url = document == nil ? error.userInfo[NSURLErrorFailingURLErrorKey] as? URL : nil
+        problem = Problem(url: url, message: error.localizedDescription)
+    }
+
+    /// Loads the page again, once: a page that brings its process down
+    /// again within a minute is left on its problem rather than reloaded
+    /// for as long as the pane is open.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = ContinuousClock.now
+        defer { lastTermination = now }
+        if let last = lastTermination, now - last < .seconds(60) {
+            problem = Problem(url: document == nil ? webView.url ?? page.url : nil, message: "The page stopped working.")
+            return
+        }
+        webView.reload()
+    }
+
+    /// `target=_blank` and `window.open`: the pane is the one window.
+    func webView(
+        _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+        for action: WKNavigationAction, windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard let url = action.request.url, WebPage.address(url) != nil else { return nil }
+        if document != nil {
+            if action.navigationType == .linkActivated { follow(url) }
+        } else {
+            webView.load(action.request)
+        }
+        return nil
+    }
+
+    /// No camera or microphone in v1.
+    func webView(
+        _ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType
+    ) async -> WKPermissionDecision {
+        .deny
+    }
+
+    /// `<input type=file>`: the person picks, as for an attachment.
+    func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo
+    ) async -> [URL]? {
+        FilePanels().open(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+}
+
+// MARK: - Downloads
+
+/// WebKit writes a download into a private folder of Peel's; once finished
+/// it goes into Downloads like a saved attachment (`UserFiles.save`:
+/// a clean name, quarantined) and the folder is removed.
+extension WebPane: WKDownloadDelegate {
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        guard let folder = try? IncomingFiles.newFolder(in: Self.downloadsRoot) else {
+            self.download = .failed(suggestedFilename, reason: "Could not make a folder for it")
+            return nil
+        }
+        let file = folder.appendingPathComponent("download", isDirectory: false)
+        downloads[ObjectIdentifier(download)] = (file, suggestedFilename)
+        self.download = .saving(suggestedFilename)
+        return file
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        take(download) { file, name in
+            do {
+                self.download = .saved(try await UserFiles.saveToDownloads(file, named: name))
+            } catch {
+                self.download = .failed(name, reason: PeelError.problem(error))
+            }
+        }
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        take(download) { _, name in self.download = .failed(name, reason: PeelError.problem(error)) }
+    }
+
+    /// The download's entry, removed; its private copy goes once `body` is
+    /// done (the copy into Downloads runs off the main thread).
+    private func take(_ download: WKDownload, _ body: @escaping (_ file: URL, _ name: String) async -> Void) {
+        guard let (file, name) = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        Task {
+            await body(file, name)
+            IncomingFiles.discard(file, root: Self.downloadsRoot)
+        }
+    }
+}
+
+/// The pane's web view: ⌘W closes the pane, not the window, while the page
+/// has the keyboard.
+final class PaneWebView: WKWebView {
+    var close: (() -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command,
+           event.charactersIgnoringModifiers == "w",
+           let focused = window?.firstResponder as? NSView, focused.isDescendant(of: self) {
+            close?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+// MARK: - Routing links
+
+extension View {
+    /// Every link SwiftUI opens below this view goes through the pane's
+    /// router (`WebPane.linkAction`).
+    func opensLinksInWebPane(_ pane: WebPane) -> some View {
+        environment(\.openURL, pane.linkAction)
+    }
+}
+
+/// The first items of a chat header's More menu: Browser, which shows the
+/// pane (its page, or an empty address field), then the tribe's pages
+/// (`Tribe.pages`, in their one order), each opened in the pane.
+@MainActor
+enum WebMenuEntries {
+    static func entries(for tribe: Tribe?, pane: WebPane) -> [MenuEntry] {
+        let browser = MenuEntry.button("Browser", systemImage: "globe") {
+            pane.show()
+        }
+        return [browser] + (tribe?.pages ?? []).map { page in
+            .item(MenuItem(title: page.title, systemImage: page.systemImage, detailSystemImage: "arrow.up.right") {
+                pane.open(page)
+                return true
+            })
+        }
+    }
+}
+
+/// How a tribe's page is named and drawn, in the More menu and its details.
+extension TribePage {
+    var title: String {
+        switch kind {
+        case .app: "Tribe app"
+        case .secondBrain: "Second brain"
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case .app: "square.grid.2x2"
+        case .secondBrain: "brain"
+        }
+    }
+}
+
+extension WebPane {
+    /// Opens a tribe's page beside the chat: the one way the menu and the
+    /// details open one.
+    func open(_ page: TribePage) {
+        open(page.url)
+    }
+}
+
+// MARK: - Layout
+
+extension View {
+    /// This view (the detail column) with the web pane beside it while open.
+    func webPaneBeside(_ pane: WebPane) -> some View {
+        modifier(WebSplit(pane: pane))
+    }
+}
+
+/// The detail column with the web pane beside it, resizable on its
+/// divider. On a window too narrow for both, the pane covers the column
+/// (`SidePanelSplit`). The pane lives as long as the main
+/// window shows the account: closing the window or locking Peel (which
+/// replaces this view) ends the page.
+private struct WebSplit: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let pane: WebPane
+    /// Dragged on its divider; remembered on this Mac (a convenience).
+    @AppStorage("webPaneWidth") private var paneWidth: Double = WebPaneView.width
+
+    private static var paneRange: ClosedRange<Double> { 360...1100 }
+
+    /// The narrowest the detail column gets beside the pane: a chat, or
+    /// Payments with its own pane open beside its list.
+    private var minimumDetail: CGFloat { model.destination == .payments ? 760 : 400 }
+
+    func body(content detail: Content) -> some View {
+        SidePanelSplit(item: pane.isOpen ? pane : nil, width: $paneWidth, range: Self.paneRange,
+                       standard: WebPaneView.width, minimumMain: minimumDetail) {
+            detail
+        } panel: { pane, _ in
+            WebPaneView(pane: pane)
+        }
+        .onDisappear { pane.close() }
+    }
+}
+
+// MARK: - The pane
+
+struct WebPaneView: View {
+    static let width = 560.0
+    let pane: WebPane
+
+    var body: some View {
+        VStack(spacing: 0) {
+            WebToolbar(pane: pane)
+            ZStack {
+                Theme.background
+                if let webView = pane.webView {
+                    WebViewHost(webView: webView)
+                }
+                if let problem = pane.problem {
+                    EmptyState(problem.message, title: "Could not open \(problem.url?.host ?? "that address")") {
+                        // An address Peel would not open has nothing to try again.
+                        if problem.url != nil {
+                            Button("Try again") { pane.retry() }
+                                .buttonStyle(.peel(.outline, size: .sm))
+                        }
+                    }
+                    .background(Theme.background)
+                }
+            }
+            if let download = pane.download {
+                DownloadBar(download: download) { pane.download = nil }
+            }
+        }
+        .background(Theme.background)
+    }
+}
+
+private struct WebViewHost: NSViewRepresentable {
+    let webView: PaneWebView
+
+    func makeNSView(context: Context) -> PaneWebView { webView }
+    func updateNSView(_ view: PaneWebView, context: Context) {}
+}
+
+/// Back, forward, reload; the address field; then Open in default browser,
+/// More (⋮) and close.
+private struct WebToolbar: View {
+    let pane: WebPane
+
+    var body: some View {
+        let page = pane.page
+        HStack(spacing: 2) {
+            IconButton("arrow.left", help: "Back") { pane.goBack() }
+                .disabled(!page.canGoBack)
+            IconButton("arrow.right", help: "Forward") { pane.goForward() }
+                .disabled(!page.canGoForward)
+            IconButton(page.isLoading ? "xmark" : "arrow.clockwise", help: page.isLoading ? "Stop" : "Reload") {
+                pane.reloadOrStop()
+            }
+            .disabled(pane.webView == nil)
+            AddressField(pane: pane)
+                .padding(.horizontal, 6)
+            IconButton("arrow.up.right.square", help: "Open in default browser") {
+                if let url = page.url { NSWorkspace.shared.open(url) }
+            }
+            .disabled(page.url == nil)
+            MoreMenu(pane: pane, url: page.url)
+            IconButton("xmark", help: "Close (⌘W)") {
+                pane.close()
+            }
+        }
+        .padding(.leading, Theme.Space.sm)
+        .padding(.trailing, 10)
+        .frame(height: 60)
+        .overlay(alignment: .bottom) {
+            ZStack(alignment: .leading) {
+                Theme.divider.frame(height: 1)
+                if page.isLoading {
+                    GeometryReader { geometry in
+                        Theme.accent
+                            .frame(width: geometry.size.width * max(0.05, page.progress), height: 2)
+                    }
+                    .frame(height: 2)
+                    .animation(.linear(duration: 0.2), value: page.progress)
+                }
+            }
+        }
+    }
+}
+
+/// The full address of the page on screen: the lock, or "Not secure", then
+/// the address with its host (in its `xn--` form) in full colour. The
+/// address changes when the next page arrives, not when it is asked for
+/// (`WebPane.sync`). A click edits it; Return loads what was typed, Escape
+/// puts the address back, ⌘W closes the pane; with no page the field has
+/// the keyboard. An HTML attachment shows a page's mark and its name, and a
+/// click starts a new address.
+private struct AddressField: View {
+    let pane: WebPane
+
+    @FocusState private var focused: Bool
+    @State private var draft = ""
+    @State private var hovering = false
+
+    var body: some View {
+        let page = pane.page
+        HStack(spacing: 6) {
+            if !focused, page.fileName != nil {
+                Image(systemName: "doc.richtext")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.secondaryText)
+                    .accessibilityHidden(true)
+            } else if !focused, page.url != nil {
+                SecurityMark(isSecure: page.isSecure)
+            }
+            ZStack(alignment: .leading) {
+                let empty = page.url == nil && page.fileName == nil
+                TextField("", text: $draft, prompt: empty ? Text("Type a URL").foregroundStyle(Theme.tertiaryText) : nil)
+                    .textFieldStyle(.plain)
+                    .font(Theme.font(13))
+                    .focused($focused)
+                    .accessibilityLabel("Address")
+                    .onSubmit {
+                        pane.go(to: draft)
+                        if pane.problem == nil { focused = false }
+                    }
+                    .onExitCommand { draft = page.url?.absoluteString ?? "" }
+                if !focused, let name = page.fileName {
+                    Text(name)
+                        .font(Theme.font(13))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .allowsHitTesting(false)
+                } else if !focused, let url = page.url {
+                    AddressText(url: url)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .modifier(FieldChrome(focused: focused, hovering: hovering))
+        .onHover { hovering = $0 }
+        .help(page.url?.absoluteString ?? page.fileName ?? "")
+        // ⌘W in the field closes the pane, as from the page.
+        .hiddenShortcut(KeyboardShortcut("w", modifiers: .command), enabled: focused) { pane.close() }
+        .onChange(of: focused) { _, now in
+            guard now else { return draft = "" }
+            draft = pane.page.url?.absoluteString ?? ""
+            // As in a browser, the whole address is selected to type over.
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
+        .task {
+            // Opened from Browser with no page: straight to typing.
+            if pane.webView == nil { focused = true }
+        }
+    }
+}
+
+/// A small lock for https with nothing insecure on the page; "Not secure"
+/// in amber otherwise (attention, not red: nothing is broken).
+private struct SecurityMark: View {
+    let isSecure: Bool
+
+    var body: some View {
+        if isSecure {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.secondaryText)
+                .accessibilityLabel("Secure")
+        } else {
+            HStack(spacing: 6) {
+                Text("Not secure")
+                    .font(Theme.font(12, .medium))
+                    .foregroundStyle(Theme.attention)
+                    .fixedSize()
+                Theme.divider.frame(width: 1, height: 14)
+            }
+        }
+    }
+}
+
+/// The address with its host in full colour and the rest quieter, so the
+/// site is the part that reads first. The path gives way first; a host too
+/// long for the field loses its start, never its end, so
+/// `google.com.sign-in.evil.example` cannot hide `evil.example`.
+private struct AddressText: View {
+    let url: URL
+
+    var body: some View {
+        let parts = Self.parts(of: url.absoluteString)
+        HStack(spacing: 0) {
+            Text(parts.lead)
+                .foregroundStyle(Theme.secondaryText)
+                .fixedSize()
+            Text(parts.host)
+                .truncationMode(.head)
+                .layoutPriority(1)
+            Text(parts.rest)
+                .foregroundStyle(Theme.secondaryText)
+                .truncationMode(.tail)
+        }
+        .font(Theme.font(13))
+        .lineLimit(1)
+    }
+
+    /// `https://`, `host:port`, then the path, query and fragment; an
+    /// address without `://` (`about:blank`) is all `rest`.
+    static func parts(of address: String) -> (lead: Substring, host: Substring, rest: Substring) {
+        guard let scheme = address.range(of: "://") else { return ("", "", address[...]) }
+        let after = address[scheme.upperBound...]
+        let end = after.firstIndex { "/?#".contains($0) } ?? after.endIndex
+        return (address[..<scheme.upperBound], after[..<end], after[end...])
+    }
+}
+
+/// ⋮: Copy link and Open in default browser for the page, and Clear
+/// website data (asked once more in place).
+private struct MoreMenu: View {
+    let pane: WebPane
+    let url: URL?
+
+    var body: some View {
+        MenuButton(help: "More", source: "web-more", entries: entries) {
+            Image(systemName: "ellipsis").rotationEffect(.degrees(90))
+        }
+    }
+
+    private func entries() -> [MenuEntry] {
+        let page: [MenuEntry] = url.map { url in
+            [.copy("Copy link", text: url.absoluteString, systemImage: "link"),
+             .button("Open in default browser", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }]
+        } ?? []
+        let pane = pane
+        return .sections(
+            page,
+            [.destructive("Clear website data", systemImage: "trash", confirm: "Sign out of every site?") {
+                Task {
+                    await pane.clearWebsiteData()
+                    CopyFeedback.announce("Website data cleared")
+                }
+            }]
+        )
+    }
+}
+
+/// A download under way, saved or failed: a callout in a strip along the
+/// pane's foot.
+private struct DownloadBar: View {
+    @Environment(AppModel.self) private var model
+    let download: WebPane.Download
+    let dismiss: () -> Void
+
+    var body: some View {
+        Group {
+            switch download {
+            case .saving(let name):
+                Callout(detail: "Downloading \(name)…", icon: .progress, oneLine: true, dismiss: dismiss)
+            case .saved(let file):
+                Callout(
+                    detail: "Saved \(file.lastPathComponent) to Downloads",
+                    icon: .symbol("arrow.down.circle", Theme.confirmed), oneLine: true, dismiss: dismiss
+                ) {
+                    Button("Show in Finder") { model.showInFinder(file) }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                }
+            case .failed(let name, let reason):
+                Callout(detail: PeelError.problem(reason, couldNot: "download \(name)"), icon: .problem, dismiss: dismiss)
+            }
+        }
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, Theme.Space.sm)
+        .background(Theme.panel)
+        .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
+    }
+}

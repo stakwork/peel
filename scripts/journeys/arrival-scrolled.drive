@@ -1,0 +1,13 @@
+// Someone else's message while scrolled up: the list does not move, the
+// pill counts it (review table row 8; rule 2: an append while reading
+// holds the reading row).
+// needs: peer
+// check: arrival hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "arrival", "for": 10}
+{"signal": "peer-sends"}
+{"wait": 9}

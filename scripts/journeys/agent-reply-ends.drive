@@ -1,0 +1,14 @@
+// A reply ends while the agent chat follows it: saved, it is the same
+// row, changed in place, so nothing moves and nothing open in it closes
+// (the streaming row keeps its id as the turn it becomes).
+// check: ends hold=agent keep=1@agent
+{"width": 1180}
+{"agent": "script"}
+{"agent": "seed", "turns": 14}
+{"select": "Peel"}
+{"wait": 1.5}
+{"agent": "ask", "words": 60, "rate": 200, "hold": 2.5}
+{"wait": 1}
+{"probe": "ends", "for": 3.5}
+{"agent": "done"}
+{"wait": 1.5}

@@ -1,0 +1,16 @@
+// The tribe scrolled up mid-history, a thread opened from its "N replies"
+// row beside it, scrolled inside, then closed. The tribe does not move at
+// any point and is still on the row you were reading.
+// check: close hold=chat land=anchor
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"reveal": "replies"}
+{"wait": 1}
+{"probe": "close", "for": 6}
+{"thread": "visible"}
+{"wait": 1.2}
+{"scroll": 300, "in": "thread"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1.5}

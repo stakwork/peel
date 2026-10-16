@@ -1,0 +1,14 @@
+// Return to a chat: where you left it, the row you were reading at the
+// same place on screen (review table row 3; decided 1; rule 8: the model
+// keeps each chat's anchor). Fails today: nothing is restored.
+// check: return land=anchor
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "return", "for": 5}
+{"select": "{{other}}"}
+{"wait": 1.5}
+{"select": "{{chat}}"}
+{"wait": 2}

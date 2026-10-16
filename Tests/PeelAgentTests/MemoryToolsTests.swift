@@ -114,13 +114,13 @@ struct MemoryToolsTests {
             Issue.record("expected a failure")
         } catch {
             // Typed, so the panel can say it is gone; in strut's words for the model.
-            #expect(error is MemoryServer.NotFound)
+            #expect((error as? MemoryServer.Refusal)?.code == "not_found")
             #expect("\(error)".contains("not_found"))
             // As the agent loop reads it for the model, not Foundation's words.
             #expect(error.localizedDescription.hasPrefix("not_found: no node"))
         }
         let invalid = #"{"status":"success","output":{"error":"invalid_input: pass a ref_id"}}"#
-        #expect(throws: PeelError.self) { try MemoryServer.output(of: Data(invalid.utf8)) }
+        #expect { try MemoryServer.output(of: Data(invalid.utf8)) } throws: { ($0 as? MemoryServer.Refusal)?.code == "invalid_input" }
     }
 
     /// Who wrote a memory is Peel's to say, never the model's: what each

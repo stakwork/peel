@@ -14,7 +14,7 @@
 # automatic signing for the same bundle ID. A free Personal Team's profile
 # lasts 7 days and the app will not launch once it has expired, so the stub is
 # rebuilt when its profile has under two days left, was made for another app ID
-# or certificate, or lacks an entitlement scripts/provision/Provision.entitlements
+# or certificate, or lacks an entitlement Apps/Mac/Peel.entitlements
 # now asks for. Re-signing with a new profile keeps the Keychain items.
 #
 # Frameworks in Contents/Frameworks (LiveKit's WebRTC) and the strut in
@@ -78,10 +78,10 @@ profile_is_current() {
   [ "$EXPIRY" -ge $(($(date +%s) + 2 * 86400)) ]
 }
 
-# Whether the stub has every entitlement Provision.entitlements asks for
+# Whether the stub has every entitlement Peel.entitlements asks for
 # (reads what profile_is_current left in $WORK).
 stub_has_entitlements() {
-  plutil -p "$ROOT/scripts/provision/Provision.entitlements" | sed -n 's/^  "\([^"]*\)" => .*/\1/p' > "$WORK/wanted"
+  plutil -p "$ROOT/Apps/Mac/Peel.entitlements" | sed -n 's/^  "\([^"]*\)" => .*/\1/p' > "$WORK/wanted"
   while read -r key; do
     plutil -extract "$(printf '%s' "$key" | sed 's/\./\\./g')" xml1 -o /dev/null "$WORK/entitlements.plist" 2>/dev/null || return 1
   done < "$WORK/wanted"

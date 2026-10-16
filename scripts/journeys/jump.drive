@@ -1,0 +1,11 @@
+// Jump to a message far up, within the newest 200 (as a search match, a
+// quote or Threads goes): it ends centred and lit, though the rows on the
+// way had only estimated heights (review table row 4; rule 1: no offset
+// maths against estimated heights).
+// check: jump land=target
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "jump", "for": 4}
+{"jump": 150}
+{"wait": 3.5}

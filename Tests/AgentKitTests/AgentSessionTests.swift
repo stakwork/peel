@@ -58,6 +58,24 @@ struct AgentSessionTests {
         #expect(provider.received.last?.messages.map(\.text) == ["go on", "Half a thought", "and?"])
     }
 
+    /// A list keeps the reply's row as its turn: the saved turn says which
+    /// reply it streamed as.
+    @Test func aSavedReplySaysTheIdItStreamedUnder() async throws {
+        let provider = FakeProvider([.hanging([.textDelta("Half")])])
+        let agent = try connected(provider)
+        agent.send("go")
+        try await until { agent.reply?.text == "Half" }
+        let streamed = try #require(agent.reply?.id)
+        agent.stop()
+        try await until { !agent.isRunning }
+
+        let saved = try #require(agent.turns.last)
+        #expect(saved.id != streamed)
+        #expect(agent.streamedAs == [saved.id: streamed])
+        try agent.clear()
+        #expect(agent.streamedAs.isEmpty)
+    }
+
     @Test func aRefusedKeyIsAProblemWithNothingKeptAndRetryAsksAgain() async throws {
         let provider = FakeProvider([.failing([.textDelta("par")], .invalidKey("bad key")), textReply("Fine now.")])
         let agent = try connected(provider)

@@ -1,0 +1,19 @@
+// Signing and version for both apps, Mac and iPhone (Apps/Peel.xcodeproj).
+//
+// A bundle ID belongs to one team. com.sphinx.peel is the App Store's, for
+// both platforms (one app record, one universal purchase). To run a build
+// under any other team, copy Local.xcconfig.example to Local.xcconfig (git
+// ignores it) and set your team and a bundle ID of your own there.
+// A simulator build needs no team.
+
+PEEL_BUNDLE_ID = com.sphinx.peel
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic
+
+// What TestFlight shows. The build number goes up on every upload.
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(PEEL_BUNDLE_ID)

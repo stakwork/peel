@@ -1,8 +1,15 @@
 # Peel
 
-Last updated 2026-10-11. This is the architecture and the phase index. Each phase
+Last updated 2026-10-16. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
+
+**Before a stable build:** five foundation decisions and the road to stable
+are in [foundation.md](foundation.md) (2026-10-16). Where this page's
+architecture disagrees with [brain-handover.md](brain-handover.md), it is
+under review until those decisions are answered.
+The end state those decisions build toward, its phases and where the work
+stands are in [end-state.md](end-state.md).
 
 ## Why
 
@@ -120,7 +127,7 @@ child-key indices; it is sensitive but not the seed. Limits are in phase 2.
 
 macOS 15+ for the core and CLI, macOS 26+ for the app (the agent's memory: Ladybug's addon is built for 26), Swift 6 strict concurrency in PeelCore, PeelUI and PeelApp. The generated
 bindings compile in Swift 5 mode. The Rust static library comes prebuilt from
-the Mac app's repo, is pinned by hash and commit in `Vendor/sphinxrs.lock`
+a `sphinx-rs` release, is pinned by hash and tag in `Vendor/sphinxrs.lock`
 and is downloaded by `scripts/build-ffi.sh`; building
 it from source needs Rust 1.88.0. Xcode is installed and the app is signed
 with Tom's Apple Development identity and a Personal Team provisioning
@@ -154,6 +161,9 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | 8 | 7. Audit before sharing: whole-repo review, features frozen | planned | [phases/08-audit.md](phases/08-audit.md) |
 | — | Agent jobs and connections: Peel's agent hands any job to Strut with `start_job` / `continue_job` (Hive's pattern); connectors are Strut steps a job may use, tokens in Strut; Calendar stays in Peel (EventKit); writes in a job reach Peel's approval card | architecture proposed 2026-10-13, for Tom's review; PRs J1–J2 (strut), P1–P6 (peel) | [jobs-architecture.md](jobs-architecture.md) |
 | — | Peel Brain: the Mac's bundled strut or your own strut on a home server, by URL and key; the graph moves, never syncs; automations by pull; strut's image and a Swarm preset | proposed 2026-10-14, for Tom's review | [peel-brain.md](peel-brain.md) |
+| — | Brain handover: the brain is one strut workspace moved whole (memory, automations, secrets, settings); one active brain with a generation; handover parks the old one, which forwards devices to the new | proposed 2026-10-14, for Tom and Evan | [brain-handover.md](brain-handover.md) |
+| — | Foundation before stable: five decisions (where the agent loop runs, key derivation, whose account lives on the brain, how devices reach it, backups), then one architecture of record, the small gates in code, the structure, backups and restore, the audit | proposed 2026-10-16, for Tom's answers | [foundation.md](foundation.md) |
+| — | Phase 1 of the end state, the agent is a contact: the loop as strut's generic `orchestrator` workflow, Peel its first host, the agent's own Sphinx account in a Rust bridge bundled in Peel.app, device requests in the agent DM for your chats, sends as you and Calendar (only the Mac answers), one conversation | designed 2026-10-16, for Tom's review; PRs S1–S2 (strut), B1 (bridge), 0–11 and 6b (peel); the bridge is a pipe, the orchestrator a strut workflow that starts strut's jobs; B1's home and PR 10's key derivation wait on Evan | [agent-on-strut.md](agent-on-strut.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 What is left for parity with the official Mac app, and what to do before
@@ -341,3 +351,6 @@ is active.
 - Production broker: `mqtt-broker.v2.sphinx.chat:8883` (valid Let's Encrypt
   certificate). Config endpoint:
   `https://config.config.sphinx.chat/api/config/bitcoin`.
+
+Connection control polish (2026-10-15): the Mac bolt now opens a single status
+row with a real server check or immediate reconnect. Phase 3 records validation.

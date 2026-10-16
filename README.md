@@ -1,12 +1,28 @@
 # Peel
 
-A native Sphinx chat client, written from scratch on the shared Rust core.
+Peel is a private assistant that lives with you, remembers what you tell it,
+runs errands within limits you set, and answers to you alone. It is also a
+native Sphinx chat client, written from scratch on the shared Rust core.
+
+## Guiding principles
+
+1. **Privacy is a human right.**
+2. **Personal agents will be a powerful helper to humans.**
+3. **They must be controlled fully by the single human.**
+4. **Security and backups apply the lessons of bitcoin self-custody. Losing
+   data or a security fault is not allowed.**
+
+What these mean for the person using Peel, and what they ask of the system,
+are in [docs/VISION.md](docs/VISION.md). Read it before changing what Peel
+does.
 
 ## Layout
 
 - `Sources/PeelCore` — the client engine: state store, broker connection, and the
   handler for what the core returns. No UI.
-- `Sources/PeelApp` — the SwiftUI Mac app.
+- `Apps/` — the Mac and iPhone apps, one Xcode project (`Apps/Peel.xcodeproj`),
+  and the SwiftUI they share (`Apps/Shared`).
+- `brain/` — Peel Brain, your own strut and memory on an always-on box.
 - `Sources/peel` — a command-line harness for PeelCore. It keeps the mnemonic in a
   plain file, so use it with throwaway accounts only.
 - `Sources/Sphinxrs`, `Vendor/` — the core's Swift bindings and static library,
@@ -22,12 +38,11 @@ swift build
 swift test --filter PeelCoreTests
 ```
 
-`build-ffi.sh` downloads the Sphinx core Peel links: the same prebuilt Rust
-library the official Mac app ships (from
-[sphinx-mac-v2](https://github.com/stakwork/sphinx-mac-v2)) and its Swift
-bindings (from [sphinx-rs](https://github.com/stakwork/sphinx-rs)), at the
-commits pinned in `Vendor/sphinxrs.lock`, and checks the library's hash. Run it
-again whenever the lock changes.
+`build-ffi.sh` downloads the Sphinx core Peel links: the prebuilt Rust library,
+its Swift bindings and header from the
+[sphinx-rs](https://github.com/stakwork/sphinx-rs) release pinned in
+`Vendor/sphinxrs.lock`, and checks each file's hash. Run it again whenever
+the lock changes.
 
 ## Run the app
 

@@ -1,6 +1,6 @@
 # Automations
 
-Last updated 2026-10-14. **v1 built** (PR #221); **system automations
+Last updated 2026-10-15. **v1 built** (PR #221); **system automations
 built** (Peel's half, [../system-automations.md](../system-automations.md));
 "Later" and the open questions are what is left. Builds on
 [agent-brain.md](../agent-brain.md) (the Mac is the brain, strut owns the
@@ -315,8 +315,118 @@ POST /automations/run   Authorization: Bearer <token>
      tabs (they share the status, but differ in menu, prompt and switch);
      the switch inside the row's button (as other rows' own buttons);
      running `setModel`'s few loopback calls side by side.
-   - Next: Tidy memory's real run once strut ships it; undo
-     (`memory/unmerge`) is out of v1.
+   - Next: done 2026-10-15. Its first real run merged a duplicate Kate;
+     it is now named Merge duplicates (strut#174). Undo (`memory/unmerge`)
+     is out of v1.
+8. **No run bookkeeping in memory** (2026-10-14): a run had saved its
+   "last checked" time as a Fact on Self; the automation, memory and run
+   prompts now say each run is told when the last one finished.
+
+9. **Runs while the Mac is locked** (2026-10-15). Tom's "Missed messages
+   check" fired at 09:00 on a locked Mac and failed with "Peel answered
+   500: Could not read the connected model's key.": the agent's key was
+   `WhenUnlockedThisDeviceOnly`.
+   - Done: `KeychainItem.accessible`, chosen where `Profile` builds each
+     item: the agent's key (`dev.peel.agent`) is
+     `AfterFirstUnlockThisDeviceOnly`; everything else stays
+     `WhenUnlockedThisDeviceOnly`, strut's key (`dev.peel.strut`) among
+     it: strut starts with the account, behind the PIN (and after a crash
+     only on the next chat send), and the system automations use the
+     running strut's key in memory, so widening it would only add
+     exposure. An item kept under another class moves on its next read
+     (`SecItemUpdate` of `kSecAttrAccessible`, a failure logged once per
+     item and launch, status only, and tried again next read) or write,
+     so nobody reconnects; the agent reads its key when the account opens.
+     Development profiles keep their files. A locked Keychain
+     (`errSecInteractionNotAllowed`, the data-protection Keychain's only)
+     is `KeychainLocked` (a `LocalizedError`, so the agent chat's notice
+     reads plainly), never none kept; `handModelToStrut` still leaves
+     strut's store alone on any read error. `ModelError.invalidKey`
+     carries its status (401 by default) so a 403 is told apart without
+     changing the chat. Run failures read as one sentence
+     (`AutomationFailure`, `AutomationRunRecord.failure`, which masks
+     anything shaped like a key first, `ModelError.maskingKeys`):
+     - "Didn't run: your Mac was locked, so Peel couldn't use your
+       model's key."
+     - "Didn't run: Peel couldn't read your model's key."
+     - "Didn't run: no model is connected. Connect one in Account."
+       (Peel's runs and strut's)
+     - "Didn't run: Peel's account wasn't open."
+     - "Didn't run: Peel couldn't be reached (it may have been closed)."
+       (strut's `fetch failed` on `peel-automation`, or a run naming no
+       workflow)
+     - "Didn't run: Anthropic rejected the key. Replace it in Account."
+       (a 401: strut's agent step only, the provider named when its words
+       say which; Peel's runs with the connected provider)
+     - "Didn't run: OpenAI refused: <reason>" for a 403 in Peel's runs
+     - anything else after "Didn't finish: ", with strut's "Peel answered
+       500: " taken out. The view's colour stays `Theme.attention`.
+   - Checked: `AuditSecretsTests` (each item's class; a locked status is
+     not none kept), `AutomationsClientTests` (strut's and Peel's raw
+     failures to the words shown, another step's 401, masked keys, a run
+     with no workflow), `AutomationTests` (401, 403 and no provider in
+     Peel's runs), `ModelErrorTests`; the full suite. Offscreen on a
+     scratch development profile with `-strut YES`, the staged strut and
+     a stub key: Run now on the system automation showed "Didn't run:
+     Anthropic rejected the key. Replace it in Account." in the run list.
+     Not driven: a locked screen (cannot be offscreen) and the class move
+     itself (`swift test` and the offscreen check bundle have no Keychain
+     entitlement, so a driver step for it would not reach the
+     data-protection Keychain); a Peel run through the automation server
+     (its token lives in memory only).
+   - Not applied from review: a reason code in the reply instead of
+     sentences recognised by "Didn't " (a change to what strut stores);
+     the step throwing without "Peel answered NNN: " (old runs keep the
+     prefix, so the strip stays); one wording for a refused key across the
+     agent chat, `ModelError` and here (Tom chose these words); the
+     provider from the connected credential rather than a refusal's words
+     (a run read later may predate a change; OpenRouter's refusal names
+     nobody and reads "the model's provider"); "Didn't run" for a key
+     refused after some steps (the key is the same on every call); the
+     agent chat still treating a 403 as a dead key (`isKeyRefused`,
+     Replace key: a chat change, raised apart); `exists`, and so
+     `hasMnemonic`, taking a locked Keychain for no account (unchanged
+     here, raised apart); moving the agent's key apart from its first
+     read (it is read when the account opens, behind the PIN).
+     `/security-review`: no findings. `scripts/risk.sh` says medium: its
+     key pattern misses `SecretStore.swift`, where `KeychainItem` lives;
+     ranked high by hand (keys).
+   - Next, raised apart: strut's keys over stdin rather than the
+     environment; strut started again after a crash without waiting for a
+     chat send.
+10. **The workspace on Ladybug** (2026-10-15, #284 and its review). strut
+   now keeps workflows, steps and automations in one Ladybug file
+   (`workspace/graph/graph.lbug`), and its desktop package boots on it.
+   Peel had pinned `fs`, so nothing moved until Peel asked.
+   - Done: `BundledStrut` sets `STRUT_WORKSPACE_BACKEND=ladybug`. At its
+     first start strut imports the filesystem workspace (every version,
+     the active one, owner, cap, automations) and moves the files to
+     `workspace/fs-workspace.imported-<time>/`; runs stay where they were.
+     `stage-strut.sh` and `bundle-app.sh` refuse a stage whose
+     `desktop.json` does not say `ladybug`: a signed app cannot download
+     the two extensions, and an older stage would have come up without
+     its strut. Peel's step is written out to `steps/_graph/`.
+   - Checked: the full suite against strut `ae64fde`; on a copy of a
+     development profile's strut folder, fs then two Ladybug starts, every
+     workflow version and hash, the active versions, the automation and
+     its trigger and the runs matched, the second start imported nothing
+     and the memory graph was untouched. Offscreen with `-strut YES` on
+     a development profile holding an fs workspace and a model: the app
+     migrated it at launch, the System tab showed Merge duplicates with
+     its last run from before the move ("Didn't finish"), and Peel turned
+     it on, a write into the new graph.
+   - Not applied from review: an automated test of the migration (it
+     would need a test-only way to start the staged strut on `fs`); the
+     test naming strut's `steps/_graph/` (it is where the token scan must
+     look); a longer ready timeout for a first start that imports (Peel's
+     workspaces hold a few workflows; raised if a start is seen to time
+     out); a build from before #284 run against a migrated profile shows
+     no automations, and coming back imports its files again, replacing
+     the graph's automations with that build's (strut's import; Tom's
+     builds only, so told rather than guarded); leaving the backend to
+     `desktop.js` instead of pinning it (Tom chose explicit: a stage
+     without Ladybug falling back to `fs` would show an empty workspace).
+     `/security-review`: no findings. `scripts/risk.sh` says medium.
 
 ## Risks
 

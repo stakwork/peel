@@ -8,7 +8,7 @@
 		A10000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002; };
 		A10000000000000000000002 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* Provision.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Provision.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A10000000000000000000004 /* Provision.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Provision.entitlements; sourceTree = "<group>"; };
+		A10000000000000000000004 /* Provision.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ../../Apps/Mac/Peel.entitlements; sourceTree = "<group>"; };
 		A10000000000000000000010 = {isa = PBXGroup; children = (A10000000000000000000002, A10000000000000000000004, A10000000000000000000012); sourceTree = "<group>"; };
 		A10000000000000000000012 /* Products */ = {isa = PBXGroup; children = (A10000000000000000000003); name = Products; sourceTree = "<group>"; };
 		A10000000000000000000020 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
@@ -42,7 +42,7 @@
 		A10000000000000000000051 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Provision.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ../../Apps/Mac/Peel.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;

@@ -1429,6 +1429,10 @@ rasul on it):
   Lookalikes, other ports, userinfo and other call servers (also
   `chat.sphinx.chat:8443`) are refused (tests). A call server set in
   Account still may name only itself.
+  The same error came back on 2026-10-13: the call server now answers
+  `serverUrl` as `https://livekit.sphinx.chat`, which LiveKit reads as
+  `wss://`. `CallServer.mediaURL` now takes `https://` as `wss://` (and
+  `http://` as `ws://`, still only for a call server on this machine).
 - **The header showed that error, cut short, beside "Join · 4".** A join
   or start from the header (or ⌥⌘A, ⌥⌘V) now fails into the chat's notice
   ("Could not join the call. …"), cleared (only that notice) when the
@@ -1464,6 +1468,15 @@ chat's title); `refreshCallWatches`, `stopWatchingCalls` and
 `refreshRecentCalls` are the store's own, run when the model locks
 (`watchesRecent`), resets and rebuilds the open chat's rows. Its tests are
 `Tests/PeelUITests/CallStoreTests`.
+
+## Share opens on the screen (2026-10-15)
+
+Share now opens macOS's picker in screen mode, so the entire screen is the
+easy default. A chevron beside it offers Entire screen, A window and An
+app. Each uses `present(using:)` with the matching style and only that
+kind's `allowedPickerModes`; a window or an app may still be several. No
+new permission. While sharing, the button is
+still the one filled Stop sharing.
 
 ## Decided (Tom, 2026-10-08)
 

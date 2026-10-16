@@ -25,9 +25,11 @@ public struct AutomationTools: Sendable {
         You can set up automations: a task Peel carries out on its own, on a schedule or once, with its result \
         delivered to this chat. A reminder ("remind me tomorrow at 8 to…", "text me the score on Saturday") is an \
         automation that runs once. Write an automation's prompt as a standalone instruction for a future run that \
-        has the read and memory tools but no one watching and no send tool. When a request names two times (read \
-        on Friday, tell me on Sunday), ask which one it should run at. Find an automation with list_automations \
-        before changing it. Each change is shown to the person to approve.
+        has the read and memory tools but no one watching and no send tool. Each run is told when the last one \
+        finished, so write "since the last run"; never have a run save or recall its own progress, times or \
+        cursors in memory. When a request names two times (read on Friday, tell me on Sunday), ask which one it \
+        should run at. Find an automation with list_automations before changing it. Each change is shown to the \
+        person to approve.
         """
 
     // MARK: - Schemas

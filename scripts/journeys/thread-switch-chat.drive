@@ -1,0 +1,17 @@
+// A thread open beside the chat, scrolled up; another chat, then back.
+// The chat comes back where you left it. Whether the thread is still open
+// is logged (`drive: thread ...`), not judged.
+// check: switch land=anchor
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"thread": "visible"}
+{"wait": 1.5}
+{"probe": "switch", "for": 5.5}
+{"select": "{{other}}"}
+{"wait": 1.5}
+{"select": "{{chat}}"}
+{"wait": 2.5}
+{"note": "thread"}

@@ -254,11 +254,17 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         return .message(parent, people.sender(of: parent, inTribe: inTribe))
     }
 
-    /// Whether this is the row a jump to the message with `uuid` goes to:
-    /// its own, in its run of images, or the original of its thread.
+    /// The uuids a jump finds this row by: its own, its run of images', and
+    /// the original of its thread. None for a row that is not a message's.
+    public var heldUUIDs: [String] {
+        guard [.message, .payment, .paymentRequest].contains(kind) else { return [] }
+        return ([message.uuid] + images.map(\.uuid) + [summary?.original.uuid]).compactMap { $0 }
+    }
+
+    /// Whether this is the row a jump to the message with `uuid` goes to.
     public func holds(_ uuid: String?) -> Bool {
-        [.message, .payment, .paymentRequest].contains(kind)
-            && (message.uuid == uuid || images.contains { $0.uuid == uuid } || summary?.original.uuid == uuid)
+        guard let uuid else { return false }
+        return heldUUIDs.contains(uuid)
     }
 
     /// Whether `next` joins this row's run of images. A run's row carries

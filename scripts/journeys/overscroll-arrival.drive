@@ -1,0 +1,18 @@
+// Something arrives while the direct chat's rubber band runs at its
+// bottom: the peer's message during a slow ease back, then your own send
+// during the pull. Nothing is placed while the band runs; once it is back
+// in range, the list ends flush at the newest.
+// needs: peer
+// check: peer land=end
+// check: own land=end
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "peer", "for": 10}
+{"signal": "peer-sends"}
+{"overscroll": -80, "over": 0.3, "back": 8}
+{"wait": 1}
+{"probe": "own", "for": 4}
+{"type": "sent during a rubber band", "return": true, "next": 0}
+{"overscroll": -80, "over": 0.3, "back": 2}
+{"wait": 2}

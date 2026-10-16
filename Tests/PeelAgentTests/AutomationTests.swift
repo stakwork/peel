@@ -80,9 +80,21 @@ struct AutomationTests {
     @Test func aModelFailureFailsTheRun() async {
         let reply = await AutomationRun.run(
             AutomationRequest(name: "Daily", prompt: "Summarise"),
-            with: loop(Scripted(failing: .invalidKey("bad key"))))
-        #expect(reply.status == .failed)
-        #expect(reply.text == nil)
+            with: loop(Scripted(failing: .invalidKey("bad key"))), provider: .anthropic)
+        #expect(reply == .failed("Didn't run: Anthropic rejected the key. Replace it in Account."))
+    }
+
+    /// A 403 is a refusal of what the key asked for, not of the key: never "Replace it".
+    @Test(arguments: [
+        (ModelError.invalidKey("This model is not available in your region.", status: 403), AgentProvider.openAI,
+         "Didn't run: OpenAI refused: This model is not available in your region."),
+        (ModelError.invalidKey(nil, status: 403), nil, "Didn't run: the model's provider refused the request."),
+        (ModelError.invalidKey(nil), nil, "Didn't run: the model's provider rejected the key. Replace it in Account."),
+    ])
+    func aRefusalSaysWhichOne(error: ModelError, provider: AgentProvider?, shown: String) async {
+        let reply = await AutomationRun.run(
+            AutomationRequest(name: "Daily", prompt: "Summarise"), with: loop(Scripted(failing: error)), provider: provider)
+        #expect(reply == .failed(shown))
     }
 
     /// A run that outlasts its deadline is stopped and fails, so nothing is

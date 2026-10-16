@@ -1,0 +1,12 @@
+// Open and close a thread at the bottom, the thread beside the chat. The
+// bottom stays flush (review table row 5; rule 7: never animate a list's
+// width).
+// check: thread hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"probe": "thread", "for": 3.5}
+{"thread": "newest"}
+{"wait": 1}
+{"close": "thread"}
+{"wait": 1.5}

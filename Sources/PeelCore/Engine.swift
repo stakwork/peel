@@ -260,6 +260,13 @@ public actor Engine {
         reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: 0) }
     }
 
+    /// Checks the current connection with the same ping as the keep-alive.
+    /// A silent connection follows the normal reconnect path.
+    public func checkConnection() async -> Bool {
+        guard connection == .connected else { return false }
+        return await connectionAnswers()
+    }
+
     /// Skips the wait before the next reconnect attempt.
     public func reconnectNow() {
         guard keepConnected, connection != .connected, connection != .connecting else { return }

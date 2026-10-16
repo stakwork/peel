@@ -891,6 +891,174 @@ put them in one container, which centred the narrower tool rows. Each turn
 is now a leading `VStack` given those (branch `fix/agent-tool-rows-leading`);
 checked on `gate-alice`, the rows at the leading edge as on main before.
 
+### Account rows squeezed (branch `fix/account-settings-layout`, 2026-10-14)
+
+From Tom's screenshot: Account › Peel agent › API key, Remove asked
+"Remove the key? The agent will stop." in a column a word wide, Cancel and
+Remove cut to "…" and "R…". Cause: a `Fact`'s value was full width and its
+action had no priority, so the HStack split the row between them and
+squeezed the action; the confirm's prompt and buttons all shrank. At the
+window's narrowest (760) the same cut Replace, Remove, Check words, Show
+words and Use a home server… with nothing open.
+
+Changed: `Fact` lays out its value and action with `FactValueLayout`: the
+action at its own width, the value wrapping beside it, and the action
+under the value once less than 96 pt would be left for it. One layout,
+not `ViewThatFits`, so an open confirm keeps its state when the row
+changes shape (review caught that two branches lost it). `InlineConfirm`'s
+buttons never shrink; its prompt sits beside them on one line or above
+them, wrapping; a `confirming` binding goes back to false when the
+confirm goes away. The key row hides Replace while Remove asks
+(`confirming`).
+
+Checked offscreen on a new development profile with a stub key (not a
+real one), every Account confirm opened at 1180, 900 and 760 wide, and
+closed; a confirm opened after the row had laid out stays open as the row
+re-lays (Replace hidden); the contact details' Remove and tribe details'
+facts. The full suite. Not checked: a click (the driver has none), a
+tribe's Delete section with a long name.
+
+Not applied from review: one shared beside-or-below layout for the
+confirm too (its `ViewThatFits` holds no state; the two rules differ), a
+measurement cache in the layout (a few extra measurements per detail
+screen). Rebased on #274 and checked again: at 760 the Brain row's
+Connect a home server… goes under its description.
+
+### The agent chat on the shared list (branch `feat/agent-list`, 2026-10-15)
+
+PR 5 of the message-list review (`docs/reviews/2026-10-14-message-lists.md`),
+on PR 4 (#286, merged as `f09b40a`). Done means: the agent chat is the chat's list (its
+controller and table), so a streaming reply follows only while the list is
+at the bottom, in the same pass, and nothing moves once you scroll.
+
+Built:
+
+- `MessageTable`'s engine is generic over `TableRow`: an id, a reuse
+  kind, an estimate, the cell's SwiftUI content, its hover bar (none for
+  an agent row, which shows its own More) and the rows as the
+  controller sees them; equality is the row's version for the height
+  cache. `ChatRow` conforms with what the engine did for it before, so
+  the chat and threads run as they did. `MessageTable` is generic too:
+  the agent chat's is `MessageTable<AgentListRow>`.
+- `AgentListRow`: one row per turn (its day line, tools and text), plus
+  Peel's intro, the summary under the turn it reaches, a turn's problem,
+  and the reply streaming (`reply`, with any retry note). Only turns hold
+  the list's place; only your own turn is `isOwn`; nothing is counted, so
+  the pill is an arrow. The reply streams in the row of the turn it
+  becomes: saving gives the turn the store's id, so `AgentSession`
+  keeps which reply each saved turn streamed as (`streamedAs`) and the
+  row keeps the reply's id, its shape and its open parts; the save is a
+  change in place, never an arrival.
+- The rows above the reply are made again only when they change (a turn,
+  the summary, a problem, the name, what is open; `AgentRows`); during a
+  stream only the reply's row is. A row's equality is its id and a small
+  version (a saved turn's text length, its open parts, its day line; the
+  reply's tools and retry note too), not the turn's text, and the engine
+  finds rows changed in place in one pass, with no difference worked out.
+- Streaming: each flush of the reply is a change in place; following, the
+  controller returns `.newest` unanimated (T9) and the engine places it in
+  that pass; reading, the reading row holds (T10). No 20 or 100 ms
+  coalescing. A scroll by hand, one wheel tick included, clears the latch
+  (T17); reaching the bottom by hand or the pill sets it again. A send
+  follows (T6).
+- Opening a tool row or the summary: `listRowExpanding` (environment) asks
+  the engine first, which calls `ChatListController.userExpanded` (T26,
+  back, with `ChatListEngine.top(of:)`); the row keeps its top and the
+  list stops following, so the opened row is never pushed up. Which rows
+  are open is kept beside the list (`AgentOpenRows`, on `MacAgent`), not in
+  a cell, so a row scrolled away or measured off the screen is as it was;
+  it is part of the row's version. An approval card in place of a tool
+  row is a change in place, a resize.
+- The jump pill, bottom centre, as in a chat; Page Up and Down.
+- The offscreen driver's scripted agent (`OffscreenAgent`): `{"agent":
+  "script"}` swaps in a session with its conversation in memory, a
+  placeholder key and a model on this Mac that streams prose a word at a
+  time at a set rate, or calls `current_time` first; `seed`, `ask`,
+  `done`, `expand`, `memory`, `memory-close`; `{"wheel": 40}`, one mouse
+  wheel tick (no live scroll). No provider is ever called.
+
+Deleted: the agent's fork in `AgentMessageList` (its lazy stack,
+`following`, `phase`, `end`, `position`, `revealed`, `revealLimit` and the
+400 ms hide, the three scroll-geometry observers, `repin`, `reveal`, the
+`grew` callback and its logging), `ListEnd.swift`, `timelineProbe`,
+`AppModel.agentRowsOpened` and `ListProbe`'s ignored row.
+
+Journeys (new, `scripts/journeys/agent-*`; `evaluate.py` gains `keep=` (and `opens=yes`), a
+row's top held as it opens):
+
+| Journey | Checks |
+|---|---|
+| agent-open | lands at its end, 0 blank or hidden frames, placed 47 ms after the click |
+| agent-stream-bottom | 300 words at 40 a second: flush every frame (content 2,915 to 3,515 pt) |
+| agent-stream-scroll-away | one wheel tick up mid-reply: 0 frames moved while it grew 400 pt |
+| agent-expand-tool | the newest turn's tool row opened at the bottom: its top 0 pt moved, 50 pt taller |
+| agent-memory-panel, -narrow | memory opened and closed at 1180 and 760: reading row 0 pt moved |
+| agent-return | back at the reading row |
+| agent-reply-ends | a reply saved while following: the same row, its top 0 pt moved, flush every frame |
+| agent-reply-ends-open | a tool row opened mid-stream: still open (+50 pt) and in place after the save |
+
+The two `agent-reply-ends` journeys fail with the reply's row given its
+own id (a new row at the save, "gone at the end"), so they test the swap.
+
+Per flush, a reply streaming 300 words at 40 a second into 200 turns (203
+rows), the debug build offscreen, two runs each, alternated (main-thread
+milliseconds, median, p95 in brackets):
+
+| | before | after |
+|---|---|---|
+| rows made in the view's body | 1.64, 1.70 (2.5, 3.0) | 0.14, 0.15 (0.27, 0.28) |
+| the engine up to placing | 2.9, 2.9 (5.3, 4.5) | 1.8, 1.8 (2.9, 2.8) |
+| the whole update | 11.5, 12.0 (26.5, 24.2) | 9.95, 9.35 (21.9, 21.3) |
+
+What is left is measuring and laying out the reply's own cell as its
+Markdown grows.
+
+Every journey run twice on fresh seeded profiles on a local stack
+(`lj6-me`, `lj6-peer`), on main at `f09b40a` (PR 4 merged) with the
+review fixes: 45 checks of 46 pass, then 44, the 9 agent journeys and
+every chat and thread journey but one; `search-early` fails as on PR 4
+(Return before the matches come). The second run's other failure,
+`thread-send-scrolled`, moved the chat to its end 0.14 s after the
+thread send (once in seven runs of it on this branch; it passed three
+times when run again, and in the six full runs before). The engine's
+change in this PR leaves the chat's path as it was (rows changed in
+place are found in one pass; any other change goes the way it went), so
+it is left as an open flake of the thread send to look at on its own. Rebased on #295 (the side panel's slide) and #292: `ListProbe`'s
+window place and visibility now read the table's scroll view for the
+agent list too, and the memory beside it uses `SidePanelSplit(item:)`.
+`swift test` passes; the agent, thread and bounce journeys, run twice:
+every agent journey, `thread-open-slide` and `thread-flicker` both
+times; one run also failed `thread-send-scrolled` (the same jump) and
+`bounce-arrival-scrolled` (back at the newest, not the reading row).
+Neither came back on its own: `thread-send-scrolled` 8 of 8 here with
+the timeline log on, and both 6 of 6 on main; both fail only inside a
+long run of journeys, after others, so they are left to look at with the
+thread send.
+`swift test`: everything passes, with 8 new controller tests for the
+agent's rules (streaming at the bottom, one wheel tick, following again
+by hand or the pill, your send, the pill an arrow, opening a row, an
+approval card, the reply saved in place) and one for `streamedAs`.
+
+Review (2026-10-15): the reply saved as a new row lost what was open or
+selected in it and counted as an arrival (fixed: one row id, one shape);
+every flush rebuilt and compared the whole conversation (fixed: the
+cache, the version, the in-place pass; numbers above). /simplify: one
+`MessageTable` for both lists, the disclosure's click in one place
+(`AgentDisclosure.toggle`, which the driver calls too), the row and key
+formats in one place each, the driver's memory step through
+`openMemory`, one scroll step for `scroll` and `wheel`, the dead
+fallback state in `AgentDisclosureRow` and `TimelineLog.points` gone, the
+timeline log's lazy-stack description replaced. Not applied: a stable
+client id on `AgentTurn` in place of `streamedAs` (a change to how turns
+are stored), a context type for the chat-only `update` arguments, and
+the controller's O(n) passes per change (shared with the chat; 1 ms of
+the 1.8 above in a debug build).
+
+Needs Tom's hands: the feel of the follow with a real provider (its
+flushes are 50 ms apart, as the session sends them), a click on a tool
+row's chevron and the approval card's keys (Return, Escape) inside the
+table's cells, hover and More on agent rows, text selection in a reply.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

@@ -22,6 +22,9 @@ public final class ChatSearch {
     public private(set) var failed = false
     /// Raised to put the cursor back in the field (⌘F while it is open).
     public var focusRequests = 0
+    /// What was typed when Return came before its matches: the first of
+    /// them is shown once they are found. Any other matches drop it.
+    private var returnAwaits: MessageQuery?
 
     public init(chat: String) {
         self.chat = chat
@@ -45,12 +48,27 @@ public final class ChatSearch {
         searching = true
     }
 
-    fileprivate func found(_ matches: [Message], for query: MessageQuery?, failed: Bool = false) {
+    /// Return when the matches are not for what is typed yet: it waits
+    /// for them, and says so.
+    func waitForMatches() -> Bool {
+        let typed = MessageQuery(text)
+        guard !typed.isEmpty, query != typed else { return false }
+        returnAwaits = typed
+        return true
+    }
+
+    /// Lists the matches; true when Return waited for them and there is a
+    /// first to show.
+    @discardableResult
+    func found(_ matches: [Message], for query: MessageQuery?, failed: Bool = false) -> Bool {
+        let showsFirst = returnAwaits != nil && returnAwaits == query && !matches.isEmpty
+        returnAwaits = nil
         self.query = query
         self.matches = matches
         self.failed = failed
         current = nil
         searching = false
+        return showsFirst
     }
 
     fileprivate func select(_ index: Int) {
@@ -88,17 +106,31 @@ extension AppModel {
     public func runSearch(_ search: ChatSearch) async {
         let text = search.text
         let query = MessageQuery(text)
-        guard let storage = engine?.storage, !query.isEmpty else { return search.found([], for: nil) }
+        guard let storage = engine?.storage, !query.isEmpty else {
+            search.found([], for: nil)
+            return
+        }
         search.began()
         do {
             let matches = try await storage.searchMessages(query, in: search.chat, limit: ChatSearch.limit)
             // Typed on, or closed, meanwhile: a newer search has this.
             guard !Task.isCancelled, self.search === search, search.text == text else { return }
-            search.found(matches, for: query)
+            if search.found(matches, for: query) { showSearchMatch(0) }
         } catch {
             guard !Task.isCancelled, self.search === search else { return }
             search.found([], for: query, failed: true)
         }
+    }
+
+    /// Return in the search field: goes to the selected match, the first
+    /// when none is. Typed faster than the search, it goes to the first
+    /// once the matches for what is typed come; false with nothing to do.
+    public func searchReturn() -> Bool {
+        guard let search else { return false }
+        if search.waitForMatches() { return true }
+        guard !search.matches.isEmpty else { return false }
+        showSearchMatch(search.current ?? 0)
+        return true
     }
 
     /// Selects the next match down the list (`by` 1, older) or up it (-1,

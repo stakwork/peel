@@ -1,7 +1,0 @@
-// Copy to iOS/Local.xcconfig (git ignores it) to build for a phone.
-
-// Your team, as Xcode > Settings > Accounts shows it.
-DEVELOPMENT_TEAM = ABCDE12345
-
-// Any team but Peel's own: a bundle ID of its own, as on the Mac.
-// PEEL_BUNDLE_ID = dev.peel.ios.abcde12345

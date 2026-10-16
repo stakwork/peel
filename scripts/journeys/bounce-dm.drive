@@ -1,0 +1,19 @@
+// Bounce, judged at the direct chat: tribe scrolled up, the direct chat
+// scrolled up, bank, the tribe, then the direct chat again: on its row.
+// check: back land=anchor
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 1500}
+{"wait": 1}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "back", "for": 7.5}
+{"select": "{{other}}"}
+{"wait": 1.5}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"select": "{{chat}}"}
+{"wait": 2.5}

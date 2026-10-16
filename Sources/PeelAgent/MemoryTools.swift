@@ -22,10 +22,12 @@ public struct MemoryTools: Sendable {
         merge_memory. When the user tells you something worth keeping about themselves, the people in their life, \
         their plans or preferences, or says "remember", call remember: the episode in their words, the entities it \
         is about, and each fact as one plain sentence with a predicate. Keep every lasting fact in what was said, \
-        about anyone in it; skip passing moods and small talk. Use the entity types and predicates memory_ontology \
-        lists (call it once before your first remember) when one fits; when none does, use a new one, which is \
-        kept as proposed: never leave a fact out because no word fits. A one-value predicate such as name replaces \
-        the current fact by itself. Pass valid_at or invalid_at only when the words give a time, turned into a \
+        about anyone in it; skip passing moods and small talk. Memory is for people, their lives and preferences: \
+        never remember bookkeeping such as run times, cursors or "last checked" timestamps. Use the entity types \
+        and predicates memory_ontology lists (call it once before your first remember) when one fits; when none \
+        does, use a new one, which is kept as proposed: never leave a fact out because no word fits. A one-value \
+        predicate such as name replaces the current fact by itself. Pass valid_at or invalid_at only when the \
+        words give a time, turned into a \
         date with current_time ("last week", "in March"), or for someone else's message from when it was sent; \
         leave it out when you cannot tell. Pass ended \
         when the words say it is over ("I used to"), even with no date. When the episode is someone else's words \

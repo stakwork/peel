@@ -1,7 +1,10 @@
 # Agent Guide
 
+Read `docs/VISION.md` before anything else: Peel's guiding principles and
+the experience it must give. Every change serves it.
+
 Peel is a native Sphinx chat client written from scratch in Swift on the shared
-Rust core. Read `docs/PLAN.md` first (architecture and phase index), then the
+Rust core. Read `docs/PLAN.md` next (architecture and phase index), then the
 phase you are working on under `docs/phases/`. A phase with work done opens
 with a short status (built, open, decided) above its journal; a planned one
 is a short plan. Update the status and the journal when you finish something.
@@ -198,7 +201,11 @@ is a short plan. Update the status and the journal when you finish something.
     (moved there from the login Keychain on first unlock), `.development`
     profiles in a plain file with no PIN (CLI only); `KeychainItem` (one
     data-protection Keychain item, which the words and the agent's key
-    share) and `FileItem` (an owner-only file) behind `SecretItem`; the
+    share; readable only while the Mac is unlocked but for the agent's key,
+    `AfterFirstUnlockThisDeviceOnly` for runs on a locked Mac; an item
+    moves to its class on the next read or write, a failed move logged
+    once; a locked read is `KeychainLocked`, never none kept) and `FileItem` (an owner-only file)
+    behind `SecretItem`; the
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),
@@ -229,7 +236,7 @@ is a short plan. Update the status and the journal when you finish something.
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
   `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
-  `ThreadRef`, `AttachmentHandle`), `AppModel+Calls` (a call's
+  `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
@@ -262,8 +269,16 @@ is a short plan. Update the status and the journal when you finish something.
   `MediaInfoCache`; `tileSide`, the chat's image size); `TimelineLog` (the
   opt-in log of the message list's placement, `defaults write dev.peel.mac
   PeelTimelineLog -bool YES`; `docs/testing.md`, "Timeline log");
-  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied")
-- `Sources/PeelApp/` — the SwiftUI Mac app over `PeelUI`: `MacPlatform`
+  `CopyFeedback` (the hold, the animations and VoiceOver's "Copied");
+  `ChatList/`, where a message list goes on any engine:
+  `ChatListController` (the anchor, the following latch, "New messages",
+  the pill over `ListBottom`, jumps, older pages and where a list opens,
+  T1–T27 of `docs/reviews/2026-10-14-message-lists.md`; no SwiftUI, AppKit
+  or UIKit) and `ChatListTypes` (`ChatListRow`, `ListContent`,
+  `ListPlacement`, `ListViewport`, `ListDiff`, `ListPill`, and the
+  `ChatListEngine` and `ListAnchorStore` protocols it takes; `AppModel` is
+  the store)
+- `Apps/Mac/Peel/` — the SwiftUI Mac app over `PeelUI` (the target "Peel macOS" of `Apps/Peel.xcodeproj`, see `Apps/`): `MacPlatform`
   (`Platform.mac()`: `MacPresence`, `LiveKitCalls`, and
   `MenuPresenter`, `MediaPlayback`, `WebPane` and `CallSession` conforming;
   `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
@@ -284,7 +299,7 @@ is a short plan. Update the status and the journal when you finish something.
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt, arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
@@ -292,9 +307,13 @@ is a short plan. Update the status and the journal when you finish something.
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
   `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
-  for the chat: `MessageViews`, `ListEnd` (where a lazy list's rows are
-  laid out, so the chat's and the agent's lists are held at their end by
-  them, never by the stack's estimate), `MessageText` (message text over
+  for the chat: `MessageViews` (`MessageList` with its pill and Page
+  keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
+  engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
+  cells, heights cached per row, width and version, the controller's
+  placement applied in the same pass, idle measuring, its own animated
+  moves), `ListProbe` (the frame probe
+  over each list's `ListGeometry`), `MessageText` (message text over
   `MessageMarkup`: `MessageText`, `LinkText` and the search highlight;
   plain SwiftUI that the iPhone compiles too, its size a parameter, 14
   here), `LinkCards` (the tribe and contact link
@@ -311,9 +330,12 @@ is a short plan. Update the status and the journal when you finish something.
   `CopyButton` (`CopyButton`, `CopyLabel` and the menu's "Copied" pill, for every copy, over `CopyFeedback`);
   the agent chat: `AgentViews` (`PeelLogo`, the sidebar's
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
-  card, the turn rows, tool rows (an acting tool's outcome and View) and
+  card, its list and pill, the turn rows, tool rows (an acting tool's outcome and View) and
   the failure row, `AgentApprovalCard` (a send waiting on you, where its
-  row will be), `AgentConnectButton`), `AgentMemoryViews` (a memory
+  row will be), `AgentConnectButton`), `AgentTable` (the agent chat's
+  rows for `MessageTable`, `AgentListRow`, and `AgentOpenRows`, which
+  tool rows are open), `OffscreenAgent` (the offscreen driver's scripted
+  model, never a provider), `AgentMemoryViews` (a memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
   model and the test call) and `AgentSettings` (Account › Peel agent, with
@@ -375,16 +397,29 @@ is a short plan. Update the status and the journal when you finish something.
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
-  `OffscreenDriver` (its `-drive` script), see "Checking the app". PeelApp is the only target that links LiveKit
+  `OffscreenDriver` (its `-drive` script), see "Checking the app". The Mac app is the only target that links LiveKit
   and WebRTC)
-- `iOS/` — the iPhone app (phase 7, I2), the only thing outside SwiftPM:
-  `Peel.xcodeproj` (hand-written; target `Peel`, iOS 26, iPhone only, over
-  the package's `PeelUI`, `PeelCore` and `AgentKit` through a local package reference
-  to the repo root; its `Package.resolved` is a copy of the root's, copy it
-  again when the pins move), `Signing.xcconfig` (bundle ID `dev.peel.ios`,
-  no team: a team goes in the ignored `Local.xcconfig`, see
-  `Local.xcconfig.example`) and `Peel/`, a synchronized folder (every file
-  in it is in the target): `PeelPhoneApp` (the app, `RootView` by phase),
+- `Apps/` — the two apps and what they share, in one Xcode project,
+  `Apps/Peel.xcodeproj` (hand-written; targets "Peel macOS" and "Peel iOS",
+  schemes of the same names, over the package's libraries through a local
+  package reference to the repo root, plus LiveKit for the Mac only. Its
+  `Package.resolved`, under `project.xcworkspace/xcshareddata/swiftpm`, is
+  a copy of the root's with LiveKit's pins added; copy again when the
+  pins move). Both apps are `com.sphinx.peel`; `Config/Peel.xcconfig` holds
+  that, the version and build number and the team, and an ignored
+  `Config/Local.xcconfig` (see `Local.xcconfig.example`) puts your own
+  team and bundle ID over them. `Assets/AppIcon.icon` is the icon Xcode
+  compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
+  flat logo for docs and pages. `Shared/` holds the files both apps
+  compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
+  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
+  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`);
+  they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
+  `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
+  Keychain access group, microphone and camera) and `Mac/Info.plist` (the
+  `peel:` link). `Apps/iOS/Peel/` is the iPhone app (phase 7, I2; iOS 26, iPhone
+  only), a synchronized folder (every file in it is in the target):
+  `PeelPhoneApp` (the app, `RootView` by phase),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
@@ -440,14 +475,9 @@ is a short plan. Update the status and the journal when you finish something.
   attach from Photos, the camera or Files, `@` mentions, the mic and the
   bolt saying what is coming) and `YouTab` (photo, name and balance;
   Agent; the words, Change PIN, Face ID, the PIN timeout, boost amount,
-  the confirmation threshold, server; Forget). It also compiles `Theme`,
-  `Avatar`, `Clipboard`, `CopyButton`, `MessageText`, `QRCode` and
-  `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and `PaymentKit`
-  (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) from
-  `Sources/PeelApp`
-  (the project's "Shared with the Mac" group) and takes its icon from
-  `Assets/AppIcon.icon`; `Peel/Assets.xcassets` holds `Logo`, a link to
-  `Assets/peel.svg`, for `AppIcon` on the phone
+  the confirmation threshold, server; Forget).
+  `Peel/Assets.xcassets` holds `Logo`, a link to
+  `Apps/Assets/peel.svg`, for the phone's own use
 - `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
   and iOS; the plan is `docs/agent-architecture.md`, the phase
   `docs/phases/09-agents.md`)
@@ -542,7 +572,9 @@ is a short plan. Update the status and the journal when you finish something.
     `DYLD_*`, `NODE_*` (but `NODE_EXTRA_CA_CERTS`), `STRUT_*`, `OPENSSL_*` and
     `SSL_CERT_*` dropped, and
     its OpenSSL (Ladybug's, built for Homebrew's folders) given no
-    configuration, engines or providers; its workspace and memory
+    configuration, engines or providers; its workspace (one Ladybug file,
+    `workspace/graph/graph.lbug`; strut imports the old files once and
+    moves them to `workspace/fs-workspace.imported-<time>/`) and memory
     graph in `~/Library/Application Support/Peel/Strut`, a development
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
@@ -577,6 +609,18 @@ is a short plan. Update the status and the journal when you finish something.
     this Mac or the account's home server, kept in `Profile.brain` (one
     that cannot be read is never taken for this Mac), and the pairing link
     `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
+  - `MemoryBackup.swift` — this Mac's graph files renamed aside into
+    `memory/backups/graph-<time>.lbug…` before the home server's memory is
+    brought back in their place, put back on failure, the newest three kept
+  - `MemoryMove.swift` — moving the memory between Peel's own strut and a
+    home server ("Move, not sync"): `memory/export` on one (this Mac's by
+    a file in its own folder, read only from there and deleted after; a
+    home server's `inline`), `memory/import` as `data` on the other, which
+    takes only an empty graph (or, to a home server, `replace`s its graph,
+    which strut there backs up first: "Reconnecting" in
+    `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
+    (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
+    option, holding the memory tools until it ends
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
     from a home server (`Brain`, `isHomeServer`; `health` reads its
@@ -634,7 +678,10 @@ is a short plan. Update the status and the journal when you finish something.
   so they also run on iOS
 - `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
   engine and profile, no window or server: `CallStoreTests` (each chat's
-  busiest watched call, the call you are on, locking stops the watches)
+  busiest watched call, the call you are on, locking stops the watches),
+  `ChatListControllerTests` (the list controller's 25 cases on a fake
+  engine and store) and `ChatSearchTests` (Return before a search's
+  matches waits for the first of them)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
@@ -649,6 +696,11 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters),
   `BrainTests` (the pairing link, what is kept, `/health` read),
+  `MemoryMoveTests` (both moves against stub struts: what goes where,
+  refusals in words, counts that differ, a home server gone mid-way, the
+  export file deleted and never read outside strut's folder; bringing
+  memory back in place of this Mac's: the graph kept as a backup, put back
+  on any failure, a linked graph left alone, the newest three kept),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end), `AgentSetupTests` (the tools and prompt
   by what the caller has, `peel agent`'s arguments, and with a staged
@@ -698,18 +750,19 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/risk.sh` — ranks a branch's risk (low, medium, high) from the
   files it touches and its size; see "How a change ships"
 - `scripts/build-ffi.sh` — assembles the bindings: downloads the pinned
-  `sphinx-rs` and `sphinx-mac-v2` files from GitHub, or with `--update` takes
-  them from sibling checkouts
+  `sphinx-rs` release's library, bindings and header from GitHub, or with
+  `--update <tag>` another release's, recording it in the lock
 - `scripts/bundle-app.sh` — builds the Mac app and wraps it as a signed bundle
   (default `.build/Peel.app`, or the path given), without installing it;
   embeds the frameworks the app loads through `@rpath` (LiveKit's
   `LiveKitWebRTC.framework`) in `Contents/Frameworks`, and the strut
   `stage-strut.sh` staged in `Contents/Strut` (without one it warns: that
-  Peel's agent has no memory or automations)
+  Peel's agent has no memory or automations; one without Ladybug it refuses)
 - `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
-  (`package-desktop.mjs --no-stt`, with Ladybug and the `memory/*` steps)
+  (`package-desktop.mjs --no-stt`, with Ladybug, its `vector` and `fts`
+  extensions and the `memory/*` steps)
   and Node, a pinned release checked against its SHA-256 (cached in
   `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
   Run it once, after strut changes, and again if macOS clears Caches
@@ -727,9 +780,8 @@ is a short plan. Update the status and the journal when you finish something.
   allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
-- `scripts/build-icon.sh` — compiles `Assets/AppIcon.icon` (edit it in Icon
-  Composer) into `Assets/Assets.car` and `Assets/AppIcon.icns`; rerun after
-  changing the icon. `Assets/peel.svg` is the flat logo for docs and pages
+- `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged
+  strut in `Contents/Strut` (and signs its native code, when Xcode signs)
 
 ## Build and run
 
@@ -740,16 +792,26 @@ scripts/check-app.sh <dev> <drive file> <out dir>   # app: offscreen, see below
 .build/debug/peel --profile <dev> listen             # CLI
 ```
 
-`Vendor/sphinxrs.lock` pins the core: the static library's sha256, the
-`sphinx-rs` commit and the `sphinx-mac-v2` commit that ships the library.
-`scripts/build-ffi.sh` downloads exactly those files (cached in
-`.build/sphinx-core`) and refuses a library with another hash. To move to a new
-core, check out the new commits in sibling `sphinx-rs` and `sphinx-mac-v2`
-checkouts, push them, and run `scripts/build-ffi.sh --update`.
+`Vendor/sphinxrs.lock` pins the core: the sha256 of each asset Peel links
+(`universal-sphinxrs-mac.a`, `sphinxrs.swift`, `sphinxrsFFI.h`, in that
+order) and the `sphinx-rs` release tag they come from. `scripts/build-ffi.sh`
+downloads exactly those files (cached in `.build/sphinx-core`) and refuses,
+and deletes, any with another hash. To move to a new core, run
+`scripts/build-ffi.sh --update <tag>`, which records the release and its
+three hashes. It then checks the core that release pins (`sphinx-ffi/Cargo.toml`
+at the tag) for upstream's client security fixes through GitHub's compare
+API. `stakwork/sphinx` is private, so set `GITHUB_TOKEN` to a token that can
+read it (`GITHUB_TOKEN=$(gh auth token)`); without one every fix is
+unchecked. A missing or unchecked fix warns, and fails the run with
+`PEEL_REQUIRE_CORE_FIXES=1`, which any build that ships must set.
 
-The Mac app bundle is assembled by hand in `scripts/bundle-app.sh`; there
-is no Xcode project for it. To check a build without replacing the
-installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+The Mac app is the "Peel macOS" target of `Apps/Peel.xcodeproj`; `scripts/bundle-app.sh`
+builds it with `xcodebuild` (unsigned, into `.build/xcode`), then signs it for
+the weekly re-sign below (`run-app.sh` installs the result). To check a build
+without replacing the installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
+Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick "Peel macOS"
+and Product > Archive for a build to distribute: the scheme's Release signs
+with the team in `Apps/Config`, and `scripts/stage-strut.sh` must have run.
 
 ### The iPhone app
 
@@ -757,19 +819,19 @@ installed app, `./scripts/bundle-app.sh /some/dir/Peel.app`.
 SPHINX_IOS_LIB=<sphinx-rs-ios>/out/ios-arm64/libsphinxrs.a \
 SPHINX_IOS_SIM_LIB=<sphinx-rs-ios>/out/ios-arm64-simulator/libsphinxrs.a \
   ./scripts/build-ffi.sh                      # the core with its iOS slices
-xcodebuild -project iOS/Peel.xcodeproj -scheme Peel \
+xcodebuild -project Apps/Peel.xcodeproj -scheme 'Peel iOS' \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   -derivedDataPath .build/xcode build
 xcrun simctl boot 'iPhone 18 Pro'
 xcrun simctl install booted .build/xcode/Build/Products/Debug-iphonesimulator/Peel.app
-xcrun simctl launch booted dev.peel.ios
-xcodebuild -project iOS/Peel.xcodeproj -scheme Peel -destination 'generic/platform=iOS' \
+xcrun simctl launch booted com.sphinx.peel
+xcodebuild -project Apps/Peel.xcodeproj -scheme 'Peel iOS' -destination 'generic/platform=iOS' \
   -derivedDataPath .build/xcode CODE_SIGNING_ALLOWED=NO build   # device, unsigned
 ```
 
-Or open `iOS/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
-`Peel` scheme and a simulator, and Run. A simulator needs no team; for a
-phone, copy `iOS/Local.xcconfig.example` to `iOS/Local.xcconfig` and set
+Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
+`Peel iOS` scheme and a simulator, and Run. A simulator needs no team; for a
+phone, copy `Apps/Config/Local.xcconfig.example` to `Apps/Config/Local.xcconfig` and set
 the team. The phone's profile is `default` in the app's own container,
 its words in the app's Keychain; agents never put an account's words,
 an invite or the throwaway account into it (Tom does that himself).
@@ -803,6 +865,8 @@ quitting before any window opens.
   ```
   {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
   {"open": "send-sats"}                   // the open chat's Send sats panel, as its bolt opens it
+  {"open": "connection"}                  // the sidebar bolt’s status panel
+  {"open": "connection-check"}            // its check/reconnect action
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
@@ -814,15 +878,21 @@ quitting before any window opens.
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …
   ```
 
+  The message list journeys add a frame probe and the steps they need
+  (`probe`, `thread`, `close`, `scroll`, `scrollTo`, `width`, `jump`,
+  `expect`, `signal`; `OffscreenDriver`'s header): `docs/testing.md`,
+  "List journeys".
+
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own
   event queue, so key monitors and shortcuts see them as typed (a key
   with ⌘ is offered to the window's views first, as AppKit does for a key
   window, which an app never active has none of); `keyCode`
   is real only for the US-layout letters, digits, punctuation and named
   keys above (other characters are sent with code 0). There is
-  no mouse step: posted clicks do not reach SwiftUI's buttons in an app
+  no click step: posted clicks do not reach SwiftUI's buttons in an app
   that is never active, so reach a control by its shortcut or add a
-  named step like `select`.
+  named step like `select`. `{"hover": 0}` puts the pointer on a message
+  list's row (the list's tracking area, moved over as AppKit reports it).
 - A new development profile on the local stack starts with 0 sats, and
   adding a contact needs 6. **The only allowed way to fund one** is
   `scripts/fund-dev.sh <stack dir> <dev profile> <sats>`: the
@@ -858,7 +928,7 @@ overrides it), with its own, empty Keychain. So:
 - So: **run `./scripts/run-app.sh` at least once a week** (it prints the
   expiry). If the installed app has already stopped launching, the same
   command fixes it.
-- The entitlements are `scripts/provision/Provision.entitlements`: the access
+- The entitlements are `Apps/Mac/Peel.entitlements`: the access
   group, plus `com.apple.security.device.audio-input` and `.camera` for
   calls (hardened runtime blocks the devices without them). Adding a key
   there makes `sign-app.sh` build the stub again once, keeping a profile
@@ -871,9 +941,13 @@ overrides it), with its own, empty Keychain. So:
   the Keychain. (Before calls, an ad-hoc bundle ran without the Keychain.)
 - A free team may register at most 10 App IDs in 7 days; do not change the
   bundle ID casually.
-- The iPhone app is `dev.peel.ios` under the team in `iOS/Local.xcconfig`
-  (ignored; `PEEL_BUNDLE_ID = dev.peel.ios.<team>` for any team but
-  Peel's). It keeps the words in its own Keychain, with no access group
+- Both apps are `com.sphinx.peel` (`Apps/Config/Peel.xcconfig`) under the
+  App Store team, for TestFlight. A build under any other team needs a
+  bundle ID of its own in the ignored `Apps/Config/Local.xcconfig`
+  (`PEEL_BUNDLE_ID = dev.peel.ios` for Tom's phone, whose Keychain stays in
+  that ID; `dev.peel.ios.<team>` for any team but Peel's). The scripts build
+  the Mac app as `dev.peel.mac` (above), so they never touch that file. The
+  iPhone app keeps the words in its own Keychain, with no access group
   until the notification extension needs one (I5). A Personal Team build
   on a phone also lasts 7 days.
 
@@ -947,7 +1021,8 @@ server.
 offline, on a real engine and a temporary profile (a call server on
 127.0.0.1:9 that never answers, so a test says who is on a call):
 `CallStore`'s counts per chat, the call you are on, and its watches
-stopping on lock.
+stopping on lock; `ChatListController`'s state machine against a fake
+engine and anchor store; and `ChatSearch`'s Return before its matches.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883
@@ -979,7 +1054,7 @@ PEEL_BENCH=1 PEEL_BENCH_OUT=.build/bench/before.json swift test -Xswiftc -O --fi
 
 ### Local LiveKit server
 
-For the development test room (`Sources/PeelApp/CallTestRoom.swift`;
+For the development test room (`Apps/Mac/Peel/CallTestRoom.swift`;
 details in `docs/phases/06-calls.md`, PR 3 journal). It opens a visible
 window and asks for the microphone, so only with Tom at the Mac, never
 from an agent unasked:
@@ -1077,7 +1152,7 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   its redirects go anywhere): fetch with `Web.get` (size-limited; a public
   https host, or loopback http for the local test stack), or through the memes
   server. A photo someone else chose goes through `Web.photo`.
-- Swift 6 language mode with strict concurrency in `PeelCore`, `PeelUI` and `PeelApp`.
+- Swift 6 language mode with strict concurrency in `PeelCore`, `PeelUI` and the apps.
   Actors for shared state, `@MainActor` for UI. `Sources/Sphinxrs` is generated
   and compiles in Swift 5 mode; do not edit it.
 - Tom works on this Mac while agents run. Run builds, tests and test

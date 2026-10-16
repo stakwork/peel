@@ -176,12 +176,28 @@ the other parts join as strut's snapshot PRs land. Where the copies go
 (the memes server, iCloud Drive, a chosen folder, a BitTorrent swarm) is
 open, for Evan. It is not a v1 blocker, but it is needed.
 
+## Added later on 2026-10-16
+
+Tom's answers on how Phase 1 ("the agent is a contact") is built. The
+design and PR plan are in [agent-on-strut.md](agent-on-strut.md).
+
+| # | Question | Answer (Tom, 2026-10-16) |
+|---|---|---|
+| 6 | When devices get a channel to the agent | In Phase 1, so catch-ups don't get worse when the loop moves to strut |
+| 7 | How many conversations | One: the agent DM, the same thread on every device. No token streaming |
+| 8 | Where the bridge runs | Bundled in Peel.app and launched by Peel, as strut is today |
+| 9 | Which devices answer the agent's requests | Only the Mac, in Phase 1 |
+| 10 | Brain mode | Off by default: the Mac is the brain while it is awake |
+
+Still pending Evan: whether the bridge is a strut mode of `sphinx/runner`
+or its own crate, and the key derivation scheme (decision 2).
+
 ## The road to stable
 
 Each step starts when the one before it is agreed or merged.
 
 1. **Answer the five decisions.** Done 2026-10-16, apart from the two parts
-   for Evan.
+   for Evan. Phase 1's design is [agent-on-strut.md](agent-on-strut.md).
 2. **One architecture of record.** Rewrite PLAN.md's architecture,
    agent-architecture.md and VISION open question 7 around the answers;
    mark the older proposals (agent-brain.md, jobs-architecture.md, the

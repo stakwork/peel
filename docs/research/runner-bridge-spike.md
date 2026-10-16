@@ -96,29 +96,45 @@ did, and paid twice.
 ## Where strut plugs in
 
 The seam is `Bridge::reply(to, text, reply_uuid)`. Today `handle` calls it
-with `"echo: " + text`. With strut, following jobs-architecture.md:
+with `"echo: " + text`. With strut, following
+[agent-on-strut.md](../agent-on-strut.md) ("The layers"): the contact is a
+pipe, and the orchestrator is a strut workflow, `peel-agent` (strut's
+`agent` step with Peel's prompt and tools). It answers small things itself
+and starts or continues `job` for bigger work.
 
 ```
 Sphinx msg (owner -> agent)
   bridge.handle: owner only; store uuid -> run id once known
-  POST {STRUT_URL}/workflows/job/run
-       {job: <conversation id>, title, input: {prompt: text},
-        callback: {url: http://<bridge>/jobs/done, token}}
-    -> 202 {runId}      (job_busy: queue the message for the next turn)
-  ... strut runs the turn ...
-strut run.end callback -> POST /jobs/done  {status, output: {text, artifacts, ask}}
+  POST {STRUT_URL}/workflows/peel-agent/run
+       {input: {prompt: text, session: "peel/agent-1/dm", context},
+        callback: {url: http://<bridge>/runs/done, token}}
+    -> 202 {runId}      (session_busy: queue the message for the next turn)
+  ... the orchestrator runs the turn ...
+strut run.end callback -> POST /runs/done  {status, output: {text, artifacts, ask?}}
   bridge: look up runId -> (sender, uuid); reply(sender, text, uuid)
+
+  orchestrator, for bigger work: job/start or job/continue (detached),
+    with the bridge as the job's callback
+strut run.end callback -> POST /runs/done  {status, output: {text, artifacts, ask?}}
+  bridge: the job's result, ask or artifacts as a message in the DM
 ```
 
+The bridge knows one workflow name, set by Peel at launch, and never picks
+a job itself. Strut runs one turn at a time per session (`session_busy`),
+so the bridge queues the owner's next message until the turn ends. The
+session is the DM's thread, for example `peel/agent-1/dm`. Jobs reach the
+bridge another way. The orchestrator starts them detached with the new
+strut steps `job/start` and `job/continue` (PR S2 in agent-on-strut.md),
+and names the bridge as their callback. So the one `run.end` route takes
+both the orchestrator's replies and the jobs' results, `ask`s and
+artifacts. Both use `job`'s reply shape, `{text, artifacts, ask?}`.
+
 Runner already has the parts this needs: a Rocket server with a
-constant-time admin token check (`AdminAuth`) for the `/jobs/done` route,
+constant-time admin token check (`AdminAuth`) for the `run.end` route,
 reqwest for the call out (`workflow.rs` already posts a Stakwork workflow),
-and redb for the `runId -> (sender, uuid)` map. Which job a message belongs
-to is decided by the front agent, which is a strut workflow (decision 1). So
-the bridge passes every owner message to one job per conversation, and
-strut does the routing. A "working on it" message, streaming and
-`ask` as a Sphinx message shape are the next design question. They are not
-bridge plumbing.
+and redb for the `runId -> (sender, uuid)` map. A "working on it" message,
+streaming and `ask` as a Sphinx message shape are the next design
+question. They are not bridge plumbing.
 
 ## What a real bridge still needs
 
@@ -135,7 +151,7 @@ knows the core.
 | Control messages | Echo only answers type 0; the rest are stored by the core and ignored | Read receipts (`bindings::read`), deletes, boosts and payments to the agent (refuse or keep?), tribe messages if the agent ever joins one, and the `ask` / approval shapes the agent-native rules need. Each is small once its shape is chosen. | S each |
 | Account from the user's words | A random seed through `/seed` | The derived seed, set by Peel at pairing through the admin endpoint (decision 2's contract). `/seed` already refuses to replace a seed. | S, once the derivation is agreed |
 | Sphinx tools for strut | None | Read, send and pay as bridge HTTP routes strut calls, behind the approval gate. | M |
-| strut call and callback | Sketched above | The route, the map, `job_busy` queueing, strut's auth (`STRUT_API_KEY`). | S–M |
+| strut call and callback | Sketched above | The `run.end` route for the orchestrator and for jobs, the map, `session_busy` queueing, strut's auth (`STRUT_API_KEY`). | S–M |
 
 ## For and against hosting it in runner
 

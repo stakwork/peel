@@ -631,8 +631,7 @@ seconds slower (open question 3).
 8. **Two Macs on one account.** Only the Mac that runs the bridge answers
    (requests carry its device id). The other Mac shows the DM like the
    phone. *Recommended:* fine for Phase 1; device claims are Phase 2.
-9. **The bridge launches the orchestrator, not `job`.** The runner spike
-   (#304) sketches the bridge posting each message to
-   `/workflows/job/run`. With the layers above it posts to `peel-agent`,
-   and only the orchestrator starts jobs. *Recommended:* the bridge knows
-   one workflow name, set by Peel at launch.
+9. **The bridge launches the orchestrator, not `job`.** Settled: the
+   spike's sketch now posts each message to `peel-agent` on the DM's
+   session, and one `run.end` route takes the orchestrator's replies and
+   the jobs' results (#307).

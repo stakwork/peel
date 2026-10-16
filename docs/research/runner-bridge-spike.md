@@ -96,29 +96,45 @@ did, and paid twice.
 ## Where strut plugs in
 
 The seam is `Bridge::reply(to, text, reply_uuid)`. Today `handle` calls it
-with `"echo: " + text`. With strut, following jobs-architecture.md:
+with `"echo: " + text`. With strut, following
+[agent-on-strut.md](../agent-on-strut.md) ("The layers"): the contact is a
+pipe, and the orchestrator is a strut workflow, `peel-agent` (strut's
+`agent` step with Peel's prompt and tools). It answers small things itself
+and starts or continues `job` for bigger work.
 
 ```
 Sphinx msg (owner -> agent)
   bridge.handle: owner only; store uuid -> run id once known
-  POST {STRUT_URL}/workflows/job/run
-       {job: <conversation id>, title, input: {prompt: text},
-        callback: {url: http://<bridge>/jobs/done, token}}
-    -> 202 {runId}      (job_busy: queue the message for the next turn)
-  ... strut runs the turn ...
-strut run.end callback -> POST /jobs/done  {status, output: {text, artifacts, ask}}
+  POST {STRUT_URL}/workflows/peel-agent/run
+       {input: {prompt: text, session: "peel/agent-1/dm", context},
+        callback: {url: http://<bridge>/runs/done, token}}
+    -> 202 {runId}      (session_busy: queue the message for the next turn)
+  ... the orchestrator runs the turn ...
+strut run.end callback -> POST /runs/done  {status, output: {text, artifacts, ask?}}
   bridge: look up runId -> (sender, uuid); reply(sender, text, uuid)
+
+  orchestrator, for bigger work: job/start or job/continue (detached),
+    with the bridge as the job's callback
+strut run.end callback -> POST /runs/done  {status, output: {text, artifacts, ask?}}
+  bridge: the job's result, ask or artifacts as a message in the DM
 ```
 
+The bridge knows one workflow name, set by Peel at launch, and never picks
+a job itself. Strut runs one turn at a time per session (`session_busy`),
+so the bridge queues the owner's next message until the turn ends. The
+session is the DM's thread, for example `peel/agent-1/dm`. Jobs reach the
+bridge another way. The orchestrator starts them detached with the new
+strut steps `job/start` and `job/continue` (PR S2 in agent-on-strut.md),
+and names the bridge as their callback. So the one `run.end` route takes
+both the orchestrator's replies and the jobs' results, `ask`s and
+artifacts. Both use `job`'s reply shape, `{text, artifacts, ask?}`.
+
 Runner already has the parts this needs: a Rocket server with a
-constant-time admin token check (`AdminAuth`) for the `/jobs/done` route,
+constant-time admin token check (`AdminAuth`) for the `run.end` route,
 reqwest for the call out (`workflow.rs` already posts a Stakwork workflow),
-and redb for the `runId -> (sender, uuid)` map. Which job a message belongs
-to is decided by the front agent, which is a strut workflow (decision 1). So
-the bridge passes every owner message to one job per conversation, and
-strut does the routing. A "working on it" message, streaming and
-`ask` as a Sphinx message shape are the next design question. They are not
-bridge plumbing.
+and redb for the `runId -> (sender, uuid)` map. A "working on it" message,
+streaming and `ask` as a Sphinx message shape are the next design
+question. They are not bridge plumbing.
 
 ## What a real bridge still needs
 
@@ -127,7 +143,7 @@ knows the core.
 
 | Part | State after the spike | Missing | Size |
 |---|---|---|---|
-| Key exchange | Works both ways; the core answers a paid ContactKey on its own | **The agent pays to answer.** The core's answer to a ContactKey costs PRICE_TO_MEET (3,000 msat) plus a ping. Here the `fund` mixer hid that; on a real server an unfunded agent cannot accept its owner. Something must fund the agent account: the owner keysends it on pairing, or the bridge adds the owner itself, so the owner pays. | S (funding: "Who funds the agent" below) |
+| Key exchange | Works; the core answers a paid ContactKey on its own, and only allowlisted senders get answers | Nothing for pairing: the owner's key exchange pays the agent enough to answer it (tested with real accounting, "After review" below). A starting balance is still needed for what the agent pays for later ("Who funds the agent"). | — |
 | Contact handling | Answers anyone who completes a key exchange | Only the owner (and later allowlisted people) start strut runs. `db/senders.rs` is the allowlist runner already has. The owner's key is known at pairing. The alias is from `RUNNER_ALIAS`; a photo goes through the same call (`my_img`). | S |
 | Reconnect and catch-up | Catch-up by server index works across restarts | Retry and move the index only on success (finding 3); an outbox for publishes made while disconnected (finding 4); fresh broker credentials on reconnect: `mqtt_client` reuses the signed timestamp it was started with (not tested whether the broker rejects an old one). The last two are in the core's `mqtt_client`, which the mixer and tribes server share, or runner owns its own client loop. | M |
 | Store | Whole state as one blob, rewritten on every call | One redb row per state key (the graph and hops entries grow); `runId -> message` for jobs; nothing else. The conversation itself lives in strut and on the owner's devices. The bridge keeps no chat history. | S |
@@ -135,7 +151,7 @@ knows the core.
 | Control messages | Echo only answers type 0; the rest are stored by the core and ignored | Read receipts (`bindings::read`), deletes, boosts and payments to the agent (refuse or keep?), tribe messages if the agent ever joins one, and the `ask` / approval shapes the agent-native rules need. Each is small once its shape is chosen. | S each |
 | Account from the user's words | A random seed through `/seed` | The derived seed, set by Peel at pairing through the admin endpoint (decision 2's contract). `/seed` already refuses to replace a seed. | S, once the derivation is agreed |
 | Sphinx tools for strut | None | Read, send and pay as bridge HTTP routes strut calls, behind the approval gate. | M |
-| strut call and callback | Sketched above | The route, the map, `job_busy` queueing, strut's auth (`STRUT_API_KEY`). | S–M |
+| strut call and callback | Sketched above | The `run.end` route for the orchestrator and for jobs, the map, `session_busy` queueing, strut's auth (`STRUT_API_KEY`). | S–M |
 
 ## For and against hosting it in runner
 
@@ -158,9 +174,9 @@ Against, or to settle with Evan:
   `sphinx/bridge`) would keep the same advantages without that, and runner's
   db, http and Dockerfile could be copied or shared.
 - Two cores in the field. Runner builds against sphinx master; Peel pins
-  the core by hash (`bd9e140` plus the sphinx-rs release in
-  `scripts/build-ffi.sh`). Text, key exchange and catch-up worked between
-  them today, but every core change would need checking against both.
+  the core through a sphinx-rs release (`scripts/build-ffi.sh`). Today
+  they are the same commit (`4d6da519`, sphinx-rs v0.8.38), but they will
+  drift, and every core change needs checking against both.
 - The weak spots found here (findings 2 to 4) are in the core's
   `mqtt_client` and in how a long-lived client uses the core. Fixing them
   well means core changes that the mixer and tribes server share, in a
@@ -213,14 +229,55 @@ Setting up the agent is one step, like pasting an API key the first time:
 1. In Peel, "Set up agent".
 2. Peel derives the agent's account and hands its seed to the brain
    through the bridge's admin endpoint.
-3. The account pays the agent a starting balance the person picks (say
+3. Peel adds the agent as a contact. The key exchange carries enough for
+   the agent to answer it, so pairing needs no balance on the agent: in
+   the test the agent started at 0, answered, and kept 1 sat; the owner
+   spent 3 sats.
+4. The account pays the agent a starting balance the person picks (say
    1,000 sats). It shows as a payment in the chat with the agent.
-4. The agent adds its owner as a contact, and Peel answers on its own.
 
 Creating a Sphinx account does not change: the agent costs nothing until
-it is set up. The starting balance covers the agent's side of the key
-exchange (3,000 msat plus a ping) and what it pays for later (tribe
-messages, the pay tool).
+it is set up. The starting balance is for what the agent pays for later
+(tribe messages, the pay tool), not for pairing.
+
+## After review
+
+The spike then went through `/code-review`, `/simplify` and
+`/security-review`, and the draft (stakwork/sphinx#382) was updated:
+
+- **Findings 3 and 4 are fixed in the spike.** Handled messages are kept by
+  uuid, and each reply commits in the same transaction as its mark. One
+  failure no longer stops a batch. Catch-up pages from a cursor that only
+  history moves, and the cursor stops below a failure. An outbox holds
+  publishes until `mqtt_client` listens again.
+- **Finding 2 was the test mixer.** With `NO_LIGHTNING` nothing published
+  the blockheight while `TESTING_ONLY_AUTO_MINE` raised it every second.
+  The mixer now republishes it every 5 s in that mode, and the bridge's
+  poll is gone. In production the mixer already republishes every 30 s.
+- **Only allowlisted senders get answers** (runner's existing
+  `add_sender`). Logs carry message uuids, never text. The state is one
+  redb row per key, and a row that cannot be read stops the bridge instead
+  of starting it empty.
+- **The core and runner helpers are reused.** The core's state encoding is
+  re-exported (a two-line core change) instead of copied, along with its
+  `Sender`, `Message` and `MsgType`, and runner's MQTT login. The test
+  faucet is gone.
+
+It was retested on a fresh local stack, with the mixer charging senders
+for real after `scripts/fund-dev.sh` funded the owner:
+
+- **Key exchange:** the agent started at 0 sats and answered.
+- **Echo:** worked as a threaded reply.
+- **Allowlist:** a message sent while the owner was off the allowlist was
+  ignored, then answered by the next catch-up once they were back on it.
+- **Offline:** a message sent while runner was down was answered on
+  restart.
+- **Restarts:** a second restart answered nothing twice.
+- **CLTV:** no failures.
+
+Still open: the outbox is in memory and publishes are QoS 0, so a crash
+or a drop mid-publish can still lose a reply. `mqtt_client` also reuses
+its first login on every reconnect.
 
 ## Left behind
 
@@ -230,8 +287,8 @@ messages, the pay tool).
   -C ~/Documents/sphinx worktree remove ../sphinx-runner-spike` and `git -C
   ~/Documents/sphinx branch -D spike/runner-reply` once it is no longer
   needed.
-- The development profile `spike-runner-human` under `Peel/dev`. It was on
-  a stack that no longer exists.
+- The development profiles `spike-runner-human` and `spike-bridge-owner`
+  under `Peel/dev`. Their stacks no longer exist.
 - The stack is stopped, its ports are free, and the 1.4 GB build directory
   is deleted. An older stack from 2026-10-15 (ports 62618 to 62622) was
   already running and was left alone.

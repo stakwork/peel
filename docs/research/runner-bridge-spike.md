@@ -172,7 +172,11 @@ Against, or to settle with Evan:
 ## Recommended answers for Evan
 
 These are recommendations to put to Evan, not decisions. Tom agreed the
-funding flow on 2026-10-16.
+funding flow on 2026-10-16. They are the two questions
+[agent-on-strut.md](../agent-on-strut.md) leaves open for Evan (B1's home,
+PR 10's derivation), plus the core change B1 would need. A sibling crate
+works the same whether Peel.app bundles the bridge (Phase 1) or a brain
+runs it (Phase 2).
 
 **1. Where the bridge lives: a new crate beside runner, say
 `sphinx/bridge`, not a mode inside runner.** It keeps what makes runner a

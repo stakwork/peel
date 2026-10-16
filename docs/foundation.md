@@ -174,12 +174,15 @@ second place (iCloud Drive, a folder you choose, or the home server's disk).
 for handover. Memory ships in it first, since nothing is backed up today;
 the other parts join as strut's snapshot PRs land. Where the copies go
 (the memes server, iCloud Drive, a chosen folder, a BitTorrent swarm) is
-open, for Evan. It is not a v1 blocker, but it is needed.
+open, for Evan. It is not a v1 blocker, but it is needed. Backups moved to
+Phase 2 (decision 12).
 
 ## Added later on 2026-10-16
 
-Tom's answers on how Phase 1 ("the agent is a contact") is built. The
-design and PR plan are in [agent-on-strut.md](agent-on-strut.md).
+Tom's answers on how Phase 1 ("the agent is a contact") is built, and when
+backups come. The design and PR plan are in
+[agent-on-strut.md](agent-on-strut.md); the phases and milestones are in
+[end-state.md](end-state.md).
 
 | # | Question | Answer (Tom, 2026-10-16) |
 |---|---|---|
@@ -189,6 +192,7 @@ design and PR plan are in [agent-on-strut.md](agent-on-strut.md).
 | 9 | Which devices answer the agent's requests | Only the Mac, in Phase 1 |
 | 10 | Brain mode | Off by default: the Mac is the brain while it is awake |
 | 11 | Is the contact an agent? | No. The bridge is a pipe; every message goes to the orchestrator, a strut workflow on the `agent` step, which starts or continues strut's `job` for bigger work, as Jamie does in Hive |
+| 12 | When backups come | Phase 2, after always-on and the phone: the handover builds the snapshot format, and backups reuse it. Not in Phase 1 |
 
 Still pending Evan: whether the bridge is a strut mode of `sphinx/runner`
 or its own crate, and the key derivation scheme (decision 2).

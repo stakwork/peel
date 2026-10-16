@@ -8,6 +8,8 @@ what is next.
 are in [foundation.md](foundation.md) (2026-10-16). Where this page's
 architecture disagrees with [brain-handover.md](brain-handover.md), it is
 under review until those decisions are answered.
+The end state those decisions build toward, its phases and where the work
+stands are in [end-state.md](end-state.md).
 
 ## Why
 

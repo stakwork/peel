@@ -26,6 +26,7 @@
 		B40000000000000000000203 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		B30000000000000000000211 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B30000000000000000000212 /* Peel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Peel.entitlements; sourceTree = "<group>"; };
+		B30000000000000000000213 /* Peel.AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Peel.AppStore.entitlements; sourceTree = "<group>"; };
 		B40000000000000000000221 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		B40000000000000000000222 /* peel.svg */ = {isa = PBXFileReference; lastKnownFileType = text; path = peel.svg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -88,6 +89,7 @@
 				B30000000000000000000301 /* Peel */,
 				B30000000000000000000211 /* Info.plist */,
 				B30000000000000000000212 /* Peel.entitlements */,
+				B30000000000000000000213 /* Peel.AppStore.entitlements */,
 			);
 			path = Mac;
 			sourceTree = "<group>";
@@ -383,7 +385,6 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-				CODE_SIGN_ENTITLEMENTS = Mac/Peel.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -400,6 +401,8 @@
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = macosx;
 				ENABLE_PREVIEWS = YES;
+				CODE_SIGN_ENTITLEMENTS = Mac/Peel.entitlements;
+				PEEL_STRUT_ENTITLEMENTS = strut-node.entitlements;
 			};
 			name = Debug;
 		};
@@ -416,7 +419,6 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-				CODE_SIGN_ENTITLEMENTS = Mac/Peel.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -432,6 +434,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = macosx;
+				CODE_SIGN_ENTITLEMENTS = Mac/Peel.AppStore.entitlements;
+				PEEL_STRUT_ENTITLEMENTS = strut-node.sandbox.entitlements;
 			};
 			name = Release;
 		};

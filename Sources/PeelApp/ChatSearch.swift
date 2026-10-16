@@ -20,7 +20,8 @@ struct SearchHeaderButton: View {
 /// and older, and close, then the matches. Words match in any order,
 /// "quoted" as a phrase, and `from:name` narrows to a sender. From the
 /// field, ↓ and ↑ move through the list and Return goes to the selected
-/// match (the first when none is); Escape closes.
+/// match (the first when none is; pressed before the matches come, the
+/// first once they do: `AppModel.searchReturn`); Escape closes.
 struct ChatSearchBar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -118,9 +119,7 @@ struct ChatSearchBar: View {
             switch event.keyCode {
             case KeyCode.down: model.stepSearch(by: 1, show: false)
             case KeyCode.up: model.stepSearch(by: -1, show: false)
-            case KeyCode.return, KeyCode.enter:
-                guard let search = model.search, !search.matches.isEmpty else { return false }
-                model.showSearchMatch(search.current ?? 0)
+            case KeyCode.return, KeyCode.enter: return model.searchReturn()
             case KeyCode.escape: model.closeSearch()
             default: return false
             }

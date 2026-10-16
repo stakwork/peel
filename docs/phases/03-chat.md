@@ -3223,3 +3223,16 @@ edge in line with the bolt's, so it stays within the sidebar. The row ends
 in a small (24) refresh 10 in from the card's edge, as a panel header's
 close, under the bolt. Every other popover is placed as before. Checked
 offscreen (connection snapshot): edges in line, card inside the sidebar.
+
+2026-10-16: Return in a chat's search, pressed before the matches came,
+did nothing: the field's key handler dropped it while the list was empty,
+and nothing remembered it, so `search-early` failed on every build since
+the list redesign began. Now `AppModel.searchReturn` decides, and
+`ChatSearch` keeps the query Return was pressed for when the matches are
+not yet for what is typed (debouncing or searching). When that query's
+matches are found, the first is shown. Any other outcome drops it: a
+newer query's matches, none, a failed search, or Escape and close (the
+search is gone). With the matches in, Return goes to the selected one as
+before. `ChatSearchTests` cover the waiting. On a fresh local stack,
+`search-early`, `search-into-thread`, `jump`, `jump-old` and `open-read`
+passed twice each. `search-into-thread` no longer works around the bug.

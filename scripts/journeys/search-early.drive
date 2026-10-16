@@ -1,6 +1,6 @@
 // Chat search: type a query and press Return before its results come in.
 // It lands on the first match once they do (review table row 4, the jump a
-// search match makes). Today Return does nothing until there are matches.
+// search match makes).
 // check: search land=target
 {"width": 1180}
 {"select": "{{chat}}"}

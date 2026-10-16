@@ -1,7 +1,6 @@
 // A search match that is a reply in a thread opens the thread at it; the
-// chat beside it, scrolled up, does not move. Return waits for the matches:
-// pressed before they come it does nothing (search-early's bug), which is
-// not what this journey checks.
+// chat beside it, scrolled up, does not move. Return waits for the matches
+// (Return before them is search-early's journey).
 // check: search hold=chat land=target@thread
 {"width": 1180}
 {"select": "{{chat}}"}

@@ -669,9 +669,10 @@ is a short plan. Update the status and the journal when you finish something.
   so they also run on iOS
 - `Tests/PeelUITests/` — offline tests for PeelUI's model on a real
   engine and profile, no window or server: `CallStoreTests` (each chat's
-  busiest watched call, the call you are on, locking stops the watches)
-  and `ChatListControllerTests` (the list controller's 25 cases on a fake
-  engine and store)
+  busiest watched call, the call you are on, locking stops the watches),
+  `ChatListControllerTests` (the list controller's 25 cases on a fake
+  engine and store) and `ChatSearchTests` (Return before a search's
+  matches waits for the first of them)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
@@ -1004,8 +1005,8 @@ server.
 offline, on a real engine and a temporary profile (a call server on
 127.0.0.1:9 that never answers, so a test says who is on a call):
 `CallStore`'s counts per chat, the call you are on, and its watches
-stopping on lock; and `ChatListController`'s state machine against a fake
-engine and anchor store.
+stopping on lock; `ChatListController`'s state machine against a fake
+engine and anchor store; and `ChatSearch`'s Return before its matches.
 
 `Tests/PeelIntegrationTests` runs journeys through the real core against a
 local stack that `scripts/test-stack.sh` starts on random ports (never 1883

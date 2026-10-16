@@ -36,5 +36,5 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
       *:Mach-O*) sign "$code" ;;
     esac
   done
-  sign --entitlements "$ROOT/scripts/strut-node.entitlements" "$DEST/native/node"
+  sign --entitlements "$ROOT/scripts/${PEEL_STRUT_ENTITLEMENTS:-strut-node.entitlements}" "$DEST/native/node"
 fi

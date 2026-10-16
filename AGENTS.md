@@ -940,6 +940,14 @@ overrides it), with its own, empty Keychain. So:
   the Keychain. (Before calls, an ad-hoc bundle ran without the Keychain.)
 - A free team may register at most 10 App IDs in 7 days; do not change the
   bundle ID casually.
+- The Mac app is sandboxed in Release builds only (archives for TestFlight
+  and the Mac App Store need it): `Apps/Mac/Peel.AppStore.entitlements`, and
+  `scripts/strut-node.sandbox.entitlements` for the strut's Node, which
+  inherits the sandbox. Debug builds, `run-app.sh` and the checks use
+  `Peel.entitlements` and run unsandboxed, as before. Checked in a signed
+  Release build: it launches, and Node starts, listens and writes its graph
+  in the container. Not yet checked against a real account: calls, attach
+  and save, the Keychain with the App Store profile.
 - Both apps are `com.sphinx.peel` (`Apps/Config/Peel.xcconfig`) under the
   App Store team, for TestFlight. A build under any other team needs a
   bundle ID of its own in the ignored `Apps/Config/Local.xcconfig`

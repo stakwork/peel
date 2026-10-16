@@ -192,7 +192,7 @@ struct AuditPrivacyTests {
     @Test func nothingCallsSetPushToken() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         var checked = 0
-        for folder in ["Sources/PeelCore", "Sources/PeelUI", "Sources/PeelApp", "Sources/peel"] {
+        for folder in ["Sources/PeelCore", "Sources/PeelUI", "Sources/peel", "Apps"] {
             let directory = root.appendingPathComponent(folder)
             let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)?
                 .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []

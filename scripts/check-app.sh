@@ -42,7 +42,7 @@ while kill -0 "$OPEN" 2> /dev/null && [ "$waited" -lt "$DEADLINE" ]; do
 done
 if kill -0 "$OPEN" 2> /dev/null; then
   # Only this bundle's own process, by its PID.
-  for pid in $(pgrep -f "^$APP/Contents/MacOS/PeelApp"); do kill "$pid"; done
+  for pid in $(pgrep -f "^$APP/Contents/MacOS/Peel"); do kill "$pid"; done
   echo "check-app: stopped the app after ${DEADLINE}s" >&2
 fi
 wait "$OPEN" 2> /dev/null || true

@@ -8,16 +8,14 @@ let package = Package(
         .library(name: "PeelCore", targets: ["PeelCore"]),
         .library(name: "AgentKit", targets: ["AgentKit"]),
         .library(name: "PeelUI", targets: ["PeelUI"]),
+        .library(name: "PeelAgent", targets: ["PeelAgent"]),
         .executable(name: "peel", targets: ["peel"]),
-        .executable(name: "PeelApp", targets: ["PeelApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swift-server-community/mqtt-nio.git", from: "2.13.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.0.0"),
-        // Calls: media for the app only (docs/phases/06-calls.md, "LiveKit on macOS").
-        .package(url: "https://github.com/livekit/client-sdk-swift.git", exact: "2.10.2"),
     ],
     targets: [
         // Rust core, built by scripts/build-ffi.sh.
@@ -56,18 +54,11 @@ let package = Package(
         .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
         // The app's model, shared by the Mac and the iPhone: `AppModel` and
         // what it holds, with the platform's services behind protocols
-        // (`Platform`). No AppKit, UIKit, LiveKit or PeelAgent.
+        // (`Platform`). No AppKit, UIKit, LiveKit or PeelAgent. The apps
+        // themselves are in Apps/, in Apps/Peel.xcodeproj; the Mac app is
+        // the only one that links LiveKit and WebRTC (its package reference
+        // is the project's, not this package's).
         .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit"]),
-        // The Mac app over PeelUI, and the only target that links LiveKit
-        // and WebRTC; PeelCore and the CLI never do.
-        .executableTarget(
-            name: "PeelApp",
-            dependencies: [
-                "PeelUI", "PeelCore", "AgentKit", "PeelAgent", .product(name: "LiveKit", package: "client-sdk-swift"),
-            ],
-            // scripts/bundle-app.sh puts LiveKit's WebRTC in Contents/Frameworks.
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
-        ),
         // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.
         .target(

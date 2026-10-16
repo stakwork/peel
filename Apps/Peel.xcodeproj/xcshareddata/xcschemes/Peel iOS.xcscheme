@@ -16,7 +16,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "B20000000000000000000601"
                BuildableName = "Peel.app"
-               BlueprintName = "Peel"
+               BlueprintName = "Peel iOS"
                ReferencedContainer = "container:Peel.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -44,7 +44,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B20000000000000000000601"
             BuildableName = "Peel.app"
-            BlueprintName = "Peel"
+            BlueprintName = "Peel iOS"
             ReferencedContainer = "container:Peel.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -61,7 +61,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B20000000000000000000601"
             BuildableName = "Peel.app"
-            BlueprintName = "Peel"
+            BlueprintName = "Peel iOS"
             ReferencedContainer = "container:Peel.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

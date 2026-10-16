@@ -53,13 +53,13 @@ Anything more, such as rewording, merging or a question, is a message
 to the agent.
 
 ```
- Tom ─ text or voice ─▶ agent DM ─▶ peel-agent (the only writer)
+ Tom ─ text or voice ─▶ agent DM ─▶ orchestrator (the only writer)
                                      ├─ inbox tools in the loop
                                      └─ Item nodes in LadybugDB
                                               │ item.state, item.snapshot
                                               ▼   (typed messages to Tom)
  Peel on each device: cache table ─▶ Inbox view · per-device reminders
-        └─ tick · snooze ── item.put ──▶ peel-agent
+        └─ tick · snooze ── item.put ──▶ orchestrator
 ```
 
 ### Why the view exists at all
@@ -181,7 +181,7 @@ inboxItem (id TEXT PK, text TEXT, createdAt INT, updatedAt INT,
 
 ```
  Peel Mac   ──item.put {id, base rev, doneAt | remindAt}──▶┐
- Peel phone ──item.put────────────────────────────────────▶│ peel-agent
+ Peel phone ──item.put────────────────────────────────────▶│ orchestrator
                                                            │ applies in arrival
                                                            │ order, rev += 1
  Peel Mac   ◀──item.state {id, rev, fields}────────────────┤ sent to Tom's

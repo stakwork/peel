@@ -13,10 +13,11 @@ registered, answered Peel's key exchange, echoed messages back as threaded
 replies, and caught up on what arrived while it was offline. That took
 about 360 new lines in runner and no core changes.
 
-This was learning only. The code is on a local branch, `spike/runner-reply`,
-in a separate worktree of `~/Documents/sphinx` (commit `0091640e`). It was
-not pushed, and no PR was opened on stakwork/sphinx: Evan and Tomas own
-that repo, and whether the bridge belongs in runner is Evan's call.
+This was learning only. The code is on the branch `spike/runner-reply`
+(commit `0091640e`), opened as a draft PR for Evan to read, not to merge:
+[stakwork/sphinx#382](https://github.com/stakwork/sphinx/pull/382). Evan
+and Tomas own that repo, and whether the bridge belongs in runner is
+Evan's call.
 
 ## What was run
 
@@ -223,11 +224,12 @@ messages, the pay tool).
 
 ## Left behind
 
-- The sphinx worktree `~/Documents/sphinx-runner-spike` on local branch
-  `spike/runner-reply`. Delete it with `git -C ~/Documents/sphinx worktree
-  remove ../sphinx-runner-spike` and `git -C ~/Documents/sphinx branch -D
-  spike/runner-reply` once it is no longer needed. The patch is also in the
-  session notes folder, `runner-bridge-spike.patch`.
+- The draft PR stakwork/sphinx#382 and its branch `spike/runner-reply`, to
+  close and delete once Evan has read it.
+- The sphinx worktree `~/Documents/sphinx-runner-spike`. Remove it with `git
+  -C ~/Documents/sphinx worktree remove ../sphinx-runner-spike` and `git -C
+  ~/Documents/sphinx branch -D spike/runner-reply` once it is no longer
+  needed.
 - The development profile `spike-runner-human` under `Peel/dev`. It was on
   a stack that no longer exists.
 - The stack is stopped, its ports are free, and the 1.4 GB build directory

@@ -1,6 +1,6 @@
 # Peel: what it is for
 
-Draft, 2026-10-15. The goal of Peel and the experience it must give, written
+Draft, 2026-10-16. The goal of Peel and the experience it must give, written
 for someone who knows nothing about how it works. Everything else in `docs/`
 serves this page. When a plan conflicts with it, change the plan or change
 this page on purpose.
@@ -185,3 +185,10 @@ The experiences come first. These follow from them.
 7. **Plans disagree** on where the agent loop runs (Swift in Peel or Strut
    on the brain), Ladybug or Neo4j on the box, and whether the phone talks to
    Strut directly or only through Sphinx.
+8. **Keys off the brain.** Today an always-on box either holds the root
+   key or waits for a device to act as you. A remote signing device in an
+   isolated key zone (as a Lightning node's signer does), or later a
+   threshold group across phone, signer and box, would let the brain act
+   as you without holding the key. Not decided; see
+   [foundation.md](foundation.md), decision 3. Until then, nothing we
+   build may assume the brain holds the root key.

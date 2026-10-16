@@ -1,8 +1,13 @@
 # Peel
 
-Last updated 2026-10-11. This is the architecture and the phase index. Each phase
+Last updated 2026-10-16. This is the architecture and the phase index. Each phase
 has its own file under `docs/phases/` with what is done, what is in progress and
 what is next.
+
+**Before a stable build:** five foundation decisions and the road to stable
+are in [foundation.md](foundation.md) (2026-10-16). Where this page's
+architecture disagrees with [brain-handover.md](brain-handover.md), it is
+under review until those decisions are answered.
 
 ## Why
 
@@ -155,6 +160,7 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | Agent jobs and connections: Peel's agent hands any job to Strut with `start_job` / `continue_job` (Hive's pattern); connectors are Strut steps a job may use, tokens in Strut; Calendar stays in Peel (EventKit); writes in a job reach Peel's approval card | architecture proposed 2026-10-13, for Tom's review; PRs J1–J2 (strut), P1–P6 (peel) | [jobs-architecture.md](jobs-architecture.md) |
 | — | Peel Brain: the Mac's bundled strut or your own strut on a home server, by URL and key; the graph moves, never syncs; automations by pull; strut's image and a Swarm preset | proposed 2026-10-14, for Tom's review | [peel-brain.md](peel-brain.md) |
 | — | Brain handover: the brain is one strut workspace moved whole (memory, automations, secrets, settings); one active brain with a generation; handover parks the old one, which forwards devices to the new | proposed 2026-10-14, for Tom and Evan | [brain-handover.md](brain-handover.md) |
+| — | Foundation before stable: five decisions (where the agent loop runs, key derivation, whose account lives on the brain, how devices reach it, backups), then one architecture of record, the small gates in code, the structure, backups and restore, the audit | proposed 2026-10-16, for Tom's answers | [foundation.md](foundation.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 
 What is left for parity with the official Mac app, and what to do before

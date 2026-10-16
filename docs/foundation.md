@@ -1,7 +1,8 @@
 # Foundation before a stable Peel
 
-Last updated 2026-10-16. **Five decisions for Tom, then the road to a stable
-build.** Nothing here is built. It was written from a read of every doc in
+Last updated 2026-10-16. **Five decisions, answered by Tom on 2026-10-16
+(two parts left open for Evan), then the road to a stable build.** Nothing
+here is built. It was written from a read of every doc in
 `docs/`, both repos' history since 2026-10-08, and the Sphinx core.
 
 Peel's features are mostly built: messaging, tribes, calls, money, the design
@@ -13,15 +14,13 @@ recommendation, so they can be answered before more is built on top.
 
 ## The five decisions
 
-Answer 1 first: 3, 4 and 5 assume B there.
-
-| # | Decision | Recommended | Answer |
+| # | Decision | Recommended | Answer (Tom, 2026-10-16) |
 |---|---|---|---|
-| 1 | Where the agent's loop runs | B: strut on the brain, with a headless-Peel bridge | open |
-| 2 | The key derivation contract | A: one HKDF registry from the raw seed, with test vectors | open |
-| 3 | Whose account lives on the brain | A: only the agent's derived account; D, a remote signer, as the long-term target | open |
-| 4 | How devices reach the brain | B: Sphinx required, a direct strut connection optional | open |
-| 5 | What is backed up, how, and where | B: one whole-brain snapshot in two places, the round trip proven first | open |
+| 1 | Where the agent's loop runs | B: strut on the brain, with a headless-Peel bridge | B, with a Rust bridge built from `sphinx/runner` |
+| 2 | The key derivation contract | A: one HKDF registry from the raw seed, with test vectors | Input: the seed. Scheme: open, for Evan |
+| 3 | Whose account lives on the brain | A: only the agent's derived account; D, a remote signer, as the long-term target | A, with D as the long-term target |
+| 4 | How devices reach the brain | B: Sphinx required, a direct strut connection optional | B: the agent gets its own derived account |
+| 5 | What is backed up, how, and where | B: one whole-brain snapshot in two places, the round trip proven first | B, memory first. Where: open, for Evan; not a v1 blocker |
 
 ### 1. Where the agent's loop runs
 
@@ -43,6 +42,17 @@ and approval gate become the bridge if the bridge is Peel's engine run
 headless (the lean), not a new sphinx-rs service. It moves agent
 conversations from Peel's per-device SQLite into the brain, which is cheaper
 before more history builds up.
+
+**Answered: B, with a Rust bridge.** Peel's engine does not build on Linux
+(it imports `Security`, `CommonCrypto`, `CryptoKit` and
+`NIOTransportServices`; peel-brain.md), and the home server is a Docker
+bundle for any box. So the bridge starts from `~/Documents/sphinx/runner`:
+a headless Rust Sphinx client (about 1,300 lines) with a Dockerfile. It
+holds an account's seed (set through an admin endpoint), connects to the
+broker and receives messages, which today it forwards to Jarvis and a
+Stakwork podcast workflow. Turning messages into strut runs, sending the
+replies and the Sphinx tools (read, send, pay) are the new work. AgentKit stays
+the Mac's loop until the bridge works, then shrinks to the client side.
 
 ### 2. The key derivation contract
 
@@ -69,6 +79,11 @@ rule 6 says to fix this before any child exists.
 preferences key stays as it is), the agent words behind a numbered
 `agent/<n>` entry so sub-identities can replace them later, and the brain
 key's reach (anyone with the words) accepted.
+
+**Answered: the input is the seed.** The scheme (A, B, or the same registry
+implemented once in sphinx-rs and exposed to Swift) is open, for Evan.
+Whatever it is must come out the same in Swift (Peel) and Rust (the
+bridge), checked by shared test vectors.
 
 ### 3. Whose account lives on the brain
 
@@ -104,6 +119,11 @@ read in `~/Documents/sphinx` on 2026-10-16:
 Rule for everything built under A: nothing may assume the brain holds the
 root key.
 
+**Answered: A, with D as the long-term target.** The bridge holds only the
+agent's account. Runs that read your chats or send as you wait for a Mac or
+phone. `sphinx-rs/sphinx-frost` exists, but it is an early Schnorr
+experiment (a `main.rs` on `schnorr_fun`), so the ECDSA point above stands.
+
 ### 4. How devices reach the brain
 
 07-iphone.md and jobs-architecture.md: the phone never talks to strut.
@@ -122,6 +142,10 @@ graph. VISION: pairing is one step, no URLs or keys typed.
 need a Sphinx message shape (agent-native rule 4). strut's routes need real
 authentication before it is reachable beyond loopback; most are open today.
 Also open: Tailscale or WireGuard (peel-brain.md open question 2).
+
+**Answered: B.** This is also what gives the agent its own Sphinx account:
+derived from your words (decision 2), held by the bridge, shown as a
+contact. Decision 3 is only about your account.
 
 ### 5. What is backed up, how, and where
 
@@ -146,22 +170,29 @@ matrix (finding-bugs.md section 6, run by hand today) grows to a new Mac, a
 lost phone and a lost home server, and runs in CI on the local stack. Also open: the
 second place (iCloud Drive, a folder you choose, or the home server's disk).
 
+**Answered: B, memory first.** One sealed whole-brain format, also used
+for handover. Memory ships in it first, since nothing is backed up today;
+the other parts join as strut's snapshot PRs land. Where the copies go
+(the memes server, iCloud Drive, a chosen folder, a BitTorrent swarm) is
+open, for Evan. It is not a v1 blocker, but it is needed.
+
 ## The road to stable
 
 Each step starts when the one before it is agreed or merged.
 
-1. **Answer the five decisions** on this page.
+1. **Answer the five decisions.** Done 2026-10-16, apart from the two parts
+   for Evan.
 2. **One architecture of record.** Rewrite PLAN.md's architecture,
    agent-architecture.md and VISION open question 7 around the answers;
    mark the older proposals (agent-brain.md, jobs-architecture.md, the
    memory-only parts of peel-brain.md and memory-backup.md) superseded where
    they disagree. Docs only.
-3. **The two small gates in code.** Decision 2's derivation file with test
-   vectors, and memory-backup phase 0. Both are small and everything else
-   depends on them.
+3. **The small gates in code.** Memory-backup phase 0 (the Ladybug round
+   trip), and a spike of the bridge on `sphinx/runner` against the local
+   stack. Decision 2's derivation file follows once Evan picks the scheme.
 4. **Finish the structure.** `WalletStore` and `ComposerStore` out of
    `AppModel` (still about 4,300 lines over 14 files, counting its extensions in PeelApp), the iPhone list
-   engine (list PR 6), and the brain-handover PRs if decision 1 is B.
+   engine (list PR 6), and the brain-handover PRs.
 5. **Make it impossible to lose.** Encrypted whole-brain backups in two
    places, the restore matrix, kill-mid-send tests and nightly journeys on
    tribes with threads (finding-bugs.md, sections 4, 6 and 10).

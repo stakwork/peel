@@ -31,7 +31,9 @@ stands.
    receiving, key exchange, payments and invites are tested against fakes.
 2. **Integration.** Each PR's end-to-end check was an agent driving the local
    stack by hand. Nothing repeats it.
-3. **UI.** `PeelApp` has no test target. Agents cannot click the app
+3. **UI.** `PeelApp` has no test target; `Tests/PeelMacTests` tests the Mac
+   composer field's Paste through the `PeelMac` target (the app's own
+   `AttachingTextView.swift` and `PasteboardFiles.swift`). Agents cannot click the app
    (synthetic events do not reach a background app, and the terminal has no
    Accessibility permission), so every click-through so far was Tom's.
    Since 2026-10-09 agents drive it offscreen instead, with events posted

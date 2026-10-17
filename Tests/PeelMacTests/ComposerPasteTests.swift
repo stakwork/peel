@@ -80,13 +80,20 @@ struct ComposerPasteTests {
         let textView = AttachingTextView.plain()
         let box = Box()
         textView.attach = { box.items += $0 }
+        // A menu validates its items only in an app, as Peel's Edit menu does.
+        _ = NSApplication.shared
         let menu = NSMenu()
         let pasteItem = menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         pasteItem.target = textView
+        // TEMPORARY: the same Paste aimed at a stock plain-text view, as the composer was before the fix.
+        let stock = NSTextView(usingTextLayoutManager: false)
+        stock.isRichText = false
+        stock.importsGraphics = false
+        let stockItem = menu.addItem(withTitle: "Paste (stock)", action: #selector(NSText.paste(_:)), keyEquivalent: "")
+        stockItem.target = stock
         menu.update()
-        note("readable=\(textView.readablePasteboardTypes.map(\.rawValue)) enabled=\(pasteItem.isEnabled) validate=\(textView.validateUserInterfaceItem(pasteItem)) app=\(NSApp != nil)")
+        note("readable=\(textView.readablePasteboardTypes.map(\.rawValue)) enabled=\(pasteItem.isEnabled) validate=\(textView.validateUserInterfaceItem(pasteItem)) app=\(NSApp != nil) stockEnabled=\(stockItem.isEnabled)")
         if pasteItem.isEnabled {
-            _ = NSApplication.shared
             NSApp.sendAction(#selector(NSText.paste(_:)), to: textView, from: pasteItem)
         }
         note("attached=\(box.items.count) string=\(textView.string.debugDescription)")

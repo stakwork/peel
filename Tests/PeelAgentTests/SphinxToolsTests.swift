@@ -313,14 +313,14 @@ struct SphinxToolsTests {
     ])
     func deviceRequestsReadThroughTheTools(_ read: DeviceRead) async throws {
         let storage = try storage()
-        let answer = await DeviceReads(storage: storage).handler(read.kind, read.args)
+        let answer = await DeviceReads(storage: storage).answer(read.kind, read.args)
         #expect(answer == .done(try await run(read.tool, read.input, on: storage)))
     }
 
     /// A kind the Mac does not know, or args that are no object, are
     /// refused plainly; a tool's own refusal is the request's error.
     @Test func deviceRequestsItCannotDoAreRefused() async throws {
-        let reads = DeviceReads(storage: try storage()).handler
+        let reads = DeviceReads(storage: try storage()).answer
         #expect(await reads("calendar.events", .object([:])) == .failed("unsupported: this Mac does not answer 'calendar.events' requests"))
         #expect(await reads("chats.list", .array([])) == .failed("args must be a JSON object"))
         #expect(await reads("chats.read", .object([:])) == .failed("chat is required: a non-empty string."))

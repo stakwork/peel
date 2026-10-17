@@ -56,7 +56,10 @@ is a short plan. Update the status and the journal when you finish something.
       (`answerDeviceRequests`) and answered with a `result`; a repeat gets
       the stored answer; anyone else's, or one for another device, gets
       nothing. Answered after the commit that stored them, and again once
-      online for those a stop cut short (`answerOwedDeviceRequests`)
+      online for those a stop cut short (`answerOwedDeviceRequests`). A
+      send (`sendText(for:)`) is marked `sending`, with its uuid, in the
+      commit that stores its message, so it goes at most once; one cut
+      short there, or whose publish failed, answers `unknown`
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
@@ -103,7 +106,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `Storage+DeviceRequests.swift` — the device requests' ledger
     (`deviceRequest`, a request's id within its agent): `admit` (the
     stored row wins; a message seen before is not a new copy), `claim` and
-    `finish` (only one run does it), the owed ones, forgetting expired ones
+    `finish` (only one run does it; a send's `sending` mark is in
+    `Storage.apply`), the owed ones, forgetting expired ones
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
@@ -349,14 +353,18 @@ is a short plan. Update the status and the journal when you finish something.
   `AgentLink`, `AgentChatView` with Peel's first message and its Connect
   card, its list and pill, the turn rows, tool rows (an acting tool's outcome and View) and
   the failure row, `AgentApprovalCard` (a send waiting on you, where its
-  row will be), `AgentConnectButton`), `AgentTable` (the agent chat's
+  row will be; the agent's device requests draw it too), `AgentConnectButton`),
+  `DeviceCards` (the cards for the agent's `send` and `approve` device
+  requests, each on its request's line in the agent's DM via
+  `DeviceRequestLine` and `ChatRow.approval`, and the send grants), `AgentTable` (the agent chat's
   rows for `MessageTable`, `AgentListRow`, and `AgentOpenRows`, which
   tool rows are open), `OffscreenAgent` (the offscreen driver's scripted
   model, never a provider), `AgentMemoryViews` (a memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
   model and the test call) and `AgentSettings` (Account › Peel agent, with
-  the "Always allowed" rules and Revoke; Account › Brain, `BrainSection`:
+  the "Always allowed" rules and Revoke, and the send grants ("May post
+  as you") and Revoke; Account › Brain, `BrainSection`:
   This Mac or a home server's address and key, its status, and a pairing
   link's server waiting for a yes);
   `CallViews` (the call card, the header's call button and presence
@@ -540,7 +548,8 @@ is a short plan. Update the status and the journal when you finish something.
     and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
     card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
     the person, shared by the app and the CLI; `ApprovalRules`, the
-    "always" rules as records, per tool and target, never for a cost)
+    "always" rules as records, per tool and target, never for a cost;
+    `SendGrants`, an automation's chats and sats cap, beside them)
   - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
     key pages, the picker's models, the client), `AgentCredential` (prints
     without its key) and `AgentCredentialStore`; `AgentSession`, the agent
@@ -567,6 +576,11 @@ is a short plan. Update the status and the journal when you finish something.
     agent, `chats.list`, `chats.read`, `chats.threads`, `chats.unseen` and
     `chats.search`, each through the `SphinxTools` tool today's agent
     calls; any other kind refused in words
+  - `DeviceActions.swift` — the device requests that act as you: `send`
+    (the send tool's plan on today's card through `ApprovalGate` and its
+    rules, or an automation's send grant with `[Agent] ` first) and
+    `approve` (the card alone, which may keep a send grant); a card past
+    the request's time is `expired`; every other kind goes to `DeviceReads`
   - `ChatDirectory.swift` — a chat by the name the model gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess
@@ -715,7 +729,9 @@ is a short plan. Update the status and the journal when you finish something.
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the
   tool (a price raised while the card waits is refused in the engine's
-  words), threads and replies, hidden characters),
+  words), threads and replies, hidden characters), `DeviceActionsTests`
+  (sends and approvals by device request: the card, once, deny, expiry,
+  "Always allow", the price cap, send grants),
   `BrainTests` (the pairing link, what is kept, `/health` read),
   `MemoryMoveTests` (both moves against stub struts: what goes where,
   refusals in words, counts that differ, a home server gone mid-way, the
@@ -761,7 +777,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`, `AgentJourneys`
   (the agent's tools and approval gate over a real account, the model
   scripted), `DeviceRequestJourneys` (the Mac answers its agent's
-  `chats.unseen` once, a repeat from the ledger, strangers nothing); `FundDev` (the bank's half of
+  `chats.unseen` once, a repeat from the ledger, strangers nothing; sends
+  as you once and only when allowed, `expired`, `unknown` after a stop
+  mid-send); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the

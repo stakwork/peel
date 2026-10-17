@@ -6,7 +6,9 @@ import Foundation
 // through the handler the app gives it, and sends the `result`. A repeat of
 // the request is answered from the ledger (`deviceRequest`), never done
 // again. Only requests from the agent contact (`Setting.deviceAgent`) that
-// name this device are answered; anything else gets nothing back.
+// name this device are answered; anything else gets nothing back. A send
+// is done at most once: from the commit that stores its message (`sending`)
+// it is never done again, and one cut short there answers `unknown`.
 
 /// What a device request came to: its status, and the text of its result
 /// or why there is none.
@@ -23,13 +25,42 @@ public struct DeviceAnswer: Sendable, Equatable {
 
     public static func done(_ text: String) -> Self { Self(status: .done, text: text) }
     public static func failed(_ error: String) -> Self { Self(status: .failed, error: error) }
-    static let expired = Self(status: .expired)
+    public static func denied(_ error: String? = nil) -> Self { Self(status: .denied, error: error) }
+    public static let expired = Self(status: .expired)
 }
 
-/// Does one request, of `kind` with `args`, and says how it went. It
-/// decides which kinds it knows: one it does not is `failed`, said plainly,
-/// since the bridge passes any kind on.
-public typealias DeviceRequestHandler = @Sendable (_ kind: String, _ args: JSONValue) async -> DeviceAnswer
+/// One request the agent asked this device, as its handler gets it.
+public struct DeviceRequest: Sendable, Equatable {
+    /// The agent contact that asked it.
+    public let agent: String
+    public let id: String
+    public let kind: String
+    public let args: JSONValue
+    /// After this it is never done (`not_after`).
+    public let deadline: Date
+
+    public init(agent: String, id: String, kind: String, args: JSONValue, deadline: Date) {
+        self.agent = agent
+        self.id = id
+        self.kind = kind
+        self.args = args
+        self.deadline = deadline
+    }
+
+    init(_ row: DeviceRequestRow) {
+        self.init(
+            agent: row.agent, id: row.id, kind: row.kind, args: JSONValue(text: row.args) ?? .object([:]),
+            deadline: Date(timeIntervalSince1970: TimeInterval(row.notAfter))
+        )
+    }
+}
+
+/// Does one request and says how it went; nil when it was cut short with
+/// nothing done (the account closed while its card waited), so it is done
+/// again once the account is open. It decides which kinds it knows: one it
+/// does not is `failed`, said plainly, since the bridge passes any kind on.
+/// A send goes through `Engine.sendText(for:)`, which keeps it to once.
+public typealias DeviceRequestHandler = @Sendable (DeviceRequest) async -> DeviceAnswer?
 
 extension Engine {
     /// The most a result's envelope may take, as JSON (open question 4): a
@@ -112,14 +143,20 @@ extension Engine {
     }
 
     /// Claims the request, does it through the handler (or answers `expired`
-    /// past its time), records the answer and sends it.
+    /// past its time), records the answer and sends it. A send that did not
+    /// end `done` once its message was stored may have gone: `unknown`.
     private func run(_ id: String, of agent: String) async {
         defer { answeringRequests.remove(id) }
         do {
             guard let handler = deviceRequestHandler, let row = try storage.claimDeviceRequest(id, of: agent) else { return }
-            let answer = row.notAfter < Int64(Date().timeIntervalSince1970)
-                ? .expired
-                : Self.fitted(await handler(row.kind, JSONValue(text: row.args) ?? .object([:])), re: id)
+            var answer = DeviceAnswer.expired
+            if row.notAfter >= Int64(Date().timeIntervalSince1970) {
+                guard let given = await handler(DeviceRequest(row)) else { return }
+                answer = Self.fitted(given, re: id)
+            }
+            if answer.status != .done, let sent = try storage.deviceRequest(id, of: agent), sent.state == .sending {
+                answer = DeviceAnswer(status: .unknown, error: answer.error)
+            }
             guard let done = try storage.finishDeviceRequest(id, of: agent, with: answer) else { return }
             try await sendAnswer(done)
         } catch {
@@ -145,26 +182,42 @@ extension Engine {
     }
 
     /// After the connection comes back, on that connection: finishes the
-    /// current agent's requests a stop cut short (stored, never done;
-    /// `run` answers `expired` for those past their time), sends the
-    /// answers that did not go, and forgets old requests. Reads are safe to
-    /// do again; a send found running will need `unknown` instead (PR 3).
+    /// current agent's requests a stop cut short (stored, never done, or a
+    /// send's card that was waiting; `run` answers `expired` for those past
+    /// their time), answers `unknown` for a send cut short once it could
+    /// go, sends the answers that did not go, and forgets old requests.
     func answerOwedDeviceRequests(on connection: Transport) async {
         guard deviceRequestHandler != nil, let agent = deviceAgent else { return }
         try? storage.forgetDeviceRequests(expiredBefore: Int64(Date().timeIntervalSince1970) - Self.deviceRequestsKept)
         guard let owed = try? storage.owedDeviceRequests(of: agent) else { return }
         for row in owed {
             guard transport === connection, !Task.isCancelled else { return }
-            if row.state != .done {
-                startRequest(row.id, of: agent)
-                continue
-            }
             do {
-                try await sendAnswer(row)
+                switch row.state {
+                case .received, .running:
+                    startRequest(row.id, of: agent)
+                case .sending:
+                    // Cut short once its message was stored, unless being sent here now.
+                    guard !answeringRequests.contains(row.id),
+                          let done = try storage.finishDeviceRequest(row.id, of: agent, with: Self.cutShort(row)) else { continue }
+                    try await sendAnswer(done)
+                case .done:
+                    try await sendAnswer(row)
+                }
             } catch {
                 reportRequestError(error)
             }
         }
+    }
+
+    /// A send that Peel stopped in the middle of: never sent again.
+    static func cutShort(_ row: DeviceRequestRow) -> DeviceAnswer {
+        let stored = row.sentUUID.flatMap(\.nilIfEmpty).map { " It is in the chat (uuid=\($0)), not confirmed sent." } ?? ""
+        return DeviceAnswer(
+            status: .unknown,
+            error: "Peel on this Mac stopped while sending, so it cannot tell whether it went.\(stored) "
+                + "Check the chat before sending it again."
+        )
     }
 
     private func reportRequestError(_ error: any Error) {

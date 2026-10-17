@@ -72,7 +72,7 @@ let package = Package(
             dependencies: ["PeelCore", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // The app's model, on a real engine and profile; no window, no server.
-        .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "PeelTestSupport"]),
+        .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "AgentKit", "PeelTestSupport"]),
         // PeelAgent is Mac-only, and so are its tests (and `peel agent`'s).
         .testTarget(
             name: "PeelAgentTests",

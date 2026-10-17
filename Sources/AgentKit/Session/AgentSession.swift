@@ -189,7 +189,8 @@ public final class AgentSession {
     @ObservationIgnored public var credentialChanged: (() -> Void)?
 
     private let store: any AgentStore
-    private let rules: ApprovalRules
+    /// The "always" rules, which the device's send cards share (`DeviceActions`).
+    public let rules: ApprovalRules
     /// Answers the card that waits (`waiting`).
     @ObservationIgnored private var answering: CheckedContinuation<ApprovalDecision, Never>?
     /// The person's last answer, to tell an "Always" that could not be kept.
@@ -494,6 +495,11 @@ public final class AgentSession {
     public func revoke(_ rule: ApprovalRule) throws {
         try rules.revoke(rule)
         approvalRules = try rules.all()
+    }
+
+    /// Reads the rules again, after a card outside this chat remembered one.
+    public func reloadRules() {
+        approvalRules = (try? rules.all()) ?? approvalRules
     }
 
     /// What the loop asks before a tool that acts: a rule, or the card.

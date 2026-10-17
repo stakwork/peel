@@ -276,7 +276,10 @@ extension AppModel {
     }
 
     func deleteAutomation(_ automation: Automation) async {
-        await changeAutomations("delete \u{201C}\(automation.name)\u{201D}") { try await $0.delete(automation) }
+        await changeAutomations("delete \u{201C}\(automation.name)\u{201D}") { client in
+            try await client.delete(automation)
+            try macAgent.deviceCards.revokeGrants(of: automation.id)
+        }
     }
 
     func updateAutomationPrompt(_ automation: Automation, to prompt: String) async {

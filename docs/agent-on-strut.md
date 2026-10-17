@@ -478,7 +478,7 @@ answered.
 | strut step | request `id` = the run id + the step's event path | strut's resume replays journaled steps without running them again, so a finished step never re-asks. A step interrupted mid-call asks again with the same id |
 | Bridge | request `id` | A ledger (`requests`): sent, acked, result. The same id asked again gets the stored result, or waits on the one in flight; it is not sent twice |
 | Mac | request `id` | `deviceRequest` in `peel.sqlite` (PR 2): received, running, done (with the result; `expired` is a done status). Store, then ack. A duplicate gets the stored result |
-| Mac, sends | request `id` → the sent message's uuid | Written in the same transaction as the outgoing row. A request found `running` after a crash with no uuid is never sent again: it answers `unknown`, and the agent tells you to check the chat |
+| Mac, sends | request `id` → the sent message's uuid | Written, with the request marked `sending`, in the same transaction as the outgoing row; nothing is published before it. A request found `sending` after a crash is never sent again: it answers `unknown`, and the agent tells you to check the chat. One found `running` (its card was up) asks again (PR 3) |
 | Bridge inbox | the Sphinx message uuid | Store, then launch. History catch-up redelivers; a known uuid does nothing. A turn already launched is looked up in strut, not launched again |
 
 At most once, never at least once: a send that might have gone is
@@ -498,6 +498,13 @@ reported, never retried.
 - Text read from chats stays data: the device results keep
   `ChatData`'s begin and end markers, and the prompt keeps today's rule
   never to follow instructions found in them.
+- **A send grant trusts the request's `automation`.** The Mac cannot tell
+  an automation's run from a conversational turn that names the same id,
+  so a grant is in effect "the agent may post to these chats, under this
+  cap, with `[Agent]` first". The strut steps must set `automation` from
+  the run itself, never from the model's input (PR 5, PR 7), and the Mac
+  refuses a grant send that expires more than 15 minutes out, as no
+  automation's does (PR 3).
 
 ### Size
 
@@ -865,3 +872,92 @@ there, with the column it needs. PR 1's note on duplicate `peel` keys
 and a non-integer `v`: only the agent's own messages are acted on, and
 the bridge writes them with serde, which writes neither, so there is no
 reader the two could disagree for.
+
+**PR 3, sends and approvals by device request (2026-10-17).** Built: the
+`send` and `approve` kinds on the Mac (`DeviceActions`, PeelAgent), their
+cards in the agent's DM (`DeviceCards`, the Mac), send grants
+(`SendGrants`, AgentKit, beside `ApprovalRules` in `agent.sqlite`) and
+their list with Revoke in Account › Peel agent, shown only with the
+preview on. Decided while building:
+
+- **One card, one gate.** A `send` is planned by today's send tool
+  (`SphinxTools.send`: the chat resolved, the thread and reply checked,
+  the price on the card) and asked through `ApprovalGate` with the tool's
+  own name, so today's "Always allow for Kate" covers it and a card's
+  "Always allow" is today's rule. The card is `AgentApprovalCard`, drawn
+  in place of the request's line (`ChatRow.approval`, from
+  `AppModel.waitingCards`, so the list measures the row again when the
+  card comes and goes). Unlike the agent chat's, it does not take the keys
+  as it appears: the agent decides when it comes, so a Return meant for
+  the composer never allows it. Once you move to it, Return allows only a
+  send that costs nothing, and Escape denies. A card taken down unanswered
+  (the account closed, Peel quit) answers nothing: `ApprovalGate`'s ask
+  may now come back empty, which is `stopped`.
+- **Answered as sent only when it went.** A send stored whose publish
+  failed, or may have, answers `unknown`, not `done`: the row is in the
+  chat, and a reconnect's resend may still send it
+  (`Engine.SendUnconfirmed`).
+- **At most once.** Nothing is published before a send's commit, so the
+  send and its record are one write: the commit that stores the message
+  also marks the request `sending` (v26) with the message's uuid, only
+  while it is running and in time; otherwise the whole commit is
+  abandoned, unpublished. A request found `sending` after a stop is never
+  sent again: it answers `unknown`, naming the uuid (Peel's own resend may
+  still deliver a contact's message that was stored and not published,
+  which is why it is not `failed`). A send that ends in anything but
+  `done` once its message was stored is `unknown` too. A card waiting
+  when Peel stops is not an answer: the request stays `running` and its
+  card comes back after the relaunch, until its time.
+- **Expiry.** A card still up at the request's `not_after` comes down and
+  answers `expired`; a click after it does nothing (the engine checks the
+  time again as it marks the send).
+- **Price.** `max_price_sats` (0 when left out) is the most a message may
+  pay; a tribe over it is refused before any card. The send pays no more
+  than the card showed, as today.
+- **Grants.** Made only by an `approve` card that carries `grant`
+  (`automation`, `name?`, `chats`, `max_price_sats`). The card adds the
+  Mac's own words for it (the chats as this Mac names them, the cap as a
+  cost, the `[Agent]` prefix), first, before the agent's lines, so a
+  click is never on the agent's words alone; the automation's name must be
+  one line; a grant card always has a cost line, so only a click makes
+  one, never Return; and "Always allow" is never offered for `approve`.
+  A grant keeps the request that made it: asked again after a stop, that
+  request finds it and answers `done` rather than showing a second card. A `send` with
+  `automation` needs that automation's grant, a chat in it and a price
+  under its cap; it gets `[Agent] ` first and no card; anything outside
+  the grant is `denied`. Deleting an automation in Peel's Automations
+  view revokes its grant; one deleted by today's Swift agent's
+  `delete_automation` or in strut (PR 5's steps) is PR 7's to revoke, with
+  the automations that have grants.
+- **The grants list** shows whenever there is a grant, rather than behind
+  the preview switch: a grant is only made through the preview's
+  requests, and one in force must always have its Revoke. Requests
+  themselves stay gated by `Setting.deviceAgent`, as in PR 2.
+
+Review findings not applied, and why: an agent `cancel` with `re` does
+not take a card down yet (the bridge does not send one; when it does, the
+card should close as `expired`); a grant kept again is revoked then
+added, two writes, which fails safe (no grant); grants are read from the
+agent store on each automation send rather than kept in memory (a few
+records; revoking takes effect at once); the device's cards share the
+agent chat's rules through `AgentSession.rules` and `reloadRules` rather
+than a gate the session hands out (one caller); and the card-or-deadline
+race is written again beside `Automation.run`'s (different results). The
+security pass found nothing over its bar. The independent review's
+findings were applied (an unconfirmed publish answered `done`, the
+automation window, a grant outliving a later Deny, Return making a grant,
+a delete not revoking when the handler was never made, a cancellation
+read as expiry, two cards for one request), but for the Swift agent's
+`delete_automation`, which leaves a grant to PR 7 as above.
+
+Checked: `DeviceActionsTests` (the card, once, deny, expiry, the rules,
+the cap, grants and their cap and window, a failed publish never `done`:
+that test fails without the fix), `ControlRowTests` (one card per
+request, on its newest copy), `ApprovalTests` (an unanswered ask is
+`stopped`) and `MigrationTests.v26RecordsASendWithItsMessageAndOnlyOnce`;
+on a local stack `DeviceRequests.theMacSendsAsYouOnceAndOnlyWhenAllowed`
+(allow sends once and a repeat sends nothing, deny, expiry, and `unknown`
+after a relaunch with the request left `sending`, as a kill there leaves
+it: the window between the mark and the commit cannot be hit from outside
+the engine, so the journey leaves the row as the kill would) passes with
+PR 2's journey.

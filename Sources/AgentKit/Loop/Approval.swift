@@ -137,20 +137,20 @@ public protocol ToolApprover: Sendable {
 
 /// The approval every front end shares: a remembered "always" rule allows
 /// at once; anything else is asked of the person (`ask`), and their
-/// "Always allow" is remembered. An action with a cost is always asked.
+/// "Always allow" is remembered. An action with a cost is always asked. An
+/// `ask` that comes back with no answer (its card taken down) is `stopped`.
 public struct ApprovalGate: ToolApprover {
     public let rules: ApprovalRules
-    let ask: @Sendable (ApprovalRequest) async -> ApprovalDecision
+    let ask: @Sendable (ApprovalRequest) async -> ApprovalDecision?
 
-    public init(rules: ApprovalRules, ask: @escaping @Sendable (ApprovalRequest) async -> ApprovalDecision) {
+    public init(rules: ApprovalRules, ask: @escaping @Sendable (ApprovalRequest) async -> ApprovalDecision?) {
         self.rules = rules
         self.ask = ask
     }
 
     public func approve(_ request: ApprovalRequest) async -> ApprovalOutcome {
         if (try? rules.allows(request)) == true { return .allowedByRule }
-        let decision = await ask(request)
-        if Task.isCancelled { return .stopped }
+        guard let decision = await ask(request), !Task.isCancelled else { return .stopped }
         switch decision {
         case .deny:
             return .denied
@@ -213,5 +213,97 @@ public struct ApprovalRules: Sendable {
     /// Forgets a rule: that tool asks again.
     public func revoke(_ rule: ApprovalRule) throws {
         try store.forget(rule.id, reason: "revoked")
+    }
+}
+
+/// A send grant (docs/agent-on-strut.md, "Sends as you"): one automation
+/// may post as you to its chats, a message at a time up to its sats cap,
+/// without a card. Made only from your own click on an `approve` card.
+public struct SendGrant: Sendable, Hashable, Identifiable {
+    /// The record's ref_id.
+    public let id: String
+    /// The automation's id in strut.
+    public let automation: String
+    /// The automation's name, as the card showed it.
+    public let name: String?
+    public let chats: [ToolIntent.Target]
+    /// The most one message may pay (a tribe's price), in sats.
+    public let maxPriceSats: Int
+    /// The `approve` request that made it, so that request, asked again,
+    /// finds it rather than a second card.
+    public var request: String?
+
+    /// A grant to keep (`SendGrants.keep`): its id is the record's, once kept.
+    public init(automation: String, name: String?, chats: [ToolIntent.Target], maxPriceSats: Int) {
+        self.init(id: "", automation: automation, name: name, chats: chats, maxPriceSats: maxPriceSats)
+    }
+
+    init(id: String, automation: String, name: String?, chats: [ToolIntent.Target], maxPriceSats: Int, request: String? = nil) {
+        self.request = request
+        self.id = id
+        self.automation = automation
+        self.name = name
+        self.chats = chats
+        self.maxPriceSats = maxPriceSats
+    }
+
+    /// "Hive and Kate, up to 10 sats a message": where it may post, and for how much.
+    public var summary: String {
+        let chats = ListFormatter.localizedString(byJoining: chats.map(\.name))
+        return maxPriceSats > 0 ? "\(chats), up to \(maxPriceSats) sats a message" : chats
+    }
+}
+
+/// The account's send grants, kept as `SendGrant` records in the agent
+/// store beside the "always" rules, so Account can list and revoke them.
+public struct SendGrants: Sendable {
+    let store: any AgentStore
+
+    static let recordType = "SendGrant"
+
+    /// In the store `rules` keeps its rules in.
+    public init(beside rules: ApprovalRules) {
+        store = rules.store
+    }
+
+    /// Every grant, oldest first.
+    public func all() throws -> [SendGrant] {
+        try store.records(type: Self.recordType, limit: Int.max).map { record in
+            let props = JSONValue.object(record.props)
+            let ids = props["chats"]?.array?.compactMap(\.string) ?? []
+            let names = props["chat_names"]?.array?.compactMap(\.string) ?? []
+            return SendGrant(
+                id: record.refId, automation: record.name, name: props["automation_name"]?.string,
+                chats: ids.enumerated().map { ToolIntent.Target(id: $1, name: $0 < names.count ? names[$0] : $1) },
+                maxPriceSats: max(props["max_price_sats"]?.int ?? 0, 0), request: props["request"]?.string
+            )
+        }
+    }
+
+    /// `automation`'s grant, if it has one.
+    public func grant(for automation: String) throws -> SendGrant? {
+        try all().last { $0.automation == automation }
+    }
+
+    /// Keeps `grant`, in place of any its automation had.
+    public func keep(_ grant: SendGrant) throws {
+        try revoke(automation: grant.automation)
+        var props: [String: JSONValue] = [
+            "chats": .array(grant.chats.map { .string($0.id) }),
+            "chat_names": .array(grant.chats.map { .string($0.name) }),
+            "max_price_sats": .number(Double(grant.maxPriceSats)),
+        ]
+        if let name = grant.name { props["automation_name"] = .string(name) }
+        if let request = grant.request { props["request"] = .string(request) }
+        try store.add(type: Self.recordType, name: grant.automation, props: props, createdBy: "user")
+    }
+
+    public func revoke(_ grant: SendGrant) throws {
+        try store.forget(grant.id, reason: "revoked")
+    }
+
+    /// Revokes `automation`'s grants: it is deleted, or granted anew.
+    public func revoke(automation: String) throws {
+        for grant in try all() where grant.automation == automation { try revoke(grant) }
     }
 }

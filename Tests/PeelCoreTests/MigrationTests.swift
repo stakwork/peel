@@ -562,6 +562,37 @@ struct MigrationTests {
         #expect(try storage.pool.read { try String.fetchAll($0, sql: "SELECT id FROM deviceRequest WHERE agent = '02a'") } == ["r1"])
     }
 
+    /// v26: a send's ledger row is marked `sending`, with its message's
+    /// uuid, by the commit that stores the message: only while running and
+    /// in time, and once. A commit for a request not running, or past its
+    /// time, is abandoned whole.
+    @Test func v26RecordsASendWithItsMessageAndOnlyOnce() throws {
+        let storage = try profile.storage()
+        let row = DeviceRequestRow(agent: "02a", id: "s1", kind: "send", args: "{}", notAfter: 2_000, state: .received,
+                                   receivedAt: 1)
+        _ = try storage.admit(row, copy: "u1")
+        func send(_ n: Int, at now: Int64) throws {
+            var commit = Storage.Commit()
+            commit.messages = [(.fixture(uuid: uuid(n), chat: keyG, fromMe: true, content: "hi"), false, nil)]
+            commit.deviceSend = ("02a", "s1", uuid(n), now)
+            _ = try storage.apply(commit)
+        }
+        // Not claimed yet, then past its time: nothing kept.
+        #expect(throws: Engine.Failure.requestClosed) { try send(1, at: 1_000) }
+        #expect(try storage.claimDeviceRequest("s1", of: "02a")?.state == .running)
+        #expect(throws: Engine.Failure.requestClosed) { try send(1, at: 2_001) }
+        #expect(try storage.message(uuid: uuid(1), in: keyG) == nil)
+
+        try send(1, at: 2_000)
+        let sending = try #require(try storage.deviceRequest("s1", of: "02a"))
+        #expect(sending.state == .sending && sending.sentUUID == uuid(1))
+        #expect(try storage.message(uuid: uuid(1), in: keyG) != nil)
+        // Never claimed or sent again.
+        #expect(try storage.claimDeviceRequest("s1", of: "02a") == nil)
+        #expect(throws: Engine.Failure.requestClosed) { try send(2, at: 1_000) }
+        #expect(try storage.message(uuid: uuid(2), in: keyG) == nil)
+    }
+
     /// What the earlier builds' preferences migration left: the table with
     /// a row and a chat's switch, `chatTimeZone` gone.
     private static func earlierPreferences(_ db: Database) throws {

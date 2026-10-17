@@ -3,12 +3,15 @@ import GRDB
 
 /// One request an agent asked this device (`deviceRequest`, v25), as
 /// `Engine+DeviceRequests` keeps it: received (stored, acked), running,
-/// then done with its answer, which a new copy of the request is sent again.
+/// for a send `sending` once its message is stored, then done with its
+/// answer, which a new copy of the request is sent again.
 struct DeviceRequestRow: Codable, Equatable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "deviceRequest"
 
     enum State: String, Codable {
-        case received, running, done
+        /// Running is being done, or for a send waiting on its card; `sending`
+        /// is a send whose message is stored (`sentUUID`), never done again.
+        case received, running, sending, done
     }
 
     /// The agent contact that asked it: a request is its id within its agent.
@@ -29,6 +32,8 @@ struct DeviceRequestRow: Codable, Equatable, FetchableRecord, PersistableRecord 
     var messages: [String] = []
     /// Whether the answer went; one that did not goes once online.
     var sent = false
+    /// A send's message, written with it and `sending` (v26).
+    var sentUUID: String?
     /// Milliseconds since 1970.
     var receivedAt: Int64
 }
@@ -52,26 +57,32 @@ extension Storage {
         }
     }
 
-    /// Marks a request not done yet as running, and returns it; nil when it
-    /// is done (or gone). The caller is the one doing it
-    /// (`Engine.answeringRequests`), so a row found running was cut short.
+    /// Marks a request not started, or cut short before it could send, as
+    /// running, and returns it; nil when it is sending, done (or gone). The
+    /// caller is the one doing it (`Engine.answeringRequests`), so a row
+    /// found running was cut short.
     func claimDeviceRequest(_ id: String, of agent: String) throws -> DeviceRequestRow? {
         try pool.write { db in
             try DeviceRequestRow.fetchOne(db, sql: """
-                UPDATE deviceRequest SET state = 'running' WHERE agent = ? AND id = ? AND state != 'done' RETURNING *
+                UPDATE deviceRequest SET state = 'running' WHERE agent = ? AND id = ? AND state IN ('received', 'running')
+                RETURNING *
                 """, arguments: [agent, id])
         }
     }
 
-    /// Records a running request's answer, and returns it; nil when it is
-    /// not running.
+    /// Records the answer of a request running or sending, and returns it;
+    /// nil when it is neither.
     func finishDeviceRequest(_ id: String, of agent: String, with answer: DeviceAnswer) throws -> DeviceRequestRow? {
         try pool.write { db in
             try DeviceRequestRow.fetchOne(db, sql: """
                 UPDATE deviceRequest SET state = 'done', status = ?, result = ?, error = ?
-                WHERE agent = ? AND id = ? AND state = 'running' RETURNING *
+                WHERE agent = ? AND id = ? AND state IN ('running', 'sending') RETURNING *
                 """, arguments: [answer.status.rawValue, answer.text, answer.error, agent, id])
         }
+    }
+
+    func deviceRequest(_ id: String, of agent: String) throws -> DeviceRequestRow? {
+        try pool.read { db in try DeviceRequestRow.fetchOne(db, key: ["agent": agent, "id": id]) }
     }
 
     func markDeviceRequestSent(_ id: String, of agent: String) throws {

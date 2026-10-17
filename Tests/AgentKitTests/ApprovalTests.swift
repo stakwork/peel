@@ -199,6 +199,8 @@ struct ApprovalGateTests {
             return .allowOnce
         }
         #expect(await gate.approve(request()) == .stopped)
+        // A card taken down unanswered (the device's, when the account closes).
+        #expect(await ApprovalGate(rules: ApprovalRules(store: store)) { _ in nil }.approve(request()) == .stopped)
     }
 }
 

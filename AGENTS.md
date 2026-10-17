@@ -116,7 +116,7 @@ is a short plan. Update the status and the journal when you finish something.
     body JSON kept whole), `MessageType` and the fields read from a body
   - `Invoice.swift` — `Invoice` (an invoice as the core reads it) and the
     money tables' records, `InvoiceRecord` and `PaymentRecord`
-  - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
+  - `PaymentHistory.swift` — `PaymentItem`, `PaymentDay` (the history by day, tested), `PaymentRequest`,
     `PurchaseState` and the Storage reads that join the money tables
   - `Sats.swift` — amounts as people see and type them (display and input
     only; money is kept in msat): `format` drops the rest of a sat as the
@@ -228,7 +228,8 @@ is a short plan. Update the status and the journal when you finish something.
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),
     `brain` (the home server's address and key, `Brain`: Keychain
-    `dev.peel.brain`, or `brain` on a development profile) and
+    `dev.peel.brain`, or `brain` on a development profile; gone with the
+    profile) and
     `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
   - `Web.swift` — every request outside the memes server (photos, the tribes
@@ -460,7 +461,7 @@ is a short plan. Update the status and the journal when you finish something.
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
   (`BalanceHeader`, `PaymentRow`), `PaymentDetail` (`FactRow`),
   `SendSheet` (an invoice pasted or scanned, or a contact),
-  `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
+  `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `TouchWatch` (each touch is use, for the PIN timeout), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
   pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
@@ -693,7 +694,7 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
-  `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
+  `ServerAddressTests`, `BiometricUnlockTests`, `PaymentDayTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS

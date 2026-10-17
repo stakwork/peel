@@ -61,13 +61,19 @@ public struct Profile: Sendable {
     }
 
     /// A development profile in a directory of the caller's choosing: the
-    /// integration tests' temporary accounts (`@testable` only).
-    init(developmentAt directory: URL) {
+    /// integration tests' temporary accounts (`@testable` only); with
+    /// `strutKey`, `brain` or `biometrics`, those in place of the files'
+    /// (Forget's tests).
+    init(developmentAt directory: URL, strutKey: (any SecretItem)? = nil, brain: (any SecretItem)? = nil,
+         biometrics: BiometricUnlock? = nil) {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        (secrets, agentCredential, strutKey, brain) = Self.files(in: directory)
-        biometrics = nil
+        let files = Self.files(in: directory)
+        (secrets, agentCredential) = (files.0, files.1)
+        self.strutKey = strutKey ?? files.2
+        self.brain = brain ?? files.3
+        self.biometrics = biometrics
     }
 
     /// A development profile's words, agent key, strut's key and home
@@ -117,18 +123,24 @@ public struct Profile: Sendable {
         biometrics?.pinChanged(to: newPIN)
     }
 
-    /// Removes the words and everything stored with them, the agent's key,
-    /// strut's key and the home server first. A failure to remove any is reported, and
-    /// the database is then kept with them.
+    /// Removes the words and everything stored with them. Every key is
+    /// tried even when one before it failed, and the words go last, only
+    /// once the keys are gone: a Forget that fails leaves an account that
+    /// still opens and can be forgotten again (each removal finds nothing the
+    /// second time), never words without their keys' removal finished.
+    /// Face ID's copy of the PIN never stops it: what it holds opens nothing
+    /// once the words are gone, and a new account here removes it first.
     public func delete() throws {
-        try agentCredential.delete()
+        try? biometrics?.turnOff()
         // The memory server #219 kept (an old strut key), if this Mac has it still.
         try? KeychainItem(service: "dev.peel.memory", account: name).delete()
         // The automation token #221 kept; strut is now handed one per launch.
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
-        try strutKey.delete()
-        try brain.delete()
-        try biometrics?.turnOff()
+        var failure: (any Error)?
+        for key in [agentCredential, strutKey, brain] {
+            do { try key.delete() } catch { failure = failure ?? error }
+        }
+        if let failure { throw failure }
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

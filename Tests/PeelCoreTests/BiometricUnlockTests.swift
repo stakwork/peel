@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Testing
 @testable import PeelCore
 
@@ -87,5 +88,58 @@ struct BiometricUnlockTests {
         keeper.read = .pin("12345a")
         #expect(await unlock.releasePIN(reason: "Unlock") == nil)
         #expect(!unlock.isOn)
+    }
+
+    /// A failed read turns Face ID off only when the system reports other
+    /// faces, or none; a lockout, a cancel or a face not matched keeps it.
+    @Test(arguments: [
+        (errSecAuthFailed, Data([1]), BiometricEnrolment.unknown, BiometricRelease.declined),     // locked out
+        (errSecAuthFailed, Data([1]), BiometricEnrolment.faces(Data([1])), BiometricRelease.declined),
+        (errSecAuthFailed, Data([1]), BiometricEnrolment.faces(Data([2])), BiometricRelease.unreadable),
+        (errSecAuthFailed, Data([1]), BiometricEnrolment.none, BiometricRelease.unreadable),
+        (errSecAuthFailed, Data(), BiometricEnrolment.faces(Data([2])), BiometricRelease.declined), // none kept
+        (errSecUserCanceled, Data([1]), BiometricEnrolment.faces(Data([2])), BiometricRelease.declined),
+        (errSecItemNotFound, Data([1]), BiometricEnrolment.unknown, BiometricRelease.unreadable),
+    ] as [(OSStatus, Data, BiometricEnrolment, BiometricRelease)])
+    func aFailedReadTurnsItOffOnlyForOtherFaces(status: OSStatus, kept: Data, now: BiometricEnrolment, outcome: BiometricRelease) {
+        #expect(BiometricEnrolment.outcome(of: status, kept: kept, now: now) == outcome)
+    }
+
+    /// A key that cannot be removed until `fails` is cleared.
+    private final class StuckKey: SecretItem, @unchecked Sendable {
+        var fails = true
+        func read() throws -> Data? { nil }
+        func write(_ data: Data) throws {}
+        func delete() throws { if fails { throw PeelError("Keychain delete failed") } }
+    }
+
+    private final class StuckKeeper: BiometricKeeper, @unchecked Sendable {
+        var isKept: Bool { true }
+        func keep(_ pin: String) throws {}
+        func release(reason: String) async -> BiometricRelease { .declined }
+        func discard() throws { throw PeelError("Keychain delete failed") }
+    }
+
+    /// Forget removes every key it can, and the words only once the keys
+    /// are gone; Face ID's copy of the PIN never stops it.
+    @Test func forgetTakesTheWordsLastAndFaceIDNeverStopsIt() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("forget-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let strut = StuckKey()
+        let profile = Profile(developmentAt: folder, strutKey: strut,
+                              biometrics: BiometricUnlock(secrets: words, keeper: StuckKeeper()))
+        try profile.secrets.save(mnemonic: "words", pin: "")
+        try profile.agentCredential.write(Data("key".utf8))
+        try profile.brain.write(Data("home server".utf8))
+
+        #expect(throws: PeelError.self) { try profile.delete() }
+        #expect(profile.hasAccount)
+        #expect(try profile.agentCredential.read() == nil)
+        #expect(try profile.brain.read() == nil)
+
+        strut.fails = false
+        try profile.delete()
+        #expect(!profile.hasAccount)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
     }
 }

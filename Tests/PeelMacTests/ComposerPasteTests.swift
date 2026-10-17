@@ -12,6 +12,7 @@ import Testing
 struct ComposerPasteTests {
     /// A screenshot to the clipboard (Cmd-Ctrl-Shift-4) carries PNG and TIFF and nothing else.
     @Test func screenshotOnTheClipboardPastesIntoTheTray() throws {
+        note("start screenshotOnTheClipboardPastesIntoTheTray")
         let bitmap = try #require(NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2, bitsPerSample: 8, samplesPerPixel: 4,
             hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
@@ -32,16 +33,26 @@ struct ComposerPasteTests {
             Issue.record("the screenshot did not reach the tray: \(items)")
         }
         #expect(textView.string.isEmpty)
+        note("end screenshotOnTheClipboardPastesIntoTheTray")
     }
 
     /// Words still paste as words.
     @Test func textOnTheClipboardPastesAsText() throws {
+        note("start textOnTheClipboardPastesAsText")
         let item = NSPasteboardItem()
         item.setString("see you at 3", forType: .string)
         let (textView, attached, pasteEnabled) = try paste([item])
         #expect(pasteEnabled)
         #expect(attached().isEmpty)
         #expect(textView.string == "see you at 3")
+        note("end textOnTheClipboardPastesAsText")
+    }
+
+    /// TEMPORARY: CI diagnostics, shown as GitHub annotations.
+    private func note(_ line: String) {
+        guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else { return }
+        let flat = line.replacingOccurrences(of: "\n", with: " | ")
+        print("::notice title=ComposerPasteTests::\(flat)")
     }
 
     /// Puts `items` on the general pasteboard, validates an Edit > Paste item
@@ -62,7 +73,9 @@ struct ComposerPasteTests {
             general.writeObjects(saved)
         }
         general.clearContents()
-        try #require(general.writeObjects(items))
+        let wrote = general.writeObjects(items)
+        note("wrote=\(wrote) general.types=\(general.types?.map(\.rawValue) ?? [])")
+        try #require(wrote)
 
         let textView = AttachingTextView.plain()
         let box = Box()
@@ -71,10 +84,12 @@ struct ComposerPasteTests {
         let pasteItem = menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         pasteItem.target = textView
         menu.update()
+        note("readable=\(textView.readablePasteboardTypes.map(\.rawValue)) enabled=\(pasteItem.isEnabled) validate=\(textView.validateUserInterfaceItem(pasteItem)) app=\(NSApp != nil)")
         if pasteItem.isEnabled {
             _ = NSApplication.shared
             NSApp.sendAction(#selector(NSText.paste(_:)), to: textView, from: pasteItem)
         }
+        note("attached=\(box.items.count) string=\(textView.string.debugDescription)")
         return (textView, { box.items }, pasteItem.isEnabled)
     }
 

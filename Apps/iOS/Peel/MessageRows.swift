@@ -37,6 +37,8 @@ struct ConversationRow: View, Equatable {
                 + (row.approved.map { $0 ? " · Approved" : " · Declined" } ?? ""))
         case .note:
             RowNote(text: row.message.membershipNote(by: row.sender))
+        case .control(let line):
+            RowNote(text: line)
         case .missingOriginal:
             RowNote(text: "Original message not available", italic: true)
         case .replies(let count):

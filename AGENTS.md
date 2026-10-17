@@ -171,6 +171,12 @@ is a short plan. Update the status and the journal when you finish something.
     (sent unless the chat's switch is off, never to a public tribe; read
     with Peel's own parser), the per-chat switch (a `timezone`
     preference), `localTime(of:)`
+  - `ControlEnvelope.swift` — the device channel's control messages
+    (`docs/agent-on-strut.md`): `MessageMetadata` (a body's metadata
+    string, read bounded, and keys set beside each other, `tz` among them),
+    `ControlEnvelope` (`metadata.peel`), `ControlMessage.read` and
+    `Message.control`, which take an unknown version, `op` or field shape
+    for `unsupported`, never a guess
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
     scope, the official encoding), `JSONValue`, the official reader's

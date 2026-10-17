@@ -12,7 +12,8 @@
 # tribe (default "journeys"); scripts/journeys/seed.sh makes all three. A
 # drive's `{"signal": "peer-sends"}` has the peer send in the chat,
 # `"peer-posts-tribe"` post in the tribe, `"peer-replies-thread"` reply in
-# the tribe's thread its message t210 started. With --peer, each journey starts
+# the tribe's thread its message t210 started, `"peer-sends-control"` send
+# a control message (a request, docs/agent-on-strut.md) in the chat. With --peer, each journey starts
 # with the chat read, and the journeys marked `// needs: peer` run too:
 # that profile sends into the chat when a drive signals it, and its key
 # marks the chat unread for `// before: unread <n>`. Without it they are
@@ -101,6 +102,9 @@ sys.stdout.write(text)' "$drive" "$CHAT" "$OTHER" "$TRIBE_NAME" >"$OUT/journey.d
             handled+="$name "
             case $name in
                 peer-sends) peel "$PEER" send "$ME_KEY" "a message from the journey check" --wait 2 >/dev/null 2>&1 & ;;
+                peer-sends-control)
+                    envelope='{"v":1,"op":"request","id":"r_journey","device":"mac-journey","kind":"chats.unseen","not_after":1760610000}'
+                    peel "$PEER" send-control "$ME_KEY" "$envelope" "Peel asked your Mac to read your unread messages" --wait 2 >/dev/null 2>&1 & ;;
                 peer-posts-tribe) peel "$PEER" send "$TRIBE" "a tribe message from the journey check" --wait 2 >/dev/null 2>&1 & ;;
                 peer-replies-thread)
                     uuid=$(peel "$PEER" threads | awk '/ t210 / { print prev } { prev = $2 }' | head -n 1)

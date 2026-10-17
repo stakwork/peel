@@ -347,7 +347,11 @@ send during the pull: once back in range, the list ends at the newest) and
 `thread-open-slide` (a thread opened beside the tribe, then over it on a
 narrow window: each frame the thread's list is drawn, it sits where it
 does in the panel at rest, the panel found where it is drawn by a mark
-only the offscreen mode draws at its top left, `ListProbe.drawnPanel`). A step waits
+only the offscreen mode draws at its top left, `ListProbe.drawnPanel`) and
+the control message journeys (`control-*`: the peer's control message,
+`send-control`, arriving with the chat scrolled up, at its bottom, while
+the tribe is open, and on a bounce back to the tribe; each a quiet line,
+the list held or placed as for any arrival). A step waits
 0.3 s after it, or its `"next"` seconds.
 
 The agent chat's journeys (`agent-*`) put the agent on a scripted model

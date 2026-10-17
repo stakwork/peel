@@ -1,0 +1,13 @@
+// A control message while scrolled up: like any arrival the list does not
+// move; the message is a quiet line, never a bubble (docs/agent-on-strut.md,
+// PR 1).
+// needs: peer
+// check: arrival hold=chat
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 900}
+{"wait": 1}
+{"probe": "arrival", "for": 10}
+{"signal": "peer-sends-control"}
+{"wait": 9}

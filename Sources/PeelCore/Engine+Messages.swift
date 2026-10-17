@@ -46,6 +46,16 @@ extension Engine {
         return try await deliver(body: try Self.json(fields), to: pubkey, priceAtMost: priceAtMost, replacing: nil)
     }
 
+    /// A control message to the contact `pubkey` (docs/agent-on-strut.md,
+    /// "The device channel"): `text`, the line the official apps show, with
+    /// `envelope` in its metadata. Never to a tribe: the channel is a DM.
+    @discardableResult
+    public func sendControl(_ envelope: ControlEnvelope, text: String, to pubkey: String) async throws -> String? {
+        guard isContact(pubkey) else { throw Failure.notAContact }
+        let body = try envelope.adding(to: Self.json(["content": text]))
+        return try await deliver(body: body, to: pubkey, replacing: nil)
+    }
+
     /// `replyUuid` and `threadUuid` for a message to `chat`, as the Mac app
     /// sets them: a reply joins its parent's thread (`Message.threadRoot`),
     /// or starts one at the parent; `inThread` may name any message of the

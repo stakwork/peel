@@ -723,3 +723,60 @@ seconds slower (open question 3).
     stays atomic. *Recommended:* take Evan's shape when prompt changes
     become frequent; until then, `/new` after a Peel update that changes
     the prompt, said in the release notes.
+
+## 8. Journal
+
+**PR 1, the control envelope (2026-10-16).** Built: `ControlEnvelope`
+(`metadata.peel`) in PeelCore, written by `Engine.sendControl` (and the
+CLI's `send-control`, for tests) and read by `Message.control`; the time
+zone switch now sets `tz` beside the other metadata keys, so a resend
+keeps `peel`. Decided while building:
+
+- A message is a control message when it is text and its metadata's
+  `peel` is an object with an `op`. A `peel` without one is a talk
+  message's extras. A version, `op` or field shape this Peel does not
+  read is `unsupported`: still a line, never acted on.
+- The line is who sent it and the message's own text (what the official
+  apps show), "Sam: Peel asked your Mac…", on one line as a preview shows
+  it, at most 200 characters, in the quiet style of a tribe's membership
+  notes, on the Mac and the phone. A blank one draws nothing. The name is
+  there because until PR 4 there is no agent to tell apart: any contact
+  can send a control message, and an unnamed grey line would read as
+  Peel's own words. PR 6 can drop it in the agent's DM.
+- One of ours that failed stays a bubble, for Retry and Discard; a deleted
+  one is a deleted message, as any is.
+- Only in a direct message: in a tribe the same metadata leaves a
+  member's message a message, so nobody can dress text up as Peel's line.
+- A control message your own device sent is not your send: it never pulls
+  the list down to the newest (`ChatRow.listRow`).
+- Not changed in PR 1: a control message from someone else counts as
+  unread, notifies, and shows as a chat's preview, as any text does. The
+  agent's DM does not exist before PR 4; leaving them out of the counts
+  needs the database to know a control message (a column, as `senderTZ`
+  is), which PR 2 is the place for. The same column saves reading each
+  message's metadata again whenever the list is drawn again, which PR 1
+  does (bounded at 64 KB a message). A search or a notification jumps to
+  the line.
+
+Review findings not applied, and why: the rule that a device's control
+message is not your send stays specific to control rows rather than all
+notes (a note of yours, "You asked to join", still follows, as before);
+`MessageMetadata` reads `metadata` with its own decoder, not `BodyFields`,
+because a body whose `metadata` is not a string must keep its content;
+`AppModel.isTribe` falls back to "not a tribe" for a chat it does not
+list yet, so a tribe member's control message could draw as a line there,
+which the sender's name on the line makes harmless; and before PR 2 acts
+on envelopes it should refuse duplicate `peel` keys and non-integer
+versions, which Foundation reads and the bridge's serde does not.
+
+
+Checked on a local stack (profiles `pr1-me` and `pr1-peer`, seeded by
+`scripts/journeys/seed.sh`: a ~320-message chat with threads, the
+`journeys` tribe with threads, and the bank): the four `control-*`
+journeys pass (scrolled up, at the bottom, arriving while the tribe is
+open, a bounce back to the tribe), and so do the other list journeys but
+`search-early`, which fails on `main` too. The integration journey sends a
+control message through the real core and reads the envelope and `tz`
+back on the other side. The phone draws the same rows (`ChatRow`); it was
+compiled, not run. The official apps were not checked: the line they show
+is the message's content, as for any text.

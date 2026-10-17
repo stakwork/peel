@@ -558,15 +558,14 @@ extension MemberRow where Actions == EmptyView {
     }
 }
 
-/// "Name joined", "Name left" and the owner's decisions, between the
-/// messages of a tribe, worded as the Mac app words them.
-struct MembershipNote: View {
-    let message: Message
-    /// The row's sender (`People.sender(of:inTribe:)`).
-    let sender: Sender
+/// A quiet line between the messages: in a tribe "Name joined", "Name
+/// left" and the owner's decisions, worded as the Mac app words them; in a
+/// direct message a control message's readable text (`Message.controlLine(by:)`).
+struct NoteLine: View {
+    let text: String
 
     var body: some View {
-        Text(message.membershipNote(by: sender))
+        Text(text)
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(maxWidth: .infinity)

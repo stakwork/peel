@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import PeelCore
 
@@ -79,6 +80,9 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
     public var approved: Bool?
+    /// For a control message: the agent's request whose card waits on you
+    /// (`AppModel.waitingCards`), what the card shows, drawn in its place.
+    public var approval: ToolIntent?
     /// For a payment request: its invoice and whether it is paid.
     public var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
@@ -140,7 +144,8 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
         boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
         purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People, callServer: String? = nil,
-        threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil
+        threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil,
+        approvals: [String: ToolIntent] = [:]
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -159,6 +164,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             rows.append(row(anchor, kind: .replies(messages.count), id: "r\(threadRoot)", inTribe: inTribe, people: people))
         }
         var newAfter = newAfter
+        var cardRows: [String: Int] = [:]
         for message in messages {
             // A control message is only its line, never a thread's row.
             let controlLine = message.isControlLine(inTribe: inTribe)
@@ -199,6 +205,13 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
+            // One card per request, on its newest copy (the bridge may ask again).
+            if case .control = kind, !approvals.isEmpty, case .envelope(let request)? = message.control,
+               request.op == .request, let id = request.id, let approval = approvals[id] {
+                if let earlier = cardRows[id] { rows[earlier].approval = nil }
+                row.approval = approval
+                cardRows[id] = rows.count
+            }
             row.startsNew = startsNew
             if kind == .paymentRequest { row.paymentRequest = message.id.flatMap { requests[$0] } }
             rows.append(row)

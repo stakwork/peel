@@ -492,6 +492,13 @@ extension Storage {
                 CREATE INDEX deviceRequest_owed ON deviceRequest (agent, receivedAt) WHERE state != 'done' OR sent = 0
                 """)
         }
+        migrator.registerMigration("v26") { db in
+            // A send asked by the agent (docs/agent-on-strut.md, "Idempotency"):
+            // the uuid of the message it sent, written with state `sending` in
+            // the transaction that stores that message, so a request cut short
+            // there is never sent again and answers `unknown`.
+            try db.execute(sql: "ALTER TABLE deviceRequest ADD COLUMN sentUUID TEXT")
+        }
         return migrator
     }
 }

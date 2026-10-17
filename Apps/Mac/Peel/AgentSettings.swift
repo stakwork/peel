@@ -9,6 +9,7 @@ import PeelUI
 /// Clear conversation. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
     static let id = "agent-settings"
+    @Environment(AppModel.self) private var model
     let agent: AgentSession
 
     @State private var problem: String?
@@ -63,6 +64,16 @@ struct AgentSettingsSection: View {
                         Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
                     } trailing: {
                         Button("Revoke") { attempt { try agent.revoke(rule) } }
+                            .buttonStyle(.peel(.outline))
+                    }
+                }
+                // Each send grant an automation's card made (the strut preview's), until revoked.
+                let cards = model.macAgent.deviceCards
+                ForEach(Array(cards.grants.enumerated()), id: \.element.id) { index, grant in
+                    Fact(index == 0 ? "May post as you" : "") {
+                        Text("\(grant.name ?? "An automation"), to \(grant.summary)")
+                    } trailing: {
+                        Button("Revoke") { attempt { try cards.revoke(grant) } }
                             .buttonStyle(.peel(.outline))
                     }
                 }

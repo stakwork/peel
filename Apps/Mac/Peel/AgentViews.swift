@@ -407,7 +407,7 @@ private struct AgentToolRow: View {
 
     var body: some View {
         if tool.isWaiting, let agent, let approval = tool.approval {
-            AgentApprovalCard(agent: agent, intent: approval.intent)
+            AgentApprovalCard(intent: approval.intent, composer: .agent) { agent.answer($0) }
         } else {
             row
         }
@@ -476,11 +476,18 @@ private struct AgentToolRow: View {
 /// happen in plain words, the exact content, any cost, and Allow once
 /// (Return), Always allow for its target, and Deny (Escape). Orange while
 /// it waits; no red, since nothing is lost by declining. Once answered it
-/// is the tool's row again, one line with the outcome.
-private struct AgentApprovalCard: View {
+/// is the tool's row again, one line with the outcome. The agent's device
+/// requests draw the same card in its DM (`DeviceRequestLine`).
+struct AgentApprovalCard: View {
     @Environment(AppModel.self) private var model
-    let agent: AgentSession
     let intent: ToolIntent
+    /// The composer under it: the card takes the keys only from an empty one.
+    let composer: ComposerID
+    /// Whether it takes the keys as it appears. A device request's card in
+    /// the agent's DM does not: the agent, not you, decides when it comes,
+    /// so a Return meant for the composer never allows it.
+    var takesFocus = true
+    let answer: (ApprovalDecision) -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -499,16 +506,16 @@ private struct AgentApprovalCard: View {
                     }
                 }
                 HStack(spacing: Theme.Space.sm) {
-                    Button("Allow once") { agent.answer(.allowOnce) }
+                    Button("Allow once") { answer(.allowOnce) }
                         .buttonStyle(.peel(.primary, size: .sm))
                         .help(intent.cost == nil ? "Return" : "Click to pay and send")
                     if intent.mayBeAlwaysAllowed {
                         Button(intent.alwaysLabel) {
-                            agent.answer(.alwaysAllow)
+                            answer(.alwaysAllow)
                         }
                         .buttonStyle(.peel(.outline, size: .sm))
                     }
-                    Button("Deny") { agent.answer(.deny) }
+                    Button("Deny") { answer(.deny) }
                         .buttonStyle(.peel(.ghost, size: .sm))
                         .help("Escape")
                 }
@@ -526,17 +533,17 @@ private struct AgentApprovalCard: View {
         // something else.
         .onKeyPress(.return) {
             guard focused, intent.cost == nil else { return .ignored }
-            agent.answer(.allowOnce)
+            answer(.allowOnce)
             return .handled
         }
         .onKeyPress(.escape) {
             guard focused else { return .ignored }
-            agent.answer(.deny)
+            answer(.deny)
             return .handled
         }
         // It takes the keys only from an empty composer: a Return meant for
         // a half-typed message never allows a send unread.
-        .onAppear { if (model.drafts[.agent] ?? "").trimmed.isEmpty { focused = true } }
+        .onAppear { if takesFocus, (model.drafts[composer] ?? "").trimmed.isEmpty { focused = true } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Waiting on you: \(intent.action)")
     }

@@ -706,7 +706,8 @@ public actor Engine {
     func commit(
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
-        invites: [InviteRecord] = [], indices: [UInt64]? = nil, keepMembership: Bool = false
+        invites: [InviteRecord] = [], indices: [UInt64]? = nil, keepMembership: Bool = false,
+        deviceSend: Storage.Commit.DeviceSend? = nil
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -714,6 +715,7 @@ public actor Engine {
         var commit = Storage.Commit()
         commit.settings[.clock] = time
         commit.resend = resend
+        commit.deviceSend = deviceSend
         commit.reads = Self.reads(result.lastRead).filter { !readsSentSinceGetReads.contains($0.key) }
         if let json = result.muteLevels, let mutes = JSON.decode([String: Int].self, from: json) {
             commit.mutes = mutes.filter { !mutesSetSinceGetMutes.contains($0.key) }
@@ -1152,11 +1154,11 @@ public actor Engine {
     /// goes through here and maps only `.none` to failed.
     func commitAndPublish(
         _ result: RunReturn, time: String, outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil,
-        invoices: [InvoiceRecord] = [], invites: [InviteRecord] = []
+        invoices: [InvoiceRecord] = [], invites: [InviteRecord] = [], deviceSend: Storage.Commit.DeviceSend? = nil
     ) async throws -> Published {
         let followUps = try commit(
             result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend, invoices: invoices,
-            invites: invites
+            invites: invites, deviceSend: deviceSend
         )
         do {
             try await complete(result, followUps)

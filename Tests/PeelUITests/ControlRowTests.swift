@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import Testing
 @testable import PeelCore
@@ -7,9 +8,10 @@ import Testing
 private let dm = keyG
 private let tribe = key2G
 
-/// A control message's body: `content` as the official apps show it, and an ack in its metadata beside `tz`.
-private func controlBody(_ content: String) -> String {
-    let metadata = #"{"tz":"GMT+1","peel":{"v":1,"op":"ack","re":"r_1"}}"#
+/// A control message's body: `content` as the official apps show it, and an ack in its metadata beside `tz`
+/// (or `peel`, another envelope).
+private func controlBody(_ content: String, peel: String = #"{"v":1,"op":"ack","re":"r_1"}"#) -> String {
+    let metadata = #"{"tz":"GMT+1","peel":"# + peel + "}"
     return String(decoding: try! JSONEncoder().encode(["content": content, "metadata": metadata]), as: UTF8.self)
 }
 
@@ -94,5 +96,22 @@ struct ControlRowTests {
         let rows = ChatRow.rows([message(0), message(1, fromMe: true, body: controlBody("Peel read your unread messages on your Mac")),
                                  message(2, fromMe: true)], parents: [:], inTribe: false, people: people)
         #expect(rows.map { $0.listRow(in: .chat(dm)).isOwn } == [false, false, true])
+    }
+
+    /// A request whose card waits (`approvals`) draws it on its newest copy
+    /// only; another request's line, and an ack naming it, stay lines.
+    @Test func aWaitingRequestsNewestCopyCarriesItsCard() {
+        func request(_ n: Int, id: String) -> Message {
+            message(n, body: controlBody("Peel asked your Mac to send a message for you", peel:
+                #"{"v":1,"op":"request","id":"\#(id)","device":"mac","kind":"send","args":{},"not_after":1}"#))
+        }
+        let card = ToolIntent(action: "Send to Kate", content: "hi")
+        let rows = ChatRow.rows([request(0, id: "r_1"), request(1, id: "r_2"), request(2, id: "r_1"),
+                                 message(3, body: controlBody("Peel on your Mac is on it"))],
+                                parents: [:], inTribe: false, people: people, approvals: ["r_1": card])
+        #expect(rows.map(\.approval) == [nil, nil, card, nil])
+        // Without it, the same rows as ever: the card is the row's version, so the list measures it again.
+        let plain = ChatRow.rows(rows.map(\.message), parents: [:], inTribe: false, people: people)
+        #expect(plain.allSatisfy { $0.approval == nil } && plain != rows)
     }
 }

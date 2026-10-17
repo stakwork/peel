@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import GRDB
 @testable import PeelAgent
@@ -33,9 +34,9 @@ extension Journeys {
 
             let reads = Mutex(0)
             let handler = DeviceReads(storage: alice.storage).handler
-            await alice.engine.answerDeviceRequests { kind, args in
+            await alice.engine.answerDeviceRequests { request in
                 reads.withLock { $0 += 1 }
-                return await handler(kind, args)
+                return await handler(request)
             }
             try await alice.engine.setDeviceAgent(bobKey)
             let mac = await alice.engine.deviceID
@@ -99,7 +100,7 @@ extension Journeys {
             // with history caught up again, the Mac finishes that one and
             // answers nothing it answered before.
             // Held past the journey's end, whatever cancels the engine's work.
-            await alice.engine.answerDeviceRequests { _, _ in
+            await alice.engine.answerDeviceRequests { _ in
                 await Task.detached { try? await Task.sleep(for: .seconds(300)) }.value
                 return .failed("stopped")
             }
@@ -115,6 +116,102 @@ extension Journeys {
             try await Task.sleep(for: .seconds(3))
             #expect(try answers(ask, to: bob).filter { $0.op == .result }.count == 2)
             #expect(try answers("too-late", to: bob).filter { $0.op == .result }.count == 1)
+
+            for person in [relaunched, bob, carol] { await person.close() }
+        }
+
+        /// Bob, as the agent, asks Alice's Mac to send to Carol as her. The
+        /// card is asked (here answered by the test as a click would); allowed,
+        /// Carol gets the message once, and a repeat of the request sends
+        /// nothing; denied, nothing goes; a card still up at the request's
+        /// time answers `expired`. A request Peel stopped on once its send
+        /// was committed (the row left `sending` with a uuid, as a kill there
+        /// leaves it; here without the message, which the engine's own resend
+        /// would otherwise deliver) answers `unknown` after a relaunch and is
+        /// not sent again.
+        @Test func theMacSendsAsYouOnceAndOnlyWhenAllowed() async throws {
+            let (alice, bob) = try await Journeys.Payments.pair()
+            let carol = try await Person.create("carol")
+            try await Bank.shared.give(500, to: carol)
+            try await carol.engine.addContact(code: try alice.contactInfo)
+            try await eventually("Alice and Carol to be contacts") {
+                try alice.isReadyContact(carol) && carol.isReadyContact(alice)
+            }
+            let (aliceKey, bobKey, carolKey) = (try alice.pubkey, try bob.pubkey, try carol.pubkey)
+
+            let replies = Mutex<[String: ApprovalDecision?]>([:])
+            let asked = Mutex<[String]>([])
+            func actions(for person: Person) throws -> DeviceRequestHandler {
+                let path = person.profile.directory.appendingPathComponent("agent.sqlite").path
+                let rules = ApprovalRules(store: try SQLiteAgentStore(path: path, device: "mac"))
+                return DeviceActions(engine: person.engine, rules: rules) { request, _ in
+                    asked.withLock { $0.append(request.id) }
+                    if let reply = replies.withLock({ $0[request.id] }) { return reply }
+                    // A card nobody answers.
+                    try? await Task.sleep(for: .seconds(300))
+                    return .deny
+                }.handler
+            }
+            await alice.engine.answerDeviceRequests(with: try actions(for: alice))
+            try await alice.engine.setDeviceAgent(bobKey)
+            let mac = await alice.engine.deviceID
+            func send(_ id: String, _ text: String, seconds: Int64 = 3600) async throws {
+                let args: PeelCore.JSONValue = .object(["chat": .string(carolKey), "text": .string(text)])
+                let request = ControlEnvelope(op: .request, id: id, device: mac, kind: "send", args: args,
+                                              notAfter: Int64(Date().timeIntervalSince1970) + seconds)
+                try await bob.engine.sendControl(request, text: "Peel asked your Mac to send a message for you", to: aliceKey)
+            }
+            func results(_ id: String) throws -> [ControlEnvelope] {
+                try bob.messages(in: aliceKey).compactMap {
+                    guard !$0.fromMe, case .envelope(let e)? = $0.control, e.re == id, e.op == .result else { return nil }
+                    return e
+                }
+            }
+            func result(_ id: String, count: Int = 1) async throws -> ControlEnvelope {
+                try await eventually("the result for \(id)", timeout: .seconds(60)) {
+                    let all = try results(id)
+                    return all.count >= count ? all.last : nil
+                }
+            }
+            func carolGot(_ text: String) throws -> Int {
+                try carol.messages(in: aliceKey).filter { $0.content == text }.count
+            }
+
+            let words = "on my way \(UUID().uuidString.prefix(6))"
+            replies.withLock { $0["allow"] = .some(.allowOnce) }
+            try await send("allow", words)
+            let first = try await result("allow")
+            #expect(first.status == .done)
+            #expect(first.result?.object?["text"]?.string?.hasPrefix("Sent to") == true)
+            try await eventually("Carol to get it") { try carolGot(words) == 1 }
+            // The bridge asks again: the stored answer, and no second card or send.
+            try await send("allow", words)
+            #expect(try await result("allow", count: 2) == first)
+            #expect(asked.withLock { $0.filter { $0 == "allow" }.count } == 1)
+
+            replies.withLock { $0["deny"] = .some(.deny) }
+            try await send("deny", "no \(words)")
+            #expect(try await result("deny").status == .denied)
+            try await send("late", "late \(words)", seconds: 4)
+            #expect(try await result("late").status == .expired)
+
+            // The card is up when Peel stops; the row is left as a kill just
+            // after the send's commit leaves it.
+            try await send("cut", "cut \(words)")
+            try await eventually("the card for cut") { asked.withLock { $0.contains("cut") } }
+            await alice.engine.close()
+            try await alice.storage.pool.write {
+                try $0.execute(sql: "UPDATE deviceRequest SET state = 'sending', sentUUID = 'cut-uuid' WHERE id = 'cut'")
+            }
+            let relaunched = try alice.relaunched()
+            await relaunched.engine.answerDeviceRequests(with: try actions(for: relaunched))
+            try await relaunched.engine.connect()
+            let cut = try await result("cut")
+            #expect(cut.status == .unknown && cut.error?.contains("cannot tell whether it went") == true)
+            #expect(cut.error?.contains("uuid=cut-uuid") == true)
+            try await Task.sleep(for: .seconds(3))
+            for text in ["no \(words)", "late \(words)", "cut \(words)"] { #expect(try carolGot(text) == 0) }
+            #expect(try carolGot(words) == 1)
 
             for person in [relaunched, bob, carol] { await person.close() }
         }

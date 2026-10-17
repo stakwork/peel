@@ -21,8 +21,10 @@ extension SphinxTools {
         goes; if they decline, say so and do not try again unless they ask.
         """
 
-    /// The send tool over `engine`, the account the read tools read.
-    public func send(through engine: Engine) -> Tool {
+    /// The send tool over `engine`, the account the read tools read. For
+    /// the agent's device request (`DeviceActions`): `request`, which the
+    /// send answers at most once, and `maxPriceSats`, the most it may pay.
+    public func send(through engine: Engine, for request: DeviceRequest? = nil, maxPriceSats: Int? = nil) -> Tool {
         Tool(
             name: "send_sphinx_message",
             description: """
@@ -45,7 +47,7 @@ extension SphinxTools {
             effect: .send
         ) { input in
             do {
-                return try await plan(input, engine: engine)
+                return try await plan(input, engine: engine, for: request, maxPriceSats: maxPriceSats)
             } catch let notFound as NotFound {
                 return .result(.text(notFound.text))
             }
@@ -53,7 +55,9 @@ extension SphinxTools {
     }
 
     /// What the send will be, checked and worded, or why there is none.
-    private func plan(_ input: AgentKit.JSONValue, engine: Engine) async throws -> Tool.Plan {
+    private func plan(
+        _ input: AgentKit.JSONValue, engine: Engine, for request: DeviceRequest?, maxPriceSats: Int?
+    ) async throws -> Tool.Plan {
         let query = try Self.required("chat", in: input)
         guard let text = input["text"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             throw ToolFailure(errorDescription: "text is required: the message to send.")
@@ -98,6 +102,9 @@ extension SphinxTools {
         if chat.isTribe, price == nil {
             return .result(.text("Cannot send to \(ChatData.quoted(chat)) yet: its price is not known on this Mac."))
         }
+        if let maxPriceSats, let price, price.msat > UInt64(max(maxPriceSats, 0)) * 1000 {
+            return .result(.text("Not sent to \(ChatData.quoted(chat)): it costs \(price.described), over the most allowed (\(maxPriceSats) sats)."))
+        }
         let intent = ToolIntent(
             action: chat.isTribe ? "Send to the tribe \(name)" : "Send to \(name)", content: text, details: details,
             cost: price.map { "Costs \($0.described). Paid from your balance." },
@@ -105,7 +112,8 @@ extension SphinxTools {
         return .action(intent) {
             let tag: String?
             do {
-                tag = try await engine.sendText(text, to: chat.chat, replyTo: replyTo, inThread: thread, priceAtMost: price?.msat ?? 0)
+                tag = try await engine.sendText(
+                    text, to: chat.chat, replyTo: replyTo, inThread: thread, priceAtMost: price?.msat ?? 0, for: request)
             } catch let refusal as Engine.Failure {
                 // A refusal, in the engine's words (the row and the model read
                 // them): thrown before anything is written or published, so

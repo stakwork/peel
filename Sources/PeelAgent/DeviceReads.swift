@@ -13,9 +13,9 @@ public struct DeviceReads: Sendable {
         tools = SphinxTools(storage: storage)
     }
 
-    /// The handler `Engine.answerDeviceRequests` takes.
+    /// The handler `Engine.answerDeviceRequests` takes, for reads only.
     public var handler: DeviceRequestHandler {
-        { kind, args in await answer(kind, args) }
+        { request in await answer(request.kind, request.args) }
     }
 
     func answer(_ kind: String, _ args: PeelCore.JSONValue) async -> DeviceAnswer {

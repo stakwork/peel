@@ -32,6 +32,12 @@ extension Storage {
         /// keeps when it was first sent, and with `auto` notes that a
         /// reconnect sent it (`Message.autoResentAt`).
         var resend: Resend?
+        /// The agent's send request a new outgoing row answers: marked
+        /// `sending`, with the row's uuid (`sentUUID`), in the same write.
+        var deviceSend: DeviceSend?
+        /// The request, the message's uuid, and the time (seconds since
+        /// 1970) the request must not be past.
+        typealias DeviceSend = (agent: String, id: String, uuid: String, now: Int64)
         typealias Resend = (
             id: Int64, chat: String, uuid: String?, tag: String?, paymentHash: String?, msat: Int64?,
             timestamp: Int64, auto: Bool
@@ -211,6 +217,16 @@ extension Storage {
             // send); a payment or boost only once it failed. A row the rule
             // refuses throws, so the whole commit, and with it the publish,
             // is abandoned.
+            // Nothing is published before this commit, so the send and its
+            // record are one write: a request answered, sending or past its
+            // time abandons the whole commit, unpublished.
+            if let send = commit.deviceSend {
+                try db.execute(sql: """
+                    UPDATE deviceRequest SET state = 'sending', sentUUID = ?
+                    WHERE agent = ? AND id = ? AND state = 'running' AND notAfter >= ?
+                    """, arguments: [send.uuid, send.agent, send.id, send.now])
+                guard db.changesCount == 1 else { throw Engine.Failure.requestClosed }
+            }
             if let resend = commit.resend {
                 let row = try Message.fetchOne(
                     db,

@@ -67,18 +67,24 @@ final class MacAgent: AgentHost {
     /// and `system-open`).
     var automationsTab = AutomationsView.Tab.yours
     var openedAutomation: String?
+    /// The device requests' cards and the send grants.
+    let deviceCards = DeviceCards()
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
+        deviceCards.model = model
     }
 
-    /// The agent in strut asks this Mac for chat reads; the engine answers
-    /// only once its contact is set (`Setting.deviceAgent`).
+    /// The agent in strut asks this Mac for chat reads, sends and approvals
+    /// (reads only if the agent chat did not open); the engine answers only
+    /// once its contact is set (`Setting.deviceAgent`).
     func deviceRequests(for engine: Engine) -> DeviceRequestHandler? {
-        DeviceReads(storage: engine.storage).handler
+        guard let agent = deviceCards.model?.agent else { return DeviceReads(storage: engine.storage).handler }
+        return deviceCards.handler(for: engine, agent: agent)
     }
 
     func close(in model: AppModel) {
+        deviceCards.close()
         model.closeAgent()
     }
 
@@ -90,6 +96,7 @@ final class MacAgent: AgentHost {
 
     func stop() {
         stopMove()
+        deviceCards.close()
         strut?.stop(quietly: true)
     }
 

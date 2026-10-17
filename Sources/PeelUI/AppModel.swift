@@ -147,6 +147,11 @@ public final class AppModel {
     /// What each composer holds unsent, kept while a thread covers its
     /// chat or another chat is open.
     public var drafts: [ComposerID: String] = [:]
+    /// The agent's device requests whose cards wait on you, by the agent's
+    /// chat, then request id: their lines draw the card (`ChatRow.approval`).
+    public var waitingCards: [String: [String: ToolIntent]] = [:] {
+        didSet { if waitingCards[selectedChat ?? ""] != oldValue[selectedChat ?? ""] { rebuildChatRows() } }
+    }
     /// The open chat's rows and the open thread's, worked out once per
     /// change of what they show rather than on every redraw.
     public private(set) var chatRows: [ChatRow] = [] {
@@ -501,7 +506,7 @@ public final class AppModel {
         let rows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
-            callServer: calls.server, newAfter: newMessagesAfter(in: chat)
+            callServer: calls.server, newAfter: newMessagesAfter(in: chat), approvals: waitingCards[chat] ?? [:]
         ), in: chat)
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.

@@ -587,16 +587,86 @@ bridge never derives anything: Peel calls `agent_seed` with your seed
 and `n = 1`, and posts the result to runner's `/seed`. Your words never
 reach runner.
 
-- **Dev builds** use a throwaway account on the local stack until Peel's
-  pin reaches v0.8.39; after that PR 4 can use the real derived account,
-  behind the preview.
-- **Funding is settled.** An agent with 0 sats can accept its owner's key
-  exchange from what the exchange pays it: you spend 3 sats and the agent
-  keeps 1 (the runner spike). Nothing needs funding first.
+- **Dev builds** use the real derived account, behind the preview (PR 4).
+- **Funding: one invite.** The agent's answer to your key exchange costs
+  it 3 sats and a ping, and the mixer forwards your exchange before it
+  credits the exchange's own 5 sats, so an agent with 0 sats cannot
+  answer (the spike's success was timing; corrected 2026-10-17). Peel
+  makes a 10-sat invite from your account and passes its code with the
+  agent's seed; the agent's first register redeems it
+  (stakwork/sphinx#385).
 
 Changing the agent's account later loses only the DM's Sphinx history,
 not the conversation: the conversation lives in strut (its sessions and memory). So a temporary
 account is cheap to replace (open question 2).
+
+### Built: PR 4, the bridge launched (2026-10-17)
+
+- **Staged and pinned.** `scripts/stage-bridge.sh <sphinx checkout>` builds
+  runner from the commit `Vendor/runner.lock` names (git archive of that
+  commit only, `cargo --locked` against `Vendor/runner.Cargo.lock`, since
+  sphinx keeps no lockfile) into `~/Library/Caches/dev.peel.build/bridge`.
+  The pin is stakwork/sphinx#385's commit until Evan merges it, then master.
+  `embed-strut.sh` puts it in `Contents/Bridge` in Debug builds only, and
+  `sign-app.sh` signs it; a Release build never carries it.
+- **The agent's account.** `Engine.agentAccount()` (PeelCore) derives agent
+  1 with `agent_seed` and gives the bridge only that seed, the agent's
+  pubkey, the owner, the device id and the broker; it prints, dumps and
+  reflects without the seed. A server runner would reach otherwise than
+  Peel (runner takes TLS from port 8883) is refused.
+- **`BundledBridge`** (PeelAgent): picks a loopback port and trusts it only
+  once runner's own output says Rocket launched there, then sends the seed.
+  The admin and strut-facing tokens are made per launch and kept in memory
+  only (nothing to keep in the Keychain: runner checks them only for that
+  launch). Its environment is runner's settings and `TMPDIR`, nothing else
+  of Peel's. `/seed` (409, already set, is fine), `/add_sender` with the
+  owner, then `GET /bridge/health` until the bridge answers. Its store is
+  owner-only in Peel's folder (a development profile's in its own), erased
+  with the account. Stopped with the account, with strut, and on quit,
+  and gone by itself if Peel dies: its stdin is a pipe only Peel holds
+  (`RUNNER_EXIT_ON_STDIN_EOF`, added in stakwork/sphinx#385).
+- **First run** (`BundledBridge.setUp`), only from the person's own
+  switch (a start on its own never pays to pair): an invite from the
+  account (10 sats, once the server holds it), one per bridge store with
+  its code kept there, so a retry uses the code runner already holds. The
+  agent registers with it; runner's `GET /contact_info` gives its contact
+  info (only the agent's own pubkey is taken, on every start) and its
+  balance. Then the invite's sats are asked back: they return if the
+  agent did not need it (an account registered before from the same
+  words), and a redeemed one gets no answer and is set aside
+  (`forgetInvite`); nothing is marked used on a guess. The key exchange
+  goes only when the agent can pay its answer (4 sats), and set-up ends
+  when the agent has answered. The invite skips the confirmation
+  threshold: turning the preview on is the yes (PR 10's setup shows it).
+- **The preview.** Account › Peel agent › "Run in strut" (dev builds,
+  `agentOnStrut` in the build's defaults; the driver's `agent-on-strut`
+  and `agent-off-strut`).
+  On, it starts Peel's strut (a development profile's too) and the bridge
+  beside it, with the workflow `orchestrator`; off, nothing of it starts
+  and today's agent chat is unchanged. A failure is said under the switch.
+- **Learned.** The spike's "a 0-sat agent answers" was timing: the mixer
+  forwards the ContactKey before it credits its sats (corrected in
+  `docs/research/runner-bridge-spike.md`); hence the invite.
+- **Checked.** `BundledBridgeTests` (with the staged runner: seed, owner,
+  health, tokens, exit on stdin EOF), `AgentAccountTests`, the journey
+  `Journeys/Bridge` (real accounting: the agent answers the one key
+  exchange, a message reaches a stub strut as an `orchestrator` run, a
+  second set-up adds nothing, a start on its own never pairs, and after a
+  restore the new invite comes back and only the 3 sats are spent), and
+  `check-app.sh` on a development profile (off: nothing starts; on: strut,
+  the bridge, the agent in Direct messages, idle near 0% CPU; off again:
+  both stop).
+- **Left for later** (the reviews, 2026-10-17): runner keeps the agent's
+  seed in its store (Peel excludes the folder from backups; it could hold
+  it in memory and have Peel send it each launch); its tokens and strut's
+  key go in its environment (stdin would hide them from same-user `ps`);
+  the strut callback carries the bridge token in its query; runner answers
+  CORS `*` on loopback; Peel picks the port and frees it before runner
+  binds it (a ready line with runner's own port would close that window);
+  runner takes TLS from port 8883 only.
+- **Next.** PR 5 seeds `orchestrator` and gives strut the bridge's token;
+  the Mac's device-request trust (`setDeviceAgent`, PR 2) is set to the
+  agent's pubkey once both are in.
 
 ## 5. Automations, jobs and connectors
 
@@ -655,7 +725,7 @@ would give the same change.
 | 7 | peel | Automations on `peel-automation-run`: new ones are made on it; turning the preview on moves existing ones (same schedule and prompt, workflow changed), turning it off moves them back; sends from automations with grants (automations-and-jobs step 1) | Preview on: the Hive test posts at the minute it said, `[Agent]` first, nobody at the Mac; the weekly report lands in the DM; preview off: the same automations run on `peel-automation` as before | high (sends) | 5, 3 |
 | 8 | peel | Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
 | 9 | peel | iPhone: the agent DM shows talk and hides control (on PR 1's envelope), "Waiting for your approval on your Mac" | From the phone, with the Mac awake: message the agent and get the answer in the same thread as the Mac | medium | 1, 6 |
-| 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one invite, the key exchange: you spend 3 sats, the agent needs none); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | The sphinx-rs pin at v0.8.39 |
+| 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one 10-sat invite the agent registers with, then the key exchange); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | The sphinx-rs pin at v0.8.39 |
 | 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | medium (over 400 lines) | 10, plus a week of use |
 
 ```

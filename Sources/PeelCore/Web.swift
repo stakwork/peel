@@ -215,11 +215,13 @@ public enum Web {
     /// reach the caller; only a request that got no usable reply
     /// (none, too large, unreadable) throws. `timeout` cuts a request short
     /// (a check that should not wait half a minute for a box that is off).
+    /// `headers`: any other credential, as Peel's bridge takes its admin token.
     public static func requestStrut(
-        _ method: String, _ url: URL, json body: Data? = nil, bearer: String? = nil, limit: Int, what: String,
-        timeout: TimeInterval? = nil
+        _ method: String, _ url: URL, json body: Data? = nil, bearer: String? = nil, headers: [String: String] = [:],
+        limit: Int, what: String, timeout: TimeInterval? = nil
     ) async throws -> (status: Int, data: Data) {
         var request = try strutRequest(method, url, json: body, bearer: bearer)
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         if let timeout { request.timeoutInterval = timeout }
         let (data, response) = try await Transfer(limit: limit, what: what, progress: nil, accepting: Set(100..<600))
             .run(strutSession(for: url).dataTask(with: request))

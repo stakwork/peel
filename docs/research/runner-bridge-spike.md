@@ -143,7 +143,7 @@ knows the core.
 
 | Part | State after the spike | Missing | Size |
 |---|---|---|---|
-| Key exchange | Works; the core answers a paid ContactKey on its own, and only allowlisted senders get answers | Nothing for pairing: the owner's key exchange pays the agent enough to answer it (tested with real accounting, "After review" below). A starting balance is still needed for what the agent pays for later ("Who funds the agent"). | — |
+| Key exchange | Works; the core answers a paid ContactKey on its own, and only allowlisted senders get answers | A starting balance before pairing. The agent's answer costs 3 sats and a 1-sat ping, and the mixer passes the owner's ContactKey to the agent before crediting its 5 sats, so an agent with 0 sats is refused "not enough balance" (corrected 2026-10-17, "After review" below). Peel's PR 4 registers the agent with a 10-sat invite from the owner (stakwork/sphinx#385). | — |
 | Contact handling | Answers anyone who completes a key exchange | Only the owner (and later allowlisted people) start strut runs. `db/senders.rs` is the allowlist runner already has. The owner's key is known at pairing. The alias is from `RUNNER_ALIAS`; a photo goes through the same call (`my_img`). | S |
 | Reconnect and catch-up | Catch-up by server index works across restarts | Retry and move the index only on success (finding 3); an outbox for publishes made while disconnected (finding 4); fresh broker credentials on reconnect: `mqtt_client` reuses the signed timestamp it was started with (not tested whether the broker rejects an old one). The last two are in the core's `mqtt_client`, which the mixer and tribes server share, or runner owns its own client loop. | M |
 | Store | Whole state as one blob, rewritten on every call | One redb row per state key (the graph and hops entries grow); `runId -> message` for jobs; nothing else. The conversation itself lives in strut and on the owner's devices. The bridge keeps no chat history. | S |
@@ -229,10 +229,10 @@ Setting up the agent is one step, like pasting an API key the first time:
 1. In Peel, "Set up agent".
 2. Peel derives the agent's account and hands its seed to the brain
    through the bridge's admin endpoint.
-3. Peel adds the agent as a contact. The key exchange carries enough for
-   the agent to answer it, so pairing needs no balance on the agent: in
-   the test the agent started at 0, answered, and kept 1 sat; the owner
-   spent 3 sats.
+3. Peel adds the agent as a contact. The agent needs sats to answer:
+   the exchange's own 5 sats arrive only after the agent has answered
+   (corrected 2026-10-17, "After review" below), so the agent registers
+   with an invite from the owner (10 sats in PR 4) and starts with them.
 4. The account pays the agent a starting balance the person picks (say
    1,000 sats). It shows as a payment in the chat with the agent.
 
@@ -266,7 +266,15 @@ The spike then went through `/code-review`, `/simplify` and
 It was retested on a fresh local stack, with the mixer charging senders
 for real after `scripts/fund-dev.sh` funded the owner:
 
-- **Key exchange:** the agent started at 0 sats and answered.
+- **Key exchange:** the agent started at 0 sats and answered. **Corrected
+  2026-10-17 (PR 4): that was timing.** The mixer forwards the owner's
+  ContactKey to the agent before it credits the 5 sats the exchange
+  carries, so the agent's paid answer (3 sats and a 1-sat ping) can reach
+  the mixer while the agent still has 0 and is refused "not enough
+  balance". Nothing retries it, and a restart does not replay it. In PR
+  4's journey with real accounting it failed every time. The agent now
+  registers with an invite from its owner and starts with sats
+  (stakwork/sphinx#385).
 - **Echo:** worked as a threaded reply.
 - **Allowlist:** a message sent while the owner was off the allowlist was
   ignored, then answered by the next catch-up once they were back on it.

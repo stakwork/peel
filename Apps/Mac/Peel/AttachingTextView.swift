@@ -22,6 +22,18 @@ final class AttachingTextView: NSTextView {
     /// The drag over the field holds files; decided once as it enters.
     private var takesDrag = false
 
+    /// What Paste is offered for. AppKit enables Paste (and Cmd-V) only when
+    /// the clipboard holds a type the view reads, and a plain-text view reads
+    /// no pictures: without the image types a screenshot alone on the
+    /// clipboard left Paste disabled and `paste(_:)` never ran. Text first,
+    /// so words still win when both are there.
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        let types = super.readablePasteboardTypes
+        return types + Self.imageTypes.filter { !types.contains($0) }
+    }
+
+    private static let imageTypes = IncomingFiles.imageTypes.map { NSPasteboard.PasteboardType($0.identifier) }
+
     override func paste(_ sender: Any?) {
         let items = PasteboardFiles.items(on: .general, promises: false)
         if items.isEmpty { super.paste(sender) } else { attach?(items) }

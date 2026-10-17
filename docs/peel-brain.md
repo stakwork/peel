@@ -347,8 +347,7 @@ connection is for everything else.
   port: `swift-crypto` for `CryptoKit` and `CommonCrypto`, a file secret
   store for the Keychain, `NIOPosix` for `Network` and
   `NIOTransportServices`, media helpers left out, and `sphinx-ffi` built as
-  a Linux shared library. Swarm's `bot` image is a headless Sphinx client
-  that may be worth reading first.
+  a Linux shared library. Planned in [peel-serve.md](peel-serve.md).
 - **Bifrost and Mothership** in the brain, for per-agent keys and budgets.
 - **Neo4j** beside the Ladybug memory, for stakgraph and Jarvis.
 - **Remaining layers in Tom's draft diagram**: a local model, PII

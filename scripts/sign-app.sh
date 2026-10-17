@@ -17,10 +17,11 @@
 # or certificate, or lacks an entitlement Apps/Mac/Peel.entitlements
 # now asks for. Re-signing with a new profile keeps the Keychain items.
 #
-# Frameworks in Contents/Frameworks (LiveKit's WebRTC) and the strut in
-# Contents/Strut (Node, its native addons and their libraries) are signed first
-# with the same identity, so hardened runtime's library validation accepts
-# them. Node alone gets an entitlement: allow-jit, which V8 needs.
+# Frameworks in Contents/Frameworks (LiveKit's WebRTC), the strut in
+# Contents/Strut (Node, its native addons and their libraries) and a Debug
+# build's bridge in Contents/Bridge are signed first with the same identity,
+# so hardened runtime's library validation accepts them. Node alone gets an
+# entitlement: allow-jit, which V8 needs.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:?usage: sign-app.sh path/to/Peel.app}"
@@ -122,6 +123,7 @@ if [ -d "$APP/Contents/Strut/native" ]; then
   done
   sign --entitlements "$ROOT/scripts/strut-node.entitlements" "$APP/Contents/Strut/native/node"
 fi
+[ ! -f "$APP/Contents/Bridge/sphinx-runner" ] || sign "$APP/Contents/Bridge/sphinx-runner"
 # The stub's entitlements are what the profile grants; the stub sets
 # CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO, so there is no get-task-allow.
 sign --entitlements "$WORK/entitlements.plist" "$APP"

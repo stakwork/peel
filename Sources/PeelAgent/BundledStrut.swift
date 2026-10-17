@@ -105,15 +105,8 @@ public final class BundledStrut {
         self.process = nil
         try? stdin?.fileHandleForWriting.close()
         stdin = nil
-        if process.isRunning {
-            process.terminate()
-            let deadline = Date.now.addingTimeInterval(2)
-            while process.isRunning, Date.now < deadline { usleep(50_000) }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
-            let killed = Date.now.addingTimeInterval(1)
-            while process.isRunning, Date.now < killed { usleep(10_000) }
-        }
+        // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
+        endProcess(process.processIdentifier, isRunning: { process.isRunning })
         if server != nil {
             server = nil
             if !quietly { onChange?() }
@@ -157,16 +150,7 @@ public final class BundledStrut {
         self.process = process
         stdin = input
 
-        let server = try await withThrowingTaskGroup(of: MemoryServer?.self) { group in
-            group.addTask { await ready.first { _ in true } }
-            group.addTask {
-                try await Task.sleep(for: Self.readyTimeout)
-                return nil
-            }
-            let first = try await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
+        let server = try await first(of: ready, within: Self.readyTimeout)
         guard let server, self.process === process else {
             // Its output can end a moment before it is reaped.
             for _ in 0..<40 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
@@ -242,10 +226,36 @@ public final class BundledStrut {
     }
 }
 
+/// The first thing `stream` yields within `timeout`; nil if it ends or the time runs out first.
+func first<T: Sendable>(of stream: AsyncStream<T>, within timeout: Duration) async throws -> T? {
+    try await withThrowingTaskGroup(of: T?.self) { group in
+        group.addTask { await stream.first { _ in true } }
+        group.addTask {
+            try await Task.sleep(for: timeout)
+            return nil
+        }
+        let first = try await group.next() ?? nil
+        group.cancelAll()
+        return first
+    }
+}
+
+/// Ends process `pid`: SIGTERM, then SIGKILL if it is still there after two
+/// seconds; returns once it is gone, or a second after the SIGKILL.
+func endProcess(_ pid: pid_t, isRunning: () -> Bool) {
+    guard isRunning() else { return }
+    kill(pid, SIGTERM)
+    let deadline = Date.now.addingTimeInterval(2)
+    while isRunning(), Date.now < deadline { usleep(50_000) }
+    if isRunning() { kill(pid, SIGKILL) }
+    let killed = Date.now.addingTimeInterval(1)
+    while isRunning(), Date.now < killed { usleep(10_000) }
+}
+
 /// Lines from chunks of a pipe's output, read on Foundation's own queue
 /// (`readabilityHandler`), not the concurrency pool, which busy work can
-/// starve while strut waits on a full pipe.
-private final class LineReader: @unchecked Sendable {
+/// starve while strut (or the bridge) waits on a full pipe.
+final class LineReader: @unchecked Sendable {
     private let lock = NSLock()
     private var pending = Data()
 

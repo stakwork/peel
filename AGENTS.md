@@ -34,6 +34,10 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Account.swift` — mnemonics, invites, the contact and
       registration helpers, the account's name and photo, mention re-scans,
       settings and server hosts
+    - `Engine+AgentAccount.swift` — the agent's own account
+      (`docs/agent-on-strut.md`, section 4): `agentAccount(n)`, its seed
+      `agent_seed(seed, n)` and what the bridge needs beside it (owner,
+      device, broker); never printed, dumped or reflected with its seed
     - `Engine+Contacts.swift` — adding by a scanned or pasted code
       (`addContact(code:)`), removing a contact (`deleteContact`: the
       server's copy, then `forgetContact` in `Engine.swift`), invites with
@@ -309,13 +313,16 @@ is a short plan. Update the status and the journal when you finish something.
   system prompt through `AgentSetup`, the key kept through `Profile.agentCredential`, the tool
   rows' titles, and the memory tools once its strut is running: Peel's
   own (`BundledStrut`), started with the agent and started again before
-  a reply if it stopped; a development profile's only with `-strut YES`,
+  a reply if it stopped; a development profile's only with `-strut YES`
+  or the strut preview on,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
   experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
   `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
   which `AppDelegate` hands it), that server's, Peel's own never started
-  and no automation tools, token or model key for it) and
-  `AppModel+Automations`;
+  and no automation tools, token or model key for it),
+  `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: Account ›
+  Peel agent › "Run in strut", dev builds only, off by default; on, the
+  agent's bridge beside Peel's own strut, `BundledBridge.setUp`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -614,6 +621,18 @@ is a short plan. Update the status and the journal when you finish something.
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
     two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
+  - `BundledBridge.swift` — the agent's bridge Peel ships in `Contents/Bridge`
+    (Debug builds; sphinx/runner, `docs/agent-on-strut.md` "Built: PR 4"):
+    a port picked here and trusted once Rocket's launch line names it on
+    runner's own output, the admin and strut-facing tokens per launch in
+    memory only, the agent's seed (with an invite from the account on its
+    first start) and owner over the admin routes, the contact info and
+    balance from `GET /contact_info`; `setUp` pairs the agent (only from
+    the person's switch), one invite per store, its sats asked back
+    once the agent registered; its store, excluded from backups,
+    owner-only beside the account's, erased with it; gone by itself if
+    Peel dies (`RUNNER_EXIT_ON_STDIN_EOF`). Tested in `BundledBridgeTests`
+    (the staged runner when there is one) and the journey `Journeys/Bridge`
   - `AutomationServer.swift` — where strut reaches Peel when an automation
     fires (`docs/phases/12-automations.md`): `POST /automations/run` on
     127.0.0.1 with the bearer token `AppModel` makes when the agent opens
@@ -806,6 +825,12 @@ is a short plan. Update the status and the journal when you finish something.
   and Node, a pinned release checked against its SHA-256 (cached in
   `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
   Run it once, after strut changes, and again if macOS clears Caches
+- `scripts/stage-bridge.sh <sphinx checkout>` — stages the agent's bridge
+  (runner) once per Mac, in `~/Library/Caches/dev.peel.build/bridge` (or
+  `$PEEL_BRIDGE_STAGE`): built from the sphinx commit `Vendor/runner.lock`
+  names, from that commit's tree alone, with `Vendor/runner.Cargo.lock`
+  (`--update-lock` after moving the commit). `embed-strut.sh` copies it
+  into Debug builds
 - `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
   (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
   development profile (see "Checking the app")
@@ -821,7 +846,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged
-  strut in `Contents/Strut` (and signs its native code, when Xcode signs)
+  strut in `Contents/Strut` (and signs its native code, when Xcode signs),
+  and in a Debug build the staged bridge in `Contents/Bridge`
 
 ## Build and run
 

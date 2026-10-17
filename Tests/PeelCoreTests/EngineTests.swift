@@ -36,6 +36,49 @@ struct MnemonicTests {
     }
 }
 
+struct AgentAccountTests {
+    let profile = TempProfile()
+
+    @Test func theAgentIsItsOwnAccountFromTheSameWords() async throws {
+        let engine = try testEngine(try registeredStorage(profile))
+        let agent = try await engine.agentAccount()
+        #expect(try agent.seed == agentSeed(seed: Engine.seed(of: abandon.joined(separator: " ")), n: 1))
+        #expect(agent.pubkey != agent.owner)
+        #expect(agent.owner == (await engine.accountKey))
+        #expect(agent.broker == "127.0.0.1:1")
+        #expect(try await engine.agentAccount() == agent)
+    }
+
+    @Test func itsSeedIsNeverPrinted() async throws {
+        let agent = try await testEngine(try registeredStorage(profile)).agentAccount()
+        var dumped = ""
+        dump(agent, to: &dumped)
+        for text in [String(describing: agent), String(reflecting: agent), "\(agent)", dumped] {
+            #expect(!text.contains(agent.seed))
+            #expect(text.contains(agent.pubkey))
+        }
+    }
+
+    @Test func refusesNoServerAndTLSRunnerWouldNotUse() async throws {
+        let others = (0..<4).map { _ in TempProfile() }
+        await #expect(throws: Engine.Failure.noServer) { try await testEngine(try others[0].storage()).agentAccount() }
+        for (other, (server, refused)) in zip(others.dropFirst(), [
+            ("mqtts://broker.example:8883", false), ("mqtts://broker.example:1883", true), ("mqtt://127.0.0.1:8883", true),
+        ]) {
+            let storage = try other.storage()
+            var commit = Storage.Commit()
+            commit.settings[.server] = server
+            _ = try storage.apply(commit)
+            let engine = try testEngine(storage)
+            if refused {
+                await #expect(throws: PeelError.self) { try await engine.agentAccount() }
+            } else {
+                #expect(try await engine.agentAccount().broker == "broker.example:8883")
+            }
+        }
+    }
+}
+
 struct InviteTests {
     /// Builds an invite the way the core's `invite_qr` does.
     private func invite(host: String, code: [UInt8], contact: (key: [UInt8], lsp: [UInt8], scid: UInt64, alias: String)?) -> String {

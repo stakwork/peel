@@ -72,6 +72,12 @@ final class MacAgent: AgentHost {
         model.openAgent(profile, engine: engine)
     }
 
+    /// The agent in strut asks this Mac for chat reads; the engine answers
+    /// only once its contact is set (`Setting.deviceAgent`).
+    func deviceRequests(for engine: Engine) -> DeviceRequestHandler? {
+        DeviceReads(storage: engine.storage).handler
+    }
+
     func close(in model: AppModel) {
         model.closeAgent()
     }

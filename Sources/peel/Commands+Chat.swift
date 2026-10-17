@@ -1,4 +1,5 @@
 import Foundation
+import PeelAgent
 import PeelCore
 
 extension Invocation {
@@ -204,8 +205,16 @@ extension Invocation {
 
         case "listen":
             let session = try await Session(load())
+            await session.engine.answerDeviceRequests(with: DeviceReads(storage: session.engine.storage).handler)
             await session.engine.start(allowUntrustedCertificate: insecure)
             await session.printer.value
+
+        case "device-agent":
+            let engine = try await load()
+            if let pubkey = arguments.next() {
+                try await engine.setDeviceAgent(pubkey == "off" ? nil : pubkey)
+            }
+            print(await engine.deviceAgent ?? "off")
 
         default:
             return false

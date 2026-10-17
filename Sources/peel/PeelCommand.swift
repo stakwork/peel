@@ -38,7 +38,11 @@ struct PeelCommand {
           invite-cancel <code>        cancel an invite and get its sats back (code from invites)
           send <pubkey> <text>        send a text message to a contact or a tribe
                                       (--reply <uuid> answers a message, --thread <uuid> posts in its thread)
-          listen                      stay connected, reconnecting as needed, and print what arrives
+          listen                      stay connected, reconnecting as needed, and print what arrives;
+                                      answers the device agent's read requests
+          device-agent [<pubkey>|off]  the agent contact whose device requests this account answers
+                                      while listening (off unless set; docs/agent-on-strut.md); sets
+                                      it when given
           messages <pubkey>           a chat's main conversation, as the app shows it: row ids, uuids,
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages

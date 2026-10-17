@@ -54,6 +54,12 @@ public enum Setting: String, Sendable {
     /// names, as a JSON array: strut makes a deleted one again under a new
     /// id), so one the person turns off stays off.
     case systemAutomationsOn
+
+    /// The agent contact whose device requests this device answers
+    /// (`Engine+DeviceRequests`, docs/agent-on-strut.md, "Trust"): its
+    /// pubkey. Unset, the device answers none: the device channel stays off
+    /// until the agent's bridge is launched (PR 4).
+    case deviceAgent
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

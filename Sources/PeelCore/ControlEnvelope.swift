@@ -147,14 +147,19 @@ public enum ControlMessage: Sendable, Equatable {
         // Cheap first: the keys as they appear inside the metadata string,
         // or an escape that could spell them.
         guard let body, body.contains(#"\"peel\""#) && body.contains(#"\"op\""#) || body.contains(#"\u"#),
-              let metadata = MessageMetadata.string(in: body),
-              case .object(let fields)? = JSONValue(text: metadata), case .object(let peel)? = fields["peel"],
-              peel["op"] != nil else { return nil }
+              let peel = peel(in: body), peel["op"] != nil else { return nil }
         // Typed only once it is one.
         guard let data = try? JSONEncoder().encode(JSONValue.object(peel)),
               let envelope = try? JSONDecoder().decode(ControlEnvelope.self, from: data),
               envelope.isReadable else { return .unsupported }
         return .envelope(envelope)
+    }
+
+    /// The `peel` object in `body`'s metadata, untyped.
+    static func peel(in body: String?) -> [String: JSONValue]? {
+        guard let metadata = MessageMetadata.string(in: body),
+              case .object(let fields)? = JSONValue(text: metadata), case .object(let peel)? = fields["peel"] else { return nil }
+        return peel
     }
 }
 

@@ -504,6 +504,64 @@ struct MigrationTests {
         #expect(try rows(profile, "SELECT name FROM sqlite_master WHERE name = 'chatTimeZone'").isEmpty)
     }
 
+    /// v25's ledger as it shipped, and its rules: a request is its id
+    /// within its agent; a copy seen before is not new; only a request not
+    /// done is claimed, only a running one finished; one not done, or done
+    /// and not sent, is owed; requests long expired are forgotten.
+    @Test func v25KeepsOneRowPerRequestOfAnAgent() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v25")
+        let sql = try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT sql FROM sqlite_master WHERE tbl_name = 'deviceRequest' AND sql IS NOT NULL ORDER BY name")
+        }
+        #expect(sql == [
+            """
+            CREATE TABLE deviceRequest (
+                agent TEXT NOT NULL,
+                id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                args TEXT NOT NULL,
+                notAfter INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                status TEXT,
+                result TEXT,
+                error TEXT,
+                messages TEXT NOT NULL,
+                sent BOOLEAN NOT NULL DEFAULT 0,
+                receivedAt INTEGER NOT NULL,
+                PRIMARY KEY (agent, id))
+            """,
+            "CREATE INDEX deviceRequest_owed ON deviceRequest (agent, receivedAt) WHERE state != 'done' OR sent = 0",
+        ])
+
+        let storage = try profile.storage()
+        func request(_ id: String, of agent: String = "02a", kind: String = "chats.unseen", notAfter: Int64 = 2_000) -> DeviceRequestRow {
+            DeviceRequestRow(agent: agent, id: id, kind: kind, args: "{}", notAfter: notAfter, state: .received, messages: [],
+                             receivedAt: 1)
+        }
+        let (first, new) = try storage.admit(request("r1"), copy: "u1")
+        #expect(new && first.messages == ["u1"])
+        // The same copy again is not new; another copy is, and the stored row stands.
+        #expect(try storage.admit(request("r1", kind: "chats.list"), copy: "u1") == (first, false))
+        let second = try storage.admit(request("r1", kind: "chats.list"), copy: "u2")
+        #expect(second.newCopy && second.row.kind == "chats.unseen" && second.row.messages == ["u1", "u2"])
+        #expect(try storage.admit(request("r1"), copy: "u1").newCopy == false)
+        // Another agent's request of the same id is its own.
+        #expect(try storage.admit(request("r1", of: "02b"), copy: "u1").newCopy)
+
+        #expect(try storage.finishDeviceRequest("r1", of: "02a", with: .done("x")) == nil)
+        #expect(try storage.claimDeviceRequest("r1", of: "02a")?.state == .running)
+        let done = try #require(try storage.finishDeviceRequest("r1", of: "02a", with: .done("text")))
+        #expect(done.state == .done && done.status == .done && done.result == "text" && !done.sent)
+        #expect(try storage.claimDeviceRequest("r1", of: "02a") == nil)
+        _ = try storage.admit(request("r2", notAfter: 1_000), copy: "u3")
+        #expect(try storage.owedDeviceRequests(of: "02a").map(\.id) == ["r1", "r2"])
+        try storage.markDeviceRequestSent("r1", of: "02a")
+        #expect(try storage.owedDeviceRequests(of: "02a").map(\.id) == ["r2"])
+        try storage.forgetDeviceRequests(expiredBefore: 1_500)
+        #expect(try storage.pool.read { try String.fetchAll($0, sql: "SELECT id FROM deviceRequest WHERE agent = '02a'") } == ["r1"])
+    }
+
     /// What the earlier builds' preferences migration left: the table with
     /// a row and a chat's switch, `chatTimeZone` gone.
     private static func earlierPreferences(_ db: Database) throws {

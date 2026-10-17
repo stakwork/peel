@@ -464,6 +464,34 @@ extension Storage {
                     """)
             }
         }
+        migrator.registerMigration("v25") { db in
+            // The device channel's ledger (`Engine+DeviceRequests`,
+            // docs/agent-on-strut.md, "Idempotency"): each request an agent
+            // asked this device, stored before it is acked, with its answer
+            // once done, so a repeat is answered from here and nothing is done
+            // twice. `messages` is the uuids of the copies that asked it (a
+            // JSON array: history brings stored copies back), `sent` whether
+            // the answer went. `notAfter` is seconds since 1970, `receivedAt` ms.
+            try db.execute(sql: """
+                CREATE TABLE deviceRequest (
+                    agent TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    args TEXT NOT NULL,
+                    notAfter INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    status TEXT,
+                    result TEXT,
+                    error TEXT,
+                    messages TEXT NOT NULL,
+                    sent BOOLEAN NOT NULL DEFAULT 0,
+                    receivedAt INTEGER NOT NULL,
+                    PRIMARY KEY (agent, id))
+                """)
+            try db.execute(sql: """
+                CREATE INDEX deviceRequest_owed ON deviceRequest (agent, receivedAt) WHERE state != 'done' OR sent = 0
+                """)
+        }
         return migrator
     }
 }

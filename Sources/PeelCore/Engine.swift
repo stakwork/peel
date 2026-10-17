@@ -18,7 +18,9 @@ public actor Engine {
     /// This account's key (child index 0, hex), which signs every message we
     /// send, signs in to the memes server and names our preferences file there.
     let accountKey: String
-    private let deviceID: String
+    /// This device among the account's (`Setting.deviceID`): the core's
+    /// device, and the one a device request names (`Engine+DeviceRequests`).
+    let deviceID: String
     var alias: String
     var photoURL: String
     var server: ServerAddress?
@@ -43,7 +45,8 @@ public actor Engine {
     private var keepAliveTask: Task<Void, Never>?
     private var networkWatch: Task<Void, Never>?
     /// The sends a reconnect makes by itself: its resends (`resendRecent`),
-    /// then the keys purchases are still owed (`answerOwedPurchases`).
+    /// then the keys purchases are still owed (`answerOwedPurchases`), then
+    /// the agent's requests still to finish (`answerOwedDeviceRequests`).
     private var resendTask: Task<Void, Never>?
     /// The tags of the reconnect's candidates that `checkPendingSends` asked
     /// the server about on this connection, and the tags its records named
@@ -69,6 +72,10 @@ public actor Engine {
     private var contactsByChildIndex: [UInt64: String] = [:]
     /// Every tribe this account knows, joined or left, by pubkey.
     var tribes: [String: Tribe] = [:]
+    /// What answers the agent's device requests here, and the requests it
+    /// is answering now (`Engine+DeviceRequests`).
+    var deviceRequestHandler: DeviceRequestHandler?
+    var answeringRequests: Set<String> = []
     /// The tribes server's replies and the tribe work in flight, this session.
     struct TribeWork {
         /// Member lists the tribes server sent for tribes this account owns.
@@ -604,6 +611,9 @@ public actor Engine {
         var confirmTribes = false
         /// Purchases of our paid attachments to answer.
         var purchases: [Message] = []
+        /// Messages from the agent contact (`deviceAgent`), which may be its
+        /// requests to this device.
+        var deviceRequests: (agent: String, messages: [Message])?
         /// The balance went up (or changed at all with an invoice open,
         /// `balanceCallsForReconcile`), or someone's payment came: the server's
         /// history may now settle an invoice made here or confirm the sats.
@@ -961,6 +971,9 @@ public actor Engine {
         // Purchases of our paid attachments, answered once this commit is done.
         if arrival != .restore {
             followUps.purchases = applied.stored.filter { $0.type == MessageType.purchase && !$0.fromMe && !$0.deleted }
+            if deviceRequestHandler != nil, let agent = deviceAgent {
+                followUps.deviceRequests = (agent, applied.stored.filter { $0.chat == agent && !$0.fromMe })
+            }
         }
         // A restore ends with a reconcile of its own.
         if applied.newMoney, arrival != .restore { followUps.reconcile = true }
@@ -1220,6 +1233,9 @@ public actor Engine {
                 emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(PeelError.readable(error))"))
             }
         }
+        if let (agent, messages) = followUps.deviceRequests {
+            for message in messages { await answerDeviceRequest(in: message, from: agent) }
+        }
         if followUps.justRegistered {
             await cameOnline()
         }
@@ -1368,8 +1384,9 @@ public actor Engine {
     /// the full restore an account brought back from its words still needs, or
     /// catch up from where history stands (`syncMessages`). Then, in the
     /// background, it sends again what a reconnect sends by itself
-    /// (`resendRecent`) and answers purchases still owed their key
-    /// (`answerOwedPurchases`).
+    /// (`resendRecent`), answers purchases still owed their key
+    /// (`answerOwedPurchases`) and finishes the agent's requests a stop cut
+    /// short (`answerOwedDeviceRequests`).
     private func cameOnline() async {
         let connection = transport
         emit.yield(.registered(contactInfo: try? storage.value(for: .contactInfo)))
@@ -1404,6 +1421,7 @@ public actor Engine {
         resendTask = Self.background { [weak self] in
             await self?.resendRecent(on: connection)
             await self?.answerOwedPurchases(on: connection)
+            await self?.answerOwedDeviceRequests(on: connection)
         }
     }
 

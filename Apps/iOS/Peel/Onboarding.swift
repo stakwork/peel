@@ -61,7 +61,7 @@ struct Onboarding: View {
             VStack(spacing: 10) {
                 Text("Welcome to Peel")
                     .font(Theme.font(32, .bold))
-                Text("Sphinx messages and sats on your iPhone.")
+                Text("Private messages, payments, and an assistant that works for you.")
                     .font(Theme.font(17))
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -72,11 +72,11 @@ struct Onboarding: View {
             }
             Spacer()
             VStack(spacing: 12) {
-                Button { start(.newAccount, at: .invite) } label: { ActionLabel("I have an invite") }
+                Button { start(.newAccount, at: .invite) } label: { ActionLabel("Join with an invite") }
                     .primaryAction()
-                Button { start(.restore, at: .enterWords) } label: { ActionLabel("Restore from twelve words") }
+                Button { start(.restore, at: .enterWords) } label: { ActionLabel("Restore with recovery words") }
                     .secondaryAction()
-                Text("No invite? Ask someone on Sphinx.")
+                Text("No invite? Ask a friend who uses Peel.")
                     .font(Theme.font(14))
                     .foregroundStyle(Theme.secondaryText)
                     .padding(.top, 4)
@@ -107,7 +107,7 @@ struct Onboarding: View {
                 continueButton(enabled: !invite.trimmed.isEmpty) { go(.name) }
             }
         case .enterWords:
-            StepPage(title: "Restore from twelve words", detail: "Type them in order, or paste all twelve.",
+            StepPage(title: "Restore with recovery words", detail: "Type them in order, or paste all twelve.",
                      progress: progress(step), problem: problem) {
                 WordEntry(words: $words)
             } actions: {

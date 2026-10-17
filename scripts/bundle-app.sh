@@ -15,11 +15,12 @@ case "$BUNDLE_ID" in
 esac
 cd "$ROOT"
 # Xcode builds the app (Apps/Peel.xcodeproj) and its build phase embeds the
-# strut; the signing below is this script's own, so Xcode's is off.
+# strut; the signing below is this script's own, so Xcode's is off, and the
+# app is one binary (no debug dylib beside it that the signing would miss).
 DERIVED="$ROOT/.build/xcode"
 if ! output=$(xcodebuild -project Apps/Peel.xcodeproj -scheme "Peel macOS" -configuration Debug \
     -destination 'platform=macOS' -derivedDataPath "$DERIVED" -quiet \
-    CODE_SIGNING_ALLOWED=NO PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" build 2>&1); then
+    CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" build 2>&1); then
   printf '%s\n' "$output" | grep -v "ld: warning"
   exit 1
 fi

@@ -1,0 +1,17 @@
+// As thread-send-scrolled, on the second row in view: in a direct
+// message, often a thread's first replies. The thread grows by the three
+// replies. The chat shows them too, but its window keeps the newest 200
+// rows: its count holds, and a send gone to it moves it (`hold`).
+// check: send hold=chat land=end@thread grew=thread:3,chat:0
+{"width": 1180}
+{"select": "{{chat}}"}
+{"wait": 2}
+{"scroll": 600}
+{"wait": 1}
+{"probe": "send", "for": 6}
+{"thread": "visible2"}
+{"note": "focus", "next": 0}
+{"type": "first reply", "return": true, "next": 0.15}
+{"type": "second reply", "return": true, "next": 0.15}
+{"type": "third reply", "return": true}
+{"wait": 4}

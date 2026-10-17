@@ -1,13 +1,14 @@
 // needs: peer
 // The tribe left at its bottom, then the direct chat while the peer posts
-// in the tribe; back to the tribe: at its newest, the new message included.
-// check: back land=end
+// in the tribe, back once the post has come (the tribe unread); back to
+// the tribe: at "New messages", its newest, the new message in view.
+// check: back land=end pill=none
 {"width": 1180}
 {"select": "{{tribe}}"}
 {"wait": 2.5}
-{"probe": "back", "for": 8}
+{"probe": "back", "for": 30}
 {"select": "{{chat}}"}
 {"signal": "peer-posts-tribe"}
-{"wait": 4}
+{"unread": "{{tribe}}"}
 {"select": "{{tribe}}"}
 {"wait": 2.5}

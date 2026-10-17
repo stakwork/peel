@@ -1,16 +1,17 @@
 // needs: peer
 // The tribe scrolled up, then the direct chat while the peer posts in the
-// tribe; back to the tribe: on the row you were reading, not the newest
-// (the pill counts the new message; not judged here).
-// check: back land=anchor
+// tribe, back once the post has come (the tribe unread); back to the
+// tribe: on the row you were reading, not "New messages" or the newest,
+// the pill counting the one new message below.
+// check: back land=anchor pill=1
 {"width": 1180}
 {"select": "{{tribe}}"}
 {"wait": 2}
 {"scroll": 1500}
 {"wait": 1}
-{"probe": "back", "for": 8}
+{"probe": "back", "for": 30}
 {"select": "{{chat}}"}
 {"signal": "peer-posts-tribe"}
-{"wait": 4}
+{"unread": "{{tribe}}"}
 {"select": "{{tribe}}"}
 {"wait": 2.5}

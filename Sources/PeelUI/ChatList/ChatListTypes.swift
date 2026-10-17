@@ -113,13 +113,17 @@ public enum JumpOutcome: Equatable, Sendable {
     case notLoaded
 }
 
-/// How a list's rows changed: the ids that came (a row re-sorted is kept,
-/// not inserted).
+/// How a list's rows changed: the ids that came, and the kept rows that
+/// moved among the others (a tribe's thread row re-sorted to its newest reply).
 public struct ListDiff: Equatable, Sendable {
-    public var inserted: [String]
+    public private(set) var inserted: Set<String> = []
+    public private(set) var moved: Set<String> = []
 
-    public init(inserted: [String] = []) {
-        self.inserted = inserted
+    /// From a difference of the rows' ids (in either order) with its moves inferred.
+    public init(_ difference: CollectionDifference<String>) {
+        for case .insert(_, let id, let from) in difference {
+            if from == nil { inserted.insert(id) } else { moved.insert(id) }
+        }
     }
 }
 

@@ -1,15 +1,19 @@
-// You send in the thread while the chat beside it is scrolled up: the
-// thread goes to its newest, the chat does not move (review table row 9;
-// layer 1: a thread send moves only the thread's list). The chat is
-// scrolled up once the thread is open, which can move it.
-// check: send hold=chat land=end@thread
+// You open a thread on a row in view with the chat scrolled up, and type
+// at once: the replies go to the thread, which goes to its newest, and the
+// chat does not move (review table row 9; layer 1: a thread send moves
+// only the thread's list). The keys must reach the thread's composer,
+// which joins the window during the panel's slide in, not stay in the
+// chat's.
+// check: send hold=chat land=end@thread grew=thread:3,chat:0
 {"width": 1180}
 {"select": "{{chat}}"}
 {"wait": 2}
-{"thread": "newest"}
-{"wait": 1.5}
 {"scroll": 900}
 {"wait": 1}
-{"probe": "send", "for": 5}
-{"type": "a reply from the journey check", "return": true}
-{"wait": 4.5}
+{"probe": "send", "for": 6}
+{"thread": "visible"}
+{"note": "focus", "next": 0}
+{"type": "a reply from the journey check", "return": true, "next": 0.15}
+{"type": "a second reply", "return": true, "next": 0.15}
+{"type": "a third reply", "return": true}
+{"wait": 4}

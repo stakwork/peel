@@ -32,12 +32,14 @@ peer() { .build/debug/peel --profile "$PEER" "$@"; }
 contact() { .build/debug/peel --profile "$1" whoami | sed -n 's/^contact info: //p'; }
 
 balance() { .build/debug/peel --profile "$1" whoami | sed -n 's/^balance: .*(\([0-9]*\) msat)$/\1/p'; }
-# Again after a failed run: a profile made and funded is kept.
+# Again after a failed run: a profile made and funded is kept. A tribe
+# message costs 3 sats, and the peer sends about 400 of them (the posts and
+# the threads' replies): enough for all of them, once, up front.
 for name in "$ME" "$PEER"; do
     .build/debug/peel --profile "$name" whoami >/dev/null 2>&1 \
         || .build/debug/peel --profile "$name" --alias "$name" "${HOSTS[@]}" init >/dev/null
-    [ "$(balance "$name")" -ge 500000 ] 2>/dev/null \
-        || lockf "$LOCK" scripts/fund-dev.sh "$STACK" "$name" 1000
+    [ "$(balance "$name")" -ge 2000000 ] 2>/dev/null \
+        || lockf "$LOCK" scripts/fund-dev.sh "$STACK" "$name" 3000
 done
 
 PEER_KEY=$(contact "$PEER" | cut -d_ -f1)

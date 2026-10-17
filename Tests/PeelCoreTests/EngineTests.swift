@@ -22,6 +22,18 @@ struct MnemonicTests {
         #expect(try Engine.validate(mnemonic: mnemonic) == mnemonic)
         #expect(try Engine.generateMnemonic() != mnemonic)
     }
+
+    /// The agent's account comes from the user's seed, so the words recover it
+    /// only while the linked core derives exactly what upstream does: the
+    /// vectors are sphinx's `agent_seed_vectors` (signer/derive.rs).
+    @Test(arguments: [
+        ([UInt8](repeating: 0, count: 32), UInt32(1), "6b7c00dcafc11be785c740e8bde0cc5ec5458e2666940788f406abc258509071"),
+        ([UInt8](repeating: 0, count: 32), UInt32(2), "a1d8805df73ab1a657815b746f1922da2c5308619fab2a84fc52ce7d72ec4ec0"),
+        ([UInt8](0..<32), UInt32(1), "b13c64eb614fc62c744d1a3f0b82cdb5ab219fe985f725226392814693c30492"),
+    ])
+    func theAgentsSeedMatchesTheCoresVectors(seed: [UInt8], n: UInt32, agent: String) throws {
+        #expect(try agentSeed(seed: seed.hex, n: n) == agent)
+    }
 }
 
 struct InviteTests {

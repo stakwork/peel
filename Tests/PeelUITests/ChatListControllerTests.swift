@@ -74,8 +74,8 @@ struct ChatListControllerTests {
     }
 
     private func change(_ list: ChatListController, from old: ListContent, to new: ListContent) -> ListMove {
-        let kept = Set(old.rows.map(\.id))
-        return list.contentWillChange(to: new, diff: ListDiff(inserted: new.rows.map(\.id).filter { !kept.contains($0) }))
+        let ids = new.rows.map(\.id).difference(from: old.rows.map(\.id)).inferringMoves()
+        return list.contentWillChange(to: new, diff: ListDiff(ids))
     }
 
     /// Opened at the newest, then scrolled up by hand to its fourth row,
@@ -90,7 +90,7 @@ struct ChatListControllerTests {
     }
 
     // 1
-    @Test func opensAtFocusThenDividerThenSavedThenNewest() {
+    @Test func opensAtFocusThenSavedRowThenDividerThenNewest() {
         store.newMessages = true
         store.anchors[Self.chat] = .row(id: "m3", offset: 12)
         let rows = content(0...9, divider: 8)
@@ -99,11 +99,38 @@ struct ChatListControllerTests {
         focused.onJumped = { jumped = true }
         #expect(focused.appear(rows, focus: uuid(5)) == ListMove(to: .center(id: "m5")))
         #expect(engine.flashed == ["m5"] && jumped)
+        #expect(controller().appear(rows) == ListMove(to: .row(id: "m3", offset: 12)))
+        store.anchors[Self.chat] = .newest
         #expect(controller().appear(rows) == ListMove(to: .row(id: "m8", offset: 0)))
         store.newMessages = false
-        #expect(controller().appear(rows) == ListMove(to: .row(id: "m3", offset: 12)))
+        #expect(controller().appear(rows) == ListMove(to: .newest))
         store.anchors = [:]
         #expect(controller().appear(rows) == ListMove(to: .newest))
+    }
+
+    /// Back to a chat left scrolled up while messages came: at the row you
+    /// were reading, the pill counting what came below "New messages".
+    @Test func returningScrolledUpWithNewMessagesOpensAtTheReadingRow() {
+        store.newMessages = true
+        store.anchors[Self.chat] = .row(id: "m3", offset: 12)
+        let list = controller()
+        #expect(list.appear(content(0...9, divider: 8)) == ListMove(to: .row(id: "m3", offset: 12)))
+        list.scrolled(view(3...6, first: 12, far: true))
+        #expect(list.pill == .count(2))
+        #expect(!list.isFollowing)
+    }
+
+    /// Back to a chat left at its newest while messages came: at "New messages".
+    @Test func returningAtTheNewestWithNewMessagesOpensAtTheDivider() {
+        store.newMessages = true
+        store.anchors[Self.chat] = .newest
+        #expect(controller().appear(content(0...9, divider: 8)) == ListMove(to: .row(id: "m8", offset: 0)))
+    }
+
+    /// A chat not opened before, with messages unread: at "New messages".
+    @Test func aFirstVisitWithNewMessagesOpensAtTheDivider() {
+        store.newMessages = true
+        #expect(controller().appear(content(0...9, divider: 8)) == ListMove(to: .row(id: "m8", offset: 0)))
     }
 
     // 2
@@ -219,6 +246,16 @@ struct ChatListControllerTests {
         #expect(change(list, from: content(0...9), to: resorted) == ListMove(to: .row(id: "m3", offset: 5)))
     }
 
+    /// A tribe's thread row you are reading, re-sorted to its newest reply
+    /// by a reply: the list stays, the row below in its place.
+    @Test func aReadingRowResortedToTheBottomHandsItsPlaceToTheRowBelow() {
+        let list = controller()
+        reading(list, content(0...9))
+        let resorted = ListContent(rows: (0...9).filter { $0 != 3 }.map { row($0) } + [row(3)])
+        #expect(change(list, from: content(0...9), to: resorted) == ListMove(to: .row(id: "m4", offset: 5)))
+        #expect(list.placement == .row(id: "m4", offset: 5))
+    }
+
     // 11
     @Test func aRowGrowingKeepsTheNewestUnanimatedOrTheReadingRow() {
         let following = controller()
@@ -299,11 +336,43 @@ struct ChatListControllerTests {
     }
 
     // 17
-    @Test func aDeletedReadingRowHandsOverToItsNeighbourBelow() {
+    @Test func aDeletedReadingRowsPlaceGoesToItsNeighbourBelow() {
         let list = controller()
         reading(list, content(0...9))
         let deleted = ListContent(rows: (0...9).filter { $0 != 3 }.map { row($0) })
-        #expect(change(list, from: content(0...9), to: deleted) == ListMove(to: .row(id: "m4", offset: 45)))
+        #expect(change(list, from: content(0...9), to: deleted) == ListMove(to: .row(id: "m4", offset: 5)))
+        // The last row that can hold the list: the one above stays where it is.
+        let last = controller()
+        reading(last, content(0...9))
+        let rows = ListContent(rows: (0...3).map { row($0) } + (4...9).map { row($0, anchors: false) })
+        _ = change(last, from: content(0...9), to: rows)
+        last.scrolled(view(2...5, first: -35))
+        let gone = ListContent(rows: (0...2).map { row($0) } + (4...9).map { row($0, anchors: false) })
+        #expect(change(last, from: rows, to: gone) == ListMove(to: .row(id: "m2", offset: -35)))
+    }
+
+    /// In a tribe, the message you open a thread on folds into the thread's
+    /// row at the newest once the thread has two replies. Reading at it,
+    /// the row below takes its place: nothing above it moves.
+    @Test func aReadingRowFoldedIntoItsThreadHandsItsPlaceToTheRowBelow() {
+        let me = Sender(alias: "me", hue: PersonHue(pubkey: "me", alias: "me", inTribe: true), isMe: true)
+        let people = ChatRow.People(me: me, contact: me)
+        let posts = (0...5).map { message($0) }
+        let first = message(6, fromMe: true, thread: uuid(3))
+        let second = message(7, fromMe: true, thread: uuid(3))
+        let summary = ThreadSummary(original: posts[3], count: 2, lastTimestamp: second.timestamp, unread: 0, latest: second)
+        let before = ChatRow.rows(posts + [first], parents: [:], inTribe: true, people: people)
+        let after = ChatRow.rows(posts.filter { $0.uuid != uuid(3) } + [second], threads: [uuid(3): summary],
+                                 parents: [:], inTribe: true, people: people)
+        #expect(after.last?.summary != nil)
+        let old = ListContent(before, in: Self.chat, reachesNewest: true, hasOlder: false)
+        let new = ListContent(after, in: Self.chat, reachesNewest: true, hasOlder: false)
+        let list = controller()
+        _ = list.appear(old)
+        list.userScrollBegan()
+        list.userScrollEnded(ListViewport(visibleIDs: before[2...5].map(\.id), visibleTops: [-30, 12, 54, 96], atBottom: false))
+        #expect(change(list, from: old, to: new) == ListMove(to: .row(id: before[4].id, offset: 12)))
+        #expect(!list.isFollowing)
     }
 
     // 18

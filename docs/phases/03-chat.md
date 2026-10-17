@@ -3236,3 +3236,61 @@ search is gone). With the matches in, Return goes to the selected one as
 before. `ChatSearchTests` cover the waiting. On a fresh local stack,
 `search-early`, `search-into-thread`, `jump`, `jump-old` and `open-read`
 passed twice each. `search-into-thread` no longer works around the bug.
+
+## A tribe that moved under a thread reply (branch `fix/tribe-thread-reply-hold`, 2026-10-16)
+
+`thread-send-first-tribe` (scroll the tribe up, open a thread on the
+second row in view, send three replies at once) failed `hold=chat` 10 of
+10 on main. The thread is opened on the reading row itself, and a reply
+takes that row away from its place: a message's thread folds into one
+row at its newest reply once it has two (`Storage.tribeHidden`), and a
+thread row already there re-sorts to the bottom on the first reply. The
+engine applied the controller's placement in the same pass every time
+(no late correction, no mode change); the placement was the problem. The
+controller held a moved row (`has(id)`), so the list followed it to the
+bottom (652–700 pt in 4 of 10 runs), or for a row gone held the row below
+where it stood, so everything above slid down by the folded row's height
+(22–424 pt in the other 6; the journey's checker, falling back to a row
+a view above that had been measured again at the narrower width,
+reported 2–454 pt).
+
+Now the engine passes the rows that moved (`ListDiff.moved`, from the
+difference it already makes for the table), and a reading row that moved
+or went hands its place to the nearest row below that stayed, at the
+same offset: what is above stays, what is below closes up (T12; with
+none below, the nearest above stays where it was). `evaluate.py` judges
+a reading row that left its place by the row that takes it.
+Controller tests: a deleted reading row, one folded into its thread (real
+tribe `ChatRow`s), one re-sorted to the bottom.
+
+After: `thread-send-first-tribe` 10 of 10. `bounce-arrival-scrolled` was
+6 of 10 before and 10 of 10 after, but its failures were another cause:
+when the peer's post arrives and counts as unread before you return, the
+tribe opens at "New messages" (T2, ahead of the kept row, T3, in
+`ChatListController.appear`), at the newest. No run after the fix had the
+post arrive in time.
+
+Tom decided the order (2026-10-16): back to a chat left scrolled up (its
+kept place a row), it opens at that row, the pill counting what came
+below "New messages"; "New messages" opens a chat left at its newest, or
+one with no kept place. A message asked for still wins over both.
+`appear` now takes a kept row before the divider (`replaced()` never
+took the divider). `bounce-arrival-scrolled` and `bounce-arrival-bottom`
+now wait for the post to be counted unread before going back (the drive's
+`unread` step), and the probe records the pill: scrolled up, back on the
+reading row with "1 new message" (`pill=1`); at the bottom, at its end
+with no pill.
+
+All 50 journeys twice on a fresh stack: 49 pass each time, the known
+`search-early` the only failure. `swift test`: 1,036 tests pass (the
+known IPv6 loopback issue).
+
+On main after #312 and #314, with the order above: `bounce-arrival-scrolled`
+and `bounce-arrival-bottom` 10 of 10 each, `thread-send-first-tribe` 10
+of 10, all 50 journeys pass once (`search-early` too, after #312), and
+`swift test`'s 1,043 tests pass (the known IPv6 issue). The check app
+would not launch after #314: `bundle-app.sh` now builds it without
+Xcode's debug dylib, which the signing left unsigned. On a stack running
+for over an hour the tribes server refused the peer's posts ("Upstream
+node set CLTV to less than the CLTV set by the sender"); restarting its
+mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.

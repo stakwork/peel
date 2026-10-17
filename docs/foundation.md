@@ -17,7 +17,7 @@ recommendation, so they can be answered before more is built on top.
 | # | Decision | Recommended | Answer (Tom, 2026-10-16) |
 |---|---|---|---|
 | 1 | Where the agent's loop runs | B: strut on the brain, with a headless-Peel bridge | B, with a Rust bridge built from `sphinx/runner` |
-| 2 | The key derivation contract | A: one HKDF registry from the raw seed, with test vectors | Input: the seed. Scheme: open, for Evan |
+| 2 | The key derivation contract | A: one HKDF registry from the raw seed, with test vectors | Input: the seed. The agent's seed: `agent_seed(seed, n)` in the Sphinx core (Evan). Peel's other keys: open |
 | 3 | Whose account lives on the brain | A: only the agent's derived account; D, a remote signer, as the long-term target | A, with D as the long-term target |
 | 4 | How devices reach the brain | B: Sphinx required, a direct strut connection optional | B: the agent gets its own derived account |
 | 5 | What is backed up, how, and where | B: one whole-brain snapshot in two places, the round trip proven first | B, memory first. Where: open, for Evan; not a v1 blocker |
@@ -54,6 +54,10 @@ Stakwork podcast workflow. Turning messages into strut runs, sending the
 replies and the Sphinx tools (read, send, pay) are the new work. AgentKit stays
 the Mac's loop until the bridge works, then shrinks to the client side.
 
+**Where the bridge lives, Evan, 2026-10-16: runner itself** (sphinx#382).
+Its old Jarvis and podcast job was unused and is removed, so runner is only
+the bridge now.
+
 ### 2. The key derivation contract
 
 Four derived keys are planned in three docs, from two different input
@@ -84,6 +88,13 @@ key's reach (anyone with the words) accepted.
 implemented once in sphinx-rs and exposed to Swift) is open, for Evan.
 Whatever it is must come out the same in Swift (Peel) and Rust (the
 bridge), checked by shared test vectors.
+
+**The agent's seed, Evan, 2026-10-16:** `agent_seed(seed, n)` =
+HKDF-SHA256(seed, info `agent seed <n>`, no salt), in the Sphinx core
+(`sphinx/src/signer/derive.rs`, fixed test vectors; sphinx#383), exposed by
+sphinx-ffi as `agent_seed` from v0.8.39 (sphinx-rs#100). Peel derives it
+and posts it to runner's `/seed`; runner never sees the words. Peel's own
+derived keys (the brain id and key, the backup key) are not decided yet.
 
 ### 3. Whose account lives on the brain
 
@@ -193,16 +204,17 @@ backups come. The design and PR plan are in
 | 10 | Brain mode | Off by default: the Mac is the brain while it is awake |
 | 11 | Is the contact an agent? | No. The bridge is a pipe; every message goes to the orchestrator, a strut workflow on the `agent` step, which starts or continues strut's `job` for bigger work, as Jamie does in Hive |
 | 12 | When backups come | Phase 2, after always-on and the phone: the handover builds the snapshot format, and backups reuse it. Not in Phase 1 |
+| 13 | One contact, one continuous session | One agent DM is one strut session, compacted in place by the `agent` step, as Hermes Agent and OpenClaw do (both moved away from time-based resets). A session keeps its first system prompt; a new prompt reaches the DM through `/new` for now (refreshing at compaction is deferred, strut#198). Older turns stay in the session record; searching them comes later if needed. `/new` in the DM starts a fresh session. Jobs keep their own ids |
 
-Still pending Evan: whether the bridge is a strut mode of `sphinx/runner`
-or its own crate, and the key derivation scheme (decision 2).
+Evan answered both on 2026-10-16: the bridge is runner (sphinx#382), and
+the agent's seed is `agent_seed(seed, n)` in the Sphinx core (decision 2).
 
 ## The road to stable
 
 Each step starts when the one before it is agreed or merged.
 
-1. **Answer the five decisions.** Done 2026-10-16, apart from the two parts
-   for Evan. Phase 1's design is [agent-on-strut.md](agent-on-strut.md).
+1. **Answer the five decisions.** Done 2026-10-16, Evan's parts included
+   (Peel's own derived keys and the backup location still open). Phase 1's design is [agent-on-strut.md](agent-on-strut.md).
 2. **One architecture of record.** Rewrite PLAN.md's architecture,
    agent-architecture.md and VISION open question 7 around the answers;
    mark the older proposals (agent-brain.md, jobs-architecture.md, the
@@ -210,7 +222,7 @@ Each step starts when the one before it is agreed or merged.
    they disagree. Docs only.
 3. **The small gates in code.** Memory-backup phase 0 (the Ladybug round
    trip), and a spike of the bridge on `sphinx/runner` against the local
-   stack. Decision 2's derivation file follows once Evan picks the scheme.
+   stack (done: sphinx#382). The agent's seed is `agent_seed` in the core.
 4. **Finish the structure.** `WalletStore` and `ComposerStore` out of
    `AppModel` (still about 4,300 lines over 14 files, counting its extensions in PeelApp), the iPhone list
    engine (list PR 6), and the brain-handover PRs.

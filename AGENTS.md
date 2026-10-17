@@ -703,6 +703,11 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them)
+- `Tests/PeelMacTests/` — the Mac composer field's Paste against AppKit's
+  real menu validation, through the `PeelMac` target (the app's own
+  `AttachingTextView.swift` and `PasteboardFiles.swift`), macOS only; it
+  writes the general pasteboard and puts back what was there, so it runs
+  serialized
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

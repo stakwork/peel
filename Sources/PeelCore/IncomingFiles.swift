@@ -21,7 +21,7 @@ public enum IncomingFiles {
 
     /// Image encodings taken from a pasteboard, best first: the source's
     /// own encoding before the TIFF that macOS adds beside it.
-    static let imageTypes: [UTType] = [.png, .jpeg, .heic, .tiff]
+    public static let imageTypes: [UTType] = [.png, .jpeg, .heic, .tiff]
 
     /// What an item with these pasteboard `types` gives, or nil when it is
     /// text (or nothing Peel attaches). `promised` says the item carries a

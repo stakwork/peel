@@ -59,6 +59,16 @@ let package = Package(
         // the only one that links LiveKit and WebRTC (its package reference
         // is the project's, not this package's).
         .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit"]),
+        // The Mac app's own AppKit pieces that unit tests reach: the composer
+        // field and the pasteboard reading behind it, compiled from the app's
+        // folder (the app compiles the same files). Nothing links it but
+        // PeelMacTests. macOS only (the files are `#if os(macOS)`).
+        .target(
+            name: "PeelMac",
+            dependencies: ["PeelCore", "PeelUI"],
+            path: "Apps/Mac/Peel",
+            sources: ["AttachingTextView.swift", "PasteboardFiles.swift"]
+        ),
         // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.
         .target(
@@ -73,6 +83,8 @@ let package = Package(
         ),
         // The app's model, on a real engine and profile; no window, no server.
         .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "PeelTestSupport"]),
+        // The Mac composer field against AppKit's real menu validation and pasteboard.
+        .testTarget(name: "PeelMacTests", dependencies: ["PeelMac", "PeelCore"]),
         // PeelAgent is Mac-only, and so are its tests (and `peel agent`'s).
         .testTarget(
             name: "PeelAgentTests",

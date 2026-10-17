@@ -24,6 +24,8 @@ import SwiftUI
     var scrollView: NSScrollView? { get }
     /// The width its rows are laid out at; 0 when it does not say.
     var width: CGFloat { get }
+    /// The jump button over it, if any.
+    var pill: ListPill? { get }
 }
 
 /// Offscreen only: the message lists a drive's `probe` step reads each
@@ -97,6 +99,8 @@ import SwiftUI
         /// the window, not hidden, not transparent.
         let windowX: Double?
         let visible: Bool
+        /// The jump button: "count N", "arrow", "present", or none.
+        let pill: String?
     }
 
     /// One list in one frame as read, nothing derived: a frame's work is
@@ -114,6 +118,7 @@ import SwiftUI
         let frames: [String: CGRect]
         let windowX: CGFloat?
         let visible: Bool
+        let pill: ListPill?
     }
 
     /// Every list now in a window.
@@ -123,7 +128,7 @@ import SwiftUI
             let (windowX, visible) = placement(of: end.scrollView)
             return Capture(kind: entry.kind, serial: entry.serial, ids: end.ids, view: end.view,
                            content: end.content, width: end.width, shown: end.shown, frames: end.frames,
-                           windowX: windowX, visible: visible && end.shown)
+                           windowX: windowX, visible: visible && end.shown, pill: end.pill)
         }
     }
 
@@ -151,7 +156,14 @@ import SwiftUI
             top: top.flatMap { row($0.0, $0.1) },
             laidOut: near.compactMap { row($0.0, $0.1) }.sorted { $0.index < $1.index },
             divider: find(divider), target: find(target), targetIndex: target.flatMap { index[$0] },
-            windowX: capture.windowX.map(Double.init), visible: capture.visible
+            windowX: capture.windowX.map(Double.init), visible: capture.visible,
+            pill: capture.pill.map { pill in
+                switch pill {
+                case .count(let count): "count \(count)"
+                case .arrow: "arrow"
+                case .present: "present"
+                }
+            }
         )
     }
 

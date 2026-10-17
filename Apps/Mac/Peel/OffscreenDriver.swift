@@ -45,7 +45,8 @@ import PeelUI
 /// loaded, so it sizes itself after the list is placed);
 /// `{"expect": "search"}` notes the first search match as where a probe
 /// should land; `{"signal": "send"}` writes `signal-send` in the out dir for
-/// the script running the drive; `{"type": "text", "return": true}` types
+/// the script running the drive; `{"unread": "journeys"}` waits (up to 20 s)
+/// until that chat has a message unread, as its sidebar row's count shows; `{"type": "text", "return": true}` types
 /// and presses Return with no pause between. Each step is followed by
 /// 0.3 s, or `"next"` seconds.
 ///
@@ -68,7 +69,7 @@ import PeelUI
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
-        var probe, thread, close, expect, signal, list, note, reveal, appearance, agent: String?
+        var probe, thread, close, expect, signal, list, note, reveal, appearance, agent, unread: String?
         var mods: [String]?
         var wait, duration, scroll, overscroll, width, over, back, next, rate, wheel, hold: Double?
         var scrollTo, steps, hover, turns, words: Int?
@@ -77,7 +78,7 @@ final class OffscreenDriver {
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance, agent, rate, wheel, turns, words, tool, hold
+            case appearance, agent, rate, wheel, turns, words, tool, hold, unread
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -266,6 +267,10 @@ final class OffscreenDriver {
             default:
                 Offscreen.log("drive: focus \(focus)")
             }
+        } else if let name = step.unread {
+            let (model, chat) = try chat(named: name)
+            try await until("a message unread in \(name)", timeout: 20) { model.readStates[chat]?.unread ?? 0 > 0 }
+            Offscreen.log("drive: \(chat.prefix(12)) has \(model.readStates[chat]?.unread ?? 0) unread")
         } else if let name = step.signal {
             guard !name.isEmpty, !name.contains("/") else { throw Failure(description: "a signal's name is a plain word") }
             try Data().write(to: output.appendingPathComponent("signal-\(name)"))

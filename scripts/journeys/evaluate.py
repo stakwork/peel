@@ -6,6 +6,7 @@
 The drive file names what to judge in `// check:` lines, one per probe:
 
     // check: <probe> [hold=<list>] [land=<where>[@<list>]] [from=grow|resize] [more=<n>] [narrows=<s>]
+              [grew=<list>:<n>[,<list>:<n>]] [pill=<n>|arrow|none]
 
 <list> is chat, thread or agent (land's defaults to chat). Each probe's
 reference is its last frame before the first step taken while it ran
@@ -28,12 +29,17 @@ reference is its last frame before the first step taken while it ran
 - from=resize: the last frame before a row laid out in the held list
   changed height (a picture sizing itself late), after the first step.
 - more: the last frame's list (the held one, else the chat) has over <n> rows.
+- grew: each list named ends with exactly <n> rows more than in its first
+  frame with rows: sends that landed where they were typed (three thread
+  replies grow the thread by 3 and a tribe by none; none sent, nothing).
 - still=target: from the reference, the message gone to (a jump's target)
   stays within 1 pt of where it was, in every frame it is laid out.
 - keep=<n>[@<list>]: the row <n>th from the newest laid out at the
   reference (1, the newest) keeps its top within 1 pt in every frame it
   is laid out, and is still there at the end (the same row, not one in
   its place); with opens=yes, it is also taller at the end (opened in place).
+- pill: the chat's jump button in the last frame: "N new messages" for
+  a number, the arrow, or none shown.
 - narrows: the chat's list narrows once in all, no sooner than <s> seconds
   after the first step (the panel's slide in ended first).
 - overscroll=bottom|top[@<list>]: the drive's `overscroll` step pushed the
@@ -77,14 +83,20 @@ def find(entry, row):
 
 
 def movement(reference, now, anchor):
-    """How far the reading row moved on screen: by the row itself, else by
-    any row laid out in both frames; None with neither."""
+    """How far the reading row moved on screen: by the row itself while it
+    is where it was among the rows; else (it left the list or its place, a
+    tribe's thread row re-sorted, or the rows laid out) by the nearest row
+    below it in both frames, which takes its place, or the nearest above,
+    which stays where it was (ChatListController's T12); None with neither."""
     laid = find(now, anchor["row"])
-    if laid is not None:
+    below = next((same for row in reference["laidOut"]
+                  if row["index"] > anchor["index"] and (same := find(now, row["row"])) is not None), None)
+    if laid is not None and (below is None or below["index"] > laid["index"]):
         return laid["y"] - anchor["y"]
-    for row in reference["laidOut"]:
-        same = find(now, row["row"])
-        if same is not None:
+    if below is not None:
+        return below["y"] - anchor["y"]
+    for row in reversed(reference["laidOut"]):
+        if row["index"] < anchor["index"] and (same := find(now, row["row"])) is not None:
             return same["y"] - row["y"]
     return None
 
@@ -298,6 +310,29 @@ def judge(probe, options):
             notes.append(f"{kind} ended with {last['rows'] if last else 0} rows, not over {more}")
         else:
             notes.append(f"{kind} ended with {last['rows']} rows")
+
+    for part in filter(None, options.get("grew", "").split(",")):
+        kind, _, count = part.partition(":")
+        rows = [e["rows"] for e in (newest(s, kind) for s in samples) if e and e["rows"]]
+        if not rows:
+            ok = False
+            notes.append(f"no {kind} rows")
+        elif rows[-1] - rows[0] != int(count):
+            ok = False
+            notes.append(f"{kind} grew {rows[-1] - rows[0]} rows, not {count}")
+        else:
+            notes.append(f"{kind} grew {count} rows")
+
+    pill = options.get("pill")
+    if pill:
+        want = f"count {pill}" if pill.isdigit() else None if pill == "none" else pill
+        last = newest(samples[-1], "chat")
+        shown = last.get("pill") if last else None
+        if shown != want:
+            ok = False
+            notes.append(f"pill {shown or 'none'}, not {want or 'none'}")
+        else:
+            notes.append(f"pill {shown or 'none'}")
 
     overscroll = options.get("overscroll")
     if overscroll:

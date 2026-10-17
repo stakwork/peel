@@ -329,7 +329,9 @@ scripts/journeys/run.sh lj-me --peer lj-peer            # or name journeys: … 
 The seed makes two development profiles on the stack, contacts, with a
 ~320-message chat (threads every 25, one "needle"). The runner reads the
 chat before each journey, marks it unread for `open-unread`, and sends
-from the peer when a drive signals it; results land in `.build/journeys/<journey>/`.
+from the peer when a drive signals it (a drive's `unread` step waits until
+that message has come and the chat counts it); results land in `.build/journeys/<journey>/`.
+The probe also records each list's jump button, which `pill=` checks.
 Beyond the review's table: `older-history` (a flick into the top screen;
 the older page lands above with nothing moving), `late-image` (a jump to
 the message under an image older than the newest 200, the image sizing

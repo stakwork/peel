@@ -91,7 +91,7 @@ sphinx-rs pin moving from v0.8.38 to v0.8.39.
  You: Peel on Mac (your account)        Peel on iPhone / official apps
  ┌───────────────────────────────┐      ┌────────────────────────────┐
  │ Agent DM (the Agent chat)     │      │ Agent DM: talk only;       │
- │ DeviceRequests (agent.sqlite) │      │ requests hidden or a line  │
+ │ DeviceRequests (peel.sqlite)  │      │ requests hidden or a line  │
  │  reads · sends · Calendar     │      └─────────────┬──────────────┘
  │  approval cards, rules        │                    │
  └──────────────┬────────────────┘                    │
@@ -391,8 +391,9 @@ apps already show the content.
 | `kind` | Args | Effect | On the Mac |
 |---|---|---|---|
 | `chats.list` | — | read | `SphinxTools.contactsAndTribes` |
-| `chats.read` | `chat`, `since?`, `limit?`, `thread?` | read | `read_recent_messages`, `read_threads` |
-| `chats.unseen` | `chat?`, `since?` | read | `read_unseen_messages`. One request covers every chat, so "what did I miss" is one round trip |
+| `chats.read` | `chat`, `limit?`, `thread?` | read | `read_recent_messages`; with `thread`, `read_threads` on that thread |
+| `chats.threads` | `chat`, `limit?` | read | `read_threads` |
+| `chats.unseen` | `chat?` | read | `read_unseen_messages`. One request covers every chat, so "what did I miss" is one round trip |
 | `chats.search` | `q`, `chat?`, `limit?` | read | `search_messages` |
 | `send` | `chat`, `text`, `thread_uuid?`, `reply_to_uuid?`, `max_price_sats`, `automation?` | send | `SendTool`'s plan and `Engine.sendText`, behind the card or a grant (below) |
 | `calendar.events` | `from`, `to`, `calendars?` | read | EventKit; the first use asks for macOS Calendar access |
@@ -476,7 +477,7 @@ answered.
 |---|---|---|
 | strut step | request `id` = the run id + the step's event path | strut's resume replays journaled steps without running them again, so a finished step never re-asks. A step interrupted mid-call asks again with the same id |
 | Bridge | request `id` | A ledger (`requests`): sent, acked, result. The same id asked again gets the stored result, or waits on the one in flight; it is not sent twice |
-| Mac | request `id` | `DeviceRequests` in `agent.sqlite`: received, running, done (with the result), expired. Store, then ack. A duplicate gets the stored result |
+| Mac | request `id` | `deviceRequest` in `peel.sqlite` (PR 2): received, running, done (with the result; `expired` is a done status). Store, then ack. A duplicate gets the stored result |
 | Mac, sends | request `id` → the sent message's uuid | Written in the same transaction as the outgoing row. A request found `running` after a crash with no uuid is never sent again: it answers `unknown`, and the agent tells you to check the chat |
 | Bridge inbox | the Sphinx message uuid | Store, then launch. History catch-up redelivers; a known uuid does nothing. A turn already launched is looked up in strut, not launched again |
 
@@ -780,3 +781,87 @@ control message through the real core and reads the envelope and `tz`
 back on the other side. The phone draws the same rows (`ChatRow`); it was
 compiled, not run. The official apps were not checked: the line they show
 is the message's content, as for any text.
+
+**PR 2, device requests on the Mac: reads (2026-10-17).** Built: the
+ledger, `deviceRequest` (v25), and `Engine+DeviceRequests`: a request
+from the agent contact (`Setting.deviceAgent`) naming this device
+(`Setting.deviceID`, which PR 4 passes the bridge as `BRIDGE_DEVICE`) is
+stored, acked, done once through the handler the host gives
+(`answerDeviceRequests`), and answered with a `result` whose `result` is
+`{"text": …}`, the tool's `ChatData` as today's agent reads it. The Mac's
+handler is `DeviceReads` (PeelAgent), over `SphinxTools`; the CLI's
+`listen` answers too, and `peel device-agent <pubkey>` sets the contact.
+Unset, nothing is answered: that is the preview's gate until PR 4 sets it
+when it launches the bridge. Decided while building:
+
+- **The ledger is in `peel.sqlite`, not `agent.sqlite`.** PR 3 writes a
+  send's request id and the sent message's uuid in one transaction with
+  the outgoing row, which only one database can do; and the agent store
+  is a log meant to move between devices, while the ledger is this
+  device's own.
+- **Only the agent contact, only this device.** A request in a tribe, from
+  anyone else, or naming another device gets nothing back and is not
+  stored. A request this Peel cannot read (a later `v`) that names this
+  device is answered `failed` with `unsupported`, and stored, so it is
+  answered once.
+- **The same message once.** History brings stored messages back; the
+  ledger keeps the uuids of the copies it answered, so only a new copy
+  (the bridge asking again) gets the stored answer again.
+- **Signed by the agent, keyed by it.** Besides the chat, the message's
+  signer must be the agent. A request is its id within its agent, so a
+  change of agent never sends one agent's chats to another.
+- **Off the inbound queue.** Storing and the ack happen as the message is
+  handled; the read and the result run in the background, so a slow
+  search never holds up the messages behind it. A request is claimed in
+  the database (`running`) and finished only from there, so a live copy
+  and the pass after a reconnect never do it twice; one past `not_after`
+  when it is claimed answers `expired` and does nothing.
+- **An answer that did not go is sent again.** `deliver` stores a failed
+  send rather than throwing, so the ledger marks an answer `sent` only
+  when its message did not fail, and the pass after a reconnect sends the
+  rest. The bridge never resends a request it has an ack for, so without
+  this a lost result would leave the run waiting.
+- **Answered after the commit that stored it**, as purchases are, and once
+  online again for what a stop cut short: a request stored and not done
+  is done then (reads are safe to do again; a send found running will
+  answer `unknown` in PR 3), one past `not_after` answers `expired`, and
+  an answer that did not go is sent. Requests are forgotten a week after
+  they expire.
+- **Kinds.** `chats.list`, `chats.read` (with `thread`, that thread),
+  `chats.threads`, `chats.unseen`, `chats.search` (`q`). `since` is not
+  read: today's tools take none; PR 5 adds it if the steps need it. Any
+  other kind is `failed`, "unsupported: this Mac does not answer '…'
+  requests". The bridge's own id and kind rules are checked again here.
+- **Size.** A result whose envelope is over 32 KB is `failed` with the
+  reason ("ask for less"), never cut: a cut would lose `ChatData`'s end
+  marker. `ChatData` caps a result at 12,000 characters, so only text
+  heavy in emoji gets near it.
+- **The lines the official apps show:** "Peel on your Mac is on it" for
+  the ack, and "Peel on your Mac answered" (or the status's words) for the
+  result.
+
+Review findings not applied, and why: keeping the agent in memory rather
+than reading the setting once per incoming batch (one small read; one
+source of truth until PR 4 owns the setting); a shared helper for the
+two "answer an incoming message by itself" paths, purchases and requests
+(they differ in gating and ledger; revisit if PR 3 adds a third); and
+reading the envelope once instead of through `Message.control` (only the
+agent's messages pay it). A failed ack or result of ours shows as a
+failed bubble in the agent's DM, as PR 1 draws any failed control
+message of ours; PR 6, which draws that DM, decides what it shows.
+
+Checked on a local stack: `DeviceRequests.theMacAnswersItsAgentOnce`
+passes (one answer through the real reads, a repeat from the ledger
+with no second read, `expired`, an unknown kind refused, Carol's request
+and one for another Mac answered with nothing and not stored, then a
+read cut short by a stop finished after a relaunch, with nothing answered
+twice on the catch-up). Across the other journeys, only
+`Contacts.anUnpaidContactKeyPaysNothing` failed in one full run, and it
+passed when run again on its own; nothing in it sets an agent.
+
+Not done here, from PR 1's list: control messages still count as unread,
+notify and preview. The agent's DM appears in PR 4, so that work moves
+there, with the column it needs. PR 1's note on duplicate `peel` keys
+and a non-integer `v`: only the agent's own messages are acted on, and
+the bridge writes them with serde, which writes neither, so there is no
+reader the two could disagree for.

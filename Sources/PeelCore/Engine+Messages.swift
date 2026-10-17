@@ -52,8 +52,11 @@ extension Engine {
     @discardableResult
     public func sendControl(_ envelope: ControlEnvelope, text: String, to pubkey: String) async throws -> String? {
         guard isContact(pubkey) else { throw Failure.notAContact }
-        let body = try envelope.adding(to: Self.json(["content": text]))
-        return try await deliver(body: body, to: pubkey, replacing: nil)
+        return try await deliver(body: Self.controlBody(envelope, text: text), to: pubkey, replacing: nil)
+    }
+
+    static func controlBody(_ envelope: ControlEnvelope, text: String) throws -> String {
+        try envelope.adding(to: json(["content": text]))
     }
 
     /// `replyUuid` and `threadUuid` for a message to `chat`, as the Mac app

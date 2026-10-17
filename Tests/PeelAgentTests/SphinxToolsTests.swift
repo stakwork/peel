@@ -290,4 +290,39 @@ struct SphinxToolsTests {
         #expect(lines.last?.contains("uuid=\(uuid(129))") == true)
         #expect(text.contains("[cut: the first "))
     }
+
+    /// One device request and the tool call it is.
+    struct DeviceRead: Sendable {
+        let kind: String, args: PeelCore.JSONValue, tool: String, input: AgentKit.JSONValue
+        init(_ kind: String, _ args: PeelCore.JSONValue, _ tool: String, _ input: AgentKit.JSONValue) {
+            (self.kind, self.args, self.tool, self.input) = (kind, args, tool, input)
+        }
+    }
+
+    /// strut's device requests (`DeviceReads`) read through these same
+    /// tools, the request's names (`chat`, `thread`, `q`) taken to the
+    /// tool's, so the agent in strut reads what today's agent reads.
+    @Test(arguments: [
+        DeviceRead("chats.list", .object([:]), "get_contacts_and_tribes", [:]),
+        DeviceRead("chats.unseen", .object([:]), "read_unseen_messages", [:]),
+        DeviceRead("chats.unseen", .object(["chat": .string(kate)]), "read_unseen_messages", ["chat": .string(kate)]),
+        DeviceRead("chats.read", .object(["chat": .string("kate"), "limit": .int(2)]), "read_recent_messages", ["chat": "kate", "limit": 2]),
+        DeviceRead("chats.read", .object(["chat": .string(tribe), "thread": .string(uuid(10))]), "read_threads", ["tribe": .string(tribe), "thread_uuid": .string(uuid(10))]),
+        DeviceRead("chats.threads", .object(["chat": .string("Bitcoin Devs")]), "read_threads", ["tribe": "Bitcoin Devs"]),
+        DeviceRead("chats.search", .object(["q": .string("release")]), "search_messages", ["query": "release"]),
+    ])
+    func deviceRequestsReadThroughTheTools(_ read: DeviceRead) async throws {
+        let storage = try storage()
+        let answer = await DeviceReads(storage: storage).handler(read.kind, read.args)
+        #expect(answer == .done(try await run(read.tool, read.input, on: storage)))
+    }
+
+    /// A kind the Mac does not know, or args that are no object, are
+    /// refused plainly; a tool's own refusal is the request's error.
+    @Test func deviceRequestsItCannotDoAreRefused() async throws {
+        let reads = DeviceReads(storage: try storage()).handler
+        #expect(await reads("calendar.events", .object([:])) == .failed("unsupported: this Mac does not answer 'calendar.events' requests"))
+        #expect(await reads("chats.list", .array([])) == .failed("args must be a JSON object"))
+        #expect(await reads("chats.read", .object([:])) == .failed("chat is required: a non-empty string."))
+    }
 }

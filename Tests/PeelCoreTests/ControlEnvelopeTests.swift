@@ -149,3 +149,39 @@ struct ControlEnvelopeTests {
         #expect(received(body(metadata: #"{"peel":{"v":1,"op":"ack","re":"r","args":"# + deep + "}}")).control == nil)
     }
 }
+
+/// The device side's own rules (`Engine+DeviceRequests`) that the journey
+/// does not reach: the bridge's id and kind rules, the size cap, and the
+/// request this Peel cannot read.
+struct DeviceRequestRuleTests {
+    /// The cases of the bridge's own test (runner `device.rs`, `ids`): a
+    /// request the bridge would refuse to send is not the agent's.
+    @Test func idsAndKindsAsTheBridgeChecksThem() {
+        #expect(Engine.isRequestID("1792159542479/turn/003-peel_device"))
+        #expect(!Engine.isRequestID("") && !Engine.isRequestID("a b") && !Engine.isRequestID(String(repeating: "x", count: 129)))
+        #expect(!Engine.isRequestID("r\u{e9}"))
+        #expect(Engine.isKind("chats.unseen") && Engine.isKind("calendar.create"))
+        #expect(!Engine.isKind("") && !Engine.isKind("do this") && !Engine.isKind(String(repeating: "k", count: 65)))
+    }
+
+    /// A result too large to send is a failure that says so, never a cut
+    /// one: the chat data's end marker must arrive.
+    @Test func aResultTooLargeIsRefusedWhole() {
+        let fits = DeviceAnswer.done(String(repeating: "a", count: 20_000))
+        #expect(Engine.fitted(fits, re: "r") == fits)
+        let large = Engine.fitted(.done(String(repeating: "\u{1F600}", count: 9_000)), re: "r")
+        #expect(large.status == .failed && large.text == nil)
+        #expect(large.error?.hasPrefix("the result is too large to send") == true)
+    }
+
+    /// An envelope of a later version is answered `unsupported` by id, but
+    /// only when it names this device.
+    @Test func anUnreadableRequestIsNamedOnlyForThisDevice() {
+        let later = body(metadata: #"{"peel":{"v":2,"op":"request","id":"r9","device":"mac-1","kind":"x"}}"#)
+        #expect(received(later).control == .unsupported)
+        #expect(Engine.unreadableRequestID(in: later, device: "mac-1") == "r9")
+        #expect(Engine.unreadableRequestID(in: later, device: "mac-2") == nil)
+        let ack = body(metadata: #"{"peel":{"v":2,"op":"ack","id":"r9","device":"mac-1"}}"#)
+        #expect(Engine.unreadableRequestID(in: ack, device: "mac-1") == nil)
+    }
+}

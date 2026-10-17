@@ -49,6 +49,14 @@ is a short plan. Update the status and the journal when you finish something.
       attachments; payment templates (the list, their pictures, the
       token a payment carries); the memes server sign-in
     - `Engine+Calls.swift` — the call server, call links, tickets, presence
+    - `Engine+DeviceRequests.swift` — the device side of the device channel
+      (`docs/agent-on-strut.md`): the agent contact's requests to this
+      device (`Setting.deviceAgent`, off unless set) are stored, acked,
+      done once through the handler the host gives
+      (`answerDeviceRequests`) and answered with a `result`; a repeat gets
+      the stored answer; anyone else's, or one for another device, gets
+      nothing. Answered after the commit that stored them, and again once
+      online for those a stop cut short (`answerOwedDeviceRequests`)
     - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
@@ -92,6 +100,10 @@ is a short plan. Update the status and the journal when you finish something.
     threads collapsed), `thread(_:in:)`, `threads()`, `threads(in:limit:)`
     (one chat's, whoever wrote), parents, boosts and
     thread summaries
+  - `Storage+DeviceRequests.swift` — the device requests' ledger
+    (`deviceRequest`, a request's id within its agent): `admit` (the
+    stored row wins; a message seen before is not a new copy), `claim` and
+    `finish` (only one run does it), the owed ones, forgetting expired ones
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
@@ -551,6 +563,10 @@ is a short plan. Update the status and the journal when you finish something.
     `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
     each through the reads the app's views use; the system prompt that
     goes with them
+  - `DeviceReads.swift` — the device requests the Mac answers for strut's
+    agent, `chats.list`, `chats.read`, `chats.threads`, `chats.unseen` and
+    `chats.search`, each through the `SphinxTools` tool today's agent
+    calls; any other kind refused in words
   - `ChatDirectory.swift` — a chat by the name the model gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess
@@ -696,7 +712,7 @@ is a short plan. Update the status and the journal when you finish something.
 - `Tests/PeelAgentTests/` — offline tests for PeelAgent, Mac-only like it:
   `AutomationTests`, `AutomationsClientTests`, `BundledStrutTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
-  text that tries to end the data block), `SendToolTests` (the send
+  text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters),
@@ -744,7 +760,8 @@ is a short plan. Update the status and the journal when you finish something.
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
   `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`, `AgentJourneys`
   (the agent's tools and approval gate over a real account, the model
-  scripted); `FundDev` (the bank's half of
+  scripted), `DeviceRequestJourneys` (the Mac answers its agent's
+  `chats.unseen` once, a repeat from the ledger, strangers nothing); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the

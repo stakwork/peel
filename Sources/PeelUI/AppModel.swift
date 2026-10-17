@@ -1242,6 +1242,7 @@ public final class AppModel {
         // Forgotten while loading.
         guard self.engine === engine else { return }
         if let profile { agentHost?.open(profile, engine: engine, in: self) }
+        if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }

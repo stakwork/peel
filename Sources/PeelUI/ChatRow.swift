@@ -83,6 +83,11 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// For a control message: the agent's request whose card waits on you
     /// (`AppModel.waitingCards`), what the card shows, drawn in its place.
     public var approval: ToolIntent?
+    /// In the agent's DM (`rows(agentDM:)`): the tools an agent's reply ran.
+    public var agentTools: [AgentToolLine] = []
+    /// In the agent's DM: a request to this Mac as one row, how it ended
+    /// folded in (no ack or result lines of its own).
+    public var agentRequest: AgentRequest?
     /// For a payment request: its invoice and whether it is paid.
     public var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
@@ -145,7 +150,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
         purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People, callServer: String? = nil,
         threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil,
-        approvals: [String: ToolIntent] = [:]
+        approvals: [String: ToolIntent] = [:], agentDM: Bool = false
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -165,11 +170,31 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         }
         var newAfter = newAfter
         var cardRows: [String: Int] = [:]
+        // The agent's DM as the agent chat draws it: of the bridge's lines,
+        // only its status lines and the newest copy of a request whose card
+        // is up; the rest only the bridge needs (an ack, a result, a cancel).
+        // Each request is one row, on its newest copy (where its card is while
+        // up); how this Mac answered it, from its result that went.
+        var requestRows: [String: Int64] = [:]
+        var answered: [String: ControlEnvelope.Status] = [:]
+        if agentDM {
+            for message in messages {
+                guard case .envelope(let envelope)? = message.control else { continue }
+                if envelope.op == .request, let id = envelope.id, let row = message.id { requestRows[id] = row }
+                if envelope.op == .result, message.fromMe, message.delivery != .failed, let re = envelope.re,
+                   let status = envelope.status { answered[re] = status }
+            }
+        }
         for message in messages {
             // A control message is only its line, never a thread's row.
             let controlLine = message.isControlLine(inTribe: inTribe)
                 ? message.controlLine(by: people.sender(of: message, inTribe: inTribe)) : nil
             if controlLine?.isEmpty == true { continue }
+            var request: AgentRequest?
+            if agentDM, controlLine != nil, case .envelope(let envelope)? = message.control, envelope.op != .status {
+                guard envelope.op == .request, let id = envelope.id, requestRows[id] == message.id else { continue }
+                request = AgentRequest(kind: envelope.kind ?? "", status: answered[id])
+            }
             // A collapsed thread's row stands for its newest message, which this is.
             let collapsed = message.standsForThread && controlLine == nil ? message.threadUUID.flatMap { threads[$0] } : nil
             // No row that would draw nothing (blank space under the last
@@ -201,7 +226,11 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 rows[rows.count - 1].message = message
                 continue
             }
-            if kind == .message {
+            if kind == .message, agentDM, !message.fromMe {
+                // An agent's reply answers the message just above: no quote, its tool
+                // rows instead, but for its requests to this Mac, which have their own.
+                row.agentTools = message.agentTools.filter { !$0.name.hasPrefix("sphinx") }
+            } else if kind == .message {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
@@ -213,6 +242,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 cardRows[id] = rows.count
             }
             row.startsNew = startsNew
+            row.agentRequest = request
             if kind == .paymentRequest { row.paymentRequest = message.id.flatMap { requests[$0] } }
             rows.append(row)
         }
@@ -314,3 +344,39 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             && (message.delivery == .delivered || message.delivery == nil)
     }
 }
+
+/// A request from the agent to this Mac, as its DM's row says it: what was
+/// asked, and how this Mac answered (nil while it works on it).
+public struct AgentRequest: Equatable, Sendable {
+    public let kind: String
+    public let status: ControlEnvelope.Status?
+
+    /// "Read your unread messages", by the request's kind.
+    public var words: String {
+        switch kind {
+        case "chats.list": "Read your chats"
+        case "chats.read": "Read a chat"
+        case "chats.threads": "Read threads"
+        case "chats.unseen": "Read your unread messages"
+        case "chats.search": "Search your messages"
+        case "send": "Send a message"
+        case "approve": "Asked for your approval"
+        case "calendar.events": "Read your calendar"
+        case let kind where kind.hasPrefix("calendar."): "Change your calendar"
+        default: "Asked your Mac"
+        }
+    }
+
+    /// How it ended, after the words: nil when it was done, as asked.
+    public var outcome: String? {
+        switch status {
+        case nil: "on your Mac…"
+        case .done?: nil
+        case .denied?: "Declined"
+        case .expired?: "Too late, nothing done"
+        case .failed?: "Could not do it"
+        case .unknown?: "Not sure it went"
+        }
+    }
+}
+

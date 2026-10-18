@@ -114,4 +114,49 @@ struct ControlRowTests {
         let plain = ChatRow.rows(rows.map(\.message), parents: [:], inTribe: false, people: people)
         #expect(plain.allSatisfy { $0.approval == nil } && plain != rows)
     }
+
+    /// The agent's DM as the agent chat (docs/agent-on-strut.md, PR 6):
+    /// each request to this Mac is one row with how it ended (its card's
+    /// copy while the card is up), its status lines show, the acks and
+    /// results do not; its replies have their own tool rows and no quote.
+    @Test func theAgentsDMShowsWhatAPersonReads() {
+        let request = #"{"v":1,"op":"request","id":"r_1","device":"d","kind":"send","not_after":9}"#
+        let asked = message(0, fromMe: true, content: "Send Kate hi")
+        let read = message(1, body: controlBody("Peel asked your Mac to read a chat",
+                                                peel: #"{"v":1,"op":"request","id":"r_0","device":"d","kind":"chats.read","not_after":9}"#))
+        let ack = message(2, fromMe: true, body: controlBody("Peel on your Mac is on it", peel: #"{"v":1,"op":"ack","re":"r_0"}"#))
+        let done = message(3, fromMe: true, body: controlBody("Peel on your Mac answered",
+                                                              peel: #"{"v":1,"op":"result","re":"r_0","status":"done"}"#))
+        let first = message(4, body: controlBody("Peel asked your Mac to send a message for you", peel: request))
+        let again = message(5, body: controlBody("Peel asked your Mac to send a message for you", peel: request))
+        let waiting = message(6, body: controlBody("Waiting for your Mac", peel: #"{"v":1,"op":"status","run":"x","state":"waiting_device","text":"Waiting for your Mac"}"#))
+        var reply = message(7, body: #"{"content":"Sent.","metadata":"{\"peel\":{\"tools\":[{\"name\":\"memory_recall\",\"summary\":\"{}\"},{\"name\":\"sphinx_send\",\"summary\":\"{}\"}]}}"}"#)
+        reply.replyUUID = asked.uuid
+        let more = message(8)
+        let all = [asked, read, ack, done, first, again, waiting, reply, more]
+        let card = ToolIntent(action: "Send to Kate", content: "hi")
+        let rows = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people,
+                                approvals: ["r_1": card], agentDM: true)
+        #expect(rows.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
+        #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done))
+        #expect(rows[2].approval == card && rows[2].agentRequest == AgentRequest(kind: "send", status: nil))
+        #expect(rows[3].agentRequest == nil)
+        #expect(rows[4].quote == nil && rows[4].agentTools == [AgentToolLine(name: "memory_recall", summary: "{}")])
+        // Runs are worked out over what shows: the line before the reply ends its run there.
+        #expect(rows[3].endsRun && rows[4].startsRun)
+        // Answered, the send's row stays where its card was, with how it ended;
+        // a result that never went, or the agent's own, says nothing.
+        var denied = message(9, fromMe: true, body: controlBody("Peel on your Mac answered",
+                                                                peel: #"{"v":1,"op":"result","re":"r_1","status":"denied"}"#))
+        let theirs = message(10, body: controlBody("x", peel: #"{"v":1,"op":"result","re":"r_1","status":"done"}"#))
+        let after = ChatRow.rows(all + [denied, theirs], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
+        #expect(after.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
+        #expect(after[2].agentRequest?.outcome == "Declined")
+        denied.status = "FAILED"
+        let failed = ChatRow.rows(all + [denied], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
+        #expect(failed.first { $0.message.id == again.id }?.agentRequest?.status == nil)
+        // Anywhere else, every line shows and a reply quotes.
+        let plain = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people, approvals: ["r_1": card])
+        #expect(plain.count == all.count && plain[7].quote != nil && plain[7].agentTools.isEmpty && plain[1].agentRequest == nil)
+    }
 }

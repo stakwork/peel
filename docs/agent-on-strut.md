@@ -380,7 +380,7 @@ apps already show the content.
 | `request` | agent → you | `id`, `device`, `kind`, `args`, `not_after` | Do this |
 | `ack` | you → agent | `re` | Stored on the device; working on it |
 | `result` | you → agent | `re`, `status`, `result?`, `error?` | Done. `status`: `done`, `denied`, `expired`, `failed`, `unknown` |
-| `cancel` | either | `re` (a request) or `run` (a turn) | From the agent: the run no longer needs the request. From you: Stop this turn |
+| `cancel` | either | `re` (a request), `run` (a turn), or neither | From the agent: the run no longer needs the request. From you: Stop this turn (with neither, the turn in flight) |
 | `status` | agent → you | `run`, `state`, `text` | A line for a person: "Waiting for your Mac", "Waiting for your approval" |
 
 `v` is 1. A device that sees a `v` it does not know answers `failed` with
@@ -785,6 +785,77 @@ account is cheap to replace (open question 2).
   preview off too (one file, and strut reads it only at boot). The steps'
   installs run one after another: a few loopback calls once per bridge
   start.
+
+### Built: PR 6, the Agent chat is the DM (2026-10-18)
+
+- **One row.** With the preview on and the agent's contact known
+  (`Setting.deviceAgent`, read when the agent opens so the DM is the chat
+  before the bridge is back up, and set again by each bridge start),
+  `AppModel.agentContact` is set; once that contact is a chat here,
+  `agentChat` is its DM. The sidebar leaves the DM out of its sections and
+  the agent's row opens it (`agentDestination`), with the DM's unread count
+  and "Waiting on you" for its cards; `.agent` (Ask Peel, a notification,
+  the driver) opens it too. The Mac draws that chat with `AgentChatView(dm:)`.
+  Off, `agentContact` is nil and today's chat is as it was.
+- **The list** is the shared one on the DM's composer, so read marks,
+  "New messages", older pages and the saved place are a chat's.
+  `ChatRow.rows(agentDM:)` makes the DM's rows for it (so days, runs and
+  "New messages" are worked out over what is shown): talk as a chat draws
+  it (`ListRowContent`: Retry, menus, the hover bar; the agent's messages
+  with Peel's logo, AGENT and its links to messages, `inAgentDM`), an agent's reply
+  without the quote of the message it answers and with its tool rows above
+  it (`metadata.peel.tools`, `Message.agentTools`, one quiet line each,
+  but for the `sphinx/*` ones), each request to this Mac as one quiet row
+  (`AgentRequest`: "Read your unread messages ✓", "on your Mac…" until its
+  result, "Declined", "Too late, nothing done"), its card in its place
+  while it waits (PR 3's), its status lines ("Waiting for your Mac"), and
+  no line of its own for an ack, a result or a cancel (Tom, trying
+  Milestone 1: three lines a request read like tool calls). PR 9's phone
+  gets the same rows.
+- **"writing…"** (`AppModel.agentUnanswered`, worked out with the rows)
+  is shown under your newest message until a reply names
+  it (`replyUUID`, which the bridge sets on every reply, "Stopped." and
+  `/new`'s confirmation included: `AgentDM.unanswered`); meanwhile Send
+  is Stop, as today.
+- **Stop** (the button or Escape) sends a `cancel` with no run (the turn
+  in flight, which the bridge cancels in strut), takes the cards that turn
+  put up (requests since your message) down as Deny, and ends "writing…" here at once: strut ends a cancelled run
+  only once the model call in flight returns (the journey's stand-in held
+  25 s, B1 saw the same), so the "Stopped." reply can come later, and a
+  bridge that never answers leaves nothing running on the Mac.
+- **`/new`** is ordinary text to the bridge, which answers "Started a new
+  conversation." (decision 13).
+- **Earlier, on this Mac.** The local turns stay above the DM under that
+  divider, read only (no Retry), with the intro over them, only once the
+  DM's rows start at its first message: not while older pages are to
+  come, nor over a jump's window, so the list's first row is the DM's and
+  a jump to an older message waits for its page. The list is made once
+  the DM's messages have loaded, as a chat's is. The composer is text only (`AppModel.takesFiles`: the agent
+  opens no files until 6b). Turning the preview off with the DM open
+  opens today's agent chat in its place.
+- **Checked.** `ControlEnvelopeTests` (tool rows, a bare cancel, the turn
+  answered); the journey `Orchestrator.theDMAnswersStopsAndStartsAgainAsTheAgentChatReadsIt`
+  (real broker, runner and strut, a stand-in model): a reply names its
+  message and lists `sphinx_unseen`, Stop gives "Stopped.", `/new` its
+  confirmation. `check-app.sh` on a development profile with a real model
+  (pr6-me, a DM with threads and a tribe with threads): preview off, the
+  local chat as today; on, one agent row, the local turns under "Earlier,
+  on this Mac", a catch-up read through the Mac ("Read your unread
+  messages ✓"), the reply waiting under "New messages" after bouncing
+  through the tribe and a DM, a send's card and Allow ("Send a message
+  ✓"), Stop by Escape, `/new`; off again, today's chat back. Idle on the
+  agent chat: 0.0% CPU. The list journeys: the agent, control, bounce,
+  arrival, open and return ones pass (the agent ones with the preview off).
+- **Left for later.** strut should pass the abort into the model call so
+  Stop ends a turn at once. Control messages still count as unread and
+  notify (PR 2's note), so the agent's row counts a request while the chat
+  is closed, and the hidden lines count as unread with nothing new to see.
+  "writing…" can stay over a message the bridge never took (sent while it
+  was down, or a turn cut off by quitting Peel: sphinx#386); Stop clears
+  it here, for this launch. Go › Next Unread Chat skips the agent's DM, as
+  it skips today's agent chat. A `sphinx/*` tool that failed before asking
+  the Mac shows nowhere (its tool row is left out for the request's row),
+  and a request's row does not open to what was read yet.
 
 ## 5. Automations, jobs and connectors
 

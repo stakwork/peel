@@ -51,7 +51,7 @@ struct PhoneComposer: View {
                 .transition(.opacity)
             }
             HStack(alignment: .bottom, spacing: Theme.Space.sm) {
-                if composer.takesFiles {
+                if model.takesFiles(composer) {
                     AttachButton(composer: composer)
                 }
                 capsule

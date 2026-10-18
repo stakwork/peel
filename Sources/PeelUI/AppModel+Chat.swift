@@ -118,6 +118,12 @@ extension AppModel {
         replyTargets[composer] = nil
     }
 
+    /// Whether files can go with what `composer` sends: not the agent
+    /// chat's, nor its DM's (its agent opens no files yet).
+    public func takesFiles(_ composer: ComposerID) -> Bool {
+        composer.takesFiles && composer.chat != agentChat
+    }
+
     /// Escape in a composer: stops replying, else closes its thread panel.
     /// Returns whether it was taken.
     public func escape(in composer: ComposerID) -> Bool {

@@ -180,7 +180,11 @@ struct Detail: View {
             switch model.destination {
             case .chat:
                 if let conversation = model.selectedConversation {
-                    ConversationView(conversation: conversation)
+                    if conversation.chat == model.agentChat, let agent = model.agent {
+                        AgentChatView(agent: agent, dm: conversation.chat)
+                    } else {
+                        ConversationView(conversation: conversation)
+                    }
                 } else {
                     start("Pick a conversation.")
                 }

@@ -87,8 +87,8 @@ struct Composer: View {
                 // A reply cancelled, else the thread closed, with its slide.
                 return ThreadPanel.closing { model.escape(in: composer) }
             },
-            attach: { if composer.takesFiles { model.attach($0, to: composer) } },
-            dropTargeted: { if composer.takesFiles { model.dropTargeted($0, composer: composer) } }
+            attach: { if acceptsFiles { model.attach($0, to: composer) } },
+            dropTargeted: { if acceptsFiles { model.dropTargeted($0, composer: composer) } }
         )
         .onChange(of: mention) { highlighted = 0 }
         .task(id: mention != nil) {
@@ -157,13 +157,15 @@ struct Composer: View {
         .zIndex(1)
     }
 
-    private var hasLeadingButtons: Bool { composer.takesFiles || (paysTo != nil && composer.chat != nil) }
+    private var acceptsFiles: Bool { model.takesFiles(composer) }
+
+    private var hasLeadingButtons: Bool { acceptsFiles || (paysTo != nil && composer.chat != nil) }
 
     /// Attach (and in a direct message the bolt), left of the text.
     @ViewBuilder private var leadingButtons: some View {
         if hasLeadingButtons {
             HStack(spacing: 2) {
-                if composer.takesFiles {
+                if acceptsFiles {
                     IconButton("paperclip", help: "Attach files") {
                         model.chooseFiles(for: composer)
                     }

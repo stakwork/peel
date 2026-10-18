@@ -100,6 +100,8 @@ public final class AppModel {
     public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
+            // The agent chat is its DM while it has one (`agentChat`).
+            followAgentChat()
             if selectedChat != oldValue?.chat {
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
@@ -270,6 +272,8 @@ public final class AppModel {
     public var mayHaveOlder: Bool {
         timelineWindow == nil && timeline.messages.count >= newestLimit
     }
+    /// Whether the open chat shows a jump's window rather than its newest messages.
+    public var showsWindow: Bool { timelineWindow != nil }
     /// An older page asked for (`loadOlder`) and not here yet.
     public private(set) var loadingOlder = false
     /// Whether the open chat's list ends at its newest message: false while
@@ -314,6 +318,47 @@ public final class AppModel {
     public private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     public var agent: AgentSession?
+    /// The agent's own contact while its DM is the agent chat (the strut
+    /// preview, docs/agent-on-strut.md, "One conversation"), set by the app;
+    /// nil, and the agent chat is the agent's own (`Destination.agent`).
+    public var agentContact: String? {
+        didSet { if agentContact != oldValue { followAgentChat() } }
+    }
+
+    /// The agent's DM, once its contact is a chat here: the agent's one row,
+    /// never a direct message beside it, and where `.agent` opens.
+    public private(set) var agentChat: String?
+
+    /// Your message the agent is still answering in its open DM
+    /// (`AgentDM.unanswered`), worked out with its rows; nil over a jump's
+    /// window, which may stop between your message and its reply.
+    public private(set) var agentUnanswered: Message?
+
+    /// Where the agent's row goes: its DM while that is the agent chat.
+    public var agentDestination: Destination { agentChat.map(Destination.chat) ?? .agent }
+
+    /// The agent's DM as the agent chat, both ways: the agent chat open when
+    /// its DM comes is the DM; the DM open when it stops being the agent
+    /// chat (the preview off) is the agent chat again.
+    private func followAgentChat() {
+        let chat = agentContact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
+        if chat != agentChat {
+            let old = agentChat
+            agentChat = chat
+            if chat == nil { agentUnanswered = nil }
+            // Not as the account closes, which takes the agent first.
+            if let old, agent != nil, destination == .chat(old) { destination = .agent }
+            if selectedChat == chat || selectedChat == old { rebuildChatRows() }
+        }
+        if destination == .agent, let agentChat {
+            // What was typed to the local chat goes on in the DM's composer.
+            if let draft = drafts[.agent], !draft.isEmpty, (drafts[.chat(agentChat)] ?? "").isEmpty {
+                drafts[.chat(agentChat)] = draft
+                drafts[.agent] = nil
+            }
+            destination = .chat(agentChat)
+        }
+    }
     /// Bumped to open Account › Brain's home server form, as its "Connect a
     /// home server…" or "Change" would (the offscreen driver's `brain-form`).
     public var brainFormOpened = 0
@@ -383,7 +428,9 @@ public final class AppModel {
         if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
             states[heldUnread.chat] = heldUnread
         }
-        return ChatSections(conversations, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
+        // The agent's DM is the agent's own row.
+        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
+        return ChatSections(chats, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
@@ -506,8 +553,10 @@ public final class AppModel {
         let rows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
-            callServer: calls.server, newAfter: newMessagesAfter(in: chat), approvals: waitingCards[chat] ?? [:]
+            callServer: calls.server, newAfter: newMessagesAfter(in: chat), approvals: waitingCards[chat] ?? [:],
+            agentDM: chat == agentChat
         ), in: chat)
+        agentUnanswered = chat == agentChat && timelineReachesNewest ? AgentDM.unanswered(in: timeline.messages) : nil
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.
         TimelineLog.log("\(TimelineLog.tag(chat)) rows built: \(rows.count) (changed \(rows != chatRows)), "
@@ -1168,6 +1217,7 @@ public final class AppModel {
         platform.playback.closeFullScreen()
         platform.playback.stop()
         conversations = []
+        agentContact = nil
         tribes = [:]
         linkedTribes = [:]
         knownMembers = [:]
@@ -1352,6 +1402,7 @@ public final class AppModel {
                 let changed = old?.alias != new?.alias || old?.photoURL != new?.photoURL || old?.isTribe != new?.isTribe
                 conversations = rows
                 if changed { rebuildRows() }
+                followAgentChat()
                 if destination == nil, platform.opensFirstChat, let first = rows.first {
                     destination = .chat(first.chat)
                 }

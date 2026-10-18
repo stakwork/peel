@@ -49,6 +49,9 @@ final class AgentBridge {
     @ObservationIgnored var pairing = false
     /// Turning the preview off taking this Mac's answers away (`setDeviceAgent(nil)`).
     @ObservationIgnored var clearing: Task<Void, Never>?
+    /// Your messages in the agent's DM whose turn Stop ended here: no
+    /// "writing…" for them, whether or not the bridge's "Stopped." comes.
+    var stopped: Set<String> = []
 
     func stop() {
         starting?.cancel()
@@ -61,6 +64,69 @@ final class AgentBridge {
 
 extension AppModel {
     var agentBridge: AgentBridge { macAgent.agentBridge }
+
+    // MARK: The agent chat as the agent's DM (docs/agent-on-strut.md, "One conversation")
+
+    /// The agent row's unread count: its DM's, or the local chat's.
+    var agentUnread: Int {
+        guard let agentChat else { return agent?.unread ?? 0 }
+        return readStates[agentChat]?.sidebarCount ?? 0
+    }
+
+    /// Your message the agent is answering in its open DM
+    /// (`agentUnanswered`), unless Stop ended it here.
+    var agentAnswering: Message? {
+        guard let agentChat, loadedChat == agentChat, let message = agentUnanswered,
+              !(message.uuid.map(agentBridge.stopped.contains) ?? true) else { return nil }
+        return message
+    }
+
+    /// A card waiting on you in the agent chat: the local loop's, or one
+    /// in its DM.
+    var agentWaiting: Bool {
+        agent?.waiting != nil || agentChat.map { waitingCards[$0] != nil } == true
+    }
+
+    /// Stop in the agent's DM: a `cancel` for the turn in flight, which the
+    /// bridge passes to strut, and the cards that turn put up (requests
+    /// since your message) come down as Deny; an automation's stay.
+    /// "writing…" goes now, so a bridge that never answers leaves nothing
+    /// running here.
+    func stopAgentTurn() {
+        guard let engine, let agentChat, let answering = agentAnswering, let uuid = answering.uuid else { return }
+        agentBridge.stopped.insert(uuid)
+        let asked = Set(timeline.messages.lazy.filter { !$0.fromMe && $0.date >= answering.date }.compactMap { message in
+            if case .envelope(let request)? = message.control, request.op == .request { request.id } else { nil }
+        })
+        for id in (waitingCards[agentChat] ?? [:]).keys where asked.contains(id) { macAgent.deviceCards.answer(id, .deny) }
+        Task {
+            do {
+                _ = try await engine.sendControl(ControlEnvelope(op: .cancel), text: "Stop", to: agentChat)
+            } catch {
+                conversationNotices[agentChat] = PeelError.problem(error, couldNot: "stop the agent")
+            }
+        }
+    }
+
+    /// Whether the preview's bridge belongs on this Mac: on, with the agent
+    /// open and this Mac its brain.
+    private var bridgeRunsHere: Bool { agentBridge.previewOn && agent != nil && brain == .thisMac }
+
+    /// The agent's contact for the agent chat while the preview runs on
+    /// this Mac: the one the bridge last set up (`Setting.deviceAgent`),
+    /// read now so its DM is the chat before the bridge is back up.
+    private func lookForAgentContact() {
+        guard bridgeRunsHere, let engine else {
+            agentContact = nil
+            return
+        }
+        guard agentContact == nil else { return }
+        Task {
+            let contact = await engine.deviceAgent
+            guard self.engine === engine, bridgeRunsHere, agentContact == nil else { return }
+            agentContact = contact
+        }
+    }
 
     /// Turns the preview on or off: on, Peel's strut (started for it on a
     /// development profile too) and the bridge beside it; off, the bridge
@@ -101,8 +167,9 @@ extension AppModel {
     /// opens and whenever strut starts or stops; a strut started again
     /// (a new key and port) gets a new bridge.
     func lookForBridge() {
+        lookForAgentContact()
         let bridge = agentBridge
-        guard bridge.previewOn, let profile, let engine, agent != nil, brain == .thisMac,
+        guard bridgeRunsHere, let profile, let engine,
               let server = strut?.server, !server.isHomeServer else {
             if bridge.status != .off { bridge.stop() }
             return
@@ -148,6 +215,7 @@ extension AppModel {
         await bridge.clearing?.value
         bridge.clearing = nil
         try await engine.setDeviceAgent(account.pubkey)
+        agentContact = account.pubkey
         // Where the steps reach the bridge now.
         guard let reached = running.server else { throw PeelError("The agent's bridge stopped.") }
         try await client.useBridge(reached)

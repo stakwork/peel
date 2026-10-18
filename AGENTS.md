@@ -196,7 +196,9 @@ is a short plan. Update the status and the journal when you finish something.
     string, read bounded, and keys set beside each other, `tz` among them),
     `ControlEnvelope` (`metadata.peel`), `ControlMessage.read` and
     `Message.control`, which take an unknown version, `op` or field shape
-    for `unsupported`, never a guess
+    for `unsupported`, never a guess; `Message.agentTools` (a reply's tool
+    rows, `metadata.peel.tools`, as `AgentToolLine`) and `AgentDM` (your
+    message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
     scope, the official encoding), `JSONValue`, the official reader's
@@ -259,7 +261,10 @@ is a short plan. Update the status and the journal when you finish something.
   AppKit, UIKit, LiveKit or PeelAgent; builds for the iOS Simulator
   (`xcodebuild -scheme PeelUI -destination 'generic/platform=iOS Simulator'`,
   after `scripts/build-ffi.sh` with the iOS slices). Public, for the apps.
-  `AppModel`, with its extensions by area in `AppModel+Chat` (replies,
+  `AppModel` (with `agentContact`, `agentChat`, `agentDestination` and
+  `agentUnanswered`: the agent's DM as the agent's one row while the strut
+  preview runs, where `.agent` opens, its rows `ChatRow.rows(agentDM:)`),
+  with its extensions by area in `AppModel+Chat` (replies,
   threads, sending, attachments, and the chat's small types: `ComposerID`,
   `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
@@ -322,7 +327,9 @@ is a short plan. Update the status and the journal when you finish something.
   and no automation tools, token or model key for it),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: Account ›
   Peel agent › "Run in strut", dev builds only, off by default; on, the
-  agent's bridge beside Peel's own strut, `BundledBridge.setUp`);
+  agent's bridge beside Peel's own strut, `BundledBridge.setUp`; and the
+  agent chat as its DM: `agentAnswering`, `agentWaiting`, Stop's
+  `cancel` in `stopAgentTurn`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -363,8 +370,11 @@ is a short plan. Update the status and the journal when you finish something.
   row will be; the agent's device requests draw it too), `AgentConnectButton`),
   `DeviceCards` (the cards for the agent's `send` and `approve` device
   requests, each on its request's line in the agent's DM via
-  `DeviceRequestLine` and `ChatRow.approval`, and the send grants), `AgentTable` (the agent chat's
-  rows for `MessageTable`, `AgentListRow`, and `AgentOpenRows`, which
+  `DeviceRequestLine` and `ChatRow.approval`, in the agent chat a request's
+  one row, `ChatRow.agentRequest`, and the send grants), `AgentTable` (the agent chat's
+  rows for `MessageTable`, `AgentListRow`, `AgentDMRows` (the agent's DM
+  as the chat draws it: its rows as a chat's with tool rows above a reply,
+  "writing…", the local turns above under "Earlier, on this Mac") and `AgentOpenRows`, which
   tool rows are open), `OffscreenAgent` (the offscreen driver's scripted
   model, never a provider), `AgentMemoryViews` (a memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside

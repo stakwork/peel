@@ -51,7 +51,7 @@ public struct ControlEnvelope: Codable, Sendable, Equatable {
         /// Device to agent: done, with `status`.
         case result
         /// Either way: the agent no longer needs a request (`re`), or you
-        /// stop a turn (`run`).
+        /// stop a turn (`run`, or with neither the turn in flight).
         case cancel
         /// Agent to device: a line for a person ("Waiting for your Mac").
         case status
@@ -111,14 +111,14 @@ public struct ControlEnvelope: Codable, Sendable, Equatable {
 
     /// Whether the fields `op` needs are there: a request names its id,
     /// device, kind and expiry; an ack or result its request (a result
-    /// also its status); a cancel the request or the turn; a status line
-    /// its turn, state and text.
+    /// also its status); a status line its turn, state and text. A cancel
+    /// names what it stops, or nothing for the turn in flight (Stop).
     var isComplete: Bool {
         switch op {
         case .request: id != nil && device != nil && kind != nil && notAfter != nil
         case .ack: re != nil
         case .result: re != nil && status != nil
-        case .cancel: re != nil || run != nil
+        case .cancel: true
         case .status: run != nil && state != nil && text != nil
         }
     }
@@ -168,5 +168,64 @@ extension Message {
     /// message: only text carries one.
     public var control: ControlMessage? {
         type == MessageType.text && !deleted ? ControlMessage.read(body) : nil
+    }
+
+    /// The tools an agent's reply ran, as the bridge lists them from the
+    /// run's events (`metadata.peel.tools`, docs/agent-on-strut.md, "One
+    /// conversation"); empty for anything else. Whoever sent the message
+    /// wrote them: shown as plain words, never acted on.
+    public var agentTools: [AgentToolLine] {
+        guard type == MessageType.text, !deleted, let body, body.contains("tools"),
+              let peel = ControlMessage.peel(in: body), peel["op"] == nil,
+              case .array(let tools)? = peel["tools"] else { return [] }
+        return tools.prefix(AgentToolLine.most).compactMap(AgentToolLine.init)
+    }
+}
+
+/// One tool an agent's reply ran: its name as strut gives it
+/// (`sphinx_unseen`), a line of what it was asked, and whether it failed.
+public struct AgentToolLine: Sendable, Equatable {
+    /// The most read from one reply (the bridge caps the list at 2 KB).
+    static let most = 50
+    /// The longest name or summary kept.
+    static let longest = 200
+
+    public let name: String
+    public let summary: String
+    public let failed: Bool
+
+    public init(name: String, summary: String = "", failed: Bool = false) {
+        self.name = name
+        self.summary = summary
+        self.failed = failed
+    }
+
+    init?(_ value: JSONValue) {
+        guard case .object(let fields) = value, case .string(let name)? = fields["name"], !name.isEmpty else { return nil }
+        var summary = ""
+        if case .string(let text)? = fields["summary"] { summary = text }
+        self.init(name: String(name.prefix(Self.longest)), summary: String(summary.prefix(Self.longest)),
+                  failed: fields["failed"] == .bool(true))
+    }
+}
+
+/// The agent's DM read as the agent chat (docs/agent-on-strut.md, "One
+/// conversation"): the bridge answers each message of yours with one reply
+/// that names it (`replyUUID`), "Stopped." included.
+public enum AgentDM {
+    /// Your message the agent is still answering, if any: your newest text
+    /// that was not refused, unless a later message of the agent's answers
+    /// it. Messages oldest first, as a timeline holds them.
+    public static func unanswered(in messages: [Message]) -> Message? {
+        var answered = Set<String>()
+        for message in messages.reversed() where message.type == MessageType.text && !message.deleted {
+            guard message.fromMe else {
+                if let uuid = message.replyUUID { answered.insert(uuid) }
+                continue
+            }
+            guard message.control == nil, !message.notSent else { continue }
+            return message.uuid.flatMap { answered.contains($0) ? nil : message }
+        }
+        return nil
     }
 }

@@ -27,6 +27,8 @@ struct ControlEnvelopeTests {
         ControlEnvelope(op: .result, re: "r_1", status: .failed, error: "unsupported"),
         ControlEnvelope(op: .cancel, re: "r_1"),
         ControlEnvelope(op: .cancel, run: "run_9"),
+        // Stop with no run named: the turn in flight.
+        ControlEnvelope(op: .cancel),
         ControlEnvelope(op: .status, run: "run_9", state: "waiting", text: "Waiting for your Mac"),
     ])
     func readsBackWhatItWrites(envelope: ControlEnvelope) throws {
@@ -79,7 +81,6 @@ struct ControlEnvelopeTests {
         #"{"peel":{"v":1,"op":"request","id":"r","device":"d","kind":"chats.list","not_after":"soon"}}"#,
         #"{"peel":{"v":1,"op":"result","re":"r"}}"#,
         #"{"peel":{"v":1,"op":"result","re":"r","status":"maybe"}}"#,
-        #"{"peel":{"v":1,"op":"cancel"}}"#,
         #"{"peel":{"v":1,"op":"status","run":"x","text":"Waiting"}}"#,
         #"{"peel":{"v":1,"op":"ack","re":["r"]}}"#,
     ])
@@ -183,5 +184,45 @@ struct DeviceRequestRuleTests {
         #expect(Engine.unreadableRequestID(in: later, device: "mac-2") == nil)
         let ack = body(metadata: #"{"peel":{"v":2,"op":"ack","id":"r9","device":"mac-1"}}"#)
         #expect(Engine.unreadableRequestID(in: ack, device: "mac-1") == nil)
+    }
+
+    /// A reply's tool rows are the bridge's list as written, read only from
+    /// talk: fields that do not fit drop the row or the field, never the reply.
+    @Test func readsAReplysToolRows() {
+        let reply = received(body(metadata: #"""
+            {"tz":"GMT+1","peel":{"tools":[{"name":"sphinx_unseen","summary":"{}"},
+            {"name":"sphinx_send","summary":"{\"chat\":\"Kate\"}","failed":true},
+            {"summary":"no name"},{"name":""},{"name":"memory_recall","summary":5,"failed":"yes"},"junk"]}}
+            """#, content: "You have 3 unread chats."))
+        #expect(reply.agentTools == [
+            AgentToolLine(name: "sphinx_unseen", summary: "{}"),
+            AgentToolLine(name: "sphinx_send", summary: #"{"chat":"Kate"}"#, failed: true),
+            AgentToolLine(name: "memory_recall"),
+        ])
+        // A control message's `tools`, or none at all, are no tool rows.
+        #expect(received(body(metadata: #"{"peel":{"v":1,"op":"ack","re":"r","tools":[{"name":"x"}]}}"#)).agentTools.isEmpty)
+        #expect(received(body(metadata: #"{"peel":{"automation":"Weekly recap"}}"#)).agentTools.isEmpty)
+        #expect(received(body(metadata: #"{"peel":{"tools":[{"name":"x"}]}}"#), type: MessageType.attachment).agentTools.isEmpty)
+    }
+
+    /// A turn runs from your message until the agent's reply names it; a
+    /// control line or a message that never went is no turn of yours.
+    @Test func yourNewestMessageIsUnansweredUntilAReplyNamesIt() {
+        let asked = Message.fixture(uuid: "m1", fromMe: true, content: "What did I miss?", timestamp: 1)
+        let request = received(body(metadata: #"{"peel":{"v":1,"op":"request","id":"r","device":"d","kind":"chats.unseen","not_after":9}}"#))
+        let ack = Message.fixture(uuid: "m2", fromMe: true,
+                                  body: body(metadata: #"{"peel":{"v":1,"op":"ack","re":"r"}}"#), timestamp: 3)
+        let reply = Message.fixture(uuid: "m3", content: "Three chats.", timestamp: 4, replyUUID: "m1")
+        #expect(AgentDM.unanswered(in: [asked]) == asked)
+        #expect(AgentDM.unanswered(in: [asked, request, ack]) == asked)
+        #expect(AgentDM.unanswered(in: [asked, request, ack, reply]) == nil)
+        // A late turn's reply (no reply link) or an older one answers nothing new.
+        let again = Message.fixture(uuid: "m4", fromMe: true, content: "/new", timestamp: 5)
+        let late = Message.fixture(uuid: "m5", content: "Your Mac answered.", timestamp: 6)
+        #expect(AgentDM.unanswered(in: [asked, reply, again, late]) == again)
+        // Refused by the server: not running, and the one before it is answered.
+        let refused = Message.fixture(uuid: "m6", fromMe: true, content: "hello?", timestamp: 7, status: "FAILED")
+        #expect(AgentDM.unanswered(in: [asked, reply, refused]) == nil)
+        #expect(AgentDM.unanswered(in: []) == nil)
     }
 }

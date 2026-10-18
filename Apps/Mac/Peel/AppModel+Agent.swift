@@ -623,8 +623,21 @@ enum AgentToolTitle {
         "run_automation_now": "Run an automation",
     ]
 
+    /// strut's orchestrator's tools, as the bridge names them (`sphinx/unseen`
+    /// as `sphinx_unseen`), by the Swift loop's tool that does the same.
+    private static let strutNames = [
+        "sphinx_chats": "get_contacts_and_tribes", "sphinx_read": "read_recent_messages",
+        "sphinx_unseen": "read_unseen_messages", "sphinx_threads": "read_threads", "sphinx_search": "search_messages",
+        "sphinx_send": "send_sphinx_message", "memory_remember": "remember", "memory_recall": "recall",
+        "memory_get": "read_memory", "memory_forget": "forget_memory", "memory_merge": "merge_memory",
+        "automation_list": "list_automations", "automation_preview": "preview_schedule",
+        "automation_create": "create_automation", "automation_update": "update_automation",
+        "automation_delete": "delete_automation", "automation_run-now": "run_automation_now",
+    ]
+
     static func of(_ name: String) -> String {
-        if let title = titles[name] { return title }
+        let name = name.replacingOccurrences(of: "/", with: "_")
+        if let title = titles[strutNames[name] ?? name] { return title }
         let words = name.replacingOccurrences(of: "_", with: " ")
         return words.prefix(1).uppercased() + words.dropFirst()
     }
@@ -634,6 +647,21 @@ enum AgentToolTitle {
     static func summary(_ line: String) -> String {
         line.replacingOccurrences(of: #" \(chat=[^)]*\)"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+    }
+
+    /// What a tool in the agent's DM was asked, from the bridge's one line
+    /// of its input: an object's values ("pr6-peer, hello"), else the line.
+    static func asked(_ line: String) -> String {
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any] else {
+            return summary(line)
+        }
+        return object.keys.sorted().compactMap { key in
+            switch object[key] {
+            case let text as String: text
+            case let number as NSNumber: number.stringValue
+            default: nil
+            }
+        }.joined(separator: ", ")
     }
 
     /// How a tool that acts was answered: "Allowed once", "Declined".

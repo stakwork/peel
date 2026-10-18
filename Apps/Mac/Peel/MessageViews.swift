@@ -37,11 +37,13 @@ struct MessageList: View {
         }
     }
 
-    /// The model's focused message, when it belongs in this list.
-    private var focusTarget: FocusTarget? {
+    private var focusTarget: FocusTarget? { Self.focusTarget(of: model, in: composer, hasRows: !rows.isEmpty) }
+
+    /// The model's focused message, when it belongs in `composer`'s list.
+    static func focusTarget(of model: AppModel, in composer: ComposerID, hasRows: Bool) -> FocusTarget? {
         guard let target = model.focus, target.message.chat == composer.chat,
               composer.thread.map({ $0 == target.message.threadRoot }) ?? !target.inThread,
-              !rows.isEmpty else { return nil }
+              hasRows else { return nil }
         return target
     }
 }
@@ -54,6 +56,9 @@ struct ListRowContent: View {
     let row: ChatRow
     let composer: ComposerID
     let canAnswer: Bool
+    /// Drawn under its day line and "New messages", over the row: an
+    /// agent's tool rows in its DM.
+    var above: AnyView?
 
     var body: some View {
         let flashed = flash.id == row.id
@@ -66,6 +71,7 @@ struct ListRowContent: View {
                 NewMessagesDivider()
                     .padding(.horizontal, Theme.Space.xl)
             }
+            above
             switch row.kind {
             case .message:
                 MessageRow(row: row, composer: composer, flashed: flashed)
@@ -211,6 +217,7 @@ struct RepliesDivider: View {
 /// is not drawn again when the list is.
 struct MessageRow: View, Equatable {
     @Environment(AppModel.self) private var model
+    @Environment(\.inAgentDM) private var inAgentDM
     let row: ChatRow
     let composer: ComposerID
     var flashed = false
@@ -249,7 +256,9 @@ struct MessageRow: View, Equatable {
         return HStack(alignment: .top, spacing: Self.gutterSpacing) {
             // The gutter: the photo on a run's first row, the time on hover after it.
             Group {
-                if row.startsRun {
+                if row.startsRun, inAgentDM, !message.fromMe {
+                    PeelLogo(size: Self.avatarSize)
+                } else if row.startsRun {
                     Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: Self.avatarSize,
                            hue: row.sender.hue)
                         .personCard(PersonRef(row))
@@ -346,6 +355,7 @@ extension View {
 /// would not fit on one line.
 struct RunHeader: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.inAgentDM) private var inAgentDM
     let row: ChatRow
     var headline: Text?
 
@@ -373,6 +383,13 @@ struct RunHeader: View {
         return HStack(alignment: .firstTextBaseline, spacing: 6) {
             if let headline {
                 headline
+            } else if inAgentDM, !message.fromMe {
+                // The agent, as the agent chat names it.
+                Text(model.agent?.name ?? name)
+                    .font(Theme.font(13, .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                AgentTag().alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
             } else {
                 Text(name)
                     .font(Theme.font(13, .semibold))
@@ -530,6 +547,7 @@ enum MessageMenu {
 
 /// A message's body on the row: the quote, the attachment, then the text.
 struct MessageContent: View {
+    @Environment(\.inAgentDM) private var inAgentDM
     let row: ChatRow
 
     /// The row's menu, on everything but a run's image tiles, which each
@@ -565,7 +583,7 @@ struct MessageContent: View {
                     CallCard(row: row, link: call)
                         .rowMenu(row.id, menu)
                 } else if !text.isEmpty {
-                    MessageText(text: text, chat: message.chat)
+                    MessageText(text: text, chat: message.chat, agentLinks: inAgentDM && !message.fromMe)
                         .rowMenu(row.id, menu)
                 }
                 // The card's menu copies the link it took from the text.

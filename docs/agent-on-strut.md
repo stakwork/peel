@@ -606,7 +606,7 @@ account is cheap to replace (open question 2).
   runner from the commit `Vendor/runner.lock` names (git archive of that
   commit only, `cargo --locked` against `Vendor/runner.Cargo.lock`, since
   sphinx keeps no lockfile) into `~/Library/Caches/dev.peel.build/bridge`.
-  The pin is stakwork/sphinx#385's commit until Evan merges it, then master.
+  The pin is sphinx master at the merge of stakwork/sphinx#385.
   `embed-strut.sh` puts it in `Contents/Bridge` in Debug builds only, and
   `sign-app.sh` signs it; a Release build never carries it.
 - **The agent's account.** `Engine.agentAccount()` (PeelCore) derives agent

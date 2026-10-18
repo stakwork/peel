@@ -1,2 +1,2 @@
-# stakwork/sphinx#385 (runner/seed-invite: the invite on /seed, /contact_info, exit on stdin EOF): move this to master once Evan merges it.
-0bd2c68ef2a525704aa0b6754a48d6a494dc79ba
+# stakwork/sphinx master at the merge of #385 (the invite on /seed, /contact_info, exit on stdin EOF).
+9ccdcbb1575669fbe7ff0c9f4cc26e21293f4c14

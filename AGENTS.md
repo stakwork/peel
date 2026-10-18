@@ -197,7 +197,9 @@ is a short plan. Update the status and the journal when you finish something.
     `ControlEnvelope` (`metadata.peel`), `ControlMessage.read` and
     `Message.control`, which take an unknown version, `op` or field shape
     for `unsupported`, never a guess; `Message.agentTools` (a reply's tool
-    rows, `metadata.peel.tools`, as `AgentToolLine`) and `AgentDM` (your
+    rows, `metadata.peel.tools`, as `AgentToolLine`), `Message.agentJob`
+    and `agentArtifacts` (a job's message: `metadata.peel.job`, `AgentJob`,
+    and what it points to, `AgentArtifact`, https links only) and `AgentDM` (your
     message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device

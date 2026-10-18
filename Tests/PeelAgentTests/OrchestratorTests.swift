@@ -75,6 +75,9 @@ struct OrchestratorTests {
 
         let orchestrator = try await call("GET", "workflows/orchestrator/flow", on: server)
         #expect(orchestrator["params"]?["tools"]?.array?.contains("sphinx/unseen") == true)
+        // strut's own job steps stay beside Peel's: the delta adds, never replaces (PR 6b).
+        let tools = orchestrator["params"]?["tools"]?.array?.compactMap(\.string) ?? []
+        #expect(Set(["job/start", "job/continue", "job/list", "job/get", "job/read"]).isSubset(of: tools), "\(tools)")
         #expect(orchestrator["params"]?["system"]?.string?.contains("You are Peel's agent") == true)
         #expect(orchestrator["params"]?["model"] == nil, "the connected model runs it")
 

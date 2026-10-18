@@ -155,6 +155,11 @@ struct ControlRowTests {
         denied.status = "FAILED"
         let failed = ChatRow.rows(all + [denied], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
         #expect(failed.first { $0.message.id == again.id }?.agentRequest?.status == nil)
+        // A job's message, in the agent chat: its job and what it points to.
+        let job = message(11, body: #"{"content":"Which dates?","metadata":"{\"peel\":{\"job\":{\"id\":\"j_7\",\"title\":\"Lisbon flights\",\"state\":\"asking\"},\"artifacts\":[{\"id\":\"p\",\"title\":\"Plan\"}]}}"}"#)
+        let jobRow = ChatRow.rows([job], parents: [:], inTribe: false, people: people, agentDM: true)[0]
+        #expect(jobRow.agentJob == AgentJob(id: "j_7", title: "Lisbon flights", state: .asking) && jobRow.agentArtifacts.map(\.title) == ["Plan"])
+        #expect(ChatRow.rows([job], parents: [:], inTribe: false, people: people)[0].agentJob == nil)
         // Anywhere else, every line shows and a reply quotes.
         let plain = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people, approvals: ["r_1": card])
         #expect(plain.count == all.count && plain[7].quote != nil && plain[7].agentTools.isEmpty && plain[1].agentRequest == nil)

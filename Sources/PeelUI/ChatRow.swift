@@ -85,6 +85,9 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public var approval: ToolIntent?
     /// In the agent's DM (`rows(agentDM:)`): the tools an agent's reply ran.
     public var agentTools: [AgentToolLine] = []
+    /// In the agent's DM: the job an agent's message is about, and what it points to.
+    public var agentJob: AgentJob?
+    public var agentArtifacts: [AgentArtifact] = []
     /// In the agent's DM: a request to this Mac as one row, how it ended
     /// folded in (no ack or result lines of its own).
     public var agentRequest: AgentRequest?
@@ -230,6 +233,8 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 // An agent's reply answers the message just above: no quote, its tool
                 // rows instead, but for its requests to this Mac, which have their own.
                 row.agentTools = message.agentTools.filter { !$0.name.hasPrefix("sphinx") }
+                row.agentJob = message.agentJob
+                row.agentArtifacts = message.agentArtifacts
             } else if kind == .message {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
             }

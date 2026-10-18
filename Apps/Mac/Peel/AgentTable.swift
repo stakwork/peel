@@ -74,7 +74,9 @@ struct AgentListRow: TableRow {
         case .problem: return 64
         case .earlier: return 40
         case .answering: return 50
-        case .dm(let row): return row.estimatedHeight + CGFloat(row.agentTools.count) * 24
+        case .dm(let row):
+            let lines = row.agentTools.count + row.agentArtifacts.count + (row.agentJob == nil ? 0 : 1)
+            return row.estimatedHeight + CGFloat(lines) * 24
         case .turn(let turn, let startsDay, _):
             let lines = max(1, (turn.text.utf8.count + 69) / 70)
             return CGFloat(lines) * 18 + 36 + CGFloat(turn.tools.count) * 24 + (startsDay ? 40 : 0)

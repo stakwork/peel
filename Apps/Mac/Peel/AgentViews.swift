@@ -220,21 +220,101 @@ struct AgentDMRow: View {
     let canAnswer: Bool
 
     var body: some View {
-        ListRowContent(row: row, composer: composer, canAnswer: canAnswer, above: tools)
+        ListRowContent(row: row, composer: composer, canAnswer: canAnswer, above: above, below: artifacts)
             .environment(\.inAgentDM, true)
     }
 
-    private var tools: AnyView? {
-        guard !row.agentTools.isEmpty else { return nil }
-        return AnyView(
-            VStack(alignment: .leading, spacing: 2) {
-                // By position: a reply may run one tool twice.
-                ForEach(Array(row.agentTools.enumerated()), id: \.offset) { _, tool in
-                    AgentToolLineRow(tool: tool)
-                }
+    /// The job it is about, then the tools it ran.
+    private var above: AnyView? {
+        guard row.agentJob != nil || !row.agentTools.isEmpty else { return nil }
+        return agentNoteLines {
+            if let job = row.agentJob { AgentJobLine(job: job) }
+            // By position: a reply may run one tool twice.
+            ForEach(Array(row.agentTools.enumerated()), id: \.offset) { _, tool in
+                AgentToolLineRow(tool: tool)
             }
-            .agentNoteRow()
-        )
+        }
+    }
+
+    /// What it points to: a job's deliverables, a page, a link.
+    private var artifacts: AnyView? {
+        guard !row.agentArtifacts.isEmpty else { return nil }
+        return agentNoteLines {
+            ForEach(Array(row.agentArtifacts.enumerated()), id: \.offset) { _, artifact in
+                AgentArtifactLine(artifact: artifact)
+            }
+        }
+    }
+}
+
+/// Quiet lines in line with a message's text, as a tool's rows are.
+@MainActor private func agentNoteLines(@ViewBuilder _ lines: () -> some View) -> AnyView {
+    AnyView(VStack(alignment: .leading, spacing: 2) { lines() }.agentNoteRow())
+}
+
+/// The job an agent's message is about, one quiet line: "Job · Lisbon
+/// flights · Asks you", orange while it waits on your answer (your next
+/// message continues it), "Done", or "Didn't finish".
+private struct AgentJobLine: View {
+    let job: AgentJob
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "briefcase")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(job.title.map { "Job · \($0)" } ?? "Job")
+                .lineLimit(1)
+                .truncationMode(.tail)
+            switch job.state {
+            case .asking?:
+                Text("· Asks you").foregroundStyle(Theme.attention)
+            case .done?:
+                Text("· Done")
+            case .failed?:
+                Text("· Didn't finish")
+            case .working?:
+                Text("· Working")
+            case nil:
+                EmptyView()
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
+        .help(job.id)
+    }
+}
+
+/// Something an agent's message points to: its label and title, a line of
+/// what is in it, and Open for an https link (the web pane, as any link).
+private struct AgentArtifactLine: View {
+    @Environment(\.openURL) private var openURL
+    let artifact: AgentArtifact
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+            if let summary = artifact.summary {
+                Text("· " + summary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(summary)
+            }
+            if let url = artifact.url {
+                // Where it goes, beside the agent's words for it.
+                Button("Open") { openURL(url) }
+                    .buttonStyle(.peel(.link))
+                    .help(url.absoluteString)
+                if let host = url.host() { Text(host).fixedSize() }
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
     }
 }
 

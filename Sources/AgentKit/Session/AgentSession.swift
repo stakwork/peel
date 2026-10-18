@@ -527,15 +527,16 @@ public final class AgentSession {
     private func ask(_ request: ApprovalRequest, run: UUID) async -> ApprovalDecision {
         guard !closed, !Task.isCancelled, runID == run, answering == nil else { return .deny }
         updateTool(request.callID) { $0.approval = ToolApproval(intent: request.intent) }
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
+        // The isolation named, as in `Engine.nextChange`: inferred, an optimized build ran it off the actor.
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation(isolation: MainActor.shared) { continuation in
                 answering = continuation
                 waiting = request
             }
-        } onCancel: {
+        }, onCancel: {
             // Only this run's card: by the time this runs another may be up.
             Task { @MainActor in if self.runID == run, self.waiting == request { self.answer(.deny) } }
-        }
+        }, isolation: MainActor.shared)
     }
 
     /// Changes the reply's newest running tool with `id`: ids can repeat

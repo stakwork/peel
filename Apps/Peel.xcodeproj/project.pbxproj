@@ -436,6 +436,7 @@
 				SUPPORTED_PLATFORMS = macosx;
 				CODE_SIGN_ENTITLEMENTS = Mac/Peel.AppStore.entitlements;
 				PEEL_STRUT_ENTITLEMENTS = strut-node.sandbox.entitlements;
+				PEEL_BRIDGE_ENTITLEMENTS = bridge.sandbox.entitlements;
 			};
 			name = Release;
 		};

@@ -117,7 +117,8 @@ extension Journeys {
         /// answers (`AgentDM.unanswered`) and lists the tools its run used
         /// (`agentTools`); Stop's `cancel` with no run named stops the turn
         /// in flight, whose reply is "Stopped."; `/new` is the bridge's own,
-        /// answered with its confirmation and no model call.
+        /// answered with its confirmation and no model call; a turn cut off
+        /// by quitting ends when Peel opens again, and the next one answers.
         @Test(.enabled(if: staged))
         @MainActor
         func theDMAnswersStopsAndStartsAgainAsTheAgentChatReadsIt() async throws {
@@ -186,6 +187,23 @@ extension Journeys {
 
             let fresh = try await ask("/new")
             #expect(try await reply(to: fresh).content == "Started a new conversation.")
+            #expect(AgentDM.unanswered(in: try alice.messages(in: agent)) == nil)
+
+            // Peel quits mid-turn (strut and the bridge stopped, as on quit) and
+            // opens again: strut answers the cut-off run as stale, and the bridge
+            // ends that turn (sphinx#386), so the DM is not held.
+            let cut = try await ask("Take your time, again")
+            try await eventually("the model to be asked again") { model.requests.contains { $0.contains("Take your time, again") } }
+            bridge.stop(quietly: true)
+            strut.stop(quietly: true)
+            let again = try await strut.start()
+            try await AutomationsClient(server: again).installOrchestrator()
+            #expect(try await bridge.setUp(on: alice.engine, beside: again, alias: "Agent", pair: false).pubkey == agent)
+            try await AutomationsClient(server: again).useBridge(try #require(bridge.server))
+            let interrupted = try await reply(to: cut)
+            #expect(interrupted.content?.contains("interrupted") == true, "the cut-off turn ended with \(interrupted.content ?? "nothing")")
+            let after = try await ask("What did I miss?")
+            #expect(try await reply(to: after).content == "Caught up.")
             #expect(AgentDM.unanswered(in: try alice.messages(in: agent)) == nil)
 
             for person in [alice, other] { await person.close() }

@@ -58,7 +58,7 @@ public final class BundledBridge: CustomReflectable {
     /// What the invite for the agent's first register holds: enough for its
     /// paid answer to this account's key exchange (3 sats and a 1-sat ping),
     /// which the server forwards before it credits the exchange's own sats.
-    nonisolated static let inviteMsat: UInt64 = 10_000
+    public nonisolated static let inviteMsat: UInt64 = 10_000
 
     /// The bridge in `bundle`, if it has one, its store in `data`.
     public convenience init?(in bundle: Bundle = .main, data: URL) {
@@ -116,11 +116,22 @@ public final class BundledBridge: CustomReflectable {
     /// `PRICE_TO_MEET` (3 sats) and a 1-sat ping.
     nonisolated static let answerMsat: UInt64 = 4_000
 
+    /// What setting up the agent's account costs this account, at most: the
+    /// invite, then the key exchange and its ping (`Engine.keyExchangeMsat`),
+    /// of which the agent pays 3 sats back. Shown before the person starts it.
+    public nonisolated static var setUpMsat: UInt64 { inviteMsat + Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false) }
+
+    /// Setting up was not started: the agent is not a contact yet, and only
+    /// the person's own "Set up" may pay for it (`setUp`'s `pair`).
+    public struct NotSetUp: Error {}
+
     /// The agent's account on `engine`'s, from its seed (`agentAccount`),
     /// running here beside `strut`; the account it registered checked to be
     /// the agent's, whatever store runner had. Unless it is already a contact
-    /// it is added, named `alias`, only when `pair` (the person turned the
-    /// preview on: what pairing spends is theirs to start): it registers with
+    /// (an account set up before, on this Mac or another from the same words,
+    /// is used again: one agent 1, never a second), it is added, named
+    /// `alias`, only when `pair` (the person's "Set up", which showed what it
+    /// costs, `setUpMsat`; otherwise `NotSetUp`): it registers with
     /// an invite from the account (`inviteMsat`), so it has sats to answer the
     /// key exchange. One invite per store, its code kept there and used again
     /// until the agent has registered, so it is always the one runner holds.
@@ -136,11 +147,11 @@ public final class BundledBridge: CustomReflectable {
             try await launched(account, strut: strut, invite: nil, alias: alias)
             _ = try await agentContactInfo()
             guard try await contact()?.contactKey != nil else {
-                throw PeelError("Your agent has not answered your key exchange. Turn Run in strut off and on to try again.")
+                throw PeelError("Your assistant has not answered your key exchange yet. Try again in a minute.")
             }
             return account
         }
-        guard pair else { throw PeelError("Turn Run in strut off and on to add your agent as a contact.") }
+        guard pair else { throw NotSetUp() }
         let invite = try await agentInvite(on: engine, alias: alias)
         try await launched(account, strut: strut, invite: invite, alias: alias)
         let (info, balance) = try await registered()
@@ -154,19 +165,20 @@ public final class BundledBridge: CustomReflectable {
             } catch {}
         }.value
         guard balance >= Self.answerMsat else {
-            throw PeelError("Your agent has no sats to answer your key exchange: its account was made before, without this invite.")
+            throw PeelError("Your assistant has no sats to answer your key exchange: its account was made before, without this invite.")
         }
-        _ = try await Self.online { try await engine.addContact(code: info, alias: alias) }
+        // The person's "Set up" showed this cost: no second confirmation.
+        _ = try await Self.online { try await engine.addContact(code: info, alias: alias, confirmedMsat: Engine.keyExchangeMsat) }
         let deadline = ContinuousClock.now + .seconds(30)
         while try await contact()?.contactKey == nil {
-            guard ContinuousClock.now < deadline else { throw PeelError("Your agent has not answered your key exchange yet.") }
+            guard ContinuousClock.now < deadline else { throw PeelError("Your assistant has not answered your key exchange yet. Try again in a minute.") }
             try await Task.sleep(for: .milliseconds(500))
         }
         return account
     }
 
     /// Started, unless the set-up was cancelled before or while it started
-    /// (the preview turned off, the account locked): then stopped again.
+    /// (the account locked, the brain moved): then stopped again.
     private func launched(_ account: AgentAccount, strut: MemoryServer, invite: String?, alias: String) async throws {
         try Task.checkCancellation()
         _ = try await start(account, strut: strut, invite: invite, alias: alias)

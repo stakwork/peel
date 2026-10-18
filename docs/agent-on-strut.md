@@ -1,10 +1,11 @@
 # Phase 1: the agent is a contact
 
-Last updated 2026-10-18. **Design and PR plan; being built.** PRs 1 to 6
-are merged (#311, #319, #321, #322, #323, #325), PR 6's follow-ups are in
-review (#326), PR 7 is in review (#324, waiting on strut#215 and
-sphinx#387), and PR 8 (Calendar) is dropped from Phase 1 for now (Tom,
-2026-10-18; decision 16). It turns [foundation.md](foundation.md)'s answers into
+Last updated 2026-10-19. **Design, PR plan and what was built** (the
+"Built: PR n" notes in section 4). PRs 1 to 7 are merged (#311, #319,
+#321, #322, #323, #325, #324) with PR 6's follow-ups (#326, #333), and
+PR 8 (Calendar) is dropped from Phase 1 for now (Tom, 2026-10-18;
+decision 16). PR 10 makes strut the agent, with no switch; PR 11 removes
+the Swift loop. It turns [foundation.md](foundation.md)'s answers into
 the first phase of Peel's end state: the agent's loop runs in strut, the
 agent is a Sphinx contact with its own account, and your devices do what
 only they can (read your chats, send as you, Calendar) when strut asks.
@@ -28,9 +29,9 @@ automations are strut steps already, so they run there. Your chats, sends
 as you and Calendar are not: only your devices hold your keys and
 EventKit. So a step asks your Mac, with a hidden control message in the
 same DM, and waits for the answer. In Phase 1 only the Mac answers. When
-it doesn't, the run says "Waiting for your Mac". Nothing you use today
-stops working while this is built: the Swift loop stays the default until
-the last switch.
+it doesn't, the run says "Waiting for your Mac". Since PR 10
+(2026-10-18) this is the agent in every build, with no switch back; the
+Swift loop's code stays until PR 11 removes it.
 
 ## Decided (Tom, 2026-10-16)
 
@@ -646,10 +647,11 @@ account is cheap to replace (open question 2).
   (`forgetInvite`); nothing is marked used on a guess. The key exchange
   goes only when the agent can pay its answer (4 sats), and set-up ends
   when the agent has answered. The invite skips the confirmation
-  threshold: turning the preview on is the yes (PR 10's setup shows it).
-- **The preview.** Account › Peel agent › "Run in strut" (dev builds,
-  `agentOnStrut` in the build's defaults; the driver's `agent-on-strut`
-  and `agent-off-strut`).
+  threshold: turning the preview on was the yes (since PR 10, Set up,
+  which shows the cost).
+- **The preview** (removed in PR 10). Account › Peel agent › "Run in
+  strut" (dev builds, `agentOnStrut` in the build's defaults; the driver's
+  `agent-on-strut` and `agent-off-strut`).
   On, it starts Peel's strut (a development profile's too) and the bridge
   beside it, with the workflow `orchestrator`; off, nothing of it starts
   and today's agent chat is unchanged. A failure is said under the switch.
@@ -1114,6 +1116,97 @@ account is cheap to replace (open question 2).
   it, so one made again under the same id in that gap inherits it (the
   create card could always name its id, so the Mac drops a stale grant).
 
+### Built: PR 10, strut is the agent (2026-10-18)
+
+- **No switch.** `AgentBridge` keeps only what the bridge is doing: off
+  (the agent not open, the brain elsewhere, or no strut running), not
+  set up, starting, running, failed. The bridge
+  starts whenever the agent is open, this Mac is its brain and Peel's own
+  strut runs, in Debug and Release. A development profile's strut still
+  needs `-strut YES`. The Agent chat no longer reaches the Swift loop
+  (automations still fire it until PR 7's move); its code stays for PR
+  11. With a home server as the brain there is no agent: only this Mac
+  runs the bridge in Phase 1 (decision 9), and moving the brain away
+  clears the Mac's answers to the agent (`setDeviceAgent(nil)`) until its
+  bridge starts here again.
+- **First run: "Give your assistant its own account".** Until the agent
+  is a contact, the agent chat shows the local turns read only, under
+  "Earlier, on this Mac" as over the DM, and in the composer's place a
+  card (`AgentSetUpPanel`) that says what it is and what it costs before
+  anything is paid: up to `BundledBridge.setUpMsat`, 16 sats (the 10-sat
+  invite, then the 5-sat key exchange and its 1-sat ping; the agent pays
+  3 back, so 13 in the check). Set up (`setUpAgent`) is the only start
+  that pays: a start on its own throws `NotSetUp` before runner runs, and
+  the row says "Set up". The key exchange goes with the cost already
+  confirmed (`confirmedMsat`), since the card was the yes. A failure says
+  why with Try again. Try again pairs only after a set-up that failed
+  (reusing the store's invite while the server holds it); after any
+  other failure it starts again without paying, which leads back to the
+  offer if the agent is not a contact. Any stop forgets the intent to
+  pair (`AgentBridge.stop`), so a set-up cut short by a lock, a brain move
+  or strut restarting never pays later on its own; a start waits for the
+  one before it (a key exchange cannot be cut short). Peel's strut
+  failing to start, or stopping under the bridge, is a failure too, and
+  Try again starts it again. The same state is a row in Account › Peel
+  agent ("Own account", Set up or Try again), and a failure after set-up
+  is said above the DM's composer with Try again.
+- **One agent 1.** The agent is always `agent_seed(seed, 1)`. An account
+  that already has it as a contact (set up on another Mac, or a profile on
+  the same words) uses it again with no invite, whatever store runner
+  has: runner registers a known account without redeeming anything. An
+  account without the contact whose agent was registered before gets its
+  invite back (PR 4). n is never moved on.
+- **Runner in Release.** `embed-strut.sh` puts the staged runner in
+  `Contents/Bridge` in every build (`run-app.sh` refuses without it, or
+  with one `Vendor/runner.lock` does not name), signed with the build's
+  identity and, in Release, `scripts/bridge.sandbox.entitlements`:
+  `app-sandbox` and `inherit` only, so runner has Peel's sandbox: its
+  network (the broker, and its server on loopback for strut) and its
+  container (the store, `Application Support/Peel/Bridge` there). A
+  Release build fails without the staged bridge, so an archive never
+  ships without its agent.
+- **Found on the way: optimized builds stopped at the first wait.**
+  `Engine.nextChange` (every `poll`: an invite's confirmation, among
+  others) aborted with "Incorrect actor executor assumption" in a Release
+  build, and in the CLI built with `-c release`; never in Debug. The
+  continuation's isolation is now named (`isolation: self`), not
+  inferred. Before PR 10 no Release build had made an invite.
+- **Pinned.** `Vendor/runner.lock` is sphinx master at the merge of
+  sphinx#386 (a stale strut run ends the turn), after sphinx#387 (PR 7's
+  automation results). Automations move to `peel-automation-run` when the
+  bridge starts (PR 7's move) and never back: there is no off.
+- **Checked.** The journeys `Bridge` (with a new case: a fresh store for
+  an account that has the agent as a contact sets up with no invite and
+  no sats), `Orchestrator` (with a new case in the DM journey: a turn cut
+  off by quitting ends as interrupted when Peel opens again, and the next
+  message is answered) and `DeviceRequests` on a local stack; the
+  unit suite. `check-app.sh` on a development profile with a real model:
+  the card and the sidebar's Set up, Set up (13 sats), the DM as the
+  chat, "What did I miss?" read through the Mac. A Release build signed
+  as an archive signs it (hardened runtime, the App Store entitlements
+  less the Keychain group, which needs the App Store profile) and run
+  offscreen in its own container on a development profile: set up, a
+  catch-up read through the Mac, a send's card allowed and sent, with
+  Peel, strut's Node and runner all inside the sandbox and runner's store
+  in the container. The run before the fix above crashed on the invite's
+  confirmation and left its 10-sat invite pending (cancellable; its code
+  was not yet kept, so a retry made a second). The list journeys for the
+  agent chat: `agent-open`, `agent-return`, `agent-expand-tool`, both
+  `agent-memory-panel`s and both `agent-stream`s pass; `agent-reply-ends`
+  and `agent-reply-ends-open` fail, since a local reply no longer streams
+  in the chat (they drive the Swift loop, which nobody reaches now): PR
+  11 removes them with it.
+- **Review findings not applied, and why.** An agent registered before
+  with no sats left fails with Try again offered each time, each try
+  making an invite that is refunded (the rare case of PR 4's restore; it
+  needs the agent funded another way). `DeviceCards` and `AgentSession`
+  keep the continuation shape `Engine.nextChange` had: both are on the
+  main actor, and a send's card ran in the Release check. strut keeps the
+  bridge's port and token after a bridge that failed to start, until the
+  next start's `installOrchestrator` (one that stops by itself has them
+  taken out). The orchestrator's steps are installed even on a start that
+  then finds the agent not set up (a few loopback calls per launch).
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s
@@ -1145,10 +1238,11 @@ Also gone or replaced:
 ## 6. PR plan
 
 One PR per step, in order. Each is usable on its own. **The rule while
-building:** the Swift loop stays the Mac's agent until PR 10. Catch-ups,
-automations and the Agent chat keep working on it. Everything new sits
-behind one setting, Account › Agent › "Run in strut (preview)", off by
-default, shown only in dev builds until PR 10.
+building:** the Swift loop stayed the Mac's agent until PR 10, everything
+new behind Account › Agent › "Run in strut (preview)", off by default and
+only in dev builds. PR 10 (2026-10-18) removed the switch: Tom is the only
+user, so strut became the agent at once rather than after a week's
+preview, with no fallback in the UI.
 
 Risk tiers are AGENTS.md's ("How a change ships"), as `scripts/risk.sh`
 would rank the files each PR touches, raised where it sends or holds
@@ -1171,7 +1265,7 @@ would give the same change.
 | 7 | peel | Automations on `peel-automation-run`: new ones are made on it; turning the preview on moves existing ones (same schedule and prompt, workflow changed), turning it off moves them back; sends from automations with grants (automations-and-jobs step 1) | Preview on: the Hive test posts at the minute it said, `[Agent]` first, nobody at the Mac; the weekly report lands in the DM; preview off: the same automations run on `peel-automation` as before | high (sends) | 5, 3 |
 | 8 | peel | **Dropped from Phase 1 for now** (Tom, 2026-10-18). Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
 | 9 | peel | iPhone: the agent DM shows talk and hides control (on PR 1's envelope), "Waiting for your approval on your Mac" | From the phone, with the Mac awake: message the agent and get the answer in the same thread as the Mac | medium | 1, 6 |
-| 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one 10-sat invite the agent registers with, then the key exchange); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | The sphinx-rs pin at v0.8.39 |
+| 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one 10-sat invite the agent registers with, then the key exchange); no switch: strut and the bridge are the agent in Debug and Release (runner in the sandbox), the Agent chat the DM for everyone, the local history read only; the Swift loop's code stays for PR 11 (Tom, 2026-10-18: faster than a week's preview, as the only user) | A signed Release build sets up, reads and sends inside the sandbox; Tom sets it up on his real account and uses it a day or two: catch-ups no slower than today, automations fire, nothing sent twice | high (keys, the sandbox) | The sphinx-rs pin at v0.8.39; 7 and sphinx#386 merged |
 | 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | medium (over 400 lines) | 10, plus a week of use |
 
 ```
@@ -1185,8 +1279,7 @@ once the pin is v0.8.39: 10, then 11
 ```
 
 S1, S2 and B1 are merged (strut#198, strut#195, sphinx#382). PRs 1 to 6
-are merged (#311, #319, #321, #322, #323, #325); PR 7 is in review
-(#324, waiting on strut#215 and sphinx#387).
+are merged (#311, #319, #321, #322, #323, #325), and PR 7 (#324).
 PRs 2 and 3 follow PR 1 in turn, since each builds on the one before.
 PR 1 is the only one that changes what ships before the preview: control
 messages hidden in the lists, and the time zone setting merging keys. PR 4 stages runner as it is merged.

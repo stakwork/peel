@@ -4,8 +4,8 @@ import Foundation
 import PeelCore
 
 /// One automation, as strut lists it (`docs/phases/12-automations.md`):
-/// the person's own, on `peel-automation` (or `peel-automation-run` with
-/// the strut preview on), or a system automation strut ships on a workflow
+/// the person's own, on `peel-automation` (or `peel-automation-run` once
+/// the agent's bridge has run), or a system automation strut ships on a workflow
 /// of its own (`docs/system-automations.md`).
 public struct Automation: Sendable, Equatable, Identifiable {
     public struct LastRun: Sendable, Equatable {
@@ -39,7 +39,7 @@ public struct Automation: Sendable, Equatable, Identifiable {
     /// on or off and run it, and the agent may not touch it.
     public var isSystem: Bool { category == "system" }
     /// The person's own, made through the agent: on `peel-automation`, or
-    /// on `peel-automation-run` with the strut preview on.
+    /// on `peel-automation-run` once the agent's bridge has run.
     public var isYours: Bool { AutomationsClient.yourWorkflows.contains(workflow) }
 
     /// Its last run did not finish.
@@ -180,7 +180,7 @@ public struct SchedulePreview: Sendable, Equatable {
 public struct AutomationsClient: Sendable {
     public let server: MemoryServer
     /// Where the person's new automations go and the agent's tools look:
-    /// `workflow`, or `Orchestrator.automationWorkflow` with the strut preview on.
+    /// `workflow`, or `Orchestrator.automationWorkflow` while the agent's bridge runs.
     public let yours: String
     /// Where a new automation's run ends go: the agent's bridge, which sends
     /// each one's report to the agent's DM. None on `workflow`, whose step

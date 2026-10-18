@@ -7,7 +7,7 @@ import PeelUI
 // MARK: - Pieces
 
 /// Peel's row at the top of Direct messages: "Set up" in link blue until a
-/// model is connected, then AGENT; bold with a count for replies that
+/// model is connected and the agent has its own account, then AGENT; bold with a count for replies that
 /// came while it was not open; "Waiting on you" in orange while a send's
 /// card waits for an answer.
 struct AgentLink: View {
@@ -25,7 +25,7 @@ struct AgentLink: View {
                     .foregroundStyle(Theme.attention)
             } else if unread > 0 {
                 Badge(count: unread)
-            } else if agent.connection == nil {
+            } else if agent.connection == nil || model.agentChat == nil && model.agentSetUp.action != nil {
                 Text("Set up")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.link)
@@ -42,9 +42,10 @@ struct AgentLink: View {
 /// first message introduces it, with a card to connect a model until one
 /// is; replies stream in as Markdown, tools run as quiet rows, a failure
 /// is a row with Retry. Everything it does is an `AgentSession` action.
-/// With `dm`, the strut preview's: the agent's DM (`AppModel.agentChat`),
-/// its messages sent to the agent contact and its replies whole, the
-/// local turns above it read only.
+/// With `dm`, the agent's DM (`AppModel.agentChat`), its messages sent to
+/// the agent contact and its replies whole, the local turns above it read
+/// only; without, until the agent has its own account, those turns and
+/// its set-up (`AgentSetUpPanel`).
 struct AgentChatView: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -84,11 +85,10 @@ private struct AgentChatColumn: View {
 
     private var composer: ComposerID { dm.map(ComposerID.chat) ?? .agent }
 
-    /// While a reply runs: the local loop's, or the DM's turn (`agentAnswering`).
+    /// While the DM's turn runs (`agentAnswering`).
     private var stop: (@MainActor () -> Void)? {
-        let model = model, agent = agent
-        if dm != nil { return model.agentAnswering == nil ? nil : { @MainActor in model.stopAgentTurn() } }
-        return agent.isRunning ? { @MainActor in agent.stop() } : nil
+        let model = model
+        return model.agentAnswering == nil ? nil : { @MainActor in model.stopAgentTurn() }
     }
 
     var body: some View {
@@ -107,11 +107,14 @@ private struct AgentChatColumn: View {
                     .id(composer)
             }
             if let conversation = model.selectedConversation, conversation.chat == dm {
+                // Its bridge or Peel's memory stopped, or failed to start: said, with Try again.
+                if model.agentSetUp.problem { AgentSetUpPanel() }
                 // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
                 ChatFooter(conversation: conversation, tribe: nil, composer: composer,
                            placeholder: "Message \(agent.name)", stop: stop)
             } else {
-                Composer(composer: composer, placeholder: "Message \(agent.name)", stop: stop)
+                // No DM yet: setting up the agent's own account, never the local loop.
+                AgentSetUpPanel()
             }
         }
         // A reply's View opens the message; any other link goes where a
@@ -165,11 +168,12 @@ private struct AgentMessageList: View {
 
     var body: some View {
         // The local turns only above the DM's first message: not while older
-        // pages are to come, nor over a jump's window.
+        // pages are to come, nor over a jump's window. With no DM yet they are
+        // shown the same way, read only.
         let shown = dm.map { _ in
             AgentDMRows(rows: model.chatRows, answering: model.agentAnswering,
                         fromStart: !model.mayHaveOlder && !model.showsWindow)
-        }
+        } ?? AgentDMRows(rows: [], answering: nil, fromStart: true)
         MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows, dm: shown), composer: composer,
                      focus: dm == nil ? nil : MessageList.focusTarget(of: model, in: composer, hasRows: !model.chatRows.isEmpty),
                      reachesNewest: dm == nil || model.timelineReachesNewest, hasOlder: dm != nil && model.mayHaveOlder, link: link)

@@ -3,69 +3,102 @@ import PeelAgent
 import PeelCore
 import PeelUI
 
-/// Account › Peel agent › "Run in strut (preview)" (docs/agent-on-strut.md,
-/// PR 4): the agent's bridge (`BundledBridge`) beside Peel's strut, holding
-/// the agent's own account, which this account adds as a contact. Offered
-/// only in dev builds and off by default until PR 10; off, nothing of it
-/// starts. Today's agent chat is unchanged either way.
+/// The agent (docs/agent-on-strut.md, PR 10): its bridge (`BundledBridge`)
+/// beside Peel's strut, holding the agent's own account, which this account
+/// adds as a contact once, when the person sets it up ("Give your assistant
+/// its own account"). Until then nothing of it starts, and nothing is paid.
 @MainActor @Observable
 final class AgentBridge {
-    /// Where the preview is kept: this build's defaults, for every account.
-    static let previewKey = "agentOnStrut"
-
-    /// Whether this build offers the preview: dev builds only.
-    static var offered: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
-    }
-
-    /// The switch as this build keeps it, read before any account opens (`strut(for:)`).
-    static var isOn: Bool { offered && UserDefaults.standard.bool(forKey: previewKey) }
-
     enum Status: Equatable {
+        /// Not on this Mac: no agent, the brain elsewhere, or no strut running.
         case off
+        /// The agent's account is not a contact yet: the person's "Set up" starts it.
+        case notSetUp
         case starting
         /// The bridge runs and the agent is a contact.
         case running
         case failed(String)
     }
 
-    /// The switch, for Account › Peel agent; kept in the build's defaults.
-    var previewOn = AgentBridge.isOn {
-        didSet { UserDefaults.standard.set(previewOn, forKey: Self.previewKey) }
-    }
-    /// What the preview is doing, for Account › Peel agent.
+    /// What the bridge is doing, for the agent chat and Account › Peel agent.
     var status = Status.off
-    /// The bridge for this launch's profile, made when the preview first starts it.
+    /// The bridge for this launch's profile, made when it first starts.
     @ObservationIgnored var bridge: BundledBridge?
     /// The start in flight, and the strut it started beside.
     @ObservationIgnored var starting: Task<Void, Never>?
     @ObservationIgnored var strut: MemoryServer?
-    /// The person turned the preview on, so the next start may pair the
-    /// agent (an invite, a key exchange); a start on its own, never.
-    @ObservationIgnored var pairing = false
-    /// Turning the preview off taking this Mac's answers away (`setDeviceAgent(nil)`).
-    @ObservationIgnored var clearing: Task<Void, Never>?
+    /// This start may pair the agent (an invite, a key exchange): it came
+    /// from the person's Set up, where the cost was shown. A start on its
+    /// own, never; any stop forgets it.
+    var pairing = false
     /// Your messages in the agent's DM whose turn Stop ended here: no
     /// "writing…" for them, whether or not the bridge's "Stopped." comes.
     var stopped: Set<String> = []
     /// The person's automations moving between workflows (`AppModel.moveAutomations`), one move at a time.
     @ObservationIgnored var moving: Task<String?, Never>?
 
+    /// Stopped, and `problem` said with Try again; a failure said already stays.
+    func fail(_ problem: String) {
+        let said = status
+        stop()
+        status = if case .failed = said { said } else { .failed(problem) }
+    }
+
     func stop() {
         starting?.cancel()
         starting = nil
         strut = nil
+        pairing = false
         bridge?.stop(quietly: true)
         status = .off
     }
 }
 
+/// Where the agent's own account stands, for the agent chat (in the
+/// composer's place until its DM is the chat) and Account › Peel agent.
+struct AgentSetUp: Equatable {
+    var line: String
+    /// Something went wrong: said in the attention colour.
+    var problem = false
+    /// Under way: a spinner.
+    var busy = false
+    /// The person's next step: "Set up", or "Try again".
+    var action: String?
+
+    /// What the first set-up shows before anything is paid.
+    static let offer = AgentSetUp(
+        line: "Your assistant gets its own Sphinx account, made from your words, and becomes a contact you message from this Mac or your phone. "
+            + "Setting it up costs up to \(Sats.format(msat: BundledBridge.setUpMsat)) from your balance: "
+            + "\(Sats.format(msat: BundledBridge.inviteMsat)) to open its account and "
+            + "\(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false))) to add it as a contact.",
+        action: "Set up"
+    )
+}
+
 extension AppModel {
     var agentBridge: AgentBridge { macAgent.agentBridge }
+
+    /// The agent's own account, as the person sees it (`AgentSetUp`).
+    var agentSetUp: AgentSetUp {
+        guard agent?.connection != nil else { return AgentSetUp(line: "Connect a model first: your assistant answers with it.") }
+        guard brain == .thisMac else {
+            return AgentSetUp(line: "Your assistant runs with Peel's memory on this Mac. Choose This Mac under Brain to use it.")
+        }
+        guard hasOwnStrut else {
+            return AgentSetUp(line: profile?.kind == .development
+                ? "This development profile runs your assistant only when Peel is started with -strut YES."
+                : "This copy of Peel has no memory of its own to run your assistant.")
+        }
+        switch agentBridge.status {
+        case .off: return AgentSetUp(line: "Starting Peel's memory…", busy: true)
+        case .notSetUp: return .offer
+        case .starting:
+            return AgentSetUp(line: agentBridge.pairing ? "Setting up your assistant's account. This can take a minute." : "Starting your assistant…",
+                              busy: true)
+        case .running: return AgentSetUp(line: "Your assistant is a contact in Direct messages.")
+        case .failed(let problem): return AgentSetUp(line: problem, problem: true, action: "Try again")
+        }
+    }
 
     // MARK: The agent chat as the agent's DM (docs/agent-on-strut.md, "One conversation")
 
@@ -110,11 +143,11 @@ extension AppModel {
         }
     }
 
-    /// Whether the preview's bridge belongs on this Mac: on, with the agent
-    /// open and this Mac its brain.
-    private var bridgeRunsHere: Bool { agentBridge.previewOn && agent != nil && brain == .thisMac }
+    /// Whether the agent's bridge belongs on this Mac: the agent open and
+    /// this Mac its brain.
+    private var bridgeRunsHere: Bool { agent != nil && brain == .thisMac }
 
-    /// The agent's contact for the agent chat while the preview runs on
+    /// The agent's contact for the agent chat while its bridge runs on
     /// this Mac: the one the bridge last set up (`Setting.deviceAgent`),
     /// read now so its DM is the chat before the bridge is back up.
     private func lookForAgentContact() {
@@ -130,66 +163,49 @@ extension AppModel {
         }
     }
 
-    /// Turns the preview on or off: on, Peel's strut (started for it on a
-    /// development profile too) and the bridge beside it; off, the bridge
-    /// stops, and a development profile's strut too unless `-strut YES` asked
-    /// for it. The agent's account and contact stay, for the next time.
-    func setAgentOnStrut(_ on: Bool) {
-        agentBridge.previewOn = on
-        // Off, or on again after a failure: a fresh start.
-        agentBridge.stop()
-        agentBridge.pairing = on
-        guard let profile, agent != nil, brain == .thisMac else { return }
-        macAgent.hasOwnStrut = Self.strut(for: profile) != nil
-        if on {
-            useOwnStrut(profile)
-        } else {
-            // Off, this Mac answers no agent's requests (on, once the bridge is set
-            // up: `startBridge`), and strut forgets where the stopped bridge was, so
-            // no step posts to that port again; the person's automations go back to
-            // `peel-automation`; then a strut started only for the preview stops,
-            // unless a reply or a move uses it (then at quit).
-            let engine = engine, server = strut?.server
-            var started: BundledStrut?
-            if !macAgent.hasOwnStrut, agent?.isRunning != true, memoryMove?.isRunning != true {
-                started = strut
-                strut = nil
-            }
-            agentBridge.clearing = Task {
-                try? await engine?.setDeviceAgent(nil)
-                if let server {
-                    let client = AutomationsClient(server: server)
-                    try? await client.forgetBridge()
-                    await moveAutomations(on: server, to: AutomationsClient.workflow, callback: nil)
-                }
-                started?.stop(quietly: true)
-            }
-            useAutomationTools()
-        }
+    /// The person's "Set up" (or "Try again"): Peel's strut started again
+    /// if it stopped, and a fresh start of the bridge, which pairs the agent
+    /// (`BundledBridge.setUp`) only where the cost was on the screen: the
+    /// offer, or a Try again after a set-up that failed.
+    func setUpAgent() {
+        let bridge = agentBridge
+        let pair = bridge.status == .notSetUp || bridge.pairing
+        bridge.stop()
         lookForMemory(reporting: true)
-        lookForBridge()
+        lookForBridge(pairing: pair)
     }
 
-    /// Starts the bridge when the preview is on and Peel's own strut runs,
-    /// and stops it when either is no longer so. Looked at when the agent
+    /// Starts the bridge when the agent is open here and Peel's own strut
+    /// runs, and stops it when either is no longer so. Looked at when the agent
     /// opens and whenever strut starts or stops; a strut started again
     /// (a new key and port) gets a new bridge.
-    func lookForBridge() {
+    func lookForBridge(pairing: Bool = false) {
         lookForAgentContact()
         let bridge = agentBridge
         guard bridgeRunsHere, let profile, let engine,
               let server = strut?.server, !server.isHomeServer else {
-            if bridge.status != .off { bridge.stop() }
+            // Peel's strut stopped under it: said, with Try again, since nothing else starts it again now.
+            if bridgeRunsHere, bridge.status != .off {
+                bridge.fail("Peel's memory on this Mac stopped.")
+            } else if bridge.status != .off {
+                bridge.stop()
+            }
             return
         }
         guard bridge.strut != server else { return }
+        // A start still running (a key exchange cannot be cut short) ends first.
+        let previous = bridge.starting
         bridge.stop()
         bridge.strut = server
+        bridge.pairing = pairing
         bridge.status = .starting
         bridge.starting = Task {
+            await previous?.value
             do {
                 try await startBridge(bridge, for: profile, engine: engine, beside: server)
             } catch is CancellationError {
+            } catch is BundledBridge.NotSetUp {
+                bridge.status = .notSetUp
             } catch {
                 guard !Task.isCancelled else { return }
                 bridge.bridge?.stop(quietly: true)
@@ -205,25 +221,22 @@ extension AppModel {
         }
         bridge.bridge = running
         running.onChange = { [weak self, weak bridge, weak running] in
-            // Runner stopped by itself: tried again only when strut starts again or the preview is turned on.
+            // Runner stopped by itself: tried again only when strut starts again or on the person's Try again.
             guard let bridge, let running, running.server == nil, bridge.bridge === running,
                   bridge.status != .off else { return }
             bridge.strut = nil
             bridge.status = .failed("The agent's bridge stopped.")
+            // No step posts to its port again.
+            Task { try? await AutomationsClient(server: server).forgetBridge() }
             // New automations go where they run without it.
             self?.useAutomationTools()
         }
         // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
         let client = AutomationsClient(server: server)
         try await client.installOrchestrator()
-        let pair = bridge.pairing
-        bridge.pairing = false
-        let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: pair)
+        let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: bridge.pairing)
         try Task.checkCancellation()
-        // Only now does this Mac answer the agent's requests: its reads and cards
-        // (after a clear from turning it off just before, which would undo it).
-        await bridge.clearing?.value
-        bridge.clearing = nil
+        // Only now does this Mac answer the agent's requests: its reads and cards.
         try await engine.setDeviceAgent(account.pubkey)
         agentContact = account.pubkey
         // Where the steps reach the bridge now.

@@ -5,7 +5,8 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/.build/Peel.app"
 # The Peel in daily use always ships its strut (the agent's memory and
-# automations): bundle-app fails without one, unless PEEL_ALLOW_NO_STRUT=1.
+# automations) and the agent's bridge: bundle-app fails without either (or
+# with a bridge Vendor/runner.lock does not name), unless PEEL_ALLOW_NO_STRUT=1.
 [ "${PEEL_ALLOW_NO_STRUT:-}" = 1 ] || export PEEL_REQUIRE_STRUT=1
 "$ROOT/scripts/bundle-app.sh" "$APP"
 # Install a copy at a fixed place, so a Dock pin and Spotlight survive rebuilds.

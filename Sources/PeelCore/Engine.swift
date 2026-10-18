@@ -399,11 +399,13 @@ public actor Engine {
             await self?.wake(id)
         }
         defer { timer.cancel() }
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { waiters[id] = $0 }
-        } onCancel: {
+        // The isolation named, not inferred: an optimized build ran the
+        // inferred one off this actor and stopped at the runtime's check.
+        await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation(isolation: self) { waiters[id] = $0 }
+        }, onCancel: {
             Task { [weak self] in await self?.wake(id) }
-        }
+        }, isolation: self)
         try Task.checkCancellation()
     }
 

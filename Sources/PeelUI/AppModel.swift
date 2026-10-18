@@ -318,10 +318,11 @@ public final class AppModel {
     public private(set) var engine: Engine?
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     public var agent: AgentSession?
-    /// The agent's own contact while its DM is the agent chat (the strut
-    /// preview, docs/agent-on-strut.md, "One conversation"), set by the Mac
-    /// app; on the phone always the account's agent. Nil, and the agent chat
-    /// is the agent's own (`Destination.agent`).
+    /// The agent's own contact, whose DM is the agent chat
+    /// (docs/agent-on-strut.md, "One conversation"), set by the Mac app; on
+    /// the phone always the account's agent. Nil until the agent has its own
+    /// account, and the agent chat is the local one (`Destination.agent`),
+    /// read only, with its set-up.
     public var agentContact: String? {
         didSet { if agentContact != oldValue { followAgentChat() } }
     }
@@ -340,7 +341,7 @@ public final class AppModel {
 
     /// The agent's DM as the agent chat, both ways: the agent chat open when
     /// its DM comes is the DM; the DM open when it stops being the agent
-    /// chat (the preview off) is the agent chat again.
+    /// chat (the brain moved off this Mac) is the agent chat again.
     private func followAgentChat() {
         let chat = agentContact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
         if chat != agentChat {

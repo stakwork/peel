@@ -159,7 +159,7 @@ extension Engine {
     /// and the key exchange's sats carry it; a tribe's messages, boosts and
     /// join and an invite's keysend do not. Counted against the balance
     /// only: what is shown and confirmed stays the amount (Tom, 2026-10-09).
-    static func pingMsat(toTribe: Bool) -> UInt64 {
+    public static func pingMsat(toTribe: Bool) -> UInt64 {
         toTribe ? 0 : UInt64(Storage.pingPriceMsat)
     }
 

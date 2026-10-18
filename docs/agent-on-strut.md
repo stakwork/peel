@@ -863,8 +863,34 @@ account is cheap to replace (open question 2).
   was down, or a turn cut off by quitting Peel: sphinx#386); Stop clears
   it here, for this launch. Go › Next Unread Chat skips the agent's DM, as
   it skips today's agent chat. A `sphinx/*` tool that failed before asking
-  the Mac shows nowhere (its tool row is left out for the request's row),
-  and a request's row does not open to what was read yet.
+  the Mac shows nowhere (its tool row is left out for the request's row).
+
+### Built: PR 6's follow-ups, from Tom's hands-on test (2026-10-18)
+
+- **A request's row opens** (a click on it, its state kept beside the list
+  as a tool row's is) to what this Mac read or did, from its own result
+  (`AgentRequest.text`, `reason`): a read's chats (`ChatDataReading`, the
+  answer read back by the owner of its format), each a link to the chat,
+  with up to five of the messages read, each opening its message, and
+  how many more; a send's text and "Sent to …" with View; an approval's
+  ask; why not ("Why: You said no"). The answer is the result as sent,
+  capped as section 2 says (`ChatData.maxCharacters`, 12,000 characters).
+- **The same row in any DM**, the preview off too: `ChatRow.rows` folds
+  this Mac's own ack, result and cancel into the request's one row in
+  every direct message; status lines stay lines; PR 1's three lines a
+  request are gone. Only this Mac's answers fold: a contact's own control
+  lines stay, so nobody can hide a message by dressing it as an ack.
+  Outside the agent chat the row is named for who asked ("Peel: Read your
+  unread messages ✓"), and one this Mac never answered says "Not
+  answered", with nothing of what it asked shown. The agent chat's own
+  look (Peel's logo, a reply's tool rows, no quote) stays the agent chat's.
+- **From the review.** A read's chats come only from the data's own lines,
+  never the header (which can hold the agent's words); `ChatData` writes
+  a "]" in a name as ")", so an alias cannot pose as another line's sender
+  or uuid. `FactLine` is the one fact row of a tool's and a request's
+  details. Left: a new copy of a request moves its row to the newest copy
+  (closed again); the chat's list corrects an opened row's height from its
+  cell, where the agent chat measures it again by version.
 
 ### Built: PR 6b, Peel's side: jobs in the DM (2026-10-18)
 

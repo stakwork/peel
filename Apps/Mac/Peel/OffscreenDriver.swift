@@ -329,7 +329,7 @@ final class OffscreenDriver {
     /// Retry; `agent-view`, the first View in its newest reply;
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
     /// waiting card's Always allow; `device-allow`, Allow once on a card in
-    /// the agent's DM; `agent-revoke`, Account's first Revoke;
+    /// the agent's DM; `request-rows`, every device request's row opened; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-on-strut` and `agent-off-strut`, Account's "Run in strut
     /// (preview)" switch turned on or off (dev builds; a later launch keeps it);
@@ -415,6 +415,11 @@ final class OffscreenDriver {
             // A click on the waiting card's "Always allow for …".
             guard model.agent?.waiting != nil else { throw Failure(description: "no card waiting") }
             model.agent?.answer(.alwaysAllow)
+        case "request-rows":
+            // A click on every device request's row in the open chat.
+            for row in model.chatRows where row.agentRequest != nil {
+                AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("request").set(true)
+            }
         case "device-allow":
             // A click on Allow once on a card waiting in the agent's DM.
             guard let chat = model.agentChat, let id = model.waitingCards[chat]?.keys.first else {

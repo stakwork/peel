@@ -505,7 +505,7 @@ private struct AgentRow<Content: View>: View {
 /// open is kept beside the list (`AgentOpenRows`), so a tool row stays open
 /// when its approval card comes and goes, or its row scrolls away; a click
 /// first tells the list, which keeps the row's top where it is.
-private struct AgentDisclosureRow<Label: View, Detail: View>: View {
+struct AgentDisclosureRow<Label: View, Detail: View>: View {
     @Environment(\.listRowExpanding) private var expanding
     let disclosure: AgentDisclosure
     let label: Label
@@ -618,13 +618,21 @@ private struct AgentToolRow: View {
     /// What it was asked and answered, for a tool whose row keeps nothing more.
     private var facts: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let content = tool.approval?.intent.content { detail("Content", content) }
-            detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
-            if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
+            if let content = tool.approval?.intent.content { FactLine(label: "Content", text: content) }
+            FactLine(label: "Asked", text: tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
+            if let summary = tool.summary { FactLine(label: "Answered", text: AgentToolTitle.summary(summary)) }
         }
     }
 
-    private func detail(_ label: String, _ text: String) -> some View {
+}
+
+/// One fact under an opened agent row: its label, then what it says
+/// ("Asked", "Answered", "Why"): a tool's details, a device request's.
+struct FactLine: View {
+    let label: String
+    let text: String
+
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
                 .foregroundStyle(Theme.secondaryText)

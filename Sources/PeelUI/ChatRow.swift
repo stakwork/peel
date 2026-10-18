@@ -176,19 +176,18 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         }
         var newAfter = newAfter
         var cardRows: [String: Int] = [:]
-        // The agent's DM as the agent chat draws it: of the bridge's lines,
-        // only its status lines and the newest copy of a request whose card
-        // is up; the rest only the bridge needs (an ack, a result, a cancel).
-        // Each request is one row, on its newest copy (where its card is while
-        // up); how this Mac answered it, from its result that went.
+        // In a direct message, a device request is one row, on its newest
+        // copy (where its card is while up), with how this Mac answered it
+        // from its result that went; a status line ("Waiting for your Mac")
+        // is its line; an ack, a result or a cancel has no row of its own.
         var requestRows: [String: Int64] = [:]
-        var answered: [String: ControlEnvelope.Status] = [:]
-        if agentDM {
+        var answered: [String: ControlEnvelope] = [:]
+        if !inTribe {
             for message in messages {
                 guard case .envelope(let envelope)? = message.control else { continue }
                 if envelope.op == .request, let id = envelope.id, let row = message.id { requestRows[id] = row }
                 if envelope.op == .result, message.fromMe, message.delivery != .failed, let re = envelope.re,
-                   let status = envelope.status { answered[re] = status }
+                   envelope.status != nil { answered[re] = envelope }
             }
         }
         for message in messages {
@@ -197,9 +196,15 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 ? message.controlLine(by: people.sender(of: message, inTribe: inTribe)) : nil
             if controlLine?.isEmpty == true { continue }
             var request: AgentRequest?
-            if agentDM, controlLine != nil, case .envelope(let envelope)? = message.control, envelope.op != .status {
+            if !inTribe, controlLine != nil, case .envelope(let envelope)? = message.control, envelope.op != .status,
+               envelope.op == .request || message.fromMe || agentDM {
+                // Your Mac's ack, result or cancel, and a request's older copies,
+                // have no row; anyone else's own line stays (in the agent chat, the
+                // agent's cancels are the bridge's too).
                 guard envelope.op == .request, let id = envelope.id, requestRows[id] == message.id else { continue }
-                request = AgentRequest(envelope, status: answered[id])
+                request = AgentRequest(envelope, answer: answered[id])
+                // Outside the agent chat any contact could send one: named, as its line was.
+                if !agentDM { request?.asker = people.sender(of: message, inTribe: inTribe).label }
             }
             // A collapsed thread's row stands for its newest message, which this is.
             let collapsed = message.standsForThread && controlLine == nil ? message.threadUUID.flatMap { threads[$0] } : nil
@@ -355,28 +360,49 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
 }
 
 /// A request from the agent to this Mac, as its DM's row says it: what was
-/// asked, and how this Mac answered (nil while it works on it).
+/// asked, and how this Mac answered (nil while it works on it), with what
+/// it answered: a read's chat data, a send's "Sent to …", why not.
 public struct AgentRequest: Equatable, Sendable {
     public let kind: String
+    /// What it was asked, as the agent wrote it.
+    public var args: PeelCore.JSONValue?
     public let status: ControlEnvelope.Status?
     /// Whether it waits on your answer on the Mac's card: a send in
     /// conversation, an approval, a change to your calendar. An
     /// automation's send goes on its grant.
     public let asks: Bool
+    /// The answer's text (`result.text`), as this Mac sent it.
+    public var text: String?
+    /// Why it was not done, as this Mac said it.
+    public var reason: String?
+    /// Who asked, outside the agent chat: any contact can send a request.
+    public var asker: String?
 
-    init(kind: String, status: ControlEnvelope.Status?, asks: Bool = false) {
+    public init(kind: String, args: PeelCore.JSONValue? = nil, status: ControlEnvelope.Status?, asks: Bool = false,
+                text: String? = nil, reason: String? = nil) {
         self.kind = kind
+        self.args = args
         self.status = status
         self.asks = asks
+        self.text = text
+        self.reason = reason
     }
 
-    init(_ request: ControlEnvelope, status: ControlEnvelope.Status?) {
+    /// `request`, answered by `answer` (this Mac's result), if it was.
+    init(_ request: ControlEnvelope, answer: ControlEnvelope?) {
         let kind = request.kind ?? ""
         var automation = false
         if case .object(let args)? = request.args { automation = args["automation"].map { $0 != .null } ?? false }
-        self.init(kind: kind, status: status, asks: kind == "approve" || kind == "send" && !automation
-            || kind.hasPrefix("calendar.") && kind != "calendar.events")
+        var text: String?
+        if case .object(let result)? = answer?.result, case .string(let said)? = result["text"] { text = said }
+        self.init(kind: kind, args: request.args, status: answer?.status,
+                  asks: kind == "approve" || kind == "send" && !automation || kind.hasPrefix("calendar.") && kind != "calendar.events",
+                  text: text, reason: answer?.error)
     }
+
+    /// What the row says: "Read your unread messages", after who asked
+    /// outside the agent chat ("Kate: Read your unread messages").
+    public var label: String { asker.map { "\($0): \(words)" } ?? words }
 
     /// "Read your unread messages", by the request's kind.
     public var words: String {
@@ -395,9 +421,10 @@ public struct AgentRequest: Equatable, Sendable {
     }
 
     /// How it ended, after the words: nil when it was done, as asked.
+    /// Outside the agent chat, one never answered was not this Mac's.
     public var outcome: String? {
         switch status {
-        case nil: "on your Mac…"
+        case nil: asker == nil ? "on your Mac…" : "Not answered"
         case .done?: nil
         case .denied?: "Declined"
         case .expired?: "Too late, nothing done"

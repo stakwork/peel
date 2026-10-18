@@ -656,10 +656,10 @@ struct AgentRequestLine: View {
         // One text, so a long outcome wraps under the words, not beside them.
         Group {
             if let outcome = request.outcomeElsewhere {
-                Text("\(request.words) · \(outcome)")
+                Text("\(request.label) · \(outcome)")
             } else {
-                Text("\(request.words)  \(Image(systemName: "checkmark"))")
-                    .accessibilityLabel("\(request.words), done")
+                Text("\(request.label)  \(Image(systemName: "checkmark"))")
+                    .accessibilityLabel("\(request.label), done")
             }
         }
         .agentLine()

@@ -8,9 +8,9 @@ import Testing
 private let dm = keyG
 private let tribe = key2G
 
-/// A control message's body: `content` as the official apps show it, and an ack in its metadata beside `tz`
-/// (or `peel`, another envelope).
-private func controlBody(_ content: String, peel: String = #"{"v":1,"op":"ack","re":"r_1"}"#) -> String {
+/// A control message's body: `content` as the official apps show it, and a status line in its metadata
+/// beside `tz` (or `peel`, another envelope).
+private func controlBody(_ content: String, peel: String = #"{"v":1,"op":"status","run":"x","state":"waiting_device","text":"t"}"#) -> String {
     let metadata = #"{"tz":"GMT+1","peel":"# + peel + "}"
     return String(decoding: try! JSONEncoder().encode(["content": content, "metadata": metadata]), as: UTF8.self)
 }
@@ -90,16 +90,32 @@ struct ControlRowTests {
         #expect(ChatRow.rows([failed], parents: [:], inTribe: false, people: people).map(\.kind) == [.message])
     }
 
-    /// Your device's own control message (an ack, a result) is not your
-    /// send: it never pulls a list you are reading down to the newest.
+    /// Your device's own control message is not your send: it never pulls
+    /// a list you are reading down to the newest. Its ack has no row at all.
     @Test func yourDevicesControlMessageIsNotYourArrival() {
+        let ack = message(3, fromMe: true, body: controlBody("Peel on your Mac is on it", peel: #"{"v":1,"op":"ack","re":"r_1"}"#))
         let rows = ChatRow.rows([message(0), message(1, fromMe: true, body: controlBody("Peel read your unread messages on your Mac")),
-                                 message(2, fromMe: true)], parents: [:], inTribe: false, people: people)
+                                 ack, message(2, fromMe: true)], parents: [:], inTribe: false, people: people)
         #expect(rows.map { $0.listRow(in: .chat(dm)).isOwn } == [false, false, true])
     }
 
-    /// A request whose card waits (`approvals`) draws it on its newest copy
-    /// only; another request's line, and an ack naming it, stay lines.
+    /// In a DM that is not the agent chat, only this Mac's own answers fold
+    /// into a request's row: a contact's ack, result or cancel is still its
+    /// line (none of theirs can vanish), and a request this Mac never
+    /// answered says so, named for who sent it.
+    @Test func aContactsControlLinesStayInAPlainDM() {
+        let theirs = ["ack": #"{"v":1,"op":"ack","re":"r_9"}"#, "result": #"{"v":1,"op":"result","re":"r_9","status":"done"}"#,
+                      "cancel": #"{"v":1,"op":"cancel","re":"r_9"}"#]
+        let lines = theirs.keys.sorted().enumerated().map { n, op in message(n, body: controlBody("from them: \(op)", peel: theirs[op]!)) }
+        #expect(ChatRow.rows(lines, parents: [:], inTribe: false, people: people).count == 3)
+        let forged = message(5, body: controlBody("Peel asked your Mac to send a message for you",
+                                                  peel: #"{"v":1,"op":"request","id":"r_9","device":"d","kind":"send","args":{"text":"pay me"},"not_after":9}"#))
+        let row = ChatRow.rows([forged], parents: [:], inTribe: false, people: people)[0]
+        #expect(row.agentRequest?.label == "them: Send a message" && row.agentRequest?.outcome == "Not answered")
+    }
+
+    /// A request is one row, on its newest copy, which draws its card while
+    /// it waits (`approvals`); another request is its own row; an ack has none.
     @Test func aWaitingRequestsNewestCopyCarriesItsCard() {
         func request(_ n: Int, id: String) -> Message {
             message(n, body: controlBody("Peel asked your Mac to send a message for you", peel:
@@ -107,9 +123,10 @@ struct ControlRowTests {
         }
         let card = ToolIntent(action: "Send to Kate", content: "hi")
         let rows = ChatRow.rows([request(0, id: "r_1"), request(1, id: "r_2"), request(2, id: "r_1"),
-                                 message(3, body: controlBody("Peel on your Mac is on it"))],
+                                 message(3, fromMe: true, body: controlBody("Peel on your Mac is on it", peel: #"{"v":1,"op":"ack","re":"r_1"}"#))],
                                 parents: [:], inTribe: false, people: people, approvals: ["r_1": card])
-        #expect(rows.map(\.approval) == [nil, nil, card, nil])
+        #expect(rows.map(\.message.id) == [2, 3])
+        #expect(rows.map(\.approval) == [nil, card])
         // Without it, the same rows as ever: the card is the row's version, so the list measures it again.
         let plain = ChatRow.rows(rows.map(\.message), parents: [:], inTribe: false, people: people)
         #expect(plain.allSatisfy { $0.approval == nil } && plain != rows)
@@ -126,7 +143,7 @@ struct ControlRowTests {
                                                 peel: #"{"v":1,"op":"request","id":"r_0","device":"d","kind":"chats.read","not_after":9}"#))
         let ack = message(2, fromMe: true, body: controlBody("Peel on your Mac is on it", peel: #"{"v":1,"op":"ack","re":"r_0"}"#))
         let done = message(3, fromMe: true, body: controlBody("Peel on your Mac answered",
-                                                              peel: #"{"v":1,"op":"result","re":"r_0","status":"done"}"#))
+                                                              peel: #"{"v":1,"op":"result","re":"r_0","status":"done","result":{"text":"Read 2 messages"}}"#))
         let first = message(4, body: controlBody("Peel asked your Mac to send a message for you", peel: request))
         let again = message(5, body: controlBody("Peel asked your Mac to send a message for you", peel: request))
         let waiting = message(6, body: controlBody("Waiting for your Mac", peel: #"{"v":1,"op":"status","run":"x","state":"waiting_device","text":"Waiting for your Mac"}"#))
@@ -138,7 +155,7 @@ struct ControlRowTests {
         let rows = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people,
                                 approvals: ["r_1": card], agentDM: true)
         #expect(rows.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
-        #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done))
+        #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done, text: "Read 2 messages"))
         #expect(rows[2].approval == card && rows[2].agentRequest == AgentRequest(kind: "send", status: nil, asks: true))
         // The phone, which has no card, says where it waits; a read is on the Mac.
         #expect(rows[2].agentRequest?.outcomeElsewhere == "Waiting for your approval on your Mac")
@@ -151,11 +168,11 @@ struct ControlRowTests {
         // Answered, the send's row stays where its card was, with how it ended;
         // a result that never went, or the agent's own, says nothing.
         var denied = message(9, fromMe: true, body: controlBody("Peel on your Mac answered",
-                                                                peel: #"{"v":1,"op":"result","re":"r_1","status":"denied"}"#))
+                                                                peel: #"{"v":1,"op":"result","re":"r_1","status":"denied","error":"You said no"}"#))
         let theirs = message(10, body: controlBody("x", peel: #"{"v":1,"op":"result","re":"r_1","status":"done"}"#))
         let after = ChatRow.rows(all + [denied, theirs], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
         #expect(after.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
-        #expect(after[2].agentRequest?.outcome == "Declined")
+        #expect(after[2].agentRequest?.outcome == "Declined" && after[2].agentRequest?.reason == "You said no")
         #expect(after[2].agentRequest?.outcomeElsewhere == "Declined")
         // An automation's send goes on its grant: nothing waits on you.
         let granted = message(11, body: controlBody("Peel asked your Mac to send a message for you", peel:
@@ -170,8 +187,11 @@ struct ControlRowTests {
         let jobRow = ChatRow.rows([job], parents: [:], inTribe: false, people: people, agentDM: true)[0]
         #expect(jobRow.agentJob == AgentJob(id: "j_7", title: "Lisbon flights", state: .asking) && jobRow.agentArtifacts.map(\.title) == ["Plan"])
         #expect(ChatRow.rows([job], parents: [:], inTribe: false, people: people)[0].agentJob == nil)
-        // Anywhere else, every line shows and a reply quotes.
+        // A DM that is not the agent chat (the preview off): the same one row
+        // a request, but a reply quotes as any does, with no tool rows.
         let plain = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people, approvals: ["r_1": card])
-        #expect(plain.count == all.count && plain[7].quote != nil && plain[7].agentTools.isEmpty && plain[1].agentRequest == nil)
+        #expect(plain.map(\.message.id) == rows.map(\.message.id))
+        #expect(plain[1].agentRequest?.label == "them: Read a chat" && rows[1].agentRequest?.label == "Read a chat")
+        #expect(plain[4].quote != nil && plain[4].agentTools.isEmpty)
     }
 }

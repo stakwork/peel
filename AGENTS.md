@@ -372,8 +372,9 @@ is a short plan. Update the status and the journal when you finish something.
   row will be; the agent's device requests draw it too), `AgentConnectButton`),
   `DeviceCards` (the cards for the agent's `send` and `approve` device
   requests, each on its request's line in the agent's DM via
-  `DeviceRequestLine` and `ChatRow.approval`, in the agent chat a request's
-  one row, `ChatRow.agentRequest`, and the send grants), `AgentTable` (the agent chat's
+  `DeviceRequestLine` and `ChatRow.approval`; in any DM a request's
+  one row, `ChatRow.agentRequest`, which opens to what it read or did,
+  `DeviceRequestDetail`; and the send grants), `AgentTable` (the agent chat's
   rows for `MessageTable`, `AgentListRow`, `AgentDMRows` (the agent's DM
   as the chat draws it: its rows as a chat's with tool rows above a reply,
   "writing…", the local turns above under "Earlier, on this Mac") and `AgentOpenRows`, which
@@ -606,7 +607,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `ChatData.swift` — a tool's result: header, the chats' data between
     markers that say other people wrote it, one cleaned line per message in
     the official format (`[sender] date (uuid=… thread=… reply=…): text`)
-    under a heading with the chat id, capped and cut by whole lines
+    under a heading with the chat id, capped and cut by whole lines;
+    `ChatDataReading`, a read's answer read back (its chats, each with the
+    messages read and their uuids) for a device request's row
   - `SendTool.swift` — `send_sphinx_message`, effect send: the chat by
     the read tools' resolver, thread and reply by `Engine.checkLinks`, the
     card's words and a tribe's price, then `Engine.sendText` capped at

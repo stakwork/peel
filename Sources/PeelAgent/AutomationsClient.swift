@@ -4,8 +4,9 @@ import Foundation
 import PeelCore
 
 /// One automation, as strut lists it (`docs/phases/12-automations.md`):
-/// the person's own, on `peel-automation`, or a system automation strut
-/// ships on a workflow of its own (`docs/system-automations.md`).
+/// the person's own, on `peel-automation` (or `peel-automation-run` with
+/// the strut preview on), or a system automation strut ships on a workflow
+/// of its own (`docs/system-automations.md`).
 public struct Automation: Sendable, Equatable, Identifiable {
     public struct LastRun: Sendable, Equatable {
         public let runId: String
@@ -26,6 +27,8 @@ public struct Automation: Sendable, Equatable, Identifiable {
     /// strut's trigger object (`every`, `at`, `on`, `tz`, …).
     public var trigger: AgentKit.JSONValue
     public var prompt: String
+    /// What each run is handed, as strut keeps it (templates and all).
+    public var input: AgentKit.JSONValue
     /// strut's sentence for the schedule: "Every Friday at 5:00 PM (London time)".
     public var summary: String
     public var nextRun: Date?
@@ -35,8 +38,9 @@ public struct Automation: Sendable, Equatable, Identifiable {
     /// Shipped with strut and run by strut alone: the person may turn it
     /// on or off and run it, and the agent may not touch it.
     public var isSystem: Bool { category == "system" }
-    /// The person's own, made through the agent: on `peel-automation`.
-    public var isYours: Bool { workflow == AutomationsClient.workflow }
+    /// The person's own, made through the agent: on `peel-automation`, or
+    /// on `peel-automation-run` with the strut preview on.
+    public var isYours: Bool { AutomationsClient.yourWorkflows.contains(workflow) }
 
     /// Its last run did not finish.
     public var lastRunFailed: Bool { lastRun?.status == "error" }
@@ -62,7 +66,8 @@ public struct Automation: Sendable, Equatable, Identifiable {
         category = json["category"]?.string
         enabled = json["enabled"] != .bool(false)
         trigger = json["trigger"] ?? .object([:])
-        prompt = AutomationsClient.unescaped(json["input"]?["prompt"]?.string ?? "")
+        input = json["input"] ?? .object([:])
+        prompt = AutomationsClient.unescaped(input["prompt"]?.string ?? "")
         summary = json["summary"]?.string ?? ""
         nextRun = json["nextRunAt"]?.string.flatMap(Self.date)
         lastRun = json["lastRun"].flatMap { last in
@@ -107,7 +112,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         startedAt = json["startedAt"]?.string.flatMap(Automation.date)
         reply = json["output"]?["body"].flatMap { try? $0.decoded(as: AutomationReply.self) }
         // An empty one says nothing: "Finished".
-        text = json["output"]?["text"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+        text = json["output"]?["text"]?.string.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         // A number, or one a template wrote as text.
         cost = switch json["output"]?["cost"] {
         case .number(let dollars)?: dollars
@@ -174,8 +179,17 @@ public struct SchedulePreview: Sendable, Equatable {
 /// automation hangs off its own workflow, which strut runs alone.
 public struct AutomationsClient: Sendable {
     public let server: MemoryServer
+    /// Where the person's new automations go and the agent's tools look:
+    /// `workflow`, or `Orchestrator.automationWorkflow` with the strut preview on.
+    public let yours: String
+    /// Where a new automation's run ends go: the agent's bridge, which sends
+    /// each one's report to the agent's DM. None on `workflow`, whose step
+    /// hands the run to this Mac.
+    public let callback: URL?
 
     public static let workflow = "peel-automation"
+    /// The workflows the person's own automations run on.
+    public static let yourWorkflows: Set<String> = [workflow, Orchestrator.automationWorkflow]
     /// The secrets in strut's store that `step` reads: Peel's bearer token
     /// and its port on this Mac. Two, not one JSON value, so strut's
     /// cassettes scrub each (they scrub a secret's whole value).
@@ -185,8 +199,10 @@ public struct AutomationsClient: Sendable {
     static let step = "peel/run-automation"
     static let replyLimit = 2_000_000
 
-    public init(server: MemoryServer) {
+    public init(server: MemoryServer, yours: String = Self.workflow, callback: URL? = nil) {
         self.server = server
+        self.yours = yours
+        self.callback = callback
     }
 
     // MARK: Automations
@@ -228,15 +244,27 @@ public struct AutomationsClient: Sendable {
     }
 
     public func create(name: String, prompt: String, trigger: AgentKit.JSONValue) async throws -> Automation {
-        let body: AgentKit.JSONValue = [
-            "name": .string(name), "trigger": trigger, "enabled": true,
-            "input": Self.input(name: name, prompt: prompt),
-        ]
-        return try automation(in: await call("POST", "workflows/\(Self.workflow)/automations", body, what: "the new automation"))
+        try automation(in: await make(name: name, trigger: trigger, enabled: true, input: Self.input(name: name, prompt: prompt),
+                                      what: "the new automation"))
     }
 
+    /// Makes one on `yours`, under `id` when given, its run ends to
+    /// `callback` when there is one.
+    func make(
+        id: String? = nil, name: String, trigger: AgentKit.JSONValue, enabled: Bool, input: AgentKit.JSONValue, what: String
+    ) async throws -> AgentKit.JSONValue {
+        var body: [String: AgentKit.JSONValue] = ["name": .string(name), "trigger": trigger, "enabled": .bool(enabled), "input": input]
+        if let id { body["id"] = .string(id) }
+        if let callback { body["callback"] = Self.callback(callback) }
+        return try await call("POST", "workflows/\(Self.escaped(path: yours))/automations", .object(body), what: what)
+    }
+
+    /// strut's `callback` for an automation: where its run ends go.
+    static func callback(_ url: URL) -> AgentKit.JSONValue { ["url": .string(url.absoluteString)] }
+
     /// Changes only what is given; the prompt and name travel together in
-    /// the run's input, so changing either sends both.
+    /// the run's input, so changing either sends both, with the rest of the
+    /// input as it was (a send grant's key, `now`).
     public func update(
         _ current: Automation, name: String? = nil, prompt: String? = nil, trigger: AgentKit.JSONValue? = nil,
         enabled: Bool? = nil
@@ -246,7 +274,9 @@ public struct AutomationsClient: Sendable {
         if let trigger { body["trigger"] = trigger }
         if let enabled { body["enabled"] = .bool(enabled) }
         if name != nil || prompt != nil {
-            body["input"] = Self.input(name: name ?? current.name, prompt: prompt ?? current.prompt)
+            var input = current.input.object ?? [:]
+            input.merge(Self.input(name: name ?? current.name, prompt: prompt ?? current.prompt).object ?? [:]) { _, new in new }
+            body["input"] = .object(input)
         }
         guard !body.isEmpty else { return current }
         return try automation(in: await call("PATCH", path(current), .object(body), what: "the automation"))
@@ -287,10 +317,11 @@ public struct AutomationsClient: Sendable {
         return (list, now)
     }
 
-    /// What every run is handed: the prompt, the automation's name, and when
-    /// the last successful run finished, resolved by strut at each fire.
+    /// What every run is handed: the prompt, the automation's name, when
+    /// the last successful run finished and when this one fired, resolved by
+    /// strut at each fire (`peel-automation` reads no `now`; strut drops it).
     static func input(name: String, prompt: String) -> AgentKit.JSONValue {
-        ["name": .string(escaped(name)), "prompt": .string(escaped(prompt)), "since": "{{ last.finishedAt }}"]
+        ["name": .string(escaped(name)), "prompt": .string(escaped(prompt)), "since": "{{ last.finishedAt }}", "now": "{{ now }}"]
     }
 
     /// strut reads `{{ … }}` anywhere in an automation's input as a template:
@@ -319,11 +350,11 @@ public struct AutomationsClient: Sendable {
 
     private static let gap: Character = "\u{200B}"
 
-    private func path(_ automation: Automation) -> String {
+    func path(_ automation: Automation) -> String {
         "workflows/\(Self.escaped(path: automation.workflow))/automations/\(Self.escaped(path: automation.id))"
     }
 
-    private static func escaped(path part: String) -> String {
+    static func escaped(path part: String) -> String {
         part.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(["-"])) ?? part
     }
 

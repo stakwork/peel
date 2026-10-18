@@ -661,8 +661,13 @@ is a short plan. Update the status and the journal when you finish something.
     `AutomationsClient.installOrchestrator` publishes the steps and
     `peel-automation-run` before the bridge starts (and drops any old
     secrets), `useBridge` stores the new ones once it runs, `forgetBridge`
-    when the preview turns off. The steps and `peel-automation-run` are sealed. Tested in
-    `OrchestratorTests` (a staged strut with the automation steps, when there is one)
+    when the preview turns off. The steps and `peel-automation-run` are sealed. PR 7
+    (`docs/agent-on-strut.md` "Built: PR 7"): `sphinx/post` posts from an automation's run
+    with its send grant (kept by the automation's id, from strut's `ctx.automation`), `moveYours` moves the
+    person's automations between `peel-automation` and `peel-automation-run` as the
+    preview turns off and on, `pointRunEnds` points their run ends at the running bridge.
+    Tested in `OrchestratorTests` (a staged strut with the automation steps, when there is
+    one) and the journey `Journeys/Orchestrator`
   - `AutomationServer.swift` — where strut reaches Peel when an automation
     fires (`docs/phases/12-automations.md`): `POST /automations/run` on
     127.0.0.1 with the bearer token `AppModel` makes when the agent opens

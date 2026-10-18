@@ -25,9 +25,10 @@ public enum Orchestrator {
     /// steps call.
     static let tools: [String] = DeviceStep.reads.map(\.type) + [DeviceStep.send.type] + automationTools
 
-    /// What an automation's run is granted: memory and the reads; no send
-    /// (PR 7 adds one for an automation with a send grant), no schedules.
-    static let automationRunTools = MemoryTools.Names.strut.all + DeviceStep.reads.map(\.type)
+    /// What an automation's run is granted: memory, the reads, and posting
+    /// as the user (`DeviceStep.post`), which the Mac allows only to the chats
+    /// of the automation's send grant; no schedules.
+    static let automationRunTools = MemoryTools.Names.strut.all + DeviceStep.reads.map(\.type) + [DeviceStep.post.type]
 
     // MARK: The prompt
 
@@ -57,15 +58,21 @@ public enum Orchestrator {
                 """),
             AgentMessageLink.instruction, SphinxTools.systemPrompt(.strut), waiting,
             SphinxTools.sendPrompt(tool: DeviceStep.send.type), MemoryTools.systemPrompt(.strut),
-            AutomationTools.systemPrompt(list: "automation/list"),
+            AutomationTools.systemPrompt(list: "automation/list", posts: true),
         ].joined(separator: " ")
 
     /// `peel-automation-run`'s prompt: the same, unattended, with nothing
-    /// about sending or scheduling, whose tools a run is not offered.
+    /// about scheduling, whose tools a run is not offered; a post only as
+    /// the automation was allowed to.
     static let unattended = [
             intro("Your result reaches the user in your direct message; the run's message says when it runs."),
             AgentMessageLink.instruction, SphinxTools.systemPrompt(.strut),
             "If their Mac does not answer a tool, say what you could not read.", MemoryTools.systemPrompt(.strut),
+            """
+            \(DeviceStep.post.type) posts a message as the user, but only for an automation they allowed to post when \
+            they made it, and only to the chats they allowed then; their Mac refuses anything else, and adds "[Agent] " \
+            before each message. Post only what and where the task says to.
+            """,
         ].joined(separator: " ")
 
     // MARK: The host delta
@@ -77,7 +84,8 @@ public enum Orchestrator {
     static func hostConfig() throws -> Data {
         let config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array(tools.map(AgentKit.JSONValue.string)), "system": .string(section), "model": .null],
-            "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type)],
+            // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
+            "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]
         return Data(config.jsonString.utf8)
     }
@@ -87,7 +95,9 @@ public enum Orchestrator {
     /// One automation run in strut: the input strut's `automation/*` steps
     /// write (`name`, `prompt`, `since`, `now`), today's run instruction
     /// (`AutomationRun.instruction`) as its prompt, its reply in the
-    /// orchestrator's shape so the bridge reads both alike.
+    /// orchestrator's shape so the bridge reads both alike. The bridge sends
+    /// its text to the DM under the automation's name; nothing to report is
+    /// no text, which the bridge sends nothing for.
     static var automationRunYAML: String {
         """
         name: \(automationWorkflow)
@@ -115,10 +125,11 @@ public enum Orchestrator {
                 required: [text]
                 properties:
                   text: { type: string, description: "What the person should be told, written for them; only \(AutomationRun.nothingToReport) when there is nothing worth telling this time." }
+                  nothing: { type: boolean, description: "true when there is nothing worth telling them this time." }
           - id: result
             type: pack
             config:
-              text: "{{ turn.object.text }}"
+              text: \(yamlString(reportTemplate))
               artifacts: []
               cost: "{{ turn.cost }}"
         params:
@@ -127,6 +138,15 @@ public enum Orchestrator {
 
         """
     }
+
+    /// The report as the DM shows it: the automation's name, then the text;
+    /// only the blank line between when there is nothing to report, which the
+    /// bridge reads as nothing. (strut reads no `{{ }}` across a line break, so
+    /// the break sits between two.)
+    static let reportTemplate = {
+        let nothing = "turn.object.nothing === true || turn.object.text === '\(AutomationRun.nothingToReport)' || turn.object.text === ''"
+        return "{{ \(nothing) ? '' : '**' + input.name + '**' }}\n\n{{ \(nothing) ? '' : turn.object.text }}"
+    }()
 
     /// The run's message, as `AutomationRun.instruction` words it, from the input.
     static let runPrompt = """
@@ -138,7 +158,7 @@ public enum Orchestrator {
         Carry out the task below with the tools you have, then reply with exactly what the person should be told: \
         it is delivered to them as it is, so write it for them, not about the run. If there is nothing worth telling \
         them this time, reply with only \(AutomationRun.nothingToReport). If a step would need something you cannot \
-        do here, such as sending a message to someone, say what you would send instead of doing it.
+        do here, say what you would have done instead of doing it.
 
         Task: {{ input.prompt }}
         """
@@ -230,21 +250,72 @@ struct DeviceStep: Sendable {
             """,
         wait: 300, lifetime: 3600)
 
+    /// A post as the user from an automation's run (docs/agent-on-strut.md,
+    /// "Sends as you"): a `send` naming the automation that fired the run,
+    /// which the step takes from `ctx.automation` (stamped by strut's scheduler
+    /// on a fire, never by a request body or the model), and the Mac keeps
+    /// its send grant under. The Mac sends it with no card if the grant covers the chat and
+    /// the price, adding "[Agent] ", and refuses anything else. It must expire
+    /// within the Mac's window for an automation's send.
+    static let post = DeviceStep(
+        type: "sphinx/post", kind: "send",
+        description: """
+            Post a text message as the user to a contact or tribe, from this automation. Only an automation the user allowed \
+            to post can, and only to the chats they allowed; anything else is refused and nothing is sent. With thread_uuid it \
+            goes into that tribe thread; with reply_to_uuid it replies to that message. Use only uuids you read in a result for \
+            that same chat.
+            """,
+        input: """
+            z.object({ chat: \(chat), text: z.string().min(1).max(\(SphinxTools.maxMessage)).describe("The message as it should be sent."), thread_uuid: z.string().optional().describe("A tribe thread's root uuid, or any message in it, to post in that thread."), reply_to_uuid: z.string().optional().describe("The uuid of a message in this chat to reply to.") })
+            """,
+        wait: 300, lifetime: 600)
+
+    /// How long after its fire a run may still post (`input.now`): a post
+    /// belongs to the fire that made it, not a run resumed later.
+    static let postWindow = 600
+
     /// The card strut's `automation/*` steps ask before acting: their
-    /// `{ intent }`, answered `{ approved }`.
+    /// `{ intent, grant? }`, answered `{ approved }`. A grant (the
+    /// automation's id, minted by strut before the card, its name, the chats
+    /// it may post to and its cap) is worded and kept by the Mac
+    /// (`DeviceActions.approve`); one with no chats names the automation a
+    /// change, run or delete is for, whose grant on file the card names.
     static let approve = DeviceStep(
         type: "sphinx/approve", kind: "approve",
         description: "Ask the user on their Mac to allow an action, on a card showing it. Called by strut's automation steps, never as a tool.",
-        input: "z.object({ intent: z.object({ action: z.string(), content: z.string().optional(), details: z.array(z.string()).optional() }) })",
+        input: """
+            z.object({ intent: z.object({ action: z.string(), content: z.string().optional(), details: z.array(z.string()).optional() }), grant: z.object({ automation: z.string(), name: z.string().optional(), chats: z.array(z.string()).min(1).max(20).optional(), max_price_sats: z.number().int().min(0).max(\(DeviceActions.maxPriceSats)).optional() }).optional() })
+            """,
         wait: 300, lifetime: 3600)
 
-    static let all = reads + [send, approve]
+    static let all = reads + [send, post, approve]
 
     /// The step, as strut loads a custom one: `defineStep` from strut, the
     /// bridge reached on 127.0.0.1 only, its port and token read from the
     /// secret store in code, so a workflow can name neither.
     var source: String {
-        let args = kind == "send" ? "{ ...cfg, max_price_sats: cfg.max_price_sats ?? 1000000 }" : "cfg"
+        // A post names the automation whose fire this run is (`ctx.automation`,
+        // which only strut's scheduler sets), lives no longer than its fire's
+        // window (`input.now`), and its grant's own cap is the one that
+        // counts: the Mac takes the lower.
+        var args = "cfg", grant = "", notAfter = "Math.floor(Date.now() / 1000) + \(lifetime)"
+        if type == Self.post.type {
+            args = "{ ...cfg, automation, max_price_sats: \(DeviceActions.maxPriceSats) }"
+            grant = """
+                const automation = ctx.automation?.id;
+                    if (typeof automation !== "string" || !automation) {
+                      return { status: "denied", error: "Only an automation's scheduled run may post as the user; nothing was sent." };
+                    }
+                    const fired = Math.floor(Date.parse(String(ctx.input?.now ?? "")) / 1000);
+                    if (!Number.isFinite(fired) || Date.now() / 1000 - fired > \(Self.postWindow)) {
+                      return { status: "denied", error: "This run fired more than \(Self.postWindow / 60) minutes ago, too long for a post; nothing was sent." };
+                    }
+
+                """
+            notAfter = "Math.min(\(notAfter), fired + \(Self.postWindow + 300))"
+        } else if type == Self.send.type {
+            args = "{ ...cfg, max_price_sats: cfg.max_price_sats ?? \(DeviceActions.maxPriceSats) }"
+        }
         // An approval: the model is never given its result as text.
         let answer = kind == "approve"
             ? """
@@ -274,14 +345,14 @@ struct DeviceStep: Sendable {
                   throw new Error('secrets "\(Self.tokenSecret)" and "\(Self.portSecret)" are not set: Peel stores them when the agent\\'s bridge starts');
                 }
                 if (!ctx.runId || !ctx.path) throw new Error("\(type) runs only inside a run, as an agent's tool");
-                const args = \(args);
+                \(grant)const args = \(args);
                 // The same call asks the same question again (a resumed run gets the stored answer);
                 // any other args are another question, so an answer never stands for what it did not see.
                 const id = `${ctx.runId}/${createHash("sha256").update(`${ctx.path}\\n\(kind)\\n${JSON.stringify(args)}`).digest("hex").slice(0, 32)}`;
                 const res = await ctx.services.http(`http://127.0.0.1:${port}/bridge/device/request`, {
                   method: "POST",
                   headers: { authorization: `Bearer ${token}` },
-                  body: { id, kind: "\(kind)", args, wait_secs: \(wait), not_after: Math.floor(Date.now() / 1000) + \(lifetime), run: ctx.runId },
+                  body: { id, kind: "\(kind)", args, wait_secs: \(wait), not_after: \(notAfter), run: ctx.runId },
                   timeout: \((wait + 30) * 1000),
                 });
                 if (!res.ok) {
@@ -329,5 +400,59 @@ extension AutomationsClient {
     /// store, so no step posts to that port (and its token) again.
     public func forgetBridge() async throws {
         try await deleteSecrets([DeviceStep.portSecret, DeviceStep.tokenSecret], what: "the bridge's secrets")
+    }
+    // MARK: Moving the person's automations (docs/agent-on-strut.md, PR 7)
+
+    /// Moves the person's automations onto `yours`: with the strut preview
+    /// on, `Orchestrator.automationWorkflow`, `callback` the bridge's; off,
+    /// `AutomationsClient.workflow` with none. Each keeps its id (strut's ids
+    /// are a workflow's own, and the Mac keeps a send grant under it), name,
+    /// schedule, input and whether it is on; its earlier runs stay with the
+    /// old workflow. It is made on `yours` first and only then deleted from
+    /// the other, so a move cut short leaves it on both, never on neither:
+    /// the next move finds the copy (the same id) and only deletes the old one; one whose
+    /// old copy could not be deleted is named, and the next move tries again.
+    /// A one-off that is done stays where it is. "Since the last run" carries
+    /// over: until the copy has a run of its own, the original's last start.
+    /// Returns the names of the ones it could not move.
+    public func moveYours() async throws -> [String] {
+        let all = try await list().filter(\.isYours)
+        let there = all.filter { $0.workflow == yours }
+        var stuck: [String] = []
+        for automation in all where automation.workflow != yours && !automation.isDone {
+            let copied = there.contains { $0.id == automation.id }
+            if !copied {
+                var input = automation.input.object ?? [:]
+                if input["now"] == nil { input["now"] = "{{ now }}" }
+                if let last = automation.lastRun, last.status == "success", let started = last.startedAt {
+                    let at = started.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: true))
+                    input["since"] = .string("{{ last.finishedAt || '\(at)' }}")
+                }
+                do {
+                    _ = try await make(id: automation.id, name: automation.name, trigger: automation.trigger,
+                                       enabled: automation.enabled, input: .object(input),
+                                       what: "\u{201C}\(automation.name)\u{201D} on \(yours)")
+                } catch {
+                    stuck.append(automation.name)
+                    continue
+                }
+            }
+            do {
+                try await delete(automation)
+            } catch {
+                stuck.append(automation.name)
+            }
+        }
+        return stuck
+    }
+
+    /// Points the run ends of every automation on `Orchestrator.automationWorkflow`
+    /// at `callback`, the bridge running now: its token and port are new on
+    /// each launch, so the one an automation was made with goes stale.
+    public func pointRunEnds(at callback: URL) async throws {
+        for automation in try await list(workflow: Orchestrator.automationWorkflow) where automation.isYours {
+            _ = try await call("PATCH", path(automation), ["callback": Self.callback(callback)],
+                               what: "\u{201C}\(automation.name)\u{201D}")
+        }
     }
 }

@@ -39,6 +39,10 @@ extension JSONValue {
     public var array: [JSONValue]? {
         if case .array(let value) = self { value } else { nil }
     }
+
+    public var object: [String: JSONValue]? {
+        if case .object(let value) = self { value } else { nil }
+    }
 }
 
 // No ExpressibleByNilLiteral: with it, `condition ? nil : value` quietly

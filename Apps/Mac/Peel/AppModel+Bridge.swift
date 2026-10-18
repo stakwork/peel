@@ -52,6 +52,8 @@ final class AgentBridge {
     /// Your messages in the agent's DM whose turn Stop ended here: no
     /// "writing…" for them, whether or not the bridge's "Stopped." comes.
     var stopped: Set<String> = []
+    /// The person's automations moving between workflows (`AppModel.moveAutomations`), one move at a time.
+    @ObservationIgnored var moving: Task<String?, Never>?
 
     func stop() {
         starting?.cancel()
@@ -144,8 +146,9 @@ extension AppModel {
         } else {
             // Off, this Mac answers no agent's requests (on, once the bridge is set
             // up: `startBridge`), and strut forgets where the stopped bridge was, so
-            // no step posts to that port again; then a strut started only for the
-            // preview stops, unless a reply or a move uses it (then at quit).
+            // no step posts to that port again; the person's automations go back to
+            // `peel-automation`; then a strut started only for the preview stops,
+            // unless a reply or a move uses it (then at quit).
             let engine = engine, server = strut?.server
             var started: BundledStrut?
             if !macAgent.hasOwnStrut, agent?.isRunning != true, memoryMove?.isRunning != true {
@@ -154,9 +157,14 @@ extension AppModel {
             }
             agentBridge.clearing = Task {
                 try? await engine?.setDeviceAgent(nil)
-                if let server { try? await AutomationsClient(server: server).forgetBridge() }
+                if let server {
+                    let client = AutomationsClient(server: server)
+                    try? await client.forgetBridge()
+                    await moveAutomations(on: server, to: AutomationsClient.workflow, callback: nil)
+                }
                 started?.stop(quietly: true)
             }
+            useAutomationTools()
         }
         lookForMemory(reporting: true)
         lookForBridge()
@@ -196,12 +204,14 @@ extension AppModel {
             throw PeelError("This build of Peel has no bridge (scripts/stage-bridge.sh).")
         }
         bridge.bridge = running
-        running.onChange = { [weak bridge, weak running] in
+        running.onChange = { [weak self, weak bridge, weak running] in
             // Runner stopped by itself: tried again only when strut starts again or the preview is turned on.
             guard let bridge, let running, running.server == nil, bridge.bridge === running,
                   bridge.status != .off else { return }
             bridge.strut = nil
             bridge.status = .failed("The agent's bridge stopped.")
+            // New automations go where they run without it.
+            self?.useAutomationTools()
         }
         // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
         let client = AutomationsClient(server: server)
@@ -221,5 +231,9 @@ extension AppModel {
         try await client.useBridge(reached)
         try Task.checkCancellation()
         bridge.status = .running
+        // The person's automations run here now, their reports to the DM (and the
+        // agent's tools make new ones here, reporting there).
+        useAutomationTools()
+        await moveAutomations(on: server, to: Orchestrator.automationWorkflow, callback: reached.runEnds)
     }
 }

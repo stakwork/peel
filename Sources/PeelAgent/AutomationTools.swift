@@ -23,18 +23,30 @@ public struct AutomationTools: Sendable {
 
     public static let systemPrompt = systemPrompt(list: "list_automations")
 
-    /// `list`: the tool that lists them, as a loop offers it.
-    static func systemPrompt(list: String) -> String {
-        """
-        You can set up automations: a task Peel carries out on its own, on a schedule or once, with its result \
-        delivered to this chat. A reminder ("remind me tomorrow at 8 to…", "text me the score on Saturday") is an \
-        automation that runs once. Write an automation's prompt as a standalone instruction for a future run that \
-        has the read and memory tools but no one watching and no send tool. Each run is told when the last one \
-        finished, so write "since the last run"; never have a run save or recall its own progress, times or \
-        cursors in memory. When a request names two times (read on Friday, tell me on Sunday), ask which one it \
-        should run at. Find an automation with \(list) before changing it. Each change is shown to the \
-        person to approve.
-        """
+    /// `list`: the tool that lists them, as a loop offers it. `posts`: its
+    /// automations may post as the person, with a grant (strut's steps).
+    static func systemPrompt(list: String, posts: Bool = false) -> String {
+        let run = posts
+            ? """
+                has the read and memory tools and no one watching, and posts only when its grant allows (below). \
+                An automation may post as the user only when they ask for one that does ("in 5 minutes post to Hive \
+                that…", "every Monday post a recap to Hive"): give it a grant, { chats: [each chat it may post to, by \
+                name] }, with max_price_sats only when they named the most a message may cost (left out, it is what \
+                those chats cost now). Their Mac shows the chats and the price on the same card, and refuses any \
+                other chat when it runs. Its prompt says what to post and where; for a fixed message, the message \
+                itself, word for word. Their Mac starts each post with "[Agent] ": leave that out.
+                """
+            : "has the read and memory tools but no one watching and no send tool."
+        return """
+            You can set up automations: a task Peel carries out on its own, on a schedule or once, with its result \
+            delivered to this chat. A reminder ("remind me tomorrow at 8 to…", "text me the score on Saturday") is an \
+            automation that runs once. Write an automation's prompt as a standalone instruction for a future run that \
+            \(run) Each run is told when the last one \
+            finished, so write "since the last run"; never have a run save or recall its own progress, times or \
+            cursors in memory. When a request names two times (read on Friday, tell me on Sunday), ask which one it \
+            should run at. Find an automation with \(list) before changing it. Each change is shown to the \
+            person to approve.
+            """
     }
 
     // MARK: - Schemas
@@ -73,8 +85,8 @@ public struct AutomationTools: Sendable {
             inputSchema: ["type": "object", "properties": [:], "additionalProperties": false],
             effect: .read
         ) { _ in
-            // strut filters by workflow; checked again here.
-            let automations = try await client.list(workflow: AutomationsClient.workflow).filter(\.isYours)
+            // Both of the person's workflows: one a move left behind is still theirs.
+            let automations = try await client.list().filter(\.isYours)
             guard !automations.isEmpty else { return .text("No automations yet.") }
             var data = ChatData("\(automations.count) automations:")
             for automation in automations { data.add(describe(automation)) }

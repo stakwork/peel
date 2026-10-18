@@ -6,17 +6,18 @@ import PeelCore
 /// and `peel agent` share: the time; given an account's storage, the Sphinx
 /// read tools; given its engine, the send tool too, which waits on the
 /// person's approval for each message; given a memory, the memory tools;
-/// and, where automations can run (the app's `AutomationServer`), the
-/// automation tools beside them.
+/// and, where automations can run (the app's `AutomationServer`, or strut's
+/// `peel-automation-run` with the strut preview on), the automation tools
+/// beside them, over `automations`.
 public struct AgentSetup: Sendable {
     public let storage: Storage?
     public let engine: Engine?
     public let memory: MemoryServer?
-    public let automations: Bool
+    public let automations: AutomationsClient?
 
     /// `storage` alone reads an account; `engine` reads its own storage and
     /// sends through it. Never both.
-    public init(storage: Storage? = nil, sending engine: Engine? = nil, memory: MemoryServer? = nil, automations: Bool = false) {
+    public init(storage: Storage? = nil, sending engine: Engine? = nil, memory: MemoryServer? = nil, automations: AutomationsClient? = nil) {
         precondition(storage == nil || engine == nil, "AgentSetup: storage or an engine, not both")
         self.storage = storage ?? engine?.storage
         self.engine = engine
@@ -33,7 +34,7 @@ public struct AgentSetup: Sendable {
         }
         if let memory {
             tools += MemoryTools(server: memory).tools
-            if automations { tools += AutomationTools(client: AutomationsClient(server: memory)).tools }
+            if let automations { tools += AutomationTools(client: automations).tools }
         }
         return ToolRegistry(tools)
     }
@@ -50,7 +51,7 @@ public struct AgentSetup: Sendable {
         if engine != nil, !unattended { prompt += " " + SphinxTools.sendPrompt }
         if memory != nil {
             prompt += " " + MemoryTools.systemPrompt
-            if automations, !unattended { prompt += " " + AutomationTools.systemPrompt }
+            if automations != nil, !unattended { prompt += " " + AutomationTools.systemPrompt }
         }
         return prompt
     }

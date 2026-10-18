@@ -85,6 +85,21 @@ final class DeviceCards {
         readGrants()
     }
 
+    /// The grants of automations strut no longer has go (one the agent
+    /// deleted, or any other way): `held` is the ids of the person's
+    /// automations now, `missed` the grants' ids it did not list at the last
+    /// read. Only an id missing from both goes, so one read that lacks an
+    /// automation takes nothing; and one kept in the last 10 minutes stays,
+    /// since its automation is made just after its card is allowed. Returns
+    /// the ids missing now, for the next read.
+    func revokeGrants(missingFrom held: Set<String>, missedBefore missed: Set<String>) throws -> Set<String> {
+        guard let store = store ?? model?.agent.map({ SendGrants(beside: $0.rules) }) else { return [] }
+        let missing = Set(grants.map(\.automation)).subtracting(held)
+        let kept = held.union(missing.subtracting(missed))
+        if try store.revoke(allBut: kept, keptBefore: Date(timeIntervalSinceNow: -600)) > 0 { readGrants() }
+        return missing
+    }
+
     func readGrants() {
         grants = (try? store?.all()) ?? []
     }

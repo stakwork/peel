@@ -1309,4 +1309,8 @@ extension EnvironmentValues {
     /// A row in a message list about to open or close part of itself, by
     /// its id: the list holds that row's top (`ChatListController.userExpanded`).
     @Entry var listRowExpanding: @MainActor (String) -> Void = { _ in }
+    /// The row is in the agent's DM, drawn as the agent chat: the agent's
+    /// messages with Peel's logo and AGENT, their links to messages opening
+    /// them (`MessageText`'s `agentLinks`).
+    @Entry var inAgentDM = false
 }

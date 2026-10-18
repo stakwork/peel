@@ -112,6 +112,85 @@ extension Journeys {
             for person in [alice, fixture.bob] { await person.close() }
         }
 
+        /// The agent chat as the agent's DM (docs/agent-on-strut.md, PR 6),
+        /// on what the Mac reads from it: each reply names the message it
+        /// answers (`AgentDM.unanswered`) and lists the tools its run used
+        /// (`agentTools`); Stop's `cancel` with no run named stops the turn
+        /// in flight, whose reply is "Stopped."; `/new` is the bridge's own,
+        /// answered with its confirmation and no model call.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func theDMAnswersStopsAndStartsAgainAsTheAgentChatReadsIt() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                if body.contains("Take your time") {
+                    // Long enough that only a cancel ends the turn sooner.
+                    Thread.sleep(forTimeInterval: 25)
+                    return Self.toolUse("final_answer", ["text": "Took my time.", "artifacts": []])
+                }
+                guard body.contains(#""type":"tool_result""#) else { return Self.toolUse("sphinx_unseen", [:]) }
+                return Self.toolUse("final_answer", ["text": "Caught up.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-agent-dm-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator()
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            try await client.useBridge(try #require(bridge.server))
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            try await alice.engine.setDeviceAgent(agent)
+
+            /// Sends `text` to the agent; its stored message once the server has it.
+            func ask(_ text: String) async throws -> Message {
+                let tag = try #require(try await alice.engine.sendText(text, to: agent))
+                return try await eventually("\(text) to go") {
+                    try alice.storage.message(tag: tag).flatMap { $0.delivery == .delivered && $0.uuid != nil ? $0 : nil }
+                }
+            }
+            func reply(to asked: Message) async throws -> Message {
+                try await eventually("the reply to \(asked.content ?? "")", timeout: .seconds(60)) {
+                    try alice.messages(in: agent).first { !$0.fromMe && $0.control == nil && $0.replyUUID == asked.uuid }
+                }
+            }
+
+            let caughtUp = try await ask("What did I miss?")
+            #expect(AgentDM.unanswered(in: try alice.messages(in: agent))?.uuid == caughtUp.uuid)
+            let answer = try await reply(to: caughtUp)
+            #expect(answer.content == "Caught up.")
+            // The tool its run called, as the bridge read it from the run's events.
+            #expect(answer.agentTools.map { $0.name.replacingOccurrences(of: "/", with: "_") } == ["sphinx_unseen"], "\(answer.agentTools)")
+            #expect(AgentDM.unanswered(in: try alice.messages(in: agent)) == nil)
+
+            let slow = try await ask("Take your time")
+            try await eventually("the model to be asked") { model.requests.contains { $0.contains("Take your time") } }
+            let stopStart = ContinuousClock.now
+            _ = try await alice.engine.sendControl(ControlEnvelope(op: .cancel), text: "Stop", to: agent)
+            let stopped = try await reply(to: slow)
+            #expect(stopped.content == "Stopped.", "strut ended the turn with \(stopped.content ?? "nothing")")
+            // strut ends the run once the model call in flight returns (it is
+            // not aborted), so the Mac's Stop does not wait for this.
+            print("stop took \(ContinuousClock.now - stopStart)")
+
+            let fresh = try await ask("/new")
+            #expect(try await reply(to: fresh).content == "Started a new conversation.")
+            #expect(AgentDM.unanswered(in: try alice.messages(in: agent)) == nil)
+
+            for person in [alice, other] { await person.close() }
+        }
+
         static func strutCall(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, on server: MemoryServer) async throws -> AgentKit.JSONValue {
             try await AutomationsClient(server: server).call(method, path, body, what: path)
         }

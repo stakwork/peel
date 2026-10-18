@@ -145,7 +145,7 @@ struct Sidebar: View {
     /// "+" or "Show all" rows or invites.
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
-        let agent = shownAgent(sections).map { [(AppModel.Destination.agent, $0.name)] } ?? []
+        let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
         return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
@@ -157,7 +157,8 @@ struct Sidebar: View {
     private func shownAgent(_ sections: ChatSections) -> AgentSession? {
         // Like a chat: always while open or unread, in a closed section too.
         guard let agent = model.agent,
-              sections.directOpen || sections.searching || model.destination == .agent || agent.unread > 0
+              sections.directOpen || sections.searching || model.destination == model.agentDestination
+                || model.agentUnread > 0
         else { return nil }
         let query = model.searchQuery.trimmed
         return query.isEmpty || agent.name.localizedCaseInsensitiveContains(query) ? agent : nil

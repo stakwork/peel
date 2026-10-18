@@ -104,6 +104,23 @@ struct DeviceRequestLine: View {
             AgentApprovalCard(intent: intent, composer: composer, takesFocus: false) { model.macAgent.deviceCards.answer(id, $0) }
                 .padding(.vertical, Theme.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let request = row.agentRequest {
+            // In the agent chat: one quiet row, as a tool's, in line with the messages' text.
+            HStack(spacing: 6) {
+                Text(request.words)
+                if let outcome = request.outcome {
+                    Text("· " + outcome)
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .accessibilityLabel("Done")
+                }
+            }
+            .font(Theme.font(13))
+            .foregroundStyle(Theme.secondaryText)
+            .padding(.leading, MessageRow.avatarSize + MessageRow.gutterSpacing)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             NoteLine(text: line)
         }

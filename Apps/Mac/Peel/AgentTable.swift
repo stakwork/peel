@@ -19,6 +19,14 @@ struct AgentListRow: TableRow {
         case turn(AgentTurn, startsDay: Bool, writing: Bool)
         case summary(AgentSession.Summary)
         case problem(AgentSession.Failure)
+        /// Over the old local turns when the chat is the agent's DM:
+        /// "Earlier, on this Mac", read only.
+        case earlier
+        /// One row of the agent's DM as the chat draws it, with the tools
+        /// an agent's reply ran above it (`AgentDMRows`).
+        case dm(ChatRow)
+        /// The agent answering your message in its DM: "writing…".
+        case answering
     }
 
     /// What a row's height depends on beyond its id; equal versions draw
@@ -36,6 +44,8 @@ struct AgentListRow: TableRow {
         var ending: AgentTurn.Ending?
         var connected = false
         var failure: AgentSession.Failure?
+        /// A DM row as drawn (`dm`).
+        var row: ChatRow?
     }
 
     let id: String
@@ -51,8 +61,9 @@ struct AgentListRow: TableRow {
 
     var reuse: NSUserInterfaceItemIdentifier {
         switch kind {
-        case .turn: .init("agent-turn")
-        case .intro, .summary, .problem: .init("agent-note")
+        case .turn, .answering: .init("agent-turn")
+        case .intro, .summary, .problem, .earlier: .init("agent-note")
+        case .dm(let row): .init("agent-" + row.reuse.rawValue)
         }
     }
 
@@ -61,6 +72,9 @@ struct AgentListRow: TableRow {
         case .intro: return 90
         case .summary: return 36
         case .problem: return 64
+        case .earlier: return 40
+        case .answering: return 50
+        case .dm(let row): return row.estimatedHeight + CGFloat(row.agentTools.count) * 24
         case .turn(let turn, let startsDay, _):
             let lines = max(1, (turn.text.utf8.count + 69) / 70)
             return CGFloat(lines) * 18 + 36 + CGFloat(turn.tools.count) * 24 + (startsDay ? 40 : 0)
@@ -88,24 +102,41 @@ struct AgentListRow: TableRow {
                     AgentSummaryRow(summary: summary, disclosures: disclosures)
                 case .problem(let failure):
                     AgentProblemRow(agent: agent, failure: failure)
+                case .earlier:
+                    TitledDivider(title: "Earlier, on this Mac")
+                        .padding(.horizontal, 20)
+                case .dm(let row):
+                    AgentDMRow(row: row, composer: list, canAnswer: canAnswer)
+                case .answering:
+                    AgentAnsweringRow(name: version.name)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         )
     }
 
-    /// None: an agent row shows its own More on hover (`AgentRow`).
-    func hoverBar(in list: ComposerID) -> AnyView? { nil }
+    /// A DM row's, as in a chat; none on the rest: an agent row shows its
+    /// own More on hover (`AgentRow`).
+    func hoverBar(in list: ComposerID) -> AnyView? {
+        if case .dm(let row) = kind { row.hoverBar(in: list) } else { nil }
+    }
 
     static func listContent(_ rows: [AgentListRow], in list: ComposerID, reachesNewest: Bool, hasOlder: Bool) -> ListContent {
-        ListContent(rows: rows.map { row in
+        var divider: String?
+        let listed = rows.map { row in
             switch row.kind {
             case .turn(let turn, _, let writing):
-                ChatListRow(id: row.id, canAnchor: !writing, isOwn: turn.author == .user, date: turn.date)
-            case .intro, .summary, .problem:
-                ChatListRow(id: row.id, canAnchor: false)
+                // The old local turns over the DM: never new, never yours to follow.
+                return ChatListRow(id: row.id, canAnchor: !writing, isOwn: list == .agent && turn.author == .user,
+                                   date: turn.date)
+            case .dm(let chatRow):
+                if chatRow.startsNew, divider == nil { divider = row.id }
+                return chatRow.listRow(in: list)
+            case .intro, .summary, .problem, .earlier, .answering:
+                return ChatListRow(id: row.id, canAnchor: false)
             }
-        })
+        }
+        return ListContent(rows: listed, divider: divider, reachesNewest: reachesNewest, hasOlder: hasOlder)
     }
 
     /// A turn's row id: the reply's it streamed as, else its own.
@@ -130,24 +161,34 @@ struct AgentListRow: TableRow {
         var name: String
         var connected: Bool
         var open: Set<String>
+        var earlier: Earlier
     }
+
+    /// The local turns: the chat itself, or over the agent's DM (shown, or
+    /// held back, the intro too, until the DM's rows start at its first).
+    private enum Earlier { case none, shown, hidden }
 
     private var key: Key?
     private var settled: [AgentListRow] = []
 
-    func rows(of agent: AgentSession, open: AgentOpenRows) -> [AgentListRow] {
+    /// With `dm`, the chat is the agent's DM (`AppModel.agentChat`): the
+    /// local turns above it under "Earlier, on this Mac", read only, once
+    /// the DM has no older page to load.
+    func rows(of agent: AgentSession, open: AgentOpenRows, dm: AgentDMRows? = nil) -> [AgentListRow] {
         let turns = agent.turns
         let opened = open.open
         let key = Key(agent: ObjectIdentifier(agent), turns: turns.count, last: turns.last?.id, summary: agent.summary, problem: agent.problem,
-                      name: agent.name, connected: agent.connection != nil, open: opened)
+                      name: agent.name, connected: agent.connection != nil, open: opened,
+                      earlier: dm.map { $0.fromStart ? .shown : .hidden } ?? .none)
         // Each row's open parts, by the row's id.
         func parts(of id: String) -> Set<String> {
             opened.isEmpty ? [] : opened.filter { AgentDisclosures.key($0, isIn: id) }
         }
         if key != self.key {
             self.key = key
-            settled = Self.settled(agent, open: open, parts: parts)
+            settled = Self.settled(agent, open: open, earlier: key.earlier, parts: parts)
         }
+        if let dm { return settled + dm.rows(agent: agent, open: open, name: key.name) }
         guard let reply = agent.reply else { return settled }
         let id = AgentListRow.id(streaming: reply.id)
         let startsDay = turns.last.map { !Calendar.current.isDate(reply.date, inSameDayAs: $0.date) } ?? true
@@ -159,14 +200,17 @@ struct AgentListRow: TableRow {
                                        agent: agent, openRows: open)]
     }
 
-    private static func settled(_ agent: AgentSession, open: AgentOpenRows,
+    private static func settled(_ agent: AgentSession, open: AgentOpenRows, earlier: Earlier,
                                 parts: (String) -> Set<String>) -> [AgentListRow] {
         let name = agent.name
         func row(_ id: String, _ kind: AgentListRow.Kind, _ version: AgentListRow.Version) -> AgentListRow {
             AgentListRow(id: id, kind: kind, version: version, agent: agent, openRows: open)
         }
         let connected = agent.connection != nil
+        if earlier == .hidden { return [] }
         var rows = [row("intro", .intro, .init(name: name, connected: connected))]
+        if earlier == .shown && agent.turns.isEmpty { return rows }
+        if earlier == .shown { rows.append(row("earlier", .earlier, .init(name: name))) }
         let turns = agent.turns
         let summary = agent.summary
         let problem = agent.problem
@@ -182,11 +226,37 @@ struct AgentListRow: TableRow {
                 let id = "summary-" + summary.id
                 rows.append(row(id, .summary(summary), .init(name: name, open: parts(id))))
             }
-            if let problem, problem.turnID == turn.id {
+            // Read only over the DM: nothing to retry.
+            if earlier == .none, let problem, problem.turnID == turn.id {
                 rows.append(row("problem-" + turn.id, .problem(problem.failure), .init(name: name, failure: problem.failure)))
             }
         }
         return rows
+    }
+}
+
+/// The agent's DM as the agent chat draws it: its rows as `ChatRow.rows`
+/// makes them for it (`agentDM`: only the bridge's lines a person reads,
+/// an agent's reply with its tool rows and no quote), and "writing…"
+/// while it answers you.
+struct AgentDMRows {
+    let rows: [ChatRow]
+    /// Your message it is answering (`AppModel.agentAnswering`).
+    let answering: Message?
+    /// The rows start at the DM's first message: the intro and the local
+    /// turns go above them. Otherwise nothing does, so the list's first row
+    /// is the DM's and a jump to an older message waits for its page.
+    let fromStart: Bool
+
+    func rows(agent: AgentSession, open: AgentOpenRows, name: String) -> [AgentListRow] {
+        var shown = rows.map { row in
+            AgentListRow(id: row.id, kind: .dm(row), version: .init(name: name, row: row), agent: agent, openRows: open)
+        }
+        if let answering {
+            shown.append(AgentListRow(id: "answering-" + (answering.uuid ?? ""), kind: .answering,
+                                      version: .init(name: name, writing: true), agent: agent, openRows: open))
+        }
+        return shown
     }
 }
 

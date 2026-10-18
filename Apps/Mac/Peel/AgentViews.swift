@@ -25,14 +25,15 @@ struct PeelLogo: View {
 /// came while it was not open; "Waiting on you" in orange while a send's
 /// card waits for an answer.
 struct AgentLink: View {
+    @Environment(AppModel.self) private var model
     let agent: AgentSession
 
     var body: some View {
-        let unread = agent.unread
-        SidebarLink(agent.name, to: .agent, unread: unread > 0) {
+        let unread = model.agentUnread
+        SidebarLink(agent.name, to: model.agentDestination, unread: unread > 0) {
             PeelLogo(size: 18)
         } accessory: {
-            if agent.waiting != nil {
+            if model.agentWaiting {
                 Text("Waiting on you")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.attention)
@@ -55,9 +56,13 @@ struct AgentLink: View {
 /// first message introduces it, with a card to connect a model until one
 /// is; replies stream in as Markdown, tools run as quiet rows, a failure
 /// is a row with Retry. Everything it does is an `AgentSession` action.
+/// With `dm`, the strut preview's: the agent's DM (`AppModel.agentChat`),
+/// its messages sent to the agent contact and its replies whole, the
+/// local turns above it read only.
 struct AgentChatView: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    var dm: String?
     /// Dragged on its divider; remembered on this Mac (a convenience).
     @AppStorage("memoryPanelWidth") private var memoryWidth: Double = ThreadPanel.width
 
@@ -65,7 +70,7 @@ struct AgentChatView: View {
         // One memory a row opened, beside the chat as a thread is.
         SidePanelSplit(item: model.memoryPanel, width: $memoryWidth, range: ConversationView.threadRange,
                        standard: ThreadPanel.width, minimumMain: ConversationView.minimumWidth) {
-            AgentChatColumn(agent: agent)
+            AgentChatColumn(agent: agent, dm: dm)
         } panel: { panel, _ in
             MemoryPanelView(panel: panel)
         }
@@ -89,6 +94,16 @@ struct AgentChatView: View {
 private struct AgentChatColumn: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    let dm: String?
+
+    private var composer: ComposerID { dm.map(ComposerID.chat) ?? .agent }
+
+    /// While a reply runs: the local loop's, or the DM's turn (`agentAnswering`).
+    private var stop: (@MainActor () -> Void)? {
+        let model = model, agent = agent
+        if dm != nil { return model.agentAnswering == nil ? nil : { @MainActor in model.stopAgentTurn() } }
+        return agent.isRunning ? { @MainActor in agent.stop() } : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,9 +113,20 @@ private struct AgentChatColumn: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
             }
-            AgentMessageList(agent: agent)
-            Composer(composer: .agent, placeholder: "Message \(agent.name)",
-                     stop: agent.isRunning ? { agent.stop() } : nil)
+            // The DM's list is made once, with its rows, as a chat's is (`ConversationView`).
+            if let dm, model.loadedChat != dm {
+                Spacer()
+            } else {
+                AgentMessageList(agent: agent, dm: dm, composer: composer)
+                    .id(composer)
+            }
+            if let conversation = model.selectedConversation, conversation.chat == dm {
+                // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
+                ChatFooter(conversation: conversation, tribe: nil, composer: composer,
+                           placeholder: "Message \(agent.name)", stop: stop)
+            } else {
+                Composer(composer: composer, placeholder: "Message \(agent.name)", stop: stop)
+            }
         }
         // A reply's View opens the message; any other link goes where a
         // message's link goes (`WebPane.linkAction`).
@@ -112,15 +138,15 @@ private struct AgentChatColumn: View {
         .onAppear {
             // After this layout pass, once the chat it replaced has let go
             // of the keyboard (Tom: back from a View, the cursor was lost).
-            if !model.sidebarHasKeys { Task { model.composerFocus[.agent, default: 0] += 1 } }
+            if !model.sidebarHasKeys { Task { model.composerFocus[composer, default: 0] += 1 } }
         }
         // Connected: the cursor goes to the field, ready for the first question.
         .onChange(of: agent.connection) { _, connection in
-            if connection != nil { model.composerFocus[.agent, default: 0] += 1 }
+            if connection != nil { model.composerFocus[composer, default: 0] += 1 }
         }
         // A card took the keys while it waited; answered, they go back to the field.
-        .onChange(of: agent.waiting == nil) { _, answered in
-            if answered { model.composerFocus[.agent, default: 0] += 1 }
+        .onChange(of: model.agentWaiting) { _, waiting in
+            if !waiting { model.composerFocus[composer, default: 0] += 1 }
         }
     }
 
@@ -143,16 +169,28 @@ private struct AgentChatColumn: View {
 private struct AgentMessageList: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    /// The agent's DM, when the chat is it: the DM's rows, its read marks
+    /// and older pages as any chat's (`MessageTableEngine` on its composer).
+    let dm: String?
+    let composer: ComposerID
 
     @State private var link = ListLink()
     @State private var rows = AgentRows()
 
     var body: some View {
-        MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows), composer: .agent, link: link)
+        // The local turns only above the DM's first message: not while older
+        // pages are to come, nor over a jump's window.
+        let shown = dm.map { _ in
+            AgentDMRows(rows: model.chatRows, answering: model.agentAnswering,
+                        fromStart: !model.mayHaveOlder && !model.showsWindow)
+        }
+        MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows, dm: shown), composer: composer,
+                     focus: dm == nil ? nil : MessageList.focusTarget(of: model, in: composer, hasRows: !model.chatRows.isEmpty),
+                     reachesNewest: dm == nil || model.timelineReachesNewest, hasOlder: dm != nil && model.mayHaveOlder, link: link)
             // Bottom centre, above the composer, as in a chat.
             .overlay(alignment: .bottom) {
                 if let controller = link.controller {
-                    JumpPill(controller: controller, composer: .agent)
+                    JumpPill(controller: controller, composer: composer)
                 }
             }
             .hiddenShortcut(KeyboardShortcut(.pageUp, modifiers: [])) { link.engine?.page(up: true) }
@@ -171,6 +209,68 @@ struct AgentRetryRow: View {
             Callout(detail: RetryPolicy.note(after: retrying.after, retrying.reason), icon: .progress)
                 .agentNoteRow()
         }
+    }
+}
+
+/// A row of the agent's DM: drawn as the chat draws it (`ListRowContent`),
+/// with the tools an agent's reply ran above it, under its day line.
+struct AgentDMRow: View {
+    let row: ChatRow
+    let composer: ComposerID
+    let canAnswer: Bool
+
+    var body: some View {
+        ListRowContent(row: row, composer: composer, canAnswer: canAnswer, above: tools)
+            .environment(\.inAgentDM, true)
+    }
+
+    private var tools: AnyView? {
+        guard !row.agentTools.isEmpty else { return nil }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 2) {
+                // By position: a reply may run one tool twice.
+                ForEach(Array(row.agentTools.enumerated()), id: \.offset) { _, tool in
+                    AgentToolLineRow(tool: tool)
+                }
+            }
+            .agentNoteRow()
+        )
+    }
+}
+
+/// A tool an agent's reply in its DM ran, one quiet line as the bridge
+/// listed it: "Read unseen messages · {"chat":"Kate"}", and "failed".
+private struct AgentToolLineRow: View {
+    let tool: AgentToolLine
+
+    var body: some View {
+        let asked = AgentToolTitle.asked(tool.summary)
+        HStack(spacing: 6) {
+            Text(AgentToolTitle.of(tool.name))
+                .layoutPriority(1)
+            if !asked.isEmpty {
+                Text("· " + asked)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(asked)
+            }
+            if tool.failed {
+                Text("· failed")
+                    .fixedSize()
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
+    }
+}
+
+/// The agent answering your message in its DM: no streamed text, only
+/// "writing…" as a local reply's header shows it, until the reply comes whole.
+struct AgentAnsweringRow: View {
+    let name: String
+
+    var body: some View {
+        AgentRow(author: .agent, name: name, writing: true) {}
     }
 }
 

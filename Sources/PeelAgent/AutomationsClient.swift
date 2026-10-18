@@ -339,9 +339,7 @@ public struct AutomationsClient: Sendable {
     /// Hands strut `token` and `port` for its encrypted secret store
     /// (`tokenSecret`, `portSecret`), publishes `step` (strut keeps one
     /// version per content, so the same source is a no-op), then makes sure
-    /// its `peel-automation` workflow is the current one: published when
-    /// missing, or as a new version when Peel's changed. Each version is
-    /// named for its content, so the check is one read. The connected model
+    /// its `peel-automation` workflow is the current one (`publish`). The connected model
     /// is not part of it (`setModel`): it is handed over whether or not Peel listens.
     public func install(port: Int, token: String) async throws {
         _ = try await call("PUT", "secrets/\(Self.tokenSecret)", ["value": .string(token)], what: "the automation token")
@@ -349,16 +347,22 @@ public struct AutomationsClient: Sendable {
         _ = try await call("POST", "steps", ["name": .string(Self.step), "code": .string(Self.stepSource),
                                              "description": "Hands a scheduled prompt to Peel on this Mac."],
                            what: "the automation step")
-        let yaml = Self.workflowYAML
+        try await publish(Self.workflow, yaml: Self.workflowYAML,
+                          description: "Hands a scheduled prompt to Peel on this Mac (POST /automations/run).")
+    }
+
+    /// Makes sure Peel's workflow `name` is `yaml`: published when missing,
+    /// or as a new version when Peel's changed. Each version is named for
+    /// its content, so the check is one read.
+    func publish(_ name: String, yaml: String, description: String) async throws {
         let version = Self.version(of: yaml)
-        let (status, data) = try await request("GET", "workflows/\(Self.workflow)", nil, what: "the workflow")
+        let (status, data) = try await request("GET", "workflows/\(Self.escaped(path: name))", nil, what: "the workflow")
         var active: String?
         if status == 404 {
             let created = try await call("POST", "workflows", [
-                "name": .string(Self.workflow), "yaml": .string(yaml), "category": "peel",
-                "description": "Hands a scheduled prompt to Peel on this Mac (POST /automations/run).",
+                "name": .string(name), "yaml": .string(yaml), "category": "peel", "description": .string(description),
             ], what: "the workflow")
-            guard created["workflow"]?.string == Self.workflow else {
+            guard created["workflow"]?.string == name else {
                 throw PeelError("strut stored the workflow under another name: \(created["workflow"]?.string ?? "none").")
             }
             // It starts at v1: the content is labelled below too, so the next check matches.
@@ -366,7 +370,7 @@ public struct AutomationsClient: Sendable {
             active = try Self.read(status, data)["active"]?.string
         }
         guard active != version else { return }
-        _ = try await call("POST", "workflows/\(Self.workflow)", ["version": .string(version), "yaml": .string(yaml)],
+        _ = try await call("POST", "workflows/\(Self.escaped(path: name))", ["version": .string(version), "yaml": .string(yaml)],
                            what: "the workflow")
     }
 
@@ -400,9 +404,14 @@ public struct AutomationsClient: Sendable {
         }
         let gone = (credential == nil ? [Self.modelSecret] : [])
             + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret)
-        for name in gone {
-            let (status, data) = try await request("DELETE", "secrets/\(name)", nil, what: "the model's key")
-            // Never stored, or taken out before: already as wanted.
+        try await deleteSecrets(gone, what: "the model's key")
+    }
+
+    /// Takes `names` out of strut's secret store; one never stored, or taken
+    /// out before, is already as wanted.
+    func deleteSecrets(_ names: [String], what: String) async throws {
+        for name in names {
+            let (status, data) = try await request("DELETE", "secrets/\(name)", nil, what: what)
             if status != 404 { _ = try Self.read(status, data) }
         }
     }
@@ -470,12 +479,12 @@ public struct AutomationsClient: Sendable {
 
     // MARK: HTTP
 
-    private func call(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, what: String) async throws -> AgentKit.JSONValue {
+    func call(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, what: String) async throws -> AgentKit.JSONValue {
         let (status, data) = try await request(method, path, body, what: what)
         return try Self.read(status, data)
     }
 
-    private func request(_ method: String, _ path: String, _ body: AgentKit.JSONValue?, what: String) async throws -> (Int, Data) {
+    func request(_ method: String, _ path: String, _ body: AgentKit.JSONValue?, what: String) async throws -> (Int, Data) {
         guard let url = URL(string: path, relativeTo: server.base.appending(path: "/"))?.absoluteURL else {
             throw PeelError("could not address \(what) on strut")
         }

@@ -16,30 +16,10 @@ extension Journeys {
         /// exactly what arrived: his messages with their real uuids and chat
         /// ids, the unseen counts, a search hit, and the thread whole.
         @Test func readToolsSeeWhatArrived() async throws {
-            let (alice, bob) = try await Journeys.Payments.pair()
-            let tag = UUID().uuidString.prefix(6)
-            let bobKey = try bob.pubkey
-            let first = "the heron leaves at dawn \(tag)", second = "bring the blue map \(tag)"
-            for text in [first, second] { try await bob.engine.sendText(text, to: try alice.pubkey) }
-            let dms = try await eventually("Alice to receive both of Bob's messages") {
-                let got = try alice.messages(in: bobKey).filter { !$0.fromMe && [first, second].contains($0.content) }
-                return got.count == 2 ? got : nil
-            }
-
-            let clubName = "agent club \(tag)"
-            let club = try await alice.engine.createTribe(TribeSettings(name: clubName))
-            try await bob.engine.joinTribe(link: try #require(club.link))
-            try await Journeys.Tribes.waitUntilIn(club.pubkey, bob)
-            let rootText = "release plan \(tag)", replyText = "ship it friday \(tag)"
-            let rootTag = try #require(try await bob.engine.sendText(rootText, to: club.pubkey))
-            // The tribe's copy takes the row over, with the uuid everyone holds.
-            let root = try await eventually("Bob's post to come back from the tribe") {
-                try bob.storage.message(tag: rootTag).flatMap { $0.delivery == .delivered ? $0.uuid : nil }
-            }
-            try await bob.engine.sendText(replyText, to: club.pubkey, inThread: root)
-            try await eventually("Alice to see Bob's thread") {
-                try alice.messages(in: club.pubkey).filter { $0.content == rootText || $0.content == replyText }.count == 2
-            }
+            let fixture = try await CatchUp.make()
+            let (alice, bob, bobKey, dms, club, clubName, root) =
+                (fixture.alice, fixture.bob, fixture.bobKey, fixture.dms, fixture.club, fixture.clubName, fixture.root)
+            let (first, second, rootText, replyText) = (fixture.first, fixture.second, fixture.rootText, fixture.replyText)
 
             let model = ScriptedModel([
                 .calls([("c1", "read_unseen_messages", [:]), ("c2", "search_messages", ["query": "heron"]),
@@ -204,6 +184,43 @@ extension Journeys {
         }
 
         // MARK: - Helpers
+
+        /// What there is to catch up on: Bob writes to Alice twice, and posts
+        /// in her tribe, in a thread, all unseen.
+        struct CatchUp {
+            let alice: Person, bob: Person, bobKey: String
+            let first: String, second: String, dms: [Message]
+            let club: Tribe, clubName: String, root: String, rootText: String, replyText: String
+
+            static func make() async throws -> CatchUp {
+                let (alice, bob) = try await Journeys.Payments.pair()
+                let tag = UUID().uuidString.prefix(6)
+                let bobKey = try bob.pubkey
+                let first = "the heron leaves at dawn \(tag)", second = "bring the blue map \(tag)"
+                for text in [first, second] { try await bob.engine.sendText(text, to: try alice.pubkey) }
+                let dms = try await eventually("Alice to receive both of Bob's messages") {
+                    let got = try alice.messages(in: bobKey).filter { !$0.fromMe && [first, second].contains($0.content) }
+                    return got.count == 2 ? got : nil
+                }
+
+                let clubName = "agent club \(tag)"
+                let club = try await alice.engine.createTribe(TribeSettings(name: clubName))
+                try await bob.engine.joinTribe(link: try #require(club.link))
+                try await Journeys.Tribes.waitUntilIn(club.pubkey, bob)
+                let rootText = "release plan \(tag)", replyText = "ship it friday \(tag)"
+                let rootTag = try #require(try await bob.engine.sendText(rootText, to: club.pubkey))
+                // The tribe's copy takes the row over, with the uuid everyone holds.
+                let root = try await eventually("Bob's post to come back from the tribe") {
+                    try bob.storage.message(tag: rootTag).flatMap { $0.delivery == .delivered ? $0.uuid : nil }
+                }
+                try await bob.engine.sendText(replyText, to: club.pubkey, inThread: root)
+                try await eventually("Alice to see Bob's thread") {
+                    try alice.messages(in: club.pubkey).filter { $0.content == rootText || $0.content == replyText }.count == 2
+                }
+                return CatchUp(alice: alice, bob: bob, bobKey: bobKey, first: first, second: second, dms: dms, club: club,
+                               clubName: clubName, root: root, rootText: rootText, replyText: replyText)
+            }
+        }
 
         /// The agent chat on `person`'s account: its `agent.sqlite`, as the
         /// app and the CLI open it, the tools the app gives it (the time,

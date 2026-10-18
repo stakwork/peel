@@ -225,4 +225,26 @@ struct DeviceRequestRuleTests {
         #expect(AgentDM.unanswered(in: [asked, reply, refused]) == nil)
         #expect(AgentDM.unanswered(in: []) == nil)
     }
+
+    /// A job's message names its job and what it points to, read only from
+    /// talk; a link is kept only when it is https, and nothing malformed
+    /// drops the message's other extras.
+    @Test func readsAJobAndWhatItPointsTo() {
+        let reply = received(body(metadata: #"""
+            {"peel":{"job":{"id":"j_7","title":"Lisbon flights","state":"asking"},
+            "artifacts":[{"id":"plan","title":"Plan","label":"Plan","url":"https://example.com/plan"},
+            {"id":"page","title":"Page","url":"file:///etc/passwd"},{"title":""},"junk",{"id":"x","title":"Shot","url":"javascript:alert(1)"},
+            {"title":"Plain","url":"http://example.com"},{"title":"Spoof","url":"https://bank.com@evil.example/x"}],
+            "tools":[{"name":"web_search"}]}}
+            """#, content: "Which dates?"))
+        #expect(reply.agentJob == AgentJob(id: "j_7", title: "Lisbon flights", state: .asking))
+        #expect(reply.agentArtifacts.map(\.title) == ["Plan", "Page", "Shot", "Plain", "Spoof"])
+        #expect(reply.agentArtifacts.map(\.url) == [URL(string: "https://example.com/plan"), nil, nil, nil, nil])
+        #expect(reply.agentTools.map(\.name) == ["web_search"])
+        // A state it does not know is no state; a job with no id is none.
+        #expect(received(body(metadata: #"{"peel":{"job":{"id":"j_8","state":"exploded"}}}"#)).agentJob == AgentJob(id: "j_8"))
+        #expect(received(body(metadata: #"{"peel":{"job":{"title":"x"}}}"#)).agentJob == nil)
+        // A control message's job is no job.
+        #expect(received(body(metadata: #"{"peel":{"v":1,"op":"ack","re":"r","job":{"id":"j"}}}"#)).agentJob == nil)
+    }
 }

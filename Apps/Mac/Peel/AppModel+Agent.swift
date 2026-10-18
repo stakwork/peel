@@ -621,6 +621,12 @@ enum AgentToolTitle {
         "update_automation": "Change an automation",
         "delete_automation": "Delete an automation",
         "run_automation_now": "Run an automation",
+        // strut's own job steps, on the orchestrator.
+        "job_start": "Started a job",
+        "job_continue": "Sent a job your answer",
+        "job_list": "Looked for a job",
+        "job_get": "Checked on a job",
+        "job_read": "Read a job's file",
     ]
 
     /// strut's orchestrator's tools, as the bridge names them (`sphinx/unseen`
@@ -653,8 +659,12 @@ enum AgentToolTitle {
     /// of its input: an object's values ("pr6-peer, hello"), else the line.
     static func asked(_ line: String) -> String {
         guard let object = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any] else {
-            return summary(line)
+            // The bridge cuts a long input short: its title if one shows, never half an object.
+            guard line.hasPrefix("{") else { return summary(line) }
+            return line.firstMatch(of: /"title":"([^"\\]{1,200})"/).map { String($0.1) } ?? ""
         }
+        // A job by its title, not the whole prompt it was given.
+        if let title = object["title"] as? String { return title }
         return object.keys.sorted().compactMap { key in
             switch object[key] {
             case let text as String: text

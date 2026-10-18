@@ -175,10 +175,98 @@ extension Message {
     /// conversation"); empty for anything else. Whoever sent the message
     /// wrote them: shown as plain words, never acted on.
     public var agentTools: [AgentToolLine] {
-        guard type == MessageType.text, !deleted, let body, body.contains("tools"),
-              let peel = ControlMessage.peel(in: body), peel["op"] == nil,
-              case .array(let tools)? = peel["tools"] else { return [] }
+        guard case .array(let tools)? = talkExtra("tools") else { return [] }
         return tools.prefix(AgentToolLine.most).compactMap(AgentToolLine.init)
+    }
+
+    /// The job an agent's message is about (`metadata.peel.job`): its
+    /// result, its question, or that it failed (docs/agent-on-strut.md, "A
+    /// job's progress"). Nil for anything else.
+    public var agentJob: AgentJob? { talkExtra("job").flatMap(AgentJob.init) }
+
+    /// What an agent's message points to (`metadata.peel.artifacts`): a
+    /// job's deliverables, a page, a link.
+    public var agentArtifacts: [AgentArtifact] {
+        guard case .array(let artifacts)? = talkExtra("artifacts") else { return [] }
+        return artifacts.prefix(AgentArtifact.most).compactMap(AgentArtifact.init)
+    }
+
+    /// `key` in a talk message's extras: `metadata.peel` with no `op`.
+    private func talkExtra(_ key: String) -> JSONValue? {
+        guard type == MessageType.text, !deleted, let body, body.contains(key),
+              let peel = ControlMessage.peel(in: body), peel["op"] == nil else { return nil }
+        return peel[key]
+    }
+}
+
+/// A job an agent's message is about: strut's job id, its title, and where
+/// it stands as of this message.
+public struct AgentJob: Sendable, Equatable {
+    public enum State: String, Sendable {
+        /// Started, or going on (a progress note).
+        case working
+        /// It needs your answer; your next message continues it.
+        case asking
+        case done
+        case failed
+    }
+
+    public let id: String
+    public let title: String?
+    public let state: State?
+
+    public init(id: String, title: String? = nil, state: State? = nil) {
+        self.id = id
+        self.title = title
+        self.state = state
+    }
+
+    init?(_ value: JSONValue) {
+        guard case .object(let fields) = value, case .string(let id)? = fields["id"], !id.isEmpty else { return nil }
+        var title: String?
+        if case .string(let text)? = fields["title"], !text.isEmpty { title = String(text.prefix(AgentToolLine.longest)) }
+        var state: State?
+        if case .string(let text)? = fields["state"] { state = State(rawValue: text) }
+        self.init(id: String(id.prefix(AgentToolLine.longest)), title: title, state: state)
+    }
+}
+
+/// Something an agent's message points to, as strut's reply shape gives it
+/// (`{ id, title, kind?, label?, summary?, url? }`): shown by its title;
+/// opened only by an https link (a file comes as an attachment instead).
+public struct AgentArtifact: Sendable, Equatable {
+    /// The most read from one message.
+    static let most = 20
+
+    public let id: String
+    public let title: String
+    /// What it is to the reader: "Plan", "Page", "Screenshot".
+    public let label: String?
+    public let summary: String?
+    /// An https link with a host and no user name in it, if it has one;
+    /// anything else is dropped (`https://bank.com@evil.example` reads as the bank).
+    public let url: URL?
+
+    public init(id: String, title: String, label: String? = nil, summary: String? = nil, url: URL? = nil) {
+        self.id = id
+        self.title = title
+        self.label = label
+        self.summary = summary
+        self.url = url
+    }
+
+    init?(_ value: JSONValue) {
+        guard case .object(let fields) = value, case .string(let title)? = fields["title"], !title.isEmpty else { return nil }
+        func text(_ key: String) -> String? {
+            if case .string(let text)? = fields[key], !text.isEmpty { String(text.prefix(AgentToolLine.longest)) } else { nil }
+        }
+        var url: URL?
+        if case .string(let link)? = fields["url"], let parsed = URL(string: link), parsed.scheme == "https", parsed.host() != nil,
+           parsed.user == nil, parsed.password == nil {
+            url = parsed
+        }
+        self.init(id: text("id") ?? title, title: String(title.prefix(AgentToolLine.longest)), label: text("label"),
+                  summary: text("summary"), url: url)
     }
 }
 

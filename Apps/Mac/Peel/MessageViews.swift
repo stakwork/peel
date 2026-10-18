@@ -59,6 +59,8 @@ struct ListRowContent: View {
     /// Drawn under its day line and "New messages", over the row: an
     /// agent's tool rows in its DM.
     var above: AnyView?
+    /// Drawn under the row: what an agent's message points to.
+    var below: AnyView?
 
     var body: some View {
         let flashed = flash.id == row.id
@@ -97,6 +99,7 @@ struct ListRowContent: View {
                 RepliesDivider(count: count)
                     .padding(.horizontal, Theme.Space.xl)
             }
+            below
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

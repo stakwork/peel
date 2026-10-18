@@ -857,6 +857,65 @@ account is cheap to replace (open question 2).
   the Mac shows nowhere (its tool row is left out for the request's row),
   and a request's row does not open to what was read yet.
 
+### Built: PR 6b, Peel's side: jobs in the DM (2026-10-18)
+
+- **The grant.** strut's `orchestrator` already offers its own job steps
+  (`job/start`, `job/continue`, `job/list`, `job/get`, `job/read`), and a
+  host's delta is appended to them (`templateWithDelta` pushes), so Peel's
+  delta names none: naming them again would list them twice.
+  `OrchestratorTests` now checks the seeded orchestrator offers them
+  beside Peel's.
+- **Starting and continuing** show as the turn's tool rows: "Started a
+  job", "Sent a job your answer", "Checked on a job", with the job's title
+  when the bridge's one line of its input holds it (never its whole
+  prompt, and never half a JSON object). Runner sorts the input's keys
+  and cuts the line at 80 characters, so the title, after the prompt,
+  rarely survives: runner item 4 below.
+- **A job's message** (`metadata.peel.job = {id, title?, state?}`, state
+  `working`, `asking`, `done` or `failed`) shows its job above its text,
+  one quiet line ("Job · Lisbon plan · Asks you", orange while it waits
+  on you; "Done"; "Didn't finish"), and what it points to under it
+  (`metadata.peel.artifacts`, strut's reply shape `{id, title, kind?,
+  label?, summary?, url?}`): each by its label and title, with Open for an
+  https link (the web pane, as any link) and nothing for any other.
+  Answering a question needs nothing new: your next message goes to the
+  orchestrator, which continues the job (`job/continue`).
+- **Files** already arrive: a Sphinx attachment in the DM draws as in any
+  chat. None comes yet, since runner sends none.
+- **Checked.** `ControlEnvelopeTests` (a job, its artifacts, https only,
+  unknown states), `ControlRowTests` (the agent chat's rows carry them; a
+  plain DM's do not), `OrchestratorTests` (the grant). In the app, on a
+  development profile with a real model: "Start a job to write a
+  three-line plan for a weekend in Lisbon" started one ("Started a job")
+  and the reply said so; its result did not reach the DM, since runner
+  drops a run it did not launch until sphinx#387.
+- **What runner needs (stakwork/sphinx; not opened, for Tom to decide).**
+  1. **Name the job on its result.** sphinx#387 (pending, for PR 7)
+     already sends a run the bridge did not launch to the owner, once
+     (`turns::unasked`), so a job's result reaches the DM as plain text
+     once it merges. On top of it: `run.end` names no workflow, so ask
+     strut for the run as a job's (`GET /workflows/job/runs/:id`; a 404
+     means it is not one), take its `job` and `jobTitle` (the launch
+     records them on the run, not in its input), and put `metadata.peel = {"job": {"id", "title", "state": "asking" if
+     its reply has `ask`, "done", or "failed" for an error or a cancel},
+     "artifacts": [...], "tools": [...]}` on that message; a question
+     comes back as `reply_text` already words it, `ask` included. A
+     failed job's text is #387's ("A scheduled run didn't finish: …")
+     today; a job's should say "The job didn't finish: …".
+  2. **Artifacts.** Pass the reply's `artifacts` through (the orchestrator's
+     own replies too), keeping `url` only when it is https. For one with
+     a `path` (a file the job wrote, served at `GET
+     /jobs/<job>/files/<path>` with strut's key), fetch it and send it as a
+     Sphinx attachment through the memes server, as Peel's own attachments
+     go (size-capped; an image or a PDF first), its title as the caption,
+     and leave it out of `artifacts`.
+  3. **Progress (optional).** A `status` control line ("Lisbon plan:
+     working") when a job starts, so the DM shows it before its result;
+     Peel already shows status lines.
+  4. **A job tool's title.** Put `title` first in a job step's one-line
+     summary (`strut::one_line`), so "Started a job · Lisbon plan" shows.
+  All three sit in `runner/src/bridge/turns.rs`, beside #387's change.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

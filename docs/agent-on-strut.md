@@ -668,6 +668,124 @@ account is cheap to replace (open question 2).
   the Mac's device-request trust (`setDeviceAgent`, PR 2) is set to the
   agent's pubkey once both are in.
 
+### Built: PR 5, Peel's half of the orchestrator (2026-10-18)
+
+- **How Peel adds its part: a host config file** (the call left open in
+  section 1). `BundledStrut` writes `host-config.json` in strut's data
+  folder at each launch and names it in `STRUT_HOST_CONFIG`; strut's
+  bundled server reads it at boot and seeds `orchestrator` with it, so
+  strut's later changes to the template still reach Peel. It holds Peel's
+  tools (the five reads, `sphinx/send`, the six `automation/*` steps),
+  Peel's prompt section, `model: null` (no pinned model: the turn runs on
+  the connected one, `STRUT_DEFAULT_MODEL`, which Peel already keeps
+  current), and the automation steps' workflow and approval step.
+- **The prompt section** is today's prompt with strut's tool names, one
+  text for both loops: `SphinxTools.Names`, `MemoryTools.Names` and the
+  send and automation prompts take the names, `.swift` for today's loop
+  and `.strut` for this one. The chats are "on their Mac, by asking it";
+  dates come from the time the message starts with; and a request the Mac
+  has not answered means "say you are waiting for their Mac, and stop".
+- **The `sphinx/*` steps** (`DeviceStep`): Peel publishes them over
+  `POST /steps` before the bridge starts (`installOrchestrator`), then
+  the bridge's port and token in strut's secret store once it runs
+  (`useBridge`) (`PEEL_BRIDGE_PORT`,
+  `PEEL_BRIDGE_TOKEN`, new each launch, taken out again when the preview
+  turns off). Each posts one request to the bridge on 127.0.0.1 with id
+  `<run>/<hash of its path, kind and args>`: a resumed call asks the same
+  question and gets the stored answer, and a stored answer (an "allow"
+  above all) never stands for other args. Reads wait 30 s and live 12
+  hours, a send or an approval waits 300 s (the bridge's most) and lives
+  an hour. `pending` comes back wrapped in `withStop()`. `sphinx/approve`
+  is never a tool: only the automation steps call it. `sphinx/send`
+  passes the Mac's own most (1,000,000 sats) as `max_price_sats` unless
+  the person named one: in conversation the card is the decision, and it
+  shows the price.
+- **Sealed.** The `sphinx/*` steps, `peel-automation-run` and strut's
+  `orchestrator` are sealed: the meta surface a job has
+  (`meta/run-workflow`) never runs them or reads their runs, so a job
+  (which has bash and the web) cannot reach the chats through them
+  (the security review).
+- **Pinned.** `Vendor/strut.lock` names the strut commit Peel ships,
+  as `Vendor/runner.lock` does runner's: strut main with strut#196 (the
+  orchestrator), strut#213 (the automation steps) and strut#214 (the
+  desktop package again, which stopped staging at strut#201).
+  `stage-strut.sh` builds that commit from a git archive, so the checkout
+  it is given is only where the commit comes from.
+- **The automation steps are strut's** (strut#213: `automation/list`, `preview`,
+  `create`, `update`, `delete`, `run-now`; open question 7 settled as
+  recommended). They act on one workflow the host names, never another's
+  schedules, and the four that act first run the host's approval step
+  (`{ intent }` → `{ approved }`, or its `withStop` output passed up, so
+  the turn ends with nothing changed). With no approval step they refuse.
+  An automation made from a turn takes that turn's callback, as `job/start`
+  does. Each run is handed `{ name, prompt, since, now }`.
+- **`peel-automation-run` stays a second workflow** (the other call left
+  to PR 5): Peel's own, installed with the steps, the same `agent` step
+  with no session, today's run instruction as its prompt and the
+  unattended section (memory and the reads; no send, no schedules), its
+  reply in the orchestrator's shape. A launch-time prompt on the
+  orchestrator would have been a second way to set a session's prompt.
+- **The Mac answers once the bridge is up.** PR 4 left `Setting.deviceAgent`
+  unset; the bridge's start now sets it to the agent's pubkey, and turning
+  the preview off clears it.
+- **Checked.** `OrchestratorTests` runs the staged strut with Peel's delta
+  against a stand-in bridge: the seeded orchestrator carries Peel's tools
+  and section, a read returns the Mac's text or a stopped `pending`, and
+  an automation is created only after `approve` comes back done. The
+  journey `Journeys/Orchestrator` runs everything real but the model
+  (broker, the staged runner and strut, Alice's Mac answering): "What did
+  I miss?" in the DM is read on her Mac, once, and the reply comes back
+  in the DM. In a dev build with the preview on, a real model and a
+  fixture like Tom's (two contacts' unread DMs, a tribe with a thread of
+  two replies and another post): "What did I miss?" listed every chat
+  correctly, read through the Mac (its request, ack and answer lines in
+  the DM); "Remember that my sister Kate's birthday is on 3 May" ran
+  `memory/remember`; "Every Monday at 9:00, remind me to check the Hive
+  tribe" showed the create card with strut's words for the schedule, and
+  the automation did not exist while it waited.
+- **Measuring catch-ups.** On the journey's fixture with a model that
+  takes no time, the Swift loop answered in 0.22 s and strut in 0.62 to
+  0.84 s: about 0.6 s of plumbing (two DMs and one device request over the
+  broker), inside open question 3's 3 s. With the real model
+  (claude-sonnet-5-5) on the dev fixture, at strut a62d9bc: four strut
+  turns took 22.1, 19.5, 8.1 and 10.1 s (the run, Mac read included); the
+  Swift loop (`peel agent`, same profile and model) 13.2 to 13.5 s. The
+  spread is the model's, not the plumbing's: a session's first turn writes
+  the prompt cache, and strut's reply is a structured `final_answer`, the
+  whole text as tool input. PR 10's gate needs a steadier measure than
+  four turns: worth timing the model calls in strut's run events.
+- **Found on the way: a turn cut off by quitting never ends.** strut
+  answers a run orphaned by its restart as `stale`, and runner's `settle`
+  treats anything but success, error and cancelled as in flight, so after
+  relaunch the bridge waits on it for good and the DM's later messages
+  queue behind it. Runner should end a `stale` run (sphinx).
+- **Left for later.** A card answered after the step gave up (300 s)
+  comes back as a new turn, and the model asks again rather than acting
+  on the late "allow": a second card. Runner ignores a `run.end` for a
+  run it did not launch, so a job's result (6b) and an automation's (7)
+  do not reach the DM yet. From the security
+  review: a step trusts whatever answers on the stored port (the bridge
+  could sign its answers with the token); an automation reports to the
+  root run's callback, which is only ever the bridge's on Peel's strut;
+  send grants (PR 7) should be bound to strut's automation id and its
+  fires, not the name alone; and a turn run as the bridge starts, before
+  its secrets are set, fails its reads. From the second review: an
+  automation's callback is that launch's bridge URL, which the next launch
+  replaces (PR 7 gives automations a callback that lasts); Stop does not
+  take a card down (PR 6); a read an automation's run gave up on comes
+  back as a late turn in the DM, and a late "allow" reads as done though
+  nothing was made (runner's late turns, for PR 7); any workflow may name
+  the bridge's secrets in `secretsEnv` (strut could refuse them).
+- **Review findings not applied, and why.** The send step's cap stays the
+  Mac's most: a tribe send always shows its price on a card and is never
+  "always allowed". The steps' descriptions, the run instruction and the
+  intro are written again rather than generated from the Swift tools and
+  `AgentSetup`: those go with the Swift loop in PR 11, and changing them
+  now would change today's prompts. The host delta is written with the
+  preview off too (one file, and strut reads it only at boot). The steps'
+  installs run one after another: a few loopback calls once per bridge
+  start.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

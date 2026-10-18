@@ -12,7 +12,7 @@ import PeelUI
 /// fails after `deadline` in all.
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
-/// `{"select": "a chat's name"}` (sets the destination a click on its
+/// `{"select": "a chat's name"}` (or its chat id; sets the destination a click on its
 /// sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
@@ -292,10 +292,11 @@ final class OffscreenDriver {
         Offscreen.log("drive: selected \(chat.prefix(12))")
     }
 
-    /// The open account and the chat with this name, as its sidebar row shows it.
+    /// The open account and the chat with this name, as its sidebar row shows
+    /// it, or this chat id (the agent's contact shares the agent's name).
     private func chat(named name: String) throws -> (AppModel, String) {
         guard let model = model() else { throw Failure(description: "no account open") }
-        guard let chat = model.conversations.first(where: { $0.name == name })?.chat else {
+        guard let chat = model.conversations.first(where: { $0.name == name || $0.chat == name })?.chat else {
             throw Failure(description: "no chat named \(name)")
         }
         return (model, chat)

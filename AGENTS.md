@@ -633,6 +633,21 @@ is a short plan. Update the status and the journal when you finish something.
     owner-only beside the account's, erased with it; gone by itself if
     Peel dies (`RUNNER_EXIT_ON_STDIN_EOF`). Tested in `BundledBridgeTests`
     (the staged runner when there is one) and the journey `Journeys/Bridge`
+  - `Orchestrator.swift` — Peel's half of strut's `orchestrator`
+    (`docs/agent-on-strut.md` "Built: PR 5"): the host delta `BundledStrut`
+    writes to `host-config.json` in strut's data folder at each launch
+    (`STRUT_HOST_CONFIG`): Peel's tools and prompt section (today's prompts
+    with strut's tool names, `SphinxTools.Names.strut`, `MemoryTools.Names.strut`),
+    no pinned model (the connected one), and the `automation/*` steps on
+    `peel-automation-run` behind `sphinx/approve`. `DeviceStep` is each
+    `sphinx/*` step's source: a device request posted to the bridge on
+    127.0.0.1 with `PEEL_BRIDGE_PORT` and `PEEL_BRIDGE_TOKEN` from strut's
+    secret store, id `<run>/<path>`, `pending` wrapped in `withStop()`.
+    `AutomationsClient.installOrchestrator` publishes the steps and
+    `peel-automation-run` before the bridge starts (and drops any old
+    secrets), `useBridge` stores the new ones once it runs, `forgetBridge`
+    when the preview turns off. The steps and `peel-automation-run` are sealed. Tested in
+    `OrchestratorTests` (a staged strut with the automation steps, when there is one)
   - `AutomationServer.swift` — where strut reaches Peel when an automation
     fires (`docs/phases/12-automations.md`): `POST /automations/run` on
     127.0.0.1 with the bearer token `AppModel` makes when the agent opens
@@ -821,10 +836,13 @@ is a short plan. Update the status and the journal when you finish something.
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
   (`package-desktop.mjs --no-stt`, with Ladybug, its `vector` and `fts`
-  extensions and the `memory/*` steps)
-  and Node, a pinned release checked against its SHA-256 (cached in
-  `<stage>.node`). One run at a time (`<stage>.lock`). Apple silicon only.
-  Run it once, after strut changes, and again if macOS clears Caches
+  extensions, the `memory/*` steps, and the `orchestrator` with the
+  `automation/*` steps, which Peel's delta needs), built from the strut
+  commit `Vendor/strut.lock` pins (git archive of that commit only, so the
+  checkout is left as it was), and Node, a pinned release checked against
+  its SHA-256 (cached in `<stage>.node`). One run at a time
+  (`<stage>.lock`). Apple silicon only. Run it once, after the pin moves,
+  and again if macOS clears Caches
 - `scripts/stage-bridge.sh <sphinx checkout>` — stages the agent's bridge
   (runner) once per Mac, in `~/Library/Caches/dev.peel.build/bridge` (or
   `$PEEL_BRIDGE_STAGE`): built from the sphinx commit `Vendor/runner.lock`

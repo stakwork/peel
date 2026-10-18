@@ -119,11 +119,16 @@ public final class BundledStrut {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
         let key = try AutomationServer.newKey()
         let secrets = try Self.secretKey(in: secretKey)
+        // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
+        let hostConfig = data.appending(path: "host-config.json")
+        try Orchestrator.hostConfig().write(to: hostConfig, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
-        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data)
+        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
+                                               hostConfig: hostConfig)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -200,8 +205,11 @@ public final class BundledStrut {
     /// disconnected is gone), and then strut's: this Mac only, a port the OS picks,
     /// Peel's keys and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
     /// configuration and loads no engine or provider: it was built for
-    /// Homebrew's folders, which another user may own.
-    nonisolated static func environment(_ inherited: [String: String], key: String, secretKey: String, data: URL) -> [String: String] {
+    /// Homebrew's folders, which another user may own. `hostConfig`: the
+    /// file of Peel's delta for the workflows strut ships (`STRUT_HOST_CONFIG`).
+    nonisolated static func environment(
+        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL
+    ) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
             name == "NODE_EXTRA_CA_CERTS"
@@ -217,6 +225,7 @@ public final class BundledStrut {
             "STRUT_WORKSPACE_BACKEND": "ladybug",
             "STRUT_WORKSPACE": data.appending(path: "workspace").path,
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
+            "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",

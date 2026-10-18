@@ -47,6 +47,8 @@ final class AgentBridge {
     /// The person turned the preview on, so the next start may pair the
     /// agent (an invite, a key exchange); a start on its own, never.
     @ObservationIgnored var pairing = false
+    /// Turning the preview off taking this Mac's answers away (`setDeviceAgent(nil)`).
+    @ObservationIgnored var clearing: Task<Void, Never>?
 
     func stop() {
         starting?.cancel()
@@ -73,10 +75,22 @@ extension AppModel {
         macAgent.hasOwnStrut = Self.strut(for: profile) != nil
         if on {
             useOwnStrut(profile)
-        } else if !macAgent.hasOwnStrut, agent?.isRunning != true, memoryMove?.isRunning != true {
-            // Started only for the preview; left until quit while a reply or a move uses it.
-            strut?.stop(quietly: true)
-            strut = nil
+        } else {
+            // Off, this Mac answers no agent's requests (on, once the bridge is set
+            // up: `startBridge`), and strut forgets where the stopped bridge was, so
+            // no step posts to that port again; then a strut started only for the
+            // preview stops, unless a reply or a move uses it (then at quit).
+            let engine = engine, server = strut?.server
+            var started: BundledStrut?
+            if !macAgent.hasOwnStrut, agent?.isRunning != true, memoryMove?.isRunning != true {
+                started = strut
+                strut = nil
+            }
+            agentBridge.clearing = Task {
+                try? await engine?.setDeviceAgent(nil)
+                if let server { try? await AutomationsClient(server: server).forgetBridge() }
+                started?.stop(quietly: true)
+            }
         }
         lookForMemory(reporting: true)
         lookForBridge()
@@ -122,9 +136,21 @@ extension AppModel {
             bridge.strut = nil
             bridge.status = .failed("The agent's bridge stopped.")
         }
+        // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
+        let client = AutomationsClient(server: server)
+        try await client.installOrchestrator()
         let pair = bridge.pairing
         bridge.pairing = false
-        _ = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: pair)
+        let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: pair)
+        try Task.checkCancellation()
+        // Only now does this Mac answer the agent's requests: its reads and cards
+        // (after a clear from turning it off just before, which would undo it).
+        await bridge.clearing?.value
+        bridge.clearing = nil
+        try await engine.setDeviceAgent(account.pubkey)
+        // Where the steps reach the bridge now.
+        guard let reached = running.server else { throw PeelError("The agent's bridge stopped.") }
+        try await client.useBridge(reached)
         try Task.checkCancellation()
         bridge.status = .running
     }

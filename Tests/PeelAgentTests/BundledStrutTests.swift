@@ -34,7 +34,7 @@ struct BundledStrutTests {
              "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0", "PEEL_AGENT_API_KEY": "model key",
              "STRUT_SECRET_KEY": "the caller's", "ANTHROPIC_API_KEY": "shell key", "OPENAI_API_KEY": "shell key",
              "OPENROUTER_API_KEY": "shell key"],
-            key: key, secretKey: secretKey, data: data)
+            key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "host-config.json"))
         #expect(environment["PATH"] == "/usr/bin" && environment["HOME"] == "/Users/x")
         #expect(environment["DYLD_INSERT_LIBRARIES"] == nil && environment["NODE_OPTIONS"] == nil
                 && environment["STRUT_CONNECTION_FILE"] == nil && environment["PEEL_AGENT_API_KEY"] == nil)
@@ -47,6 +47,7 @@ struct BundledStrutTests {
         #expect(environment["STRUT_EXIT_ON_STDIN_EOF"] == "1")
         #expect(environment["STRUT_WORKSPACE"] == "/tmp/peel-strut/workspace")
         #expect(environment["STRUT_WORKSPACE_BACKEND"] == "ladybug")
+        #expect(environment["STRUT_HOST_CONFIG"] == "/tmp/peel-strut/host-config.json")
     }
 
     /// strut's secret store key: made once, owner-only, the same on every

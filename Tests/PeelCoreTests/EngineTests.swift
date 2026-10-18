@@ -47,6 +47,8 @@ struct AgentAccountTests {
         #expect(agent.owner == (await engine.accountKey))
         #expect(agent.broker == "127.0.0.1:1")
         #expect(try await engine.agentAccount() == agent)
+        // The phone knows the agent's DM by the same key.
+        #expect(try await engine.agentPubkey() == agent.pubkey)
     }
 
     @Test func itsSeedIsNeverPrinted() async throws {

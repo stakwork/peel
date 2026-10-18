@@ -925,6 +925,50 @@ account is cheap to replace (open question 2).
      summary (`strut::one_line`), so "Started a job · Lisbon plan" shows.
   All three sit in `runner/src/bridge/turns.rs`, beside #387's change.
 
+### Built: PR 9, the agent's DM on the iPhone (2026-10-18)
+
+- **Which chat.** The phone has no agent of its own (no `AgentHost`), so
+  as the account opens it sets `AppModel.agentContact` to the account's
+  own agent: `Engine.agentPubkey()`, agent 1's key from the same words,
+  with nothing stored and no bridge needed. Once that contact is a chat
+  here, `agentChat` is its DM, as on the Mac: one row, first in Direct
+  messages, with Peel's logo and AGENT, out of the other sections.
+  `ConversationScreen` works out `isAgent` from it ("Ask Peel", no bolt,
+  no call, text only).
+- **The rows** are the Mac's (`ChatRow.rows(agentDM:)`, the shared list
+  and its controller): talk as written; the agent's messages with Peel's
+  logo and AGENT (`ChatRow.byAgent`); a reply's tool rows above it and no
+  quote (so `/new`'s "Started a new conversation." stands alone); no line
+  of its own for an ack, a result or a cancel; each request as one quiet
+  line (`AgentRequestLine`). The phone never answers a request (decision
+  9) and has no cards: where the Mac's card waits, the line says
+  "Waiting for your approval on your Mac" (`AgentRequest.asks`: a send
+  in conversation, `approve`, a Calendar write; an automation's send goes
+  on its grant), then ✓, "Declined" or "Too late, nothing done" from the
+  Mac's result, which reaches the phone as one of your own messages.
+  `PeelLogo` and `AgentToolTitle` moved to `Apps/Shared` for both apps.
+- **Checked.** `ControlRowTests` (the waiting line, a grant's send asks
+  nothing, `byAgent`), `AgentAccountTests` (`agentPubkey` is the bridge's
+  key). In the iOS simulator against the local stack, on a second device
+  of a paired development profile, with the Mac's offscreen app running
+  the real bridge, strut and a real model: from the phone, "what did I
+  miss" came back in the same thread as the Mac's, with "Read your
+  unread messages ✓"; a send showed "Waiting for your approval on your
+  Mac" while the Mac's card was up, then ✓ and the reply once the Mac
+  allowed it; a Stop on the Mac gave "Declined" and "Stopped." on the
+  phone. Idle on the DM: 0.0% CPU. The iOS core was built from sphinx-rs
+  v0.8.39 (`agent_seed` needs it).
+- **Left for later.** Control messages still count as unread and can
+  notify (PR 2's note), so the phone's agent row counts a request. A
+  request the Mac never answers says "waiting" past its expiry. Search
+  does not find the agent's row. No "writing…" or Stop on the phone. With
+  the keyboard up, a line arriving at the bottom can leave the
+  new-messages pill up (the phone's list, as before). Agent links to
+  messages stay plain links on the phone, and a job's message (PR 6b)
+  shows as its text, without the Mac's job line. `AgentRequest.asks` repeats
+  `DeviceActions`' card rule (PeelAgent is Mac only): move it to PeelCore
+  when PR 7 lands.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

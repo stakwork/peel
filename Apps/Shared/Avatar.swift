@@ -116,6 +116,20 @@ struct Avatar: View {
     }
 }
 
+/// Peel's logo as the agent's avatar: the app's icon, its tile filling a
+/// rounded square (agents are rounded squares, people circles).
+struct PeelLogo: View {
+    let size: CGFloat
+
+    var body: some View {
+        // The icon's tile is 824 of its 1024 points; the rest is margin.
+        AppIcon(size: size * 1024 / 824)
+            .frame(width: size, height: size)
+            .clipShape(Avatar.outline(.roundedSquare, size: size))
+            .accessibilityHidden(true)
+    }
+}
+
 /// The app's icon, as the Dock shows it.
 struct AppIcon: View {
     let size: CGFloat

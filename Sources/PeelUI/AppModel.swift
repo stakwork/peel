@@ -319,8 +319,9 @@ public final class AppModel {
     /// The account's agent chat (`AppModel+Agent`), open with the account.
     public var agent: AgentSession?
     /// The agent's own contact while its DM is the agent chat (the strut
-    /// preview, docs/agent-on-strut.md, "One conversation"), set by the app;
-    /// nil, and the agent chat is the agent's own (`Destination.agent`).
+    /// preview, docs/agent-on-strut.md, "One conversation"), set by the Mac
+    /// app; on the phone always the account's agent. Nil, and the agent chat
+    /// is the agent's own (`Destination.agent`).
     public var agentContact: String? {
         didSet { if agentContact != oldValue { followAgentChat() } }
     }
@@ -1297,6 +1298,9 @@ public final class AppModel {
         // Forgotten while loading.
         guard self.engine === engine else { return }
         if let profile { agentHost?.open(profile, engine: engine, in: self) }
+        // With no agent here (the phone), the agent's DM is still the agent
+        // chat: the agent is this account's own, from the same words.
+        if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.

@@ -113,6 +113,10 @@ struct ChatList: View {
             if !sections.searching || !sections.direct.isEmpty {
                 ChatsSection(title: "Direct messages",
                              expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                    // The agent's DM is its own row, first, as on the Mac (never in the sections).
+                    if !sections.searching, let agent = model.agentChat.flatMap({ chat in model.conversations.first { $0.chat == chat } }) {
+                        ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
+                    }
                     ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
                     if let all = sections.allDirect {
                         ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
@@ -190,12 +194,13 @@ private struct ChatLink: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let state: ChatReadState?
+    var isAgent = false
 
     var body: some View {
         // Once per row build: the swipe and the menu share it.
         let read = readAction
         NavigationLink(value: ChatsRoute.chat(conversation.chat)) {
-            ChatListRow(conversation: conversation, state: state)
+            ChatListRow(conversation: conversation, state: state, isAgent: isAgent)
         }
         .navigationLinkIndicatorVisibility(.hidden)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {

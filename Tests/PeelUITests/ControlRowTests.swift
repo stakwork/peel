@@ -139,9 +139,13 @@ struct ControlRowTests {
                                 approvals: ["r_1": card], agentDM: true)
         #expect(rows.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
         #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done))
-        #expect(rows[2].approval == card && rows[2].agentRequest == AgentRequest(kind: "send", status: nil))
+        #expect(rows[2].approval == card && rows[2].agentRequest == AgentRequest(kind: "send", status: nil, asks: true))
+        // The phone, which has no card, says where it waits; a read is on the Mac.
+        #expect(rows[2].agentRequest?.outcomeElsewhere == "Waiting for your approval on your Mac")
+        #expect(AgentRequest(kind: "chats.read", status: nil).outcomeElsewhere == "on your Mac…")
         #expect(rows[3].agentRequest == nil)
         #expect(rows[4].quote == nil && rows[4].agentTools == [AgentToolLine(name: "memory_recall", summary: "{}")])
+        #expect(rows[4].byAgent && !rows[0].byAgent)
         // Runs are worked out over what shows: the line before the reply ends its run there.
         #expect(rows[3].endsRun && rows[4].startsRun)
         // Answered, the send's row stays where its card was, with how it ended;
@@ -152,6 +156,12 @@ struct ControlRowTests {
         let after = ChatRow.rows(all + [denied, theirs], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
         #expect(after.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
         #expect(after[2].agentRequest?.outcome == "Declined")
+        #expect(after[2].agentRequest?.outcomeElsewhere == "Declined")
+        // An automation's send goes on its grant: nothing waits on you.
+        let granted = message(11, body: controlBody("Peel asked your Mac to send a message for you", peel:
+            #"{"v":1,"op":"request","id":"r_2","device":"d","kind":"send","args":{"automation":"a_1"},"not_after":9}"#))
+        #expect(ChatRow.rows([granted], parents: [:], inTribe: false, people: people, agentDM: true)
+            .first?.agentRequest?.asks == false)
         denied.status = "FAILED"
         let failed = ChatRow.rows(all + [denied], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
         #expect(failed.first { $0.message.id == again.id }?.agentRequest?.status == nil)

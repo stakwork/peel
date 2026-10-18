@@ -112,7 +112,7 @@ struct ChatListRow: View {
     let conversation: Conversation
     /// `model.readStates[chat]`.
     let state: ChatReadState?
-    /// The agent's chat: AGENT after its name, a rounded square.
+    /// The agent's chat: AGENT after its name, Peel's logo.
     var isAgent = false
     /// How many of the agent's cards wait on you: an orange count.
     var waiting = 0
@@ -154,8 +154,7 @@ struct ChatListRow: View {
 
     @ViewBuilder private var icon: some View {
         if isAgent {
-            // A rounded square on its key's colour, as a tribe's is.
-            TribeIcon(name: conversation.name, url: conversation.photoURL, pubkey: conversation.chat, size: 30)
+            PeelLogo(size: 30)
         } else {
             ConversationIcon(conversation: conversation, size: 30)
         }

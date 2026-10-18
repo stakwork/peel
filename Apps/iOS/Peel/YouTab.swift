@@ -125,8 +125,7 @@ private struct AgentRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Space.md) {
-            TribeIcon(name: "Peel", url: nil, pubkey: "peel-agent", size: 30)
-                .accessibilityHidden(true)
+            PeelLogo(size: 30)
             Text("Peel")
             AgentTag()
             Spacer(minLength: Theme.Space.sm)

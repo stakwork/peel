@@ -11,9 +11,9 @@ struct ConversationScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     let chat: String
-    /// The agent's DM: AGENT in the header, "Ask Peel", no bolt. A plain
-    /// DM until the remote track brings its cards.
-    var isAgent = false
+    /// The agent's DM (`AppModel.agentChat`): AGENT in the header, "Ask
+    /// Peel", no bolt or call. Its cards stay on the Mac (decision 9).
+    private var isAgent: Bool { model.agentChat == chat }
 
     /// A contact's local time, when they shared one and it is not yours.
     @State private var localTime: LocalTime?

@@ -12,6 +12,8 @@ import SwiftUI
 enum RowMetrics {
     static let avatar: CGFloat = 32
     static let gutter: CGFloat = 10
+    /// Where a row's text starts: the side gutter, the photo column and its gap.
+    static var textInset: CGFloat { Theme.phoneGutter + avatar + gutter }
 }
 
 /// One row of a conversation or a thread, by its kind.
@@ -27,7 +29,10 @@ struct ConversationRow: View, Equatable {
     var body: some View {
         switch row.kind {
         case .message:
-            MessageRowView(row: row, composer: composer, flashed: flashed)
+            VStack(spacing: 0) {
+                if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
+                MessageRowView(row: row, composer: composer, flashed: flashed)
+            }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
         case .paymentRequest:
@@ -38,7 +43,11 @@ struct ConversationRow: View, Equatable {
         case .note:
             RowNote(text: row.message.membershipNote(by: row.sender))
         case .control(let line):
-            RowNote(text: line)
+            if let request = row.agentRequest {
+                AgentRequestLine(request: request)
+            } else {
+                RowNote(text: line)
+            }
         case .missingOriginal:
             RowNote(text: "Original message not available", italic: true)
         case .replies(let count):
@@ -75,7 +84,10 @@ struct MessageRowView: View {
         let retryable = message.isRetryable(now: now)
         let actions = MessageActions(row: row, composer: composer, model: model, now: now)
         return RowFrame(row: row, flashed: flashed) {
-            if row.startsRun {
+            // The agent's messages in its DM: Peel's logo and AGENT, as on the Mac.
+            if row.startsRun, row.byAgent {
+                PeelLogo(size: RowMetrics.avatar)
+            } else if row.startsRun {
                 Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: RowMetrics.avatar, hue: row.sender.hue)
             }
         } content: {
@@ -149,7 +161,7 @@ struct RowFrame<Leading: View, Content: View>: View {
 }
 
 /// The name in the sender's colour and the time, once per run. A payment
-/// puts its headline in the name's place.
+/// puts its headline in the name's place; the agent is named with AGENT.
 struct RunHeaderLine: View {
     @Environment(\.surface) private var surface
     let row: ChatRow
@@ -162,8 +174,9 @@ struct RunHeaderLine: View {
             } else {
                 Text(row.sender.name)
                     .phoneFont(.name)
-                    .foregroundStyle(row.sender.hue.name)
+                    .foregroundStyle(row.byAgent ? Theme.text : row.sender.hue.name)
                     .lineLimit(1)
+                if row.byAgent { AgentTag().alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 } }
             }
             Text(Formatting.time(row.message.date))
                 .phoneFont(.time)
@@ -600,6 +613,68 @@ struct RowNote: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, Theme.phoneGutter)
             .padding(.vertical, 6)
+    }
+}
+
+/// The tools an agent's reply ran, above it in its DM: one quiet line
+/// each, in line with the messages' text ("Read unseen messages · Kate").
+struct AgentToolLines: View {
+    let tools: [AgentToolLine]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // By position: a reply may run one tool twice.
+            ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
+                let asked = AgentToolTitle.asked(tool.summary)
+                HStack(spacing: 6) {
+                    Text(AgentToolTitle.of(tool.name))
+                        .layoutPriority(1)
+                    if !asked.isEmpty {
+                        Text("· " + asked)
+                            .truncationMode(.tail)
+                    }
+                    if tool.failed {
+                        Text("· failed")
+                            .fixedSize()
+                    }
+                }
+                .lineLimit(1)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .agentLine()
+    }
+}
+
+/// A request from the agent to the Mac, one quiet line like a tool's:
+/// "Read your unread messages ✓", "Send a message · Waiting for your
+/// approval on your Mac". The phone never answers one (decision 9).
+struct AgentRequestLine: View {
+    let request: AgentRequest
+
+    var body: some View {
+        // One text, so a long outcome wraps under the words, not beside them.
+        Group {
+            if let outcome = request.outcomeElsewhere {
+                Text("\(request.words) · \(outcome)")
+            } else {
+                Text("\(request.words)  \(Image(systemName: "checkmark"))")
+                    .accessibilityLabel("\(request.words), done")
+            }
+        }
+        .agentLine()
+    }
+}
+
+private extension View {
+    /// A quiet line of the agent's DM, under the messages' text column.
+    func agentLine() -> some View {
+        phoneFont(.secondary)
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, RowMetrics.textInset)
+            .padding(.trailing, Theme.phoneGutter)
+            .padding(.vertical, 3)
     }
 }
 

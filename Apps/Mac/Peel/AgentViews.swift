@@ -6,20 +6,6 @@ import PeelUI
 
 // MARK: - Pieces
 
-/// Peel's logo as the agent's avatar: the app's icon, its tile filling a
-/// rounded square (agents are rounded squares, people circles).
-struct PeelLogo: View {
-    let size: CGFloat
-
-    var body: some View {
-        // The icon's tile is 824 of its 1024 points; the rest is margin.
-        AppIcon(size: size * 1024 / 824)
-            .frame(width: size, height: size)
-            .clipShape(Avatar.outline(.roundedSquare, size: size))
-            .accessibilityHidden(true)
-    }
-}
-
 /// Peel's row at the top of Direct messages: "Set up" in link blue until a
 /// model is connected, then AGENT; bold with a count for replies that
 /// came while it was not open; "Waiting on you" in orange while a send's

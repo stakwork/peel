@@ -83,6 +83,9 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// For a control message: the agent's request whose card waits on you
     /// (`AppModel.waitingCards`), what the card shows, drawn in its place.
     public var approval: ToolIntent?
+    /// In the agent's DM (`rows(agentDM:)`): an agent's message, drawn with
+    /// Peel's logo and AGENT.
+    public var byAgent = false
     /// In the agent's DM (`rows(agentDM:)`): the tools an agent's reply ran.
     public var agentTools: [AgentToolLine] = []
     /// In the agent's DM: the job an agent's message is about, and what it points to.
@@ -196,7 +199,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             var request: AgentRequest?
             if agentDM, controlLine != nil, case .envelope(let envelope)? = message.control, envelope.op != .status {
                 guard envelope.op == .request, let id = envelope.id, requestRows[id] == message.id else { continue }
-                request = AgentRequest(kind: envelope.kind ?? "", status: answered[id])
+                request = AgentRequest(envelope, status: answered[id])
             }
             // A collapsed thread's row stands for its newest message, which this is.
             let collapsed = message.standsForThread && controlLine == nil ? message.threadUUID.flatMap { threads[$0] } : nil
@@ -232,6 +235,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             if kind == .message, agentDM, !message.fromMe {
                 // An agent's reply answers the message just above: no quote, its tool
                 // rows instead, but for its requests to this Mac, which have their own.
+                row.byAgent = true
                 row.agentTools = message.agentTools.filter { !$0.name.hasPrefix("sphinx") }
                 row.agentJob = message.agentJob
                 row.agentArtifacts = message.agentArtifacts
@@ -355,6 +359,24 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
 public struct AgentRequest: Equatable, Sendable {
     public let kind: String
     public let status: ControlEnvelope.Status?
+    /// Whether it waits on your answer on the Mac's card: a send in
+    /// conversation, an approval, a change to your calendar. An
+    /// automation's send goes on its grant.
+    public let asks: Bool
+
+    init(kind: String, status: ControlEnvelope.Status?, asks: Bool = false) {
+        self.kind = kind
+        self.status = status
+        self.asks = asks
+    }
+
+    init(_ request: ControlEnvelope, status: ControlEnvelope.Status?) {
+        let kind = request.kind ?? ""
+        var automation = false
+        if case .object(let args)? = request.args { automation = args["automation"].map { $0 != .null } ?? false }
+        self.init(kind: kind, status: status, asks: kind == "approve" || kind == "send" && !automation
+            || kind.hasPrefix("calendar.") && kind != "calendar.events")
+    }
 
     /// "Read your unread messages", by the request's kind.
     public var words: String {
@@ -382,6 +404,12 @@ public struct AgentRequest: Equatable, Sendable {
         case .failed?: "Could not do it"
         case .unknown?: "Not sure it went"
         }
+    }
+
+    /// How it ended on a device that never answers it (the phone, decision
+    /// 9): its card waits on the Mac rather than working there.
+    public var outcomeElsewhere: String? {
+        status == nil && asks ? "Waiting for your approval on your Mac" : outcome
     }
 }
 

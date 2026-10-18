@@ -37,10 +37,19 @@ extension Engine {
         }
         guard let device = try storage.value(for: .deviceID) else { throw PeelError("this device has no id yet") }
         let agentSeed = try Sphinxrs.agentSeed(seed: seed, n: 1)
-        let pubkey = try Sphinxrs.pubkeyFromSeed(seed: agentSeed, idx: 0, time: clock.next(), network: network)
         return AgentAccount(
-            seed: agentSeed, pubkey: pubkey, network: network, owner: accountKey, device: device,
-            broker: "\(server.host):\(server.port)"
+            seed: agentSeed, pubkey: try agentPubkey(of: agentSeed), network: network, owner: accountKey,
+            device: device, broker: "\(server.host):\(server.port)"
         )
+    }
+
+    /// The agent's account key alone: how every device of this account,
+    /// the phone included, knows the agent's DM, with no bridge of its own.
+    public func agentPubkey() throws -> String {
+        try agentPubkey(of: Sphinxrs.agentSeed(seed: seed, n: 1))
+    }
+
+    private func agentPubkey(of agentSeed: String) throws -> String {
+        try Sphinxrs.pubkeyFromSeed(seed: agentSeed, idx: 0, time: clock.next(), network: network)
     }
 }

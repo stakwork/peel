@@ -42,6 +42,8 @@ final class MacAgent: AgentHost {
     /// profile (`strut(for:)`): started when its agent opens, stopped when
     /// Peel quits.
     @ObservationIgnored var strut: BundledStrut?
+    /// The agent's bridge beside it, with the preview on (`AppModel+Bridge`).
+    let agentBridge = AgentBridge()
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
     /// The agent chat's tool rows and summaries open, kept past its list.
@@ -97,6 +99,7 @@ final class MacAgent: AgentHost {
     func stop() {
         stopMove()
         deviceCards.close()
+        agentBridge.stop()
         strut?.stop(quietly: true)
     }
 
@@ -121,6 +124,7 @@ final class MacAgent: AgentHost {
     func forget(_ profile: Profile) throws {
         stop()
         if profile.kind == .app { try BundledStrut.erase() }
+        try BundledBridge.erase(data: BundledBridge.dataFolder(for: profile))
     }
 }
 
@@ -284,6 +288,7 @@ extension AppModel {
             macAgent.hasOwnStrut = Self.strut(for: profile) != nil
             if brain == .thisMac { useOwnStrut(profile) }
             lookForMemory(reporting: true)
+            lookForBridge()
             checkBrain()
             // A pairing link that came while the account was locked.
             if pairing != nil { openAgentSettings() }
@@ -382,6 +387,7 @@ extension AppModel {
             useOwnStrut(profile)
         }
         lookForMemory(reporting: true)
+        lookForBridge()
         // The same server kept again (a new key for the same address) is checked again too.
         checkBrain()
     }
@@ -515,9 +521,12 @@ extension AppModel {
     /// Peel's own strut for `profile`, made if there is none, and looked at
     /// again when it starts or stops. A strut that stopped is not started
     /// again from here, only before the next reply: no crash loop.
-    private func useOwnStrut(_ profile: Profile) {
+    func useOwnStrut(_ profile: Profile) {
         if strut == nil { strut = Self.strut(for: profile) }
-        strut?.onChange = { [weak self] in self?.lookForMemory(restarting: false) }
+        strut?.onChange = { [weak self] in
+            self?.lookForMemory(restarting: false)
+            self?.lookForBridge()
+        }
     }
 
     private func startStrut(_ strut: BundledStrut, reporting: Bool) {
@@ -532,13 +541,13 @@ extension AppModel {
 
     /// The strut `profile`'s agent uses, if this build ships one: the app
     /// account's in Peel's folder; a development profile's only with
-    /// `-strut YES`, its data inside the profile's own folder, so a test
-    /// account never writes to the real memory.
+    /// `-strut YES` or the bridge's preview on, its data inside the
+    /// profile's own folder, so a test account never writes to the real memory.
     static func strut(for profile: Profile) -> BundledStrut? {
         switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
-            UserDefaults.standard.bool(forKey: "strut")
+            UserDefaults.standard.bool(forKey: "strut") || AgentBridge.isOn
                 ? BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) : nil
         }
     }
@@ -564,6 +573,7 @@ extension AppModel {
         localHoldsMemory = nil
         stopAutomations()
         automationToken = nil
+        agentBridge.stop()
         agent?.close()
         agent = nil
         closeMemory()

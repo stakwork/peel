@@ -85,6 +85,9 @@ struct AgentSettingsSection: View {
                         attempt { try agent.clear() }
                     }
                 }
+                if AgentBridge.offered {
+                    AgentOnStrutRow()
+                }
             }
             if let problem {
                 Text(problem)
@@ -109,6 +112,43 @@ struct AgentSettingsSection: View {
             problem = nil
         } catch {
             problem = PeelError.problem(error, couldNot: "change the agent")
+        }
+    }
+}
+
+/// "Run in strut (preview)", dev builds only (`AgentBridge`): the switch,
+/// and what the bridge is doing under it.
+private struct AgentOnStrutRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Fact("Run in strut") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Preview")
+                switch model.agentBridge.status {
+                case .failed(let problem):
+                    Text(problem)
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.attention)
+                        .fixedSize(horizontal: false, vertical: true)
+                case let status:
+                    Text(line(status))
+                        .muted()
+                }
+            }
+        } trailing: {
+            PeelSwitch(isOn: Binding(get: { model.agentBridge.previewOn }, set: { model.setAgentOnStrut($0) }))
+            .accessibilityLabel("Run in strut (preview)")
+        }
+    }
+
+    private func line(_ status: AgentBridge.Status) -> String {
+        switch status {
+        case .starting: "Starting the agent's own account…"
+        case .running: "Your agent is a contact in Direct messages."
+        default: !model.agentBridge.previewOn ? "Off: the agent runs in Peel, as today."
+            : model.brain == .thisMac ? "Waits for Peel's own memory on this Mac to start."
+            : "Needs Peel's own memory on this Mac (Brain below)."
         }
     }
 }

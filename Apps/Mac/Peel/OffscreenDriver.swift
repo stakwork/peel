@@ -329,6 +329,8 @@ final class OffscreenDriver {
     /// `agent-sent-view`, View on its newest send row; `agent-always`, the
     /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
+    /// `agent-on-strut` and `agent-off-strut`, Account's "Run in strut
+    /// (preview)" switch turned on or off (dev builds; a later launch keeps it);
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
@@ -420,6 +422,11 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "agent-on-strut", "agent-off-strut":
+            // Account › Peel agent: the "Run in strut (preview)" switch, to on or off.
+            guard AgentBridge.offered else { throw Failure(description: "this build offers no strut preview") }
+            let on = name == "agent-on-strut"
+            if model.agentBridge.previewOn != on { model.setAgentOnStrut(on) }
         case "brain-form":
             model.brainFormOpened += 1
         case "brain-leave":

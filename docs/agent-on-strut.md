@@ -1,7 +1,10 @@
 # Phase 1: the agent is a contact
 
-Last updated 2026-10-16. **Design and PR plan, for Tom's review. Nothing
-here is built.** It turns [foundation.md](foundation.md)'s answers into
+Last updated 2026-10-18. **Design and PR plan; being built.** PRs 1 to 6
+are merged (#311, #319, #321, #322, #323, #325), PR 6's follow-ups are in
+review (#326), PR 7 is in review (#324, waiting on strut#215 and
+sphinx#387), and PR 8 (Calendar) is dropped from Phase 1 for now (Tom,
+2026-10-18; decision 16). It turns [foundation.md](foundation.md)'s answers into
 the first phase of Peel's end state: the agent's loop runs in strut, the
 agent is a Sphinx contact with its own account, and your devices do what
 only they can (read your chats, send as you, Calendar) when strut asks.
@@ -65,6 +68,12 @@ From [foundation.md](foundation.md), and the group added later that day:
 13. **One contact, one continuous session** (Tom, later on 2026-10-16).
     One agent DM is one session, compacted in place. A session keeps its
     first prompt; `/new` starts a fresh one (section 1, Sessions).
+
+Later:
+
+16. **Calendar is dropped from Phase 1 for now** (Tom, 2026-10-18). PR 8
+    is not built in this phase; the `calendar.*` requests below stay the
+    design for when it comes back. Nothing else in Phase 1 waits on it.
 
 Evan's answers (2026-10-16, merged as sphinx#382, sphinx#383 and
 sphinx-rs#100):
@@ -912,7 +921,7 @@ would give the same change.
 | 6 | peel | The Agent chat is the DM (preview on): `AgentTable` reads the DM, Stop sends `cancel`, tool rows from metadata, cards for requests, "Waiting for your Mac", "Earlier, on this Mac" for the old history | Preview on: one agent row; type, see the reply, approve a send, stop a turn, read the old history; preview off: today's Agent chat unchanged | high (message list) | 5 |
 | 6b | peel + bridge | Jobs and files from the DM: grant the orchestrator `job/start`, `job/continue` and the `job/*` reads; the bridge sends job results, questions and artifacts into the DM, files as attachments | Preview on: "research flights to Lisbon" starts a job and the chat stays free; its result and a screenshot arrive in the DM; answering its question continues the same job | high (attachments, untrusted input) | S2, 6 |
 | 7 | peel | Automations on `peel-automation-run`: new ones are made on it; turning the preview on moves existing ones (same schedule and prompt, workflow changed), turning it off moves them back; sends from automations with grants (automations-and-jobs step 1) | Preview on: the Hive test posts at the minute it said, `[Agent]` first, nobody at the Mac; the weekly report lands in the DM; preview off: the same automations run on `peel-automation` as before | high (sends) | 5, 3 |
-| 8 | peel | Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
+| 8 | peel | **Dropped from Phase 1 for now** (Tom, 2026-10-18). Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
 | 9 | peel | iPhone: the agent DM shows talk and hides control (on PR 1's envelope), "Waiting for your approval on your Mac" | From the phone, with the Mac awake: message the agent and get the answer in the same thread as the Mac | medium | 1, 6 |
 | 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one 10-sat invite the agent registers with, then the key exchange); the preview becomes the default; the Swift loop stays one release as the fallback | Tom uses it on his real account for a week: catch-ups no slower than today, automations fire, nothing sent twice; turning it off returns to the Swift loop | high (keys) | The sphinx-rs pin at v0.8.39 |
 | 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | medium (over 400 lines) | 10, plus a week of use |
@@ -922,12 +931,14 @@ now       S1 ✓  B1 ✓  S2 ✓  1
 then      2    4
 then      3
 then      5
-then      6    7    8    9
+then      6    7    9         (8, Calendar: dropped for now)
 then      6b
 once the pin is v0.8.39: 10, then 11
 ```
 
-S1, S2 and B1 are merged (strut#198, strut#195, sphinx#382).
+S1, S2 and B1 are merged (strut#198, strut#195, sphinx#382). PRs 1 to 6
+are merged (#311, #319, #321, #322, #323, #325); PR 7 is in review
+(#324, waiting on strut#215 and sphinx#387).
 PRs 2 and 3 follow PR 1 in turn, since each builds on the one before.
 PR 1 is the only one that changes what ships before the preview: control
 messages hidden in the lists, and the time zone setting merging keys. PR 4 stages runner as it is merged.

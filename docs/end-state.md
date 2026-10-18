@@ -1,6 +1,6 @@
 # Peel's end state
 
-Last updated 2026-10-16. **The picture everything else builds toward**, from
+Last updated 2026-10-18. **The picture everything else builds toward**, from
 the decisions in [foundation.md](foundation.md). It shows the parts, the path
 a message takes, and which phase brings each part. A drawn version is the
 "Peel end-state map" artifact (https://claude.ai/artifact/SU2wNEXhw94WB6C5788bCX);
@@ -105,7 +105,7 @@ Each milestone is something you can do at the end of it.
 |---|---|---|---|
 | 0 | Today | Use Peel on Mac and iPhone as a Sphinx client. Talk to an agent that lives only in the Mac app. Automations fail if Peel is closed or the Mac locked; nothing is backed up | Done |
 | 1 | 1. strut answers (dev preview) | Message the agent contact and get a reply from strut; "what did I miss?" reads through your Mac | S1, S2, B1, 1, 2, 4, 5 |
-| 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac); Calendar | 3, 7, 8 |
+| 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac). Calendar (PR 8) is dropped from Phase 1 for now (Tom, 2026-10-18) | 3, 7 |
 | 1 | 3. One conversation everywhere | The same agent thread on Mac and iPhone, with jobs and their files in it | 6, 6b, 9 |
 | 1 | 4. On for real | A week on your real account, then the Swift agent removed | 10, 11 |
 | 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | brain-handover.md PRs 1–11 |
@@ -132,7 +132,7 @@ What gates the start of each phase:
   [brain-handover.md](brain-handover.md) and [peel-brain.md](peel-brain.md).
 - **Phase 3** is a direction, not yet planned. VISION open question 8.
 
-## Where the work stands (2026-10-17)
+## Where the work stands (2026-10-18)
 
 | Piece | State | Where |
 |---|---|---|
@@ -142,8 +142,12 @@ What gates the start of each phase:
 | The agent's seed | Merged: `agent_seed` in the core with test vectors; in sphinx-ffi from v0.8.39, which Peel pins | stakwork/sphinx#383, stakwork/sphinx-rs#100 |
 | S1: the agent step's gaps | Merged: `withStop()`, `retain`, automation callbacks; `systemAtCompaction` deferred | stakwork/strut#198 |
 | S2: `job/start`, `job/continue` | Merged | stakwork/strut#195 |
-| The generic orchestrator | Being reworked to match strut#198 | stakwork/strut#196 |
-| PR 1: the control envelope | Built | stakwork/peel#311 |
+| The generic orchestrator | Merged, with the automation steps | stakwork/strut#196, stakwork/strut#213 |
+| The agent's funding | One 10-sat invite from your account when it pairs: the agent registers with it, and sats it did not need are asked back. Not free, and not settled beyond that | stakwork/sphinx#385, stakwork/peel#322 |
+| Peel PRs 1–6 | Merged: the control envelope, device requests (reads, then sends and approvals), the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM | stakwork/peel#311, #319, #321, #322, #323, #325 |
+| PR 6's follow-ups | In review: a request's one row in any DM, opening to what it read or did | stakwork/peel#326 |
+| PR 7: automations on strut | In review, waiting on strut#215 and sphinx#387 | stakwork/peel#324 |
+| PR 8: Calendar | Dropped from Phase 1 for now (Tom, 2026-10-18) | — |
 | Phase 1 design and PR plan | Merged: the layers, S1, S2, B1 and Peel PRs 1–11 with 6b | [agent-on-strut.md](agent-on-strut.md), #303 |
 
 ## Open

@@ -59,6 +59,11 @@ From Tom and [foundation.md](foundation.md):
    the workspace graph round-trip losslessly through Ladybug 0.21.2's
    export and import. strut's snapshot reader refuses a workspace export
    (its index and extension lines), so a whole-brain snapshot is format 2.
+9. **Automation grants bind to strut's automation id** (stakwork/strut#220,
+   merged 2026-10-19). A fire's run carries `ctx.automation`, which only
+   strut's scheduler sets; a host step that acts on a grant names the
+   automation from there, never from the run's input, and no grant key
+   rides in the input. The Mac keeps what it allowed under that id.
 
 Decision 10 ("brain mode is off by default: the Mac is the brain while it
 is awake") is about where the brain runs, and stands: the Mac stays the
@@ -107,7 +112,7 @@ A brain is two stores and a few host files, and all of it moves:
 | strut's data folder | The workspace graph (workflows, steps, automations, Peel's `sphinx/*` steps and `peel-automation-run`), memory, the DM's sessions and jobs, run history, portable secrets (the model key) | brain-handover.md's parts table and format-2 snapshot |
 | runner's store (redb) | The agent's Sphinx core state (its contact with you and the key exchange), the owner allowlist (senders), the inbox cursor, the current session id (`dm-2`, …), the request ledger, turns and runs | **New:** runner's export and import, carried in the snapshot. The export leaves out runner's params (the seed and the invite): Peel posts the seed again |
 | Peel's host delta | Peel's tools and prompt section (`host-config.json`, which strut reads only at boot, `STRUT_HOST_CONFIG`) | **New:** a portable part; strut restarts after a restore to read it |
-| Automation callbacks | Each automation's `run.end` URL (`automation-callbacks.json`): the bridge on this machine | **New:** host-bound; a restore rewrites them from the new brain's `PEEL_BRIDGE_PORT` and `PEEL_BRIDGE_TOKEN`. The same fix serves the Mac, whose bridge port changes each launch (Phase 1 PR 7) |
+| Automation callbacks | Each automation's `run.end` URL (`automation-callbacks.json`): the bridge on this machine | **New:** host-bound; a restore rewrites them from the new brain's `PEEL_BRIDGE_PORT` and `PEEL_BRIDGE_TOKEN`. On the Mac, each bridge start already re-points them, since its port and token change each launch (Phase 1 PR 7, #324); the restore does the same on the new brain |
 
 The bridge's store matters. A fresh runner on the same seed is the same
 account but has lost its contact with you and its place in the inbox, so
@@ -197,7 +202,10 @@ set aside, wiped and imported, and Peel posts the seed again (runner's
   sleeps.
 - Send grants stay on the Mac. An automation that posts as you fires on
   the box and asks the Mac; with the Mac asleep, it waits and expires at
-  its fire time + 10 minutes, as in Phase 1.
+  its fire time + 10 minutes, as in Phase 1. The Mac's grants are keyed
+  by strut's automation id (`ctx.automation`, strut#220), so they still
+  match after a move only if the workspace export keeps automation ids:
+  H1 checks it.
 - A changed model or model key, and a newer host delta or `sphinx/*`
   steps after a Peel update, reach the box over the same path as the
   handover, when the Mac can reach it (open question 3). Model keys never
@@ -250,8 +258,9 @@ line; so the bridge sends `"any"` only once your devices say they know it
   and for `approve`. "Always allow" rules stay per device. The lines that
   name the Mac today ("Waiting for your approval on your Mac") name the
   device that answers.
-- **Send grants reach the phone.** A grant made on the Mac is sent as a
-  control message from your own account in the agent DM, which only your
+- **Send grants reach the phone.** A grant made on the Mac (keyed by
+  strut's automation id, strut#220) is sent as a control message from
+  your own account in the agent DM, which only your
   devices can sign. The phone stores it and checks it as the Mac does
   (agent-on-strut.md, open question 5). The brain never holds one.
 - **In the background** the phone cannot answer: iOS does not run it. It
@@ -355,13 +364,13 @@ would give the same change. **Evan** marks a PR that needs his answer or
 his review first (the questions are below).
 
 Phase 2 starts when Phase 1 is in daily use: PR 10 (strut the default) and
-PR 11 (the Swift loop removed) merged, and runner ending a `stale` run
-(stakwork/sphinx#386, a Phase 1 blocker).
+PR 11 (the Swift loop removed) merged. runner ending a `stale` run, a
+Phase 1 blocker, is merged (stakwork/sphinx#386).
 
 | # | Repo | What | Done when | Risk | Waits on |
 |---|---|---|---|---|---|
 | 0 | peel | This doc | Tom agrees | low | — |
-| H1 | strut | Handover PRs 1–3: `parts.ts`, `dataPath`, tar and secrets helpers, `workspace/export` and `workspace/import` | The part test: every file under a booted strut belongs to one part; the workspace graph round-trips (#193's checks) | medium | Evan |
+| H1 | strut | Handover PRs 1–3: `parts.ts`, `dataPath`, tar and secrets helpers, `workspace/export` and `workspace/import` | The part test: every file under a booted strut belongs to one part; the workspace graph round-trips (#193's checks), automation ids included | medium | Evan |
 | R1 | sphinx | runner: `POST /bridge/export` (no params) and `/bridge/import` (into a store empty apart from the seed), hold mode (stores messages, launches nothing, exports them), parked mode (stays off the broker), activate, the devices it asks set through its admin API, a published multi-arch image | Export, wipe, post the seed, import, activate: the agent answers your next message with no new key exchange and answers no old one; a message held during the drain runs once on the new brain; a parked runner receives nothing | high (keys) | Evan |
 | H2 | strut | Handover PRs 4–5: `POST /brain/snapshot` (format 2) and `/brain/restore`, with host-supplied parts (the bridge's export, the host delta), callbacks rewritten, restart after restore | Snapshot, wipe, restore: the same workflows, automations, memory, sessions and secrets; a failed restore rolls back | high (secrets) | H1, Evan |
 | H3 | strut | Handover PRs 6–7: brain state, `brain.json`, generation, the brain key beside `STRUT_API_KEY`, the write gate | A parked or empty brain refuses writes and runs no schedules; a lower generation is refused | high (auth) | H2, Evan |

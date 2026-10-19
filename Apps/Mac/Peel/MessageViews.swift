@@ -486,6 +486,9 @@ enum MessageMenu {
             copy = CallCard.menuEntries(call)
         } else if let text = message.shownText.nilIfEmpty {
             copy.append(.copyText(text))
+            if !message.deleted, let link = MessageMarkup.firstLink(in: text) {
+                copy.append(.copy("Copy link", text: link.absoluteString, systemImage: "link"))
+            }
         }
         // A run of images: what acts on one image is on that tile's own menu.
         let oneMessage = row.images.count < 2

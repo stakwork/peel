@@ -192,26 +192,32 @@ struct AuditLinkLabelTests {
 
     @Test func aLookAlikeHostShowsAsTheAddressNamesIt() throws {
         // A Cyrillic "а" in place of the Latin one.
-        #expect(try label("https://\u{0430}pple.com/login") == "xn--pple-43d.com/login")
+        #expect(try label("https://\u{0430}pple.com/login") == "https://xn--pple-43d.com/login")
     }
 
     @Test func aLongHostIsNeverCut() throws {
         let host = "accounts.google.com.verify-session-and-sign-in.attacker.example"
         let shown = try label("https://\(host)/a/very/long/path/that/goes/on/and/on/for/a/while/yet")
-        #expect(shown.hasPrefix(host + "/"))
-        #expect(shown.contains("…"))
+        #expect(shown == "https://\(host)/a/very/long/path/that/goes/on/and/on/for/a/while/yet")
+        #expect(!shown.contains("…"))
     }
 
     @Test func aShortLinkShowsWhole() throws {
-        #expect(try label("https://github.com/stakwork/sphinx") == "github.com/stakwork/sphinx")
-        #expect(try label("https://a.co:8443/p?q=1#f") == "a.co:8443/p?q=1#f")
+        #expect(try label("https://github.com/stakwork/sphinx") == "https://github.com/stakwork/sphinx")
+        #expect(try label("https://a.co:8443/p?q=1#f") == "https://a.co:8443/p?q=1#f")
     }
 
-    @Test func aLongPathIsShortenedInTheMiddle() throws {
-        let shown = try label("https://github.com/stakwork/sphinx-broker/blob/main/docs/notes/0.9.3-reconnect-backoff.md")
-        #expect(shown.hasPrefix("github.com/stakwork/"))
-        #expect(shown.hasSuffix("-backoff.md"))
-        #expect(shown.count <= 57)
+    @Test func aLongLinkShowsWholeAsWritten() throws {
+        let text = "https://hive.sphinx.chat/org/stakwork?chat=cmve5abcdefghijklmnopqrstuvwxyz001jp075fx5brk7"
+        #expect(try label(text) == text)
+        let path = "https://github.com/stakwork/sphinx-broker/blob/main/docs/notes/0.9.3-reconnect-backoff.md"
+        #expect(try label(path) == path)
+    }
+
+    @Test func theFirstLinkIsFound() {
+        #expect(MessageMarkup.firstLink(in: "see https://a.co/x and https://b.co")?.absoluteString == "https://a.co/x")
+        #expect(MessageMarkup.firstLink(in: "no link here") == nil)
+        #expect(MessageMarkup.firstLink(in: "[docs](https://a.co/d) text")?.absoluteString == "https://a.co/d")
     }
 }
 

@@ -194,12 +194,13 @@ for the card. It is not built yet ([jobs-architecture.md](jobs-architecture.md),
 
 ## What stays in Swift
 
-On the Mac, AgentKit and PeelAgent shrink to the client side: the approval
-gate and its rules, the cards, the device-request handler, the Sphinx read
-and send code it reuses, `BundledStrut` and `BundledBridge`. The Swift loop
-(`AgentLoop`, `AgentSession`'s turns, the providers, `Compaction`,
-`AutomationServer`, `peel-automation`) stays the default until PR 10 turns
-strut on, and goes in PR 11.
+No agent loop lives in Peel. On the Mac, AgentKit and PeelAgent shrink to
+the client side: the approval gate and its rules, the cards, the
+device-request handler, the Sphinx read and send code it reuses,
+`BundledStrut` and `BundledBridge`. PeelCore, Peel's Sphinx messaging
+engine, stays Swift. The old Swift loop (`AgentLoop`, `AgentSession`'s
+turns, the providers, `Compaction`, `AutomationServer`, `peel-automation`)
+is still the default for now (until PR 10, days away; removed in PR 11).
 
 ## Where the brain runs
 

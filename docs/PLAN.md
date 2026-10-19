@@ -28,10 +28,12 @@ brain (your Mac by default, a home server from Phase 2) as strut's
 `orchestrator` workflow, reached through a Rust bridge (`sphinx/runner`)
 that Peel bundles and starts. Your keys stay on your devices: when the
 agent needs your chats or a send as you, it asks your Mac in the agent's
-DM. The engine stays Swift (decided 2026-10-07) and free of UI types. The
-design is in [agent-architecture.md](agent-architecture.md) and the engine
-rules in [agent-native.md](agent-native.md); read both before changing the
-architecture.
+DM. Peel's Sphinx messaging engine (PeelCore) stays Swift (decided
+2026-10-07) and free of UI types. No agent loop lives in Peel once PR 11
+lands: the client keeps only device requests, approval cards and the
+views. The agent's design is in [agent-architecture.md](agent-architecture.md)
+and PeelCore's rules in [agent-native.md](agent-native.md); read both
+before changing the architecture.
 
 The target layout and visual language are in [design/README.md](design/README.md):
 Slack-style tribes, direct messages and threads, in Sphinx's colours.
@@ -161,8 +163,9 @@ only needed for TestFlight and the iPhone target.
   strut asks, the Mac reads or sends behind a card, and answers once.
 - **One DM, one continuous session** in strut, compacted in place; `/new`
   starts a fresh one.
-- **The Swift loop** (AgentKit, `AgentLoop`) is still the default until
-  PR 10 of [agent-on-strut.md](agent-on-strut.md) and goes in PR 11.
+- **The Swift loop** (AgentKit, `AgentLoop`) is a temporary state, not
+  the architecture: still the default (until PR 10 of
+  [agent-on-strut.md](agent-on-strut.md), days away; removed in PR 11).
 
 ## Phases
 

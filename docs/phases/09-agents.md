@@ -3,7 +3,7 @@
 ## Status (2026-10-12)
 
 > **Superseded in part (2026-10-19).** v1 is built and is still the Mac's
-> agent until Phase 1's PR 10 makes strut the default. Then the loop moves
+> agent for now (until Phase 1's PR 10, days away; removed in PR 11). Then the loop moves
 > to strut's `orchestrator` on the brain and PR 11 removes the Swift loop;
 > AgentKit keeps the client side (the approval gate, the cards, the device
 > requests). "Where it runs" below is replaced. See [../agent-architecture.md](../agent-architecture.md).

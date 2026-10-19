@@ -92,7 +92,8 @@ These are rules for v1 work, not new features.
 
 ## Engine language: Swift (decided 2026-10-07)
 
-The engine stays Swift. Peel is first Tom's own client and a place to
+The engine (PeelCore, Peel's Sphinx messaging engine) stays Swift; the
+agent's loop is not in it and runs in strut. Peel is first Tom's own client and a place to
 experiment with agents; it may replace the official apps for his team later,
 if it is clean, bug-free and secure. Swift keeps one language while we learn
 what the agent needs.

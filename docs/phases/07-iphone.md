@@ -11,6 +11,17 @@ The research behind it was read on 2026-10-13 from Peel's `main` (6da14aa),
 `~/Documents/strut`, `~/Documents/hive`, `~/Documents/sphinx` and
 `~/Documents/sphinx-ios-v2`.
 
+> **Superseded in part (2026-10-19).** The client track (I1, I2, F1 to F2c,
+> G1) stands. The remote track is replaced by Phase 1 of the end state: the
+> agent's account is held by the bridge (`sphinx/runner`, bundled in
+> Peel.app), not a second PeelCore engine; its seed is `agent_seed(seed, n)`
+> from the core (info `agent seed <n>`), not `peel agent <n>`; control is a
+> JSON envelope under `metadata.peel` on ordinary messages, not `BotCmd` /
+> `BotRes`; the loop is strut's `orchestrator`, not the brain's Peel; and
+> brain mode is strut and the bridge on a home server with no Peel (Phase
+> 2). The phone's agent DM is built (Phase 1 PR 9). See [../agent-architecture.md](../agent-architecture.md) and
+> [../agent-on-strut.md](../agent-on-strut.md).
+
 ## The big picture
 
 **The brain** is one machine that runs the agents, Strut and memory: Tom's
@@ -95,6 +106,12 @@ never sleeps. Later the same code runs headless on Linux.
 6. **The brain keeps the queue.** Strut has no durable queue, so the brain
    stores every remote command before acting on it, acks it, and works
    through what is waiting when it wakes.
+
+> **Superseded (2026-10-19):** proposed decisions 3, 4 and 6 and the shape
+> below. The bridge holds the agent's account and keeps the inbox; strut,
+> not the brain's Peel, runs the agent; strut stays on loopback on the Mac,
+> and a direct path is optional (foundation.md, decision 4). See
+> [../agent-architecture.md](../agent-architecture.md).
 
 ## The shape
 
@@ -612,6 +629,15 @@ Peel iPhone on one account" before Tom moves his real account.
 
 ## 2. The remote
 
+> **Superseded (2026-10-19):** sections 2 and 4 and the remote track of
+> the build order (S2, B1 to B4, H1). Option A, the agent's own identity,
+> stands, held by the bridge. The rest is in
+> [../agent-on-strut.md](../agent-on-strut.md): the envelope, the request
+> types, approvals on the Mac, "Waiting for your approval on your Mac" on
+> the phone. B5 to B7 (jobs, cards and notification actions on the phone)
+> are Phase 2, on the DM's job messages and device requests rather than
+> jobs-architecture.md's P2 and P3.
+
 ### Who the phone talks to
 
 | Option | How | Verdict |
@@ -850,6 +876,10 @@ before the phone's messages are lost.
 
 ## 4. The home server
 
+> **Superseded (2026-10-19):** brain mode is strut and the bridge on a home
+> server, one Docker bundle, with no Peel on the box ([../end-state.md](../end-state.md),
+> Phase 2). Stage 3's `peel serve` is not needed.
+
 The brain is a role, not a machine. Three stages, the same code:
 
 | Stage | Where | What changes |
@@ -918,6 +948,9 @@ on floating chrome; the Mac's colours and their meanings.
   job (needs push from the brain).
 
 ## 7. Build order
+
+> **Superseded in part (2026-10-19):** the R track (S2, B1 to B4, H1) is
+> replaced by Phase 1's PRs; see section 2's note.
 
 Spikes first, because three of them can change the plan.
 

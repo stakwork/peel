@@ -252,6 +252,11 @@ instead of only `peel-automation`. The existing `AutomationsView` gains:
 
 ## Where it runs
 
+> **Superseded in part (2026-10-19):** work that needs Sphinx chats does not
+> wait for Peel to claim it. A strut step asks your Mac by device request in
+> the agent's DM, through the bridge (agent-on-strut.md, section 2). See
+> [agent-architecture.md](agent-architecture.md).
+
 This fits how automations work now and how the home server will work:
 
 - **Work that doesn't need Sphinx** runs inside strut, in its own

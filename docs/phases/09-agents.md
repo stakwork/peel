@@ -2,6 +2,12 @@
 
 ## Status (2026-10-12)
 
+> **Superseded in part (2026-10-19).** v1 is built and is still the Mac's
+> agent for now (until Phase 1's PR 10, days away; removed in PR 11). Then the loop moves
+> to strut's `orchestrator` on the brain and PR 11 removes the Swift loop;
+> AgentKit keeps the client side (the approval gate, the cards, the device
+> requests). "Where it runs" below is replaced. See [../agent-architecture.md](../agent-architecture.md).
+
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this
 plan, #157), PR 2 (the AgentKit data layer, #171), PR 3 (model clients
@@ -1134,6 +1140,10 @@ Each is done when it works in the app on a development profile.
   show an inline error with Retry; nothing is lost.
 
 ## Where it runs
+
+> **Superseded (2026-10-19):** the agent runs in strut on the brain, not on
+> the device, and the phone reaches it as a Sphinx contact. See
+> [../agent-architecture.md](../agent-architecture.md).
 
 v1 runs inside Peel, on the device: Mac now, iPhone later, with no server
 (decided 2026-10-10). An agent in Strut was considered: Strut is

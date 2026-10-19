@@ -6,6 +6,14 @@ the graph lives, who writes it, and how the agent reaches strut. Nothing
 here is built. A visual version with diagrams:
 <https://claude.ai/artifact/8iRBjxFzqStPDBETnq6EZD>.
 
+> **Superseded in part (2026-10-19).** Peel's agent as the front agent, in
+> Swift on the Mac, is replaced: the agent is strut's `orchestrator` on the
+> brain, a Sphinx contact behind the bridge, and it starts strut's jobs
+> itself. The phone reaches it through the bridge, not through the Mac's
+> Peel. Still standing: strut owns the graph and is its only writer, the
+> Graphiti model, system types, janitors. The architecture of record is
+> [agent-architecture.md](agent-architecture.md).
+
 ## Why revisit
 
 The 2026-10-10 plan runs the agent and a full graph copy on every client,
@@ -53,6 +61,12 @@ iPhone (Peel) ── Sphinx msg ──► Mac        iPhone, Mac (Peel) ──�
 
 If the Mac is asleep, messages wait on the Sphinx broker and are answered
 when it wakes. Always-on is the same setup on a Mac mini.
+
+> **Superseded (2026-10-19):** this section and "Front agent tools". The
+> front agent is strut's `orchestrator`, with `job/start`, `job/continue`
+> and the `job/*` reads as its tools; job records stay in strut's job index,
+> and a job's id survives compaction because a job's message names it
+> (`metadata.peel.job`). See [agent-architecture.md](agent-architecture.md).
 
 ## The front agent and strut
 
@@ -277,6 +291,13 @@ Tested directly in Ladybug 0.21.2 (macOS):
   `MATCH (n)` across tables and `(n:A:B)` as "either" all work.
 - Full-text and vector indexes work, one per table, but the extensions
   are downloaded from `extension.ladybugdb.com` on first use.
+
+> **Superseded in part (2026-10-19):** phases 0 to 3 are built in strut.
+> Phase 4's front agent in Peel and phase 6's "headless sphinx-rs service"
+> became the orchestrator and the bridge (`sphinx/runner`); moving strut off
+> the Mac is Phase 2 of [end-state.md](end-state.md). Open question 4 is
+> answered: the front agent is in strut. No read-only graph on the phone or
+> change-log sync is planned now.
 
 ## Phases
 

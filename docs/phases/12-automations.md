@@ -198,6 +198,12 @@ use the same strut base URL and the same `Web.isThisMac` check:
 | A local notification through `Notifier` that opens that message | Email, through a connector |
 | The text is the strut run's output | A text message |
 
+> **Superseded (2026-10-19):** "Delivery"'s later column and "Where it
+> runs". With the agent on strut (Phase 1 PR 7, in review), automations fire
+> `peel-automation-run` in strut, results arrive as messages in the agent's
+> DM, and reads or sends as you are device requests to your Mac. There is no
+> `peel serve` on the home server. See [../agent-architecture.md](../agent-architecture.md).
+
 ## Where it runs
 
 | | Mac now | Home server later |
@@ -272,6 +278,7 @@ POST /automations/run   Authorization: Bearer <token>
    history and the failure badge.
 6. **Later:** `deliver_at`, delivery to the phone, `sphinx-automation`,
    `peel serve` on the home server, and strut jobs for heavy work.
+   *Superseded in part (2026-10-19):* no `peel serve`; see "Where it runs".
 7. **Peel: system automations** (2026-10-14,
    [../system-automations.md](../system-automations.md)).
    - Done: `AutomationsClient.list` reads every workflow's automations

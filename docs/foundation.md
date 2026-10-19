@@ -219,7 +219,8 @@ Each step starts when the one before it is agreed or merged.
    agent-architecture.md and VISION open question 7 around the answers;
    mark the older proposals (agent-brain.md, jobs-architecture.md, the
    memory-only parts of peel-brain.md and memory-backup.md) superseded where
-   they disagree. Docs only.
+   they disagree. Docs only. Done 2026-10-19:
+   [agent-architecture.md](agent-architecture.md).
 3. **The small gates in code.** Memory-backup phase 0 (the Ladybug round
    trip), and a spike of the bridge on `sphinx/runner` against the local
    stack (done: sphinx#382). The agent's seed is `agent_seed` in the core.

@@ -153,7 +153,7 @@ The experiences come first. These follow from them.
 | 6. Asks first | Effects are labelled and gated. Grants widen only by the user's signed action; an agent can only narrow its own limits. |
 | 7. Lives with you | Everything works with no home server, and again with one. The brain runs on the user's machine and moves (one writer, never synced) to an always-on box. Pairing must be one step: scan or link, no URLs or keys typed. A PII layer before any hosted model. A local model option. |
 | 8. See and stop | One record of runs, spend and memory changes that the agent cannot edit. A kill switch that revokes keys. |
-| 9. Can't lose it | Everything derives from the twelve words. Errand and assistant identities use a hardened derivation (for example `hkdf(seed, "peel agent <n>")`), so a leaked agent key never reveals the root. Sphinx's per-contact child keys cannot serve: they are unhardened under an xpub the server sees, and broker login needs the root key. Backups encrypted with a key from the words, to more than one place, with restore checked at setup. The box at home holds derived keys, never the words. |
+| 9. Can't lose it | Everything derives from the twelve words. Errand and assistant identities use a hardened derivation (the agent's is `agent_seed(seed, n)`, HKDF-SHA256 with info `agent seed <n>`, in the Sphinx core), so a leaked agent key never reveals the root. Sphinx's per-contact child keys cannot serve: they are unhardened under an xpub the server sees, and broker login needs the root key. Backups encrypted with a key from the words, to more than one place, with restore checked at setup. The box at home holds derived keys, never the words. |
 
 ## Decided
 
@@ -182,9 +182,13 @@ The experiences come first. These follow from them.
    "your name or details", and how does the user see what was sent?
 6. **"Your words, not its guess."** Episodes keep the words, but recall and
    merges work on facts. Quoting the source with its date needs work.
-7. **Plans disagree** on where the agent loop runs (Swift in Peel or Strut
-   on the brain), Ladybug or Neo4j on the box, and whether the phone talks to
-   Strut directly or only through Sphinx.
+7. **Closed (2026-10-19).** Plans disagreed on where the agent loop runs,
+   Ladybug or Neo4j on the box, and whether the phone talks to Strut
+   directly. Answered: the loop is strut's `orchestrator` on the brain
+   (foundation.md, decisions 1 and 11); the box runs Ladybug, as the Mac does
+   (Tom, 2026-10-15); devices reach the agent only through Sphinx, and a
+   direct connection is optional (decision 4). The architecture of record is
+   [agent-architecture.md](agent-architecture.md).
 8. **Keys off the brain.** Today an always-on box either holds the root
    key or waits for a device to act as you. A remote signing device in an
    isolated key zone (as a Lightning node's signer does), or later a

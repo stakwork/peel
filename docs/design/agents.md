@@ -11,6 +11,11 @@ conversation, ask cards, thread panel) and 6 (phone fallback) still hold.
 Artboards 1 (sidebar), 2 (Add agent), 4 (settings panel) and 5 (Harnesses
 group) need redrawing to the sections below.
 
+> **Superseded in part (2026-10-19):** the agent host, its workers and the
+> "Create from my seed" account sheet. The agent is strut's `orchestrator`
+> behind the bridge, its account from `agent_seed(seed, n)`, set up by Peel
+> with one invite. See [../agent-architecture.md](../agent-architecture.md).
+
 ## Decision
 
 One agent contact. Tom's agent sits in Direct messages beside people, with
@@ -112,7 +117,7 @@ shows the host's answer; while it waits, the row shows a spinner in place.
   stopped), the task text, and Open, which scrolls to that message.
 - **Connections** (later phase): one row per service with Connect, scope,
   access level and Disconnect. See `../agent-architecture.md`,
-  "Connections".
+  "Connectors".
 - **Remove the agent.** The one red text, confirmed in place next to the
   trigger, never a native dialog. It stops the host's sessions and removes
   the contact from this Mac; the account stays on the server.

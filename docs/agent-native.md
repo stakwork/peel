@@ -4,10 +4,9 @@ Last updated 2026-10-08. How Peel relates to the two Hive pages "Sphinx Personal
 Agent vs. the Market" and "Sovereign Sphinx Agent: build plan and decisions",
 and the rules that keep Peel's engine ready for an agent.
 
-The agent's design (one agent contact, the agent host, Strut, the graph,
-workers over ACP, the permission gate) is now in
-[agent-architecture.md](agent-architecture.md), agreed with Tom on
-2026-10-08. Where the two overlap, that file wins; this one keeps the
+The agent's design is in
+[agent-architecture.md](agent-architecture.md), the architecture of
+record (2026-10-19). Where the two overlap, that file wins; this one keeps the
 engine rules, the corrections to the Hive pages and the spikes.
 
 ## Where Peel sits
@@ -26,6 +25,13 @@ So Peel has two jobs:
    nothing else from the official apps.
 2. **The base for the agent.** Every decision in v1 should keep the agent
    work possible without a rewrite.
+
+> **Superseded in part (2026-10-19):** the agent-host picture below. The
+> agent's account is held by the bridge, `sphinx/runner` in Rust, not by
+> Peel's engine on a host ("one engine, two hosts"), and its seed is
+> `agent_seed(seed, n)` from the core (rule 6 is done). There are no ACP
+> workers; strut's jobs do the heavy work. The rules for Peel's engine still
+> stand. See [agent-architecture.md](agent-architecture.md).
 
 ## The shape
 
@@ -116,9 +122,9 @@ Checked against the code on 2026-10-07.
   "you" with the master seed; the market page makes the chief of staff a
   contact with its own key. Peel takes the second: the master seed never
   reaches a runtime, and the agent is its own account. How that account is
-  made (an invite now; a child derived on your device, or a separate agents
-  root, later) is decision 8 in
-  [agent-architecture.md](agent-architecture.md).
+  made is settled: `agent_seed(seed, n)` from the Sphinx core, paired with
+  one invite (foundation.md, decision 2; [agent-architecture.md](agent-architecture.md),
+  "Keys and accounts").
 - **The interface is Peel, not the official apps.** Phases 1 and 2 of the build
   plan land in Peel and the agent host.
 - **An invite may not be needed for a child account.** `routes::register` in

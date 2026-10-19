@@ -459,8 +459,8 @@ public enum MessageMarkup {
     public static func linkLabel(_ text: String, url: URL) -> String {
         let start = text.range(of: "://")?.upperBound ?? text.startIndex
         let hostEnd = text[start...].firstIndex { "/?#".contains($0) } ?? text.endIndex
-        guard let host = host(of: url), text[start..<hostEnd].lowercased() != host.lowercased() else { return text }
-        return text.replacingCharacters(in: start..<hostEnd, with: host)
+        guard let shownHost = host(of: url), text[start..<hostEnd].lowercased() != shownHost.lowercased() else { return text }
+        return text.replacingCharacters(in: start..<hostEnd, with: shownHost)
     }
 
     /// The first link in a message's text, bare or named.

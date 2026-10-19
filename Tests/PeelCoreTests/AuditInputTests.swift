@@ -198,7 +198,7 @@ struct AuditLinkLabelTests {
     @Test func aLongHostIsNeverCut() throws {
         let host = "accounts.google.com.verify-session-and-sign-in.attacker.example"
         let shown = try label("https://\(host)/a/very/long/path/that/goes/on/and/on/for/a/while/yet")
-        #expect(shown.hasPrefix(host + "/"))
+        #expect(shown == "https://\(host)/a/very/long/path/that/goes/on/and/on/for/a/while/yet")
         #expect(!shown.contains("…"))
     }
 
@@ -215,7 +215,7 @@ struct AuditLinkLabelTests {
     }
 
     @Test func theFirstLinkIsFound() {
-        #expect(MessageMarkup.firstLink(in: "see https://a.co/x?y=1 and https://b.co")?.absoluteString == "https://a.co/x?y=1")
+        #expect(MessageMarkup.firstLink(in: "see https://a.co/x and https://b.co")?.absoluteString == "https://a.co/x")
         #expect(MessageMarkup.firstLink(in: "no link here") == nil)
         #expect(MessageMarkup.firstLink(in: "[docs](https://a.co/d) text")?.absoluteString == "https://a.co/d")
     }

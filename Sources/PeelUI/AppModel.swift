@@ -342,8 +342,13 @@ public final class AppModel {
     /// The agent's DM as the agent chat, both ways: the agent chat open when
     /// its DM comes is the DM; the DM open when it stops being the agent
     /// chat (the brain moved off this Mac) is the agent chat again.
+    /// The agent's contact once it is a chat here: ready, for the phone's agent row.
+    static func agentChat(contact: String?, in conversations: [Conversation]) -> String? {
+        contact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
+    }
+
     private func followAgentChat() {
-        let chat = agentContact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
+        let chat = Self.agentChat(contact: agentContact, in: conversations)
         if chat != agentChat {
             let old = agentChat
             agentChat = chat

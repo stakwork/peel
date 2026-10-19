@@ -345,9 +345,9 @@ notification level. Pull to refresh is `AppModel.refresh()`: reconnect
 and wait up to 5 s when not connected, otherwise catch up unless history
 is already running. Not connected: the Mac's countdown, "Offline,
 retrying in 8s" (Tom, 2026-10-14: one wording on both apps, over the
-board's "Reconnecting in 8 s"), in orange under the large title
-(`.largeSubtitle`) and in the bolt's popover beside it, the Mac's
-`ConnectionCard` on an opaque `menu` panel with Reconnect now. Threads
+board's "Reconnecting in 8 s"), in the bolt's popover beside it
+(Tom, 2026-10-19: no line under the large title, which shifted the list at
+launch), the Mac's `ConnectionCard` on an opaque `menu` panel with Reconnect now. Threads
 and Mentions push lists from the Mac's model (`threads`,
 `mentionUpdates`); a tap opens the chat at the message or with the
 thread sheet over it, on top of the list. Automations says plainly they

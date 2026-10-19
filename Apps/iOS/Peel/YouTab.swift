@@ -132,6 +132,11 @@ private struct AgentRow: View {
             if let connected = model.agent?.connection {
                 Text(connected.model)
                     .foregroundStyle(Theme.quietText(on: .raised))
+            } else if model.agentChat != nil {
+                // Its account is a contact here (set up on the Mac); follows
+                // the conversations, so it changes as the contact arrives.
+                Text("Ready")
+                    .foregroundStyle(Theme.quietText(on: .raised))
             } else {
                 Text("Set up on your Mac")
                     .foregroundStyle(Theme.quietText(on: .raised))

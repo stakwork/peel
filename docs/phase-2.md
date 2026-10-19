@@ -38,7 +38,7 @@ From Tom and [foundation.md](foundation.md):
 1. **Order:** always on, then the phone, then backups, then hardening
    (Tom, 2026-10-19; foundation.md, decision 12).
 2. **The home server is one Docker bundle: strut plus the bridge.** No Peel
-   on the box (Tom, 2026-10-19). Peel's engine does not build on Linux, and
+   on the box (Tom, 2026-10-19). Peel's Sphinx engine (PeelCore) does not build on Linux, and
    the bridge is runner, which does (foundation.md, decision 1).
 3. **Handover moves the whole brain, Mac to home server and back.** One
    brain is active at a time (brain-handover.md, "Decided").

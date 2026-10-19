@@ -105,9 +105,10 @@ struct DeviceRequestLine: View {
                 .padding(.vertical, Theme.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let request = row.agentRequest {
-            // In the agent chat: one quiet row, as a tool's, in line with the messages' text.
-            HStack(spacing: 6) {
-                Text(request.words)
+            // One quiet row, as an agent's tool, in line with the messages' text;
+            // a click opens what it read or did.
+            AgentDisclosureRow(AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("request")) {
+                Text(request.label)
                 if let outcome = request.outcome {
                     Text("· " + outcome)
                 } else {
@@ -115,9 +116,9 @@ struct DeviceRequestLine: View {
                         .font(.system(size: 10, weight: .semibold))
                         .accessibilityLabel("Done")
                 }
+            } detail: {
+                DeviceRequestDetail(request: request)
             }
-            .font(Theme.font(13))
-            .foregroundStyle(Theme.secondaryText)
             .padding(.leading, MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -126,3 +127,92 @@ struct DeviceRequestLine: View {
         }
     }
 }
+
+/// What a device request read or did, under its row: the chats a read
+/// covered, each linked, with the messages it read (a few each, each
+/// opening its message); the message a send sent, with View; what an
+/// approval asked; why it was not done.
+private struct DeviceRequestDetail: View {
+    @Environment(AppModel.self) private var model
+    let request: AgentRequest
+
+    /// The most chats, and messages in each, shown; the rest counted.
+    private static let chats = 8
+    private static let lines = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let reason = request.reason {
+                FactLine(label: "Why", text: reason)
+            }
+            // Outside the agent chat, one never answered was not this Mac's to do:
+            // nothing of what its sender asked is shown.
+            switch request.asker != nil && request.status == nil ? "" : request.kind {
+            case "":
+                Text("This Mac did not answer it.").foregroundStyle(Theme.secondaryText)
+            case "send":
+                if let text = Self.string("text", in: request.args) { FactLine(label: "Text", text: text) }
+                if let said = request.text {
+                    HStack(spacing: 6) {
+                        Text(AgentToolTitle.summary(said)).foregroundStyle(Theme.text)
+                        if let url = AgentMessageLink(summary: said)?.url {
+                            Button("View") { _ = model.openAgentLink(url) }
+                                .buttonStyle(.peel(.link))
+                        }
+                    }
+                }
+            case "approve":
+                if case .object(let args)? = request.args, let intent = args["intent"] {
+                    if let action = Self.string("action", in: intent) { FactLine(label: "Asked", text: action) }
+                    if let content = Self.string("content", in: intent) { FactLine(label: "Content", text: content) }
+                }
+                if let said = request.text { FactLine(label: "Answer", text: said) }
+            default:
+                if let text = request.text { reading(ChatDataReading(text)) }
+            }
+            if request.asker == nil, request.status == nil, request.reason == nil {
+                Text("Your Mac has not answered yet.").foregroundStyle(Theme.secondaryText)
+            }
+        }
+        .font(Theme.font(12))
+        .textSelection(.enabled)
+    }
+
+    @ViewBuilder private func reading(_ read: ChatDataReading) -> some View {
+        Text(read.header).foregroundStyle(Theme.secondaryText)
+        ForEach(Array(read.chats.prefix(Self.chats).enumerated()), id: \.offset) { _, chat in
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Button(chat.name) { model.destination = .chat(chat.chat) }
+                        .buttonStyle(.peel(.link))
+                        .help("Open \(chat.isTribe ? "the tribe" : "the chat")")
+                    if let detail = chat.detail { Text(detail).foregroundStyle(Theme.secondaryText) }
+                }
+                ForEach(Array(chat.messages.prefix(Self.lines).enumerated()), id: \.offset) { _, line in
+                    let text = Text("\(line.sender): ").foregroundStyle(Theme.secondaryText) + Text(line.text).foregroundStyle(Theme.text)
+                    if let uuid = line.uuid, let url = AgentMessageLink(chat: chat.chat, uuid: uuid).url {
+                        Button { _ = model.openAgentLink(url) } label: { text.lineLimit(1).truncationMode(.tail) }
+                            .buttonStyle(.plain)
+                            .help("Show this message")
+                    } else {
+                        text.lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                if chat.messages.count > Self.lines {
+                    Text("and \(chat.messages.count - Self.lines) more").foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+        if read.chats.count > Self.chats {
+            Text("and \(read.chats.count - Self.chats) more chats").foregroundStyle(Theme.secondaryText)
+        }
+    }
+
+    /// The string at `key` in an object the agent sent; nil for anything else.
+    private static func string(_ key: String, in value: PeelCore.JSONValue?) -> String? {
+        guard case .object(let object)? = value, case .string(let text)? = object[key] else { return nil }
+        return text
+    }
+
+}
+

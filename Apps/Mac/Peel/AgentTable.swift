@@ -241,7 +241,7 @@ struct AgentListRow: TableRow {
 /// makes them for it (`agentDM`: only the bridge's lines a person reads,
 /// an agent's reply with its tool rows and no quote), and "writing…"
 /// while it answers you.
-struct AgentDMRows {
+@MainActor struct AgentDMRows {
     let rows: [ChatRow]
     /// Your message it is answering (`AppModel.agentAnswering`).
     let answering: Message?
@@ -252,7 +252,10 @@ struct AgentDMRows {
 
     func rows(agent: AgentSession, open: AgentOpenRows, name: String) -> [AgentListRow] {
         var shown = rows.map { row in
-            AgentListRow(id: row.id, kind: .dm(row), version: .init(name: name, row: row), agent: agent, openRows: open)
+            // Its opened part (a request's details), so the row is measured again as it opens.
+            AgentListRow(id: row.id, kind: .dm(row),
+                         version: .init(name: name, open: open.open.filter { AgentDisclosures.key($0, isIn: row.id) }, row: row),
+                         agent: agent, openRows: open)
         }
         if let answering {
             shown.append(AgentListRow(id: "answering-" + (answering.uuid ?? ""), kind: .answering,

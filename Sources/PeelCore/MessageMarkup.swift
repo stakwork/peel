@@ -452,19 +452,26 @@ public enum MessageMarkup {
         }
     }
 
-    /// How a link reads in a message, "github.com/stakwork/sphinx-broker/…/0.9.3-reconnect-backoff.md":
-    /// no scheme; the host always whole (`host(of:)`); only what follows the
-    /// host shortened in the middle when the whole is longer than `limit`, so
-    /// a long link cannot hide where it goes.
-    public static func linkLabel(_ text: String, url: URL, limit: Int = 56) -> String {
-        var rest = Substring(text)
-        if let scheme = rest.range(of: "://") { rest = rest[scheme.upperBound...] }
-        let hostEnd = rest.firstIndex { "/?#".contains($0) } ?? rest.endIndex
-        let host = host(of: url) ?? String(rest[..<hostEnd])
-        rest = rest[hostEnd...]
-        let budget = max(limit - host.count, 16)
-        guard rest.count > budget else { return host + rest }
-        return host + rest.prefix(budget * 3 / 5) + "…" + rest.suffix(budget * 2 / 5 - 1)
+    /// How a link reads in a message: the whole address as written, scheme
+    /// and all, never shortened, so selecting it copies a working link. The
+    /// host is never disguised: one written in another script (a look-alike)
+    /// shows as the address names it (`host(of:)`).
+    public static func linkLabel(_ text: String, url: URL) -> String {
+        let start = text.range(of: "://")?.upperBound ?? text.startIndex
+        let hostEnd = text[start...].firstIndex { "/?#".contains($0) } ?? text.endIndex
+        guard let host = host(of: url), text[start..<hostEnd].lowercased() != host.lowercased() else { return text }
+        return text.replacingCharacters(in: start..<hostEnd, with: host)
+    }
+
+    /// The first link in a message's text, bare or named.
+    public static func firstLink(in text: String) -> URL? {
+        for inline in inlines(text) {
+            switch inline.kind {
+            case .link(let url), .namedLink(let url): return url
+            default: continue
+            }
+        }
+        return nil
     }
 
     /// Whether a span misses every one of `taken` (in order, none

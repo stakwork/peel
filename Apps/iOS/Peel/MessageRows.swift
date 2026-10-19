@@ -653,9 +653,10 @@ struct AgentRequestLine: View {
     let request: AgentRequest
 
     var body: some View {
-        // One text, so a long outcome wraps under the words, not beside them.
-        Group {
-            if let outcome = request.outcomeElsewhere {
+        // One text, so a long outcome wraps under the words, not beside them;
+        // unanswered, it turns too late at its expiry.
+        TimelineView(.redrawing(at: request.changesAt)) { context in
+            if let outcome = request.outcomeElsewhere(at: context.date) {
                 Text("\(request.label) · \(outcome)")
             } else {
                 Text("\(request.label)  \(Image(systemName: "checkmark"))")

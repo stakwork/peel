@@ -123,6 +123,13 @@ public struct ControlEnvelope: Codable, Sendable, Equatable {
         }
     }
 
+    /// Whether a request with this `not_after` is past it at `now`: its
+    /// second gone by. The one rule for the device that answers and the
+    /// rows that say how it ended.
+    public static func isPast(_ notAfter: Int64, at now: Date) -> Bool {
+        notAfter < Int64(now.timeIntervalSince1970)
+    }
+
     /// Whether this Peel reads it: its version, and the fields its `op` needs.
     public var isReadable: Bool { v == Self.version && isComplete }
 

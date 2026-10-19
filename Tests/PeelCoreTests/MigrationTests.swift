@@ -149,6 +149,26 @@ struct MigrationTests {
         #expect(found == shippedSchemaV23)
     }
 
+    /// v27 marks the control messages stored before it, in direct messages only.
+    @Test func v27MarksStoredControlMessages() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v26")
+        let request = #"{"content":"x","metadata":"{\"peel\":{\"v\":1,\"op\":\"ack\",\"re\":\"r\"}}"}"#
+        let tools = #"{"content":"x","metadata":"{\"peel\":{\"tools\":[]}}"}"#
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO tribe (pubkey) VALUES ('02bb')")
+            try db.execute(sql: """
+                INSERT INTO message (uuid, type, chat, fromMe, body) VALUES
+                    ('a', 0, '02aa', 0, ?), ('b', 0, '02bb', 0, ?), ('c', 0, '02aa', 0, ?), ('d', 0, '02aa', 0, '{"content":"peel"}')
+                """, arguments: [request, request, tools])
+        }
+        try Storage.migrator.migrate(queue)
+        let marked = try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT uuid FROM message WHERE isControl ORDER BY uuid")
+        }
+        #expect(marked == ["a"])
+    }
+
     /// Covers the v2 contact backfill; v8 and v11 have their own tests too.
     @Test func aVersionOneDatabaseMigratesThroughEveryStep() throws {
         let queue = try profile.queue()

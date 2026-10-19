@@ -295,8 +295,11 @@ extension Storage {
             db.cachedStatement(sql: """
                 INSERT INTO message
                     (uuid, serverIndex, type, chat, fromMe, sender, body, content, msat, timestamp, tag, paymentHash, status,
-                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat, noWords)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mentionsMe, replyUUID, threadUUID, mediaType, fileName, fileSize, upload, amountMsat, noWords,
+                     isControl)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    -- Only in a direct message: in a tribe it is a message (`isControlLine`).
+                    ? AND NOT EXISTS (SELECT 1 FROM tribe WHERE pubkey = ?4))
                 ON CONFLICT(uuid) DO UPDATE SET
                     mentionsMe = CASE WHEN message.deleted THEN 0 ELSE MAX(message.mentionsMe, excluded.mentionsMe) END,
                     serverIndex = COALESCE(excluded.serverIndex, message.serverIndex),
@@ -314,6 +317,9 @@ extension Storage {
                     -- Goes with the content kept.
                     noWords = CASE WHEN message.content IS NULL AND NOT message.deleted THEN excluded.noWords
                         ELSE message.noWords END,
+                    -- Goes with the body kept, which it is read from.
+                    isControl = CASE WHEN message.body IS NULL AND NOT message.deleted THEN excluded.isControl
+                        ELSE message.isControl END,
                     replyUUID = COALESCE(message.replyUUID, excluded.replyUUID),
                     threadUUID = COALESCE(message.threadUUID, excluded.threadUUID),
                     mediaType = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.mediaType, excluded.mediaType) END,
@@ -327,7 +333,7 @@ extension Storage {
                 message.body, message.content, message.msat, message.timestamp, message.tag, message.paymentHash,
                 message.status, message.mentionsMe, message.replyUUID, message.threadUUID,
                 message.mediaType, message.fileName, message.fileSize, message.upload, message.amountMsat,
-                message.hasNoWords,
+                message.hasNoWords, message.control != nil,
             ]
         )
     }

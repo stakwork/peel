@@ -377,10 +377,13 @@ public struct AgentRequest: Equatable, Sendable {
     public var reason: String?
     /// Who asked, outside the agent chat: any contact can send a request.
     public var asker: String?
+    /// After this second it is never done (`not_after`): unanswered by then, too late.
+    public var notAfter: Int64?
 
     public init(kind: String, args: PeelCore.JSONValue? = nil, status: ControlEnvelope.Status?, asks: Bool = false,
-                text: String? = nil, reason: String? = nil) {
+                text: String? = nil, reason: String? = nil, notAfter: Int64? = nil) {
         self.kind = kind
+        self.notAfter = notAfter
         self.args = args
         self.status = status
         self.asks = asks
@@ -397,7 +400,21 @@ public struct AgentRequest: Equatable, Sendable {
         if case .object(let result)? = answer?.result, case .string(let said)? = result["text"] { text = said }
         self.init(kind: kind, args: request.args, status: answer?.status,
                   asks: kind == "approve" || kind == "send" && !automation || kind.hasPrefix("calendar.") && kind != "calendar.events",
-                  text: text, reason: answer?.error)
+                  text: text, reason: answer?.error,
+                  notAfter: request.notAfter)
+    }
+
+    /// Unanswered past its expiry, as the Mac judges it
+    /// (`ControlEnvelope.isPast`): nothing will be done, whatever comes.
+    public func isExpired(at now: Date) -> Bool {
+        status == nil && notAfter.map { ControlEnvelope.isPast($0, at: now) } == true
+    }
+
+    /// When the row says something else without a new message: the second
+    /// its expiry is past, while unanswered in the agent chat
+    /// (`TimelineSchedule.redrawing(at:)`).
+    public var changesAt: Date? {
+        status == nil && asker == nil ? notAfter.map { Date(timeIntervalSince1970: TimeInterval($0 + 1)) } : nil
     }
 
     /// What the row says: "Read your unread messages", after who asked
@@ -420,11 +437,13 @@ public struct AgentRequest: Equatable, Sendable {
         }
     }
 
-    /// How it ended, after the words: nil when it was done, as asked.
+    /// How it ended at `now`, after the words: nil when it was done, as
+    /// asked; unanswered past its expiry, too late, as the Mac would answer.
     /// Outside the agent chat, one never answered was not this Mac's.
-    public var outcome: String? {
-        switch status {
-        case nil: asker == nil ? "on your Mac…" : "Not answered"
+    public func outcome(at now: Date) -> String? {
+        switch isExpired(at: now) && asker == nil ? .expired : status {
+        case nil where asker != nil: "Not answered"
+        case nil: "on your Mac…"
         case .done?: nil
         case .denied?: "Declined"
         case .expired?: "Too late, nothing done"
@@ -433,10 +452,10 @@ public struct AgentRequest: Equatable, Sendable {
         }
     }
 
-    /// How it ended on a device that never answers it (the phone, decision
-    /// 9): its card waits on the Mac rather than working there.
-    public var outcomeElsewhere: String? {
-        status == nil && asks ? "Waiting for your approval on your Mac" : outcome
+    /// How it ended at `now` on a device that never answers it (the phone,
+    /// decision 9): its card waits on the Mac rather than working there.
+    public func outcomeElsewhere(at now: Date) -> String? {
+        status == nil && asks && !isExpired(at: now) ? "Waiting for your approval on your Mac" : outcome(at: now)
     }
 }
 

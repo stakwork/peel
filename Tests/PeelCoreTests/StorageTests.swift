@@ -118,7 +118,7 @@ struct StorageTests {
                     content = 'content', msat = 11, timestamp = 12, tag = 'tag', paymentHash = 'paymentHash',
                     status = 'status', mentionsMe = 1, replyUUID = 'replyUUID', threadUUID = 'threadUUID',
                     mediaType = 'mediaType', fileName = 'fileName', fileSize = 13, upload = 'upload', deleted = 1,
-                    amountMsat = 14, arrived = 1, firstSentAt = 15, autoResentAt = 16
+                    amountMsat = 14, arrived = 1, firstSentAt = 15, autoResentAt = 16, isControl = 1
                 """, arguments: [#"{"metadata":"{\"tz\":\"Europe/London\"}"}"#])
         }
         let message = try #require(try storage.message(uuid: "uuid", in: Message.fixture().chat))

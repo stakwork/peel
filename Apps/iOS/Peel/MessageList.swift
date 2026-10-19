@@ -147,23 +147,27 @@ struct MessageList: View {
             if new == .idle { settled() }
         }
         .onScrollGeometryChange(for: Layout.Viewport.self) { geometry in
-            Layout.Viewport(inset: geometry.contentInsets.top, offset: geometry.contentOffset.y,
-                            end: geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height)
+            Layout.Viewport(inset: geometry.contentInsets.top, offset: geometry.contentOffset.y, end: geometry.endOffset)
         } action: { [layout] _, new in
             layout.viewport = new
         }
         .onScrollGeometryChange(for: Edges.self) { geometry in
-            let below = geometry.contentSize.height + geometry.contentInsets.bottom
-                - (geometry.contentOffset.y + geometry.containerSize.height)
-            return Edges(container: geometry.containerSize.height - geometry.contentInsets.bottom, atBottom: below <= 24, far: below > geometry.containerSize.height,
+            let below = geometry.endOffset - geometry.contentOffset.y
+            return Edges(container: geometry.containerSize.height, atBottom: below <= 24, far: below > geometry.containerSize.height,
                          nearTop: geometry.contentOffset.y + geometry.contentInsets.top < geometry.containerSize.height)
         } action: { old, new in
             // The keyboard came up (or the composer grew) under a list
-            // following at its bottom: it stays at the bottom.
-            // Judged by the last crossing taken, not `old`, which a
-            // coalesced report can have moved past (`ListBottom`).
-            if new.container != old.container, following, bottom.atBottom, reachesNewest, !userScrolling {
+            // following its bottom: it stays at the bottom, and the room
+            // taken is not a leaving. Each frame of the keyboard's rise moves
+            // the end down until the pin catches up; taken as leaving, the
+            // first frame stopped the pinning and left the list short.
+            // Not while it opens, which places it at its own row.
+            if new.container != old.container, following, reachesNewest, !userScrolling, !opening {
                 keepLastRowInView()
+                var pinned = new
+                pinned.atBottom = true
+                pinned.far = false
+                return moved(pinned)
             }
             moved(new)
         }
@@ -429,7 +433,7 @@ private final class Layout {
         /// The content's top inset (under the header) and offset.
         var inset: CGFloat = 0
         var offset: CGFloat = 0
-        /// The offset at the end of the content, the composer's room below it included.
+        /// The offset at the end of the content (`ScrollGeometry.endOffset`).
         var end: CGFloat = 0
     }
 
@@ -469,5 +473,17 @@ private struct JumpToNewest: View {
         } else {
             GlassButton("arrow.down", label: "Jump to newest", action: action)
         }
+    }
+}
+
+private extension ScrollGeometry {
+    /// The offset at the end of the content, its last row just above the
+    /// composer (or the keyboard). `containerSize` is already the room
+    /// between the bars, which take `contentInsets`: adding the bottom inset
+    /// to it again put the end a composer (with the keyboard, about 500
+    /// points) further down, so the list never read as at its bottom and
+    /// what arrived stayed counted on the pill.
+    var endOffset: CGFloat {
+        contentSize.height - containerSize.height - contentInsets.top
     }
 }

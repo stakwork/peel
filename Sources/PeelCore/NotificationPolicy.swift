@@ -28,12 +28,12 @@ public struct NotificationPolicy: Sendable {
     }
 
     /// What a message would notify as, wherever it is: someone else's, not
-    /// deleted, with words (`hasNoWords`), and of a type that counts as
+    /// deleted, with words (`hasNoWords`), not a control message, and of a type that counts as
     /// unread (`MessageType.unreadTypes`), or a join request. A call only
     /// while it is fresh and its link passes the checks against `callServer`.
     /// Payments notify as money, once per arrival, not here.
     public static func kind(of message: Message, callServer: String?, now: Date = .now) -> Kind? {
-        guard !message.fromMe, !message.deleted, !message.hasNoWords else { return nil }
+        guard !message.fromMe, !message.deleted, !message.hasNoWords, message.isControl != true else { return nil }
         if message.isContent { return .message }
         switch message.type {
         case MessageType.invoice: return .paymentRequest

@@ -147,6 +147,36 @@ struct ReadMarkerTests {
         #expect(try await first(storage.readStates())?[chat]?.unread == 1)
     }
 
+    /// A control message in a direct message (the agent's request, a
+    /// device's answer) is a line or nothing: never unread, never notified.
+    /// In a tribe it is a message like any other, and counts.
+    @Test func aDirectMessagesControlMessageIsNeverUnread() async throws {
+        let storage = try profile.storage()
+        let tribe = "02bb"
+        let request = #"{"content":"Peel asked your Mac to read your unread messages","metadata":"{\"peel\":{\"v\":1,\"op\":\"request\",\"id\":\"r\",\"device\":\"d\",\"kind\":\"chats.unseen\",\"not_after\":9}}"}"#
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(chat, true)],
+            messages: [
+                (.fixture(uuid: "a", serverIndex: 3, chat: chat, body: request,
+                          content: "Peel asked your Mac to read your unread messages"), false, nil),
+                (.fixture(uuid: "b", serverIndex: 4, chat: tribe, body: request, content: "x"), false, nil),
+            ],
+            tribes: [Tribe(pubkey: tribe)]
+        ))
+        let states = try #require(try await first(storage.readStates()))
+        #expect(states[chat]?.unread == 0 && states[tribe]?.unread == 1)
+        let stored = try #require(try storage.message(uuid: "a", in: chat))
+        #expect(stored.isControl == true && !stored.countsAsUnread(after: 0))
+        #expect(NotificationPolicy.kind(of: stored, callServer: nil) == nil)
+        #expect(try storage.message(uuid: "b", in: tribe)?.isControl == false)
+        // A later copy without a body (history) keeps what the body said.
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "a", serverIndex: 3, chat: chat, content: nil), false, nil)]))
+        #expect(try storage.message(uuid: "a", in: chat)?.isControl == true)
+        // Talk after it counts as before.
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "c", serverIndex: 5, chat: chat), false, nil)]))
+        #expect(try await first(storage.readStates())?[chat]?.unread == 1)
+    }
+
     /// A message Peel does not count (a join) still leaves the chat behind
     /// the marker, which the server and the official apps count unread.
     @Test func anUncountedMessageLeavesTheChatBehind() async throws {

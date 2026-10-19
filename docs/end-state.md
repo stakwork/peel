@@ -108,10 +108,10 @@ Each milestone is something you can do at the end of it.
 | 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac). Calendar (PR 8) is dropped from Phase 1 for now (Tom, 2026-10-18) | 3, 7 |
 | 1 | 3. One conversation everywhere | The same agent thread on Mac and iPhone, with jobs and their files in it | 6, 6b, 9 |
 | 1 | 4. On for real | A week on your real account, then the Swift agent removed | 10, 11 |
-| 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | brain-handover.md PRs 1–11 |
-| 2 | 6. The phone helps too | Approve and act from the iPhone while the Mac sleeps | To plan |
-| 2 | 7. Can't lose it | Memory, then the whole brain, backed up sealed; a fresh Mac gets it back from your words | memory-backup.md phases 1–4, on the handover snapshot |
-| 2 | 8. Hardened | Model spending limits, real auth on strut, an optional Tailscale connection | To plan |
+| 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | [phase-2.md](phase-2.md) PRs H1–H4, R1, 1–3 |
+| 2 | 6. The phone helps too | Approve and act from the iPhone while the Mac sleeps | [phase-2.md](phase-2.md) PRs R2, 4–7 |
+| 2 | 7. Can't lose it | Memory, then the whole brain, backed up sealed; a fresh Mac gets it back from your words | [phase-2.md](phase-2.md) PRs B1, 8, 9 |
+| 2 | 8. Hardened | Model spending limits, real auth on strut, an optional Tailscale connection | [phase-2.md](phase-2.md) PRs 10–13 |
 | 3 | 9. Remote signer | The agent acts as you with every device asleep; your key stays on a signing device | Direction |
 | 3 | 10. Money | An optional Lightning node on the same signer | Direction |
 | 3 | 11. Private AI | A local model, and a filter that strips personal details before hosted AI | Direction |
@@ -128,8 +128,9 @@ What gates the start of each phase:
   (#303, #306). Evan's two answers are in (runner is the bridge,
   `agent_seed` derives the account), and Peel's sphinx-rs pin is at
   v0.8.39, which has `agent_seed`.
-- **Phase 2** starts when Phase 1 is in daily use. It builds on
-  [brain-handover.md](brain-handover.md) and [peel-brain.md](peel-brain.md).
+- **Phase 2** starts when Phase 1 is in daily use. Its plan is
+  [phase-2.md](phase-2.md), built on [brain-handover.md](brain-handover.md)
+  and [peel-brain.md](peel-brain.md).
 - **Phase 3** is a direction, not yet planned. VISION open question 8.
 
 ## Where the work stands (2026-10-18)

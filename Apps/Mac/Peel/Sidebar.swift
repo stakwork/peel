@@ -524,6 +524,7 @@ enum ConversationMenu {
 /// Click for one status row and a check/reconnect action.
 struct ConnectionBolt: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var connected: Bool { model.connection == .connected }
 
@@ -535,6 +536,8 @@ struct ConnectionBolt: View {
         } label: {
             Image(systemName: "bolt.fill")
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
+                // A quiet cross-fade between orange and green, none with Reduce Motion.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: connected)
                 .receivedGlow(model.money)
         }
         .peelPopover(isPresented: $model.showingConnection, edge: .trailing) {

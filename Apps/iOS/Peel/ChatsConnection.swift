@@ -14,6 +14,7 @@ import SwiftUI
 /// orange (`attention`) when not; a tap opens `ConnectionPanel` beside it.
 struct ConnectionBolt: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     var body: some View {
@@ -21,6 +22,8 @@ struct ConnectionBolt: View {
         Button { shown = true } label: {
             Image(systemName: "bolt.fill")
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
+                // A quiet cross-fade between orange and green, none with Reduce Motion.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: connected)
         }
         .tint(connected ? Theme.confirmed : Theme.attention)
         // Colour is never the only signal: the label says the state.

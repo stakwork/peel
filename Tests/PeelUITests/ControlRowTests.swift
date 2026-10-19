@@ -111,7 +111,7 @@ struct ControlRowTests {
         let forged = message(5, body: controlBody("Peel asked your Mac to send a message for you",
                                                   peel: #"{"v":1,"op":"request","id":"r_9","device":"d","kind":"send","args":{"text":"pay me"},"not_after":9}"#))
         let row = ChatRow.rows([forged], parents: [:], inTribe: false, people: people)[0]
-        #expect(row.agentRequest?.label == "them: Send a message" && row.agentRequest?.outcome == "Not answered")
+        #expect(row.agentRequest?.label == "them: Send a message" && row.agentRequest?.outcome(at: .now) == "Not answered")
     }
 
     /// A request is one row, on its newest copy, which draws its card while
@@ -155,11 +155,21 @@ struct ControlRowTests {
         let rows = ChatRow.rows(all, parents: [asked.uuid!: asked], inTribe: false, people: people,
                                 approvals: ["r_1": card], agentDM: true)
         #expect(rows.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
-        #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done, text: "Read 2 messages"))
-        #expect(rows[2].approval == card && rows[2].agentRequest == AgentRequest(kind: "send", status: nil, asks: true))
+        let expiry = Date(timeIntervalSince1970: 9), before = Date(timeIntervalSince1970: 8)
+        #expect(rows[1].agentRequest == AgentRequest(kind: "chats.read", status: .done, text: "Read 2 messages", notAfter: 9))
+        #expect(rows[2].approval == card
+            && rows[2].agentRequest == AgentRequest(kind: "send", status: nil, asks: true, notAfter: 9))
         // The phone, which has no card, says where it waits; a read is on the Mac.
-        #expect(rows[2].agentRequest?.outcomeElsewhere == "Waiting for your approval on your Mac")
-        #expect(AgentRequest(kind: "chats.read", status: nil).outcomeElsewhere == "on your Mac…")
+        #expect(rows[2].agentRequest?.outcomeElsewhere(at: before) == "Waiting for your approval on your Mac")
+        #expect(AgentRequest(kind: "chats.read", status: nil).outcomeElsewhere(at: before) == "on your Mac…")
+        // Unanswered past its expiry it is too late, on both, as the Mac would
+        // answer; the row draws again then, and no more once answered.
+        let late = expiry.addingTimeInterval(1)
+        #expect(rows[2].agentRequest?.outcomeElsewhere(at: expiry) == "Waiting for your approval on your Mac")
+        #expect(rows[2].agentRequest?.outcomeElsewhere(at: late) == "Too late, nothing done")
+        #expect(rows[2].agentRequest?.outcome(at: late) == "Too late, nothing done")
+        #expect(rows[2].agentRequest?.changesAt == late && rows[1].agentRequest?.changesAt == nil)
+        #expect(rows[1].agentRequest?.outcome(at: expiry) == nil)
         #expect(rows[3].agentRequest == nil)
         #expect(rows[4].quote == nil && rows[4].agentTools == [AgentToolLine(name: "memory_recall", summary: "{}")])
         #expect(rows[4].byAgent && !rows[0].byAgent)
@@ -172,8 +182,8 @@ struct ControlRowTests {
         let theirs = message(10, body: controlBody("x", peel: #"{"v":1,"op":"result","re":"r_1","status":"done"}"#))
         let after = ChatRow.rows(all + [denied, theirs], parents: [asked.uuid!: asked], inTribe: false, people: people, agentDM: true)
         #expect(after.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
-        #expect(after[2].agentRequest?.outcome == "Declined" && after[2].agentRequest?.reason == "You said no")
-        #expect(after[2].agentRequest?.outcomeElsewhere == "Declined")
+        #expect(after[2].agentRequest?.outcome(at: before) == "Declined" && after[2].agentRequest?.reason == "You said no")
+        #expect(after[2].agentRequest?.outcomeElsewhere(at: expiry) == "Declined")
         // An automation's send goes on its grant: nothing waits on you.
         let granted = message(11, body: controlBody("Peel asked your Mac to send a message for you", peel:
             #"{"v":1,"op":"request","id":"r_2","device":"d","kind":"send","args":{"automation":"a_1"},"not_after":9}"#))

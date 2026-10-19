@@ -499,6 +499,31 @@ extension Storage {
             // there is never sent again and answers `unknown`.
             try db.execute(sql: "ALTER TABLE deviceRequest ADD COLUMN sentUUID TEXT")
         }
+        migrator.registerMigration("v27") { db in
+            // A control message in a direct message (`Message.isControl`):
+            // drawn as a line or not at all, so never unread. Set when stored;
+            // here for the rows stored before, read as `Message.control` reads
+            // them (a cheap filter first: the key, or an escape that could
+            // spell it). `message_unread` takes the column, as `noWords`.
+            try db.execute(sql: """
+                ALTER TABLE message ADD COLUMN isControl BOOLEAN NOT NULL DEFAULT 0;
+                DROP INDEX message_unread;
+                CREATE INDEX message_unread ON message (chat, fromMe, type, serverIndex, noWords, isControl);
+                """)
+            let rows = try Row.fetchCursor(db, sql: """
+                SELECT id, body FROM message
+                WHERE type = \(MessageType.text) AND deleted = 0
+                    AND (instr(body, '\\"peel\\"') AND instr(body, '\\"op\\"') OR instr(body, '\\u'))
+                    AND chat NOT IN (SELECT pubkey FROM tribe)
+                """)
+            var control: [Int64] = []
+            while let row = try rows.next() {
+                if ControlMessage.read(row["body"]) != nil { control.append(row["id"]) }
+            }
+            for id in control {
+                try db.cachedStatement(sql: "UPDATE message SET isControl = 1 WHERE id = ?").execute(arguments: [id])
+            }
+        }
         return migrator
     }
 }

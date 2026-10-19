@@ -984,16 +984,36 @@ account is cheap to replace (open question 2).
   allowed it; a Stop on the Mac gave "Declined" and "Stopped." on the
   phone. Idle on the DM: 0.0% CPU. The iOS core was built from sphinx-rs
   v0.8.39 (`agent_seed` needs it).
-- **Left for later.** Control messages still count as unread and can
-  notify (PR 2's note), so the phone's agent row counts a request. A
-  request the Mac never answers says "waiting" past its expiry. Search
-  does not find the agent's row. No "writing…" or Stop on the phone. With
-  the keyboard up, a line arriving at the bottom can leave the
-  new-messages pill up (the phone's list, as before). Agent links to
+- **Left for later.** No "writing…" or Stop on the phone. Agent links to
   messages stay plain links on the phone, and a job's message (PR 6b)
   shows as its text, without the Mac's job line. `AgentRequest.asks` repeats
   `DeviceActions`' card rule (PeelAgent is Mac only): move it to PeelCore
   when PR 7 lands.
+- **Fixed after (2026-10-19).** A control message in a direct message is
+  never unread or notified: `message.isControl` (v27, set when stored and
+  for the rows before; in `message_unread` beside `noWords`) leaves it out
+  of `countsAsUnreadSQL`, `Message.countsAsUnread` ("New messages" and the
+  pill) and `NotificationPolicy`, on Mac and phone; in a tribe it stays a
+  message. An unanswered request says "Too late, nothing done" once its
+  `not_after` passes (`AgentRequest.outcome(at:)`), the row drawn again
+  then and only then (`redrawing(at:)`), on both. The agent's row is found
+  by its name as a chat is (`ChatSections.matches`, the Mac's rule too).
+  The phone's list read its end a bar too far down (`containerSize` is
+  already the room between the bars, and the bottom inset was added
+  again; with the keyboard, about 500 points), so it never counted as at
+  its bottom and what came stayed on the pill; and the keyboard's rise,
+  taken as leaving the bottom on its first frame, stopped the pinning.
+  Not seen live: a request expiring unanswered (the Mac answers at once,
+  and the shortest expiry is an hour); `ControlRowTests` covers it.
+  The expiry rule is the Mac's own (`ControlEnvelope.isPast`, to the
+  second). Left as found by the reviews: a read the Mac began just before
+  its expiry says too late until its result comes; `isControl` is set
+  once, with no rescan like `markNoWords`'s (a tribe stored after its
+  messages); the Mac's agent row searches the agent's name and the
+  phone's the DM's; a resize that is not the keyboard is still judged by
+  the caller, not `ListBottom`. `isBehind` still counts control lines, on
+  purpose: the server's marker moves for the official apps.
+
 
 ## 5. Automations, jobs and connectors
 

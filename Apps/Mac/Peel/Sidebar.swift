@@ -160,8 +160,7 @@ struct Sidebar: View {
               sections.directOpen || sections.searching || model.destination == model.agentDestination
                 || model.agentUnread > 0
         else { return nil }
-        let query = model.searchQuery.trimmed
-        return query.isEmpty || agent.name.localizedCaseInsensitiveContains(query) ? agent : nil
+        return ChatSections.matches(agent.name, query: model.searchQuery) ? agent : nil
     }
 
     /// The row `offset` from `current` (the selection when nothing is

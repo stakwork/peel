@@ -64,7 +64,7 @@ public struct ChatSections: Equatable, Sendable {
         var tribeCount = 0, directCount = 0
         for conversation in conversations {
             if conversation.isTribe { tribeCount += 1 } else { directCount += 1 }
-            guard !searching || conversation.name.localizedCaseInsensitiveContains(query) else { continue }
+            guard Self.matches(conversation.name, query: query) else { continue }
             let state = states[conversation.chat]
             switch (state?.isUnread == true, conversation.isTribe) {
             case (true, false): unread.append(conversation)
@@ -81,6 +81,14 @@ public struct ChatSections: Equatable, Sendable {
                                               searching: searching, total: tribeCount, chat: open)
         (self.direct, allDirect) = Self.shown(direct, open: directOpen, all: layout.allDirect,
                                               searching: searching, total: directCount, chat: open)
+    }
+
+    /// Whether a chat named `name` shows for a search: every chat with no
+    /// query, else one whose name holds it, whatever the case. The agent's
+    /// row, which is not in the sections, goes by it too.
+    public static func matches(_ name: String, query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        return query.isEmpty || name.localizedCaseInsensitiveContains(query)
     }
 
     /// A section's rows and its "Show all" count: the open chat alone while

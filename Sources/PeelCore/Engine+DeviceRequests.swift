@@ -102,7 +102,7 @@ extension Engine {
             guard let id = request.id, let kind = request.kind, let notAfter = request.notAfter,
                   Self.isRequestID(id), Self.isKind(kind),
                   let args = try? (request.args ?? .object([:])).text else { return }
-            let expired = notAfter < Int64(now.timeIntervalSince1970)
+            let expired = ControlEnvelope.isPast(notAfter, at: now)
             fresh = DeviceRequestRow(
                 agent: agent, id: id, kind: kind, args: args, notAfter: notAfter, state: expired ? .done : .received,
                 status: expired ? .expired : nil, receivedAt: now.millisecondsSince1970
@@ -150,7 +150,7 @@ extension Engine {
         do {
             guard let handler = deviceRequestHandler, let row = try storage.claimDeviceRequest(id, of: agent) else { return }
             var answer = DeviceAnswer.expired
-            if row.notAfter >= Int64(Date().timeIntervalSince1970) {
+            if !ControlEnvelope.isPast(row.notAfter, at: Date()) {
                 guard let given = await handler(DeviceRequest(row)) else { return }
                 answer = Self.fitted(given, re: id)
             }

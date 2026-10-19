@@ -109,12 +109,15 @@ struct DeviceRequestLine: View {
             // a click opens what it read or did.
             AgentDisclosureRow(AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("request")) {
                 Text(request.label)
-                if let outcome = request.outcome {
-                    Text("· " + outcome)
-                } else {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .accessibilityLabel("Done")
+                // Unanswered, it turns too late at its expiry.
+                TimelineView(.redrawing(at: request.changesAt)) { context in
+                    if let outcome = request.outcome(at: context.date) {
+                        Text("· " + outcome)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .accessibilityLabel("Done")
+                    }
                 }
             } detail: {
                 DeviceRequestDetail(request: request)
@@ -171,7 +174,10 @@ private struct DeviceRequestDetail: View {
                 if let text = request.text { reading(ChatDataReading(text)) }
             }
             if request.asker == nil, request.status == nil, request.reason == nil {
-                Text("Your Mac has not answered yet.").foregroundStyle(Theme.secondaryText)
+                TimelineView(.redrawing(at: request.changesAt)) { context in
+                    Text(request.isExpired(at: context.date) ? "Your Mac did not answer in time. Nothing was done."
+                         : "Your Mac has not answered yet.").foregroundStyle(Theme.secondaryText)
+                }
             }
         }
         .font(Theme.font(12))

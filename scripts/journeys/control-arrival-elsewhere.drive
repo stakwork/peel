@@ -1,8 +1,8 @@
 // A control message in the direct chat while reading the tribe scrolled
-// up: the chat opens at it (unread, under "New messages") as a quiet line,
-// never a bubble.
+// up: it is a quiet line, never a bubble, and never unread (v27), so the
+// chat opens at its end with the line in view, not at "New messages".
 // needs: peer
-// check: open land=divider
+// check: open land=end
 {"width": 1180}
 {"select": "{{tribe}}"}
 {"wait": 2}

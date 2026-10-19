@@ -65,7 +65,11 @@ struct ChatList: View {
         let sections = model.sidebarSections
         // Read once here and passed down: a row redraws only when its own state changes.
         let states = model.readStates
-        let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty
+        // The agent's DM is its own row, first in Direct messages, as on the
+        // Mac (never in the sections), and found by its name as a chat is.
+        let agent = model.agentChat.flatMap { chat in model.conversations.first { $0.chat == chat } }
+            .flatMap { ChatSections.matches($0.name, query: model.searchQuery) ? $0 : nil }
+        let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
         List {
             if !sections.searching {
                 Section {
@@ -110,11 +114,10 @@ struct ChatList: View {
                     }
                 }
             }
-            if !sections.searching || !sections.direct.isEmpty {
+            if !sections.searching || !sections.direct.isEmpty || agent != nil {
                 ChatsSection(title: "Direct messages",
                              expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
-                    // The agent's DM is its own row, first, as on the Mac (never in the sections).
-                    if !sections.searching, let agent = model.agentChat.flatMap({ chat in model.conversations.first { $0.chat == chat } }) {
+                    if let agent {
                         ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
                     }
                     ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }

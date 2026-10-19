@@ -5,8 +5,10 @@ import SwiftUI
 // The connection on Chats (docs/design/iphone.md, screens 1 and 9; Tom,
 // 2026-10-14): the bolt is always in the title capsule, green when
 // connected and orange when not, and always opens its panel beside it.
-// While not connected an orange line under the large title counts down too.
-// Both count down in the Mac's words (`ConnectionState.label(retryAt:now:)`).
+// Nothing is laid out around the state: a line under the title shifted the
+// list down at launch and back up once connected, so the state lives only in
+// the bolt and its panel, which count down in the Mac's words
+// (`ConnectionState.label(retryAt:now:)`).
 
 /// The bolt in Chats' title capsule: green (`confirmed`) when connected,
 /// orange (`attention`) when not; a tap opens `ConnectionPanel` beside it.
@@ -27,29 +29,6 @@ struct ConnectionBolt: View {
         .popover(isPresented: $shown) {
             ConnectionPanel()
                 .presentationCompactAdaptation(.popover)
-        }
-    }
-}
-
-/// The orange line under Chats' large title while not connected:
-/// "Offline, retrying in 8s".
-struct ConnectionSubtitle: ViewModifier {
-    @Environment(AppModel.self) private var model
-
-    func body(content: Content) -> some View {
-        content.toolbar {
-            if model.connection != .connected {
-                ToolbarItem(placement: .largeSubtitle) {
-                    // Ticks only while shown, which is only while not connected.
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(model.connection.label(retryAt: model.reconnectAt, now: context.date))
-                            .phoneFont(.secondary)
-                            .foregroundStyle(Theme.attention)
-                            .monospacedDigit()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
         }
     }
 }

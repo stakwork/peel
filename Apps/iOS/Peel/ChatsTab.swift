@@ -15,7 +15,6 @@ struct ChatsTab: View {
         NavigationStack(path: $router.chats) {
             ChatList()
                 .navigationTitle("Chats")
-                .modifier(ConnectionSubtitle())
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
                 }

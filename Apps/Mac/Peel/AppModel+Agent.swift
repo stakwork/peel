@@ -42,7 +42,7 @@ final class MacAgent: AgentHost {
     /// profile (`strut(for:)`): started when its agent opens, stopped when
     /// Peel quits.
     @ObservationIgnored var strut: BundledStrut?
-    /// The agent's bridge beside it, with the preview on (`AppModel+Bridge`).
+    /// The agent's bridge beside it (`AppModel+Bridge`).
     let agentBridge = AgentBridge()
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
@@ -237,7 +237,7 @@ extension AppModel {
     }
 
     /// The agent's tools again, for where its automation tools make new
-    /// ones: the strut preview turned on or off, or the bridge started.
+    /// ones: the agent's bridge started or stopped.
     func useAutomationTools() {
         guard let engine, let agent else { return }
         let setup = agentSetup(engine, memory: memoryServer)
@@ -391,6 +391,10 @@ extension AppModel {
         case .homeServer:
             strut?.stop(quietly: true)
             strut = nil
+            // The agent's bridge runs only here: this Mac answers its requests
+            // again once it does (`startBridge`).
+            let engine = engine
+            Task { try? await engine?.setDeviceAgent(nil) }
         case .thisMac:
             useOwnStrut(profile)
         }
@@ -543,19 +547,23 @@ extension AppModel {
                 // Not said once the agent has closed (its account locked or
                 // forgotten), or a home server took its place while it started.
                 if reporting, agent != nil, self.strut === strut { notice = PeelError.problem(error, couldNot: "start the agent's memory") }
+                // The agent needs it: said in the agent chat, with Try again.
+                if agent != nil, self.strut === strut, strut.server == nil {
+                    agentBridge.fail(PeelError.problem(error, couldNot: "start Peel's memory"))
+                }
             }
         }
     }
 
     /// The strut `profile`'s agent uses, if this build ships one: the app
     /// account's in Peel's folder; a development profile's only with
-    /// `-strut YES` or the bridge's preview on, its data inside the
-    /// profile's own folder, so a test account never writes to the real memory.
+    /// `-strut YES` (its agent needs it), its data inside the profile's own
+    /// folder, so a test account never writes to the real memory.
     static func strut(for profile: Profile) -> BundledStrut? {
         switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
-            UserDefaults.standard.bool(forKey: "strut") || AgentBridge.isOn
+            UserDefaults.standard.bool(forKey: "strut")
                 ? BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) : nil
         }
     }

@@ -5,8 +5,8 @@ import PeelCore
 import PeelUI
 
 /// Account › Peel agent: its name, the connected provider (Change), the key
-/// by its last four (Replace, Remove confirmed in place), the model and
-/// Clear conversation. Each change is an `AgentSession` action.
+/// by its last four (Replace, Remove confirmed in place), the model, its
+/// own account (Set up) and Clear for the earlier chat on this Mac. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
     static let id = "agent-settings"
     @Environment(AppModel.self) private var model
@@ -67,7 +67,7 @@ struct AgentSettingsSection: View {
                             .buttonStyle(.peel(.outline))
                     }
                 }
-                // Each send grant an automation's card made (the strut preview's), until revoked.
+                // Each send grant an automation's card made, until revoked.
                 let cards = model.macAgent.deviceCards
                 ForEach(Array(cards.grants.enumerated()), id: \.element.id) { index, grant in
                     Fact(index == 0 ? "May post as you" : "") {
@@ -77,16 +77,14 @@ struct AgentSettingsSection: View {
                             .buttonStyle(.peel(.outline))
                     }
                 }
-                Fact("Conversation") {
+                AgentAccountRow()
+                Fact("Earlier, on this Mac") {
                     // Not EmptyView: it drops the value's full-width frame and the row centres.
                     Spacer(minLength: 0)
                 } trailing: {
-                    InlineConfirm(trigger: "Clear…", prompt: "Clear the agent chat?", confirm: "Clear") {
+                    InlineConfirm(trigger: "Clear…", prompt: "Clear the earlier agent chat on this Mac?", confirm: "Clear") {
                         attempt { try agent.clear() }
                     }
-                }
-                if AgentBridge.offered {
-                    AgentOnStrutRow()
                 }
             }
             if let problem {
@@ -116,40 +114,45 @@ struct AgentSettingsSection: View {
     }
 }
 
-/// "Run in strut (preview)", dev builds only (`AgentBridge`): the switch,
-/// and what the bridge is doing under it.
-private struct AgentOnStrutRow: View {
+/// The agent's own account (`AppModel.agentSetUp`): where it stands, and
+/// Set up or Try again.
+private struct AgentAccountRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Fact("Run in strut") {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Preview")
-                switch model.agentBridge.status {
-                case .failed(let problem):
-                    Text(problem)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.attention)
-                        .fixedSize(horizontal: false, vertical: true)
-                case let status:
-                    Text(line(status))
-                        .muted()
-                }
-            }
+        let setUp = model.agentSetUp
+        Fact("Own account") {
+            Text(setUp.line)
+                .font(Theme.font(12))
+                .foregroundStyle(setUp.problem ? Theme.attention : Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         } trailing: {
-            PeelSwitch(isOn: Binding(get: { model.agentBridge.previewOn }, set: { model.setAgentOnStrut($0) }))
-            .accessibilityLabel("Run in strut (preview)")
+            if let action = setUp.action {
+                Button(action) { model.setUpAgent() }
+                    .buttonStyle(.peel(.outline))
+            }
         }
     }
+}
 
-    private func line(_ status: AgentBridge.Status) -> String {
-        switch status {
-        case .starting: "Starting the agent's own account…"
-        case .running: "Your agent is a contact in Direct messages."
-        default: !model.agentBridge.previewOn ? "Off: the agent runs in Peel, as today."
-            : model.brain == .thisMac ? "Waits for Peel's own memory on this Mac to start."
-            : "Needs Peel's own memory on this Mac (Brain below)."
+/// In the agent chat's composer place until its DM is the chat: "Give your
+/// assistant its own account", what it costs and Set up; then how it is going.
+struct AgentSetUpPanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let setUp = model.agentSetUp
+        let offer = setUp == .offer
+        Callout(setUp.problem ? .attention : .neutral, offer ? "Give your assistant its own account" : nil,
+                detail: setUp.line, icon: setUp.busy ? .progress : nil) {
+            if let action = setUp.action {
+                Button(action) { model.setUpAgent() }
+                    .buttonStyle(.peel(offer ? .primary : .outline))
+                    .padding(.top, offer ? 6 : 0)
+            }
         }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
     }
 }
 

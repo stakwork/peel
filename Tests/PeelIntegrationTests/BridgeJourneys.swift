@@ -14,8 +14,8 @@ extension Journeys {
         /// from the contact info runner gives. Her one key exchange is
         /// answered. Her message to it becomes a strut run of the
         /// orchestrator, with strut's key. Set up again on the same store, it
-        /// is the same agent: no second invite, contact or key exchange. Set
-        /// up after a restore, its unredeemed invite is refunded, and started
+        /// is the same agent: no second invite, contact or key exchange, with a
+        /// fresh store too. Set up after a restore, its unredeemed invite is refunded, and started
         /// on its own it never pays to pair.
         @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: BundledBridge.staged.path)))
         @MainActor
@@ -54,6 +54,15 @@ extension Journeys {
             #expect(try alice.invites().count == 1)
             #expect(try await alice.engine.contacts().filter { $0.pubkey == account.pubkey }.count == 1)
 
+            // Set up before with another store (another Mac, or a profile on
+            // the same words): the contact is used again, nothing is paid.
+            bridge.stop()
+            try BundledBridge.erase(data: data)
+            let kept = try #require(try await alice.settledBalance())
+            #expect(try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: false) == account)
+            #expect(try alice.invites().count == 1)
+            #expect(try await alice.settledBalance() == kept)
+
             // This Mac's store gone and the contact removed, as after a
             // restore from the words: the agent's account is registered
             // already, so its new invite is not redeemed and comes back.
@@ -61,7 +70,7 @@ extension Journeys {
             try BundledBridge.erase(data: data)
             try await alice.engine.deleteContact(account.pubkey)
             // Started on its own, it never pays to pair.
-            await #expect(throws: PeelError.self) {
+            await #expect(throws: BundledBridge.NotSetUp.self) {
                 try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: false)
             }
             #expect(try alice.invites().count == 1)

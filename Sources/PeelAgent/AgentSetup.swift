@@ -7,7 +7,7 @@ import PeelCore
 /// read tools; given its engine, the send tool too, which waits on the
 /// person's approval for each message; given a memory, the memory tools;
 /// and, where automations can run (the app's `AutomationServer`, or strut's
-/// `peel-automation-run` with the strut preview on), the automation tools
+/// `peel-automation-run` while the agent's bridge runs), the automation tools
 /// beside them, over `automations`.
 public struct AgentSetup: Sendable {
     public let storage: Storage?

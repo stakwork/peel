@@ -18,8 +18,8 @@
 # now asks for. Re-signing with a new profile keeps the Keychain items.
 #
 # Frameworks in Contents/Frameworks (LiveKit's WebRTC), the strut in
-# Contents/Strut (Node, its native addons and their libraries) and a Debug
-# build's bridge in Contents/Bridge are signed first with the same identity,
+# Contents/Strut (Node, its native addons and their libraries) and the
+# bridge in Contents/Bridge are signed first with the same identity,
 # so hardened runtime's library validation accepts them. Node alone gets an
 # entitlement: allow-jit, which V8 needs.
 set -eu

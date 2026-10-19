@@ -320,18 +320,18 @@ is a short plan. Update the status and the journal when you finish something.
   system prompt through `AgentSetup`, the key kept through `Profile.agentCredential`, the tool
   rows' titles, and the memory tools once its strut is running: Peel's
   own (`BundledStrut`), started with the agent and started again before
-  a reply if it stopped; a development profile's only with `-strut YES`
-  or the strut preview on,
+  a reply if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
   experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
   `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
   which `AppDelegate` hands it), that server's, Peel's own never started
   and no automation tools, token or model key for it),
-  `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: Account ›
-  Peel agent › "Run in strut", dev builds only, off by default; on, the
-  agent's bridge beside Peel's own strut, `BundledBridge.setUp`; and the
-  agent chat as its DM: `agentAnswering`, `agentWaiting`, Stop's
-  `cancel` in `stopAgentTurn`);
+  `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
+  agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
+  what the agent chat and Account › Peel agent show of its own account,
+  and `setUpAgent`, the person's Set up or Try again, the only start that
+  pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
+  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -637,13 +637,15 @@ is a short plan. Update the status and the journal when you finish something.
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
     two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
   - `BundledBridge.swift` — the agent's bridge Peel ships in `Contents/Bridge`
-    (Debug builds; sphinx/runner, `docs/agent-on-strut.md` "Built: PR 4"):
+    (every build, in Release inside the app's sandbox; sphinx/runner,
+    `docs/agent-on-strut.md` "Built: PR 4" and "Built: PR 10"):
     a port picked here and trusted once Rocket's launch line names it on
     runner's own output, the admin and strut-facing tokens per launch in
     memory only, the agent's seed (with an invite from the account on its
     first start) and owner over the admin routes, the contact info and
     balance from `GET /contact_info`; `setUp` pairs the agent (only from
-    the person's switch), one invite per store, its sats asked back
+    the person's Set up, which shows `setUpMsat`; an agent already a
+    contact is used again), one invite per store, its sats asked back
     once the agent registered; its store, excluded from backups,
     owner-only beside the account's, erased with it; gone by itself if
     Peel dies (`RUNNER_EXIT_ON_STDIN_EOF`). Tested in `BundledBridgeTests`
@@ -660,12 +662,11 @@ is a short plan. Update the status and the journal when you finish something.
     secret store, id `<run>/<path>`, `pending` wrapped in `withStop()`.
     `AutomationsClient.installOrchestrator` publishes the steps and
     `peel-automation-run` before the bridge starts (and drops any old
-    secrets), `useBridge` stores the new ones once it runs, `forgetBridge`
-    when the preview turns off. The steps and `peel-automation-run` are sealed. PR 7
+    secrets), `useBridge` stores the new ones once it runs. The steps and `peel-automation-run` are sealed. PR 7
     (`docs/agent-on-strut.md` "Built: PR 7"): `sphinx/post` posts from an automation's run
     with its send grant (kept by the automation's id, from strut's `ctx.automation`), `moveYours` moves the
-    person's automations between `peel-automation` and `peel-automation-run` as the
-    preview turns off and on, `pointRunEnds` points their run ends at the running bridge.
+    person's automations to `peel-automation-run` as the bridge starts (PR 10: never back),
+    `pointRunEnds` points their run ends at the running bridge.
     Tested in `OrchestratorTests` (a staged strut with the automation steps, when there is
     one) and the journey `Journeys/Orchestrator`
   - `AutomationServer.swift` — where strut reaches Peel when an automation
@@ -868,7 +869,7 @@ is a short plan. Update the status and the journal when you finish something.
   `$PEEL_BRIDGE_STAGE`): built from the sphinx commit `Vendor/runner.lock`
   names, from that commit's tree alone, with `Vendor/runner.Cargo.lock`
   (`--update-lock` after moving the commit). `embed-strut.sh` copies it
-  into Debug builds
+  into every build, and `run-app.sh` refuses without it
 - `scripts/check-app.sh` — `bundle-app.sh` into `.build/PeelCheck.app`
   (bundle ID `dev.peel.mac.check`), then runs a drive file offscreen on a
   development profile (see "Checking the app")
@@ -885,7 +886,8 @@ is a short plan. Update the status and the journal when you finish something.
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged
   strut in `Contents/Strut` (and signs its native code, when Xcode signs),
-  and in a Debug build the staged bridge in `Contents/Bridge`
+  and the staged bridge in `Contents/Bridge` (in Release with
+  `scripts/bridge.sandbox.entitlements`)
 
 ## Build and run
 
@@ -1047,8 +1049,10 @@ overrides it), with its own, empty Keychain. So:
   bundle ID casually.
 - The Mac app is sandboxed in Release builds only (archives for TestFlight
   and the Mac App Store need it): `Apps/Mac/Peel.AppStore.entitlements`, and
-  `scripts/strut-node.sandbox.entitlements` for the strut's Node, which
-  inherits the sandbox. Debug builds, `run-app.sh` and the checks use
+  `scripts/strut-node.sandbox.entitlements` for the strut's Node and
+  `scripts/bridge.sandbox.entitlements` for the bridge (runner), which
+  inherit the sandbox: Peel's network (runner's broker connection and its
+  loopback server) and its container (runner's store). Debug builds, `run-app.sh` and the checks use
   `Peel.entitlements` and run unsandboxed, as before. Checked in a signed
   Release build: it launches, and Node starts, listens and writes its graph
   in the container. Not yet checked against a real account: calls, attach

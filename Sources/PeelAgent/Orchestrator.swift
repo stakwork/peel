@@ -403,9 +403,9 @@ extension AutomationsClient {
     }
     // MARK: Moving the person's automations (docs/agent-on-strut.md, PR 7)
 
-    /// Moves the person's automations onto `yours`: with the strut preview
-    /// on, `Orchestrator.automationWorkflow`, `callback` the bridge's; off,
-    /// `AutomationsClient.workflow` with none. Each keeps its id (strut's ids
+    /// Moves the person's automations onto `yours`
+    /// (`Orchestrator.automationWorkflow`, `callback` the bridge's, as the
+    /// bridge starts). Each keeps its id (strut's ids
     /// are a workflow's own, and the Mac keeps a send grant under it), name,
     /// schedule, input and whether it is on; its earlier runs stay with the
     /// old workflow. It is made on `yours` first and only then deleted from

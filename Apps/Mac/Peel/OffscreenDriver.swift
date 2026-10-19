@@ -331,8 +331,7 @@ final class OffscreenDriver {
     /// waiting card's Always allow; `device-allow`, Allow once on a card in
     /// the agent's DM; `request-rows`, every device request's row opened; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
-    /// `agent-on-strut` and `agent-off-strut`, Account's "Run in strut
-    /// (preview)" switch turned on or off (dev builds; a later launch keeps it);
+    /// `agent-set-up`, the agent chat's Set up or Try again (its own account);
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
@@ -435,11 +434,10 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
-        case "agent-on-strut", "agent-off-strut":
-            // Account › Peel agent: the "Run in strut (preview)" switch, to on or off.
-            guard AgentBridge.offered else { throw Failure(description: "this build offers no strut preview") }
-            let on = name == "agent-on-strut"
-            if model.agentBridge.previewOn != on { model.setAgentOnStrut(on) }
+        case "agent-set-up":
+            // The agent chat's Set up (or Try again): its own account.
+            guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
+            model.setUpAgent()
         case "brain-form":
             model.brainFormOpened += 1
         case "brain-leave":

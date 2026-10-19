@@ -43,16 +43,17 @@ final class DeviceCards {
         let id = request.id
         answer(id, nil)
         let card = UUID()
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
+        // The isolation named, as in `Engine.nextChange`: inferred, an optimized build ran it off the actor.
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation(isolation: MainActor.shared) { continuation in
                 guard !Task.isCancelled else { return continuation.resume(returning: .deny) }
                 answers[id] = (request.agent, card, continuation)
                 model?.waitingCards[request.agent, default: [:]][id] = approval.intent
             }
-        } onCancel: {
+        }, onCancel: {
             // Only this card: by then another may be up for the same request.
             Task { @MainActor in if self.answers[id]?.card == card { self.answer(id, .deny) } }
-        }
+        }, isolation: MainActor.shared)
     }
 
     /// Answers request `id`'s card, once: a second click finds none. Nil

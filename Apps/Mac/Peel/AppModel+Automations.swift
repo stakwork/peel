@@ -58,12 +58,12 @@ extension AppModel {
         memoryServer.map(automationsClient(for:))
     }
 
-    /// `server`'s client: with the strut preview on and its bridge running
-    /// (Peel's own strut only), new automations go on `peel-automation-run`,
-    /// their run ends to the bridge (docs/agent-on-strut.md, PR 7); until it
-    /// runs, on `peel-automation`, which its start moves.
+    /// `server`'s client: with the agent's bridge running (Peel's own strut
+    /// only), new automations go on `peel-automation-run`, their run ends to
+    /// the bridge (docs/agent-on-strut.md, PR 7); until it runs (before the
+    /// agent is set up), on `peel-automation`, which its start moves.
     func automationsClient(for server: MemoryServer) -> AutomationsClient {
-        guard agentBridge.previewOn, agentBridge.status == .running, !server.isHomeServer,
+        guard agentBridge.status == .running, !server.isHomeServer,
               let ends = agentBridge.bridge?.server?.runEnds else { return AutomationsClient(server: server) }
         return AutomationsClient(server: server, yours: Orchestrator.automationWorkflow, callback: ends)
     }
@@ -121,11 +121,6 @@ extension AppModel {
             try await client.install(port: server.port, token: server.token)
             guard automationServer === server else { return }
             automations.installed = true
-            // Preview off: any left on strut's workflow (turned off while Peel was not
-            // running, or a move cut short) come back here. On, the bridge's start moves them.
-            if !agentBridge.previewOn {
-                await moveAutomations(on: client.server, to: AutomationsClient.workflow, callback: nil, refresh: false)
-            }
         } catch {
             automations.problem = PeelError.problem(error, couldNot: "set up automations on strut")
         }
@@ -311,10 +306,9 @@ extension AppModel {
 
     /// Moves the person's automations to `workflow` on `server`
     /// (`AutomationsClient.moveYours`), their run ends to `callback`, one move
-    /// at a time: two at once, in opposite ways, could each take the other's
-    /// copy for a leftover. Says which it could not move, or why none moved;
-    /// then the list is read again, unless the caller is reading it (`refresh`).
-    func moveAutomations(on server: MemoryServer, to workflow: String, callback: URL?, refresh: Bool = true) async {
+    /// at a time (each bridge start moves them). Says which it could not move,
+    /// or why none moved; then the list is read again.
+    func moveAutomations(on server: MemoryServer, to workflow: String, callback: URL?) async {
         let client = AutomationsClient(server: server, yours: workflow, callback: callback)
         let bridge = agentBridge
         let before = bridge.moving
@@ -334,7 +328,7 @@ extension AppModel {
         bridge.moving = move
         let problem = await move.value
         guard automationsClient?.server == server else { return }
-        if refresh { await refreshAutomations() }
+        await refreshAutomations()
         // After the read, which clears what it last said.
         if let problem { automations.problem = problem }
     }

@@ -271,11 +271,12 @@ actor TerminalLines {
         let id = waits
         // One reader at a time; one left waiting would never be resumed.
         cancel(waiter?.id ?? 0)
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { waiter = (id, $0) }
-        } onCancel: {
+        // The isolation named, as in `Engine.nextChange`: inferred, an optimized build ran it off this actor.
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation(isolation: self) { waiter = (id, $0) }
+        }, onCancel: {
             Task { await self.cancel(id) }
-        }
+        }, isolation: self)
     }
 
     private func deliver(_ line: String?) {

@@ -29,15 +29,15 @@ struct AgentSetupTests {
         #expect(names(AgentSetup(storage: storage, memory: server)) == ["current_time"] + Self.reads + Self.memory)
         // --send, and the app: the send tool only with an engine, automations only where asked and with memory.
         #expect(names(AgentSetup(sending: engine)) == ["current_time"] + Self.reads + ["send_sphinx_message"])
-        #expect(names(AgentSetup(sending: engine, automations: true)) == ["current_time"] + Self.reads + ["send_sphinx_message"])
-        #expect(names(AgentSetup(sending: engine, memory: server, automations: true))
+        #expect(names(AgentSetup(sending: engine, automations: AutomationsClient(server: server!))) == ["current_time"] + Self.reads + ["send_sphinx_message"])
+        #expect(names(AgentSetup(sending: engine, memory: server, automations: AutomationsClient(server: server!)))
                 == ["current_time"] + Self.reads + ["send_sphinx_message"] + Self.memory + Self.automations)
     }
 
     @Test func anUnattendedRunIsToldNothingAboutSendingOrScheduling() throws {
         let profile = TempProfile()
         let engine = try testEngine(try profile.storage())
-        let app = AgentSetup(sending: engine, memory: server, automations: true)
+        let app = AgentSetup(sending: engine, memory: server, automations: AutomationsClient(server: server!))
         let attended = app.systemPrompt(), unattended = app.systemPrompt(unattended: true)
         for prompt in [attended, unattended] {
             #expect(prompt.hasPrefix("You are Peel's agent"))
@@ -48,7 +48,7 @@ struct AgentSetupTests {
         #expect(!unattended.contains(SphinxTools.sendPrompt) && !unattended.contains(AutomationTools.systemPrompt))
 
         // Without memory, nothing about it; the CLI's memory never mentions automations.
-        #expect(!AgentSetup(sending: engine, automations: true).systemPrompt().contains(MemoryTools.systemPrompt))
+        #expect(!AgentSetup(sending: engine, automations: AutomationsClient(server: server!)).systemPrompt().contains(MemoryTools.systemPrompt))
         let cli = AgentSetup(storage: engine.storage, memory: server).systemPrompt()
         #expect(cli.contains(MemoryTools.systemPrompt) && !cli.contains(AutomationTools.systemPrompt)
                 && !cli.contains(SphinxTools.sendPrompt))

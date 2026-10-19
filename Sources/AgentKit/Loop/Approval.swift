@@ -232,14 +232,20 @@ public struct SendGrant: Sendable, Hashable, Identifiable {
     /// The `approve` request that made it, so that request, asked again,
     /// finds it rather than a second card.
     public var request: String?
+    /// When it was kept; nil before.
+    public var created: Date?
 
     /// A grant to keep (`SendGrants.keep`): its id is the record's, once kept.
     public init(automation: String, name: String?, chats: [ToolIntent.Target], maxPriceSats: Int) {
         self.init(id: "", automation: automation, name: name, chats: chats, maxPriceSats: maxPriceSats)
     }
 
-    init(id: String, automation: String, name: String?, chats: [ToolIntent.Target], maxPriceSats: Int, request: String? = nil) {
+    init(
+        id: String, automation: String, name: String?, chats: [ToolIntent.Target], maxPriceSats: Int, request: String? = nil,
+        created: Date? = nil
+    ) {
         self.request = request
+        self.created = created
         self.id = id
         self.automation = automation
         self.name = name
@@ -275,7 +281,8 @@ public struct SendGrants: Sendable {
             return SendGrant(
                 id: record.refId, automation: record.name, name: props["automation_name"]?.string,
                 chats: ids.enumerated().map { ToolIntent.Target(id: $1, name: $0 < names.count ? names[$0] : $1) },
-                maxPriceSats: max(props["max_price_sats"]?.int ?? 0, 0), request: props["request"]?.string
+                maxPriceSats: max(props["max_price_sats"]?.int ?? 0, 0), request: props["request"]?.string,
+                created: Date(timeIntervalSince1970: TimeInterval(record.createdMs) / 1000)
             )
         }
     }
@@ -305,5 +312,16 @@ public struct SendGrants: Sendable {
     /// Revokes `automation`'s grants: it is deleted, or granted anew.
     public func revoke(automation: String) throws {
         for grant in try all() where grant.automation == automation { try revoke(grant) }
+    }
+
+    /// Revokes the grants of automations that are gone: every grant whose
+    /// automation is not in `kept` (the keys strut's automations hold), unless
+    /// it was kept after `cutoff`, since strut makes an automation only
+    /// once its card is allowed. Returns how many it revoked.
+    @discardableResult
+    public func revoke(allBut kept: Set<String>, keptBefore cutoff: Date) throws -> Int {
+        let gone = try all().filter { !kept.contains($0.automation) && ($0.created ?? .distantPast) < cutoff }
+        for grant in gone { try revoke(grant) }
+        return gone.count
     }
 }

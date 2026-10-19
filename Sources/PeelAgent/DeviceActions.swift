@@ -1,5 +1,6 @@
 import AgentKit
 import Foundation
+import os
 import PeelCore
 
 /// The device requests that act as you (docs/agent-on-strut.md, "Sends as
@@ -36,6 +37,25 @@ public struct DeviceActions: Sendable {
     static let automationWindow: TimeInterval = 15 * 60
     /// The send tool's name, so today's "Always allow" rules cover these sends.
     static let sendTool = "send_sphinx_message"
+    /// The most posts one automation run may ask for: a run steered by a
+    /// message it read can loop, and each post may pay.
+    static let postsPerRun = 5
+
+    /// The automation sends asked for, by run (a request id is `<run>/<hash>`),
+    /// while Peel runs: a run lives minutes, and Peel's restart cuts it short.
+    let posts = OSAllocatedUnfairLock(initialState: [Substring: Int]())
+
+    /// Counts one more post for `request`'s run; false once it has had `postsPerRun`.
+    func admitPost(_ request: String) -> Bool {
+        let run = request.lastIndex(of: "/").map { request[..<$0] } ?? Substring(request)
+        return posts.withLock { counts in
+            // Only the runs of the last little while matter.
+            if counts.count > 1000 { counts.removeAll() }
+            guard counts[run, default: 0] < Self.postsPerRun else { return false }
+            counts[run, default: 0] += 1
+            return true
+        }
+    }
 
     public init(
         engine: Engine, rules: ApprovalRules, ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {}
@@ -80,6 +100,9 @@ public struct DeviceActions: Sendable {
             }
             guard let grant = try? grants.grant(for: automation) else {
                 return .denied("No send grant for this automation: it may not post as you. Ask the user to allow it again.")
+            }
+            guard admitPost(request.id) else {
+                return .denied("This run has posted \(Self.postsPerRun) times already, the most one run may; nothing was sent.")
             }
             cap = min(cap, grant.maxPriceSats)
             if let text = SphinxTools.optional("text", in: args), !text.hasPrefix(Self.agentPrefix) {
@@ -138,10 +161,22 @@ public struct DeviceActions: Sendable {
     private func approve(_ request: DeviceRequest, _ args: AgentKit.JSONValue) async -> DeviceAnswer? {
         var intent: ToolIntent
         var grant: SendGrant?
+        /// The grant on file for the automation a delete card is for: it goes once allowed.
+        var dropped: SendGrant?
         do {
             intent = try Self.intent(args["intent"])
-            if let asked = args["grant"] {
+            if let asked = args["grant"], asked["chats"] != nil {
                 grant = try await self.grant(asked)
+            } else if let id = args["grant"].flatMap({ SphinxTools.optional("automation", in: $0) }),
+                      let kept = try grants.grant(for: id) {
+                // The grant it has, named on the card: a changed prompt posts where the
+                // old one did. strut words a delete's card "Delete “name”".
+                if intent.action.hasPrefix("Delete ") {
+                    dropped = kept
+                    intent.details.insert("It may no longer post as you to \(kept.summary).", at: 0)
+                } else {
+                    intent.details.insert("It already posts as you to \(kept.summary) without asking; that stays.", at: 0)
+                }
             }
         } catch {
             return .failed(error.localizedDescription)
@@ -162,6 +197,15 @@ public struct DeviceActions: Sendable {
                 : "No sats: only chats that cost nothing to post in."
         }
         if let refusal = await decide(request, tool: "approve", intent: intent) { return refusal.answer }
+        if let dropped {
+            // Before strut deletes it: an automation whose delete then fails posts nowhere until allowed again.
+            do {
+                try grants.revoke(automation: dropped.automation)
+            } catch {
+                return .failed("The automation's send grant could not be revoked: \(error.localizedDescription)")
+            }
+            changed()
+        }
         guard var grant else { return .done("Allowed.") }
         grant.request = request.id
         do {
@@ -196,6 +240,8 @@ public struct DeviceActions: Sendable {
     }
 
     /// A grant's automation, name, chats (each found on this Mac) and cap.
+    /// With no cap asked, the dearest of its chats' prices now (a tribe's;
+    /// a contact costs nothing), so the card shows what a message costs.
     private func grant(_ value: AgentKit.JSONValue) async throws -> SendGrant {
         guard let automation = SphinxTools.optional("automation", in: value), automation.count <= 128 else {
             throw ToolFailure(errorDescription: "grant.automation is required")
@@ -207,9 +253,10 @@ public struct DeviceActions: Sendable {
         guard let asked = value["chats"]?.array?.compactMap(\.string), (1...20).contains(asked.count) else {
             throw ToolFailure(errorDescription: "grant.chats must name 1 to 20 chats")
         }
-        guard let cap = Self.sats(value["max_price_sats"]) else {
+        guard var cap = Self.sats(value["max_price_sats"]) else {
             throw ToolFailure(errorDescription: "grant.max_price_sats must be a whole number of sats from 0 to \(Self.maxPriceSats)")
         }
+        let priced = value["max_price_sats"] == nil
         let all = try await tools.chats()
         var chats: [ToolIntent.Target] = []
         for query in asked {
@@ -221,6 +268,14 @@ public struct DeviceActions: Sendable {
             }
             if !chats.contains(where: { $0.id == chat.chat }) {
                 chats.append(ToolIntent.Target(id: chat.chat, name: ChatData.clean(chat.name, max: ChatData.maxName)))
+                if priced, chat.isTribe {
+                    guard let price = try await engine.messagePrice(to: chat.chat) else {
+                        throw ToolFailure(errorDescription: "\(ChatData.quoted(chat))'s price is not known on this Mac yet; name grant.max_price_sats")
+                    }
+                    // Whole sats, rounded up, at most the Mac's most: a tribe's price is the network's word.
+                    let sats = price.msat / Sats.msatPerSat + (price.msat % Sats.msatPerSat > 0 ? 1 : 0)
+                    cap = max(cap, Int(min(sats, UInt64(Self.maxPriceSats))))
+                }
             }
         }
         return SendGrant(automation: automation, name: name, chats: chats, maxPriceSats: cap)

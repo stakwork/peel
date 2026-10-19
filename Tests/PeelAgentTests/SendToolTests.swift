@@ -380,6 +380,53 @@ struct DeviceActionsTests {
         }
     }
 
+    /// A grant asked with no cap is worth what its chats cost now, so its
+    /// card says the price (the dearer tribe's; a contact costs nothing).
+    /// One whose automation strut no longer holds goes, unless just made.
+    @Test func aGrantWithNoCapTakesItsChatsPriceAndGoesWithItsAutomation() async throws {
+        try await withActions { actions, cards, storage async throws in
+            func approve(_ id: String, _ chats: [AgentKit.JSONValue], automation: String) async throws -> DeviceAnswer? {
+                try await answer(actions, id, .object([
+                    "intent": .object(["action": "Create the automation"]),
+                    "grant": .object(["automation": .string(automation), "chats": .array(chats)]),
+                ]), kind: "approve", in: storage)
+            }
+            #expect(try await approve("p1", ["Kate", "Bitcoin Devs"], automation: "g-1")?.status == .done)
+            #expect(cards.asked.last?.cost == "Up to 3 sats a message, paid from your balance.")
+            #expect(try await approve("p2", ["Kate"], automation: "g-2")?.status == .done)
+            #expect(cards.asked.last?.cost == "No sats: only chats that cost nothing to post in.")
+
+            // A change to it names the grant it keeps, and keeps nothing new.
+            let change: AgentKit.JSONValue = .object(["intent": .object(["action": "Change it"]), "grant": .object(["automation": "g-2"])])
+            #expect(try await answer(actions, "p3", change, kind: "approve", in: storage)?.status == .done)
+            #expect(cards.asked.last?.details.first == "It already posts as you to Kate without asking; that stays.")
+            #expect(cards.asked.last?.cost == nil)
+
+            // One run posts at most `postsPerRun` times, whatever it read.
+            for n in 1...DeviceActions.postsPerRun + 1 {
+                let post: AgentKit.JSONValue = .object(["chat": "Kate", "text": .string("post \(n)"), "automation": "g-2"])
+                let answered = try await answer(actions, "run-9/\(n)", post, in: storage, for: 600)
+                #expect(answered?.status == (n <= DeviceActions.postsPerRun ? .done : .denied), "post \(n)")
+            }
+            #expect(try await answer(actions, "run-10/1", .object(["chat": "Kate", "text": "next run", "automation": "g-2"]),
+                                     in: storage, for: 600)?.status == .done, "another run starts again")
+
+            let grants = SendGrants(beside: actions.rules)
+            #expect(try grants.revoke(allBut: ["g-1"], keptBefore: Date(timeIntervalSinceNow: -600)) == 0, "just made: kept")
+            #expect(try grants.revoke(allBut: ["g-1"], keptBefore: Date(timeIntervalSinceNow: 1)) == 1)
+            #expect(try grants.all().map(\.automation) == ["g-1"])
+            // A delete card names what goes with it, and once allowed the grant is revoked.
+            let delete: AgentKit.JSONValue = .object(["intent": .object(["action": "Delete \u{201C}It\u{201D}"]), "grant": .object(["automation": "g-1"])])
+            #expect(try await answer(actions, "p4", delete, kind: "approve", in: storage)?.status == .done)
+            #expect(cards.asked.last?.details.first == "It may no longer post as you to Kate and Bitcoin Devs, up to 3 sats a message.")
+            #expect(try SendGrants(beside: actions.rules).grant(for: "g-1") == nil)
+            // An automation with no grant on file gets a plain card.
+            let plain: AgentKit.JSONValue = .object(["intent": .object(["action": "Run it now"]), "grant": .object(["automation": "a-none"])])
+            #expect(try await answer(actions, "p5", plain, kind: "approve", in: storage)?.status == .done)
+            #expect(cards.asked.last?.details.isEmpty == true)
+        }
+    }
+
     @Test func anApproveCardThatCannotBeShownWhollyIsRefused() async throws {
         try await withActions { actions, cards, storage in
             for intent: AgentKit.JSONValue in [.object([:]), .object(["action": "ok\u{202E}evil"]), .object(["action": "x", "details": .array([1])])] {

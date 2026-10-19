@@ -22,9 +22,10 @@ struct OrchestratorTests {
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
         #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section)
-        #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve"])
-        // An automation's run reads and remembers; it neither sends nor schedules.
+        #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve", "grants": true])
+        // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
+        #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
     }
 
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
@@ -39,7 +40,8 @@ struct OrchestratorTests {
         }
         let unattended = Orchestrator.unattended
         #expect(unattended.contains("sphinx/unseen") && unattended.contains("memory/remember"))
-        #expect(!unattended.contains("sphinx/send") && !unattended.contains("automation/"))
+        #expect(!unattended.contains("sphinx/send") && !unattended.contains("automation/") && unattended.contains("sphinx/post"))
+        #expect(section.contains("give it a grant"))
         // Today's Swift loop keeps its own names.
         let today = AgentSetup(storage: nil).systemPrompt() + SphinxTools.systemPrompt + MemoryTools.systemPrompt
             + SphinxTools.sendPrompt + AutomationTools.systemPrompt
@@ -58,6 +60,13 @@ struct OrchestratorTests {
             #expect(source.contains("http://127.0.0.1:${port}/bridge/device/request") && source.contains("PEEL_BRIDGE_TOKEN"))
         }
         #expect(DeviceStep.approve.source.contains("return { approved: true }"))
+        // A post names the fire's automation as strut's scheduler stamped it, never the model's or the input's.
+        #expect(DeviceStep.post.source.contains("const automation = ctx.automation?.id;") && !DeviceStep.post.input.contains("automation"))
+        #expect(!DeviceStep.post.source.contains("ctx.input?.grant") && !Orchestrator.automationRunYAML.contains("grant:"))
+        #expect(DeviceStep.post.lifetime <= Int(DeviceActions.automationWindow), "the Mac refuses an automation's send that lives longer")
+        // Bound to its fire: no later than its window after `input.now`, which the Mac's own window holds.
+        #expect(DeviceStep.post.source.contains("fired + \(DeviceStep.postWindow + 300)"))
+        #expect(DeviceStep.postWindow + 300 <= Int(DeviceActions.automationWindow))
         #expect(DeviceStep.all.allSatisfy { $0.wait <= 300 }, "the bridge waits 300 s at most")
     }
 
@@ -126,6 +135,39 @@ struct OrchestratorTests {
         #expect(made["output"]?["created"]?["name"] == "Morning", "\(made)")
         let listed = try await client.list(workflow: Orchestrator.automationWorkflow)
         #expect(listed.map(\.name) == ["Morning"] && listed.first?.prompt == "What did I miss overnight?")
+
+        // A grant goes on the same card under the id strut mints for the automation, which it
+        // is made with; a post from a run that is no automation's fire is refused before the Mac is asked.
+        let posting: AgentKit.JSONValue = ["name": "Hive test", "prompt": "Post: testing automations", "trigger": trigger,
+                                           "grant": ["chats": ["Hive"]]]
+        _ = try await runStep("automation/create", posting, on: server)
+        let grantCard = try AgentKit.JSONValue(parsing: String(bridge.requests.last!.split(separator: "\r\n\r\n").last ?? ""))
+        let key = try #require(grantCard["args"]?["grant"]?["automation"]?.string)
+        #expect(key.hasPrefix("a-") && grantCard["args"]?["grant"]?["chats"] == ["Hive"] && grantCard["args"]?["grant"]?["name"] == "Hive test")
+        let hive = try #require(try await client.list(workflow: Orchestrator.automationWorkflow).first { $0.name == "Hive test" })
+        #expect(hive.id == key && hive.input["grant"] == nil, "nothing about the grant rides in the run's input")
+        let asks = bridge.requests.count
+        let post = try await runStep("sphinx/post", ["chat": "Hive", "text": "hi"], on: server)
+        #expect(post["output"]?["status"] == "denied" && bridge.requests.count == asks, "\(post)")
+
+        // Preview off: each goes to peel-automation as it was (id, schedule, prompt, paused);
+        // on again, back, a copy left by a move cut short made only once.
+        try await client.install(port: 1, token: "automation-token")
+        _ = try await client.update(hive, enabled: false)
+        #expect(try await AutomationsClient(server: server, yours: AutomationsClient.workflow, callback: nil).moveYours().isEmpty)
+        let off = try await client.list().filter(\.isYours)
+        #expect(off.count == 2 && off.allSatisfy { $0.workflow == AutomationsClient.workflow }, "\(off)")
+        let moved = try #require(off.first { $0.name == "Hive test" })
+        #expect(moved.id == key && !moved.enabled && moved.prompt == hive.prompt && moved.trigger == hive.trigger)
+        let morning = try #require(off.first { $0.name == "Morning" })
+        _ = try await call("POST", "workflows/\(Orchestrator.automationWorkflow)/automations",
+                           ["id": .string(morning.id), "name": "Morning", "trigger": morning.trigger, "input": morning.input], on: server)
+        let ends = try #require(URL(string: "http://127.0.0.1:\(bridge.port)/bridge/run-end?token=bridge-token"))
+        #expect(try await AutomationsClient(server: server, yours: Orchestrator.automationWorkflow, callback: ends).moveYours().isEmpty)
+        let on = try await client.list().filter(\.isYours)
+        #expect(on.map(\.name).sorted() == ["Hive test", "Morning"] && on.allSatisfy { $0.workflow == Orchestrator.automationWorkflow })
+        #expect(on.first { $0.name == "Hive test" }?.id == key && on.first { $0.name == "Morning" }?.id == morning.id)
+        try await client.pointRunEnds(at: ends)
 
         // The bridge gone, its port and token are too: a step has nowhere to post.
         try await client.forgetBridge()

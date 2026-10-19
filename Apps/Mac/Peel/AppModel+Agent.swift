@@ -231,8 +231,18 @@ extension AppModel {
     /// with a strut; the automation tools only with Peel's own, since a home
     /// server cannot reach this Mac's `AutomationServer` (until automations
     /// by pull, `docs/peel-brain.md`).
-    static func agentSetup(_ engine: Engine, memory: MemoryServer?) -> AgentSetup {
-        AgentSetup(sending: engine, memory: memory, automations: memory?.isHomeServer == false)
+    func agentSetup(_ engine: Engine, memory: MemoryServer?) -> AgentSetup {
+        AgentSetup(sending: engine, memory: memory,
+                   automations: memory.flatMap { $0.isHomeServer ? nil : automationsClient(for: $0) })
+    }
+
+    /// The agent's tools again, for where its automation tools make new
+    /// ones: the strut preview turned on or off, or the bridge started.
+    func useAutomationTools() {
+        guard let engine, let agent else { return }
+        let setup = agentSetup(engine, memory: memoryServer)
+        agent.tools = setup.tools
+        agent.systemPrompt = setup.systemPrompt()
     }
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
@@ -277,7 +287,7 @@ extension AppModel {
                 brain = nil
                 notice = PeelError.problem(error, couldNot: "read the agent's brain")
             }
-            let setup = Self.agentSetup(engine, memory: nil)
+            let setup = agentSetup(engine, memory: nil)
             let agent = AgentSession(
                 store: store, credentials: KeptCredential(item: profile.agentCredential),
                 tools: setup.tools, systemPrompt: setup.systemPrompt()
@@ -325,9 +335,7 @@ extension AppModel {
         guard memory != memoryServer else { return }
         memoryServer = memory
         closeMemory()
-        let setup = Self.agentSetup(engine, memory: memory)
-        agent.tools = setup.tools
-        agent.systemPrompt = setup.systemPrompt()
+        useAutomationTools()
         stopAutomations()
         // First, so a model disconnected while strut was stopped leaves it before anything runs.
         modelChanged()

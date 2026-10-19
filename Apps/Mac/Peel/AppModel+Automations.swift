@@ -15,6 +15,9 @@ struct AutomationsState: Equatable {
     var installed = false
     /// Each automation's runs, newest first, once looked at.
     var runs: [String: [AutomationRunRecord]] = [:]
+    /// The automations (by id) with a send grant that strut did not list at the last read
+    /// (`DeviceCards.revokeGrants`).
+    var grantsMissed: Set<String> = []
     /// System workflows' descriptions, read once (`AutomationsClient.list`).
     var descriptions: [String: String] = [:]
     /// The system automations Peel has turned on once, by workflow, as
@@ -52,7 +55,17 @@ extension AppModel {
 
     /// The client for the memory's strut (`lookForMemory`); nil without one.
     var automationsClient: AutomationsClient? {
-        memoryServer.map(AutomationsClient.init(server:))
+        memoryServer.map(automationsClient(for:))
+    }
+
+    /// `server`'s client: with the strut preview on and its bridge running
+    /// (Peel's own strut only), new automations go on `peel-automation-run`,
+    /// their run ends to the bridge (docs/agent-on-strut.md, PR 7); until it
+    /// runs, on `peel-automation`, which its start moves.
+    func automationsClient(for server: MemoryServer) -> AutomationsClient {
+        guard agentBridge.previewOn, agentBridge.status == .running, !server.isHomeServer,
+              let ends = agentBridge.bridge?.server?.runEnds else { return AutomationsClient(server: server) }
+        return AutomationsClient(server: server, yours: Orchestrator.automationWorkflow, callback: ends)
     }
 
     /// The same, only for Peel's own strut: the one place a home server is
@@ -108,6 +121,11 @@ extension AppModel {
             try await client.install(port: server.port, token: server.token)
             guard automationServer === server else { return }
             automations.installed = true
+            // Preview off: any left on strut's workflow (turned off while Peel was not
+            // running, or a move cut short) come back here. On, the bridge's start moves them.
+            if !agentBridge.previewOn {
+                await moveAutomations(on: client.server, to: AutomationsClient.workflow, callback: nil, refresh: false)
+            }
         } catch {
             automations.problem = PeelError.problem(error, couldNot: "set up automations on strut")
         }
@@ -178,7 +196,7 @@ extension AppModel {
         } catch {
             return .failed(AutomationFailure.keyUnreadable)
         }
-        let setup = Self.agentSetup(engine, memory: memoryServer)
+        let setup = agentSetup(engine, memory: memoryServer)
         let loop = AgentLoop(
             provider: Self.agentClient(credential, profile: profile),
             tools: setup.tools, model: credential.model, systemPrompt: setup.systemPrompt(unattended: true))
@@ -213,6 +231,11 @@ extension AppModel {
             // A failed install stays said until one succeeds (a home server has none).
             if automations.installed || !own, automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
+            // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
+            if own, let missed = try? macAgent.deviceCards.revokeGrants(
+                missingFrom: Set(list.filter(\.isYours).map(\.id)), missedBefore: automations.grantsMissed) {
+                automations.grantsMissed = missed
+            }
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }
         } catch {
@@ -284,6 +307,36 @@ extension AppModel {
 
     func updateAutomationPrompt(_ automation: Automation, to prompt: String) async {
         await changeAutomations("change \u{201C}\(automation.name)\u{201D}") { _ = try await $0.update(automation, prompt: prompt) }
+    }
+
+    /// Moves the person's automations to `workflow` on `server`
+    /// (`AutomationsClient.moveYours`), their run ends to `callback`, one move
+    /// at a time: two at once, in opposite ways, could each take the other's
+    /// copy for a leftover. Says which it could not move, or why none moved;
+    /// then the list is read again, unless the caller is reading it (`refresh`).
+    func moveAutomations(on server: MemoryServer, to workflow: String, callback: URL?, refresh: Bool = true) async {
+        let client = AutomationsClient(server: server, yours: workflow, callback: callback)
+        let bridge = agentBridge
+        let before = bridge.moving
+        let move = Task { () -> String? in
+            _ = await before?.value
+            do {
+                // The ones there already first: those the move makes carry it.
+                if let callback { try await client.pointRunEnds(at: callback) }
+                let stuck = try await client.moveYours()
+                guard !stuck.isEmpty else { return nil }
+                let names = ListFormatter.localizedString(byJoining: stuck.map { "\u{201C}\($0)\u{201D}" })
+                return "Couldn't move \(names) to \(workflow): it stays where it was until the next try."
+            } catch {
+                return PeelError.problem(error, couldNot: "move the automations to \(workflow)")
+            }
+        }
+        bridge.moving = move
+        let problem = await move.value
+        guard automationsClient?.server == server else { return }
+        if refresh { await refreshAutomations() }
+        // After the read, which clears what it last said.
+        if let problem { automations.problem = problem }
     }
 
     private func changeAutomations(_ what: String, _ change: (AutomationsClient) async throws -> Void) async {

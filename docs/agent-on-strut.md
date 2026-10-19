@@ -1015,6 +1015,105 @@ account is cheap to replace (open question 2).
   purpose: the server's marker moves for the official apps.
 
 
+### Built: PR 7, automations on strut (2026-10-18)
+
+- **Where they run.** With the preview on, the person's automations run on
+  `peel-automation-run` in strut, with nobody at the Mac; off, on
+  `peel-automation` through `AutomationServer` as before. New ones are made
+  on the one the preview names, by the orchestrator's `automation/create`
+  and by today's Swift tools alike (`AppModel.automationsClient(for:)`).
+- **Moving them** (`AutomationsClient.moveYours`). Turning the preview on
+  moves every one of the person's automations once the bridge runs;
+  turning it off moves them back before strut stops; a launch with the
+  preview off brings back any left on strut's workflow. Each keeps its id
+  (a workflow's own in strut, and what the Mac keeps its send grant under),
+  name, schedule, input and whether it is on; it is made on the new
+  workflow before it is deleted from the old, so a move cut short leaves a
+  copy on both, which the next move finds (the same id) and only deletes. Moves run one at a time
+  (`AgentBridge.moving`). A done one-off strut will not make again stays
+  where it is. Its earlier runs stay with the old workflow.
+- **Reports reach the DM.** An automation's run ends go to the bridge
+  (its callback), which sends the report to the DM under the automation's
+  name, once; a run with nothing to report says nothing (runner change:
+  stakwork/sphinx, `turns::unasked`). The bridge's token and port are new
+  each launch, so each bridge start points every automation's callback at it
+  (`pointRunEnds`), and Swift-made ones carry it from the start.
+- **Sends with a grant, approved once** (strut#220, which replaced #215).
+  strut's `automation/create` and `update` take a `grant` when the host says
+  `grants: true`. strut mints the new automation's id before the card and
+  hands the grant to `sphinx/approve` with that id and the name; it keeps
+  nothing about grants. The Mac words the grant on the create card (its
+  chats; with no cap asked, what they cost now, the dearer tribe's) and
+  keeps it under the id. A fire's run carries `ctx.automation` ({ id }),
+  which strut's scheduler stamps and no request body sets: the run's
+  `sphinx/post` names the automation from there, never from the input or
+  the model, and asks the Mac to send; the Mac checks the grant under that
+  id, the chat, the cap and the 15-minute window, and adds `[Agent] `. A
+  run that is no automation's fire is refused before the Mac is asked; one
+  whose automation has no grant, by the Mac. (#215 kept a grant key in the
+  run's input: readable wherever runs and automations are, so a bearer
+  secret. It is gone.)
+- **Grants go with their automation.** Every change, run-now or delete
+  card names its automation's id; the Mac answers from its own records: a
+  grant on file is named on the card, and an allowed delete revokes it.
+  Reading the list from Peel's own strut also revokes any grant whose
+  automation it no longer lists, once two reads in a row miss it and unless
+  it was kept in the last 10 minutes (its automation is made just after the
+  card). Deleting one in Automations revokes its grant at once.
+- **What binds a post.** `sphinx/post` refuses a run that fired over 10
+  minutes ago (`input.now`) and expires within 15 minutes of the fire; the
+  Mac takes at most 5 posts from one run. A change or a run-now of an
+  automation that has a grant shows the grant on its card ("It already
+  posts as you to Hive without asking; that stays.").
+- **Dates.** From Tom's first try: a reminder "at 1pm today" was made for
+  2025, then changed. The bridge's time line now names the year ("Sun 18
+  Oct 2026 10:21, GMT+1."), and strut's `automation/create` and `update`
+  refuse a schedule with no runs to come before any card.
+- **A hole closed in strut** (the security pass): `meta/run-workflow`
+  passed `params` through unchecked, so a job could relaunch `job` with
+  `params.tools` naming the sealed `sphinx/*` steps or `meta/create-step`,
+  and an authored step reads the bridge's token from the secret store.
+  `params` may now narrow a workflow's grants, never widen them.
+- **Checked.** `OrchestratorTests` against the staged strut: the grant on
+  the create card under the automation's id, a post outside a fire refused
+  before the Mac is asked, moves both ways with a cut-short copy made once. The
+  journey `Journeys/Orchestrator/anAutomationPostsAtItsMinuteAndReportsToTheDM`
+  runs everything real but the model: "In two minutes, post to my club…"
+  shows one card; at that minute the run posts `[Agent] …` as Alice with
+  nobody at the Mac and no card, Bob reads it in the tribe, the report
+  lands in the DM; a weekly report run now lands in the DM; the preview
+  off moves them to `peel-automation`, where a run reaches the Mac's
+  `AutomationServer` as before, and on again moves them back with their
+  schedules and grant. A post from another automation's fire (one with no
+  grant) is refused by the Mac and nothing is sent. The local stack needs a current mixer: the Oct 11
+  one in `~/sphinx-target` fails tribe payments ("Outgoing CLTV value is
+  too soon").
+- **Review findings not applied, and why.** A cut-short move (a delete
+  that failed) leaves both copies firing until the next move: the other
+  order could lose one. The run history shows the DM's name header. One
+  cap covers every chat in a grant (the dearest at the card); per-chat caps
+  can come with the grant list's editing. The bridge's run-end token is its
+  whole token (a runner change: a token for run ends alone). A run's error
+  report in the DM does not name the automation (the runner sees no name).
+  A run that fires while the bridge restarts posts its end to the old one
+  and is not reported. The Swift `update_automation` card does not name a
+  grant (the Swift loop goes in PR 11). Jobs' authored steps can read any
+  secret by name, the bridge's among them: closed for jobs by the `params`
+  fix, since `job` is not granted `meta/create-step`; strut's own question
+  for any workflow that is. From the cleanup pass: a bridge callback that
+  lasts (a token kept across launches) would replace re-pointing every
+  automation at each start; `AgentSetup` takes a client made for one bridge,
+  so the tools are made again at each bridge change, where a provider asked
+  at each call would need none. The Mac tells a delete card from a change
+  by strut's wording ("Delete “name”"); a field on the card would be firmer. From the security pass on #220, both needing strut's API key (which can
+  fire a granted automation without a card anyway): the Mac keys a grant by
+  the automation's id, which is unique per workflow only, so a workflow
+  published over HTTP with `sphinx/post` and an automation under a granted
+  id could post (strut could stamp the workflow beside the id); and an
+  automation deleted outside a card keeps its grant until two reads miss
+  it, so one made again under the same id in that gap inherits it (the
+  create card could always name its id, so the Mac drops a stale grant).
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

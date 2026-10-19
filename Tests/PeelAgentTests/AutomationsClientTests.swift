@@ -209,11 +209,12 @@ struct AutomationsClientTests {
         defer { stub.stop() }
         let tools = AutomationTools(client: client)
         let list = try #require(tools.tools.first { $0.name == "list_automations" })
-        guard case .result = try await list.plan([:]) else {
+        guard case .result(let listed) = try await list.plan([:]) else {
             Issue.record("expected a result")
             return
         }
-        #expect(lines(stub).first == "GET /automations?workflow=peel-automation")
+        // Every workflow is read (one a move left behind is still the person's); only theirs is told.
+        #expect(lines(stub).first == "GET /automations" && !listed.text.contains("id=tidy"))
         for name in ["update_automation", "delete_automation", "run_automation_now"] {
             let tool = try #require(tools.tools.first { $0.name == name })
             await #expect(throws: PeelError.self, "\(name)") { _ = try await tool.plan(["id": "tidy", "enabled": false]) }

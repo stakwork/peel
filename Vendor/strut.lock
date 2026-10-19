@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #214 (the desktop package with sharp), after #196 (the orchestrator) and #213 (the automation steps).
-a62d9bc1995b89a72dd97e6a3c23246bad32c7aa
+# stakwork/strut main at the merge of #220 (automation grants bound to the automation's id, ctx.automation; params that cannot widen grants; no dead one-offs).
+c180e8f97af4faa8070ed7263b7690748a7bedc0

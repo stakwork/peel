@@ -29,6 +29,13 @@ public final class BundledBridge: CustomReflectable {
         public var description: String { base.absoluteString }
         public var debugDescription: String { description }
         public var customMirror: Mirror { Mirror(self, children: ["base": base], displayStyle: .struct) }
+        /// strut's callback for a run's end (the token in its query, as the
+        /// bridge gives its own runs): an automation's report goes to the DM.
+        public var runEnds: URL {
+            var parts = URLComponents(url: base.appending(path: "bridge/run-end"), resolvingAgainstBaseURL: false)!
+            parts.queryItems = [URLQueryItem(name: "token", value: token)]
+            return parts.url!
+        }
     }
 
     /// The running bridge; nil until it is ready and once it has stopped.

@@ -1321,11 +1321,15 @@ decisions (2026-10-20):
   means the key is kept, as before.
 - **The phone** cannot know whether the Mac has a model: nothing reaches it
   but the DM. A message from it (or one already in flight) still reaches
-  strut and gets runner's reply, whose wording is runner's
-  (`end_text`, `runner/src/bridge/turns.rs`) over strut's error
-  (`src/steps/core/agent.ts`). A friendlier line ("Your assistant has no
-  model connected. Connect one on your Mac in Account › Peel agent.") is a
-  sphinx change, sketched in the PR and waiting on Tom.
+  strut, and the reply is strut's own error, which runner passes through
+  unchanged (`end_text`, `runner/src/bridge/turns.rs`). Since
+  stakwork/strut#237 strut says it for a person, generic rather than
+  Peel's: "Sorry, that didn't work: No model is connected yet. Connect one
+  to use your assistant." (`STRUT_DEFAULT_MODEL` goes to strut's log); Peel
+  has it with the next strut pin. Runner mapping strut's words to its own
+  line (stakwork/sphinx#388) was closed as superseded (Tom, 2026-10-20).
+  If a host ever needs to recognise the case, an error code from strut
+  (e.g. `no_model`) would be sturdier than matching words.
 - **Checked.** The unit suite; the journeys `Bridge`, `Orchestrator` and
   `Agent` on a local stack; `check-app.sh` on a development profile with
   the agent's account and `-strut YES`: connected (Connected once strut

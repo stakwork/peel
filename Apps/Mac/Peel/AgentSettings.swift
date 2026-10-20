@@ -78,12 +78,15 @@ struct AgentSettingsSection: View {
                     }
                 }
                 AgentAccountRow()
-                Fact("Earlier, on this Mac") {
-                    // Not EmptyView: it drops the value's full-width frame and the row centres.
-                    Spacer(minLength: 0)
-                } trailing: {
-                    InlineConfirm(trigger: "Clear…", prompt: "Clear the earlier agent chat on this Mac?", confirm: "Clear") {
-                        attempt { try agent.clear() }
+                // Only while there is any: gone once cleared.
+                if !agent.turns.isEmpty {
+                    Fact(AgentListRow.oldChatsTitle) {
+                        // Not EmptyView: it drops the value's full-width frame and the row centres.
+                        Spacer(minLength: 0)
+                    } trailing: {
+                        InlineConfirm(trigger: "Clear…", prompt: "Clear the old assistant chats on this Mac?", confirm: "Clear") {
+                            attempt { try agent.clear() }
+                        }
                     }
                 }
             }

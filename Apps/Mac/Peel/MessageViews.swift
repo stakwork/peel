@@ -85,7 +85,7 @@ struct ListRowContent: View {
                 NoteLine(text: row.message.membershipNote(by: row.sender))
                     .padding(.horizontal, Theme.Space.xl)
             case .control(let line):
-                DeviceRequestLine(row: row, line: line, composer: composer)
+                DeviceRequestLine(row: row, line: line)
                     .padding(.horizontal, Theme.Space.xl)
             case .payment:
                 PaymentRow(row: row, flashed: flashed)

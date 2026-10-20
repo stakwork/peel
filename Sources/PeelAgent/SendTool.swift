@@ -14,8 +14,6 @@ extension SphinxTools {
     /// The most characters of a message the tool sends.
     static let maxMessage = 4_000
 
-    public static let sendPrompt = sendPrompt(tool: "send_sphinx_message")
-
     static func sendPrompt(tool: String) -> String {
         """
         \(tool) sends a message as the user. Offer to send when it helps, but only send what \

@@ -3,9 +3,9 @@ import Foundation
 import PeelCore
 
 /// The device requests the Mac answers in Phase 1 for strut's agent, the
-/// chat reads (docs/agent-on-strut.md, "Request types"), each through the
-/// Sphinx tool today's agent calls, so strut's model reads the same
-/// `ChatData` as the Swift loop's. Any other kind is refused, said plainly.
+/// chat reads (docs/agent-on-strut.md, "Request types"), each through a
+/// Sphinx read tool (`SphinxTools`), whose `ChatData` strut's model reads.
+/// Any other kind is refused, said plainly.
 public struct DeviceReads: Sendable {
     let tools: SphinxTools
 
@@ -38,7 +38,7 @@ public struct DeviceReads: Sendable {
 
     /// The tool for `kind` and its input, from the request's `args`: the
     /// tools' own fields, but a chat is always `chat`, a thread `thread`
-    /// and a search's words `q`. `since` is not read yet: today's tools
+    /// and a search's words `q`. `since` is not read yet: the tools
     /// take none.
     func call(_ kind: String, _ args: AgentKit.JSONValue) -> (Tool, AgentKit.JSONValue)? {
         func input(_ fields: [String: AgentKit.JSONValue?]) -> AgentKit.JSONValue {

@@ -102,10 +102,9 @@ extension AppModel {
 
     // MARK: The agent chat as the agent's DM (docs/agent-on-strut.md, "One conversation")
 
-    /// The agent row's unread count: its DM's, or the local chat's.
+    /// The agent row's unread count: its DM's.
     var agentUnread: Int {
-        guard let agentChat else { return agent?.unread ?? 0 }
-        return readStates[agentChat]?.sidebarCount ?? 0
+        agentChat.flatMap { readStates[$0]?.sidebarCount } ?? 0
     }
 
     /// Your message the agent is answering in its open DM
@@ -116,10 +115,9 @@ extension AppModel {
         return message
     }
 
-    /// A card waiting on you in the agent chat: the local loop's, or one
-    /// in its DM.
+    /// A card waiting on you in the agent's DM.
     var agentWaiting: Bool {
-        agent?.waiting != nil || agentChat.map { waitingCards[$0] != nil } == true
+        agentChat.map { waitingCards[$0] != nil } == true
     }
 
     /// Stop in the agent's DM: a `cancel` for the turn in flight, which the
@@ -220,7 +218,7 @@ extension AppModel {
             throw PeelError("This build of Peel has no bridge (scripts/stage-bridge.sh).")
         }
         bridge.bridge = running
-        running.onChange = { [weak self, weak bridge, weak running] in
+        running.onChange = { [weak bridge, weak running] in
             // Runner stopped by itself: tried again only when strut starts again or on the person's Try again.
             guard let bridge, let running, running.server == nil, bridge.bridge === running,
                   bridge.status != .off else { return }
@@ -228,8 +226,6 @@ extension AppModel {
             bridge.status = .failed("The agent's bridge stopped.")
             // No step posts to its port again.
             Task { try? await AutomationsClient(server: server).forgetBridge() }
-            // New automations go where they run without it.
-            self?.useAutomationTools()
         }
         // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
         let client = AutomationsClient(server: server)
@@ -244,9 +240,7 @@ extension AppModel {
         try await client.useBridge(reached)
         try Task.checkCancellation()
         bridge.status = .running
-        // The person's automations run here now, their reports to the DM (and the
-        // agent's tools make new ones here, reporting there).
-        useAutomationTools()
+        // The person's automations run here now, their reports to the DM.
         await moveAutomations(on: server, to: Orchestrator.automationWorkflow, callback: reached.runEnds)
     }
 }

@@ -4,11 +4,11 @@ import os
 import PeelCore
 
 /// The device requests that act as you (docs/agent-on-strut.md, "Sends as
-/// you" and "Approvals"), on the Mac: `send`, planned by today's send tool
+/// you" and "Approvals"), on the Mac: `send`, planned by the send tool
 /// and allowed on its card in the agent's DM (or by an "Always allow" rule),
 /// or, for an automation, by its send grant; and `approve`, the card alone,
-/// which may make a send grant. The card is today's: the same gate and
-/// rules (`ApprovalGate`), and what runs is what it showed. A card past the
+/// which may make a send grant. The card goes through the approval gate and
+/// its rules (`ApprovalGate`), and what runs is what it showed. A card past the
 /// request's time closes itself as `expired`. Every other kind is a read
 /// (`DeviceReads`).
 public struct DeviceActions: Sendable {
@@ -35,7 +35,7 @@ public struct DeviceActions: Sendable {
     /// plus 10 minutes, with room for the clocks. A send naming an automation
     /// and expiring later is no automation's run.
     static let automationWindow: TimeInterval = 15 * 60
-    /// The send tool's name, so today's "Always allow" rules cover these sends.
+    /// The send tool's name, which the "Always allow" rules are kept under.
     static let sendTool = "send_sphinx_message"
     /// The most posts one automation run may ask for: a run steered by a
     /// message it read can loop, and each post may pay.
@@ -298,7 +298,7 @@ public struct DeviceActions: Sendable {
         let answer: DeviceAnswer?
     }
 
-    /// Asks through today's gate (an "Always allow" rule, or the card), until
+    /// Asks through the gate (an "Always allow" rule, or the card), until
     /// the request's time: a card still up then closes itself, and a click
     /// after it does nothing. Nil when allowed.
     private func decide(_ request: DeviceRequest, tool: String, intent: ToolIntent) async -> Refusal? {

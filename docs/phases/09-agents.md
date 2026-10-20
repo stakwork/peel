@@ -2,11 +2,12 @@
 
 ## Status (2026-10-12)
 
-> **Superseded in part (2026-10-19).** v1 is built and is still the Mac's
-> agent for now (until Phase 1's PR 10, days away; removed in PR 11). Then the loop moves
-> to strut's `orchestrator` on the brain and PR 11 removes the Swift loop;
-> AgentKit keeps the client side (the approval gate, the cards, the device
-> requests). "Where it runs" below is replaced. See [../agent-architecture.md](../agent-architecture.md).
+> **Superseded (2026-10-19).** v1 was the Mac's agent until Phase 1's PR
+> 10, when the loop moved to strut's `orchestrator` on the brain; PR 11
+> removed the Swift loop, its model clients and `peel agent`. AgentKit keeps
+> the client side (the approval gate, the cards, the device requests, the
+> connected model's key and v1's chat, read only). This file is v1's build
+> record. "Where it runs" below is replaced. See [../agent-architecture.md](../agent-architecture.md).
 
 **In progress.** Tom decided the v1 scope on 2026-10-10. This file is the
 build plan; the design is in `../agent-architecture.md`. Built: PR 1 (this

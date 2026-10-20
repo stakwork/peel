@@ -62,7 +62,7 @@ public struct Automation: Sendable, Equatable, Identifiable {
         guard let id = json["id"]?.string, let name = json["name"]?.string else { return nil }
         self.id = id
         self.name = name
-        workflow = json["workflow"]?.string ?? AutomationsClient.workflow
+        workflow = json["workflow"]?.string ?? AutomationsClient.legacyWorkflow
         category = json["category"]?.string
         enabled = json["enabled"] != .bool(false)
         trigger = json["trigger"] ?? .object([:])
@@ -105,7 +105,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     public let failure: String
 
     /// `workflow`: the one its runs were read from, unless the record names its own.
-    init?(_ json: AgentKit.JSONValue, workflow: String = AutomationsClient.workflow) {
+    init?(_ json: AgentKit.JSONValue, workflow: String = AutomationsClient.legacyWorkflow) {
         guard let id = json["runId"]?.string else { return nil }
         self.id = id
         status = json["status"]?.string ?? "running"
@@ -119,13 +119,22 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         case .string(let text)?: Double(text)
         default: nil
         }
-        let peels = (json["workflow"]?.string ?? workflow) == AutomationsClient.workflow
+        let peels = (json["workflow"]?.string ?? workflow) == AutomationsClient.legacyWorkflow
         error = json["error"]?["message"]?.string.map { Self.shortened($0, peels: peels) }
-        let why = ModelError.maskingKeys(reply?.error ?? error ?? "no reason given")
+        let why = Self.maskingKeys(reply?.error ?? error ?? "no reason given")
         failure = AutomationFailure.isSentence(why) ? why : "Didn't finish: " + why
     }
 
 
+
+    /// `text` with anything shaped like a key replaced by "[key]": `sk-…`,
+    /// `sk-ant-…`, `sk-or-…` (and `rk-`, `pk-`), masked forms like
+    /// `sk-ab***yz` or `sk-…****abcd` too, glued to a word by `_` or `=`
+    /// as well, up to a space, quote or bracket; a full stop after one stays.
+    static func maskingKeys(_ text: String) -> String {
+        text.replacingOccurrences(of: #"(?<![A-Za-z0-9])(sk|rk|pk)-[^\s"'(),:;\[\]{}<>]*[^\s"'(),:;\[\]{}<>.]"#,
+                                  with: "[key]", options: .regularExpression)
+    }
 
     /// strut's words for a failed run, as a person reads them. Peel's own
     /// reply without the step's "Peel answered 500: "; on Peel's workflow
@@ -140,7 +149,10 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
             let words = message[peel.range.upperBound...]
             return words.isEmpty ? message : String(words)
         }
-        if peels, message.hasSuffix("fetch failed") { return AutomationFailure.peelUnreachable }
+        // Nothing listens for `peel-automation`'s step now, and its secrets are gone.
+        if peels, message.hasSuffix("fetch failed") || message.contains("are not set: Peel stores them") {
+            return AutomationFailure.notMoved
+        }
         // The agent step's model call only, whose status strut puts last: other
         // steps (git/push) print an HTTP 401 of their own.
         if message.contains(#/^agent failed after \d+ step\(s\): .*\(HTTP 401\b/#.dotMatchesNewlines()) {
@@ -166,40 +178,30 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     }
 }
 
-/// strut's own words for a schedule and its next runs, written nowhere.
-public struct SchedulePreview: Sendable, Equatable {
-    public let summary: String
-    public let next: [Date]
-}
-
-/// strut's automation endpoints, for the agent's tools and the Automations
-/// view alike, over the memory's strut (its address and key, from its ready
-/// line: `BundledStrut`). Every Peel automation hangs off one workflow, `peel-automation`,
-/// whose one `http` step posts to this Mac's `AutomationServer`; a system
-/// automation hangs off its own workflow, which strut runs alone.
+/// strut's automation endpoints, for the Automations view and the agent's
+/// bridge, over the memory's strut (its address and key, from its ready
+/// line: `BundledStrut`). The person's automations run on
+/// `Orchestrator.automationWorkflow`; a system automation hangs off its own
+/// workflow, which strut runs alone.
 public struct AutomationsClient: Sendable {
     public let server: MemoryServer
-    /// Where the person's new automations go and the agent's tools look:
-    /// `workflow`, or `Orchestrator.automationWorkflow` while the agent's bridge runs.
+    /// Where `moveYours` moves the person's automations.
     public let yours: String
-    /// Where a new automation's run ends go: the agent's bridge, which sends
-    /// each one's report to the agent's DM. None on `workflow`, whose step
-    /// hands the run to this Mac.
+    /// Where a moved automation's run ends go: the agent's bridge, which
+    /// sends each one's report to the agent's DM.
     public let callback: URL?
 
-    public static let workflow = "peel-automation"
+    /// The workflow the person's automations ran on before strut was the
+    /// agent, whose step handed each run to Peel's own loop on this Mac.
+    /// Those still on it are listed, and moved as the bridge starts.
+    public static let legacyWorkflow = "peel-automation"
     /// The workflows the person's own automations run on.
-    public static let yourWorkflows: Set<String> = [workflow, Orchestrator.automationWorkflow]
-    /// The secrets in strut's store that `step` reads: Peel's bearer token
-    /// and its port on this Mac. Two, not one JSON value, so strut's
-    /// cassettes scrub each (they scrub a secret's whole value).
-    static let tokenSecret = "PEEL_AUTOMATION_TOKEN"
-    static let portSecret = "PEEL_AUTOMATION_PORT"
-    /// The custom step the workflow runs: Peel's adapter, published with it.
-    static let step = "peel/run-automation"
-    static let replyLimit = 2_000_000
+    public static let yourWorkflows: Set<String> = [legacyWorkflow, Orchestrator.automationWorkflow]
+    /// The secrets `legacyWorkflow`'s step read: Peel's bearer token and its
+    /// port on this Mac. Taken out of strut's store with the model's (`setModel`).
+    static let oldSecrets = ["PEEL_AUTOMATION_TOKEN", "PEEL_AUTOMATION_PORT"]
 
-    public init(server: MemoryServer, yours: String = Self.workflow, callback: URL? = nil) {
+    public init(server: MemoryServer, yours: String = Orchestrator.automationWorkflow, callback: URL? = nil) {
         self.server = server
         self.yours = yours
         self.callback = callback
@@ -233,19 +235,6 @@ public struct AutomationsClient: Sendable {
     func description(of workflow: String) async throws -> String? {
         let meta = try await call("GET", "workflows/\(Self.escaped(path: workflow))", what: "the workflow")
         return meta["active"]?.string.flatMap { meta["versions"]?[$0]?["description"]?.string }
-    }
-
-    /// strut's sentence for `trigger` and its next five runs; refuses a
-    /// trigger strut would refuse, in strut's words.
-    public func preview(_ trigger: AgentKit.JSONValue) async throws -> SchedulePreview {
-        let reply = try await call("POST", "automations/preview", ["trigger": trigger], what: "the schedule")
-        return SchedulePreview(summary: reply["summary"]?.string ?? "",
-                               next: (reply["next"]?.array ?? []).compactMap { $0.string.flatMap(Automation.date) })
-    }
-
-    public func create(name: String, prompt: String, trigger: AgentKit.JSONValue) async throws -> Automation {
-        try automation(in: await make(name: name, trigger: trigger, enabled: true, input: Self.input(name: name, prompt: prompt),
-                                      what: "the new automation"))
     }
 
     /// Makes one on `yours`, under `id` when given, its run ends to
@@ -319,7 +308,7 @@ public struct AutomationsClient: Sendable {
 
     /// What every run is handed: the prompt, the automation's name, when
     /// the last successful run finished and when this one fired, resolved by
-    /// strut at each fire (`peel-automation` reads no `now`; strut drops it).
+    /// strut at each fire.
     static func input(name: String, prompt: String) -> AgentKit.JSONValue {
         ["name": .string(escaped(name)), "prompt": .string(escaped(prompt)), "since": "{{ last.finishedAt }}", "now": "{{ now }}"]
     }
@@ -367,21 +356,6 @@ public struct AutomationsClient: Sendable {
 
     // MARK: The workflow
 
-    /// Hands strut `token` and `port` for its encrypted secret store
-    /// (`tokenSecret`, `portSecret`), publishes `step` (strut keeps one
-    /// version per content, so the same source is a no-op), then makes sure
-    /// its `peel-automation` workflow is the current one (`publish`). The connected model
-    /// is not part of it (`setModel`): it is handed over whether or not Peel listens.
-    public func install(port: Int, token: String) async throws {
-        _ = try await call("PUT", "secrets/\(Self.tokenSecret)", ["value": .string(token)], what: "the automation token")
-        _ = try await call("PUT", "secrets/\(Self.portSecret)", ["value": .string(String(port))], what: "the automation port")
-        _ = try await call("POST", "steps", ["name": .string(Self.step), "code": .string(Self.stepSource),
-                                             "description": "Hands a scheduled prompt to Peel on this Mac."],
-                           what: "the automation step")
-        try await publish(Self.workflow, yaml: Self.workflowYAML,
-                          description: "Hands a scheduled prompt to Peel on this Mac (POST /automations/run).")
-    }
-
     /// Makes sure Peel's workflow `name` is `yaml`: published when missing,
     /// or as a new version when Peel's changed. Each version is named for
     /// its content, so the check is one read.
@@ -422,10 +396,10 @@ public struct AutomationsClient: Sendable {
     static let keySecrets = AgentProvider.allCases.map(keySecret)
 
     /// Puts the connected model and its key in strut's secret store, for
-    /// the system automations, and takes out any other provider's key;
+    /// the agent and the system automations, and takes out any other provider's key;
     /// with no model connected, takes out the model and every key. Called
-    /// whenever strut starts or the connected model changes, apart from
-    /// `install` (`AppModel.modelChanged`).
+    /// whenever strut starts or the connected model changes
+    /// (`AppModel.modelChanged`).
     public func setModel(_ credential: AgentCredential?) async throws {
         if let credential {
             _ = try await call("PUT", "secrets/\(Self.modelSecret)",
@@ -433,8 +407,9 @@ public struct AutomationsClient: Sendable {
             _ = try await call("PUT", "secrets/\(Self.keySecret(credential.provider))", ["value": .string(credential.apiKey)],
                                what: "the model's key")
         }
+        // `peel-automation`'s token and port go too: nothing listens for them now.
         let gone = (credential == nil ? [Self.modelSecret] : [])
-            + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret)
+            + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret) + Self.oldSecrets
         try await deleteSecrets(gone, what: "the model's key")
     }
 
@@ -446,62 +421,6 @@ public struct AutomationsClient: Sendable {
             if status != 404 { _ = try Self.read(status, data) }
         }
     }
-
-    /// The step: reads the token and Peel's port from strut's secret store in
-    /// code, as strut's adapters do, and posts the run through
-    /// `ctx.services.http` to 127.0.0.1 at that port. Its config is the run
-    /// only: a workflow can name neither the token nor where it goes.
-    static let stepSource = #"""
-        import { z, defineStep } from "strut";
-
-        export default defineStep({
-          type: "\#(step)",
-          description: "Hands an automation's prompt to Peel on this Mac, at the port and with the token Peel keeps in the secret store. Output: { status, body } — body is Peel's reply.",
-          input: z.object({
-            name: z.string(),
-            prompt: z.string(),
-            since: z.any().optional(),
-          }),
-          output: z.any(),
-          async run(cfg, ctx) {
-            const token = await ctx.services.secrets.get("\#(tokenSecret)");
-            const port = Number(await ctx.services.secrets.get("\#(portSecret)"));
-            if (!token || !Number.isInteger(port) || port < 1 || port > 65535) {
-              throw new Error('secrets "\#(tokenSecret)" and "\#(portSecret)" are not set: Peel stores them when its agent chat opens');
-            }
-            const res = await ctx.services.http(`http://127.0.0.1:${port}/automations/run`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${token}` },
-              body: { name: cfg.name, prompt: cfg.prompt, since: cfg.since ?? null },
-              timeout: 600000,
-            });
-            if (!res.ok) {
-              const why = typeof res.body === "string" ? res.body : res.body?.error ?? JSON.stringify(res.body);
-              throw new Error(`Peel answered ${res.status}: ${why}`);
-            }
-            return { status: res.status, body: res.body };
-          },
-        });
-
-        """#
-
-    /// The workflow: one `step` to Peel, and nothing about where Peel is or
-    /// its token, so it is the same on every launch.
-    static let workflowYAML = """
-        name: \(workflow)
-        input:
-          name: { type: string }
-          prompt: { type: string }
-          since: { type: json, required: false, description: "When the last successful run finished; null on the first" }
-        steps:
-          - id: peel
-            type: \(step)
-            config:
-              name: "{{ input.name }}"
-              prompt: "{{ input.prompt }}"
-              since: "{{ input.since }}"
-
-        """
 
     /// `p-` and the content's hash: the same content always has the same label.
     static func version(of yaml: String) -> String {
@@ -521,7 +440,7 @@ public struct AutomationsClient: Sendable {
         }
         do {
             return try await Web.requestStrut(method, url, json: body.map { Data($0.jsonString.utf8) }, bearer: server.key,
-                                             limit: Self.replyLimit, what: what)
+                                             limit: MemoryServer.replyLimit, what: what)
         } catch {
             throw PeelError(PeelError.problem(error, couldNot: "reach strut at \(server.base.absoluteString)")
                 + " Check that strut is running there.")

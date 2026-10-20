@@ -7,8 +7,9 @@ import PeelCore
 /// only in memory; its address is the port the OS gives it, read from its
 /// ready line. It exits by itself when Peel goes away, however that
 /// happens: its stdin is a pipe only Peel holds (`STRUT_EXIT_ON_STDIN_EOF`).
-/// Its secret store (the automation token) is encrypted with a key the
-/// account keeps (`Profile.strutKey`), made on its first start.
+/// Its secret store (the connected model's key, the bridge's port and
+/// token) is encrypted with a key the account keeps (`Profile.strutKey`),
+/// made on its first start.
 /// Its workspace and the memory graph are in the folder it is given (the app
 /// account's under Application Support), and go with the account (`erase`).
 /// Its workspace (workflows, steps, automations) is one Ladybug file,
@@ -37,8 +38,8 @@ public final class BundledStrut {
     }
 
     /// The strut package in `folder` (its `desktop.js` and `native/node`),
-    /// if there is one: for `peel agent`, which is not inside Peel.app, the
-    /// one `stage-strut.sh` staged (`staged`).
+    /// if there is one: for the tests and journeys, which are not inside
+    /// Peel.app, the one `stage-strut.sh` staged (`staged`).
     public init?(folder: URL, data: URL, secretKey: any SecretItem) {
         guard FileManager.default.isExecutableFile(atPath: folder.appending(path: "native/node").path),
               FileManager.default.fileExists(atPath: folder.appending(path: "desktop.js").path) else { return nil }
@@ -117,7 +118,7 @@ public final class BundledStrut {
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
-        let key = try AutomationServer.newKey()
+        let key = try Self.newKey()
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
         let hostConfig = data.appending(path: "host-config.json")
@@ -189,10 +190,19 @@ public final class BundledStrut {
         return MemoryServer(base: url, key: key)
     }
 
+    /// 32 random bytes as hex: a key or a token for this launch.
+    public nonisolated static func newKey() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw PeelError("could not make a key")
+        }
+        return bytes.hex
+    }
+
     /// The key kept in `item`, or a new random one kept there.
     nonisolated static func secretKey(in item: any SecretItem) throws -> String {
         if let kept = try item.read(), let key = String(data: kept, encoding: .utf8), key.count == 64 { return key }
-        let key = try AutomationServer.newKey()
+        let key = try Self.newKey()
         try item.write(Data(key.utf8))
         return key
     }

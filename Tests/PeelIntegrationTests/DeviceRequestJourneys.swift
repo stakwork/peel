@@ -13,7 +13,7 @@ extension Journeys {
     /// `envelope.rs`), and Carol for anyone else.
     @Suite struct DeviceRequests {
         /// Alice's Mac answers Bob's `chats.unseen` once, with her unread
-        /// messages read through the same tools as today's agent; a repeat
+        /// messages read through the Sphinx read tools; a repeat
         /// gets the stored result and reads nothing; a request past its time
         /// is `expired`, an unknown kind refused; Carol's request, and Bob's
         /// for another device, get nothing back.

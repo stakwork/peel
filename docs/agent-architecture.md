@@ -173,8 +173,9 @@ strut cannot read your chats or send as you: those need your keys. So a
 - **Jobs keep their own sessions**, by job id, so `job/continue` works
   whatever the DM's session is. A job's result arrives as an agent message
   naming the job (`metadata.peel.job`), with what it points to.
-- **Old history.** The Swift agent's conversation stays on that Mac under
-  "Earlier, on this Mac", read only. It is not migrated.
+- **Old history.** The conversation Peel's own agent kept on a Mac before
+  strut was the agent stays there under "Old assistant chats (this Mac only)", read only,
+  until Clear. It is not migrated.
 
 ## Connectors
 
@@ -194,13 +195,14 @@ for the card. It is not built yet ([jobs-architecture.md](jobs-architecture.md),
 
 ## What stays in Swift
 
-No agent loop lives in Peel. On the Mac, AgentKit and PeelAgent shrink to
-the client side: the approval gate and its rules, the cards, the
-device-request handler, the Sphinx read and send code it reuses,
-`BundledStrut` and `BundledBridge`. PeelCore, Peel's Sphinx messaging
-engine, stays Swift. The old Swift loop (`AgentLoop`, `AgentSession`'s
-turns, the providers, `Compaction`, `AutomationServer`, `peel-automation`)
-is still the default for now (until PR 10, days away; removed in PR 11).
+No agent loop lives in Peel. On the Mac, AgentKit and PeelAgent are the
+client side: the approval gate and its rules, the cards, the
+device-request handler, the Sphinx read and send code it reuses, the
+connected model's key (handed to strut), `BundledStrut`, `BundledBridge`
+and `Orchestrator`, and the earlier local chat, read only. PeelCore,
+Peel's Sphinx messaging engine, stays Swift. Peel's own loop, its model
+clients, `AutomationServer` and the `peel-automation` workflow it served
+were removed in PR 11 (agent-on-strut.md, "Built: PR 11").
 
 ## Where the brain runs
 
@@ -219,17 +221,16 @@ own doc.
 ## What is built
 
 As of 2026-10-19. The detail and each PR's checks are in
-[agent-on-strut.md](agent-on-strut.md), "Built: PR 4" to "Built: PR 9".
+[agent-on-strut.md](agent-on-strut.md), "Built: PR 4" to "Built: PR 11".
 
 | Piece | State |
 |---|---|
 | The bridge: runner (inbox, turns, sessions with `/new`, device requests, cancel, chunking; a run it did not launch, such as an automation's, sent to the DM) | Merged (stakwork/sphinx#382, #385, #387) |
 | `agent_seed` in the core and sphinx-ffi v0.8.39 | Merged; Peel pins v0.8.39 |
 | strut: `withStop()`, automation callbacks, retain text; `job/start`, `job/continue`; the generic `orchestrator`; the automation steps | Merged (stakwork/strut#198, #195, #196, #213) |
-| Peel PRs 1–6, 6b, 9: the envelope, device reads, sends and approvals, the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM, jobs in the DM, the iPhone's DM | Merged. On the Mac, PRs 2–6b sit behind the dev-build preview Account › Peel agent › "Run in strut"; PR 1 (control lines hidden) and the iPhone's agent DM ship without it |
-| PR 7: automations on strut, sends with grants | In review (peel#324) |
-| PR 10: strut the default, so runner ships in Release builds too | Next; runner ships in Debug builds only today |
-| PR 11: remove the Swift loop | After a week of PR 10 |
+| Peel PRs 1–7, 6b, 9: the envelope, device reads, sends and approvals, the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM, jobs in the DM, automations on strut with send grants, the iPhone's DM | Merged |
+| PR 10: strut is the agent, no switch; runner ships in Release builds too, inside the sandbox | Merged (peel#334) |
+| PR 11: Peel's own loop removed | Built; merges once Tom has used PR 10 on his account for a day or two |
 
 ## Open
 

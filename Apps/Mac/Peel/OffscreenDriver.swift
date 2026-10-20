@@ -54,7 +54,8 @@ import PeelUI
 /// "turns": 12}` puts an agent in place of the account's, in memory, with
 /// that many earlier questions and answers, every fourth answer after a
 /// tool row; `{"agent": "connect"}` keeps a placeholder key, as the Connect
-/// panel's Connect does; `{"agent": "expand"}` opens the newest tool row in view,
+/// panel's Connect does; `{"agent": "remove"}` removes it, as Account's
+/// Remove does; `{"agent": "expand"}` opens the newest tool row in view,
 /// as a click on its chevron does; `{"agent": "memory"}` opens a memory
 /// beside the chat, as a click on a remembered fact does (its server a
 /// stub that never answers), and `"memory-close"` closes it as its X does. `{"wheel": 40}` turns a mouse wheel one tick
@@ -377,8 +378,8 @@ final class OffscreenDriver {
             let entries = MessageMenu.entries(for: row, composer: .chat(chat), model: model, offersBoost: row.canBoost)
             presenter.show(entries, at: CGPoint(x: window.frame.midX, y: window.frame.midY), in: window, source: row.id)
         case "agent-connect":
-            // The agent chat's Connect, on its intro's card.
-            model.agentConnectFrom = .chat
+            // The agent chat's Connect: on its intro's card, or in its DM's composer place.
+            model.agentConnectFrom = model.agentChat == nil ? .chat : .dm
         case "agent-settings":
             // The agent chat header's gear.
             model.openAgentSettings()
@@ -710,6 +711,10 @@ final class OffscreenDriver {
                                               apiKey: "offscreen-placeholder"))
             model.agentConnectFrom = nil
             Offscreen.log("drive: agent connected with a placeholder key")
+        case "remove":
+            // Account › Peel agent's Remove, confirmed.
+            try agent.removeKey()
+            Offscreen.log("drive: agent key removed")
         case "expand":
             // As a click on the chevron: the list told first, then opened.
             guard let engine = ListProbe.geometry(kind: "agent") as? MessageTableEngine<AgentListRow> else {

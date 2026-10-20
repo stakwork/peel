@@ -53,6 +53,10 @@ final class MacAgent: AgentHost {
     /// What strut's secret store was last given (`AppModel.modelChanged`):
     /// which strut, and the connected model, nil for none.
     @ObservationIgnored var strutModel: (server: MemoryServer, credential: AgentCredential?)?
+    /// Whether strut has what the person connected or removed, as the last
+    /// hand-over left it, for Account › Peel agent; nil with no strut of
+    /// Peel's own to hand it to.
+    var modelHandOver: ModelHandOver?
     /// The one hand-over to strut in flight, and whether it runs again
     /// after (the model or strut changed while it ran).
     @ObservationIgnored var modelHanding: Task<Void, Never>?
@@ -172,6 +176,11 @@ extension AppModel {
     var strutModel: (server: MemoryServer, credential: AgentCredential?)? {
         get { macAgent.strutModel }
         set { macAgent.strutModel = newValue }
+    }
+
+    var modelHandOver: ModelHandOver? {
+        get { macAgent.modelHandOver }
+        set { macAgent.modelHandOver = newValue }
     }
 
     var modelHanding: Task<Void, Never>? {

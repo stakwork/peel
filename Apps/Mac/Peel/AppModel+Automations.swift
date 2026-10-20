@@ -40,6 +40,15 @@ struct AutomationsState: Equatable {
     var failed: Int { shown.filter(\.lastRunFailed).count }
 }
 
+/// Where the last hand-over of the connected model to Peel's strut stands
+/// (`AppModel.modelChanged`): Account › Peel agent says Connected only once
+/// strut has it.
+enum ModelHandOver: Equatable {
+    case handing, handed
+    /// What to tell the person, whole.
+    case failed(String)
+}
+
 extension AppModel {
     // MARK: Automations (docs/phases/12-automations.md)
 
@@ -83,27 +92,39 @@ extension AppModel {
     /// (`docs/peel-brain.md`, "Keys live on the brain"), which a disconnect
     /// here must not take out.
     private func handModelToStrut() async {
-        guard let client = ownStrutClient else { return }
+        guard let client = ownStrutClient else { return handedOver(nil) }
         let credential: AgentCredential?
         do {
             credential = try connectedCredential()
         } catch {
             // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
             automations.problem = PeelError.problem(error, couldNot: "read the connected model's key")
-            return
+            return handedOver(.failed("Not connected to your assistant: \(PeelError.problem(error))"))
         }
         // This strut has it already (`connection` set again to the same).
-        if let handed = strutModel, handed.server == client.server, handed.credential == credential { return }
+        if let handed = strutModel, handed.server == client.server, handed.credential == credential {
+            return handedOver(.handed)
+        }
+        handedOver(.handing)
         do {
             try await client.setModel(credential)
         } catch {
             strutModel = nil
             automations.problem = PeelError.problem(error, couldNot: "give strut the connected model")
-            return
+            let reason = PeelError.problem(error)
+            return handedOver(.failed(credential == nil ? "Your assistant may still have the old key: \(reason)"
+                                      : "Not connected to your assistant: \(reason)"))
         }
+        // The strut changed meanwhile: handed to the new one next (`lookForMemory`).
         guard automationsClient?.server == client.server else { return }
         strutModel = (client.server, credential)
+        handedOver(.handed)
         if credential != nil { await refreshAutomations() }
+    }
+
+    /// Written only when changed: each write redraws Account › Peel agent.
+    private func handedOver(_ state: ModelHandOver?) {
+        if modelHandOver != state { modelHandOver = state }
     }
 
     // MARK: The view's actions

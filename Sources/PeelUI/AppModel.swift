@@ -1569,9 +1569,10 @@ public enum LinkedTribe: Equatable, Sendable {
 }
 
 /// Where a Connect panel was opened from, so it opens beside that button:
-/// the chat's card, the Account page's provider or key, or Automations.
+/// the chat's card, its DM's composer place, the Account page's provider
+/// or key, or Automations.
 public enum AgentConnectSource: Hashable, Sendable {
-    case chat, account, accountKey, automations
+    case chat, dm, account, accountKey, automations
 }
 
 private extension AppModel.Destination {

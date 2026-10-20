@@ -1288,6 +1288,59 @@ the connected model's key (handed to strut), `BundledStrut`,
   stored on the client; the bridge start's loopback calls (the steps
   posted one by one, the list read more than once) are as before.
 
+### Built: PR 12, no model connected (2026-10-20)
+
+Removing the key after set-up left the agent looking alive: Remove said it
+would stop (only the key went), the DM took messages that each came back
+as runner's "Sorry, that didn't work: agent: no model connected
+(STRUT_DEFAULT_MODEL is not set)", the sidebar offered Set up again, and
+Account said Connected when handing the key to strut had failed. Tom's
+decisions (2026-10-20):
+
+- **The account and the bridge stay.** A model is needed first only to set
+  the agent up (`agentSetUp`); once its account is a contact, removing the
+  key leaves the contact, the DM and the bridge. "Own account" says it
+  answers once a model is connected.
+- **The Mac DM can't send into a dead end.** With no model its composer's
+  place is "Connect a model" with Connect (`AgentModelPrompt`, the Connect
+  panel beside it, `AgentConnectSource.dm`); the intro's card stays the
+  local chat's only.
+- **Remove says what happens:** "Remove the key?" with "Your assistant
+  stays in Direct messages but can't answer until you connect a model."
+  once it has its account.
+- **The sidebar row** says Set up only before the agent's account exists;
+  after, AGENT, with a quiet "Needs a model" while none is connected.
+- **Connected means strut has it.** `ModelHandOver` (handing, handed,
+  failed) comes from each hand-over (`handModelToStrut`): "Connecting…"
+  while it runs, Connected once strut took it, and a failure as "Not
+  connected to your assistant: <reason>" with Try again (a removal that
+  strut did not take says "Your assistant may still have the old key").
+  While Peel's strut is starting or stopped there is no Connected (Own
+  account says how that is going). With no strut of Peel's own (a home
+  server, or none in this build) there is nothing to hand and Connected
+  means the key is kept, as before.
+- **The phone** cannot know whether the Mac has a model: nothing reaches it
+  but the DM. A message from it (or one already in flight) still reaches
+  strut and gets runner's reply, whose wording is runner's
+  (`end_text`, `runner/src/bridge/turns.rs`) over strut's error
+  (`src/steps/core/agent.ts`). A friendlier line ("Your assistant has no
+  model connected. Connect one on your Mac in Account › Peel agent.") is a
+  sphinx change, sketched in the PR and waiting on Tom.
+- **Checked.** The unit suite; the journeys `Bridge`, `Orchestrator` and
+  `Agent` on a local stack; `check-app.sh` on a development profile with
+  the agent's account and `-strut YES`: connected (Connected once strut
+  took it), Remove (the DM's Connect prompt, "Needs a model" in the
+  sidebar, Own account's line), Connect from the DM, Account with no model,
+  and connected again (the composer back). The iOS app compiled (arm64,
+  v0.8.39). Not seen: the failure line, which needs a strut that refuses.
+- **Found on the way.** A profile's strut graph copied to another checkout
+  fails to open: ladybug keeps the absolute path of its extensions from
+  where the graph was made (the check moved the copy's graph aside).
+- **Review findings not applied.** Remove's explanation keys off the DM
+  (`agentChat`) and Own account off the contact (`agentContact`), which
+  differ only before conversations load. The intro's card and the DM's
+  prompt are two looks for "connect a model", one per place.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

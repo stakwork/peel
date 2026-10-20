@@ -6,8 +6,9 @@ import PeelUI
 
 // MARK: - Pieces
 
-/// Peel's row at the top of Direct messages: "Set up" in link blue until a
-/// model is connected and the agent has its own account, then AGENT; bold with a count for replies that
+/// Peel's row at the top of Direct messages: "Set up" in link blue until the
+/// agent has its own account, then AGENT ("Needs a model" beside it, quiet,
+/// while none is connected); bold with a count for replies that
 /// came while it was not open; "Waiting on you" in orange while a send's
 /// card waits for an answer.
 struct AgentLink: View {
@@ -25,12 +26,20 @@ struct AgentLink: View {
                     .foregroundStyle(Theme.attention)
             } else if unread > 0 {
                 Badge(count: unread)
-            } else if agent.connection == nil || model.agentChat == nil && model.agentSetUp.action != nil {
+            } else if model.agentChat == nil && (agent.connection == nil || model.agentSetUp.action != nil) {
                 Text("Set up")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.link)
             } else {
-                AgentTag()
+                HStack(spacing: 6) {
+                    if model.agentNeedsModel {
+                        Text("Needs a model")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(1)
+                    }
+                    AgentTag()
+                }
             }
         }
     }
@@ -99,9 +108,14 @@ private struct AgentChatColumn: View {
             if let conversation = model.selectedConversation, conversation.chat == dm {
                 // Its bridge or Peel's memory stopped, or failed to start: said, with Try again.
                 if model.agentSetUp.problem { AgentSetUpPanel() }
-                // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
-                ChatFooter(conversation: conversation, tribe: nil, composer: composer,
-                           placeholder: "Message \(agent.name)", stop: stop)
+                if model.agentNeedsModel {
+                    // The model was removed: nothing sent here could be answered.
+                    AgentModelPrompt()
+                } else {
+                    // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
+                    ChatFooter(conversation: conversation, tribe: nil, composer: composer,
+                               placeholder: "Message \(agent.name)", stop: stop)
+                }
             } else {
                 // No DM yet: setting up the agent's own account, never the local loop.
                 AgentSetUpPanel()
@@ -319,7 +333,7 @@ struct AgentAnsweringRow: View {
 }
 
 /// Peel's first message: what it can do, and until a model is connected a
-/// card to connect one.
+/// card to connect one (in the DM, the composer's place has it instead).
 struct AgentIntro: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -330,7 +344,7 @@ struct AgentIntro: View {
                 .font(Theme.font(14))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
-            if agent.connection == nil {
+            if agent.connection == nil && model.agentChat == nil {
                 Card {
                 HStack(spacing: 12) {
                     Text("Connect a model to start")

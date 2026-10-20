@@ -20,18 +20,37 @@ struct AgentSettingsSection: View {
             SettingsSection("Peel agent") {
                 AgentNameRow(agent: agent)
                 Fact("Provider") {
-                    if let connection = agent.connection {
-                        HStack(spacing: 8) {
-                            Text(connection.provider.name)
-                            ConnectedLabel()
-                                .font(Theme.font(12))
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let connection = agent.connection {
+                            HStack(spacing: 8) {
+                                Text(connection.provider.name)
+                                // Connected only once strut has it.
+                                if model.modelHandOver == .handing {
+                                    Text("Connecting…").muted()
+                                } else if strutHasModel {
+                                    ConnectedLabel()
+                                        .font(Theme.font(12))
+                                }
+                            }
+                        } else {
+                            Text("No model connected")
+                                .foregroundStyle(Theme.secondaryText)
                         }
-                    } else {
-                        Text("No model connected")
-                            .foregroundStyle(Theme.secondaryText)
+                        if let handOverProblem {
+                            Text(handOverProblem)
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.attention)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 } trailing: {
-                    AgentConnectButton(source: .account, title: agent.connection == nil ? "Connect" : "Change")
+                    HStack(spacing: 8) {
+                        if handOverProblem != nil {
+                            Button("Try again") { model.modelChanged() }
+                                .buttonStyle(.peel(.outline))
+                        }
+                        AgentConnectButton(source: .account, title: agent.connection == nil ? "Connect" : "Change")
+                    }
                 }
                 if let connection = agent.connection {
                     Fact("API key") {
@@ -44,8 +63,11 @@ struct AgentSettingsSection: View {
                             if !removingKey {
                                 AgentConnectButton(source: .accountKey, title: "Replace")
                             }
-                            InlineConfirm(trigger: "Remove", prompt: "Remove the key? The agent will stop.",
-                                          confirm: "Remove", confirming: $removingKey) {
+                            // The DM and its bridge stay: it answers again once a model is connected.
+                            InlineConfirm(trigger: "Remove", prompt: "Remove the key?",
+                                          explanation: model.agentChat == nil ? nil
+                                              : "Your assistant stays in Direct messages but can't answer until you connect a model.",
+                                          confirm: "Remove", alignment: .trailing, confirming: $removingKey) {
                                 attempt { try agent.removeKey() }
                             }
                         }
@@ -98,6 +120,18 @@ struct AgentSettingsSection: View {
                     .padding(.horizontal, 4)
             }
         }
+    }
+
+    /// Connected: strut took the key, or there is no strut of Peel's own to
+    /// hand it to (a home server keeps its own). Not while Peel's strut is
+    /// starting or stopped: the Own account row says how that is going.
+    private var strutHasModel: Bool {
+        model.modelHandOver == .handed || !(model.hasOwnStrut && model.brain == .thisMac)
+    }
+
+    /// Why strut does not have what was connected or removed, if it does not.
+    private var handOverProblem: String? {
+        if case .failed(let problem)? = model.modelHandOver { problem } else { nil }
     }
 
     /// The provider's models, with the one in use even if the list has no longer got it.
@@ -153,6 +187,19 @@ struct AgentSetUpPanel: View {
                     .buttonStyle(.peel(offer ? .primary : .outline))
                     .padding(.top, offer ? 6 : 0)
             }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
+    }
+}
+
+/// In the agent DM's composer place while no model is connected: it can't
+/// answer, so nothing is sent; Connect opens the Connect panel beside it.
+struct AgentModelPrompt: View {
+    var body: some View {
+        Callout(.neutral, "Connect a model", detail: "Your assistant can't answer until you connect one.") {
+            AgentConnectButton(source: .dm, title: "Connect", variant: .primary)
+                .padding(.top, 6)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 16)

@@ -78,9 +78,16 @@ struct AgentSetUp: Equatable {
 extension AppModel {
     var agentBridge: AgentBridge { macAgent.agentBridge }
 
+    /// The agent has its DM here but no model to answer with: the DM's
+    /// composer gives way to Connect, and its sidebar row says so.
+    var agentNeedsModel: Bool { agentChat != nil && agent?.connection == nil }
+
     /// The agent's own account, as the person sees it (`AgentSetUp`).
     var agentSetUp: AgentSetUp {
-        guard agent?.connection != nil else { return AgentSetUp(line: "Connect a model first: your assistant answers with it.") }
+        // Needed first only to set it up: an account it has already stays.
+        guard agent?.connection != nil || agentContact != nil else {
+            return AgentSetUp(line: "Connect a model first: your assistant answers with it.")
+        }
         guard brain == .thisMac else {
             return AgentSetUp(line: "Your assistant runs with Peel's memory on this Mac. Choose This Mac under Brain to use it.")
         }
@@ -95,7 +102,10 @@ extension AppModel {
         case .starting:
             return AgentSetUp(line: agentBridge.pairing ? "Setting up your assistant's account. This can take a minute." : "Starting your assistant…",
                               busy: true)
-        case .running: return AgentSetUp(line: "Your assistant is a contact in Direct messages.")
+        case .running:
+            return AgentSetUp(line: agent?.connection == nil
+                ? "Your assistant is a contact in Direct messages. It answers once you connect a model."
+                : "Your assistant is a contact in Direct messages.")
         case .failed(let problem): return AgentSetUp(line: problem, problem: true, action: "Try again")
         }
     }

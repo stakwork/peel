@@ -229,7 +229,6 @@ struct Sidebar: View {
         let composer: ComposerID
         switch model.destination {
         case .chat(let chat) where model.tribes[chat]?.canPost ?? true: composer = .chat(chat)
-        case .agent where model.agent != nil: composer = .agent
         default: return false
         }
         typedAhead.append(event)

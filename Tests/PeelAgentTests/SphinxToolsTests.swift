@@ -111,7 +111,9 @@ struct SphinxToolsTests {
     }
 
     private func run(_ name: String, _ input: AgentKit.JSONValue = [:], on storage: Storage) async throws -> String {
-        let tool = try #require(ToolRegistry(SphinxTools(storage: storage).tools)[name])
+        let tools = SphinxTools(storage: storage)
+        let tool = try #require([tools.contactsAndTribes, tools.recentMessages, tools.unseenMessages, tools.threads, tools.search]
+            .first { $0.name == name })
         #expect(tool.effect == .read)
         guard case .result(let output) = try await tool.plan(input) else {
             Issue.record("a read tool asked to act")
@@ -336,7 +338,7 @@ struct SphinxToolsTests {
 
     /// strut's device requests (`DeviceReads`) read through these same
     /// tools, the request's names (`chat`, `thread`, `q`) taken to the
-    /// tool's, so the agent in strut reads what today's agent reads.
+    /// tool's.
     @Test(arguments: [
         DeviceRead("chats.list", .object([:]), "get_contacts_and_tribes", [:]),
         DeviceRead("chats.unseen", .object([:]), "read_unseen_messages", [:]),

@@ -29,9 +29,9 @@ brain (your Mac by default, a home server from Phase 2) as strut's
 that Peel bundles and starts. Your keys stay on your devices: when the
 agent needs your chats or a send as you, it asks your Mac in the agent's
 DM. Peel's Sphinx messaging engine (PeelCore) stays Swift (decided
-2026-10-07) and free of UI types. No agent loop lives in Peel once PR 11
-lands: the client keeps only device requests, approval cards and the
-views. The agent's design is in [agent-architecture.md](agent-architecture.md)
+2026-10-07) and free of UI types. No agent loop lives in Peel: the
+client keeps only device requests, approval cards, the connected model's
+key and the views. The agent's design is in [agent-architecture.md](agent-architecture.md)
 and PeelCore's rules in [agent-native.md](agent-native.md); read both
 before changing the architecture.
 
@@ -163,9 +163,9 @@ only needed for TestFlight and the iPhone target.
   strut asks, the Mac reads or sends behind a card, and answers once.
 - **One DM, one continuous session** in strut, compacted in place; `/new`
   starts a fresh one.
-- **The Swift loop** (AgentKit, `AgentLoop`) is a temporary state, not
-  the architecture: still the default (until PR 10 of
-  [agent-on-strut.md](agent-on-strut.md), days away; removed in PR 11).
+- **Peel's own loop is gone** (PR 11 of [agent-on-strut.md](agent-on-strut.md)):
+  what Peel's agent said on a Mac before strut was the agent stays there,
+  read only, under "Old assistant chats (this Mac only)".
 
 ## Phases
 
@@ -195,7 +195,7 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | Peel Brain: the Mac's bundled strut or your own strut on a home server, by URL and key; the graph moves, never syncs; automations by pull; strut's image and a Swarm preset | step 1 built (Account › Brain) and step 2's Peel side (memory moves); "Peel talks to one strut" and automations by pull superseded: devices reach the agent over Sphinx ([agent-architecture.md](agent-architecture.md)); the home server is Phase 2 | [peel-brain.md](peel-brain.md) |
 | — | Brain handover: the brain is one strut workspace moved whole (memory, automations, secrets, settings); one active brain with a generation; handover parks the old one, which forwards devices to the new | the starting point for Phase 2's handover; its PRs predate the bridge and the orchestrator; the snapshot round trip is proven (stakwork/strut#193) | [brain-handover.md](brain-handover.md) |
 | — | Foundation before stable: five decisions (where the agent loop runs, key derivation, whose account lives on the brain, how devices reach it, backups), then one architecture of record, the small gates in code, the structure, backups and restore, the audit | answered 2026-10-16 (decisions 1–13); step 2, one architecture of record, is [agent-architecture.md](agent-architecture.md) | [foundation.md](foundation.md) |
-| — | Phase 1 of the end state, the agent is a contact: the loop as strut's generic `orchestrator` workflow, Peel its first host, the agent's own Sphinx account in a Rust bridge bundled in Peel.app, device requests in the agent DM for your chats and sends as you (only the Mac answers), one conversation | being built: S1, S2, B1 and PRs 1–7, 6b and 9 merged; PR 8 (Calendar) dropped for now; PR 10 makes strut the agent in every build (no preview switch, runner in Release inside the sandbox, first-run set-up of its own account); PR 11 (remove the Swift loop) next | [agent-on-strut.md](agent-on-strut.md) |
+| — | Phase 1 of the end state, the agent is a contact: the loop as strut's generic `orchestrator` workflow, Peel its first host, the agent's own Sphinx account in a Rust bridge bundled in Peel.app, device requests in the agent DM for your chats and sends as you (only the Mac answers), one conversation | being built: S1, S2, B1 and PRs 1–7, 6b and 9 merged; PR 8 (Calendar) dropped for now; PR 10 (merged) makes strut the agent in every build (no preview switch, runner in Release inside the sandbox, first-run set-up of its own account); PR 11 removes Peel's own loop, built and merging after Tom's day or two on PR 10 | [agent-on-strut.md](agent-on-strut.md) |
 | — | Phase 2 of the end state, always on and can't lose it: a home server as one Docker bundle (strut and the bridge, no Peel), handover of the whole brain and back; the iPhone answers device requests (first to accept); sealed backups, memory first; model budgets, auth on strut, optional Tailscale | planned 2026-10-19, for Tom's review; starts when Phase 1 is in daily use | [phase-2.md](phase-2.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 

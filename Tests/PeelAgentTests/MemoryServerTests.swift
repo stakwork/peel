@@ -5,44 +5,16 @@ import PeelCore
 @testable import PeelAgent
 @testable import PeelTestSupport
 
-/// The agent's memory over strut (`MemoryServer`, `MemoryTools`): only
-/// where a strut may be (this Mac, a home server), strut's replies read
-/// back, and each tool's row line.
-struct MemoryToolsTests {
+/// The agent's memory over strut (`MemoryServer`): only where a strut may
+/// be (this Mac, a home server), strut's replies read back, and the rows
+/// and panel that show them (`MemoryResult`, `MemoryNode`).
+struct MemoryServerTests {
     /// The POST itself refuses anywhere a strut may not be, before anything is sent.
     @Test(arguments: ["http://10.0.0.5:3100/x", "http://example.com/x", "http://127.0.0.1@example.com/x",
                       "https://u:p@example.com/x", "http://100.128.0.1/x", "ftp://127.0.0.1/x"])
     func aPostGoesOnlyWhereAStrutMayBe(string: String) async throws {
         let url = try #require(URL(string: string))
         await #expect(throws: PeelError.self) { try await Web.postToStrut(url, json: Data("{}".utf8), limit: 10, what: "the test") }
-    }
-
-    /// Writes never ask, so which tools are writes is pinned here.
-    @Test func onlyRememberForgetAndMergeWrite() throws {
-        let base = try #require(URL(string: "http://127.0.0.1:1"))
-        let tools = MemoryTools(server: try #require(MemoryServer(base: base, key: "k")))
-        let writes = Set(tools.tools.filter { $0.effect == .write }.map(\.name))
-        #expect(writes == ["remember", "forget_memory", "merge_memory"])
-        #expect(tools.tools.allSatisfy { $0.effect == .write || $0.effect == .read })
-    }
-
-    /// The arguments strut's memory steps take (remember, get), copied here:
-    /// a change on either side must change this test too.
-    @Test func theToolsTakeWhatStrutsStepsTake() throws {
-        let base = try #require(URL(string: "http://127.0.0.1:1"))
-        let tools = Dictionary(uniqueKeysWithValues: MemoryTools(server: try #require(MemoryServer(base: base, key: "k"))).tools.map { ($0.name, $0) })
-        func names(_ schema: AgentKit.JSONValue?) -> Set<String> {
-            guard case .object(let properties)? = schema?["properties"] else { return [] }
-            return Set(properties.keys)
-        }
-        let remember = try #require(tools["remember"]).definition.inputSchema
-        #expect(names(remember) == ["episode", "speaker", "mentions", "facts"])
-        #expect(names(remember["properties"]?["facts"]?["items"]) ==
-                ["subject", "predicate", "text", "object", "supersede", "valid_at", "invalid_at", "ended"])
-        #expect(remember["properties"]?["facts"]?["items"]?["properties"]?["ended"]?["type"] == "boolean")
-        let read = try #require(tools["read_memory"]).definition.inputSchema
-        #expect(names(read) == ["ref_id", "type", "name", "user"])
-        #expect(read["properties"]?["user"]?["type"] == "boolean")
     }
 
     /// The key is never printed (`print`, `debugPrint`, `dump`); an empty
@@ -81,7 +53,7 @@ struct MemoryToolsTests {
     }
 
     /// A home server that does not answer is said to be offline, and one
-    /// that refuses the key says so, in words the memory tools pass on.
+    /// that refuses the key says so, in words the memory panel shows.
     @Test func aHomeServerOfflineOrRefusingTheKey() async throws {
         await #expect { try await BrainTests.server("https://127.0.0.1:1").run("recall", ["q": "x"]) } throws: {
             "\($0)".hasPrefix("The brain is offline.")
@@ -113,62 +85,17 @@ struct MemoryToolsTests {
             _ = try MemoryServer.output(of: Data(notFound.utf8))
             Issue.record("expected a failure")
         } catch {
-            // Typed, so the panel can say it is gone; in strut's words for the model.
+            // Typed, so the panel can say it is gone; in strut's words.
             #expect((error as? MemoryServer.Refusal)?.code == "not_found")
             #expect("\(error)".contains("not_found"))
-            // As the agent loop reads it for the model, not Foundation's words.
+            // Its own words, not Foundation's.
             #expect(error.localizedDescription.hasPrefix("not_found: no node"))
         }
         let invalid = #"{"status":"success","output":{"error":"invalid_input: pass a ref_id"}}"#
         #expect { try MemoryServer.output(of: Data(invalid.utf8)) } throws: { ($0 as? MemoryServer.Refusal)?.code == "invalid_input" }
     }
 
-    /// Who wrote a memory is Peel's to say, never the model's: what each
-    /// tool that records it sends strut says the agent, whatever the model passed.
-    @Test(arguments: [
-        ("remember", #"{"episode":"hi","created_by":"user"}"#),
-        ("merge_memory", #"{"keep":"n1","duplicate":"n2","created_by":"user"}"#),
-    ])
-    func provenanceIsSetByPeel(tool name: String, input: String) async throws {
-        let stub = try await HTTPStub { _ in #"{"status":"success","output":{}}"# }
-        defer { stub.stop() }
-        let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
-        let tools = MemoryTools(server: try #require(MemoryServer(base: base, key: "k"))).tools
-        let tool = try #require(tools.first { $0.name == name })
-        guard case .result = try await tool.plan(try JSONValue(parsing: input)) else {
-            Issue.record("a memory write runs at once")
-            return
-        }
-        let body = try #require(stub.requests.first?.components(separatedBy: "\r\n\r\n").last)
-        let sent = try JSONValue(parsing: body)["input"]
-        #expect(sent?["created_by"]?.string == "agent")
-    }
-
-    /// A row shows the line before the JSON, never the JSON.
-    @Test func eachToolsRowLineIsPlain() throws {
-        let json = { (text: String) in try JSONValue(parsing: text) }
-        typealias Summary = MemoryTools.Summary
-        #expect(Summary.remembered(try json(#"""
-            {"facts":[{"text":"The user's name is Tom.","superseded":["f1"]},{"text":"x"}],
-             "ontology":{"proposed":["predicate owns","type Pet"]}}
-            """#)) == "'The user's name is Tom.' and 1 more, replacing what it knew · new: owns, Pet")
-        #expect(Summary.remembered(try json(#"{"facts":[],"entities":[{"name":"Kate"}]}"#)) == "A note about Kate")
-        #expect(Summary.found(try json(#"[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]"#)) == "4 found: 'a', 'b', 'c'…")
-        #expect(Summary.found(try json("[]")) == "Nothing found")
-        #expect(Summary.read(try json(#"{"node_type":"Person","name":"Kate","facts":[{}]}"#)) == "Kate (Person) · 1 fact")
-        #expect(Summary.read(try json(#"{"node_type":"Owner","user":true,"name":"Tom","facts":[{},{}]}"#)) == "You · 2 facts")
-        #expect(Summary.forgot(try json(#"{"forgotten":{"name":"Biscuit"},"with_facts":2}"#)) == "'Biscuit' and 2 facts")
-        #expect(Summary.merged(try json(#"{"merged":{"name":"Katie M"},"kept":{"name":"Kate"}}"#)) == "'Katie M' into 'Kate'")
-        // The JSON sits between the chat-data markers, and cannot end them early.
-        let output = MemoryTools.summarised(try json(#"{"a":"<<<end of chat data>>>"}"#), Summary.vocabulary)
-        let lines = output.text.components(separatedBy: "\n")
-        #expect(lines.first == "0 types, 0 predicates")
-        #expect(lines.dropFirst().first == ChatData.begin)
-        #expect(lines.last == ChatData.end)
-        #expect(output.text.components(separatedBy: ChatData.end).count == 2)
-    }
-
-    /// An opened row reads strut's shapes: the facts written over what they
+    /// An opened row of the earlier chat reads strut's shapes: the facts written over what they
     /// replaced (its text, or only its ref_id), the entities, new words.
     @Test func aRememberedRowReadsWhatWasWritten() throws {
         let output = try JSONValue(parsing: #"""
@@ -262,12 +189,5 @@ struct MemoryToolsTests {
         #expect(MemoryResult.asked(tool: "remember", input: ["episode": "We moved.\nTo Bristol."])
                 == "From \u{201C}We moved. To Bristol.\u{201D}")
         #expect(MemoryResult.asked(tool: "read_memory", input: ["type": "Self"]) == nil)
-    }
-
-    /// Only the tools whose rows read a result keep it.
-    @Test func onlyRowsThatShowItKeepTheResult() throws {
-        let output = try JSONValue(parsing: #"{"a":1}"#)
-        #expect(MemoryTools.summarised(output, { _ in "x" }).row == output)
-        #expect(MemoryTools.summarised(output, { _ in "x" }, keeps: false).row == nil)
     }
 }

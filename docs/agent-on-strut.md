@@ -4,8 +4,9 @@ Last updated 2026-10-19. **Design, PR plan and what was built** (the
 "Built: PR n" notes in section 4). PRs 1 to 7 are merged (#311, #319,
 #321, #322, #323, #325, #324) with PR 6's follow-ups (#326, #333), and
 PR 8 (Calendar) is dropped from Phase 1 for now (Tom, 2026-10-18;
-decision 16). PR 10 makes strut the agent, with no switch; PR 11 removes
-the Swift loop. It turns [foundation.md](foundation.md)'s answers into
+decision 16). PR 10 (#334, merged) makes strut the agent, with no
+switch; PR 11 removes Peel's own Swift loop, merging once Tom has used
+PR 10 on his account for a day or two. It turns [foundation.md](foundation.md)'s answers into
 the first phase of Peel's end state: the agent's loop runs in strut, the
 agent is a Sphinx contact with its own account, and your devices do what
 only they can (read your chats, send as you, Calendar) when strut asks.
@@ -30,8 +31,8 @@ as you and Calendar are not: only your devices hold your keys and
 EventKit. So a step asks your Mac, with a hidden control message in the
 same DM, and waits for the answer. In Phase 1 only the Mac answers. When
 it doesn't, the run says "Waiting for your Mac". Since PR 10
-(2026-10-18) this is the agent in every build, with no switch back; the
-Swift loop's code stays until PR 11 removes it.
+(2026-10-18) this is the agent in every build, with no switch back; PR
+11 removes Peel's own loop.
 
 ## Decided (Tom, 2026-10-16)
 
@@ -341,11 +342,12 @@ says for `meta/create-automation`.
 
 ### What stays in Swift
 
-On the Mac, AgentKit shrinks to the client side: the approval gate and
-its rules (`ApprovalGate`, `ApprovalRules`), the cards, the device-request
-handler, and the Sphinx read and send code it reuses (`SphinxTools`,
-`SendTool`'s plan). The loop (`AgentLoop`, `AgentSession`'s turns, the
-providers, `Compaction`) is removed in the last PR, once nothing calls it.
+On the Mac, AgentKit is the client side: the approval gate and its rules
+(`ApprovalGate`, `ApprovalRules`), the cards, the device-request handler,
+the Sphinx read and send code it reuses (`SphinxTools`, `SendTool`'s
+plan), the connected model's key, and the earlier local chat, read only.
+The loop, its model clients and its automation server went in PR 11
+("Built: PR 11").
 
 ## 2. The device channel
 
@@ -556,7 +558,7 @@ so it needs the same chunking both ways (open question 4).
 - **Stop.** The Mac's Stop sends a `cancel` for the turn; the bridge
   cancels the strut run (`POST /workflows/orchestrator/runs/:runId/cancel`, run control).
 - **Old history.** `agent.sqlite`'s conversation stays readable on the
-  Mac under "Earlier, on this Mac", read only. It is not migrated into the
+  Mac under "Old assistant chats (this Mac only)" (PR 11; "Earlier, on this Mac" before), read only. It is not migrated into the
   DM or the strut session. `agent.sqlite` itself stays: it holds the
   approval rules, the send grants and `DeviceRequests`.
 
@@ -1207,6 +1209,85 @@ account is cheap to replace (open question 2).
   taken out). The orchestrator's steps are installed even on a start that
   then finds the agent not set up (a few loopback calls per launch).
 
+### Built: PR 11, Peel's own loop removed (2026-10-19)
+
+Nothing reached the Swift loop after PR 10, so it goes, with what only it
+used. Peel keeps the client side: the device requests and their cards,
+the connected model's key (handed to strut), `BundledStrut`,
+`BundledBridge`, `Orchestrator`, and the earlier local chat, read only.
+
+- **AgentKit.** Gone: `AgentLoop`, `Compaction`, `ContextWindow`,
+  `RetryPolicy`, the model clients (`ModelProvider`, `AnthropicProvider`,
+  `OpenAICompatibleProvider`, `ModelHTTP`, the SSE parser, `ModelMessage`,
+  `ModelError`), `ToolRegistry`, `ToolApprover` and the `write` effect.
+  `Tool` and `Approval` stay, for the device requests. `AgentSession` is
+  the agent on this Mac: the connected model, its name, the "Always
+  allow" rules, and the earlier chat read from the records the loop wrote
+  (`Conversation`, `Turn`, `ToolCall`), with Clear (which forgets the
+  loop's `Summary` records too). No migration: nothing in `agent.sqlite`
+  changes, so the old chat reads as before and Clear still forgets it.
+- **Connect keeps the key without a test call.** The test call was the
+  model clients' (one streamed request); a key the provider refuses now
+  shows as strut's failure in the DM. A check through strut, or a
+  non-streaming one, is a follow-up if Tom wants it back.
+- **PeelAgent.** Gone: `AutomationServer`, `AgentSetup`, `MemoryTools`,
+  `AutomationTools` and the headless run (`AutomationRun`,
+  `AutomationRequest`). The prompt text strut's orchestrator is given
+  moved into `Orchestrator` (`memoryPrompt`, `automationsPrompt`) and
+  `SphinxTools.systemPrompt` with strut's tool names written in, word for
+  word the same as before (checked against the old templates).
+  `AutomationsClient` no longer installs `peel-automation`, its
+  `peel/run-automation` step or their token and port; `setModel` takes
+  those two secrets out of strut's store with any hand-over of the model.
+  Automations still on `peel-automation` (an account whose bridge has not
+  started since PR 7) are listed and move to `peel-automation-run` on the
+  next bridge start, as before; until then each fire fails, and its run
+  says "Didn't run: it runs once your assistant is set up" (found by the
+  independent review: before, they ran through `AutomationServer`). The
+  old workflow and step stay in strut, unused. Their old
+  runs read as before (`AutomationReply`, `AutomationFailure`).
+- **The app.** Gone: the streaming reply, Retry and the problem rows, the
+  local approval card, the summary row, the automation notification, the
+  local composer's draft carried to the DM, and `-agentBaseURL` and
+  `automationPort`. The agent chat before its DM is the intro, "Earlier,
+  on this Mac" and the set-up card. `AgentApprovalCard` is the DM's card
+  only (it never takes the keys as it appears).
+- **"Old assistant chats (this Mac only)"** (Tom, from using PR 10): the
+  heading over the old turns in the agent chat and the Account › Peel
+  agent row with Clear… say the same, where both said "Earlier, on this
+  Mac"; the row shows only while there is old history.
+- **The CLI.** `peel agent` goes: it was the Swift loop in a terminal.
+  `listen` (which answers the device reads) and `device-agent` stay.
+- **Tests and journeys.** The loop's unit tests, the providers' streams
+  and `scripts/record-agent-fixtures.sh` go. `AgentSessionTests` reads an
+  old chat written with the stored literals. `Journeys/Agent` calls the
+  Sphinx tools as the device requests do (the reads, a send only once
+  allowed, a tribe send never paying more than its card).
+  `OrchestratorTests` moves automations off a stand-in `peel-automation`;
+  the orchestrator journey's "preview off" round trip and its Swift-loop
+  timing go. List journeys: `agent-reply-ends`, `agent-reply-ends-open`,
+  `agent-stream-bottom` and `agent-stream-scroll-away` went with the
+  streaming; the rest seed an earlier chat (`{"agent": "seed"}`).
+- **Checked.** The unit suite. On a local stack, the journeys `Bridge`,
+  `Orchestrator` (the DM, Stop, quitting mid-turn, the automation that
+  posts at its minute and reports to the DM), `DeviceRequests` and
+  `Agent`. Every list journey (the agent ones on a seeded earlier chat;
+  nine that timed out under load passed when run again). `check-app.sh`
+  on a development profile with `-strut YES`: the agent chat with no
+  model, the Connect panel, a placeholder key kept (`{"agent":
+  "connect"}`: the panel's key field is secure, which posted keys never
+  reach), Set up (13 sats) and the DM as the chat, Account › Peel agent
+  without old chats (no row) and with them (the row and Clear…), and the
+  heading over the old turns. The iOS app compiled (arm64, v0.8.39). The
+  prompts strut is given compared with the old templates: the same.
+- **Review findings not applied, and why.** Connect has no key check (above).
+  `Tool` keeps the definitions and JSON Schemas the loop sent the model,
+  now read by nothing (strut's `DeviceStep`s carry their own), and
+  `AgentSession` still holds both the settings and the old chat: each a
+  reshape for its own PR. `moveYours`'s `yours` and `callback` stay
+  stored on the client; the bridge start's loopback calls (the steps
+  posted one by one, the list read more than once) are as before.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s
@@ -1266,7 +1347,7 @@ would give the same change.
 | 8 | peel | **Dropped from Phase 1 for now** (Tom, 2026-10-18). Calendar by request: `calendar.events` and the three writes, the Calendar access prompt and usage string, writes behind the card | "What's on Thursday?" answers from Calendar; "move it to 3" shows a card and moves it once; denied access says so | high (writes, a new permission) | 5 |
 | 9 | peel | iPhone: the agent DM shows talk and hides control (on PR 1's envelope), "Waiting for your approval on your Mac" | From the phone, with the Mac awake: message the agent and get the answer in the same thread as the Mac | medium | 1, 6 |
 | 10 | peel | **Turn it on.** The agent's account from `agent_seed(seed, 1)` (sphinx-ffi v0.8.39), checked against the core's test vectors; first-run setup ("Give your assistant its own account", one 10-sat invite the agent registers with, then the key exchange); no switch: strut and the bridge are the agent in Debug and Release (runner in the sandbox), the Agent chat the DM for everyone, the local history read only; the Swift loop's code stays for PR 11 (Tom, 2026-10-18: faster than a week's preview, as the only user) | A signed Release build sets up, reads and sends inside the sandbox; Tom sets it up on his real account and uses it a day or two: catch-ups no slower than today, automations fire, nothing sent twice | high (keys, the sandbox) | The sphinx-rs pin at v0.8.39; 7 and sphinx#386 merged |
-| 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | medium (over 400 lines) | 10, plus a week of use |
+| 11 | peel | Remove the Swift loop: `AgentLoop` and the providers out of the app, `AutomationServer`, `peel-automation` and `peel/run-automation`, `AgentSession`'s turns and compaction; AgentKit keeps the client side | Builds; the journeys from 2, 3, 5, 6, 7 pass; nothing calls the removed code | high (a large deletion across the agent) | 10, plus a day or two of Tom's use (built 2026-10-19) |
 
 ```
 now       S1 ✓  B1 ✓  S2 ✓  1
@@ -1287,7 +1368,8 @@ messages hidden in the lists, and the time zone setting merging keys. PR 4 stage
 **Measuring "catch-ups don't get worse".** PR 5 adds a timing to the
 Agent chat's journey: "what did I miss" on the same fixture account, on
 the Swift loop and on strut. PR 10 does not ship if strut is more than 3
-seconds slower (open question 3).
+seconds slower (open question 3). PR 11 took the Swift side out with the
+loop; the journey prints strut's time alone.
 
 ## 7. Open questions
 

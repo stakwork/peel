@@ -5,9 +5,8 @@ import PeelCore
 @testable import PeelAgent
 @testable import PeelTestSupport
 
-/// strut's automation endpoints as Peel reads them (`AutomationsClient`),
-/// and the agent's tools over them (`AutomationTools`). The JSON is strut's,
-/// as a local strut answered on 2026-10-13.
+/// strut's automation endpoints as Peel reads them (`AutomationsClient`).
+/// The JSON is strut's, as a local strut answered on 2026-10-13.
 struct AutomationsClientTests {
     static let listed = #"""
         {"automations":[
@@ -90,13 +89,18 @@ struct AutomationsClientTests {
 
     /// A failed run reads as one plain sentence: never strut's step prefix,
     /// a provider's raw reply or an internal name.
+    /// Peel's own words from a run on `peel-automation`, kept in its record.
+    static let macLocked = "Didn't run: your Mac was locked, so Peel couldn't use your model's key."
+
     @Test(arguments: [
-        // Peel's runs, through strut's step.
-        ("Peel answered 500: " + AutomationFailure.macLocked, AutomationFailure.macLocked),
+        // Peel's runs, through strut's step, before strut was the agent.
+        ("Peel answered 500: " + AutomationsClientTests.macLocked, AutomationsClientTests.macLocked),
         ("Peel answered 500: " + AutomationFailure.noModel, AutomationFailure.noModel),
         ("Peel answered 500: Peel's account closed during the run.", "Didn't finish: Peel's account closed during the run."),
-        ("fetch failed", AutomationFailure.peelUnreachable),
-        ("step peel failed: Peel answered 500: " + AutomationFailure.macLocked, AutomationFailure.macLocked),
+        ("fetch failed", AutomationFailure.notMoved),
+        (#"secrets "PEEL_AUTOMATION_TOKEN" and "PEEL_AUTOMATION_PORT" are not set: Peel stores them when its agent chat opens"#,
+         AutomationFailure.notMoved),
+        ("step peel failed: Peel answered 500: " + AutomationsClientTests.macLocked, AutomationsClientTests.macLocked),
         // strut's own runs.
         (#"agent failed after 0 step(s): invalid x-api-key (HTTP 401: {"type":"error","error":{"type":"authentication_error"}})"#,
          "Didn't run: Anthropic rejected the key. Replace it in Account."),
@@ -127,7 +131,7 @@ struct AutomationsClientTests {
     /// A run whose record names no workflow is Peel's (the runs are read per workflow).
     @Test func aRunNamingNoWorkflowIsPeels() throws {
         let json: AgentKit.JSONValue = ["runId": "9", "status": "error", "error": ["message": "fetch failed"]]
-        #expect(try #require(AutomationRunRecord(json)).failure == AutomationFailure.peelUnreachable)
+        #expect(try #require(AutomationRunRecord(json)).failure == AutomationFailure.notMoved)
     }
 
     /// Only Peel's workflow reaches Peel: a system run's failed fetch was to somewhere else.
@@ -183,7 +187,7 @@ struct AutomationsClientTests {
                                      "GET /workflows/other-system"])
         // An automation strut lists without one (an older strut) is Peel's.
         let older = try automations()[1]
-        #expect(older.workflow == AutomationsClient.workflow && !older.isSystem)
+        #expect(older.workflow == AutomationsClient.legacyWorkflow && !older.isSystem)
     }
 
     @Test func eachAutomationIsAddressedOnItsOwnWorkflow() async throws {
@@ -199,33 +203,6 @@ struct AutomationsClientTests {
             "POST /workflows/tidy-memory/automations/tidy/fire", "PATCH /workflows/tidy-memory/automations/tidy",
             "GET /workflows/tidy-memory/runs", "DELETE /workflows/tidy-memory/automations/tidy",
         ])
-    }
-
-    /// The agent sees only the person's automations, and every tool that
-    /// changes or runs one refuses a system automation before strut hears
-    /// of it.
-    @Test func theAgentCannotTouchASystemAutomation() async throws {
-        let (stub, client) = try await strut()
-        defer { stub.stop() }
-        let tools = AutomationTools(client: client)
-        let list = try #require(tools.tools.first { $0.name == "list_automations" })
-        guard case .result(let listed) = try await list.plan([:]) else {
-            Issue.record("expected a result")
-            return
-        }
-        // Every workflow is read (one a move left behind is still the person's); only theirs is told.
-        #expect(lines(stub).first == "GET /automations" && !listed.text.contains("id=tidy"))
-        for name in ["update_automation", "delete_automation", "run_automation_now"] {
-            let tool = try #require(tools.tools.first { $0.name == name })
-            await #expect(throws: PeelError.self, "\(name)") { _ = try await tool.plan(["id": "tidy", "enabled": false]) }
-        }
-        #expect(lines(stub).allSatisfy { $0.hasPrefix("GET ") })
-        // The person's own still gets as far as its card.
-        let runNow = try #require(tools.tools.first { $0.name == "run_automation_now" })
-        guard case .action = try await runNow.plan(["id": "a-1"]) else {
-            Issue.record("expected a card")
-            return
-        }
     }
 
     /// Each system automation is turned on once, by workflow: one strut
@@ -266,9 +243,10 @@ struct AutomationsClientTests {
         let held = ["STRUT_DEFAULT_MODEL": "old/model", "ANTHROPIC_API_KEY": "old", "OPENAI_API_KEY": "old",
                     "OPENROUTER_API_KEY": "old", "PEEL_AUTOMATION_TOKEN": "token"]
         try await client.setModel(AgentCredential(provider: provider, model: model, apiKey: "sk-test-1234"))
-        #expect(secrets(stub, from: held) == ["STRUT_DEFAULT_MODEL": named, secret: "sk-test-1234", "PEEL_AUTOMATION_TOKEN": "token"])
+        // `peel-automation`'s token and port go with any hand-over: nothing listens for them.
+        #expect(secrets(stub, from: held) == ["STRUT_DEFAULT_MODEL": named, secret: "sk-test-1234"])
         try await client.setModel(nil)
-        #expect(secrets(stub, from: held) == ["PEEL_AUTOMATION_TOKEN": "token"])
+        #expect(secrets(stub, from: held).isEmpty)
     }
 
     /// strut's secret store after the PUTs and DELETEs it saw, from `held`.
@@ -289,7 +267,7 @@ struct AutomationsClientTests {
         return store
     }
 
-    /// strut's refusals reach the agent in strut's words, on one line.
+    /// strut's refusals reach the person in strut's words, on one line.
     @Test func strutsRefusalsAreItsOwnWords() throws {
         #expect(throws: PeelError.self) { try AutomationsClient.read(400, Data(#"{"error":"trigger.at: expected HH:MM"}"#.utf8)) }
         do {
@@ -301,7 +279,7 @@ struct AutomationsClientTests {
         #expect(try AutomationsClient.read(201, Data(#"{"ok":true}"#.utf8))["ok"] == .bool(true))
     }
 
-    /// A strut that answers 500 was reached: the agent hears its answer,
+    /// A strut that answers 500 was reached: the view says its answer,
     /// not that strut is unreachable.
     @Test(arguments: [
         ("Internal Server Error", "strut refused: HTTP 500"),
@@ -313,23 +291,11 @@ struct AutomationsClientTests {
         let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
         let client = AutomationsClient(server: try #require(MemoryServer(base: base, key: "k")))
         do {
-            _ = try await client.create(name: "Restart", prompt: "Restart the Mac", trigger: ["every": "day", "at": ["09:00"]])
+            _ = try await client.list()
             Issue.record("expected a refusal")
         } catch {
             #expect("\(error)".contains(shown))
             #expect(!"\(error)".contains("Could not reach"))
-        }
-    }
-
-    /// Nothing about where Peel is or its token is in the workflow strut
-    /// keeps in its workspace: Peel's step reads both from strut's secret
-    /// store in code. So the workflow is the same on every launch.
-    @Test func theWorkflowRunsPeelsStepAndSaysNothingOfPeel() {
-        let yaml = AutomationsClient.workflowYAML
-        #expect(yaml.contains("type: peel/run-automation"))
-        #expect(yaml.contains("since: { type: json, required: false"))
-        for word in ["PEEL_AUTOMATION", "uthorization", "Bearer", "token", "http", "port", "params", "127.0.0.1"] {
-            #expect(!yaml.contains(word), "\(word)")
         }
     }
 
@@ -366,42 +332,8 @@ struct AutomationsClientTests {
     @Test func aReminderWhoseTimePassedUnrunIsMissed() throws {
         let reminder = try automations()[1]
         #expect(reminder.isDone && reminder.isMissed)
-        #expect(tools.describe(reminder).contains("missed"))
         var paused = reminder
         paused.enabled = false
         #expect(!paused.isMissed)
-    }
-
-    // MARK: The tools
-
-    private var tools: AutomationTools {
-        let server = MemoryServer(base: URL(string: "http://127.0.0.1:1")!, key: "k")!
-        return AutomationTools(client: AutomationsClient(server: server), timeZone: TimeZone(identifier: "Europe/London")!)
-    }
-
-    @Test func aTriggerIsAScheduleInThePersonsTimeZone() throws {
-        let trigger = try tools.trigger(["every": "once", "at": "2026-10-14T08:00"])
-        #expect(trigger["type"]?.string == "schedule")
-        #expect(trigger["tz"]?.string == "Europe/London")
-        #expect(try tools.trigger(["every": "day", "at": ["09:00"], "tz": "America/New_York"])["tz"]?.string == "America/New_York")
-        #expect(throws: PeelError.self) { try tools.trigger(["at": "09:00"]) }
-        #expect(throws: PeelError.self) { try tools.trigger(nil) }
-    }
-
-    /// Reading never asks; anything that makes, changes or runs one does,
-    /// every time (no target, so no "Always allow").
-    @Test func onlyReadingRunsWithoutACard() {
-        let effects = Dictionary(uniqueKeysWithValues: tools.tools.map { ($0.name, $0.effect) })
-        #expect(effects == [
-            "list_automations": .read, "preview_schedule": .read, "create_automation": .send,
-            "update_automation": .send, "delete_automation": .send, "run_automation_now": .send,
-        ])
-    }
-
-    @Test func anAutomationAsTheAgentReadsIt() throws {
-        let line = tools.describe(try automations()[0])
-        #expect(line.contains("Unread summary (id=a-172f6883)"))
-        #expect(line.contains("paused"))
-        #expect(line.contains("Prompt: Summarise my unread messages"))
     }
 }

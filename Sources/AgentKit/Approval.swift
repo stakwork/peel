@@ -75,9 +75,9 @@ public struct ToolIntent: Sendable, Hashable, Codable {
     }
 }
 
-/// One tool call waiting on a person.
+/// One action waiting on a person: a device request's card.
 public struct ApprovalRequest: Sendable, Hashable {
-    /// The model's id for the call, which the tool row shows under.
+    /// The device request's id.
     public let callID: String
     public let tool: String
     public let intent: ToolIntent
@@ -114,32 +114,13 @@ public enum ApprovalOutcome: String, Sendable, Hashable, Codable {
         case .denied, .stopped: false
         }
     }
-
-    /// What the model is told, and whether it is an error, when `outcome`
-    /// (nil: no one to ask) does not let the action run; nil when it does.
-    static func refusal(_ outcome: ApprovalOutcome?, of intent: ToolIntent) -> (String, Bool)? {
-        switch outcome {
-        case nil: ("Not run: this tool needs the user's approval, and there is no one to ask here.", true)
-        case .stopped?: ("Not run: stopped by the user.", true)
-        case .denied?: ("The user declined: \(intent.action). Nothing was done; do not try again unless they ask.", false)
-        case _ where Task.isCancelled: ("Not run: stopped by the user.", true)
-        default: nil
-        }
-    }
-}
-
-/// Decides whether a tool call that acts may run. The loop asks it before
-/// every call of a tool whose effect asks (`Tool.Effect.asks`) and waits; a task
-/// cancelled meanwhile (Stop) ends the wait as `.stopped`.
-public protocol ToolApprover: Sendable {
-    func approve(_ request: ApprovalRequest) async -> ApprovalOutcome
 }
 
 /// The approval every front end shares: a remembered "always" rule allows
 /// at once; anything else is asked of the person (`ask`), and their
 /// "Always allow" is remembered. An action with a cost is always asked. An
 /// `ask` that comes back with no answer (its card taken down) is `stopped`.
-public struct ApprovalGate: ToolApprover {
+public struct ApprovalGate: Sendable {
     public let rules: ApprovalRules
     let ask: @Sendable (ApprovalRequest) async -> ApprovalDecision?
 

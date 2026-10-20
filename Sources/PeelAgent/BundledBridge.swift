@@ -284,8 +284,8 @@ public final class BundledBridge: CustomReflectable {
         var folder = data
         try folder.setResourceValues(excluded)
         let port = try Self.freePort()
-        let admin = try AutomationServer.newKey()
-        let token = try AutomationServer.newKey()
+        let admin = try BundledStrut.newKey()
+        let token = try BundledStrut.newKey()
         let process = Process()
         process.executableURL = executable
         // Not the data folder: runner reads `./runner/.env` from where it starts.

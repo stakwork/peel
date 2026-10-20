@@ -42,13 +42,11 @@ struct OrchestratorTests {
         #expect(unattended.contains("sphinx/unseen") && unattended.contains("memory/remember"))
         #expect(!unattended.contains("sphinx/send") && !unattended.contains("automation/") && unattended.contains("sphinx/post"))
         #expect(section.contains("give it a grant"))
-        // Today's Swift loop keeps its own names.
-        let today = AgentSetup(storage: nil).systemPrompt() + SphinxTools.systemPrompt + MemoryTools.systemPrompt
-            + SphinxTools.sendPrompt + AutomationTools.systemPrompt
-        for swift in ["read_unseen_messages", "with current_time", "read_memory with user true", "send_sphinx_message sends",
-                      "list_automations before changing it", "as stored on this device"] {
-            #expect(today.contains(swift), "\(swift)")
+        // The prompts name the steps by hand: each one granted is named.
+        for step in DeviceStep.reads.map(\.type) + [DeviceStep.send.type] + Orchestrator.memoryTools + ["automation/list"] {
+            #expect(section.contains(step), "\(step)")
         }
+        for step in Orchestrator.automationRunTools { #expect(unattended.contains(step), "\(step)") }
     }
 
     @Test func eachDeviceStepAsksItsKindAndEndsTheTurnWhenTheMacIsLate() {
@@ -150,13 +148,13 @@ struct OrchestratorTests {
         let post = try await runStep("sphinx/post", ["chat": "Hive", "text": "hi"], on: server)
         #expect(post["output"]?["status"] == "denied" && bridge.requests.count == asks, "\(post)")
 
-        // Preview off: each goes to peel-automation as it was (id, schedule, prompt, paused);
-        // on again, back, a copy left by a move cut short made only once.
-        try await client.install(port: 1, token: "automation-token")
+        // Left on peel-automation from before strut was the agent (put there as a move puts them):
+        // each moves as it was (id, schedule, prompt, paused), a copy left by a move cut short made only once.
+        try await client.publish(AutomationsClient.legacyWorkflow, yaml: Self.oldWorkflow, description: "Peel's before strut was the agent.")
         _ = try await client.update(hive, enabled: false)
-        #expect(try await AutomationsClient(server: server, yours: AutomationsClient.workflow, callback: nil).moveYours().isEmpty)
+        #expect(try await AutomationsClient(server: server, yours: AutomationsClient.legacyWorkflow, callback: nil).moveYours().isEmpty)
         let off = try await client.list().filter(\.isYours)
-        #expect(off.count == 2 && off.allSatisfy { $0.workflow == AutomationsClient.workflow }, "\(off)")
+        #expect(off.count == 2 && off.allSatisfy { $0.workflow == AutomationsClient.legacyWorkflow }, "\(off)")
         let moved = try #require(off.first { $0.name == "Hive test" })
         #expect(moved.id == key && !moved.enabled && moved.prompt == hive.prompt && moved.trigger == hive.trigger)
         let morning = try #require(off.first { $0.name == "Morning" })
@@ -174,6 +172,20 @@ struct OrchestratorTests {
         try await client.forgetBridge()
         #expect(try await runStep("sphinx/unseen", [:], on: server)["status"] == "error")
     }
+
+    /// A stand-in for the workflow the person's automations ran on before
+    /// strut was the agent, whose step handed each run to Peel.
+    static let oldWorkflow = """
+        name: \(AutomationsClient.legacyWorkflow)
+        input:
+          name: { type: string }
+          prompt: { type: string }
+          since: { type: json, required: false }
+        steps:
+          - id: dir
+            type: job/dir
+
+        """
 
     func runStep(_ type: String, _ config: AgentKit.JSONValue, on server: MemoryServer) async throws -> AgentKit.JSONValue {
         try await call("POST", "steps/\(type)/run", ["config": config], on: server)

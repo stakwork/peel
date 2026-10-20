@@ -584,7 +584,7 @@ struct DayDivider: View {
 }
 
 /// A rule across a list with its title in the middle: a day, or the agent
-/// chat's "Earlier, on this Mac".
+/// chat's "Old assistant chats (this Mac only)".
 struct TitledDivider: View {
     let title: String
 

@@ -22,23 +22,13 @@ extension Journeys {
         /// strut's orchestrator, whose model calls `sphinx/unseen`; the bridge
         /// asks her Mac, which reads her chats (Bob's two messages, his thread
         /// in her tribe) and answers once; the model's reply, written from
-        /// that, comes back to her in the DM. Timed beside today's Swift loop
-        /// on the same chats, with a model that takes no time in either, so
-        /// what is measured is the plumbing (open question 3: within 3 s).
+        /// that, comes back to her in the DM. Timed, with a model that takes
+        /// no time, so what is printed is the plumbing (open question 3).
         @Test(.enabled(if: staged))
         @MainActor
         func whatDidIMissReadsThroughTheMac() async throws {
             let fixture = try await Agent.CatchUp.make()
             let alice = fixture.alice
-
-            // Today's loop: one read and its answer.
-            let scripted = ScriptedModel([.calls([("c1", "read_unseen_messages", [:])]), .text("Bob wrote twice.")])
-            let session = try Agent.session(for: alice, model: scripted)
-            let swiftStart = ContinuousClock.now
-            session.send("What did I miss?")
-            try await eventually("the Swift loop's reply") { !session.isRunning }
-            let swift = ContinuousClock.now - swiftStart
-            session.close()
 
             let asked = OSAllocatedUnfairLock(initialState: [String]())
             let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
@@ -76,7 +66,7 @@ extension Journeys {
                 try alice.messages(in: agent.pubkey).first { !$0.fromMe && $0.control == nil && $0.content?.hasPrefix("Caught up") == true }
             }
             let onStrut = ContinuousClock.now - strutStart
-            print("catch-up timing: Swift loop \(swift), strut \(onStrut)")
+            print("catch-up timing: strut \(onStrut)")
 
             #expect(reply.content == "Caught up: Bob wrote twice, and in your tribe's thread.")
             // Read on the Mac, once: one request, done.
@@ -86,12 +76,11 @@ extension Journeys {
             }
             #expect(requests == [["chats.unseen", "done"]])
             let turnPrompts = asked.withLock { $0 }.count
-            // The model got Alice's chats as today's loop does: Bob's words between the markers.
+            // The model got Alice's chats: Bob's words between the markers.
             let toolResult = try #require(asked.withLock { $0 }.first { $0.contains(#""type":"tool_result""#) })
             #expect(toolResult.contains(fixture.bobKey) && toolResult.contains(fixture.club.pubkey))
             // Peel's section is the system prompt the turn ran with.
             #expect(asked.withLock { $0 }.first?.contains("You are Peel's agent") == true)
-            #expect(onStrut - swift < .seconds(3), "catch-ups must not get worse: Swift \(swift), strut \(onStrut)")
 
             // An automation's run, as strut fires one: the run's message from its input, the chats read on the Mac.
             let fired = try await Self.strutCall("POST", "workflows/\(PeelAgent.Orchestrator.automationWorkflow)/run", [
@@ -310,8 +299,10 @@ extension Journeys {
             }
 
             // A weekly report, run now: it lands in the DM.
-            let weekly = try await client.create(name: "Weekly report", prompt: "Tell me what happened in my club this week",
-                                                 trigger: ["every": "week", "on": ["mon"], "at": ["09:00"], "tz": "UTC"])
+            let weekly = try #require(Automation(try await client.make(
+                name: "Weekly report", trigger: ["every": "week", "on": ["mon"], "at": ["09:00"], "tz": "UTC"], enabled: true,
+                input: AutomationsClient.input(name: "Weekly report", prompt: "Tell me what happened in my club this week"),
+                what: "the weekly report")["automation"] ?? .null))
             try await client.runNow(weekly)
             try await eventually("the weekly report in the DM", timeout: .seconds(60)) {
                 try alice.messages(in: agent.pubkey).contains { !$0.fromMe && $0.content == "**Weekly report**\n\nThis week: Bob planned the release." }
@@ -323,29 +314,6 @@ extension Journeys {
             }
             #expect(refused == ["denied"], "\(refused)")
             #expect(try !alice.messages(in: fixture.club.pubkey).contains { $0.content?.contains("weekly " + post) == true })
-
-            // Preview off, then on: each moves to peel-automation and back, its schedule and grant kept.
-            // Off, it runs as before: strut hands it to this Mac's AutomationServer.
-            let handed = OSAllocatedUnfairLock(initialState: [AutomationRequest]())
-            let mac = try await AutomationServer.start(port: try BundledBridge.freePort(), token: try AutomationServer.newKey()) { request in
-                handed.withLock { $0.append(request) }
-                return AutomationReply(status: .delivered, text: "Handled on the Mac.")
-            }
-            defer { Task { await mac.stop() } }
-            try await setup.install(port: mac.port, token: mac.token)
-            _ = try await AutomationsClient(server: server, yours: AutomationsClient.workflow, callback: nil).moveYours()
-            let off = try await client.list().filter(\.isYours)
-            let weeklyOff = try #require(off.first { $0.name == "Weekly report" })
-            #expect(off.count == 2 && weeklyOff.workflow == AutomationsClient.workflow, "\(off)")
-            try await client.runNow(weeklyOff)
-            try await eventually("the weekly report handed to the Mac", timeout: .seconds(60)) {
-                handed.withLock { $0 }.contains { $0.name == "Weekly report" && $0.prompt == "Tell me what happened in my club this week" }
-            }
-            _ = try await AutomationsClient(server: server, yours: PeelAgent.Orchestrator.automationWorkflow, callback: running.runEnds).moveYours()
-            let on = try await client.list().filter(\.isYours)
-            #expect(on.count == 2 && on.allSatisfy { $0.workflow == PeelAgent.Orchestrator.automationWorkflow || $0.isDone }, "\(on)")
-            #expect(on.first { $0.name == "Weekly report" }?.trigger == weekly.trigger)
-            #expect(on.first { $0.name == "Hive test" }?.id == made.id, "the grant is kept under the id, which a move keeps")
 
             for person in [alice, fixture.bob] { await person.close() }
         }

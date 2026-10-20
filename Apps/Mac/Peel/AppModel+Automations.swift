@@ -10,9 +10,6 @@ struct AutomationsState: Equatable {
     var list: [Automation] = []
     var loaded = false
     var problem: String?
-    /// strut's `peel-automation` workflow points here; tried again on each
-    /// refresh until it does (strut may start after Peel).
-    var installed = false
     /// Each automation's runs, newest first, once looked at.
     var runs: [String: [AutomationRunRecord]] = [:]
     /// The automations (by id) with a send grant that strut did not list at the last read
@@ -46,84 +43,16 @@ struct AutomationsState: Equatable {
 extension AppModel {
     // MARK: Automations (docs/phases/12-automations.md)
 
-    /// Where strut reaches this Mac's agent: 4778 unless
-    /// `defaults write dev.peel.mac automationPort <port>` says otherwise.
-    static var automationPort: Int {
-        let port = UserDefaults.standard.integer(forKey: "automationPort")
-        return (1...65535).contains(port) ? port : 4778
-    }
-
     /// The client for the memory's strut (`lookForMemory`); nil without one.
     var automationsClient: AutomationsClient? {
-        memoryServer.map(automationsClient(for:))
-    }
-
-    /// `server`'s client: with the agent's bridge running (Peel's own strut
-    /// only), new automations go on `peel-automation-run`, their run ends to
-    /// the bridge (docs/agent-on-strut.md, PR 7); until it runs (before the
-    /// agent is set up), on `peel-automation`, which its start moves.
-    func automationsClient(for server: MemoryServer) -> AutomationsClient {
-        guard agentBridge.status == .running, !server.isHomeServer,
-              let ends = agentBridge.bridge?.server?.runEnds else { return AutomationsClient(server: server) }
-        return AutomationsClient(server: server, yours: Orchestrator.automationWorkflow, callback: ends)
+        memoryServer.map { AutomationsClient(server: $0) }
     }
 
     /// The same, only for Peel's own strut: the one place a home server is
-    /// left out of what Peel hands strut (the automation token and port,
-    /// the connected model's key), which it keeps its own of.
+    /// left out of what Peel hands strut (the connected model's key), which
+    /// it keeps its own of.
     private var ownStrutClient: AutomationsClient? {
         automationsClient.flatMap { $0.server.isHomeServer ? nil : $0 }
-    }
-
-    /// While the agent chat is open with a strut found: listens for strut
-    /// with the token made when the agent opened, hands it to strut's secret store
-    /// and points strut's `peel-automation` workflow here. The connected
-    /// model goes to strut apart from this (`modelChanged`). A development profile listens only
-    /// with an `automationPort` of its own, never on the app's. Never for a
-    /// home server, which cannot reach this Mac: it is not given the token or port.
-    func startAutomations(_ profile: Profile, engine: Engine) {
-        guard let memory = memoryServer, !memory.isHomeServer, let token = automationToken,
-              profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
-        let port = Self.automationPort
-        let stopping = automationStopping
-        Task {
-            do {
-                // The last server lets go of the port first (an account switched).
-                await stopping?.value
-                // Stopped with the agent chat (`closeAgent`), so holding the model is bounded.
-                let server = try await AutomationServer.start(port: port, token: token) { request in
-                    await self.runAutomation(request)
-                }
-                // Closed, another account opened, or the strut changed or stopped while it started.
-                guard self.engine === engine, memoryServer == memory, automationServer == nil else {
-                    return await server.stop()
-                }
-                automationServer = server
-                await installAutomations()
-            } catch {
-                automations.problem = PeelError.problem(error, couldNot: "listen for automations on port \(port)")
-            }
-        }
-    }
-
-    func stopAutomations() {
-        automations = AutomationsState()
-        guard let server = automationServer else { return }
-        automationServer = nil
-        automationStopping = Task { await server.stop() }
-    }
-
-    /// Points strut's workflow at the listening server; says why when it
-    /// cannot, and then nothing fires (no token but strut's store's).
-    private func installAutomations() async {
-        guard let client = ownStrutClient, let server = automationServer else { return }
-        do {
-            try await client.install(port: server.port, token: server.token)
-            guard automationServer === server else { return }
-            automations.installed = true
-        } catch {
-            automations.problem = PeelError.problem(error, couldNot: "set up automations on strut")
-        }
     }
 
     /// The connected model, read from the Keychain; nil without one. Throws
@@ -135,8 +64,7 @@ extension AppModel {
 
     /// strut started, or the connected model changed (connected, another
     /// model, removed): strut's secret store is given the model, for the
-    /// system automations, whether or not Peel listens for automations.
-    /// One hand-over at a time; a change while one runs is handed over after it.
+    /// agent and the system automations. One hand-over at a time; a change while one runs is handed over after it.
     func modelChanged() {
         modelHandingAgain = true
         guard modelHanding == nil else { return }
@@ -178,33 +106,6 @@ extension AppModel {
         if credential != nil { await refreshAutomations() }
     }
 
-    /// One run: the agent with the read and memory tools and no send, its
-    /// result delivered to the agent chat with a notification.
-    func runAutomation(_ request: AutomationRequest) async -> AutomationReply {
-        guard let profile, let engine, let agent else { return .failed(AutomationFailure.accountClosed) }
-        let credential: AgentCredential
-        do {
-            guard let kept = try connectedCredential() else { return .failed(AutomationFailure.noModel) }
-            credential = kept
-        } catch is KeychainLocked {
-            return .failed(AutomationFailure.macLocked)
-        } catch {
-            return .failed(AutomationFailure.keyUnreadable)
-        }
-        let setup = agentSetup(engine, memory: memoryServer)
-        let loop = AgentLoop(
-            provider: Self.agentClient(credential, profile: profile),
-            tools: setup.tools, model: credential.model, systemPrompt: setup.systemPrompt(unattended: true))
-        let reply = await AutomationRun.run(request, with: loop, provider: credential.provider)
-        // The account may have closed while it ran: nothing is kept for it.
-        guard self.agent === agent else { return .failed("Peel's account closed during the run.") }
-        if reply.status == .delivered, let text = reply.text {
-            agent.deliver(text, from: request.name)
-            notifier.automationDelivered(name: request.name, text: text, chatShown: agent.isShown && isFrontmost)
-        }
-        return reply
-    }
-
     // MARK: The view's actions
 
     /// Reads the list from strut; says why when it cannot.
@@ -214,7 +115,6 @@ extension AppModel {
             return
         }
         let own = ownStrutClient != nil
-        if own, !automations.installed { await installAutomations() }
         // Not handed to this strut yet, or it failed: tried again.
         if own, strutModel?.server != client.server { modelChanged() }
         do {
@@ -223,8 +123,7 @@ extension AppModel {
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
             automations.descriptions = descriptions
-            // A failed install stays said until one succeeds (a home server has none).
-            if automations.installed || !own, automations.problem != nil { automations.problem = nil }
+            if automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
             if own, let missed = try? macAgent.deviceCards.revokeGrants(

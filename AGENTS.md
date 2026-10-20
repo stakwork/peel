@@ -316,16 +316,17 @@ is a short plan. Update the status and the journal when you finish something.
   `CallStore.session` and `AppModel.web`, the Mac's own types), `AppModel+Agent`
   (`MacAgent`, the `AgentHost` that holds the memory, Peel's strut and the
   automations, which `AppModel` reaches as `macAgent`; opening the
-  account's `AgentSession`, its tools and
-  system prompt through `AgentSetup`, the key kept through `Profile.agentCredential`, the tool
-  rows' titles, and the memory tools once its strut is running: Peel's
-  own (`BundledStrut`), started with the agent and started again before
-  a reply if it stopped; a development profile's only with `-strut YES`,
+  account's `AgentSession` (the connected model, the name, the rules and
+  the earlier local chat), the key kept through `Profile.agentCredential` and
+  handed to strut (`modelChanged`), the earlier tool rows' titles, and the
+  memory once its strut is running: Peel's
+  own (`BundledStrut`), started with the agent and started again by Set
+  up or Try again if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
   experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
   `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
   which `AppDelegate` hands it), that server's, Peel's own never started
-  and no automation tools, token or model key for it),
+  and no model key for it),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Peel agent show of its own account,
@@ -377,12 +378,13 @@ is a short plan. Update the status and the journal when you finish something.
   `DeviceRequestDetail`; and the send grants), `AgentTable` (the agent chat's
   rows for `MessageTable`, `AgentListRow`, `AgentDMRows` (the agent's DM
   as the chat draws it: its rows as a chat's with tool rows above a reply,
-  "writing…", the local turns above under "Earlier, on this Mac") and `AgentOpenRows`, which
-  tool rows are open), `OffscreenAgent` (the offscreen driver's scripted
-  model, never a provider), `AgentMemoryViews` (a memory
+  "writing…", the earlier local turns above under "Old assistant chats (this Mac only)", read
+  only) and `AgentOpenRows`, which tool rows are open), `OffscreenAgent` (the
+  offscreen driver's agent: an earlier chat in memory for the list journeys),
+  `AgentMemoryViews` (an earlier memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
-  the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key,
-  model and the test call) and `AgentSettings` (Account › Peel agent, with
+  the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key
+  and model, kept and handed to strut) and `AgentSettings` (Account › Peel agent, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Brain, `BrainSection`:
   This Mac or a home server's address and key, its status, and a pairing
@@ -523,16 +525,17 @@ is a short plan. Update the status and the journal when you finish something.
   the confirmation threshold, server; Forget).
   `Peel/Assets.xcassets` holds `Logo`, a link to
   `Apps/Assets/peel.svg`, for the phone's own use
-- `Sources/AgentKit/` — the agent, GRDB only (no PeelCore, builds for macOS
-  and iOS; the plan is `docs/agent-architecture.md`, the phase
-  `docs/phases/09-agents.md`)
+- `Sources/AgentKit/` — the agent's client side, GRDB only (no PeelCore,
+  builds for macOS and iOS; `docs/agent-architecture.md`). The agent's loop
+  is strut's (`docs/agent-on-strut.md`); Peel's own Swift loop, its model
+  clients and its automation server were removed in Phase 1's PR 11
   - `JSONValue.swift` — any JSON value (props, event fields, tool schemas
-    and arguments, the model clients' bodies) and `StableJSON`, the one
+    and arguments) and `StableJSON`, the one
     encoding AgentKit writes (keys sorted); `JSONValue+Access.swift` — its
     literals, `init(parsing:)`, `jsonString` and accessors
   - `MessageLink.swift` — `AgentMessageLink`, the agent's link to one
     message (`https://peel.invalid/message?chat=…&uuid=…`) and how the
-    model is told to write it, and the one at the end of a send row's
+    agent is told to write it, and the one at the end of a send row's
     line; the app opens it in place of the web. Here rather than in
     PeelAgent so the iPhone's message text (`MessageText`) can read it
   - `HLC.swift` — the hybrid logical clock: `tick` for a local event,
@@ -547,61 +550,42 @@ is a short plan. Update the status and the journal when you finish something.
   - `SQLiteAgentStore+Reads.swift` — `read`, `search` (FTS5 over name and
     body), `walk` (depth at most 2), `ontology`, `records(type:)` (oldest first)
   - `SQLiteAgentStore+Migrations.swift` — its own schema, append-only
-  - `Model/` — the model clients: `ModelProvider` (a `ModelRequest` in, a
-    stream of `ModelEvent`s out, cancelled with its task), `ModelMessage`
-    and its content blocks, `ModelError` (the failures worded plainly,
-    keys scrubbed from provider messages), `AnthropicProvider` (Messages),
-    `OpenAICompatibleProvider` (Chat Completions: OpenAI, OpenRouter),
-    `ModelHTTP` (the one shared session, no cookies, cache or redirects;
-    https only; `Secret`, a key that prints as "[key]"; the streamed body) and `ServerSentEvents` (the SSE parser)
-  - `Loop/` — `Tool` (with its read, send or write effect, whose `asks`
-    and `runsSideBySide` are exhaustive so a new effect must decide: only
-    send asks, only read runs beside others; and `Plan`: a result at once
-    or an action to approve) and `ToolRegistry`,
-    `ContextWindow` (the recent turns that fit a budget, tokens estimated
-    at three UTF-8 bytes each), `RetryPolicy` (when a failed model call is
-    made again on its own, and how long it waits), `Compaction` (when older
-    turns are summarised, where the cut falls, the one summarising call),
-    `AgentLoop` (one turn: stream, run tools, repeat; reads next to each
-    other side by side, any other call alone, in order; Stop is cancelling
-    its task; every action asks its approver)
-    and `Approval` (the gate for every tool that acts: `ToolIntent`, what a
-    card shows and `isShowable`; `ToolApprover`; `ApprovalGate`, a rule or
-    the person, shared by the app and the CLI; `ApprovalRules`, the
-    "always" rules as records, per tool and target, never for a cost;
-    `SendGrants`, an automation's chats and sats cap, beside them)
+  - `Tool.swift` — `Tool` (with its read or send effect, whose `asks` is
+    exhaustive so a new effect must decide; and `Plan`: a result at once
+    or an action to approve), the shape the Sphinx tools take for the
+    device requests
+  - `Approval.swift` — the gate for every device request that acts:
+    `ToolIntent`, what a card shows and `isShowable`; `ApprovalGate`, a
+    rule or the person; `ApprovalRules`, the "always" rules as records,
+    per tool and target, never for a cost; `SendGrants`, an automation's
+    chats and sats cap, beside them
   - `Session/` — `AgentProvider` (Anthropic, OpenAI, OpenRouter: names,
-    key pages, the picker's models, the client), `AgentCredential` (prints
-    without its key) and `AgentCredentialStore`; `AgentSession`, the agent
-    chat's model: the conversation as `Conversation`, `Turn`,
-    `ToolCall` and `Summary` records (the summary sent in place of older
-    turns), the streaming reply (shown every 50 ms), Stop,
-    failures and Retry, connecting with a test call, the model, removing
-    the key, Clear, the agent's name and `close`; the approval card of its
-    run (`waiting`, `answer`, the outcome kept on the tool's row) and the
-    rules (`approvalRules`, `revoke`)
-- `Sources/PeelAgent/` — the Sphinx tools over PeelCore's storage (AgentKit
-  and PeelCore; no AppKit or UIKit)
-  - `AgentSetup.swift` — the agent's tools and system prompt, the one way
-    the app and `peel agent` put them together: the time; with storage, the
-    read tools; with an engine, the send tool; with a `MemoryServer`, the
-    memory tools, and the automation tools where asked (the app only); the
-    `unattended` prompt for an automation's run
+    key pages, the picker's models), `AgentCredential` (prints without its
+    key) and `AgentCredentialStore`; `AgentSession`, the agent on this Mac:
+    the connected model (`connect`, `setModel`, `removeKey`, each handed on
+    through `credentialChanged`), the agent's name, the rules
+    (`approvalRules`, `revoke`), and the chat Peel's own loop kept before
+    strut was the agent, read only: its `Conversation`, `Turn` and
+    `ToolCall` records, and Clear (which forgets its `Summary` records
+    too); `keep` writes turns in that shape for the offscreen driver
+- `Sources/PeelAgent/` — the device side of the agent in strut: the Sphinx
+  tools over PeelCore's storage, the device requests, and the strut and
+  bridge Peel ships (AgentKit and PeelCore; no AppKit or UIKit)
   - `SphinxTools.swift` — the read tools under the official Mac app's names
     (`get_contacts_and_tribes`, `read_recent_messages`,
     `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
-    each through the reads the app's views use; the system prompt that
-    goes with them
+    each through the reads the app's views use; what the orchestrator is
+    told about them (`systemPrompt`)
   - `DeviceReads.swift` — the device requests the Mac answers for strut's
     agent, `chats.list`, `chats.read`, `chats.threads`, `chats.unseen` and
-    `chats.search`, each through the `SphinxTools` tool today's agent
-    calls; any other kind refused in words
+    `chats.search`, each through a `SphinxTools` read tool; any other kind
+    refused in words
   - `DeviceActions.swift` — the device requests that act as you: `send`
-    (the send tool's plan on today's card through `ApprovalGate` and its
+    (the send tool's plan on its card through `ApprovalGate` and its
     rules, or an automation's send grant with `[Agent] ` first) and
     `approve` (the card alone, which may keep a send grant); a card past
     the request's time is `expired`; every other kind goes to `DeviceReads`
-  - `ChatDirectory.swift` — a chat by the name the model gives: chat id,
+  - `ChatDirectory.swift` — a chat by the name the agent gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess
   - `ChatData.swift` — a tool's result: header, the chats' data between
@@ -615,12 +599,12 @@ is a short plan. Update the status and the journal when you finish something.
     card's words and a tribe's price, then `Engine.sendText` capped at
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
-    the account's `agent.sqlite` as the app and the CLI open it
+    the account's `agent.sqlite` as the app opens it
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
-    for `peel agent --memory`, the one staged for this Mac, `staged`, through
+    for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
-    started when an app account opens its agent (and again before a reply
-    if it stopped), erased with the account (`erase`: what the agent
+    started when an app account opens its agent (and again on Set up or
+    Try again if it stopped), erased with the account (`erase`: what the agent
     remembered and its automations), its key made by Peel for
     this launch and kept only in memory, its secret store encrypted with
     `STRUT_SECRET_KEY` (the profile's `strutKey`, made on first start, read
@@ -653,8 +637,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `Orchestrator.swift` — Peel's half of strut's `orchestrator`
     (`docs/agent-on-strut.md` "Built: PR 5"): the host delta `BundledStrut`
     writes to `host-config.json` in strut's data folder at each launch
-    (`STRUT_HOST_CONFIG`): Peel's tools and prompt section (today's prompts
-    with strut's tool names, `SphinxTools.Names.strut`, `MemoryTools.Names.strut`),
+    (`STRUT_HOST_CONFIG`): Peel's tools and prompt section (who the agent
+    is, the reads with `SphinxTools.systemPrompt`, sends, `memoryPrompt`
+    and `automationsPrompt`),
     no pinned model (the connected one), and the `automation/*` steps on
     `peel-automation-run` behind `sphinx/approve`. `DeviceStep` is each
     `sphinx/*` step's source: a device request posted to the bridge on
@@ -669,32 +654,22 @@ is a short plan. Update the status and the journal when you finish something.
     `pointRunEnds` points their run ends at the running bridge.
     Tested in `OrchestratorTests` (a staged strut with the automation steps, when there is
     one) and the journey `Journeys/Orchestrator`
-  - `AutomationServer.swift` — where strut reaches Peel when an automation
-    fires (`docs/phases/12-automations.md`): `POST /automations/run` on
-    127.0.0.1 with the bearer token `AppModel` makes when the agent opens
-    (in memory only, the same for every server and PUT until it closes)
-  - `AutomationsClient.swift` — strut's automation endpoints; `install`
-    puts the server's token and port in strut's encrypted secret store
-    (`PUT /secrets/PEEL_AUTOMATION_TOKEN` and `…_PORT`, two values so
-    cassettes scrub each; a failure is the view's problem, never a
-    fallback), publishes Peel's custom step `peel/run-automation`
-    (`stepSource`: reads both with `ctx.services.secrets.get` in code, as
-    strut's adapters do, and posts through `ctx.services.http` to
-    127.0.0.1 at that port; its config is the run only, so a workflow's
-    config can neither carry the token nor change where it goes; strut
-    keeps one version per content)
-    and then the `peel-automation` workflow, which runs that step and says
-    nothing about Peel, so its content-hash version never changes.
+  - `AutomationsClient.swift` — strut's automation endpoints, for the
+    Automations view: it lists every workflow's automations (a system one,
+    `category: system`, with its workflow's description; the person's on
+    `peel-automation-run`, and any left on the old `peel-automation`,
+    whose step handed each run to Peel's own loop before PR 11, until a
+    bridge start moves them), addresses each on its own workflow, reads
+    their runs (`AutomationRunRecord`, `AutomationReply` and
+    `AutomationFailure` in `Automation.swift`: a failure in plain words,
+    anything shaped like a key masked) and turns each system automation on
+    once (`turnOnSystem`, `docs/system-automations.md`).
     `setModel` puts the connected model as `STRUT_DEFAULT_MODEL` and its
-    provider's key in the store, for the system automations, and takes
-    them out on disconnect; `AppModel.modelChanged` calls it apart from
-    `install`, one at a time, whenever strut starts or the model changes
-    (a Keychain that cannot be read leaves the store alone).
-    It lists every workflow's automations (a system one, `category:
-    system`, with its workflow's description), addresses each on its own
-    workflow, and turns each system automation on once (`turnOnSystem`,
-    `docs/system-automations.md`); the agent's `AutomationTools` see and
-    change `peel-automation`'s only
+    provider's key in strut's encrypted secret store, for the agent and
+    the system automations, and takes them out on disconnect (and the old
+    `peel-automation` step's token and port with any hand-over);
+    `AppModel.modelChanged` calls it, one at a time, whenever strut starts
+    or the model changes (a Keychain that cannot be read leaves the store alone)
   - `Brain.swift` — where the agent's memory lives (`docs/peel-brain.md`):
     this Mac or the account's home server, kept in `Profile.brain` (one
     that cannot be read is never taken for this Mac), and the pairing link
@@ -710,26 +685,19 @@ is a short plan. Update the status and the journal when you finish something.
     which strut there backs up first: "Reconnecting" in
     `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
     (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
-    option, holding the memory tools until it ends
+    option, holding the memory from the agent until it ends
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
     from a home server (`Brain`, `isHomeServer`; `health` reads its
     `/health`: connected, offline, key not accepted) or from Peel's own
     strut's ready line (`BundledStrut`;
-    looked at again by `AppModel.lookForMemory` before each reply, which
-    drops a strut that stopped; the key never printed, dumped or
-    reflected); one memory
+    looked at again by `AppModel.lookForMemory` whenever strut starts or
+    stops; the key never printed, dumped or reflected); one memory
     step run by
     `POST /steps/memory/<verb>/run` through `Web.postToStrut`, the
     arguments as the run's `input` under the config `{{ input }}` (strut
     templates any config, so memory text never goes as one), strut's reply
     read back, a step's own refusal as the failure, cleaned to one line
-  - `MemoryTools.swift` — `remember`, `forget_memory`, `merge_memory`
-    (effect write: never asks) and `recall`, `read_memory`,
-    `memory_ontology` (reads), each one strut step; the vocabulary is only
-    strut's; `created_by` is set here, never by the model; a result is one
-    cleaned line (the row's summary) then the JSON between the chat-data
-    markers
 - `Sources/peel/` — command-line harness for PeelCore
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
@@ -737,18 +705,6 @@ is a short plan. Update the status and the journal when you finish something.
   - `Commands+Account.swift`, `Commands+Contacts.swift`, `Commands+Chat.swift`, `Commands+Tribes.swift`,
     `Commands+Money.swift`, `Commands+Calls.swift` — the commands by area,
     each an `Invocation` method that returns false for a command not its own
-  - `Commands+Agent.swift` — `peel agent`, a conversation with a model in
-    the terminal (the key from `PEEL_AGENT_API_KEY` only), with the app's
-    tools and prompt (`AgentSetup`); with `--profile`, the Sphinx read
-    tools over that profile, read-only; with `--send`, connected, and the
-    send tool, each send asked in the terminal (`TerminalLines`, stdin
-    shared by the prompt and the question); with `--memory`, the staged
-    strut started for that profile (its data in the profile's folder, as
-    the app's `-strut YES`) and stopped on exit, or gone by itself (stdin
-    EOF); not started again if it stops mid-session (the app does that
-    before each reply); and the memory tools (no automations: they need
-    the app). `--base-url http://127.0.0.1:<port>`
-    points it at a local scripted model
   - `Output.swift` — `Session` (an engine with its events printed) and the
     row and payment lines every command prints
 - `Sources/Sphinxrs/` and `Vendor/` — generated bindings and the core's static
@@ -779,7 +735,12 @@ is a short plan. Update the status and the journal when you finish something.
   records each whole request); a library target, since a test target
   cannot depend on another, imported `@testable`
 - `Tests/PeelAgentTests/` — offline tests for PeelAgent, Mac-only like it:
-  `AutomationTests`, `AutomationsClientTests`, `BundledStrutTests`,
+  `AutomationsClientTests` (strut's lists and runs read back, failures in
+  plain words with keys masked, system automations turned on once, the
+  model handed to strut), `BundledStrutTests` (with a staged strut, a real
+  start and stop, and no secret kept on disk as it is), `OrchestratorTests`
+  (the host delta and prompt section; with a staged strut, the device
+  steps and the move off `peel-automation`), `BundledBridgeTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the
@@ -794,35 +755,19 @@ is a short plan. Update the status and the journal when you finish something.
   memory back in place of this Mac's: the graph kept as a backup, put back
   on any failure, a linked graph left alone, the newest three kept),
   `AgentMessageLinkTests` (the agent's message links and a send row's
-  link, only the one at the end), `AgentSetupTests` (the tools and prompt
-  by what the caller has, `peel agent`'s arguments, and with a staged
-  strut `--memory`'s remember and recall, the model scripted) and
-  `MemoryToolsTests` (where a strut may be, the POST included; a home
+  link, only the one at the end) and
+  `MemoryServerTests` (where a strut may be, the POST included; a home
   server offline or refusing the key; the key never
-  printed; strut's replies and refusals; which tools write; the rows'
-  lines; the markers; `created_by`)
+  printed; strut's replies and refusals; the earlier chat's memory rows
+  and the panel's nodes)
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
   the clock, apply order, idempotency, per-field last write wins, forget
-  and unlink, rebuild, search, walk and ontology); streams in `Fixtures/`
-  (written by hand from the providers' docs) through both decoders, and
-  each provider's text and tool stream (`StreamCaseTests`: the one in
-  `Fixtures/recorded/` when Tom has recorded it with
-  `scripts/record-agent-fixtures.sh`, else the hand-written one), HTTP
-  statuses to `ModelError` (a bad key per provider), the
-  request bodies over an in-process `URLProtocol` stub, the loop with
-  a scripted `FakeProvider` (`AgentLoopHardeningTests`: retries and their
-  caps, Stop during a wait, read tools side by side and in order, an
-  action between reads; `CompactionTests`: the trigger, the cut, the
-  summary kept, reused and cleared), `AgentSessionTests` (streaming, Stop,
-  failures and Retry, connecting, the key, reopening, Clear) and
-  `ApprovalTests` (the loop with a scripted approver, the gate's rules,
-  the session's card, writes that never ask and finish before a later read starts); `TestSupport` (the scripted provider and approver,
-  the in-memory credential, a connected session, `StreamCase`). No test
-  calls a model provider or uses a real key
-- `scripts/record-agent-fixtures.sh` — records one provider's real streams
-  into `Tests/AgentKitTests/Fixtures/recorded/` (ids scrubbed; refuses
-  anything holding a key); Tom runs it by hand with his own key, never an
-  agent or a test (docs/testing.md, "Recorded streams")
+  and unlink, rebuild, search, walk and ontology), `AgentSessionTests` (the
+  earlier chat read back from the records Peel's loop wrote, Clear, the
+  connected model's key, the name) and `ApprovalTests` (the gate's rules:
+  once, always per tool and target, a cost always asked, kept across a
+  reopen, revoked, a card taken down); `TestSupport` (the in-memory
+  credential). No test calls a model provider or uses a real key
 - `Tests/PeelIntegrationTests/` — journeys through the real core against the
   local stack (opt-in, see Tests below): `Stack` (finds or starts
   `scripts/test-stack.sh`), `Person` (one account), `Bank` (where the sats
@@ -830,8 +775,9 @@ is a short plan. Update the status and the journal when you finish something.
   `AccountJourneys`, `ContactJourneys`, `InviteJourneys`, `MessageJourneys`,
   `TribeJourneys`, `AttachmentJourneys`, `PaymentJourneys`, `HistoryJourneys`,
   `ReconnectJourneys`, `PreferencesJourneys`, `ReadJourneys`, `AgentJourneys`
-  (the agent's tools and approval gate over a real account, the model
-  scripted), `DeviceRequestJourneys` (the Mac answers its agent's
+  (the Sphinx tools the device requests use over a real account: the
+  reads, a send only once allowed, a tribe send never paying more than its
+  card), `DeviceRequestJourneys` (the Mac answers its agent's
   `chats.unseen` once, a repeat from the ledger, strangers nothing; sends
   as you once and only when allowed, `expired`, `unknown` after a stop
   mid-send); `FundDev` (the bank's half of
@@ -1148,14 +1094,8 @@ or 8000); opt-in, see `docs/testing.md`:
 PEEL_INTEGRATION=1 SPHINX_BIN_DIR=<cargo target>/debug swift test --filter PeelIntegrationTests
 ```
 
-No test calls a model provider or uses a real API key, opt-in or not. The
-providers' real streams reach the tests as files Tom records by hand with
-his own key; agents never run the recorder (docs/testing.md, "Recorded
-streams"):
-
-```sh
-PEEL_AGENT_PROVIDER=anthropic PEEL_AGENT_API_KEY=<key> scripts/record-agent-fixtures.sh
-```
+No test calls a model provider or uses a real API key, opt-in or not:
+the agent's journeys run strut on a stand-in model endpoint.
 
 `Tests/PeelBenchmarks` times the hot paths on a synthetic account (50
 chats, 100k messages): the reads every write re-runs, markup, per-row

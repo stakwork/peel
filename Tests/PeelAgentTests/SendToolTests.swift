@@ -166,7 +166,7 @@ struct SendToolTests {
 }
 
 /// The agent's `send` and `approve` device requests (`DeviceActions`) over
-/// the same engine: the send tool's plan on today's card, at most once, a
+/// the same engine: the send tool's plan on its card, at most once, a
 /// card that runs out of time, and send grants for automations.
 struct DeviceActionsTests {
     let profile = TempProfile()

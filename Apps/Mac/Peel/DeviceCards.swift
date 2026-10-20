@@ -107,17 +107,16 @@ final class DeviceCards {
 }
 
 /// A control message's line in a direct message; the agent's request whose
-/// card waits on you (`ChatRow.approval`) draws the card in its place, as
-/// the agent chat draws a tool's, and its line once answered.
+/// card waits on you (`ChatRow.approval`) draws the card in its place, and
+/// its line once answered.
 struct DeviceRequestLine: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
     let line: String
-    let composer: ComposerID
 
     var body: some View {
         if let intent = row.approval, case .envelope(let request)? = row.message.control, let id = request.id {
-            AgentApprovalCard(intent: intent, composer: composer, takesFocus: false) { model.macAgent.deviceCards.answer(id, $0) }
+            AgentApprovalCard(intent: intent) { model.macAgent.deviceCards.answer(id, $0) }
                 .padding(.vertical, Theme.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let request = row.agentRequest {

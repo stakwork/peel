@@ -31,7 +31,8 @@ enum AgentToolTitle {
     ]
 
     /// strut's orchestrator's tools, as the bridge names them (`sphinx/unseen`
-    /// as `sphinx_unseen`), by the Swift loop's tool that does the same.
+    /// as `sphinx_unseen`), by the tool of Peel's earlier loop that did the
+    /// same, so both read alike.
     private static let strutNames = [
         "sphinx_chats": "get_contacts_and_tribes", "sphinx_read": "read_recent_messages",
         "sphinx_unseen": "read_unseen_messages", "sphinx_threads": "read_threads", "sphinx_search": "search_messages",

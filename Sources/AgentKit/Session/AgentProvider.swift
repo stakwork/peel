@@ -1,6 +1,7 @@
 import Foundation
 
-/// The services the agent connects to with a pasted API key.
+/// The services the agent answers with, on a pasted API key that strut is
+/// given (`AutomationsClient.setModel`).
 public enum AgentProvider: String, Codable, CaseIterable, Sendable, Hashable {
     case anthropic
     case openAI = "openai"
@@ -59,19 +60,6 @@ public enum AgentProvider: String, Codable, CaseIterable, Sendable, Hashable {
     public func modelName(_ id: String) -> String {
         models.first { $0.id == id }?.name ?? id
     }
-
-    /// The client for this provider. `baseURL` replaces the provider's own
-    /// address (a local test server); nil for the real one.
-    public func client(apiKey: String, baseURL: URL? = nil) -> any ModelProvider {
-        switch self {
-        case .anthropic:
-            AnthropicProvider(apiKey: apiKey, baseURL: baseURL ?? AnthropicProvider.defaultBaseURL)
-        case .openAI:
-            OpenAICompatibleProvider(apiKey: apiKey, baseURL: baseURL ?? OpenAICompatibleProvider.openAI)
-        case .openRouter:
-            OpenAICompatibleProvider.openRouter(apiKey: apiKey, baseURL: baseURL ?? OpenAICompatibleProvider.openRouter)
-        }
-    }
 }
 
 /// A connected model: the provider, the model and the key. Kept whole in
@@ -99,8 +87,7 @@ public struct AgentCredential: Codable, Sendable, Equatable, CustomStringConvert
 }
 
 /// Where the connected model's credential is kept: this device's Keychain
-/// in the app. Read for each turn, so a key removed elsewhere stops the
-/// next one.
+/// in the app.
 public protocol AgentCredentialStore: Sendable {
     func read() throws -> AgentCredential?
     func write(_ credential: AgentCredential) throws

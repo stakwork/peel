@@ -9,8 +9,8 @@ import PeelUI
 /// and each open thread have their own (`ComposerID`); its draft, what it replies to and the files it holds
 /// live in the model, so the message menus can set them and a draft
 /// outlives the view (a thread covering its chat, another chat opened).
-/// The agent chat's (`ComposerID.agent`) takes text alone; while its reply
-/// runs, `stop` turns send into Stop.
+/// The agent's DM's takes text alone; while its reply runs, `stop` turns
+/// send into Stop.
 struct Composer: View {
     @Environment(AppModel.self) private var model
     let composer: ComposerID
@@ -77,7 +77,7 @@ struct Composer: View {
             mention: $mention, insertion: insertion, suggestionKey: handle,
             escape: {
                 // The memory beside the agent chat first: the least to lose.
-                if composer == .agent, model.memoryPanel != nil {
+                if model.isAgentChat(composer), model.memoryPanel != nil {
                     return model.escape(in: composer)
                 }
                 if let stop {

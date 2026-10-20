@@ -46,15 +46,8 @@ final class MacAgent: AgentHost {
     let agentBridge = AgentBridge()
     /// The one memory open beside the agent chat (`openMemory`), if any.
     var memoryPanel: MemoryPanel?
-    /// The agent chat's tool rows and summaries open, kept past its list.
+    /// The agent chat's tool rows and request details open, kept past its list.
     let openRows = AgentOpenRows()
-    /// Where strut reaches the agent when an automation fires (`AppModel+Automations`).
-    @ObservationIgnored var automationServer: AutomationServer?
-    /// The last server's close, which a new one waits for before taking its port.
-    @ObservationIgnored var automationStopping: Task<Void, Never>?
-    /// The token strut sends with each automation: made when the agent opens,
-    /// in memory only, the same for every server and PUT until it closes.
-    @ObservationIgnored var automationToken: String?
     /// The Automations view's list, read from strut.
     var automations = AutomationsState()
     /// What strut's secret store was last given (`AppModel.modelChanged`):
@@ -176,21 +169,6 @@ extension AppModel {
         set { macAgent.memoryPanel = newValue }
     }
 
-    var automationServer: AutomationServer? {
-        get { macAgent.automationServer }
-        set { macAgent.automationServer = newValue }
-    }
-
-    var automationStopping: Task<Void, Never>? {
-        get { macAgent.automationStopping }
-        set { macAgent.automationStopping = newValue }
-    }
-
-    var automationToken: String? {
-        get { macAgent.automationToken }
-        set { macAgent.automationToken = newValue }
-    }
-
     var strutModel: (server: MemoryServer, credential: AgentCredential?)? {
         get { macAgent.strutModel }
         set { macAgent.strutModel = newValue }
@@ -224,26 +202,7 @@ extension AppModel {
 }
 
 extension AppModel {
-    // MARK: The agent chat (docs/phases/09-agents.md, PR 5)
-
-    /// The agent's tools and prompt over the account's `engine`
-    /// (`AgentSetup`): the read tools, the send tool, and the memory tools
-    /// with a strut; the automation tools only with Peel's own, since a home
-    /// server cannot reach this Mac's `AutomationServer` (until automations
-    /// by pull, `docs/peel-brain.md`).
-    func agentSetup(_ engine: Engine, memory: MemoryServer?) -> AgentSetup {
-        AgentSetup(sending: engine, memory: memory,
-                   automations: memory.flatMap { $0.isHomeServer ? nil : automationsClient(for: $0) })
-    }
-
-    /// The agent's tools again, for where its automation tools make new
-    /// ones: the agent's bridge started or stopped.
-    func useAutomationTools() {
-        guard let engine, let agent else { return }
-        let setup = agentSetup(engine, memory: memoryServer)
-        agent.tools = setup.tools
-        agent.systemPrompt = setup.systemPrompt()
-    }
+    // MARK: The agent (docs/agent-on-strut.md)
 
     /// Opens one memory beside the agent chat: a fact or a name a memory
     /// row shows. From the panel itself it goes on from there, with Back.
@@ -271,15 +230,15 @@ extension AppModel {
         return true
     }
 
-    /// Opens the account's agent chat: `agent.sqlite` beside its database,
-    /// the connected model's key from this device's Keychain (a file on a
-    /// development profile), and the memory: the account's home server, or
-    /// the strut Peel ships, started here if it is not running (`strut(for:)`).
+    /// Opens the account's agent: `agent.sqlite` beside its database (its
+    /// name, rules and the earlier local chat), the connected model's key
+    /// from this device's Keychain (a file on a development profile), and
+    /// the memory: the account's home server, or the strut Peel ships,
+    /// started here if it is not running (`strut(for:)`), with the agent's
+    /// bridge beside it.
     func openAgent(_ profile: Profile, engine: Engine) {
         do {
             let store = try SQLiteAgentStore.open(for: profile, storage: engine.storage)
-            // One per account open, so every server and every PUT to strut agrees on it.
-            automationToken = try AutomationServer.newKey()
             do {
                 brain = try Brain.kept(in: profile.brain)
             } catch {
@@ -287,12 +246,7 @@ extension AppModel {
                 brain = nil
                 notice = PeelError.problem(error, couldNot: "read the agent's brain")
             }
-            let setup = agentSetup(engine, memory: nil)
-            let agent = AgentSession(
-                store: store, credentials: KeptCredential(item: profile.agentCredential),
-                tools: setup.tools, systemPrompt: setup.systemPrompt()
-            ) { Self.agentClient($0, profile: profile) }
-            agent.willRun = { [weak self] in self?.lookForMemory() }
+            let agent = AgentSession(store: store, credentials: KeptCredential(item: profile.agentCredential))
             agent.credentialChanged = { [weak self] in self?.modelChanged() }
             self.agent = agent
             macAgent.hasOwnStrut = Self.strut(for: profile) != nil
@@ -308,16 +262,15 @@ extension AppModel {
     }
 
     /// Gives the open agent Peel's strut while it is running, or takes it
-    /// away once it is not: its tools, prompt and automations. Looked at when
-    /// the agent opens, when the strut starts or stops, and before each
-    /// reply, which starts it again if it stopped (its port may now be
-    /// anyone's, so the key and memory text are never sent to it). A failed
-    /// start is said when `reporting`.
+    /// away once it is not: its memory, model and automations. Looked at when
+    /// the agent opens, when the strut starts or stops, and on Set up, which
+    /// starts it again if it stopped (its port may now be anyone's, so the
+    /// key is never sent to it). A failed start is said when `reporting`.
     /// With a home server, its address always, reachable or not: the memory
     /// tools then say the brain is offline, and Peel's own strut is never
     /// started in its place.
     func lookForMemory(reporting: Bool = false, restarting: Bool = true) {
-        guard let profile, let engine, let agent else { return }
+        guard agent != nil else { return }
         let memory: MemoryServer?
         switch brain {
         case _ where memoryMove?.isRunning == true:
@@ -335,11 +288,8 @@ extension AppModel {
         guard memory != memoryServer else { return }
         memoryServer = memory
         closeMemory()
-        useAutomationTools()
-        stopAutomations()
-        // First, so a model disconnected while strut was stopped leaves it before anything runs.
+        automations = AutomationsState()
         modelChanged()
-        startAutomations(profile, engine: engine)
     }
 
     // MARK: The brain (docs/peel-brain.md)
@@ -363,9 +313,7 @@ extension AppModel {
     /// home server it is copied there after the switch, in place of any
     /// there, unless this Mac's is known empty (`moveMemoryToHomeServer`;
     /// "Reconnecting" in `docs/peel-brain.md`); back to this Mac the home server's replaces this Mac's
-    /// (`bringMemoryBack`, which switches only once it is here). A reply
-    /// under way is checked before the switch is kept, so it never switches
-    /// without starting the move.
+    /// (`bringMemoryBack`, which switches only once it is here).
     func setBrain(_ new: Brain) throws {
         guard let profile else { throw PeelError("Peel's account is not open.") }
         // The move would lose the strut it reads or loads.
@@ -373,7 +321,6 @@ extension AppModel {
         let left = brain?.homeServer
         let bringing = hasOwnStrut && new == .thisMac && left != nil
         let copying = hasOwnStrut && brain == .thisMac && new != .thisMac && localHoldsMemory != false
-        if bringing || copying, agent?.isRunning == true { throw PeelError("Wait for Peel's reply to finish, then switch.") }
         if bringing, let left {
             bringMemoryBack(from: left)
             return
@@ -496,18 +443,13 @@ extension AppModel {
         }
     }
 
-    /// One move at a time, never while the agent is replying; the memory
-    /// tools are held until it ends, and how it ended (`move`'s state; nil
+    /// One move at a time; the memory is held from the agent until it ends, and how it ended (`move`'s state; nil
     /// for nothing to say) stays in Account › Brain.
     private func runMemoryMove(
         _ direction: MemoryMoveState.Direction,
         _ move: @escaping (_ progress: @escaping @Sendable (MemoryMove.Step) async -> Void) async throws -> MemoryMoveState?
     ) {
         guard memoryMove?.isRunning != true else { return }
-        guard agent?.isRunning != true else {
-            memoryMove = .failed("Wait for Peel's reply to finish, then move the memory.")
-            return
-        }
         memoryMove = .running(direction, nil)
         lookForMemory()
         macAgent.moving = Task {
@@ -532,7 +474,7 @@ extension AppModel {
 
     /// Peel's own strut for `profile`, made if there is none, and looked at
     /// again when it starts or stops. A strut that stopped is not started
-    /// again from here, only before the next reply: no crash loop.
+    /// again from here, only by the person's Set up or Try again: no crash loop.
     func useOwnStrut(_ profile: Profile) {
         if strut == nil { strut = Self.strut(for: profile) }
         strut?.onChange = { [weak self] in
@@ -568,14 +510,6 @@ extension AppModel {
         }
     }
 
-    /// The model client for `credential`; a development profile may name a
-    /// local test server with `-agentBaseURL http://127.0.0.1:<port>`.
-    nonisolated static func agentClient(_ credential: AgentCredential, profile: Profile) -> any ModelProvider {
-        let baseURL = profile.kind == .development
-            ? UserDefaults.standard.string(forKey: "agentBaseURL").flatMap(URL.init(string:)) : nil
-        return credential.provider.client(apiKey: credential.apiKey, baseURL: baseURL)
-    }
-
     /// The agent chat's settings: Account, at its Peel agent section.
     func openAgentSettings() {
         showsAgentSettings = true
@@ -587,10 +521,8 @@ extension AppModel {
         macAgent.stopMove()
         memoryMove = nil
         localHoldsMemory = nil
-        stopAutomations()
-        automationToken = nil
+        automations = AutomationsState()
         agentBridge.stop()
-        agent?.close()
         agent = nil
         closeMemory()
         memoryServer = nil

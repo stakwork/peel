@@ -2,7 +2,14 @@
 
 Last updated 2026-10-15. **v1 built** (PR #221); **system automations
 built** (Peel's half, [../system-automations.md](../system-automations.md));
-"Later" and the open questions are what is left. Builds on
+"Later" and the open questions are what is left.
+
+> **Superseded (2026-10-19).** Since Phase 1's PR 7 the person's
+> automations run on `peel-automation-run` in strut, their reports in the
+> agent's DM; PR 11 removed `AutomationServer`, the `peel-automation`
+> workflow's step and the headless Swift run described here
+> ([../agent-on-strut.md](../agent-on-strut.md), "Built: PR 11"). This file
+> is v1's build record. Builds on
 [agent-brain.md](../agent-brain.md) (the Mac is the brain, strut owns the
 graph) and strut's automations (`strut/plans/automations.md`, implemented
 2026-09-20).

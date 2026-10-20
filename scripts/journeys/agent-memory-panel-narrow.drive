@@ -3,7 +3,6 @@
 // move (rule 8: a list's identity outlives panels and widths).
 // check: memory hold=agent
 {"width": 760}
-{"agent": "script"}
 {"agent": "seed", "turns": 14}
 {"select": "Peel"}
 {"wait": 1.5}

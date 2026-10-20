@@ -7,7 +7,7 @@
     <key>com.apple.security.app-sandbox</key><true/>
     <key>keychain-access-groups</key>
     <array><string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string></array>
-    <!-- The broker, servers, LiveKit and web pages; the loopback server strut calls when an automation fires. -->
+    <!-- The broker, servers, LiveKit and web pages; the agent's bridge and strut, which Peel starts, listening on loopback. -->
     <key>com.apple.security.network.client</key><true/>
     <key>com.apple.security.network.server</key><true/>
     <key>com.apple.security.device.audio-input</key><true/>

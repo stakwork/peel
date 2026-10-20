@@ -316,7 +316,8 @@ public final class AppModel {
     /// a plain file; the window says so.
     public private(set) var profile: Profile?
     public private(set) var engine: Engine?
-    /// The account's agent chat (`AppModel+Agent`), open with the account.
+    /// The account's agent on this Mac (`AppModel+Agent`), open with the
+    /// account: its model, name and rules, and the earlier local chat.
     public var agent: AgentSession?
     /// The agent's own contact, whose DM is the agent chat
     /// (docs/agent-on-strut.md, "One conversation"), set by the Mac app; on
@@ -357,14 +358,7 @@ public final class AppModel {
             if let old, agent != nil, destination == .chat(old) { destination = .agent }
             if selectedChat == chat || selectedChat == old { rebuildChatRows() }
         }
-        if destination == .agent, let agentChat {
-            // What was typed to the local chat goes on in the DM's composer.
-            if let draft = drafts[.agent], !draft.isEmpty, (drafts[.chat(agentChat)] ?? "").isEmpty {
-                drafts[.chat(agentChat)] = draft
-                drafts[.agent] = nil
-            }
-            destination = .chat(agentChat)
-        }
+        if destination == .agent, let agentChat { destination = .chat(agentChat) }
     }
     /// Bumped to open Account › Brain's home server form, as its "Connect a
     /// home server…" or "Change" would (the offscreen driver's `brain-form`).
@@ -1575,9 +1569,9 @@ public enum LinkedTribe: Equatable, Sendable {
 }
 
 /// Where a Connect panel was opened from, so it opens beside that button:
-/// the chat's card or its error row, or the Account page's provider or key.
+/// the chat's card, the Account page's provider or key, or Automations.
 public enum AgentConnectSource: Hashable, Sendable {
-    case chat, problem, account, accountKey, automations
+    case chat, account, accountKey, automations
 }
 
 private extension AppModel.Destination {

@@ -138,8 +138,14 @@ final class MenuPresenter {
     func showPanel(_ content: AnyView, at anchor: MenuAnchor, id: UUID, edge: PopoverEdge = .leading,
                    closed: @escaping @MainActor () -> Void) {
         #if os(macOS)
-        // A trigger inside the open panel (none today) would name it; the host otherwise.
-        guard let host = NSApp.keyWindow.flatMap({ $0 === panelWindow ? $0 : nil }) ?? hostWindow else { return closed() }
+        // Always the real host window, never panelWindow itself: it is one
+        // long-lived instance reused for every panel, so it is often still
+        // NSApp.keyWindow (legitimately, because a panel is open, or stale,
+        // because close(restoringKey:)'s makeKey() could not take while the
+        // app was inactive) with no trigger inside it actually asking for
+        // that. Either way, presenting with it as its own host crashes
+        // (addChildWindow:ordered: cannot add self as child of itself).
+        guard let host = hostWindow else { return closed() }
         hideCard()
         if panelID != id { closePanel() }
         panelID = id

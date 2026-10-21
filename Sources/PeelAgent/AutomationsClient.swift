@@ -435,7 +435,13 @@ public struct AutomationsClient: Sendable {
     }
 
     func request(_ method: String, _ path: String, _ body: AgentKit.JSONValue?, what: String) async throws -> (Int, Data) {
-        guard let url = URL(string: path, relativeTo: server.base.appending(path: "/"))?.absoluteURL else {
+        // server.base has no path (http://127.0.0.1:<port>); resolving a
+        // relative reference against it directly already gives /<path>.
+        // `.appending(path: "/")` here doubled that slash (http://host//<path>),
+        // which strut's router 404s on for some routes (/secrets/:name) but
+        // not others (/steps, /workflows) -- inconsistent enough that it
+        // looked route-specific until checked against a real token.
+        guard let url = URL(string: path, relativeTo: server.base)?.absoluteURL else {
             throw PeelError("could not address \(what) on strut")
         }
         do {

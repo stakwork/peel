@@ -28,7 +28,36 @@ authoring, the orchestrator starts strut's `builder` job; the builder
 writes the workflow, proposes to publish it and proposes a schedule; you
 approve each on a card; the workflow runs on its schedule and its result
 lands in the DM. Hive's Jamie gets the same connectors by moving its MCP
-servers from Hive's database into the org's strut.
+servers from Hive's database into the org's strut. A team's connectors
+stay on the team's strut: your agent reaches a Hive workspace as a strut
+peer and asks its orchestrator, Jamie, on your own session there.
+
+## How it feels
+
+**Adding a Hive workspace and asking it to review a PR.**
+
+1. In Account › Connections, "Add a Hive workspace". Peel shows a short
+   code and opens Hive's pair page in your browser, already signed in.
+2. Hive asks "Connect this Mac to stakwork?"; you approve. Peel saves the
+   workspace as a peer of your strut and lists it: "stakwork (Hive):
+   Jamie, 14 shared workflows".
+3. In the DM: "ask stakwork to review peel#342". Your agent sees this
+   belongs to stakwork and asks first: a card, "Send this request to
+   stakwork? Review stakwork/peel#342". Allow once, or Always for
+   stakwork.
+4. Jamie, on stakwork's strut, starts a review job with the team's
+   GitHub access. Your agent says "stakwork is reviewing it".
+5. When the job ends, its result arrives in the DM, from stakwork:
+   "Two issues: …", with links that open through your strut.
+
+**Adding Gmail and asking about an email.**
+
+1. In Connections, Gmail › Sign in with Google. You pick your account and
+   allow read and draft. Gmail shows Connected, on for the Assistant.
+2. In the DM: "did Evan reply about the strut pin?" The agent searches
+   Gmail and answers with the thread's gist and a link.
+3. "Reply that Thursday works." The agent drafts it and a card shows the
+   reply in full: To, Subject, the text. Send, Deny. Send sends it once.
 
 ## Tom's direction (2026-10-22)
 
@@ -68,7 +97,7 @@ step, or an authored workflow's `exec` step with `secretsEnv:
 `chats.*` reads. The bridge checks only the token, the request id and the
 kind, not which run asks (`runner/src/bridge/device.rs:69-75`), and the
 Mac answers reads without a card (`DeviceActions.swift:78`). It can also read the model key and every
-connector token. Sealing `sphinx/*` does not stop that. Section 6 closes
+connector token. Sealing `sphinx/*` does not stop that. Section 7 closes
 it.
 
 ## 1. The connector model
@@ -90,11 +119,11 @@ requests are only for what lives on your devices.
 | Piece | Exists | New |
 |---|---|---|
 | Secret store | `PUT/DELETE /secrets/:name`, `GET /secrets` (names only); per-person `/actors/:actor/secrets` (person's value first, then the deployment's) | Nothing |
-| Steps as tools | `agentTools` globs; the host delta (`STRUT_HOST_CONFIG`: `job`, `orchestrator`, `builder`, each `{tools, approve, system, model}`, `peer: false` only on the builder; and `automation: {workflow, approve, grants}`) (`src/server.ts:35-91`) | `builder.reach` (section 6) |
+| Steps as tools | `agentTools` globs; the host delta (`STRUT_HOST_CONFIG`: `job`, `orchestrator`, `builder`, each `{tools, approve, system, model}`, `peer: false` only on the builder; and `automation: {workflow, approve, grants}`) (`src/server.ts:35-91`) | `builder.reach` (section 7) |
 | Approval | `approve:` on an agent records a proposal instead of running the step; `decide` runs it in code with the run's own secrets and MCP servers | MCP tools can be named in `approve:` |
 | MCP | Per launch, HTTP, masked headers, inherited by child runs | **A registry**: `GET/PUT/DELETE /mcp-servers/:name { url, tokenSecret?, headerSecrets?, toolFilter? }`, values by secret name; grants name `mcp/<server>/*` |
 | Discovery | `GET /steps` returns `{core, workspace}` of `{type, source, description}` | Each step's `secrets` (names it reads) and `effect` (`read`/`write`), for the Connections screen and default approvals |
-| Secret scoping | None | Code the AI published reads only the secrets its approved reach names (section 6) |
+| Secret scoping | None | Code the AI published reads only the secrets its approved reach names (section 7) |
 | Health | `GET /health` only; an unreachable MCP server is skipped with a log line | `POST /mcp-servers/:name/test` (a `tools/list` probe); a step family is "connected" when its secrets are set |
 
 That is three strut additions (registry, step metadata, secret scoping)
@@ -121,7 +150,7 @@ account (`Profile.strutKey`). Peel's Mac app writes them on loopback and
 never keeps a copy. They never travel in a Sphinx message
 ([agent-architecture.md](agent-architecture.md)). In Hive, a person's own
 token is an actor secret and an org's is a deployment secret on the org's
-strut (section 4).
+strut (section 5).
 
 ### Grants: who gets which connector
 
@@ -129,7 +158,7 @@ strut (section 4).
 |---|---|---|
 | The orchestrator (the DM) | `orchestrator.tools` in the host delta | "Assistant" |
 | Jobs (`job`) | `job.tools` in the host delta | "Jobs" |
-| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 6) | "Workflows" |
+| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 7) | "Workflows" |
 | The builder itself | `builder.tools` (`meta/*`, `app/*` and graph and job reads); no connectors | None |
 
 A toggle rewrites `host-config.json`, which strut reads at boot, so a
@@ -149,7 +178,7 @@ One gate: strut's proposals.
 - **Sends as you and device writes** keep Peel's own card and send grants
   (Phase 1). They are already sealed and approved on the Mac.
 
-A proposal reaches you as a card in the DM (section 6, "The card").
+A proposal reaches you as a card in the DM (section 7, "The card").
 "Always allow" takes the tool out of that agent's `approve:` list in the
 delta, so it runs without a card next time; never for a send, anything
 that spends, or a publish.
@@ -162,11 +191,14 @@ connectors and this Mac's.
 ```
 Connections
   Gmail        tom@…         Connected       Assistant ● Jobs ● Workflows ○
-  Linear       MCP           Connected       Assistant ● Jobs ● Workflows ●
+  Notion       MCP           Connected       Assistant ● Jobs ● Workflows ●
   Slack        —             Needs a token   [Paste token]
   GitHub       tomsmith8     Connected       Assistant ○ Jobs ● Workflows ○
   Claude Code  this Mac      Signed in       Jobs ●
-  Hive         MCP           Error: 401      [Replace token]
+  Linear       MCP           Error: 401      [Replace token]
+  ─ Hive workspaces ─
+  stakwork     Jamie · 14 shared workflows   Paired   Asks first ●  [Remove]
+  [+ Add a Hive workspace]
   ─ On this Mac ─
   Calendar     EventKit      Allowed         Assistant ● Jobs ●  (never workflows)
   Reminders    EventKit      Not allowed     [Allow access]
@@ -186,6 +218,8 @@ Connections
   shows its tools with each one's gate (Asks first / Runs).
 - **Toggles** per agent, as in section 1. Local connections have no
   Workflows toggle: device steps are sealed from authored workflows.
+- **Hive workspaces** are peers, not connectors (section 6): paired, not
+  given a token; one switch, whether a request to it asks first.
 - **Status:** Connected, Needs a token, Error (the last failure's words,
   from the probe or the last run), Off. No polling: checked when the
   screen opens and after each change.
@@ -246,7 +280,7 @@ verification before anyone else uses it. Scopes: `gmail.readonly` and `gmail.com
 
 Since mail goes from Google to your own strut and nowhere else, Peel's
 assessment burden should be the light one. Hive's is not: its strut runs
-on Stakwork's swarms (section 4).
+on Stakwork's swarms (section 5).
 
 ## 4. The rest of Tom's list
 
@@ -255,7 +289,7 @@ on Stakwork's swarms (section 4).
 | Mac Calendar | `calendar.*` device requests (designed in agent-on-strut.md, PR 8, dropped from Phase 1) | Reads answered; writes on the card |
 | Mac Reminders | New `reminders.*` device requests, the same EventKit permission path | `list`, `create`, `complete`; writes on the card |
 | Claude Code, Codex | strut's `acp/prompt` step (pinned `claude-agent-acp` and `codex-acp` presets, `acp/prompt.ts:35-37`): a local coding agent with its own login on the Mac. On strut main, not at Peel's pin: it arrives with P1 | No strut secret: the CLI's own sign-in. Grant to jobs only. Whether it runs inside Peel's sandboxed strut is open question 6 |
-| Jamie, Hive | Hive's `/mcp` endpoint registered as an MCP server, with a workspace API key | Gives the orchestrator Hive's org tools. strut-to-strut (`strut/run-workflow` on a peer) is the other path, for running a Hive swarm's workflow |
+| Jamie, Hive | A strut peer: the org's strut, called with `strut/run-workflow` (section 6) | The team's connectors and credentials stay on the team's strut. Hive's `/mcp` as an MCP server is a fallback for Hive's own org tools |
 
 ## 5. Hive alignment
 
@@ -287,7 +321,97 @@ The steps:
 database". That is a weaker promise than Peel's, and Gmail there needs
 Google's full assessment. Open question 3.
 
-## 6. Peel's agent authoring workflows
+## 6. Peers: a Hive workspace (Jamie)
+
+A team's connectors and credentials stay on the team's strut. Your agent
+does not copy them; it calls that strut as a **peer** and asks its
+orchestrator, Jamie, which uses them there. This is strut's own plan,
+`plans/chained-orchestrators.md` (ruled with Evan, 2026-10-22), with Peel
+as "the desktop app". Most of strut's half is built.
+
+### What strut already has
+
+| Piece | State |
+|---|---|
+| Peers on file: `PUT/GET/DELETE /peers/:id { baseUrl, token, label, description, repos }`, in an encrypted `peers.json`; the token is readable by nothing, steps get a capability that names a peer (`src/peers.ts`) | Built |
+| `strut/list-peers` and `strut/run-workflow { peer, workflow, input, wait, room }`, both granted to the orchestrator (`orchestrator.yaml`) | Built |
+| Caller-pulled: the caller launches, then reads the peer's event stream and reattaches with `?skip=N`, so a strut behind NAT (your Mac) can call a cloud one | Built |
+| `peer: true` (any peer may launch) and `peer: person` (only a person's credential); `orchestrator.yaml` is `peer: person` | Built (strut#274) |
+| Person tokens: `POST /peers/tokens { actor, days }` on a standalone strut; a `lab:peer` JWT with a `sub` under stakgraph (stakgraph#1811). The actor is the credential's subject, never a header | Built (strut#274) |
+| The person's session: a person-launched turn may open `<actor>/…`, so `<person>/<org>` is one conversation with Jamie on the web and from your Mac | Built (strut#274) |
+| Rooms: `callback: { room: true }` delivers `run.end` and `job.update` to a WebSocket room per person on the peer, buffered while you are away (`src/rooms.ts`) | Built (strut#276) |
+| Peer files read through your own strut: `GET /peers/:id/jobs/:job/files/…` | Built |
+| MCP never crosses: `strut/run-workflow` forwards no `mcp`; a host's MCP tools ride its own launches only | Built, by design |
+| Hive's pairing (device code, person-scoped `lab:peer` tokens, Jamie's session id `<person>/<org>`) | Not built (Hive) |
+
+**Not `peer: true` for Jamie.** strut ruled `peer: person` for the
+orchestrator: through `job/start` a turn starts a job whose agent has
+bash, and Hive's nightly cron gives a peer token to every other swarm of
+the org, so `peer: true` would give any spoke a shell on central. A
+person can already start the same job through Jamie, so the orchestrator
+is open to people, not to struts. "Ask Jamie" is already shared on
+strut main; Hive's swarms get it when stakgraph moves its strut pin.
+
+### The flow
+
+1. **Pair.** Strut's ruled shape is the OAuth device flow: in Peel,
+   "Add a Hive workspace" asks Hive for a code and opens Hive's pair page;
+   you approve the orgs; Peel polls Hive and gets one peer record per org
+   (`{ id: <org slug>, baseUrl: <central>/lab, token: lab:peer with sub =
+   you, label, description, repos }`) and writes each with `PUT /peers/:id`
+   on your strut. Hive also gives Peel a device credential, and Peel
+   renews the week-long peer tokens daily through it. Tom's "Connect from
+   Peel" link is the fallback with no device flow: Hive (or a standalone
+   strut's `POST /peers/tokens`) shows a link holding the address and a
+   person token, and Peel's "Add" takes it pasted.
+2. **List.** Peel shows each workspace with the workflows it opens to a
+   person (`peer: true` or `person`). Peel never holds the peer's token,
+   and strut's read-through serves only files today, so this needs one
+   more read-through, `GET /peers/:id/workflows`, filtered to those (S6).
+   The orchestrator sees one line per peer from `strut/list-peers`
+   (label, description, repos).
+3. **Ask.** Peel's orchestrator section (strut's
+   `personalOrchestratorSystem(person)`) says when a request belongs to an
+   org: run that org's orchestrator with `strut/run-workflow { peer,
+   workflow: orchestrator, input: { prompt, session: <person>/<org> },
+   room: true }` and relay its reply word for word.
+4. **The card.** Peel's delta lists `strut/run-workflow` in
+   `orchestrator.approve`. It is a registry step, so each call becomes a
+   proposal (checked: `approve:` gates any granted registry step,
+   `agent.ts:703-745`). The proposal reaches the Mac as an `approve`
+   request (R1) and shows "Send this request to stakwork?" with the
+   prompt. Two things the check found:
+   - **"Always for this workspace" is not a strut feature.** `approve:`
+     gates a step type, not its arguments. Peel keeps it as an
+     `ApprovalRules` rule keyed by `(strut/run-workflow, peer)` on the
+     Mac, which answers the `approve` request without showing the card.
+     No strut change.
+   - **An accepted call's answer comes back on the next turn.** `decide`
+     runs the step in code; its result reaches the agent as a
+     `[proposal-result]` line before the session's next prompt. So after
+     `decide` the bridge starts a turn, as it does for a late device
+     result, and the agent relays Jamie's reply.
+5. **Results.** Jamie's reply comes back in the turn. Jobs Jamie starts
+   finish later: they post to your room on the org's strut. Strut's plan
+   has the desktop app join the room; in Peel that is the **bridge**,
+   which runs beside strut on the brain (and on the home server in Phase
+   2). It joins each peer's room and turns each `run.end` into a DM
+   message from that workspace and a wake turn, the way automation
+   results land today. Deliverables are tagged `{ peer, job }` and open
+   through your strut's read-through.
+
+### Identity
+
+Your strut never says who you are; the credential does. On Hive's strut
+the actor is the pairing token's `sub`: Hive's id for you, the actor Hive
+already uses for your Jamie turns, delegations and actor secrets. So a
+request from your Mac bills to you, reads your actor secrets there, and
+opens your session `<person>/<org>`. A plain peer key with
+`x-strut-actor: tom` cannot launch the orchestrator (403) or join your
+room. What Hive uses for the `sub` (its actor name today) is a question
+for Evan.
+
+## 7. Peel's agent authoring workflows
 
 ### The flow
 
@@ -372,7 +496,7 @@ assistant made**, below Yours and System:
 On the iPhone, the same list read only in Phase 1, from the Mac's
 snapshot; pause and delete in Phase 2.
 
-## 7. PR plan
+## 8. PR plan
 
 Risk tiers are AGENTS.md's ("How a change ships"). strut and runner PRs
 follow their own review; the tier is what Peel's table would give. **E**
@@ -397,11 +521,15 @@ marks a PR that needs Evan's agreement first.
 | H1 | hive | MCP settings write to the org's strut too (registry and secrets) | A server added in Hive appears in `GET {lab}/mcp-servers` | high (secrets) | S3 |
 | H2 E | hive + stakgraph | Jamie on strut gets `mcp/*` in the orchestrator and job deltas, writes in `approve:`; proposals on `StrutProposalCard` | Jamie on strut lists Linear issues through the org's server; a write asks first | medium | H1 |
 | H3 | hive | Remove `OrgMcpServer` once the Vercel Jamie retires | Builds; no reader left | medium | H2, Vercel Jamie retired |
+| S6 E | strut | `GET /peers/:id/workflows`: the peer's workflows open to a person, read through with the peer's token | Two struts: the list shows `peer: true` and `person` workflows and nothing else; the token never leaves | low | — |
+| R2 E | sphinx (runner) | The bridge joins each peer's room with that peer's token, delivers `run.end` to the DM as a message from the workspace and starts a wake turn; starts a turn after a `decide` that ran a step | On a two-strut stack: a job started on the peer lands in the DM once; the bridge down through it still delivers on reconnect | high (untrusted input) | R1 |
+| P8 | peel | Peers: "Add a Hive workspace" (the device flow, or a pasted link), saved with `PUT /peers/:id`, token renewal; the workspace and its shared workflows in Connections; `strut/run-workflow` in `orchestrator.approve` with the "Send this request to …?" card and Always for this workspace as a Mac rule; `personalOrchestratorSystem` in Peel's section; results in the DM | Two struts (one standing in for Hive): "ask stakwork to review peel#342" shows the card once, Always skips it next time, the review job's result arrives in the DM from stakwork | high (credentials, approvals) | P1, R1, R2, S6; H4 for real Hive |
+| H4 E | hive | Pairing for Peel: the device code and pair page, a device credential, person-scoped `lab:peer` minting (`sub` = the person), "my strut peers" renewal, a "Connect from Peel" link as the fallback; Jamie's session id `<person>/<org>`; stakgraph's strut pin past strut#274 so Jamie's orchestrator is shared `peer: person` | From Peel, pairing adds the org; a turn from the Mac and one from Hive's web share one session; a revoked device stops renewing | high (credentials) | — |
 
 ```
-first   S1  S2  S3  S4  R1  P1  P6     (P1 safe alone: proposals just wait)
-then    S5  P2  P3  H1
-then    P4  P5  H2
+first   S1  S2  S3  S4  S6  R1  P1  P6  H4     (P1 safe alone: proposals just wait)
+then    S5  P2  P3  H1  R2
+then    P4  P5  H2  P8
 then    P7  H3
 ```
 
@@ -420,8 +548,11 @@ Paste as they are:
 9. Can strut reload `STRUT_HOST_CONFIG` without a restart, or is a restart per toggle fine?
 10. For Hive: does stakgraph's `createStrut` take a host delta, so Jamie's orchestrator can be granted `mcp/*`?
 11. Should runner also refuse a device request from a run it did not launch or call back for (today it checks only the token, id and kind)?
+12. strut ruled `peer: person`, not `peer: true`, for the orchestrator: is that the "Ask Jamie" Hive shares, and when does stakgraph's strut pin reach strut#274 and #276?
+13. For peer calls from Peel, the actor is the pairing token's `sub`: which id does Hive put there (its actor name, as in `x-strut-actor`), so it matches Jamie's delegations, actor secrets and `<person>/<org>` session?
+14. OK to add `GET /peers/:id/workflows` (a peer's person-open workflows, read through), so Peel can list what a Hive workspace shares?
 
-## 8. Open questions
+## 9. Open questions
 
 1. **Two approvals or one card?** Publish and schedule are two proposals.
    *Recommended:* one card that accepts both in order, with "Publish

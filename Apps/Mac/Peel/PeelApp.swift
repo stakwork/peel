@@ -67,6 +67,9 @@ struct PeelApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            CommandGroup(after: .appSettings) {
+                DictationMenuItem()
+            }
             // ⌘F from wherever the cursor is (`AppModel.find`). Never
             // `.disabled` by the model: a command does not follow it.
             CommandGroup(after: .textEditing) {
@@ -165,6 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OffscreenDriver.start { [weak self] in self?.model }
+        // System-wide dictation: starts its hotkey once its permissions are in.
+        DictationController.shared.start()
         // A key press, click or scroll in Peel's windows is use, which puts
         // the PIN timeout off.
         NSEvent.addLocalMonitorForEvents(
@@ -208,7 +213,12 @@ struct RootView: View {
         case .ready:
             MainView()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if model.notifier.offersPermission { NotificationOffer() }
+                    VStack(spacing: 0) {
+                        #if os(macOS)
+                        if DictationController.shared.showsOffer { DictationOffer() }
+                        #endif
+                        if model.notifier.offersPermission { NotificationOffer() }
+                    }
                 }
         }
     }

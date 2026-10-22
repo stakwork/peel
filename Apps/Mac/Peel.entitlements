@@ -7,5 +7,7 @@
     <!-- Calls: hardened runtime blocks the devices without these, even once allowed. -->
     <key>com.apple.security.device.audio-input</key><true/>
     <key>com.apple.security.device.camera</key><true/>
+    <!-- The assistant's Calendar and Reminders requests (EventKit): hardened runtime and the sandbox block them without it. -->
+    <key>com.apple.security.personal-information.calendars</key><true/>
 </dict>
 </plist>

@@ -368,7 +368,7 @@ public struct AgentRequest: Equatable, Sendable {
     public var args: PeelCore.JSONValue?
     public let status: ControlEnvelope.Status?
     /// Whether it waits on your answer on the Mac's card: a send in
-    /// conversation, an approval, a change to your calendar. An
+    /// conversation, an approval, a change to your calendar or reminders. An
     /// automation's send goes on its grant.
     public let asks: Bool
     /// The answer's text (`result.text`), as this Mac sent it.
@@ -399,7 +399,7 @@ public struct AgentRequest: Equatable, Sendable {
         var text: String?
         if case .object(let result)? = answer?.result, case .string(let said)? = result["text"] { text = said }
         self.init(kind: kind, args: request.args, status: answer?.status,
-                  asks: kind == "approve" || kind == "send" && !automation || kind.hasPrefix("calendar.") && kind != "calendar.events",
+                  asks: kind == "approve" || kind == "send" && !automation || DeviceKind.calendarChanges.contains(kind),
                   text: text, reason: answer?.error,
                   notAfter: request.notAfter)
     }
@@ -432,7 +432,12 @@ public struct AgentRequest: Equatable, Sendable {
         case "send": "Send a message"
         case "approve": "Asked for your approval"
         case "calendar.events": "Read your calendar"
+        case "calendar.create": "Add to your calendar"
+        case "calendar.delete": "Delete from your calendar"
         case let kind where kind.hasPrefix("calendar."): "Change your calendar"
+        case "reminders.list": "Read your reminders"
+        case "reminders.create": "Add a reminder"
+        case "reminders.complete": "Complete a reminder"
         default: "Asked your Mac"
         }
     }

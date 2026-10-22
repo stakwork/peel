@@ -583,8 +583,18 @@ is a short plan. Update the status and the journal when you finish something.
   - `DeviceActions.swift` — the device requests that act as you: `send`
     (the send tool's plan on its card through `ApprovalGate` and its
     rules, or an automation's send grant with `[Agent] ` first) and
-    `approve` (the card alone, which may keep a send grant); a card past
+    `approve` (the card alone, which may keep a send grant), and Calendar
+    and Reminders changes on the same card (`DeviceCalendar`); a card past
     the request's time is `expired`; every other kind goes to `DeviceReads`
+  - `DeviceCalendar.swift` — Calendar and Reminders by device request:
+    `calendar.events` and `reminders.list` read at once (between the
+    `ChatData` markers); `calendar.create`, `.update`, `.delete`,
+    `reminders.create` and `.complete` worked out into a card first; access
+    asked with macOS's prompt once, and said plainly when off; a create
+    carries a marker URL so the same request never makes a second
+  - `CalendarStore.swift` — `CalendarStore`: EventKit (`EventKitCalendar`,
+    an actor; nothing EventKit leaves it) or `StandInCalendar` (in memory,
+    never asks macOS: the tests and the offscreen checks)
   - `ChatDirectory.swift` — a chat by the name the agent gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess
@@ -747,7 +757,10 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters), `DeviceActionsTests`
   (sends and approvals by device request: the card, once, deny, expiry,
-  "Always allow", the price cap, send grants),
+  "Always allow", the price cap, send grants), `DeviceCalendarTests`
+  (Calendar and Reminders on a stand-in: reads with no card, a reminder
+  made once and only when allowed, access off in words, a moved event
+  keeping its length, refusals before the card),
   `BrainTests` (the pairing link, what is kept, `/health` read),
   `MemoryMoveTests` (both moves against stub struts: what goes where,
   refusals in words, counts that differ, a home server gone mid-way, the
@@ -780,7 +793,8 @@ is a short plan. Update the status and the journal when you finish something.
   card), `DeviceRequestJourneys` (the Mac answers its agent's
   `chats.unseen` once, a repeat from the ledger, strangers nothing; sends
   as you once and only when allowed, `expired`, `unknown` after a stop
-  mid-send); `FundDev` (the bank's half of
+  mid-send; a calendar read and one reminder, also after a stop once it
+  was made); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the

@@ -198,6 +198,79 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
+        /// Calendar and Reminders from the DM (docs/connectors-and-authoring.md,
+        /// P6), on a stand-in calendar. "What's on Thursday?": the model calls
+        /// `calendar/events`, the Mac answers with no card, and the reply names
+        /// the event. "Remind me to call Sam at 5": `reminders/create`, one card
+        /// on the Mac, and exactly one reminder.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func thursdayIsReadAndAReminderIsAddedOnACard() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                // Whether the turn for the newest of `asked` already has a tool's result.
+                func answered(_ asked: String) -> Bool {
+                    guard let at = body.range(of: asked, options: .backwards) else { return false }
+                    return body[at.upperBound...].contains(#""type":"tool_result""#)
+                }
+                if body.contains("call Sam at 5, please") {
+                    guard answered("call Sam at 5, please") else {
+                        return Self.toolUse("reminders_create", ["title": "Call Sam", "due": "2026-10-22T17:00:00"])
+                    }
+                    return Self.toolUse("final_answer", ["text": "I'll remind you.", "artifacts": []])
+                }
+                guard answered("What's on Thursday?") else { return Self.toolUse("calendar_events", ["from": "2026-10-29", "to": "2026-10-29"]) }
+                return Self.toolUse("final_answer", ["text": body.contains("Dentist") ? "Thursday: the dentist at 2." : "Nothing.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-calendar-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator()
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            try await client.useBridge(try #require(bridge.server))
+            let thursday = try #require(DeviceCalendar.time("2026-10-29T14:00")?.date)
+            let calendar = StandInCalendar(events: [CalendarEvent(id: "e1", title: "Dentist", start: thursday,
+                                                                  end: thursday.addingTimeInterval(3600))])
+            let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
+            let rules = ApprovalRules(store: try SQLiteAgentStore(path: alice.profile.directory.appendingPathComponent("agent.sqlite").path, device: "mac"))
+            let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: calendar) { _, approval in
+                cards.withLock { $0.append(approval.intent) }
+                return .allowOnce
+            }
+            await alice.engine.answerDeviceRequests(with: actions.handler)
+            try await alice.engine.setDeviceAgent(agent)
+
+            func reply(_ text: String) async throws {
+                try await eventually("\(text)", timeout: .seconds(60)) {
+                    try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == text }
+                }
+            }
+            try await alice.engine.sendText("What's on Thursday?", to: agent)
+            try await reply("Thursday: the dentist at 2.")
+            #expect(cards.withLock { $0 }.isEmpty)
+
+            try await alice.engine.sendText("remind me to call Sam at 5, please", to: agent)
+            try await reply("I'll remind you.")
+            #expect(cards.withLock { $0 }.map(\.action) == ["Add the reminder \u{201C}Call Sam\u{201D}"])
+            let made = await calendar.allReminders
+            #expect(made.map(\.title) == ["Call Sam"] && made.first?.due == DeviceCalendar.time("2026-10-22T17:00")?.date)
+
+            for person in [alice, other] { await person.close() }
+        }
+
         /// Milestone 2, "it acts for you" (docs/agent-on-strut.md, PR 7). Alice
         /// asks her agent to post to her tribe in a couple of minutes: one card
         /// on her Mac, the automation and its grant. At that minute strut fires
@@ -256,7 +329,7 @@ extension Journeys {
             try await setup.useBridge(running)
             let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
             let rules = ApprovalRules(store: try SQLiteAgentStore(path: alice.profile.directory.appendingPathComponent("agent.sqlite").path, device: "mac"))
-            let actions = DeviceActions(engine: alice.engine, rules: rules) { _, approval in
+            let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar()) { _, approval in
                 cards.withLock { $0.append(approval.intent) }
                 return .allowOnce
             }

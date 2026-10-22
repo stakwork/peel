@@ -19,9 +19,9 @@ struct AttachmentView: View {
             // Someone else's paid attachment: nothing of it is fetched until bought.
             LockedAttachment(row: row, state: purchase)
         } else if row.images.count > 1 {
-            ImageGrid(images: row.images, tileMenu: tileMenu)
+            ImageGrid(images: row.images, tileMenu: tileMenu, rightAligned: row.message.fromMe)
         } else {
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            VStack(alignment: row.message.fromMe ? .trailing : .leading, spacing: Theme.Space.xs) {
                 // What the bytes turned out to be once downloaded: a fake video is a file.
                 switch model.attachmentKind(of: row.message) {
                 case .image: ImageTile(message: row.message, group: [row.message], index: 0, size: nil)
@@ -93,6 +93,7 @@ enum AttachmentFormat {
 struct ImageGrid: View {
     let images: [Message]
     var tileMenu: (@MainActor (Message) -> [MenuEntry])?
+    var rightAligned: Bool = false
 
     private static let tile: CGFloat = 148
 
@@ -100,7 +101,7 @@ struct ImageGrid: View {
         let shown = Array(images.prefix(4))
         // Up to 148 pt a tile, narrower in a narrow column (the thread panel).
         let columns = Array(repeating: GridItem(.flexible(minimum: 60, maximum: Self.tile), spacing: Theme.Space.xs), count: 2)
-        LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Space.xs) {
+        LazyVGrid(columns: columns, alignment: rightAligned ? .trailing : .leading, spacing: Theme.Space.xs) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
                 ImageTile(message: message, group: images, index: index, size: Self.tile)
                     .peelMenu(source: "m\(message.id ?? 0)") { tileMenu?(message) ?? [] }
@@ -118,7 +119,7 @@ struct ImageGrid: View {
                     }
             }
         }
-        .frame(maxWidth: Self.tile * 2 + 4, alignment: .leading)
+        .frame(maxWidth: Self.tile * 2 + 4, alignment: rightAligned ? .trailing : .leading)
     }
 }
 
@@ -322,9 +323,11 @@ struct FileCard: View {
     var body: some View {
         let handle = model.attachment(message.id ?? 0)
         let name = handle.downloaded?.fileName ?? message.fileName
+        let rightAligned = message.fromMe
         HStack(spacing: Theme.Space.md) {
-            AttachmentMark(message: message, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
+            if rightAligned { action(handle); Spacer(minLength: 8) }
+            if !rightAligned { AttachmentMark(message: message, size: 40) }
+            VStack(alignment: rightAligned ? .trailing : .leading, spacing: 2) {
                 // The name comes with the download; until then, what it says it is.
                 Text(name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
                     .font(Theme.font(14, .medium))
@@ -336,12 +339,12 @@ struct FileCard: View {
                     .muted()
                 AttachmentStatus(message: message, handle: handle)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: 8)
-            action(handle)
+            .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
+            if rightAligned { AttachmentMark(message: message, size: 40) }
+            if !rightAligned { Spacer(minLength: 8); action(handle) }
         }
         // The name truncates in the middle.
-        .attachmentCard()
+        .attachmentCard(rightAligned: rightAligned)
         .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .onTapGesture { if model.opensAsPage(message) { openPage() } }
     }
@@ -451,12 +454,12 @@ extension View {
     }
 
     /// A file or audio card: an inset `Card`, as wide as a column allows,
-    /// up to 300 pt.
-    func attachmentCard() -> some View {
+    /// up to 300 pt. On the trailing edge for yours (the alignment experiment).
+    func attachmentCard(rightAligned: Bool = false) -> some View {
         Card(.inset) {
             padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
-                .frame(maxWidth: 300, alignment: .leading)
+                .frame(maxWidth: 300, alignment: rightAligned ? .trailing : .leading)
         }
         .foregroundStyle(Theme.text)
     }

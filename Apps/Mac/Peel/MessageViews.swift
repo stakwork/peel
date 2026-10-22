@@ -241,6 +241,31 @@ struct MessageRow: View, Equatable {
 
     private var message: Message { row.message }
 
+    /// The gutter: the photo on a run's first row, the time on hover after
+    /// it. On the right for yours (the alignment experiment), so hover-time
+    /// sits against the text rather than out past it.
+    @ViewBuilder private var avatarColumn: some View {
+        Group {
+            if row.startsRun, inAgentDM, !message.fromMe {
+                PeelLogo(size: Self.avatarSize)
+            } else if row.startsRun {
+                Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: Self.avatarSize,
+                       hue: row.sender.hue)
+                    .personCard(PersonRef(row))
+            } else {
+                Text(Formatting.time(message.date))
+                    .font(Theme.font(11))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.secondaryText)
+                    .opacity(hovering ? 1 : 0)
+                    .padding(.top, 3)
+                    .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.sender.name) ?? "")
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(width: Self.avatarSize, alignment: row.startsRun ? .center : (message.fromMe ? .leading : .trailing))
+    }
+
     var body: some View {
         // A pending send becomes retryable after a timeout, with no change to
         // the row itself, so those rows redraw once when it passes.
@@ -256,28 +281,13 @@ struct MessageRow: View, Equatable {
     private func content(now: Date) -> some View {
         let retryable = message.isRetryable(now: now)
         let openThread = row.summary.map { model.openThread == ThreadRef(chat: $0.chat, uuid: $0.uuid) } ?? false
+        // Experiment: yours at the right edge instead of the left — the
+        // photo past the text, headers and wrapped lines flush right too
+        // (no bubble, still a flat row).
         return HStack(alignment: .top, spacing: Self.gutterSpacing) {
-            // The gutter: the photo on a run's first row, the time on hover after it.
-            Group {
-                if row.startsRun, inAgentDM, !message.fromMe {
-                    PeelLogo(size: Self.avatarSize)
-                } else if row.startsRun {
-                    Avatar(name: row.sender.avatarName, url: row.sender.photoURL, size: Self.avatarSize,
-                           hue: row.sender.hue)
-                        .personCard(PersonRef(row))
-                } else {
-                    Text(Formatting.time(message.date))
-                        .font(Theme.font(11))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .opacity(hovering ? 1 : 0)
-                        .padding(.top, 3)
-                        .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.sender.name) ?? "")
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(width: Self.avatarSize, alignment: row.startsRun ? .center : .trailing)
-            VStack(alignment: .leading, spacing: 3) {
+            if message.fromMe { Spacer(minLength: 0) }
+            if !message.fromMe { avatarColumn }
+            VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 3) {
                 if row.startsRun {
                     RunHeader(row: row)
                 }
@@ -304,8 +314,9 @@ struct MessageRow: View, Equatable {
                     WaitingForServer(since: message.date, what: message.type == MessageType.call ? "Call" : "Message")
                 }
             }
-            .frame(maxWidth: Self.textWidth, alignment: .leading)
-            Spacer(minLength: 0)
+            .frame(maxWidth: Self.textWidth, alignment: message.fromMe ? .trailing : .leading)
+            if message.fromMe { avatarColumn }
+            if !message.fromMe { Spacer(minLength: 0) }
         }
         .padding(.horizontal, Theme.Space.xl)
         // Inside a run, 5 pt between messages: more than a message's 3 pt
@@ -570,9 +581,9 @@ struct MessageContent: View {
                 .italic()
                 .foregroundStyle(Theme.secondaryText)
         } else {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 6) {
                 if let quote = row.quote {
-                    QuoteView(quote: quote)
+                    QuoteView(quote: quote, rightAligned: message.fromMe)
                         .rowMenu(row.id, menu)
                 }
                 if let giphy = row.giphy {
@@ -589,13 +600,14 @@ struct MessageContent: View {
                     CallCard(row: row, link: call)
                         .rowMenu(row.id, menu)
                 } else if !text.isEmpty {
-                    MessageText(text: text, chat: message.chat, agentLinks: inAgentDM && !message.fromMe)
+                    MessageText(text: text, chat: message.chat, agentLinks: inAgentDM && !message.fromMe,
+                                rightAligned: message.fromMe)
                         .rowMenu(row.id, menu)
                 }
                 // The card's menu copies the link it took from the text.
                 switch row.card?.link {
-                case .tribe(let link): TribeLinkCard(link: link).rowMenu(row.id, menu)
-                case .contact(let info): ContactLinkCard(info: info).rowMenu(row.id, menu)
+                case .tribe(let link): TribeLinkCard(link: link, rightAligned: message.fromMe).rowMenu(row.id, menu)
+                case .contact(let info): ContactLinkCard(info: info, rightAligned: message.fromMe).rowMenu(row.id, menu)
                 case nil: EmptyView()
                 }
             }
@@ -615,6 +627,9 @@ extension View {
 struct QuoteView: View {
     @Environment(\.goToMessage) private var goTo
     let quote: Quote
+    /// Experiment: mirrored for yours, so a reply's quote reads right to
+    /// left like the rest of the row.
+    var rightAligned: Bool = false
 
     var body: some View {
         switch quote {
@@ -622,15 +637,16 @@ struct QuoteView: View {
             OriginalNotAvailable()
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
                 .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         case .message(let parent, let sender):
             Button { goTo(parent) } label: {
                 HStack(spacing: Theme.Space.sm) {
-                    if parent.attachmentKind != nil {
+                    if rightAligned { Spacer(minLength: 0) }
+                    if !rightAligned, parent.attachmentKind != nil {
                         AttachmentMark(message: parent, size: 32)
                     }
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: rightAligned ? .trailing : .leading, spacing: 1) {
                         Text(sender.label)
                             .font(Theme.font(12, .semibold))
                             .foregroundStyle(sender.hue.name)
@@ -639,11 +655,14 @@ struct QuoteView: View {
                             .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
+                    if rightAligned, parent.attachmentKind != nil {
+                        AttachmentMark(message: parent, size: 32)
+                    }
+                    if !rightAligned { Spacer(minLength: 0) }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
                 .background(Theme.quote, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .contentShape(Rectangle())
             }

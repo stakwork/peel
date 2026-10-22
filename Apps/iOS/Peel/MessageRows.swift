@@ -14,6 +14,9 @@ enum RowMetrics {
     static let gutter: CGFloat = 10
     /// Where a row's text starts: the side gutter, the photo column and its gap.
     static var textInset: CGFloat { Theme.phoneGutter + avatar + gutter }
+    /// Experiment: caps how wide a sent row's content gets, so it can sit
+    /// at the trailing edge instead of stretching the full row width.
+    static let sentTextWidth: CGFloat = 290
 }
 
 /// One row of a conversation or a thread, by its kind.
@@ -133,16 +136,27 @@ struct RowFrame<Leading: View, Content: View>: View {
     @ViewBuilder let leading: Leading
     @ViewBuilder let content: Content
 
+    /// The column keeps its width under a run's later rows, which have no
+    /// photo. On the trailing side for yours (the alignment experiment).
+    @ViewBuilder private var avatarColumn: some View {
+        ZStack(alignment: .top) {
+            Color.clear.frame(height: 1)
+            leading
+        }
+        .frame(width: RowMetrics.avatar)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: RowMetrics.gutter) {
-            // The column keeps its width under a run's later rows, which have no photo.
-            ZStack(alignment: .top) {
-                Color.clear.frame(height: 1)
-                leading
-            }
-            .frame(width: RowMetrics.avatar)
-            VStack(alignment: .leading, spacing: 3) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Experiment: push yours to the trailing edge instead of the
+            // leading one — the photo past the text, headers and wrapped
+            // lines flush right too (no bubble, still a flat row).
+            if row.message.fromMe { Spacer(minLength: 0) }
+            if !row.message.fromMe { avatarColumn }
+            VStack(alignment: row.message.fromMe ? .trailing : .leading, spacing: 3) { content }
+                .frame(maxWidth: row.message.fromMe ? RowMetrics.sentTextWidth : .infinity,
+                       alignment: row.message.fromMe ? .trailing : .leading)
+            if row.message.fromMe { avatarColumn }
         }
         .padding(.horizontal, Theme.phoneGutter)
         .padding(.top, row.startsRun ? 8 : 3)
@@ -200,15 +214,16 @@ struct MessageBodyView: View {
                 .italic()
                 .foregroundStyle(Theme.secondaryText)
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                if let quote = row.quote { QuoteBox(quote: quote) }
-                if let giphy = row.giphy { GiphyPicture(giphy: giphy) }
+            VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 6) {
+                if let quote = row.quote { QuoteBox(quote: quote, rightAligned: message.fromMe) }
+                if let giphy = row.giphy { GiphyPicture(giphy: giphy, rightAligned: message.fromMe) }
                 if message.attachmentKind != nil { AttachmentBlock(row: row) }
                 if let call = row.call {
                     CallBlock(link: call, chat: message.chat)
                 } else if !message.shownText.isEmpty {
                     // Link cards are the Mac's for now: the link stays in the text.
-                    MessageText(text: message.shownText, chat: message.chat, size: PhoneFont.message.size)
+                    MessageText(text: message.shownText, chat: message.chat, rightAligned: message.fromMe,
+                                size: PhoneFont.message.size)
                 }
             }
         }
@@ -220,6 +235,9 @@ struct MessageBodyView: View {
 struct QuoteBox: View {
     @Environment(\.goToMessage) private var goTo
     let quote: Quote
+    /// Experiment: mirrored for yours, so a reply's quote reads right to
+    /// left like the rest of the row.
+    var rightAligned: Bool = false
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
@@ -231,11 +249,11 @@ struct QuoteBox: View {
                 .foregroundStyle(Theme.secondaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
                 .background(Theme.quote, in: shape)
         case .message(let parent, let sender):
             Button { goTo(parent) } label: {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: rightAligned ? .trailing : .leading, spacing: 1) {
                     Text(sender.label)
                         .phoneFont(PhoneFont.secondary.weight(.semibold))
                         .foregroundStyle(sender.hue.name)
@@ -246,7 +264,7 @@ struct QuoteBox: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
                 .background(Theme.quote, in: shape)
                 .contentShape(shape)
             }

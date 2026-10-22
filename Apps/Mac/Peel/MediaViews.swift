@@ -192,7 +192,7 @@ struct VideoTile: View {
 
     var body: some View {
         let handle = model.attachment(id)
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        VStack(alignment: message.fromMe ? .trailing : .leading, spacing: Theme.Space.xs) {
             tile(handle)
             if let saved = handle.savedTo { SavedNote(file: saved) }
         }
@@ -354,24 +354,27 @@ struct AudioCard: View {
         let known = MediaLoading.known(read, file: file)
         let info = known ?? nil
         let status = MediaStatus(message, handle, unplayable: known != nil && info == nil)
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        let rightAligned = message.fromMe
+        VStack(alignment: rightAligned ? .trailing : .leading, spacing: Theme.Space.xs) {
             HStack(spacing: Theme.Space.md) {
                 // Held or failed, a click loads it (again) and plays.
-                PlayButton(message: message, handle: handle, disabled: status.map { !$0.canLoad } ?? false)
+                let button = PlayButton(message: message, handle: handle, disabled: status.map { !$0.canLoad } ?? false)
+                if rightAligned { button }
                 if let status {
                     Text(status.text("Audio"))
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: rightAligned ? .trailing : .leading)
                 } else {
                     AudioScrubber(id: id, file: file, duration: info?.duration)
                 }
+                if !rightAligned { button }
             }
             AttachmentStatus(message: message, handle: handle, isRecording: true)
         }
-        .attachmentCard()
+        .attachmentCard(rightAligned: rightAligned)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Audio")
         .modifier(MediaLoading(message: message, file: file, read: $read))

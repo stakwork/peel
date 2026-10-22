@@ -19,6 +19,9 @@ struct MessageText: View {
     let chat: String?
     /// The agent's reply: its links to messages open them (`LinkText`).
     let agentLinks: Bool
+    /// Experiment: right-aligned, ragged-left paragraphs for yours (design
+    /// README, "Flat rows"; not part of that decision, just trying it).
+    var rightAligned: Bool = false
     /// The body's size: 14 on the Mac, 15 on the iPhone, where it scales
     /// with Dynamic Type. Code, list numbers and headings are sized from it.
     #if os(iOS)
@@ -27,10 +30,11 @@ struct MessageText: View {
     private let size: CGFloat
     #endif
 
-    init(text: String, chat: String?, agentLinks: Bool = false, size: CGFloat = 14) {
+    init(text: String, chat: String?, agentLinks: Bool = false, rightAligned: Bool = false, size: CGFloat = 14) {
         self.text = text
         self.chat = chat
         self.agentLinks = agentLinks
+        self.rightAligned = rightAligned
         #if os(iOS)
         _size = ScaledMetric(wrappedValue: size, relativeTo: .body)
         #else
@@ -42,7 +46,7 @@ struct MessageText: View {
         let blocks = MessageMarkup.blocks(text)
         let myAliases = chat.map(model.mentionAliases(in:)) ?? []
         let found = model.search.flatMap { chat != nil && $0.chat == chat ? $0.query?.terms : nil } ?? []
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        VStack(alignment: rightAligned ? .trailing : .leading, spacing: Theme.Space.xs) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let line):
@@ -91,6 +95,7 @@ struct MessageText: View {
     private func styled(_ line: String, _ myAliases: Set<String>, _ found: [String], font: Font? = nil) -> some View {
         Text(LinkText.attributed(line, myAliases: myAliases, agentLinks: agentLinks, size: size).highlighting(found))
             .font(font ?? Theme.font(size))
+            .multilineTextAlignment(rightAligned ? .trailing : .leading)
             .lineSpacing(3)
             .foregroundStyle(Theme.text)
             .selectableOnMac()

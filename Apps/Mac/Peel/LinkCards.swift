@@ -10,6 +10,7 @@ import PeelUI
 struct TribeLinkCard: View {
     @Environment(AppModel.self) private var model
     let link: TribeLink
+    var rightAligned = false
     @State private var joining = false
 
     var body: some View {
@@ -24,7 +25,8 @@ struct TribeLinkCard: View {
             detail: detail(read, info: info, known: known, deleted: deleted),
             detailLines: 2,
             placeholder: name == nil && (read == nil || read == .loading),
-            faded: deleted
+            faded: deleted,
+            rightAligned: rightAligned
         ) {
             if let name {
                 TribeIcon(name: name, url: info?.img ?? known?.photoURL, pubkey: link.pubkey, size: linkCardIconSize)
@@ -103,6 +105,7 @@ struct ContactLinkCard: View {
     @Environment(AppModel.self) private var model
     /// `pubkey_lsp_scid`, as `MessageLink` read it.
     let info: String
+    var rightAligned = false
     @State private var adding = false
 
     var body: some View {
@@ -114,7 +117,8 @@ struct ContactLinkCard: View {
             title: name,
             detail: Formatting.shortKey(pubkey),
             detailLines: 1,
-            monospacedDetail: true
+            monospacedDetail: true,
+            rightAligned: rightAligned
         ) {
             if isMe || contact != nil {
                 Avatar(
@@ -169,6 +173,9 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
     var placeholder = false
     var faded = false
     var monospacedDetail = false
+    /// Experiment: the icon past the words, facts and action swapped, for
+    /// a card in one of yours.
+    var rightAligned = false
     @ViewBuilder let icon: Icon
     @ViewBuilder let facts: Facts
     @ViewBuilder let action: Action
@@ -176,10 +183,8 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
     var body: some View {
         Card(.inset) {
             HStack(alignment: .top, spacing: Theme.Space.md) {
-                icon
-                    .frame(width: linkCardIconSize, height: linkCardIconSize)
-                    .opacity(faded ? 0.5 : 1)
-                VStack(alignment: .leading, spacing: 3) {
+                if !rightAligned { iconView }
+                VStack(alignment: rightAligned ? .trailing : .leading, spacing: 3) {
                     Text(title)
                         .font(Theme.font(14, .semibold))
                         .foregroundStyle(faded ? Theme.secondaryText : Theme.text)
@@ -191,24 +196,33 @@ private struct LinkCardLayout<Icon: View, Facts: View, Action: View>: View {
                         .lineLimit(detailLines, reservesSpace: true)
                         .redacted(reason: placeholder ? .placeholder : [])
                     HStack(spacing: Theme.Space.sm) {
+                        if rightAligned { action }
+                        if rightAligned { Spacer(minLength: 0) }
                         facts
                             .font(Theme.font(12))
                             .monospacedDigit()
                             .foregroundStyle(Theme.tertiaryText)
                             .lineLimit(1)
-                        Spacer(minLength: 0)
-                        action
+                        if !rightAligned { Spacer(minLength: 0) }
+                        if !rightAligned { action }
                     }
                     .frame(height: 28)
                     .padding(.top, 3)
                 }
+                if rightAligned { iconView }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, Theme.Space.md)
-            .frame(width: CallCard.width, alignment: .leading)
+            .frame(width: CallCard.width, alignment: rightAligned ? .trailing : .leading)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
+    }
+
+    private var iconView: some View {
+        icon
+            .frame(width: linkCardIconSize, height: linkCardIconSize)
+            .opacity(faded ? 0.5 : 1)
     }
 }
 

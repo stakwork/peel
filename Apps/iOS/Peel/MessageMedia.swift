@@ -13,21 +13,23 @@ struct AttachmentBlock: View {
 
     var body: some View {
         let message = row.message
+        let rightAligned = message.fromMe
         if row.images.count > 1 {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
                 ForEach(row.images, id: \.id) { image in
                     ImageTile(message: image, square: true)
                 }
             }
-            .frame(maxWidth: ImageTile.side)
+            .frame(maxWidth: ImageTile.side, alignment: rightAligned ? .trailing : .leading)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(row.images.count) images")
         } else if message.attachmentPriceMsat != nil, !message.fromMe {
             FileMark(message: message, note: "Paid. Buy it on the Mac for now.")
         } else if message.attachmentKind == .image {
-            ImageTile(message: message)
+            ImageTile(message: message, rightAligned: rightAligned)
         } else {
-            FileMark(message: message, note: message.uploadState == .pending ? "Uploading…" : "Opens on the Mac for now")
+            FileMark(message: message, note: message.uploadState == .pending ? "Uploading…" : "Opens on the Mac for now",
+                      rightAligned: rightAligned)
         }
     }
 }
@@ -39,6 +41,7 @@ struct ImageTile: View {
     let message: Message
     /// In a run's grid: cropped to a square.
     var square = false
+    var rightAligned = false
 
     @State private var image: CGImage?
 
@@ -56,7 +59,7 @@ struct ImageTile: View {
                         .overlay { picture.scaledToFill() }
                 } else {
                     picture.aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: Self.side, maxHeight: Self.side * 1.25, alignment: .leading)
+                        .frame(maxWidth: Self.side, maxHeight: Self.side * 1.25, alignment: rightAligned ? .trailing : .leading)
                 }
             } else {
                 Theme.quote
@@ -95,6 +98,7 @@ private struct TileKey: Hashable {
 /// A GIF from Giphy, its first frame (the phone does not play them yet).
 struct GiphyPicture: View {
     let giphy: Giphy
+    var rightAligned = false
 
     @State private var frames: AnimationFrames?
 
@@ -109,7 +113,7 @@ struct GiphyPicture: View {
                     .overlay { Text("GIF").phoneFont(.secondary).foregroundStyle(Theme.secondaryText) }
             }
         }
-        .frame(maxWidth: ImageTile.side, alignment: .leading)
+        .frame(maxWidth: ImageTile.side, alignment: rightAligned ? .trailing : .leading)
         .clipShape(shape)
         .accessibilityLabel("GIF")
         .accessibilityAddTraits(.isImage)
@@ -125,16 +129,14 @@ struct GiphyPicture: View {
 struct FileMark: View {
     let message: Message
     let note: String
+    var rightAligned = false
 
     var body: some View {
         PhoneCard {
             HStack(spacing: Theme.Space.md) {
-                Image(systemName: symbol)
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 28)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                if rightAligned { Spacer(minLength: 0) }
+                if !rightAligned { icon }
+                VStack(alignment: rightAligned ? .trailing : .leading, spacing: 2) {
                     Text(message.fileName ?? message.preview)
                         .phoneFont(.row)
                         .foregroundStyle(Theme.text)
@@ -144,13 +146,22 @@ struct FileMark: View {
                         .phoneFont(.time)
                         .foregroundStyle(Theme.secondaryText)
                 }
-                Spacer(minLength: 0)
+                if rightAligned { icon }
+                if !rightAligned { Spacer(minLength: 0) }
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, 10)
         }
-        .frame(maxWidth: 320, alignment: .leading)
+        .frame(maxWidth: 320, alignment: rightAligned ? .trailing : .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private var icon: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 18))
+            .foregroundStyle(Theme.secondaryText)
+            .frame(width: 28)
+            .accessibilityHidden(true)
     }
 
     private var symbol: String {

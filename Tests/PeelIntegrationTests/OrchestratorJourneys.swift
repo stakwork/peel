@@ -198,6 +198,80 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
+        /// Authoring, gated (docs/connectors-and-authoring.md, P1). Alice asks
+        /// her agent for a workflow; the orchestrator starts strut's `builder`
+        /// job, whose model writes it and calls `meta/publish-workflow`. Peel's
+        /// delta has that step in the builder's `approve:`, so the call is a
+        /// pending proposal and nothing is published until a person decides.
+        /// Running a gated step through `meta/run-step` instead is refused.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func aWorkflowTheAgentBuildsWaitsForApproval() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let workflow = "daily-hello"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                let answered = body.contains(#""type":"tool_result""#)
+                if body.contains("You are a workflow BUILDER") {
+                    switch body.components(separatedBy: #""type":"tool_result""#).count - 1 {
+                    case 0:
+                        return Self.toolUse("meta_run_step", ["type": "app/publish", "config": ["name": "hello-app", "path": "app"]])
+                    case 1:
+                        return Self.toolUse("meta_publish_workflow", [
+                            "name": workflow, "description": "Says hello",
+                            "yaml": "name: \(workflow)\nsteps:\n  - id: hi\n    type: pack\n    config: { text: hello }\n",
+                        ])
+                    default:
+                        return Self.toolUse("final_answer", ["text": "Proposed \(workflow) for you to approve.", "artifacts": []])
+                    }
+                }
+                guard answered else {
+                    return Self.toolUse("job_start", ["prompt": "A workflow that says hello", "title": "Daily hello", "workflow": "builder"])
+                }
+                return Self.toolUse("final_answer", ["text": "Started building it.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-builder-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator()
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            try await client.useBridge(try #require(bridge.server))
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            try await alice.engine.setDeviceAgent(agent)
+
+            try await alice.engine.sendText("Make me a workflow that says hello every morning", to: agent)
+            try await eventually("the agent's reply", timeout: .seconds(60)) {
+                try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == "Started building it." }
+            }
+            let pending = try await eventually("the builder's proposal", timeout: .seconds(60)) {
+                let listed = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
+                return listed.isEmpty ? nil : listed
+            }
+            #expect(pending.count == 1 && pending.first?["step"] == "meta/publish-workflow", "\(pending)")
+            let ended = try await eventually("the builder's turn to end", timeout: .seconds(60)) {
+                model.requests.first { $0.contains("You are a workflow BUILDER") && $0.components(separatedBy: #""type":"tool_result""#).count == 3 }
+            }
+            // The app's publish, run as a step around its proposal, was refused as sealed.
+            #expect(ended.contains(#"app/publish\\\" is sealed"#), "\(ended.suffix(2000))")
+            // Proposed, not published.
+            let published = await #expect(throws: PeelError.self) { try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server) }
+            #expect(published?.localizedDescription.contains(workflow) == true, "\(String(describing: published))")
+
+            for person in [alice, other] { await person.close() }
+        }
+
         /// Milestone 2, "it acts for you" (docs/agent-on-strut.md, PR 7). Alice
         /// asks her agent to post to her tribe in a couple of minutes: one card
         /// on her Mac, the automation and its grant. At that minute strut fires

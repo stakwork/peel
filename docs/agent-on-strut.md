@@ -1345,6 +1345,51 @@ decisions (2026-10-20):
   differ only before conversations load. The intro's card and the DM's
   prompt are two looks for "connect a model", one per place.
 
+### Built: connectors P1, the builder gated (2026-10-22)
+
+From the connectors and authoring design (stakwork/peel#342, `docs/connectors-and-authoring.md`), section 7.
+
+- **Pin.** `Vendor/strut.lock` moves from strut c180e8f (#220) to main at
+  2296d29 (#285), which brings strut's `builder` job (#239), proposals
+  (#222), `acp/prompt`, and #289 (launch params may only add to an
+  `approve:` list). The orchestrator could already start the builder
+  (`job/start { workflow: builder }`), which strut seeds with
+  `approve: []` and `peer: true`, so the gate ships in the same change.
+- **Gate.** Peel's delta gives the builder `approve: [meta/publish-workflow,
+  meta/create-step, meta/edit-step, app/publish]` and `peer: false`. Each
+  such call is a pending proposal (`GET /proposals`); nothing is published
+  or written until a person decides. `app/publish` is beside the three the
+  design names because it publishes an app with its grants.
+  `meta/set-automation` (#285) is gated too.
+  `app/publish` is also sealed from the meta surface (`STRUT_SEALED`), so
+  the builder cannot run it through `meta/run-step` around its proposal
+  (strut seals `meta/*` itself).
+- **Bypass, closed by strut#289.** The builder's `meta/run-workflow` could
+  run `builder` again with `params: { approve: [] }`, and the nested
+  builder published with no proposal (reproduced at 69cf03f: the workflow
+  published, no proposal). At this pin strut refuses it ("approve may only
+  grow"): the same reproduction publishes nothing. A builder launched with
+  a `peer` reaches that strut ungated (strut#294); it matters only once
+  Peel has peers, which P8 brings, and P8 waits on it.
+- **Still open (strut S1).** The builder's ungated tools still run code:
+  `meta/run-step` runs any unsealed step (`exec` with `secretsEnv`), and
+  `meta/run-workflow` the `job` workflow, as the orchestrator's own jobs
+  (bash) already could. Secret scoping (`builder.reach`) closes it.
+  `peer: false` only closes this builder to other struts; a build *on* a
+  peer (`input.peer`) runs under that strut's approvals, so P8 keeps
+  peers out of the builder's reach.
+- **Test fix.** strut now clears its environment at boot (strut f4606bd),
+  which dropped the journeys' stand-in model URL, so strut called
+  Anthropic for real with the stand-in key (refused). `BundledStrut` keeps
+  a loopback `ANTHROPIC_BASE_URL` through it (`STRUT_ENV_KEEP`).
+- **Runner.** `Vendor/runner.lock` moves to sphinx 12ccccc4 (#389, runner
+  R1): the bridge relays each pending proposal as an `approve` card on the
+  Mac (`proposal:<id>`) and calls `decide` once with the answer alone. The
+  card is R1's wording until P2 gives proposals their own.
+- **Checked.** `Journeys.Orchestrator.aWorkflowTheAgentBuildsWaitsForApproval`:
+  a DM asks for a workflow, the orchestrator starts the builder, its
+  publish is one pending proposal and the workflow does not exist.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

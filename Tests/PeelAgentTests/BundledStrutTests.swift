@@ -48,6 +48,16 @@ struct BundledStrutTests {
         #expect(environment["STRUT_WORKSPACE"] == "/tmp/peel-strut/workspace")
         #expect(environment["STRUT_WORKSPACE_BACKEND"] == "ladybug")
         #expect(environment["STRUT_HOST_CONFIG"] == "/tmp/peel-strut/host-config.json")
+        // Every gated step the meta surface could run is sealed: strut seals meta/* itself.
+        let sealed = Set(environment["STRUT_SEALED"]?.split(separator: ",").map(String.init) ?? [])
+        #expect(Orchestrator.builderApprove.allSatisfy { $0.hasPrefix("meta/") || sealed.contains($0) }, "\(sealed)")
+        // strut clears its environment at boot: only a stand-in model on this Mac is kept through it.
+        #expect(environment["STRUT_ENV_KEEP"] == nil)
+        for (base, kept) in [("http://127.0.0.1:9", true), ("http://localhost:9", true), ("https://example.com", false)] {
+            let keeping = BundledStrut.environment(["ANTHROPIC_BASE_URL": base], key: key, secretKey: secretKey, data: data,
+                                                   hostConfig: data.appending(path: "host-config.json"))
+            #expect((keeping["STRUT_ENV_KEEP"] == "ANTHROPIC_BASE_URL") == kept, "\(base)")
+        }
     }
 
     /// strut's secret store key: made once, owner-only, the same on every

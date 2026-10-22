@@ -18,6 +18,8 @@ import SwiftUI
     var shown: Bool { get }
     /// Where the rows around the view are.
     var frames: [String: CGRect] { get }
+    /// What each row's cell draws now: its content's size.
+    var drawn: [String: CGSize] { get }
     /// The list has gone: its scroll view is another list's, or none.
     var gone: Bool { get }
     /// Its scroll view, when it knows it.
@@ -66,6 +68,8 @@ import SwiftUI
         let index: Int
         let y: Double
         let height: Double
+        /// The height its cell draws, when it drew it at the row's width.
+        let drawn: Double?
     }
 
     /// One list in one frame.
@@ -116,6 +120,7 @@ import SwiftUI
         let width: CGFloat
         let shown: Bool
         let frames: [String: CGRect]
+        let drawn: [String: CGSize]
         let windowX: CGFloat?
         let visible: Bool
         let pill: ListPill?
@@ -127,7 +132,7 @@ import SwiftUI
             guard let end = entry.end, !end.gone else { return nil }
             let (windowX, visible) = placement(of: end.scrollView)
             return Capture(kind: entry.kind, serial: entry.serial, ids: end.ids, view: end.view,
-                           content: end.content, width: end.width, shown: end.shown, frames: end.frames,
+                           content: end.content, width: end.width, shown: end.shown, frames: end.frames, drawn: end.drawn,
                            windowX: windowX, visible: visible && end.shown, pill: end.pill)
         }
     }
@@ -140,7 +145,9 @@ import SwiftUI
         let height = view.upperBound - view.lowerBound
         func row(_ id: String, _ frame: CGRect) -> Row? {
             guard let place = index[id] else { return nil }
-            return Row(row: tag(id), index: place, y: Double(frame.minY - view.lowerBound), height: Double(frame.height))
+            let drawn = capture.drawn[id].flatMap { abs($0.width - frame.width) <= 0.5 ? Double($0.height) : nil }
+            return Row(row: tag(id), index: place, y: Double(frame.minY - view.lowerBound), height: Double(frame.height),
+                       drawn: drawn)
         }
         let placed = capture.frames.compactMap { id, frame in index[id] != nil ? (id, frame) : nil }
         let inView = placed.filter { $0.1.maxY > view.lowerBound && $0.1.minY < view.upperBound }

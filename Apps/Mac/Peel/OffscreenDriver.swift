@@ -29,6 +29,8 @@ import PeelUI
 /// keys go); `{"reveal": "replies"}` scrolls the chat up until its
 /// middle "N replies" row is in view, a few rows below the top;
 /// `{"appearance": "light"}` (or `"dark"`) sets the app's appearance;
+/// `{"mismeasure": 0}` gives the chat's newest row (1 the next up) a height
+/// 60 pt short of what its cell draws, as a wrong measurement would;
 /// `{"scroll": 600}` scrolls the chat's list up 600 points as a live scroll
 /// by hand (`"in": "thread"` for the thread's, negative for down; `"steps":
 /// 1` in one frame, a flick),
@@ -68,13 +70,13 @@ final class OffscreenDriver {
         var probe, thread, close, expect, signal, list, note, reveal, appearance, agent, unread: String?
         var mods: [String]?
         var wait, duration, scroll, overscroll, width, over, back, next, wheel: Double?
-        var scrollTo, steps, hover, turns: Int?
+        var scrollTo, steps, hover, turns, mismeasure: Int?
         var jump: JumpTarget?
         var submit: Bool?
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance, agent, wheel, turns, unread
+            case appearance, agent, wheel, turns, unread, mismeasure
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -232,6 +234,12 @@ final class OffscreenDriver {
             try await agent(what, step)
         } else if let points = step.wheel {
             try wheel(by: points, in: step.list ?? "agent")
+        } else if let newest = step.mismeasure {
+            guard let list = ListProbe.geometry(kind: step.list ?? "chat") as? MessageTableHost else {
+                throw Failure(description: "no \(step.list ?? "chat") list")
+            }
+            list.mismeasure(newest)
+            Offscreen.log("drive: mismeasured row \(newest) from the newest")
         } else if let row = step.scrollTo {
             try await scroll(toRow: row, in: step.list ?? "chat")
         } else if let width = step.width {

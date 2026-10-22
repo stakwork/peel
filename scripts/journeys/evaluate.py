@@ -56,7 +56,9 @@ reference is its last frame before the first step taken while it ran
   where its mark is drawn (`ListProbe.drawnPanel`), not where it is laid
   out.
 - Always: no blank frame (a list with rows hidden, or none in view) in
-  any list, at any time.
+  any list, at any time; and no row in view drawn over its neighbours (its
+  cell's content over 1 pt taller than its slot) for more than two
+  frames running, or in the last frame.
 
 Prints PASS or FAIL per check with the numbers; exits 1 if any failed.
 """
@@ -66,6 +68,9 @@ import re
 import sys
 
 MOVE = 1.0
+# Frames a row may be drawn taller than its slot: its cell's report lands
+# in the next layout pass, which a frame's sample can fall before.
+OVERLAP_FRAMES = 2
 # The most a rubber band moves in a frame, pushed or easing back.
 STRIDE = 12.0
 
@@ -163,6 +168,30 @@ def judge(probe, options):
     if blank:
         ok = False
         notes.append("blank frames: " + ", ".join(f"{kind} {count}" for kind, count in sorted(blank.items())))
+
+    runs, longest, last_over = {}, {}, set()
+    for sample in samples:
+        now = set()
+        for entry in sample["lists"]:
+            if not entry["shown"]:
+                continue
+            for row in entry["laidOut"]:
+                in_view = row["y"] + row["height"] > 0 and row["y"] < entry["container"]
+                if in_view and row.get("drawn") is not None and row["drawn"] > row["height"] + MOVE:
+                    key = (entry["kind"], entry["list"], row["row"])
+                    now.add(key)
+                    runs[key] = runs.get(key, 0) + 1
+                    longest[key] = max(longest.get(key, 0), runs[key])
+        for key in list(runs):
+            if key not in now:
+                del runs[key]
+        last_over = now
+    overlaps = {key: n for key, n in longest.items() if n > OVERLAP_FRAMES or key in last_over}
+    if overlaps:
+        ok = False
+        notes.append("rows drawn over their neighbours: " + ", ".join(
+            f"{kind} {n} frames" + (" to the end" if (kind, serial, row) in last_over else "")
+            for (kind, serial, row), n in sorted(overlaps.items())))
 
     def anchor_of(kind):
         # The reference's list, else (blank then) the nearest frame with a

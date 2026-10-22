@@ -29,6 +29,8 @@ import PeelUI
     func didResize(holding held: ListPlacement?)
     func page(up: Bool)
     func pointer(at point: NSPoint?)
+    /// Offscreen only: a row given a height its cell does not draw.
+    func mismeasure(_ newest: Int)
 }
 
 /// A message list on the Mac (`ChatListEngine`): the chat's, a thread's or
@@ -37,7 +39,8 @@ import PeelUI
 /// newest message and older rows above change nothing below them; each
 /// row a SwiftUI cell in a reused hosting controller; each row's height
 /// measured once per width and per version of the row (`stale` until then), the rows in view
-/// before they are drawn and the rest in idle time. Every change applies
+/// before they are drawn and the rest in idle time, and what a cell draws
+/// winning over both (`applyDrawn`). Every change applies
 /// the controller's placement in the same pass, so a row never moves on
 /// screen unless the list means it to (`docs/reviews/2026-10-14-message-lists.md`).
 @MainActor
@@ -135,8 +138,15 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
     /// Hosting controllers that measure rows with no cell, one per kind.
     private var sizers: [String: NSHostingController<AnyView>] = [:]
     private(set) var width: CGFloat = 0
-    /// Cells laid out at another height than their row's (an image's size came).
-    private var corrections: [String: CGFloat] = [:]
+    /// What each row's cell draws, as the cell last laid it out: its
+    /// content's size. Only while a cell shows that row as it is now
+    /// (`show` drops it), so it is what is on the screen.
+    private(set) var drawn: [String: CGSize] = [:]
+    /// Rows whose cell draws them at another height than they have: put
+    /// right in the next layout pass (`applyDrawn`).
+    private var unfit: Set<String> = []
+    /// Numbers each `show`, so a cell reports once after every one (`show`).
+    private var shows = 0
     private var idleGeneration = 0
     /// Under a thread's rows while they are shorter than the view, so they start at its top.
     private var fill: CGFloat = 0
@@ -843,6 +853,15 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
 
     private func noteHeights(_ changed: IndexSet) {
         guard !changed.isEmpty else { return }
+        // A row given a height its cell does not draw (a measurement that
+        // disagreed with the cell): what the cell draws is put back.
+        for t in changed {
+            // At this width: drawn at another, its cell reports again.
+            guard let index = index(ofTableRow: t), let size = drawn[rows[index].id], abs(size.width - width) <= 0.5,
+                  abs(size.height - height(of: rows[index])) > 0.5 else { continue }
+            log("height row \(index) drawn=\(Int(size.height)) held=\(Int(height(of: rows[index]))) w=\(Int(size.width))")
+            unfit.insert(rows[index].id)
+        }
         adjust {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0
@@ -908,39 +927,68 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
         if left { queueIdle() }
     }
 
-    /// A cell laid out at another height than its row's: its content
-    /// changed without the row changing (an image's size arriving, a send
-    /// that can be retried). Corrected in the layout pass that follows,
-    /// before anything is drawn, holding the list.
-    private func cellReported(_ id: String, _ reported: CGFloat) {
+    /// A cell laid out its row: what it draws, which wins over the row's
+    /// height and slot in the layout pass that follows, before anything is
+    /// drawn. Its content changed without the row changing (an image's size
+    /// arriving, a send that can be retried), or it came into view.
+    private func cellReported(_ id: String, _ size: CGSize) {
         guard !gone, let index = position[id] else { return }
-        let height = max(ceil(reported), 1)
-        guard abs(height - self.height(of: rows[index])) > 0.5 else { return }
-        corrections[id] = height
+        let size = CGSize(width: size.width, height: max(ceil(size.height), 1))
+        drawn[id] = size
+        let height = height(of: rows[index])
+        let slot = table.rect(ofRow: tableRow(index)).height
+        guard abs(size.height - height) > 0.5 || abs(size.height - slot) > 0.5 else { return }
+        if abs(slot - height) > 0.5 {
+            // The table and the list disagree on the row, whatever the cell draws.
+            log("height row \(index) drawn=\(Int(size.height)) slot=\(Int(slot)) held=\(Int(height)) w=\(Int(size.width))")
+        }
+        unfit.insert(id)
         scroll.needsLayout = true
     }
 
     /// The scroll view's layout pass (`ListScrollView.layout`).
     func layoutPass() {
-        guard !corrections.isEmpty, adjusting == 0 else { return }
-        applyCorrections()
+        guard adjusting == 0 else { return }
+        applyDrawn()
     }
 
-    private func applyCorrections() {
-        guard !gone, placed else { return }
-        // An animated move lands exactly where it aims once it ends.
+    /// The unfit rows given the height their cells draw, holding the list:
+    /// what is on the screen wins, so a row is never drawn over its
+    /// neighbours, whatever gave it another height.
+    private func applyDrawn() {
+        guard !gone, placed, !unfit.isEmpty else { return }
+        // Where the list is now. An animated move lands exactly where it
+        // aims once it ends.
         let hold = animation != 0 ? .keep : holdNow()
         var changed = IndexSet()
-        for (id, height) in corrections {
-            guard let index = position[id] else { continue }
-            setHeight(height, of: index)
-            changed.insert(tableRow(index))
+        for id in unfit {
+            // Laid out by the cell that shows it now, at the list's width
+            // (at another, a report at this one is coming).
+            guard let index = position[id], let size = drawn[id], abs(size.width - width) <= 0.5,
+                  let cell = table.view(atColumn: 0, row: tableRow(index), makeIfNecessary: false) as? HostCell,
+                  (cell.row as? Row)?.id == id, abs(cell.bounds.width - size.width) <= 0.5 else { continue }
+            let t = tableRow(index)
+            guard abs(size.height - table.rect(ofRow: t).height) > 0.5
+                    || abs(size.height - height(of: rows[index])) > 0.5 else { continue }
+            setHeight(size.height, of: index)
+            changed.insert(t)
         }
-        corrections = [:]
+        unfit = []
         guard !changed.isEmpty else { return }
         noteHeights(changed)
         updateFill()
         setOrigin(for: hold)
+        report()
+    }
+
+    /// Offscreen only (the driver's `mismeasure`): the row `newest` rows
+    /// up from the newest given a height 60 pt short of what its cell
+    /// draws, as a measurement that disagreed with its cell would.
+    func mismeasure(_ newest: Int) {
+        guard Offscreen.isOn, placed, rows.indices.contains(rows.count - 1 - newest) else { return }
+        let index = rows.count - 1 - newest
+        setHeight(max(height(of: rows[index]) - 60, 1), of: index)
+        noteHeights([tableRow(index)])
         report()
     }
 
@@ -1074,14 +1122,21 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
     /// whatever the old row's views opened (a menu, a card, a panel) goes
     /// with them, as when they scroll away.
     private func show(_ row: Row, in cell: HostCell) {
+        // What the cell drew was another row, or this one as it was: it
+        // reports what it draws now once laid out, changed in size or not,
+        // as the report carries this show's number.
+        if let old = cell.row as? Row { drawn[old.id] = nil }
+        drawn[row.id] = nil
         cell.row = row
         let id = row.id
+        shows += 1
+        let show = shows
         cell.controller.rootView = AnyView(
             content(row)
                 .id(id)
                 .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { [weak self] height in
-                    self?.cellReported(id, height)
+                .onGeometryChange(for: CellLayout.self, of: { CellLayout(size: $0.size, show: show) }) { [weak self] layout in
+                    self?.cellReported(id, layout.size)
                 }
         )
     }
@@ -1120,12 +1175,23 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
 
+    /// A row's cell gone from the table: it draws nothing now, unless
+    /// another cell shows that row already.
+    func tableView(_ tableView: NSTableView, didRemove rowView: NSTableRowView, forRow row: Int) {
+        guard let gone = rowView.view(atColumn: 0) as? HostCell, let id = (gone.row as? Row)?.id else { return }
+        if let index = position[id], let cell = tableView.view(atColumn: 0, row: tableRow(index), makeIfNecessary: false),
+           cell !== gone { return }
+        drawn[id] = nil
+    }
+
     // MARK: Helpers
 
     private func adjust(_ body: () -> Void) {
         adjusting += 1
         body()
         adjusting -= 1
+        // A layout pass that came meanwhile left the unfit rows for the next.
+        if adjusting == 0, !unfit.isEmpty { scroll.needsLayout = true }
     }
 
     private func log(_ event: @autoclosure () -> String) {
@@ -1195,6 +1261,13 @@ final class ListClipView: NSClipView {
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         elastic ? proposedBounds : super.constrainBoundsRect(proposedBounds)
     }
+}
+
+/// What a cell reports of its content: its size, and the `show` it is laid
+/// out for, so it reports after every one.
+private struct CellLayout: Equatable {
+    let size: CGSize
+    let show: Int
 }
 
 /// A row's cell: one hosting controller, reused for rows of its kind. A

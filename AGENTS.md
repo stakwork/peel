@@ -932,7 +932,7 @@ quitting before any window opens.
 
   The message list journeys add a frame probe and the steps they need
   (`probe`, `thread`, `close`, `scroll`, `scrollTo`, `width`, `jump`,
-  `expect`, `signal`, `unread`; `OffscreenDriver`'s header): `docs/testing.md`,
+  `expect`, `signal`, `unread`, `mismeasure`; `OffscreenDriver`'s header): `docs/testing.md`,
   "List journeys".
 
   Each step waits 300 ms for the UI to settle. Keys go into Peel's own

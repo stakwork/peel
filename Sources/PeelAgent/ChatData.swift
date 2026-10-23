@@ -86,7 +86,9 @@ struct ChatData {
     static func line(_ message: Message, in chat: Conversation, marker: String? = nil, text: String? = nil) -> String {
         let name = chat.isTribe ? message.senderAlias ?? "Unknown" : chat.name
         // Someone calling themself "Me" must not read as the user.
-        let sender = message.fromMe ? "Me" : clean(name, max: maxName).lowercased() == "me" ? "\(name) (not the user)" : name
+        // "]" ends the sender, so none is left in a name to fake another line's.
+        let named = name.replacingOccurrences(of: "]", with: ")")
+        let sender = message.fromMe ? "Me" : clean(named, max: maxName).lowercased() == "me" ? "\(named) (not the user)" : named
         var meta = "uuid=\(message.uuid.map { clean($0, max: maxID) } ?? "pending")"
         if let thread = message.threadUUID { meta += " thread=\(clean(thread, max: maxID))" }
         if let reply = message.replyUUID { meta += " reply=\(clean(reply, max: maxID))" }
@@ -160,5 +162,56 @@ struct ChatData {
             notes.insert("[cut: the \(which) \(left) line\(left == 1 ? "" : "s") did not fit; ask for fewer or narrower results]", at: 0)
         }
         return ([header, Self.begin] + pinned + kept + [Self.end] + notes).joined(separator: "\n")
+    }
+}
+
+/// A read's answer as a person sees it (a device request's row in the
+/// agent's DM): the chats it covered, each with the messages it read and
+/// what a link to one needs, read back from `ChatData.text`. Lines in no
+/// shape it knows are left out; nothing in a message can pose as a line.
+public struct ChatDataReading: Equatable, Sendable {
+    public struct Chat: Equatable, Sendable {
+        public let chat: String
+        public let name: String
+        public let isTribe: Bool
+        /// The heading's note: "3 unseen", "muted, 1 unseen mentioning the user".
+        public var detail: String?
+        public var messages: [Line] = []
+    }
+
+    public struct Line: Equatable, Sendable {
+        public let sender: String
+        public let uuid: String?
+        public let text: String
+    }
+
+    /// The first line, without chat ids: "The last 50 messages in Tribe 'journeys', most recent last".
+    public let header: String
+    public private(set) var chats: [Chat] = []
+
+
+    public init(_ text: String) {
+        let chatPattern = /(Tribe|Contact) '(.*)' \(chat=([^)]{1,80})\)/
+        let headingPattern = /== (Tribe|Contact) '(.*)' \(chat=([^)]{1,80})\)(?:, (.*))? ==/
+        let linePattern = /\[(.+?)\] \S+ \(uuid=([^ )]{1,80})[^)]*\): (.*)/
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let first = lines.first ?? ""
+        header = first.replacing(/\ \(chat=[^)]*\)/, with: "").trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+        var inData = false
+        for line in lines.dropFirst() {
+            if line == ChatData.begin { inData = true; continue }
+            if line == ChatData.end { break }
+            guard inData else { continue }
+            if let match = line.wholeMatch(of: headingPattern) {
+                // Only from the data's own lines: the header can hold the agent's words.
+                chats.append(Chat(chat: String(match.3), name: String(match.2), isTribe: match.1 == "Tribe",
+                                  detail: match.4.map(String.init)))
+            } else if line.hasPrefix("- "), let match = line.firstMatch(of: chatPattern) {
+                chats.append(Chat(chat: String(match.3), name: String(match.2), isTribe: match.1 == "Tribe"))
+            } else if let match = line.wholeMatch(of: linePattern), !chats.isEmpty {
+                let uuid = match.2 == "pending" ? nil : String(match.2)
+                chats[chats.count - 1].messages.append(Line(sender: String(match.1), uuid: uuid, text: String(match.3)))
+            }
+        }
     }
 }

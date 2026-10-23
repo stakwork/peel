@@ -182,9 +182,11 @@ mixer under real accounting. Each run makes a new bank (about a minute).
 | Read markers and a mute across two devices of one account, both ways (nothing pushed live; the other device's ask on coming to the front brings them); a tribe join after a read leaves it behind the server's marker with nothing Peel counts, and reading it moves the marker past the join | `Reads.markersAndMutesAcrossDevices` | pass (2026-10-12) |
 | 600 messages while the tap is down, all on the server first; a live one as soon as she is back, then a quit before the catch-up ends (required, so it cannot pass untested); the next launch fetches the rest, no server index missing (bug hunt N4) | `History.aCatchUpCutShortByAQuitLeavesNoGap` | pass (2026-10-12); before the fix 501 never came, server indices 6 to 606 had gaps |
 | A malformed chunk (type 34) between two texts while the tap is down: the catch-up keeps both texts, and the next one goes past it | `History.aMessageTheCoreCannotReadLeavesOnlyItselfOut` | pass (2026-10-12); before, neither text came: the catch-up stopped at that page, and the next started there again |
-| The agent's read tools over Alice's account: Bob's two messages and his tribe thread, read side by side as a model asks (unseen, search, contacts and tribes, then the thread), with their real uuids, chat ids and unseen counts, between the markers | `Agent.readToolsSeeWhatArrived` | pass (2026-10-12) |
-| The send tool through the approval gate in the agent chat's session: allowed once, Bob receives exactly the card's words and the row links to that message (its uuid); denied, nothing leaves either side and the model is told | `Agent.aSendGoesOnlyOnceAllowed` | pass (2026-10-12) |
-| A post in Bob's paid tribe: the card's price is exactly what leaves Alice's balance; Bob doubles the price while a second card waits, and allowing it pays nothing, sends nothing, and says why | `Agent.aTribeSendPaysWhatTheCardSaidAndNeverMore` | pass (2026-10-12); without the tool's cap Alice pays the new price; before the fix the row read "The operation couldn't be completed. (PeelCore.Engine.Failure error 6.)" |
+| The agent's read tools over Alice's account, as the device requests call them: Bob's two messages and his tribe thread (unseen, search, contacts and tribes, then the thread), with their real uuids, chat ids and unseen counts, between the markers | `Agent.readToolsSeeWhatArrived` | pass (2026-10-20) |
+| The send tool's card and send: nothing leaves while the card is up; allowed, Bob receives exactly the card's words and the answer links to that message (its uuid) | `Agent.aSendGoesOnlyOnceAllowed` | pass (2026-10-20) |
+| The Mac answers its agent's `chats.unseen` once, through the read tools; a repeat gets the stored result with no second read; past its time `expired`, an unknown kind refused; a stranger's request and one for another Mac get nothing and are not stored; a read cut short by a stop is finished after a relaunch, and nothing is answered twice on the catch-up | `DeviceRequests.theMacAnswersItsAgentOnce` | pass (2026-10-17) |
+| The agent's `send` shows the card and, allowed, reaches the chat once; the same request again gets the stored result with no second card or send; denied, nothing goes; a card still up at the request's time answers `expired`; a request left `sending` by a stop answers `unknown` after a relaunch, with nothing sent | `DeviceRequests.theMacSendsAsYouOnceAndOnlyWhenAllowed` | pass (2026-10-17) |
+| A post in Bob's paid tribe: the card's price is exactly what leaves Alice's balance; Bob doubles the price while a second card waits, and allowing it pays nothing, sends nothing, and says why | `Agent.aTribeSendPaysWhatTheCardSaidAndNeverMore` | pass (2026-10-20); without the tool's cap Alice pays the new price; before the fix the row read "The operation couldn't be completed. (PeelCore.Engine.Failure error 6.)" |
 
 Findings:
 
@@ -228,11 +230,12 @@ Findings:
    contact needs 5 sats." (`contactNeedsSats`); offline it is still told
    it is not connected.
 
-The agent's journeys (`AgentJourneys.swift`) drive AgentKit's
-`AgentSession` over a real account, as the app opens it (its
-`agent.sqlite`, the Sphinx read tools and the send tool over its engine);
-only the model is scripted (`ScriptedModel`, which asks for the calls a
-model would and keeps the tool results it was sent). Run them alone with
+The agent's journeys (`AgentJourneys.swift`) call the Sphinx tools the
+Mac answers its agent with over a real account, as the device requests
+call them: a read's plan is its answer, a send's plan its card, and only
+running it sends. The agent itself, strut's orchestrator through the
+bridge, is in `OrchestratorJourneys.swift`, on a stand-in model endpoint.
+Run them alone with
 `PEEL_INTEGRATION=1 SPHINX_BIN_DIR=~/sphinx-target/debug swift test --filter Journeys/Agent`.
 
 Not built: invoices paid and received (the server makes invoices only with
@@ -240,37 +243,6 @@ a Lightning node, so this needs a regtest bitcoind and CLN behind the
 mixer), migrations from a real v14 or v16 database fixture (the offline
 `MigrationTests` still cover the chain from v1), paid attachments in a tribe,
 calls.
-
-## Recorded streams
-
-No test calls a model provider or uses a real API key, opt-in or not
-(Tom's decision, 2026-10-13). The real wire shapes reach the tests as
-files instead: `scripts/record-agent-fixtures.sh` makes two small real
-requests for one provider (a streamed text reply and a streamed call to a
-trivial tool) and writes the response bodies to
-`Tests/AgentKitTests/Fixtures/recorded/<provider>-text.sse` and
-`<provider>-tool.sse`. Tom runs it by hand with his own key, one provider
-at a time; never an agent, and never from a test:
-
-```sh
-PEEL_AGENT_PROVIDER=anthropic  PEEL_AGENT_API_KEY=sk-ant-… scripts/record-agent-fixtures.sh
-PEEL_AGENT_PROVIDER=openai     PEEL_AGENT_API_KEY=sk-…     scripts/record-agent-fixtures.sh
-PEEL_AGENT_PROVIDER=openrouter PEEL_AGENT_API_KEY=sk-or-…  scripts/record-agent-fixtures.sh
-# optional: PEEL_AGENT_MODEL=<id> (default: the picker's recommended model), PEEL_AGENT_MAX_TOKENS=<n>
-```
-
-It writes response bodies only (no headers, request or key), replaces
-message, request, organisation and fingerprint ids with placeholders, and
-writes nothing if the result holds the key, its last six characters or an
-`sk-` style token, or if a reply did not end as asked (a reply cut at the
-token cap: raise `PEEL_AGENT_MAX_TOKENS`). Read the files before
-committing them.
-
-`StreamCaseTests` decodes each provider's text and tool stream, the
-recorded one when it is there, else the hand-written one in `Fixtures/`
-(OpenRouter's falls back to OpenAI's), so a new recording is picked up by
-the next `swift test` with nothing else to change. A bad key's answer per
-provider is a stubbed `ProviderTests` case.
 
 ## Timeline log
 
@@ -329,7 +301,9 @@ scripts/journeys/run.sh lj-me --peer lj-peer            # or name journeys: … 
 The seed makes two development profiles on the stack, contacts, with a
 ~320-message chat (threads every 25, one "needle"). The runner reads the
 chat before each journey, marks it unread for `open-unread`, and sends
-from the peer when a drive signals it; results land in `.build/journeys/<journey>/`.
+from the peer when a drive signals it (a drive's `unread` step waits until
+that message has come and the chat counts it); results land in `.build/journeys/<journey>/`.
+The probe also records each list's jump button, which `pill=` checks.
 Beyond the review's table: `older-history` (a flick into the top screen;
 the older page lands above with nothing moving), `late-image` (a jump to
 the message under an image older than the newest 200, the image sizing
@@ -345,20 +319,23 @@ send during the pull: once back in range, the list ends at the newest) and
 `thread-open-slide` (a thread opened beside the tribe, then over it on a
 narrow window: each frame the thread's list is drawn, it sits where it
 does in the panel at rest, the panel found where it is drawn by a mark
-only the offscreen mode draws at its top left, `ListProbe.drawnPanel`). A step waits
+only the offscreen mode draws at its top left, `ListProbe.drawnPanel`) and
+the control message journeys (`control-*`: the peer's control message,
+`send-control`, arriving with the chat scrolled up, at its bottom, while
+the tribe is open, and on a bounce back to the tribe; each a quiet line,
+the list held or placed as for any arrival). A step waits
 0.3 s after it, or its `"next"` seconds.
 
-The agent chat's journeys (`agent-*`) put the agent on a scripted model
-first (`{"agent": "script"}`, `OffscreenAgent`): its conversation in
-memory, a placeholder key, and answers streamed a word at a time at a
-set rate from this Mac, never from a provider. `agent-open` (placed, no
-hidden frame), `agent-stream-bottom` (flush every frame while a reply
-streams), `agent-stream-scroll-away` (one mouse wheel tick up mid-reply,
-then nothing moves while it grows), `agent-expand-tool` (a tool row
-opened at the bottom keeps its top, `keep=1@agent`),
-`agent-memory-panel` and `-narrow` (a memory opened and closed beside or
-over the chat), `agent-return` and `agent-reply-ends` (a reply saved while
-following: its row stays, in place, `keep=1@agent`).
+The agent chat's journeys (`agent-*`) give the agent an earlier chat of
+its own first (`{"agent": "seed", "turns": 14}`, `OffscreenAgent`): the
+turns Peel's own loop kept before strut was the agent, read only, in
+memory, with a placeholder key. `agent-open` (placed, no hidden frame),
+`agent-expand-tool` (a tool row opened at the bottom keeps its top,
+`keep=1@agent`), `agent-memory-panel` and `-narrow` (a memory opened and
+closed beside or over the chat) and `agent-return`. The streaming
+journeys (`agent-stream-bottom`, `agent-stream-scroll-away`,
+`agent-reply-ends` and `-open`) went with the Swift loop in Phase 1's PR
+11: the agent's replies come whole, as messages in its DM.
 
 A scroll is a live scroll on the list's own scroll view (its start, a
 step a frame, its end), which the list sees as a scroll by hand (the

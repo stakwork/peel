@@ -100,6 +100,8 @@ public final class AppModel {
     public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
+            // The agent chat is its DM while it has one (`agentChat`).
+            followAgentChat()
             if selectedChat != oldValue?.chat {
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
@@ -147,6 +149,11 @@ public final class AppModel {
     /// What each composer holds unsent, kept while a thread covers its
     /// chat or another chat is open.
     public var drafts: [ComposerID: String] = [:]
+    /// The agent's device requests whose cards wait on you, by the agent's
+    /// chat, then request id: their lines draw the card (`ChatRow.approval`).
+    public var waitingCards: [String: [String: ToolIntent]] = [:] {
+        didSet { if waitingCards[selectedChat ?? ""] != oldValue[selectedChat ?? ""] { rebuildChatRows() } }
+    }
     /// The open chat's rows and the open thread's, worked out once per
     /// change of what they show rather than on every redraw.
     public private(set) var chatRows: [ChatRow] = [] {
@@ -265,6 +272,8 @@ public final class AppModel {
     public var mayHaveOlder: Bool {
         timelineWindow == nil && timeline.messages.count >= newestLimit
     }
+    /// Whether the open chat shows a jump's window rather than its newest messages.
+    public var showsWindow: Bool { timelineWindow != nil }
     /// An older page asked for (`loadOlder`) and not here yet.
     public private(set) var loadingOlder = false
     /// Whether the open chat's list ends at its newest message: false while
@@ -307,8 +316,50 @@ public final class AppModel {
     /// a plain file; the window says so.
     public private(set) var profile: Profile?
     public private(set) var engine: Engine?
-    /// The account's agent chat (`AppModel+Agent`), open with the account.
+    /// The account's agent on this Mac (`AppModel+Agent`), open with the
+    /// account: its model, name and rules, and the earlier local chat.
     public var agent: AgentSession?
+    /// The agent's own contact, whose DM is the agent chat
+    /// (docs/agent-on-strut.md, "One conversation"), set by the Mac app; on
+    /// the phone always the account's agent. Nil until the agent has its own
+    /// account, and the agent chat is the local one (`Destination.agent`),
+    /// read only, with its set-up.
+    public var agentContact: String? {
+        didSet { if agentContact != oldValue { followAgentChat() } }
+    }
+
+    /// The agent's DM, once its contact is a chat here: the agent's one row,
+    /// never a direct message beside it, and where `.agent` opens.
+    public private(set) var agentChat: String?
+
+    /// Your message the agent is still answering in its open DM
+    /// (`AgentDM.unanswered`), worked out with its rows; nil over a jump's
+    /// window, which may stop between your message and its reply.
+    public private(set) var agentUnanswered: Message?
+
+    /// Where the agent's row goes: its DM while that is the agent chat.
+    public var agentDestination: Destination { agentChat.map(Destination.chat) ?? .agent }
+
+    /// The agent's DM as the agent chat, both ways: the agent chat open when
+    /// its DM comes is the DM; the DM open when it stops being the agent
+    /// chat (the brain moved off this Mac) is the agent chat again.
+    /// The agent's contact once it is a chat here: ready, for the phone's agent row.
+    static func agentChat(contact: String?, in conversations: [Conversation]) -> String? {
+        contact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
+    }
+
+    private func followAgentChat() {
+        let chat = Self.agentChat(contact: agentContact, in: conversations)
+        if chat != agentChat {
+            let old = agentChat
+            agentChat = chat
+            if chat == nil { agentUnanswered = nil }
+            // Not as the account closes, which takes the agent first.
+            if let old, agent != nil, destination == .chat(old) { destination = .agent }
+            if selectedChat == chat || selectedChat == old { rebuildChatRows() }
+        }
+        if destination == .agent, let agentChat { destination = .chat(agentChat) }
+    }
     /// Bumped to open Account › Brain's home server form, as its "Connect a
     /// home server…" or "Change" would (the offscreen driver's `brain-form`).
     public var brainFormOpened = 0
@@ -378,7 +429,9 @@ public final class AppModel {
         if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
             states[heldUnread.chat] = heldUnread
         }
-        return ChatSections(conversations, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
+        // The agent's DM is the agent's own row.
+        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
+        return ChatSections(chats, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
@@ -387,6 +440,14 @@ public final class AppModel {
     public func openUnread(by offset: Int) {
         guard takesCommands, let chat = sidebarSections.unread(from: selectedChat, by: offset) else { return }
         destination = .chat(chat)
+    }
+
+    /// The open account's database while it is unlocked; nil when locked,
+    /// though locking leaves the engine open, or when no account is open.
+    /// What may be read or written for the person outside the main window
+    /// (the Mac's Dictation History).
+    public var unlockedStorage: Storage? {
+        phase == .ready && !isLockDue ? engine?.storage : nil
     }
 
     /// Whether a menu command may act on the main window: unlocked, the
@@ -501,8 +562,10 @@ public final class AppModel {
         let rows = withSenderZones(ChatRow.rows(
             timeline.messages, threads: timeline.threads, parents: timeline.parents, boosts: timeline.boosts,
             requests: timeline.requests, purchases: timeline.purchases, inTribe: isTribe(chat), people: people(in: chat),
-            callServer: calls.server, newAfter: newMessagesAfter(in: chat)
+            callServer: calls.server, newAfter: newMessagesAfter(in: chat), approvals: waitingCards[chat] ?? [:],
+            agentDM: chat == agentChat
         ), in: chat)
+        agentUnanswered = chat == agentChat && timelineReachesNewest ? AgentDM.unanswered(in: timeline.messages) : nil
         // Setting the same rows still redraws the list and diffs every row.
         // Recent calls age with the clock, so they are looked at again anyway.
         TimelineLog.log("\(TimelineLog.tag(chat)) rows built: \(rows.count) (changed \(rows != chatRows)), "
@@ -1163,6 +1226,7 @@ public final class AppModel {
         platform.playback.closeFullScreen()
         platform.playback.stop()
         conversations = []
+        agentContact = nil
         tribes = [:]
         linkedTribes = [:]
         knownMembers = [:]
@@ -1242,6 +1306,10 @@ public final class AppModel {
         // Forgotten while loading.
         guard self.engine === engine else { return }
         if let profile { agentHost?.open(profile, engine: engine, in: self) }
+        // With no agent here (the phone), the agent's DM is still the agent
+        // chat: the agent is this account's own, from the same words.
+        if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
+        if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
@@ -1346,6 +1414,7 @@ public final class AppModel {
                 let changed = old?.alias != new?.alias || old?.photoURL != new?.photoURL || old?.isTribe != new?.isTribe
                 conversations = rows
                 if changed { rebuildRows() }
+                followAgentChat()
                 if destination == nil, platform.opensFirstChat, let first = rows.first {
                     destination = .chat(first.chat)
                 }
@@ -1508,9 +1577,10 @@ public enum LinkedTribe: Equatable, Sendable {
 }
 
 /// Where a Connect panel was opened from, so it opens beside that button:
-/// the chat's card or its error row, or the Account page's provider or key.
+/// the chat's card, its DM's composer place, the Account page's provider
+/// or key, or Automations.
 public enum AgentConnectSource: Hashable, Sendable {
-    case chat, problem, account, accountKey, automations
+    case chat, dm, account, accountKey, automations
 }
 
 private extension AppModel.Destination {

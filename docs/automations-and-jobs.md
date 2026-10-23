@@ -7,6 +7,15 @@ nothing new is built.** It ties together [phases/12-automations.md](phases/12-au
 [peel-brain.md](peel-brain.md) / [brain-handover.md](brain-handover.md)
 (home server, partly built). Those stay the detail; this is the shape.
 
+> **Superseded in part (2026-10-19).** The decisions stand. What changed
+> with the loop in strut: the agent is strut's `orchestrator`, not Peel's
+> front agent; automations fire `peel-automation-run` in strut, not a
+> headless Swift run behind `AutomationServer`; the `sphinx/*` steps reach
+> your Mac through the bridge as device requests, not Peel's loopback; and
+> sends from an automation use a send grant checked on the Mac. The build
+> order is redone in [agent-on-strut.md](agent-on-strut.md), section 5. See
+> [agent-architecture.md](agent-architecture.md).
+
 ## Why
 
 Tom asked the agent: "ping the Hive tribe in 5 mins, saying we're testing
@@ -102,6 +111,12 @@ Three rules follow:
 A is the Hive test, and it needs **no authoring**: the built workflow
 with one more tool. Dynamic workflows (D) are for when no existing
 workflow fits, and are the last thing to build.
+
+> **Superseded (2026-10-19):** "Who does what", "Sphinx steps" and "Where
+> it runs". The orchestrator in strut makes automations and starts jobs;
+> `sphinx/*` steps post to the bridge, which asks your Mac; sends always go
+> out as you, from your Mac, never as the agent's identity (decision 2
+> below).
 
 ## Who does what
 

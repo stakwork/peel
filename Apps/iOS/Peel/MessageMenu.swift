@@ -37,13 +37,7 @@ struct MessageActions {
         if message.deleted { return nil }
         if let call = row.call { return call.url }
         guard let text else { return nil }
-        for inline in MessageMarkup.inlines(text) {
-            switch inline.kind {
-            case .link(let url), .namedLink(let url): return url
-            default: continue
-            }
-        }
-        return nil
+        return MessageMarkup.firstLink(in: text)
     }
 
     /// Reply in thread: the thread sheet. Inside the sheet, a reply to one

@@ -374,6 +374,9 @@ change to storage or sync:
   (`../agent-architecture.md`). Tom's preferences hold what his own
   clients need: which contact is his agent, what the app shows and asks,
   the connections his devices hold.
+  *Superseded in part (2026-10-19):* the gates are on Tom's own devices
+  now: approval rules and send grants live in the Mac's `agent.sqlite`,
+  and the brain holds none ([../agent-architecture.md](../agent-architecture.md)).
 - A preference that would loosen a gate on this device (a budget, a
   permission, a spending threshold) gets the stricter-only apply policy
   of decision 7, or is applied but held to a confirmation here, as the

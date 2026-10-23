@@ -2,7 +2,14 @@
 
 Last updated 2026-10-15. **v1 built** (PR #221); **system automations
 built** (Peel's half, [../system-automations.md](../system-automations.md));
-"Later" and the open questions are what is left. Builds on
+"Later" and the open questions are what is left.
+
+> **Superseded (2026-10-19).** Since Phase 1's PR 7 the person's
+> automations run on `peel-automation-run` in strut, their reports in the
+> agent's DM; PR 11 removed `AutomationServer`, the `peel-automation`
+> workflow's step and the headless Swift run described here
+> ([../agent-on-strut.md](../agent-on-strut.md), "Built: PR 11"). This file
+> is v1's build record. Builds on
 [agent-brain.md](../agent-brain.md) (the Mac is the brain, strut owns the
 graph) and strut's automations (`strut/plans/automations.md`, implemented
 2026-09-20).
@@ -189,6 +196,25 @@ use the same strut base URL and the same `Web.isThisMac` check:
   agent's text and its cost). No prompt and no Delete. One muted line
   says which model they run on and which provider sees the memory. The
   badge counts both tabs' failures.
+- **Nothing to report** (2026-10-23): a run whose agent answered
+  NOTHING_TO_REPORT ends in strut as a success whose text is blank lines
+  (the bridge sends nothing for it). Its row says "Nothing to report" with
+  its cost (`AutomationRunRecord.nothing`), not "Didn't finish: no reason
+  given". On the old `peel-automation`, a success with no reply is still a
+  failure.
+- **A run's reads in the agent's DM** (2026-10-23, approved on the "Agent
+  request grouping" canvas: A's line opening into B's steps): reads asked
+  back to back, done or still on the Mac, at most 2 minutes apart, fold
+  into one row (`ChatRow.agentReads`, `AgentReads`): "Checked unread
+  messages, 2 chats, threads and a search ✓ · 16 s", opening into a step
+  per kind with the chats it covered, each opening its chat. A send, an
+  approval, a calendar change, or a read that failed or was refused keeps
+  its own row. The iPhone shows the line only.
+  - Not done: the group does not name the automation (reads carry no run
+    id; the read steps would have to send one); the opened steps link the
+    chats but not the messages each read covered, which a lone read's row
+    shows; and a run with nothing to report still leaves its reads with no
+    line after them.
 
 ## Delivery
 
@@ -197,6 +223,12 @@ use the same strut base URL and the same `Web.isThisMac` check:
 | A message in the agent chat (`agent.sqlite`), with the automation's name as its title | A Sphinx message to your own phone, once the agent has its own identity (agent-brain.md phase 6) |
 | A local notification through `Notifier` that opens that message | Email, through a connector |
 | The text is the strut run's output | A text message |
+
+> **Superseded (2026-10-19):** "Delivery"'s later column and "Where it
+> runs". With the agent on strut (Phase 1 PR 7, in review), automations fire
+> `peel-automation-run` in strut, results arrive as messages in the agent's
+> DM, and reads or sends as you are device requests to your Mac. There is no
+> `peel serve` on the home server. See [../agent-architecture.md](../agent-architecture.md).
 
 ## Where it runs
 
@@ -272,6 +304,7 @@ POST /automations/run   Authorization: Bearer <token>
    history and the failure badge.
 6. **Later:** `deliver_at`, delivery to the phone, `sphinx-automation`,
    `peel serve` on the home server, and strut jobs for heavy work.
+   *Superseded in part (2026-10-19):* no `peel serve`; see "Where it runs".
 7. **Peel: system automations** (2026-10-14,
    [../system-automations.md](../system-automations.md)).
    - Done: `AutomationsClient.list` reads every workflow's automations

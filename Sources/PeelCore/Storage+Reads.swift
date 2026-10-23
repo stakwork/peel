@@ -210,10 +210,11 @@ extension Storage {
     /// What counts as unread, for a message `m` past the marker: someone
     /// else's message of `MessageType.unreadTypes` (text, attachments,
     /// payments, requests and calls) with words (`Message.hasNoWords`, read
-    /// from `message_unread`), or their boost on our message (someone else's
-    /// boost on someone else's message is not news to us; Tom, 2026-10-07).
+    /// from `message_unread`) and not a control message (`isControl`), or
+    /// their boost on our message (someone else's boost on someone else's
+    /// message is not news to us; Tom, 2026-10-07).
     static let countsAsUnreadSQL = """
-        m.fromMe = 0 AND m.noWords = 0
+        m.fromMe = 0 AND m.noWords = 0 AND m.isControl = 0
             AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
             -- The rule `isMoneyForMe` holds for notifications too.
             AND (m.type != \(MessageType.boost) OR EXISTS (

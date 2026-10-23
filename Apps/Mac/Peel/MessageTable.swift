@@ -101,6 +101,7 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
     private(set) var shown = false
     private(set) var gone = false
     var scrollView: NSScrollView? { scroll }
+    var pill: ListPill? { controller.pill }
 
     private var appeared = false
     private var placed = false
@@ -262,12 +263,10 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
             let difference = inPlace != nil
                 ? CollectionDifference<String>([])!
                 : ids.reversed().difference(from: oldIDs.reversed()).inferringMoves()
-            let inserted = difference.insertions.compactMap { change -> String? in
-                if case .insert(_, let id, nil) = change { id } else { nil }
-            }
-            stale.formUnion(inserted)
+            let diff = ListDiff(difference)
+            stale.formUnion(diff.inserted)
             stale.formUnion(changedIDs)
-            let move = controller.contentWillChange(to: listContent, diff: ListDiff(inserted: inserted))
+            let move = controller.contentWillChange(to: listContent, diff: diff)
             applyRows(difference, oldCount: oldIDs.count, changed: changedIDs)
             log("rows \(old.count)->\(rows.count) move \(move.to)\(move.animated ? " animated" : "")")
             if placed {
@@ -1310,4 +1309,8 @@ extension EnvironmentValues {
     /// A row in a message list about to open or close part of itself, by
     /// its id: the list holds that row's top (`ChatListController.userExpanded`).
     @Entry var listRowExpanding: @MainActor (String) -> Void = { _ in }
+    /// The row is in the agent's DM, drawn as the agent chat: the agent's
+    /// messages with Peel's logo and AGENT, their links to messages opening
+    /// them (`MessageText`'s `agentLinks`).
+    @Entry var inAgentDM = false
 }

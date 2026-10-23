@@ -3,10 +3,10 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// Connect a model: the provider, its API key (pasted, or typed), the
-/// model, then one small test call with the spinner inside Connect. What
-/// went wrong says so under the key, in the provider's plain words
-/// (`ModelError`). Opens beside the button that opened it.
+/// Connect a model: the provider, its API key (pasted, or typed) and the
+/// model, kept in this Mac's Keychain and handed to strut, which the agent
+/// answers with (`AppModel.modelChanged`). A key that could not be kept
+/// says so under it. Opens beside the button that opened it.
 struct AgentConnectPanel: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -15,9 +15,6 @@ struct AgentConnectPanel: View {
     @State private var provider: AgentProvider
     @State private var modelID: String
     @State private var key = ""
-    @State private var checking = false
-    /// The test call running, cancelled when the panel closes.
-    @State private var check: Task<Void, Never>?
     @State private var problem: String?
 
     init(agent: AgentSession, done: @escaping () -> Void) {
@@ -41,7 +38,6 @@ struct AgentConnectPanel: View {
                         modelID = chosen.recommendedModel
                         problem = nil
                     }
-                    .disabled(checking)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     FormItem(label: "\(provider.name) API key", problem: problem) {
@@ -54,7 +50,6 @@ struct AgentConnectPanel: View {
                             }
                             .buttonStyle(.peel(.outline))
                         }
-                        .disabled(checking)
                     }
                     Button("Get a key from \(provider.name)") {
                         model.web.open(provider.keyPage)
@@ -68,18 +63,14 @@ struct AgentConnectPanel: View {
                             (model.id, model.id == provider.recommendedModel ? "\(model.name) (recommended)" : model.name)
                         }
                     ) { modelID = $0 }
-                    .disabled(checking)
                 }
             }
             .padding(.top, 10)
-            .onDisappear { check?.cancel() }
         } footer: {
             FormFooter(problem: nil) {
                 Button("Cancel", action: done)
                     .buttonStyle(.peel(.outline))
-                // On while it checks, keeping its fill under the spinner;
-                // `connect` ignores a second click.
-                Button { connect() } label: { Text("Connect").buttonProgress(checking) }
+                Button("Connect") { connect() }
                     .buttonStyle(.peel(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(key.trimmed.isEmpty)
@@ -89,19 +80,12 @@ struct AgentConnectPanel: View {
 
     private func connect() {
         let key = key.trimmed
-        guard !key.isEmpty, !checking else { return }
-        checking = true
-        problem = nil
-        check = Task {
-            defer { checking = false }
-            do {
-                try await agent.connect(AgentCredential(provider: provider, model: modelID, apiKey: key))
-                done()
-            } catch is CancellationError {
-                // Closed while it checked: nothing was kept.
-            } catch {
-                problem = (error as? ModelError)?.localizedDescription ?? PeelError.problem(error, couldNot: "keep the key")
-            }
+        guard !key.isEmpty else { return }
+        do {
+            try agent.connect(AgentCredential(provider: provider, model: modelID, apiKey: key))
+            done()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "keep the key")
         }
     }
 }

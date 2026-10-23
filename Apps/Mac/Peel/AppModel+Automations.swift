@@ -10,11 +10,11 @@ struct AutomationsState: Equatable {
     var list: [Automation] = []
     var loaded = false
     var problem: String?
-    /// strut's `peel-automation` workflow points here; tried again on each
-    /// refresh until it does (strut may start after Peel).
-    var installed = false
     /// Each automation's runs, newest first, once looked at.
     var runs: [String: [AutomationRunRecord]] = [:]
+    /// The automations (by id) with a send grant that strut did not list at the last read
+    /// (`DeviceCards.revokeGrants`).
+    var grantsMissed: Set<String> = []
     /// System workflows' descriptions, read once (`AutomationsClient.list`).
     var descriptions: [String: String] = [:]
     /// The system automations Peel has turned on once, by workflow, as
@@ -40,77 +40,28 @@ struct AutomationsState: Equatable {
     var failed: Int { shown.filter(\.lastRunFailed).count }
 }
 
+/// Where the last hand-over of the connected model to Peel's strut stands
+/// (`AppModel.modelChanged`): Account › Peel agent says Connected only once
+/// strut has it.
+enum ModelHandOver: Equatable {
+    case handing, handed
+    /// What to tell the person, whole.
+    case failed(String)
+}
+
 extension AppModel {
     // MARK: Automations (docs/phases/12-automations.md)
 
-    /// Where strut reaches this Mac's agent: 4778 unless
-    /// `defaults write dev.peel.mac automationPort <port>` says otherwise.
-    static var automationPort: Int {
-        let port = UserDefaults.standard.integer(forKey: "automationPort")
-        return (1...65535).contains(port) ? port : 4778
-    }
-
     /// The client for the memory's strut (`lookForMemory`); nil without one.
     var automationsClient: AutomationsClient? {
-        memoryServer.map(AutomationsClient.init(server:))
+        memoryServer.map { AutomationsClient(server: $0) }
     }
 
     /// The same, only for Peel's own strut: the one place a home server is
-    /// left out of what Peel hands strut (the automation token and port,
-    /// the connected model's key), which it keeps its own of.
+    /// left out of what Peel hands strut (the connected model's key), which
+    /// it keeps its own of.
     private var ownStrutClient: AutomationsClient? {
         automationsClient.flatMap { $0.server.isHomeServer ? nil : $0 }
-    }
-
-    /// While the agent chat is open with a strut found: listens for strut
-    /// with the token made when the agent opened, hands it to strut's secret store
-    /// and points strut's `peel-automation` workflow here. The connected
-    /// model goes to strut apart from this (`modelChanged`). A development profile listens only
-    /// with an `automationPort` of its own, never on the app's. Never for a
-    /// home server, which cannot reach this Mac: it is not given the token or port.
-    func startAutomations(_ profile: Profile, engine: Engine) {
-        guard let memory = memoryServer, !memory.isHomeServer, let token = automationToken,
-              profile.kind == .app || UserDefaults.standard.object(forKey: "automationPort") != nil else { return }
-        let port = Self.automationPort
-        let stopping = automationStopping
-        Task {
-            do {
-                // The last server lets go of the port first (an account switched).
-                await stopping?.value
-                // Stopped with the agent chat (`closeAgent`), so holding the model is bounded.
-                let server = try await AutomationServer.start(port: port, token: token) { request in
-                    await self.runAutomation(request)
-                }
-                // Closed, another account opened, or the strut changed or stopped while it started.
-                guard self.engine === engine, memoryServer == memory, automationServer == nil else {
-                    return await server.stop()
-                }
-                automationServer = server
-                await installAutomations()
-            } catch {
-                automations.problem = PeelError.problem(error, couldNot: "listen for automations on port \(port)")
-            }
-        }
-    }
-
-    func stopAutomations() {
-        automations = AutomationsState()
-        guard let server = automationServer else { return }
-        automationServer = nil
-        automationStopping = Task { await server.stop() }
-    }
-
-    /// Points strut's workflow at the listening server; says why when it
-    /// cannot, and then nothing fires (no token but strut's store's).
-    private func installAutomations() async {
-        guard let client = ownStrutClient, let server = automationServer else { return }
-        do {
-            try await client.install(port: server.port, token: server.token)
-            guard automationServer === server else { return }
-            automations.installed = true
-        } catch {
-            automations.problem = PeelError.problem(error, couldNot: "set up automations on strut")
-        }
     }
 
     /// The connected model, read from the Keychain; nil without one. Throws
@@ -122,8 +73,7 @@ extension AppModel {
 
     /// strut started, or the connected model changed (connected, another
     /// model, removed): strut's secret store is given the model, for the
-    /// system automations, whether or not Peel listens for automations.
-    /// One hand-over at a time; a change while one runs is handed over after it.
+    /// agent and the system automations. One hand-over at a time; a change while one runs is handed over after it.
     func modelChanged() {
         modelHandingAgain = true
         guard modelHanding == nil else { return }
@@ -142,54 +92,39 @@ extension AppModel {
     /// (`docs/peel-brain.md`, "Keys live on the brain"), which a disconnect
     /// here must not take out.
     private func handModelToStrut() async {
-        guard let client = ownStrutClient else { return }
+        guard let client = ownStrutClient else { return handedOver(nil) }
         let credential: AgentCredential?
         do {
             credential = try connectedCredential()
         } catch {
             // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
             automations.problem = PeelError.problem(error, couldNot: "read the connected model's key")
-            return
+            return handedOver(.failed("Not connected to your assistant: \(PeelError.problem(error))"))
         }
         // This strut has it already (`connection` set again to the same).
-        if let handed = strutModel, handed.server == client.server, handed.credential == credential { return }
+        if let handed = strutModel, handed.server == client.server, handed.credential == credential {
+            return handedOver(.handed)
+        }
+        handedOver(.handing)
         do {
             try await client.setModel(credential)
         } catch {
             strutModel = nil
             automations.problem = PeelError.problem(error, couldNot: "give strut the connected model")
-            return
+            let reason = PeelError.problem(error)
+            return handedOver(.failed(credential == nil ? "Your assistant may still have the old key: \(reason)"
+                                      : "Not connected to your assistant: \(reason)"))
         }
+        // The strut changed meanwhile: handed to the new one next (`lookForMemory`).
         guard automationsClient?.server == client.server else { return }
         strutModel = (client.server, credential)
+        handedOver(.handed)
         if credential != nil { await refreshAutomations() }
     }
 
-    /// One run: the agent with the read and memory tools and no send, its
-    /// result delivered to the agent chat with a notification.
-    func runAutomation(_ request: AutomationRequest) async -> AutomationReply {
-        guard let profile, let engine, let agent else { return .failed(AutomationFailure.accountClosed) }
-        let credential: AgentCredential
-        do {
-            guard let kept = try connectedCredential() else { return .failed(AutomationFailure.noModel) }
-            credential = kept
-        } catch is KeychainLocked {
-            return .failed(AutomationFailure.macLocked)
-        } catch {
-            return .failed(AutomationFailure.keyUnreadable)
-        }
-        let setup = Self.agentSetup(engine, memory: memoryServer)
-        let loop = AgentLoop(
-            provider: Self.agentClient(credential, profile: profile),
-            tools: setup.tools, model: credential.model, systemPrompt: setup.systemPrompt(unattended: true))
-        let reply = await AutomationRun.run(request, with: loop, provider: credential.provider)
-        // The account may have closed while it ran: nothing is kept for it.
-        guard self.agent === agent else { return .failed("Peel's account closed during the run.") }
-        if reply.status == .delivered, let text = reply.text {
-            agent.deliver(text, from: request.name)
-            notifier.automationDelivered(name: request.name, text: text, chatShown: agent.isShown && isFrontmost)
-        }
-        return reply
+    /// Written only when changed: each write redraws Account › Peel agent.
+    private func handedOver(_ state: ModelHandOver?) {
+        if modelHandOver != state { modelHandOver = state }
     }
 
     // MARK: The view's actions
@@ -201,7 +136,6 @@ extension AppModel {
             return
         }
         let own = ownStrutClient != nil
-        if own, !automations.installed { await installAutomations() }
         // Not handed to this strut yet, or it failed: tried again.
         if own, strutModel?.server != client.server { modelChanged() }
         do {
@@ -210,9 +144,13 @@ extension AppModel {
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
             automations.descriptions = descriptions
-            // A failed install stays said until one succeeds (a home server has none).
-            if automations.installed || !own, automations.problem != nil { automations.problem = nil }
+            if automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
+            // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
+            if own, let missed = try? macAgent.deviceCards.revokeGrants(
+                missingFrom: Set(list.filter(\.isYours).map(\.id)), missedBefore: automations.grantsMissed) {
+                automations.grantsMissed = missed
+            }
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }
         } catch {
@@ -276,11 +214,43 @@ extension AppModel {
     }
 
     func deleteAutomation(_ automation: Automation) async {
-        await changeAutomations("delete \u{201C}\(automation.name)\u{201D}") { try await $0.delete(automation) }
+        await changeAutomations("delete \u{201C}\(automation.name)\u{201D}") { client in
+            try await client.delete(automation)
+            try macAgent.deviceCards.revokeGrants(of: automation.id)
+        }
     }
 
     func updateAutomationPrompt(_ automation: Automation, to prompt: String) async {
         await changeAutomations("change \u{201C}\(automation.name)\u{201D}") { _ = try await $0.update(automation, prompt: prompt) }
+    }
+
+    /// Moves the person's automations to `workflow` on `server`
+    /// (`AutomationsClient.moveYours`), their run ends to `callback`, one move
+    /// at a time (each bridge start moves them). Says which it could not move,
+    /// or why none moved; then the list is read again.
+    func moveAutomations(on server: MemoryServer, to workflow: String, callback: URL?) async {
+        let client = AutomationsClient(server: server, yours: workflow, callback: callback)
+        let bridge = agentBridge
+        let before = bridge.moving
+        let move = Task { () -> String? in
+            _ = await before?.value
+            do {
+                // The ones there already first: those the move makes carry it.
+                if let callback { try await client.pointRunEnds(at: callback) }
+                let stuck = try await client.moveYours()
+                guard !stuck.isEmpty else { return nil }
+                let names = ListFormatter.localizedString(byJoining: stuck.map { "\u{201C}\($0)\u{201D}" })
+                return "Couldn't move \(names) to \(workflow): it stays where it was until the next try."
+            } catch {
+                return PeelError.problem(error, couldNot: "move the automations to \(workflow)")
+            }
+        }
+        bridge.moving = move
+        let problem = await move.value
+        guard automationsClient?.server == server else { return }
+        await refreshAutomations()
+        // After the read, which clears what it last said.
+        if let problem { automations.problem = problem }
     }
 
     private func changeAutomations(_ what: String, _ change: (AutomationsClient) async throws -> Void) async {

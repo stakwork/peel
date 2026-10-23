@@ -1,363 +1,243 @@
 # Peel and the Sphinx agent: architecture
 
-Last updated 2026-10-10. The single source of truth for the Sphinx agent
-that Peel is the client for. Nothing here is built.
+Last updated 2026-10-19. **The architecture of record for Peel's agent:**
+what is built and decided. It rests on [foundation.md](foundation.md)
+(decisions 1 to 13), the end state in [end-state.md](end-state.md) and
+Phase 1's design and build log in [agent-on-strut.md](agent-on-strut.md),
+which has the detail. Where an older doc disagrees with this page, this
+page wins; those parts are marked superseded with a pointer here.
 
-> **Proposed change (2026-10-13, not agreed):** the Mac as the brain,
-> strut as the graph's only writer, Peel's agent as a front agent that
-> hands work to strut jobs. See [agent-brain.md](agent-brain.md).
+It replaces this file's plan of 2026-10-10 (the agent in Swift inside Peel
+on every device, one graph per device synced as an encrypted change log)
+and the 2026-10-13 proposal in [agent-brain.md](agent-brain.md) (Peel's
+agent as the front agent, handing work to strut). Both are in git history.
 
-This replaces the plan of 2026-10-08–09 (an always-on agent host with its
-own Sphinx account, Strut jobs, ACP workers and a graph only the host could
-open). Tom judged that too much, too early. The decisions below were agreed
-with Tom on 2026-10-10. Those parts of the old plan now come later, as
-other places to run the same code ("Later", below).
+## In one paragraph
 
-## Summary
+The agent lives on the **brain**: your Mac by default, a home server from
+Phase 2. It is a **Sphinx contact** with its own account, derived from your
+words with `agent_seed(seed, n)`. A Rust **bridge**, `sphinx/runner`,
+bundled in Peel.app and started by Peel, holds that account. Every message
+you send the agent goes through the bridge to strut's generic
+**`orchestrator`** workflow, an agent on strut's `agent` step. It answers
+small things itself and starts or continues strut's **`job`** for bigger
+work. Memory (Ladybug) and automations are strut's. **Your keys stay on
+your devices**: when a run needs your chats or a send as you, strut asks
+your Mac with a hidden control message in the agent's DM, and your Mac
+does it, behind an approval card where it acts. One agent DM is **one
+continuous session**, compacted in place; `/new` starts a fresh one.
 
-- **The agent runs on the client.** It runs inside Peel on the Mac now,
-  Peel on iPhone next, and a cloud or home server later. The agent code is
-  platform-neutral Swift; only the chat UI is per platform.
-- **For every Peel user,** not just Tom. Onboarding, keys and costs must
-  work for anyone.
-- **One graph per user, the same data everywhere.** Every device, in Peel
-  and in the official Sphinx apps, holds the same graph. Tom T is adding
-  LadybugDB to the official apps first (below); Peel reuses what he learns.
-- **Sync is an encrypted change log:** each write is a small event, kept
-  in a local log and uploaded as encrypted files to the memes server, as
-  the official apps already do for their preferences file. Every device
-  replays the others' events into its local LadybugDB file. Last write
-  wins per field.
-- **The graph is the knowledge.** The agent has a short system prompt and
-  walks the graph toward its goal. Glimmer, the concept tree, is content
-  in the graph: Concept is one node type among others, read and walked
-  with the same generic tools.
-- **Version 1 is the foundational agent:** connect a model, chat, read
-  and search your Sphinx chats, and send messages. No memory, graph or
-  payments yet; the plan is in
-  [phases/09-agents.md](phases/09-agents.md).
-- **Every send asks first** (changed 2026-10-12): a card in the agent chat
-  shows the exact message and any price; Allow once, Always allow for
-  that chat (never for a send that costs sats), or Deny. Each tool
-  declares its effect (read or send), and every tool that acts waits on
-  the same gate, so connectors and coding agents reuse it unchanged.
-- **Memory comes from the agent chat and explicit Remember only.** The
-  agent never reads other chats to learn, only to carry out a task.
-- **Agent conversations are graph nodes,** so they sync with everything
-  else.
-- **The agent builds the graph itself,** from a starter template, with no
-  proposal cards. It may add node types beyond a small starter set.
+## The decisions it rests on
 
-## What exists today
-
-Tom T's branch `tt/feature/graph-db`, in `sphinx-ios-v2` and
-`sphinx-mac-v2` (2026-10-07 to 10-09):
-
-- **The driver only.** [swift-ladybug](https://github.com/LadybugDB/swift-ladybug),
-  product `Ladybug`: `Database`, `Connection`, `PreparedStatement`,
-  `QueryResult`. Queries are Cypher.
-- **iOS:** a vendored source copy in `LocalPackages/swift-ladybug`, pinned
-  to upstream `c071a7c`, because upstream ships no iOS binary
-  ([swift-ladybug#14](https://github.com/LadybugDB/swift-ladybug/issues/14)).
-  Needs iOS 17.
-- **Mac:** the remote package, with `scripts/embed-liblbug.sh` downloading,
-  signing and embedding the prebuilt library for arm64 and x86_64.
-- **Not yet:** a graph layer, sync, or any app code that uses it.
-
-Peel is a SwiftPM package, not an Xcode project, so the Mac Run Script
-does not carry over. The likely route is the vendored source package for
-both platforms; building it for macOS is still to be tried.
-
-## The pieces
-
-```
- Peel (Mac now, iPhone next)          official Sphinx apps (Tom T)
- ┌────────────────────────────────┐   ┌───────────────────────────────┐
- │ Agent chat UI (per platform)   │   │ their own UI                  │
- │ AgentKit: loop · tools         │   │                               │
- │ PeelCore engine                │   │ their engine                  │
- │ GraphKit + GraphSync ──────────┼───┼─ GraphKit + GraphSync         │
- │ Ladybug: local file            │   │ Ladybug: local file           │
- └───────────────┬────────────────┘   └───────────────┬───────────────┘
-                 │   change-log events, encrypted,    │
-                 └──── files on the memes server ─────┘
-```
-
-Proposed packages, all platform-neutral Swift with no AppKit or UIKit.
-None is built yet; GraphKit and GraphSync are to be agreed with Tom T.
-
-| Package | Owner | Holds |
+| # | Decision | Where |
 |---|---|---|
-| GraphKit | Shared with Tom T | The graph tools over `Ladybug`, on the generic Node and Edge tables |
-| GraphSync | Shared with Tom T | The change log, field timestamps, encryption keyed from the seed, batching, snapshots, and a transport protocol |
-| AgentKit | Peel | The loop, model providers, tool registry, compaction and context assembly; an approval gate later |
-| PeelCore | Peel | The Sphinx engine the Sphinx tools call |
+| 1 | The loop runs in strut on the brain; the bridge is a Rust Sphinx client from `sphinx/runner` | foundation.md 1; runner is the bridge (sphinx#382) |
+| 2 | The agent's seed is `agent_seed(seed, n)`: HKDF-SHA256 over your seed, info `agent seed <n>`, no salt, in the Sphinx core | foundation.md 2; sphinx#383, sphinx-rs#100 (v0.8.39) |
+| 3 | Only the agent's derived account is on the brain; a remote signer is the long-term target | foundation.md 3 |
+| 4 | Devices reach the agent over Sphinx; a direct connection to strut is optional and no feature needs it | foundation.md 4 |
+| 5, 12 | One sealed whole-brain snapshot format, memory first, in Phase 2, after always-on and the phone | foundation.md 5 and 12 |
+| 6–10 | The device channel is in Phase 1; one conversation, the agent DM, no token streaming; the bridge is bundled in Peel.app; only the Mac answers in Phase 1; brain mode is off by default | foundation.md 6–10 |
+| 11 | The contact is a pipe; the orchestrator is a strut workflow that starts strut's jobs, as Jamie does in Hive | foundation.md 11 |
+| — | The orchestrator is strut's, not Peel's: one generic workflow; Peel is its first host | agent-on-strut.md, decision 12 |
+| 13 | One contact, one continuous session; `/new` starts a fresh one | foundation.md 13 |
 
-### Where things run
+## The shape
 
-Each part sits behind a protocol, so moving the agent to a server swaps the
-implementation, not AgentKit.
+```
+ Your devices (your account, your keys)        Sphinx v2 servers
+ ┌───────────────────────────────────┐         ┌────────────────────┐
+ │ Peel on Mac                       │         │ broker + mixer     │
+ │  the agent DM · approval cards    │◄───────►│ (onion, queued)    │
+ │  device requests (peel.sqlite)    │         │ push hub · memes   │
+ │  send grants (agent.sqlite)       │         └─────────┬──────────┘
+ ├───────────────────────────────────┤                   │
+ │ Peel on iPhone, official apps     │◄──────────────────┤
+ │  the same DM; never answer        │                   │
+ └───────────────────────────────────┘                   │
+                                                         │
+ The brain: your Mac in Phase 1 (inside Peel.app); a home server in Phase 2
+ ┌───────────────────────────────────────────────────────▼──────────────┐
+ │ bridge (sphinx/runner): the agent's account · inbox · request ledger │
+ │    │ POST /workflows/orchestrator/run          ▲ run.end callback     │
+ │    ▼                                           │                      │
+ │ strut: orchestrator (agent step, one session per DM, compaction)     │
+ │    tools: memory/* · job/start, job/continue, job/* · automation/*   │
+ │           sphinx/* (Peel's device steps) ──► bridge ──► your Mac     │
+ │    job (its own folder, session, bash and web) · automations         │
+ │    Ladybug: memory graph and workspace graph (strut the only writer) │
+ └──────────────────────────────────────────────────────────────────────┘
+```
 
-| Part | Now (inside Peel) | Later (always-on server) |
+A message to the agent: you write in the DM; the broker queues it until
+the brain is online; the bridge opens it with the agent's key, stores it,
+and starts one `orchestrator` turn in the DM's session; the turn recalls
+memory and calls a model and its tools; the reply goes back through the
+bridge as an ordinary DM, and the push hub wakes your phone. If the brain
+is asleep the message waits on the broker. Auth, encryption, queues and
+push are Sphinx's.
+
+## The parts
+
+| Part | What it is | Decides? |
 |---|---|---|
-| Channel: how you talk to the agent | A local Agent chat in Peel, calling AgentKit directly | Sphinx messages to the agent's own account; the agent is a contact |
-| Graph | The local LadybugDB file | A local file on the server, synced the same way |
-| Tools | Graph, then Sphinx actions | Adds schedules, coding agents (ACP) and connectors |
-| Approvals | A card per send (once, always per chat, deny) | The same gate, with spending caps for unattended runs |
+| Your devices | Peel on the Mac: reads your chats, sends as you, draws the cards, keeps send grants. Peel on the iPhone and the official apps: the same DM, talk only | No |
+| The contact | The bridge (`sphinx/runner`): the agent's keys, the inbox (store, then ack, one turn at a time per session), replies back, the request ledger, `cancel` to strut, tool rows from the run's events, chunking both ways | **No.** Every message from you goes to strut |
+| The orchestrator | strut's `orchestrator` workflow on its `agent` step, with no built-in tools (`toolFilter: ['none']`). strut's tools (`memory/*`, `job/start`, `job/continue`, the `job/*` reads) plus the host's: Peel's `sphinx/*` steps, strut's `automation/*` steps and Peel's prompt section, read from a host config file at boot | **Yes** |
+| Jobs | strut's `job` workflow, unchanged: a folder per job, artifacts, `ask`, bash and the web. Started detached with the bridge as its callback; continued by id | Yes, within one task |
+| Automations | strut's scheduler. Each fire runs `peel-automation-run`: the same `agent` step with no session and the unattended prompt (no sends but by grant, no schedules) | Within the run |
+| Memory | Ladybug inside strut: the memory graph and the workspace graph (workflows, steps, automations). strut is the only process that opens them | — |
 
-## The graph
+Why the bridge is not the agent: it would be a second loop in Rust beside
+strut's, its history would sit outside what a backup or handover moves, and
+text from other people's chats would reach a model in the process that
+holds the agent's keys. Why every message is not a job: `job` always has
+bash, and on your Mac that bash could reach Peel's database. The
+orchestrator stays small; jobs do the heavy work.
 
-### Storage
+## Keys and accounts
 
-LadybugDB needs its tables defined before any insert, so the stored tables
-are fixed and generic. The ontology (which node and edge types exist and
-what they mean) lives in the data, not in the tables:
+- **Your account and its words stay on your devices.** The brain never
+  holds your root key (foundation.md, decision 3). Rule for everything
+  built: nothing may assume the brain holds it.
+- **The agent's account** is agent 1: `agent_seed(seed, 1)`, derived by
+  Peel (`Engine.agentAccount()`, `Engine+AgentAccount.swift`) and posted
+  to runner's `POST /seed`, which refuses to replace one. runner never
+  sees your words. A restore from your words gets the same agent back.
+  The iPhone works out the same agent's pubkey from the same words
+  (`Engine.agentPubkey()`) and stores nothing.
+- **Pairing costs one invite.** Turning the agent on makes a 10-sat invite
+  from your account; the agent registers with it, and sats it did not need
+  are asked back (stakwork/sphinx#385, peel#322).
+- **Trust.** The bridge runs turns only for your account's pubkey. The Mac
+  answers requests only from its own agent's pubkey, addressed to its own
+  device id.
+- **Still open, for Evan:** how Peel's own derived keys are made (the
+  brain id and key, the backup key). The input is the seed.
+- **Long term (Phase 3):** a remote signer in an isolated key zone, so
+  your account can run on the brain without the key ever touching it.
 
-```
-NODE Node (ref_id PK, type, name, body, props, created_ms, updated_ms,
-           created_by, source, deleted_ms)
-REL  Edge (Node → Node: ref_id, type, props, created_ms, created_by,
-           deleted_ms)
-```
+## The device channel
 
-`type` is a string. `props` holds the type's own fields, as a MAP if the
-Swift wrapper handles it, else a JSON string (to find out first). A type
-that becomes heavy and stable can move to its own table later.
+strut cannot read your chats or send as you: those need your keys. So a
+`sphinx/*` step asks your Mac, in the agent's DM, and waits.
 
-### Starter template and ontology
+- **Two kinds of message.** Talk (Markdown, as written) and control (one
+  short readable line as the content, a versioned JSON envelope under
+  `metadata.peel`). Peel never draws a control message as a bubble; the
+  official apps show the line.
+- **The envelope** (`ControlEnvelope.swift`, v1): `request`, `ack`,
+  `result`, `cancel`, `status`. A device that sees a `v` it does not know
+  answers `failed`.
+- **Requests** (stored and trusted in `Engine+DeviceRequests.swift`,
+  done in PeelAgent's `DeviceReads.swift` and `DeviceActions.swift`): `chats.list`,
+  `chats.read`, `chats.threads`, `chats.unseen`, `chats.search` (reads),
+  `send` (a send as you) and `approve` (a card only, for strut steps that
+  act on the brain, such as making an automation). `calendar.*` is
+  designed but dropped from Phase 1 for now (Tom, 2026-10-18).
+- **Nothing is done twice.** Each request has an id: strut's resume asks
+  the same id again, the bridge's ledger and the Mac's `deviceRequest`
+  table answer a repeat with the stored result. A send cut short after it
+  was stored answers `unknown`, never a second send.
+- **Approval cards.** A send in conversation, or an `approve`, shows a
+  card in the DM on the Mac: Allow once, Always allow (never for anything
+  with a cost or a grant), Deny. A card past its expiry closes itself.
+  What runs is what the card showed.
+- **Send grants.** An automation that posts as you gets a grant from your
+  click on its create card: its chats, a sats cap per message, and
+  `[Agent] ` first, checked on the Mac before each send. Grants live in
+  `agent.sqlite`, never on the brain. Storing and checking them is merged
+  (PR 3); making one from an automation's create card is PR 7, in review
+  (waiting on stakwork/strut#215).
+- **Waiting.** No ack in 10 s, or no result in time: the step returns
+  `pending` wrapped in `withStop()`, the turn ends, and the DM says
+  "Waiting for your Mac". A result that comes later starts a new turn in
+  the same session.
+- **Who answers.** Only the Mac, in Phase 1. The iPhone shows each request
+  as one quiet line, and "Waiting for your approval on your Mac" where the
+  Mac's card waits. The phone answering, first device to accept doing it,
+  is Phase 2.
 
-Every new graph starts with a small tree the agent grows from: Me, People,
-Projects, Interests. The starter types are Concept, Memory, Person, Task,
-Source, Conversation, Turn and Summary. The agent creates nodes, edges
-and new types directly. Each type is also a Type node with a description
-and an example, so `ontology()` can show it. A tidy-up job merges synonyms
-such as Note and Memory.
+## One conversation, one session
 
-### Principles
+- **The DM is the conversation**, the same thread on the Mac, the iPhone
+  and the official apps. No token streaming: a reply arrives whole. On the
+  Mac the agent's row in Direct messages opens it; "writing…" shows until
+  a reply names your message; Stop sends a `cancel`.
+- **One DM is one strut session** (`peel/agent-1/dm`), never reset on a
+  timer, compacted in place by the `agent` step: older turns become a
+  summary for the model and stay word for word in the session record.
+- **`/new`** in the DM starts a fresh session (`dm-2`, `-3`, …). The bridge
+  handles it and confirms. A session keeps its first system prompt, so a
+  revised prompt reaches the DM through `/new` for now (agent-on-strut.md,
+  open question 10).
+- **Jobs keep their own sessions**, by job id, so `job/continue` works
+  whatever the DM's session is. A job's result arrives as an agent message
+  naming the job (`metadata.peel.job`), with what it points to.
+- **Old history.** The conversation Peel's own agent kept on a Mac before
+  strut was the agent stays there under "Old assistant chats (this Mac only)", read only,
+  until Clear. It is not migrated.
 
-1. **Identity is the `ref_id`,** never the name or the wording.
-2. **Every tool works on any node type.** No tool is specific to Concept,
-   Memory or anything else; the type is a field.
-3. **Writes change only the fields sent.** Nothing is replaced whole.
-4. **Nothing is hard-deleted.** Forgetting sets `deleted_ms`; a changed
-   fact is a new node that supersedes the old one.
-5. **Every node and edge records who wrote it and from what.** `created_by`
-   is the user or the agent; `source` points at the turn or message.
-6. **Pointers, not copies.** A Sphinx message is referenced by its id, not
-   copied.
-7. **Reads return small results.** Search and walk return ids, names and
-   snippets; `read` expands one node.
-8. **`add` returns similar existing nodes,** so the agent links to one
-   instead of making a near-copy.
-9. **People and the agent use the same actions.** What the UI does is also
-   a tool.
+## Connectors
 
-### Graph tools
+Sphinx is one connector among others. Each is a set of strut steps with
+its token in strut's secret store, granted to the orchestrator or a job.
 
-The same set is GraphKit's API and the agent's graph tools.
+| Connector | How | State |
+|---|---|---|
+| Sphinx | Peel's `sphinx/*` device steps, answered by your Mac with your keys | Built (Phase 1) |
+| Gmail, Linear | strut steps, tokens in strut, granted to jobs | Not built |
+| Calendar | `calendar.*` device requests, EventKit on the Mac | Designed, dropped from Phase 1 for now |
 
-| Tool | Does |
+A connector that acts needs strut's **J1**: an `effect` on each step and
+an approval stop in the job agent, so a job's write comes back as an `ask`
+for the card. It is not built yet ([jobs-architecture.md](jobs-architecture.md),
+"Build order"). Tokens never travel in a Sphinx message.
+
+## What stays in Swift
+
+No agent loop lives in Peel. On the Mac, AgentKit and PeelAgent are the
+client side: the approval gate and its rules, the cards, the
+device-request handler, the Sphinx read and send code it reuses, the
+connected model's key (handed to strut), `BundledStrut`, `BundledBridge`
+and `Orchestrator`, and the earlier local chat, read only. PeelCore,
+Peel's Sphinx messaging engine, stays Swift. Peel's own loop, its model
+clients, `AutomationServer` and the `peel-automation` workflow it served
+were removed in PR 11 (agent-on-strut.md, "Built: PR 11").
+
+## Where the brain runs
+
+| | Phase 1 (now) | Phase 2 |
+|---|---|---|
+| Where | Your Mac, inside Peel.app: Peel, strut and the bridge, all started by Peel | Your Mac or a home server, one at a time |
+| When it answers | While the Mac is awake and Peel is open | Always, on the home server |
+| Who answers device requests | The Mac | The Mac or the iPhone, the first to accept |
+| Backups | None yet; Time Machine's copy of strut's folder is the fallback | Sealed snapshots, memory first, then the whole brain |
+
+The home server is strut and the bridge in one Docker bundle, with no Peel
+on the box. Moving the brain is a handover of the whole strut workspace
+([brain-handover.md](brain-handover.md)). Phase 2's plan is to come as its
+own doc.
+
+## What is built
+
+As of 2026-10-19. The detail and each PR's checks are in
+[agent-on-strut.md](agent-on-strut.md), "Built: PR 4" to "Built: PR 11".
+
+| Piece | State |
 |---|---|
-| `search(q, type?, limit)` | Keyword and vector search over all nodes; ids, names and snippets |
-| `read(ref_id)` | One node in full, with a one-line summary of each neighbour |
-| `walk(ref_id, edge_types?, direction?, depth ≤ 2, limit)` | Neighbours of any node |
-| `add(type, name, body?, props?, links?)` | Creates a node; returns its `ref_id` and up to 3 similar nodes |
-| `update(ref_id, props)` | Changes only the fields given |
-| `link(from, type, to, props?)` / `unlink(edge)` | Adds or soft-removes an edge |
-| `forget(ref_id, reason)` | Soft delete, restorable |
-| `ontology()` | The node and edge types in use, with counts, descriptions and an example |
+| The bridge: runner (inbox, turns, sessions with `/new`, device requests, cancel, chunking; a run it did not launch, such as an automation's, sent to the DM) | Merged (stakwork/sphinx#382, #385, #387) |
+| `agent_seed` in the core and sphinx-ffi v0.8.39 | Merged; Peel pins v0.8.39 |
+| strut: `withStop()`, automation callbacks, retain text; `job/start`, `job/continue`; the generic `orchestrator`; the automation steps | Merged (stakwork/strut#198, #195, #196, #213) |
+| Peel PRs 1–7, 6b, 9: the envelope, device reads, sends and approvals, the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM, jobs in the DM, automations on strut with send grants, the iPhone's DM | Merged |
+| PR 10: strut is the agent, no switch; runner ships in Release builds too, inside the sandbox | Merged (peel#334) |
+| PR 11: Peel's own loop removed | Built; merges once Tom has used PR 10 on his account for a day or two |
 
-Remembering is `add(type: "Memory", …)` with links to what it is about;
-growing the concept tree is `add(type: "Concept", …)` and `link`. Later,
-only if needed: `supersede(old, new)` and a read-only `query(cypher)`.
+## Open
 
-## Sync
-
-Every write becomes one event:
-
-```
-{ v, event_id, ref_id, op: add | update | link | unlink | forget,
-  fields: {name: value, …}, ts (hybrid logical clock), device }
-```
-
-- **Applying.** Each device applies events in order into its LadybugDB
-  file. For each field the value with the latest `ts` wins; ties go to the
-  higher `device`. The local file is a view of the log and can be rebuilt
-  from it.
-- **Encryption.** Events are encrypted with the account's key, as the
-  preferences file is (RNCryptor with the node secret key; see
-  [phases/11-preferences-sync.md](phases/11-preferences-sync.md)). The
-  memes server sees only ciphertext. Only the official preferences file
-  uses the raw node secret (the official apps need it); Peel-only graph
-  data uses its own key, derived from the node secret by HKDF with a
-  label, so one key never serves two formats.
-- **Transport** (Tom T's plan, 2026-10-10: every write logged locally with
-  its timestamp, uploaded to the memes server as an encrypted file; the
-  fetch and push rules are still to be agreed). Proposed rules:
-  - Each device writes only its own append-only segment files (such as
-    `graph/<device>/<seq>`), so no two devices write the same file.
-  - Push new segments in batches after a few seconds of quiet; never
-    re-upload history.
-  - Fetch other devices' new segments on launch, on return to the
-    foreground and on an interval; apply them idempotently by `event_id`.
-  - Never overwrite on a failed read: the memes server answers 404 for
-    any storage error, not only a missing file. A bad event is skipped,
-    not treated as an empty log; unknown ops and fields are kept.
-- **Not like the preferences file:** that file is one shared document
-  that each device reads, merges and re-uploads whole, so two devices can
-  overwrite each other and one unreadable item can wipe it. A growing graph
-  log cannot work that way.
-- **New devices.** A new device loads an encrypted snapshot, then the
-  events after it, instead of replaying everything.
-- **Not synced.** Embeddings; each device computes its own.
-- **The event format is a contract** between Peel and the official apps.
-  It is agreed with Tom T before either side writes data, and versioned
-  by `v`.
-
-Open: whether the memes server can store several named files per account,
-or only the one `/preferences` slot. Per-device segments need named files
-or a new endpoint.
-
-## The agent
-
-### The loop
-
-One turn per message in the Agent chat:
-
-1. Write the user's message as a turn node in the Conversation.
-2. Assemble context: the short system prompt and the recent turns (later,
-   the latest summary and the results of a first `search` on the message).
-3. Call the model with the tool list, streaming the reply, and run each
-   tool call.
-4. Write the reply as a turn node, and any memories with `source` set to
-   the turn.
-
-**Compaction.** When a conversation grows past the model's budget, older
-turns are folded into a Summary node linked to the turns it covers. The
-loop then reads the summary instead of those turns; the turns stay.
-
-### Storage before the graph
-
-AgentKit is built before GraphKit (see "Phases"). Until then it stores its
-records (conversations, turns, summaries, memories) behind one storage
-protocol, in SQLite through GRDB as Peel already does. Each record is
-shaped like a graph node from the start: a `ref_id`, a type, `created_by`,
-`source`, `deleted_ms` and edges to other records. Moving to the graph is
-then a one-off import, each record written as an event, not a redesign.
-
-Everything the agent writes ends up in the graph. Three things never do:
-Sphinx messages themselves (PeelCore keeps them; the graph points at their
-ids), secrets such as API keys (Keychain only), and embeddings (each
-device computes its own).
-
-### Tools
-
-The Sphinx tools through PeelCore, under the official apps' names where
-they exist; the full v1 list is in [phases/09-agents.md](phases/09-agents.md).
-The graph tools above join them once the graph lands.
-
-| Tool | Effect | Does |
-|---|---|---|
-| `get_contacts_and_tribes` | read | Contacts and tribes, with names and keys |
-| `read_recent_messages`, `read_unseen_messages` | read | Messages from a chat, for a task |
-| `read_threads`, `search_messages` | read | Peel's own: tribe threads; search across chats |
-| `send_sphinx_message` | send | Sends a message, optionally in a thread or as a reply |
-| `mark_chat_as_seen` | send | Marks a chat read |
-
-### Models
-
-AgentKit has one provider interface, implemented by two small clients of
-our own (Anthropic, and OpenAI-compatible for OpenAI and OpenRouter), not
-swift-ai-sdk; the reasons are in [phases/09-agents.md](phases/09-agents.md).
-Two kinds of provider:
-
-- **Pasted API keys:** Anthropic, OpenAI, OpenRouter and others. These
-  work on every platform. Keys are kept in the Keychain.
-- **Linked accounts:** OpenRouter's sign-in first (the user signs in on
-  openrouter.ai and Peel receives a key they control). Claude and ChatGPT
-  subscriptions only once each vendor's terms are checked; on the Mac the
-  route inside the terms may be the vendor's own CLI over ACP, which is not
-  possible on iPhone.
-
-## Own versus rent
-
-Peel owns what no package does for it: the Sphinx tools, the session and
-UI, the event log and sync, and small pieces tied to its storage and UI.
-It rents what providers change every month: the model clients and MCP.
-The full list of what the agent has and lacks is in
-[phases/09-agents.md](phases/09-agents.md), "Capabilities against agent
-SDKs".
-
-## Risks
-
-- **Sends someone else asked for.** To carry out a task the agent reads a
-  chat, and text in that chat could tell it to message someone. Every
-  send waits on a card showing the exact text, target and price, and the
-  text may hold nothing that draws nothing. An "Always allow" for a chat
-  is the remaining exposure: a read message could steer a send to that
-  chat without a card. It is listed and revoked in Account.
-- **Search on iPhone.** Whether LadybugDB's full-text and vector extensions
-  work on iOS is unknown. The fallback is a SQLite FTS index beside the
-  graph.
-- **Two writers to one event format.** Peel and the official apps must
-  agree on the format and change it only together.
-
-## Phases
-
-AgentKit comes first, while the graph plan is agreed with Tom T. Two tracks
-run in parallel and meet at one gate.
-
-**Peel, now: AgentKit**
-
-The pull requests and what "done" means for each are in
-[phases/09-agents.md](phases/09-agents.md): the data layer, models and the
-turn loop, the Sphinx read tools, the Agent chat, the send tool. Then
-compaction and the memory tools.
-
-**With Tom T, in parallel**
-
-- Agree the graph tools, the starting ontology and the event format.
-- Tom T builds GraphKit on `Ladybug` and runs the spikes: search on iOS,
-  and named files per account on the memes server.
-
-**Gate: the graph plan is agreed.** Then:
-
-5. **The graph in Peel.** AgentKit's storage protocol switches to
-   GraphKit; existing records are imported as events; the graph tools are
-   turned on.
-6. **GraphSync.** Two devices converge, then Peel and the official apps
-   share one graph.
-7. **Peel on iPhone, then always-on,** running the same AgentKit.
-
-## Later
-
-The old plan's parts, still wanted, now behind the seams above:
-
-- **Always-on.** Proactive work, and an agent reachable while your devices
-  sleep, need a server. Strut (TypeScript, already bundled in the official
-  Mac app) is the alternative to weigh then, against AgentKit and PeelCore
-  run headless on a server; the tool, event and provider contracts keep
-  either move cheap. Either way the agent gets its own Sphinx account and
-  becomes a contact, reachable from any Sphinx app.
-- **Coding agents over ACP** (Claude Code, Codex), on the Mac or the
-  server. The ACP research stays in
-  [research/acp-harnesses.md](research/acp-harnesses.md).
-- **Strut** for jobs, schedules and workflows, when the agent needs
-  long-running work.
-- **Threads and typed cards in DMs**, once the agent is a contact.
-- **The Inbox** ([phases/09b-inbox.md](phases/09b-inbox.md)), with Items as
-  graph nodes that sync like everything else.
-- **Connections:** calendar first (EventKit on the Mac, OAuth through MCP
-  on a server), then email, contacts, files and notes. Read only by
-  default; tokens never travel in a Sphinx message. Proposed design
-  (2026-10-13): [jobs-architecture.md](jobs-architecture.md), connectors as
-  Strut steps that jobs use.
-
-## Open questions
-
-1. Can the memes server hold several named files per account?
-2. The exact event format and the fetch and push rules, agreed with Tom T.
-3. Do LadybugDB's search extensions work on iOS?
-4. Do MAP properties work through the Swift wrapper?
-5. One pinned swift-ladybug commit and one build recipe for both apps.
-6. Which vendors allow linked accounts in a third-party app.
+- **For Evan:** Peel's own derived keys (the brain id and key, the backup
+  key), and where the second backup copy goes.
+- **For Tom and Evan:** how a revised orchestrator prompt reaches a
+  long-lived DM (agent-on-strut.md, open question 10).
+- Control messages are still messages: the official apps show their lines
+  and the server keeps them (agent-on-strut.md, open question 1).
+- strut's routes need real auth before strut is reachable beyond loopback.

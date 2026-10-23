@@ -5,10 +5,11 @@ import PeelCore
 import PeelUI
 
 /// Account › Peel agent: its name, the connected provider (Change), the key
-/// by its last four (Replace, Remove confirmed in place), the model and
-/// Clear conversation. Each change is an `AgentSession` action.
+/// by its last four (Replace, Remove confirmed in place), the model, its
+/// own account (Set up) and Clear for the earlier chat on this Mac. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
     static let id = "agent-settings"
+    @Environment(AppModel.self) private var model
     let agent: AgentSession
 
     @State private var problem: String?
@@ -19,18 +20,37 @@ struct AgentSettingsSection: View {
             SettingsSection("Peel agent") {
                 AgentNameRow(agent: agent)
                 Fact("Provider") {
-                    if let connection = agent.connection {
-                        HStack(spacing: 8) {
-                            Text(connection.provider.name)
-                            ConnectedLabel()
-                                .font(Theme.font(12))
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let connection = agent.connection {
+                            HStack(spacing: 8) {
+                                Text(connection.provider.name)
+                                // Connected only once strut has it.
+                                if model.modelHandOver == .handing {
+                                    Text("Connecting…").muted()
+                                } else if strutHasModel {
+                                    ConnectedLabel()
+                                        .font(Theme.font(12))
+                                }
+                            }
+                        } else {
+                            Text("No model connected")
+                                .foregroundStyle(Theme.secondaryText)
                         }
-                    } else {
-                        Text("No model connected")
-                            .foregroundStyle(Theme.secondaryText)
+                        if let handOverProblem {
+                            Text(handOverProblem)
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.attention)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 } trailing: {
-                    AgentConnectButton(source: .account, title: agent.connection == nil ? "Connect" : "Change")
+                    HStack(spacing: 8) {
+                        if handOverProblem != nil {
+                            Button("Try again") { model.modelChanged() }
+                                .buttonStyle(.peel(.outline))
+                        }
+                        AgentConnectButton(source: .account, title: agent.connection == nil ? "Connect" : "Change")
+                    }
                 }
                 if let connection = agent.connection {
                     Fact("API key") {
@@ -43,8 +63,11 @@ struct AgentSettingsSection: View {
                             if !removingKey {
                                 AgentConnectButton(source: .accountKey, title: "Replace")
                             }
-                            InlineConfirm(trigger: "Remove", prompt: "Remove the key? The agent will stop.",
-                                          confirm: "Remove", confirming: $removingKey) {
+                            // The DM and its bridge stay: it answers again once a model is connected.
+                            InlineConfirm(trigger: "Remove", prompt: "Remove the key?",
+                                          explanation: model.agentChat == nil ? nil
+                                              : "Your assistant stays in Direct messages but can't answer until you connect a model.",
+                                          confirm: "Remove", alignment: .trailing, confirming: $removingKey) {
                                 attempt { try agent.removeKey() }
                             }
                         }
@@ -57,8 +80,8 @@ struct AgentSettingsSection: View {
                         .fixedSize()
                     }
                 }
-                // Each "Always allow" given on a card, until revoked.
-                ForEach(Array(agent.approvalRules.enumerated()), id: \.element.id) { index, rule in
+                // Each "Always allow" given on a card, until revoked; a workspace's is under Connections.
+                ForEach(Array(agent.approvalRules.filter { $0.tool != DeviceActions.peerTool }.enumerated()), id: \.element.id) { index, rule in
                     Fact(index == 0 ? "Always allowed" : "") {
                         Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
                     } trailing: {
@@ -66,12 +89,26 @@ struct AgentSettingsSection: View {
                             .buttonStyle(.peel(.outline))
                     }
                 }
-                Fact("Conversation") {
-                    // Not EmptyView: it drops the value's full-width frame and the row centres.
-                    Spacer(minLength: 0)
-                } trailing: {
-                    InlineConfirm(trigger: "Clear…", prompt: "Clear the agent chat?", confirm: "Clear") {
-                        attempt { try agent.clear() }
+                // Each send grant an automation's card made, until revoked.
+                let cards = model.macAgent.deviceCards
+                ForEach(Array(cards.grants.enumerated()), id: \.element.id) { index, grant in
+                    Fact(index == 0 ? "May post as you" : "") {
+                        Text("\(grant.name ?? "An automation"), to \(grant.summary)")
+                    } trailing: {
+                        Button("Revoke") { attempt { try cards.revoke(grant) } }
+                            .buttonStyle(.peel(.outline))
+                    }
+                }
+                AgentAccountRow()
+                // Only while there is any: gone once cleared.
+                if !agent.turns.isEmpty {
+                    Fact(AgentListRow.oldChatsTitle) {
+                        // Not EmptyView: it drops the value's full-width frame and the row centres.
+                        Spacer(minLength: 0)
+                    } trailing: {
+                        InlineConfirm(trigger: "Clear…", prompt: "Clear the old assistant chats on this Mac?", confirm: "Clear") {
+                            attempt { try agent.clear() }
+                        }
                     }
                 }
             }
@@ -83,6 +120,18 @@ struct AgentSettingsSection: View {
                     .padding(.horizontal, 4)
             }
         }
+    }
+
+    /// Connected: strut took the key, or there is no strut of Peel's own to
+    /// hand it to (a home server keeps its own). Not while Peel's strut is
+    /// starting or stopped: the Own account row says how that is going.
+    private var strutHasModel: Bool {
+        model.modelHandOver == .handed || !(model.hasOwnStrut && model.brain == .thisMac)
+    }
+
+    /// Why strut does not have what was connected or removed, if it does not.
+    private var handOverProblem: String? {
+        if case .failed(let problem)? = model.modelHandOver { problem } else { nil }
     }
 
     /// The provider's models, with the one in use even if the list has no longer got it.
@@ -99,6 +148,61 @@ struct AgentSettingsSection: View {
         } catch {
             problem = PeelError.problem(error, couldNot: "change the agent")
         }
+    }
+}
+
+/// The agent's own account (`AppModel.agentSetUp`): where it stands, and
+/// Set up or Try again.
+private struct AgentAccountRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let setUp = model.agentSetUp
+        Fact("Own account") {
+            Text(setUp.line)
+                .font(Theme.font(12))
+                .foregroundStyle(setUp.problem ? Theme.attention : Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        } trailing: {
+            if let action = setUp.action {
+                Button(action) { model.setUpAgent() }
+                    .buttonStyle(.peel(.outline))
+            }
+        }
+    }
+}
+
+/// In the agent chat's composer place until its DM is the chat: "Give your
+/// assistant its own account", what it costs and Set up; then how it is going.
+struct AgentSetUpPanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let setUp = model.agentSetUp
+        let offer = setUp == .offer
+        Callout(setUp.problem ? .attention : .neutral, offer ? "Give your assistant its own account" : nil,
+                detail: setUp.line, icon: setUp.busy ? .progress : nil) {
+            if let action = setUp.action {
+                Button(action) { model.setUpAgent() }
+                    .buttonStyle(.peel(offer ? .primary : .outline))
+                    .padding(.top, offer ? 6 : 0)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
+    }
+}
+
+/// In the agent DM's composer place while no model is connected: it can't
+/// answer, so nothing is sent; Connect opens the Connect panel beside it.
+struct AgentModelPrompt: View {
+    var body: some View {
+        Callout(.neutral, "Connect a model", detail: "Your assistant can't answer until you connect one.") {
+            AgentConnectButton(source: .dm, title: "Connect", variant: .primary)
+                .padding(.top, 6)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
     }
 }
 
@@ -345,7 +449,7 @@ private struct BrainStatusText: View {
 }
 
 /// "Connected" with a green dot: a model, a home server.
-private struct ConnectedLabel: View {
+struct ConnectedLabel: View {
     var body: some View {
         Label("Connected", systemImage: "circle.fill")
             .labelStyle(.titleAndIcon)

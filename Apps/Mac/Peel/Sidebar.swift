@@ -145,7 +145,7 @@ struct Sidebar: View {
     /// "+" or "Show all" rows or invites.
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
-        let agent = shownAgent(sections).map { [(AppModel.Destination.agent, $0.name)] } ?? []
+        let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
         return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
@@ -157,10 +157,10 @@ struct Sidebar: View {
     private func shownAgent(_ sections: ChatSections) -> AgentSession? {
         // Like a chat: always while open or unread, in a closed section too.
         guard let agent = model.agent,
-              sections.directOpen || sections.searching || model.destination == .agent || agent.unread > 0
+              sections.directOpen || sections.searching || model.destination == model.agentDestination
+                || model.agentUnread > 0
         else { return nil }
-        let query = model.searchQuery.trimmed
-        return query.isEmpty || agent.name.localizedCaseInsensitiveContains(query) ? agent : nil
+        return ChatSections.matches(agent.name, query: model.searchQuery) ? agent : nil
     }
 
     /// The row `offset` from `current` (the selection when nothing is
@@ -229,7 +229,6 @@ struct Sidebar: View {
         let composer: ComposerID
         switch model.destination {
         case .chat(let chat) where model.tribes[chat]?.canPost ?? true: composer = .chat(chat)
-        case .agent where model.agent != nil: composer = .agent
         default: return false
         }
         typedAhead.append(event)
@@ -524,6 +523,7 @@ enum ConversationMenu {
 /// Click for one status row and a check/reconnect action.
 struct ConnectionBolt: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var connected: Bool { model.connection == .connected }
 
@@ -535,6 +535,8 @@ struct ConnectionBolt: View {
         } label: {
             Image(systemName: "bolt.fill")
                 .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
+                // A quiet cross-fade between orange and green, none with Reduce Motion.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: connected)
                 .receivedGlow(model.money)
         }
         .peelPopover(isPresented: $model.showingConnection, edge: .trailing) {

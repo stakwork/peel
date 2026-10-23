@@ -51,22 +51,22 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 Text("Welcome to Peel")
                     .font(Theme.font(28, .bold))
-                Text("Sphinx messages and sats on your Mac.")
+                Text("Private messages, payments, and an assistant that works for you.")
                     .font(Theme.font(15))
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
             }
             VStack(spacing: 10) {
                 Button { path = .newAccount; go(.invite) } label: {
-                    Text("I have an invite").frame(maxWidth: .infinity)
+                    Text("Join with an invite").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.peel(.primary, size: .lg))
                 Button { path = .restore; go(.enterWords) } label: {
-                    Text("Restore from twelve words").frame(maxWidth: .infinity)
+                    Text("Restore with recovery words").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.peel(.outline, size: .lg))
             }
-            Text("No invite? Ask someone on Sphinx.")
+            Text("No invite? Ask a friend who uses Peel.")
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.secondaryText)
         }
@@ -85,7 +85,7 @@ struct OnboardingView: View {
     }
 
     private var enterWordsStep: some View {
-        StepBody(title: "Restore from twelve words",
+        StepBody(title: "Restore with recovery words",
                  detail: "Type them in order, or paste all twelve.",
                  width: 520) {
             WordEntryGrid(words: $words)

@@ -7,6 +7,18 @@ It expands item 3 of "Next for memory" in
 [phases/12-automations.md](phases/12-automations.md) ("Mac now / Home
 server later").
 
+> **Superseded in part (2026-10-19).** Backups are one sealed whole-brain
+> snapshot format, memory first, built in Phase 2 on the handover's
+> snapshot (foundation.md, decisions 5 and 12). The key's input is your
+> seed, not the node secret; the scheme is open, for Evan (decision 2).
+> Where the copies go is open too, for Evan: the memes server is one
+> candidate, with a second place. Phase 0 is done: memory and workspace
+> graphs round-trip losslessly through Ladybug's export and import, and the
+> whole brain needs snapshot format 2 (stakwork/strut#193). Remote access is
+> decided: Sphinx, with an optional VPN (decision 4). Still standing: the
+> envelope, the cipher, the restore rules and the threat model. See
+> [agent-architecture.md](agent-architecture.md).
+
 ## Goal
 
 Get the agent's memory back on a new Mac, or after a lost or wiped disk,
@@ -15,8 +27,8 @@ from the account's words alone.
 Not goals:
 
 - **Live sync between devices.** Two devices writing one graph is a
-  different problem: an event log both sides replay (Tom T's change log,
-  agent-architecture.md). A backup is a whole snapshot, restored once.
+  different problem: an event log both sides replay (Tom T's change log, in
+  agent-architecture.md's git history; not planned now). A backup is a whole snapshot, restored once.
 - **History or undo.** One recent copy is enough; old copies are a cost,
   not a feature.
 - **Backing up chats.** Peel's `agent.sqlite` holds conversation state;
@@ -41,6 +53,10 @@ Not goals:
   (`Sources/PeelCore/MediaCrypto.swift`) with the node secret as the
   password (`Engine.preferencesKey`), uploaded to the memes server
   (`MemesServer.uploadPreferences`). See phases/11-preferences-sync.md.
+
+> **Out of date (2026-10-19):** strut's `memory/export` and `memory/import`
+> exist (stakwork/strut#169, #176), and the agent's conversation now lives
+> in strut's sessions, which the whole-brain snapshot carries.
 
 ## What is backed up
 
@@ -102,6 +118,10 @@ guess. Embeddings (MiniLM, 384 floats, about 1.5 KB a node) change that:
 10,000 facts and entities are about 15 MB before compression. Measure in
 phase 0.
 
+> **Superseded in part (2026-10-19):** the key comes from your seed, not
+> the node secret (foundation.md, decision 2); the info strings below are
+> not decided.
+
 ## Encryption
 
 - **Cipher.** `MediaCrypto.encrypt`: RNCryptor v3, AES-256-CBC and
@@ -127,6 +147,10 @@ What the memes server sees: the account's pubkey (it signed in), the
 fixed name, the size of each upload and when. Not the contents. It can
 withhold or delete a snapshot, or serve an older one; it cannot forge
 one.
+
+> **Superseded in part (2026-10-19):** the memes server is one candidate.
+> Where the two copies go (the memes server, iCloud Drive, a chosen folder,
+> a BitTorrent swarm) is open, for Evan (foundation.md, decision 5).
 
 ## Storage: the memes server
 
@@ -186,6 +210,11 @@ with `preferences_file_seen`.
 No merge of two graphs in v1. That is the sync problem.
 
 ## Home server
+
+> **Superseded in part (2026-10-19):** remote access is decided: devices
+> reach the brain over Sphinx, a VPN is optional (foundation.md, decision 4).
+> The home server holds the agent's derived account in the bridge, plus the
+> backup key, never your words. See [agent-architecture.md](agent-architecture.md).
 
 When strut moves to an always-on Mac mini (agent-brain.md phase 6;
 12-automations.md "Home server later"; the setting and the move are in
@@ -248,6 +277,10 @@ server away from home. Not decided. Options:
 5. Is the 32 MB default limit what the hosted memes server runs?
 
 ## Phases
+
+> **Superseded in part (2026-10-19):** phase 0 is done (stakwork/strut#193).
+> Phases 1 to 5 are rebuilt in Phase 2 on the whole-brain snapshot, memory
+> first.
 
 0. **Prove the snapshot** (half a day). In a strut test: fill a graph,
    `EXPORT DATABASE`, `IMPORT DATABASE` into an empty file, compare every

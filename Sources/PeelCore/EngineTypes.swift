@@ -118,6 +118,17 @@ extension Engine {
         }
     }
 
+    /// A send for the agent's request (`sendText(for:)`) that is stored but
+    /// whose publish failed, or may have: it is in the chat, and a retry or a
+    /// reconnect may still send it, so it is neither sent nor not.
+    public struct SendUnconfirmed: Error, CustomStringConvertible {
+        public let error: any Error
+
+        public var description: String {
+            "the connection failed while sending (\(PeelError.readable(error))); it is in the chat, not confirmed"
+        }
+    }
+
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case noServer
         case notConnected
@@ -190,6 +201,9 @@ extension Engine {
         case requestExpired
         case notAPaymentRequest
         case notAContact
+        /// A send for the agent's request (`sendText(for:)`) once that request
+        /// is past its time, or no longer waiting to be sent.
+        case requestClosed
         /// Sats with this contact the server has not settled or refused.
         case paymentWithContactPending
         case emptyName
@@ -304,6 +318,7 @@ extension Engine {
             case .requestExpired: "this request's invoice has expired; ask again with a new one"
             case .notAPaymentRequest: "that is not someone's payment request"
             case .notAContact: "that is not a contact"
+            case .requestClosed: "the agent's request is past its time, or already answered"
             case .paymentWithContactPending:
                 "a payment with this contact is still on its way; remove them once it has gone through or failed"
             case .emptyName: "the name cannot be empty"

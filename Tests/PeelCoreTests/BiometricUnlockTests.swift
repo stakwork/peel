@@ -131,11 +131,13 @@ struct BiometricUnlockTests {
         try profile.secrets.save(mnemonic: "words", pin: "")
         try profile.agentCredential.write(Data("key".utf8))
         try profile.brain.write(Data("home server".utf8))
+        try profile.hive.write(Data("hive device".utf8))
 
         #expect(throws: PeelError.self) { try profile.delete() }
         #expect(profile.hasAccount)
         #expect(try profile.agentCredential.read() == nil)
         #expect(try profile.brain.read() == nil)
+        #expect(try profile.hive.read() == nil)
 
         strut.fails = false
         try profile.delete()

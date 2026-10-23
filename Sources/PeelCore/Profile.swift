@@ -25,6 +25,10 @@ public struct Profile: Sendable {
     /// The account's home server, its address and `STRUT_API_KEY`
     /// (`Brain`, `docs/peel-brain.md`); none kept is Peel's own strut.
     public let brain: any SecretItem
+    /// The Hive device this Mac paired, its `hivedev_` credential and the
+    /// orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
+    /// "Peers"): in the Keychain for an app profile.
+    public let hive: any SecretItem
     /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
     /// development profile, which has no PIN.
     public let biometrics: BiometricUnlock?
@@ -52,10 +56,13 @@ public struct Profile: Sendable {
                                            accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
             strutKey = KeychainItem(service: "dev.peel.strut", account: name)
             brain = KeychainItem(service: "dev.peel.brain", account: name)
+            // Renewed while the Mac is locked too, like the agent's key.
+            hive = KeychainItem(service: "dev.peel.hive", account: name,
+                                accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
             biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
-            (secrets, agentCredential, strutKey, brain) = Self.files(in: directory)
+            (secrets, agentCredential, strutKey, brain, hive) = Self.files(in: directory)
             biometrics = nil
         }
     }
@@ -73,16 +80,18 @@ public struct Profile: Sendable {
         (secrets, agentCredential) = (files.0, files.1)
         self.strutKey = strutKey ?? files.2
         self.brain = brain ?? files.3
+        hive = files.4
         self.biometrics = biometrics
     }
 
-    /// A development profile's words, agent key, strut's key and home
-    /// server, in files beside its database.
-    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem) {
+    /// A development profile's words, agent key, strut's key, home server
+    /// and Hive device, in files beside its database.
+    private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
          FileItem(file: directory.appendingPathComponent("agent-credential")),
          FileItem(file: directory.appendingPathComponent("strut-key")),
-         FileItem(file: directory.appendingPathComponent("brain")))
+         FileItem(file: directory.appendingPathComponent("brain")),
+         FileItem(file: directory.appendingPathComponent("hive")))
     }
 
     /// Where the agent's database lives, beside the account's.
@@ -137,7 +146,7 @@ public struct Profile: Sendable {
         // The automation token #221 kept; strut is now handed one per launch.
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         var failure: (any Error)?
-        for key in [agentCredential, strutKey, brain] {
+        for key in [agentCredential, strutKey, brain, hive] {
             do { try key.delete() } catch { failure = failure ?? error }
         }
         if let failure { throw failure }

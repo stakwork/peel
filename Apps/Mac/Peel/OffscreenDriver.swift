@@ -12,7 +12,7 @@ import PeelUI
 /// fails after `deadline` in all.
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
-/// `{"select": "a chat's name"}` (sets the destination a click on its
+/// `{"select": "a chat's name"}` (or its chat id; sets the destination a click on its
 /// sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
@@ -45,20 +45,17 @@ import PeelUI
 /// loaded, so it sizes itself after the list is placed);
 /// `{"expect": "search"}` notes the first search match as where a probe
 /// should land; `{"signal": "send"}` writes `signal-send` in the out dir for
-/// the script running the drive; `{"type": "text", "return": true}` types
+/// the script running the drive; `{"unread": "journeys"}` waits (up to 20 s)
+/// until that chat has a message unread, as its sidebar row's count shows; `{"type": "text", "return": true}` types
 /// and presses Return with no pause between. Each step is followed by
 /// 0.3 s, or `"next"` seconds.
 ///
-/// For the agent chat's journeys, with a scripted model and never a
-/// provider (`OffscreenAgent`): `{"agent": "script"}` puts an agent on the
-/// script in place of the account's, its conversation in memory;
-/// `{"agent": "seed", "turns": 12}` asks it that many questions, every
-/// fourth one answered with a tool row, waiting for each answer;
-/// `{"agent": "ask", "words": 240, "rate": 40}` asks one more and streams
-/// the answer that many words, `rate` a second, without waiting (`"tool":
-/// true` asks for a tool row first; `"hold": 2` keeps it open that many
-/// seconds after its last word); `{"agent": "done"}` waits for the
-/// answer to end; `{"agent": "expand"}` opens the newest tool row in view,
+/// For the agent chat's journeys (`OffscreenAgent`): `{"agent": "seed",
+/// "turns": 12}` puts an agent in place of the account's, in memory, with
+/// that many earlier questions and answers, every fourth answer after a
+/// tool row; `{"agent": "connect"}` keeps a placeholder key, as the Connect
+/// panel's Connect does; `{"agent": "remove"}` removes it, as Account's
+/// Remove does; `{"agent": "expand"}` opens the newest tool row in view,
 /// as a click on its chevron does; `{"agent": "memory"}` opens a memory
 /// beside the chat, as a click on a remembered fact does (its server a
 /// stub that never answers), and `"memory-close"` closes it as its X does. `{"wheel": 40}` turns a mouse wheel one tick
@@ -68,16 +65,17 @@ import PeelUI
 final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
-        var probe, thread, close, expect, signal, list, note, reveal, appearance, agent: String?
+        var probe, thread, close, expect, signal, list, note, reveal, appearance, agent, unread: String?
+        var mcp, name, url, token: String?
         var mods: [String]?
-        var wait, duration, scroll, overscroll, width, over, back, next, rate, wheel, hold: Double?
-        var scrollTo, steps, hover, turns, words: Int?
+        var wait, duration, scroll, overscroll, width, over, back, next, wheel: Double?
+        var scrollTo, steps, hover, turns: Int?
         var jump: JumpTarget?
-        var submit, tool: Bool?
+        var submit: Bool?
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance, agent, rate, wheel, turns, words, tool, hold
+            case appearance, agent, wheel, turns, unread, mcp, name, url, token
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -233,6 +231,8 @@ final class OffscreenDriver {
             try hover(row: index, in: step.list ?? "chat")
         } else if let what = step.agent {
             try await agent(what, step)
+        } else if let what = step.mcp {
+            try await mcp(what, step)
         } else if let points = step.wheel {
             try wheel(by: points, in: step.list ?? "agent")
         } else if let row = step.scrollTo {
@@ -266,6 +266,10 @@ final class OffscreenDriver {
             default:
                 Offscreen.log("drive: focus \(focus)")
             }
+        } else if let name = step.unread {
+            let (model, chat) = try chat(named: name)
+            try await until("a message unread in \(name)", timeout: 20) { model.readStates[chat]?.unread ?? 0 > 0 }
+            Offscreen.log("drive: \(chat.prefix(12)) has \(model.readStates[chat]?.unread ?? 0) unread")
         } else if let name = step.signal {
             guard !name.isEmpty, !name.contains("/") else { throw Failure(description: "a signal's name is a plain word") }
             try Data().write(to: output.appendingPathComponent("signal-\(name)"))
@@ -287,10 +291,11 @@ final class OffscreenDriver {
         Offscreen.log("drive: selected \(chat.prefix(12))")
     }
 
-    /// The open account and the chat with this name, as its sidebar row shows it.
+    /// The open account and the chat with this name, as its sidebar row shows
+    /// it, or this chat id (the agent's contact shares the agent's name).
     private func chat(named name: String) throws -> (AppModel, String) {
         guard let model = model() else { throw Failure(description: "no account open") }
-        guard let chat = model.conversations.first(where: { $0.name == name })?.chat else {
+        guard let chat = model.conversations.first(where: { $0.name == name || $0.chat == name })?.chat else {
             throw Failure(description: "no chat named \(name)")
         }
         return (model, chat)
@@ -311,6 +316,32 @@ final class OffscreenDriver {
         Offscreen.log("drive: notification for \(chat.prefix(12)), message \(newest?.id.map(String.init) ?? "none")")
     }
 
+    /// Account › Connections (`ConnectionsSection`), as its controls do:
+    /// `{"mcp": "open"}` scrolls Account to it; `{"mcp": "add", "name": …,
+    /// "url": …, "token": …}` is Add MCP server's form submitted;
+    /// `test`, `remove` (confirmed) and `assistant-off` / `assistant-on`,
+    /// `jobs-off` / `jobs-on` act on the server `name`.
+    private func mcp(_ what: String, _ step: Step) async throws {
+        guard let model = model() else { throw Failure(description: "no account open") }
+        let name = step.name ?? ""
+        switch what {
+        case "open":
+            model.destination = .account
+            model.connections.opened += 1
+        case "add":
+            guard let url = step.url.flatMap(URL.init(string:)) else { throw Failure(description: "mcp add needs a url") }
+            if let problem = await model.addMCPServer(name: name, url: url, key: step.token ?? "") {
+                throw Failure(description: problem)
+            }
+        case "test": await model.testMCPServer(name)
+        case "remove": await model.removeMCPServer(name)
+        case "assistant-off", "assistant-on": model.setGrant(name, assistant: what.hasSuffix("on"))
+        case "jobs-off", "jobs-on": model.setGrant(name, jobs: what.hasSuffix("on"))
+        default: throw Failure(description: "no mcp step \(what)")
+        }
+        Offscreen.log("drive: mcp \(what) \(name)")
+    }
+
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
     /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
@@ -319,11 +350,14 @@ final class OffscreenDriver {
     /// (the Connect panel) while no model is connected; `automations-system`,
     /// its System tab; `system-open`, `system-switch` and `system-run-now`,
     /// the first system automation's row, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
-    /// its gear (Account at Peel agent); `agent-retry`, its
-    /// Retry; `agent-view`, the first View in its newest reply;
-    /// `agent-sent-view`, View on its newest send row; `agent-always`, the
-    /// waiting card's Always allow; `agent-revoke`, Account's first Revoke;
+    /// its gear (Account at Peel agent); `agent-view`, the first View in its
+    /// newest earlier reply; `agent-sent-view`, View on its newest send row;
+    /// `device-allow`, Allow once on a card in
+    /// the agent's DM; `request-rows`, every device request's row opened; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
+    /// `agent-set-up`, the agent chat's Set up or Try again (its own account);
+    /// `hive-connect` and `hive-disconnect`, Account › Connections' Connect
+    /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
@@ -375,14 +409,11 @@ final class OffscreenDriver {
             let entries = MessageMenu.entries(for: row, composer: .chat(chat), model: model, offersBoost: row.canBoost)
             presenter.show(entries, at: CGPoint(x: window.frame.midX, y: window.frame.midY), in: window, source: row.id)
         case "agent-connect":
-            // The agent chat's Connect, on its card or its error row.
-            model.agentConnectFrom = .chat
+            // The agent chat's Connect: on its intro's card, or in its DM's composer place.
+            model.agentConnectFrom = model.agentChat == nil ? .chat : .dm
         case "agent-settings":
             // The agent chat header's gear.
             model.openAgentSettings()
-        case "agent-retry":
-            // The agent chat's Retry under a failed reply.
-            model.agent?.retry()
         case "resume-history":
             // Resume on the sidebar's "Restore paused".
             Task { await model.resumeHistory() }
@@ -402,10 +433,17 @@ final class OffscreenDriver {
                 throw Failure(description: "no sent message in the agent chat")
             }
             _ = model.openAgentLink(url)
-        case "agent-always":
-            // A click on the waiting card's "Always allow for …".
-            guard model.agent?.waiting != nil else { throw Failure(description: "no card waiting") }
-            model.agent?.answer(.alwaysAllow)
+        case "request-rows":
+            // A click on every device request's row in the open chat, a group of reads' too.
+            for row in model.chatRows where row.agentRequest != nil {
+                AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open(row.reads == nil ? "request" : "reads").set(true)
+            }
+        case "device-allow":
+            // A click on Allow once on a card waiting in the agent's DM.
+            guard let chat = model.agentChat, let id = model.waitingCards[chat]?.keys.first else {
+                throw Failure(description: "no card waiting in the agent's DM")
+            }
+            model.macAgent.deviceCards.answer(id, .allowOnce)
         case "agent-revoke":
             // Account › Peel agent: the first "Always allowed" row's Revoke.
             guard let agent = model.agent, let rule = agent.approvalRules.first else {
@@ -415,6 +453,14 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "hive-connect":
+            model.connectHive()
+        case "hive-disconnect":
+            model.disconnectHive()
+        case "agent-set-up":
+            // The agent chat's Set up (or Try again): its own account.
+            guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
+            model.setUpAgent()
         case "brain-form":
             model.brainFormOpened += 1
         case "brain-leave":
@@ -687,31 +733,23 @@ final class OffscreenDriver {
 
     private func agent(_ what: String, _ step: Step) async throws {
         guard let model = model() else { throw Failure(description: "no account open") }
-        if what == "script" {
-            model.agent?.close()
-            model.agent = try OffscreenAgent.session()
-            return Offscreen.log("drive: agent on the script")
+        if what == "seed" {
+            model.agent = try OffscreenAgent.session(turns: step.turns ?? 12)
+            return Offscreen.log("drive: agent seeded, \(model.agent?.turns.count ?? 0) turns")
         }
         guard let agent = model.agent else { throw Failure(description: "no agent") }
         switch what {
-        case "seed":
-            for n in 1...max(step.turns ?? 12, 1) {
-                // Each a different length; every fourth with a tool row.
-                OffscreenAgent.pace.withLock { $0 = OffscreenAgent.Pace(words: 20 + (n * 37) % 90, delay: .zero) }
-                agent.send(n % 4 == 0 ? "Question \(n), with a tool" : "Question \(n)")
-                try await until("answer \(n)", timeout: 10) { !agent.isRunning }
-            }
-            Offscreen.log("drive: agent seeded, \(agent.turns.count) turns")
-        case "ask":
-            let words = step.words ?? 240, rate = step.rate ?? 40
-            OffscreenAgent.pace.withLock {
-                $0 = OffscreenAgent.Pace(words: words, delay: .seconds(1 / max(rate, 1)), end: .seconds(step.hold ?? 0))
-            }
-            agent.send(step.tool == true ? "One more, with a tool" : "One more")
-            Offscreen.log("drive: agent asked, \(words) words at \(Int(rate)) a second")
-        case "done":
-            try await until("the answer", timeout: 60) { !agent.isRunning }
-            Offscreen.log("drive: agent answered, \(agent.turns.count) turns")
+        case "connect":
+            // The Connect panel's Connect with a key no provider takes (its
+            // field is secure, which posted keys never reach): kept, and handed to strut.
+            try agent.connect(AgentCredential(provider: .anthropic, model: AgentProvider.anthropic.recommendedModel,
+                                              apiKey: "offscreen-placeholder"))
+            model.agentConnectFrom = nil
+            Offscreen.log("drive: agent connected with a placeholder key")
+        case "remove":
+            // Account › Peel agent's Remove, confirmed.
+            try agent.removeKey()
+            Offscreen.log("drive: agent key removed")
         case "expand":
             // As a click on the chevron: the list told first, then opened.
             guard let engine = ListProbe.geometry(kind: "agent") as? MessageTableEngine<AgentListRow> else {
@@ -719,7 +757,7 @@ final class OffscreenDriver {
             }
             let inView = Set(ListProbe.inView(kind: "agent"))
             guard let row = engine.rows.last(where: { row in
-                guard inView.contains(row.id), case .turn(let turn, _, _) = row.kind else { return false }
+                guard inView.contains(row.id), case .turn(let turn, _) = row.kind else { return false }
                 return !turn.tools.isEmpty
             }) else { throw Failure(description: "no tool row in view") }
             let disclosure = AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("tool0")

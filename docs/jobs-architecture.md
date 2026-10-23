@@ -10,6 +10,18 @@ connector; see "Considered"). It builds on [agent-brain.md](agent-brain.md),
 which is still a proposal: the Mac is the brain, Strut runs on it, and the
 phone is a remote. The UX is on the design board (boards 6–10).
 
+> **Superseded in part (2026-10-19).** Peel's agent no longer hands jobs
+> to strut: the agent is strut's `orchestrator`, which starts and continues
+> `job` itself (`job/start`, `job/continue`, stakwork/strut#195). So Peel's
+> `start_job` / `continue_job`, its `Job` records, `JobsClient`, the
+> `/jobs/done` route and the Needs you card (P1 to P3) are gone; a job's
+> result and question arrive as messages in the agent's DM. Calendar is a
+> device request, not tools in Peel's loop. Still standing: connectors are
+> strut steps with their tokens in strut (Gmail, Linear and others), and
+> J1, `effect` on steps with the approval stop, is still to build, as are
+> P5 and P6. See [agent-architecture.md](agent-architecture.md) and
+> [agent-on-strut.md](agent-on-strut.md), section 5.
+
 ## In one paragraph
 
 Peel's agent keeps the chat, the Sphinx tools, Calendar and the approval
@@ -23,6 +35,9 @@ turn ends with `{text, artifacts, ask}`. An `ask` becomes a **Needs you**
 card in Peel, and an `ask` that carries an approval becomes the usual
 **Allow once / Always allow / Deny** card. Connector steps and their tokens
 live in Strut. Peel never holds them.
+
+> **Superseded (2026-10-19):** the shape, "What stays in Peel", "The main
+> agent's view" and "Needs you". See [agent-architecture.md](agent-architecture.md).
 
 ## The shape
 
@@ -218,6 +233,11 @@ They are not gated: grant them only to jobs that need them, as Hive's do.
   `mcp/call` step family in Strut with tokens in its store, or as native
   steps. Either is Strut work, not Peel's.
 
+> **Superseded (2026-10-19):** the phone reaches the agent through the
+> bridge, as a Sphinx contact, not through the Mac's Peel; jobs reach your
+> chats through Peel's `sphinx/*` device steps (open question 5). See
+> [agent-architecture.md](agent-architecture.md).
+
 ## iPhone and always-on
 
 - **The phone reaches the Mac's Strut through the Mac's Peel,** by Sphinx
@@ -337,6 +357,14 @@ Checked on `main` at 71af1bc.
   workflow. An ACP harness, if wanted, is a Strut step.
 
 ## Build order
+
+> **Superseded in part (2026-10-19):** P1, P2 and P4 will not be built:
+> the orchestrator starts jobs (strut#195), and Calendar is a device
+> request (dropped from Phase 1 for now). J2 is done: strut seeds a local
+> `job` (`src/job-seed.ts`). J1 still stands, and so does P3's idea, a
+> job's write coming back as an `ask` for the card, now reaching the Mac
+> through the agent's DM rather than Peel's `Job` records. P5 and P6 still
+> stand, to be worked out against strut on the brain rather than P1.
 
 Each PR runs the full AGENTS.md pipeline. At most three are built at
 once. J1 and J2 are Strut PRs, in its repo and under its own rules.

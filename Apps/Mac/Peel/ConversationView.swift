@@ -259,6 +259,8 @@ struct ChatFooter: View {
     /// The notice shows once: under the thread only when the thread has
     /// taken the chat's place.
     var showsNotice = true
+    /// While the agent answers in its DM: send is Stop (`Composer.stop`).
+    var stop: (@MainActor () -> Void)?
 
     var body: some View {
         if showsNotice, let notice = model.conversationNotices[conversation.chat] {
@@ -272,7 +274,7 @@ struct ChatFooter: View {
             Composer(
                 composer: composer, placeholder: placeholder,
                 loadMentionable: conversation.isTribe ? model.mentionLoader(conversation.chat) : nil,
-                paysTo: paysTo
+                paysTo: paysTo, stop: stop
             )
             .id(composer)
         }
@@ -558,15 +560,14 @@ extension MemberRow where Actions == EmptyView {
     }
 }
 
-/// "Name joined", "Name left" and the owner's decisions, between the
-/// messages of a tribe, worded as the Mac app words them.
-struct MembershipNote: View {
-    let message: Message
-    /// The row's sender (`People.sender(of:inTribe:)`).
-    let sender: Sender
+/// A quiet line between the messages: in a tribe "Name joined", "Name
+/// left" and the owner's decisions, worded as the Mac app words them; in a
+/// direct message a control message's readable text (`Message.controlLine(by:)`).
+struct NoteLine: View {
+    let text: String
 
     var body: some View {
-        Text(message.membershipNote(by: sender))
+        Text(text)
             .font(Theme.font(12))
             .foregroundStyle(Theme.secondaryText)
             .frame(maxWidth: .infinity)
@@ -578,9 +579,19 @@ struct DayDivider: View {
     let date: Date
 
     var body: some View {
+        TitledDivider(title: Formatting.dayHeading(date))
+    }
+}
+
+/// A rule across a list with its title in the middle: a day, or the agent
+/// chat's "Old assistant chats (this Mac only)".
+struct TitledDivider: View {
+    let title: String
+
+    var body: some View {
         HStack(spacing: Theme.Space.md) {
             Theme.divider.frame(height: 1)
-            Badge(Formatting.dayHeading(date), .outline)
+            Badge(title, .outline)
             Theme.divider.frame(height: 1)
         }
         .padding(.vertical, Theme.Space.sm)

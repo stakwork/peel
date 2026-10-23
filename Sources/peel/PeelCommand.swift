@@ -38,7 +38,11 @@ struct PeelCommand {
           invite-cancel <code>        cancel an invite and get its sats back (code from invites)
           send <pubkey> <text>        send a text message to a contact or a tribe
                                       (--reply <uuid> answers a message, --thread <uuid> posts in its thread)
-          listen                      stay connected, reconnecting as needed, and print what arrives
+          listen                      stay connected, reconnecting as needed, and print what arrives;
+                                      answers the device agent's read requests
+          device-agent [<pubkey>|off]  the agent contact whose device requests this account answers
+                                      while listening (off unless set; docs/agent-on-strut.md); sets
+                                      it when given
           messages <pubkey>           a chat's main conversation, as the app shows it: row ids, uuids,
                                       delivery, quoted parents and collapsed threads
           thread <pubkey> <uuid>      one thread: its original and its messages
@@ -58,6 +62,9 @@ struct PeelCommand {
           share-timezone <pubkey> [yes|no]  whether this account's offset goes with what it sends in a
                                       direct message or private tribe (on unless turned off; never in
                                       a public tribe); sets it when given
+          send-control <pubkey> <envelope json> <text>  send a control message to a contact: the
+                                      device channel's envelope in its metadata, the text the line
+                                      it shows (for tests; docs/agent-on-strut.md)
           send-file <pubkey> <path>...  send files to a contact or a tribe, one message each (--text <caption>
                                       on the last, --reply, --thread, --price <sats> to sell them: buyers pay
                                       to get the key)
@@ -113,20 +120,6 @@ struct PeelCommand {
                                       room, identity, expiry and whether a token came (never the token)
           call-who <id|link>          who is on a call, from the call server's presence feed, for --wait seconds
 
-          agent                       talk with a model in the terminal, with one built-in tool (current_time),
-                                      and with --profile the Sphinx read tools over that profile's chats
-                                      (read-only: contacts and tribes, recent and unseen messages, threads,
-                                      search). With --send it connects and may also send messages, each one
-                                      asked about first (y = once, a = always for that chat, n = no; the
-                                      "always" answers are the app's, Account › Peel agent revokes them).
-                                      With --memory (and --profile) it starts Peel's strut, the one
-                                      scripts/stage-strut.sh staged, with its data in that profile's folder,
-                                      and adds the memory tools; it stops when the agent does.
-                                      The key comes from PEEL_AGENT_API_KEY only.
-                                      --provider anthropic|openai|openrouter (default anthropic), --model <id>
-                                      (needed but for anthropic), --base-url <url>, --max-steps <n>.
-                                      Ctrl-C stops a reply, Ctrl-D quits
-
         options:
           --profile <name>    which development account to use (required; under Peel/dev,
                               never the app's own profile)
@@ -167,10 +160,6 @@ struct PeelCommand {
         let name = arguments.option("--profile")
         let reserved = PeelError("pass --profile <name> for a development account; \"default\" is reserved for the app")
         if name?.lowercased() == "default" { throw reserved }
-        if arguments.first == "agent" {
-            _ = arguments.next()
-            return try await AgentCommand.run(arguments, profile: name)
-        }
         guard let name else { throw reserved }
         var invocation = try Invocation(profile: Profile(name: name, kind: .development), arguments: arguments)
         guard let command = invocation.arguments.next() else {

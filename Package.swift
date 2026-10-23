@@ -37,21 +37,16 @@ let package = Package(
                 .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
             ]
         ),
-        // The agent: its records and event log, the model clients and the turn loop
-        // (docs/agent-architecture.md, docs/phases/09-agents.md);
+        // The agent's client side: its records and event log, the approval
+        // gate and its rules, the connected model's key and the chat Peel's
+        // own loop kept before strut was the agent (docs/agent-architecture.md);
         // GRDB only, so it builds for macOS and iOS without the core.
         .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
-        // The Sphinx tools over the engine's storage; no AppKit or UIKit.
-        .target(
-            name: "PeelAgent",
-            dependencies: [
-                "AgentKit", "PeelCore",
-                // The loopback server strut calls when an automation fires.
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "NIOPosix", package: "swift-nio"),
-            ]
-        ),
-        .executableTarget(name: "peel", dependencies: ["PeelCore", "AgentKit", "PeelAgent"]),
+        // The device side of the agent in strut: the Sphinx tools over the
+        // engine's storage, the device requests, strut and the bridge Peel
+        // ships; no AppKit or UIKit.
+        .target(name: "PeelAgent", dependencies: ["AgentKit", "PeelCore"]),
+        .executableTarget(name: "peel", dependencies: ["PeelCore", "PeelAgent"]),
         // The app's model, shared by the Mac and the iPhone: `AppModel` and
         // what it holds, with the platform's services behind protocols
         // (`Platform`). No AppKit, UIKit, LiveKit or PeelAgent. The apps
@@ -72,23 +67,19 @@ let package = Package(
             dependencies: ["PeelCore", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // The app's model, on a real engine and profile; no window, no server.
-        .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "PeelTestSupport"]),
-        // PeelAgent is Mac-only, and so are its tests (and `peel agent`'s).
+        .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "AgentKit", "PeelTestSupport"]),
+        // PeelAgent is Mac-only, and so are its tests.
         .testTarget(
             name: "PeelAgentTests",
-            dependencies: ["PeelAgent", "AgentKit", "PeelCore", "PeelTestSupport", "peel"]
+            dependencies: ["PeelAgent", "AgentKit", "PeelCore", "PeelTestSupport"]
         ),
-        .testTarget(
-            name: "AgentKitTests",
-            dependencies: ["AgentKit", .product(name: "GRDB", package: "GRDB.swift")],
-            resources: [.copy("Fixtures")]
-        ),
+        .testTarget(name: "AgentKitTests", dependencies: ["AgentKit", .product(name: "GRDB", package: "GRDB.swift")]),
         // Journeys through the real core against a local stack
         // (scripts/test-stack.sh); skipped unless PEEL_INTEGRATION=1. The
-        // agent's journeys drive AgentKit and PeelAgent with a scripted model.
+        // agent's journeys drive PeelAgent, strut and the bridge with a stand-in model.
         .testTarget(
             name: "PeelIntegrationTests",
-            dependencies: ["PeelCore", "AgentKit", "PeelAgent", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
         .testTarget(

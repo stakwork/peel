@@ -9,6 +9,17 @@ It follows [agent-brain.md](agent-brain.md) (strut owns the graph; phase 6
 `main`, `~/Documents/strut` (`origin/main`), `~/Documents/sphinx-swarm`
 (`master`, dd0f132d) and `~/Documents/stakgraph`.
 
+> **Superseded in part (2026-10-19).** Devices reach the agent over
+> Sphinx, as a contact behind the bridge (`sphinx/runner`); a direct
+> connection to strut is optional and no feature needs it (foundation.md,
+> decision 4). So "Peel talks to one strut" (the rule), automations by pull
+> (design 3, build step 3), the phone pairing straight to strut (design 4,
+> build step 4) and Peel's engine on the server ("Later") are replaced. The
+> home server runs strut and the bridge, with no Peel on the box, and
+> moving the brain moves the whole strut workspace
+> ([brain-handover.md](brain-handover.md)). Still standing: where the brain
+> runs, packaging, the Ladybug workspace. See [agent-architecture.md](agent-architecture.md).
+
 ## Goal
 
 Without a home server, everything runs on the Mac, as today: Peel starts its
@@ -26,6 +37,11 @@ Not goals for v1:
   secret store. Both can be added to the brain later without the devices
   changing.
 - Two graphs kept in sync. See "Move, not sync".
+
+> **Superseded (2026-10-19):** the agent's chat, memory, jobs and run
+> results go over Sphinx through the bridge; strut is reached directly
+> only for optional power use (the graph view, live steps). See
+> [agent-architecture.md](agent-architecture.md).
 
 ## The rule
 
@@ -131,6 +147,10 @@ problem memory-backup.md leaves out. So:
 - A read-only copy on the devices (Tom T's sync log) can come later. It
   reads the one graph and never writes.
 
+> **Superseded (2026-10-19):** replaced by device requests in the agent's
+> DM. A run that needs your chats asks your Mac and waits; strut needs no
+> "waiting for a client" state (agent-on-strut.md, section 2).
+
 ### 3. Peel calls strut; strut never calls Peel
 
 Reverse the automation callback so one path serves both modes:
@@ -199,6 +219,9 @@ With a `HOST` that has no `.`, Swarm runs without Traefik, so the Route53
 and S3 wiring is not needed at home.
 
 ## Packaging: the Peel Brain bundle
+
+> **To change (2026-10-19):** the bundle gains the bridge beside strut, so
+> the agent answers with every device asleep. Phase 2 plans it.
 
 One Docker Compose bundle, the same on every box: an old Intel or Apple
 Silicon Mac, a Raspberry Pi, an old PC or a NAS. It is always on and always
@@ -326,6 +349,10 @@ Tailscale itself stays a one-time step per person: an account, and the
 app on the Mac and phone. In v2, with the agent as a contact, chat no longer
 needs it.
 
+> **Superseded (2026-10-19):** the agent's own Sphinx identity on the
+> brain is held by the bridge (`sphinx/runner`, in Rust), not Peel's engine,
+> and everything a device needs goes over Sphinx. See [agent-architecture.md](agent-architecture.md).
+
 ## Relation to the iPhone plan
 
 [phases/07-iphone.md](phases/07-iphone.md) makes the phone a remote by
@@ -402,6 +429,10 @@ brain: [brain-handover.md](brain-handover.md).
    brain needs no download and no `~/.lbdb` volume; Peel's `brain/` bundle and `setup.sh`; then
    `install.sh`, the setup page, Umbrel, the SD card image and the Swarm
    preset ("Where the install should get to").
+
+> **Answered (2026-10-19):** open question 1, Ladybug on the server (Tom,
+> 2026-10-15); question 4, no polling (device requests). Question 2,
+> Tailscale or WireGuard, is Phase 2's, for the optional direct path only.
 
 ## Open questions
 

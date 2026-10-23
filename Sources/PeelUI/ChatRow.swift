@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import PeelCore
 
@@ -47,6 +48,8 @@ public enum Quote: Equatable, Sendable {
 public struct ChatRow: Identifiable, Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case message, request, note
+        /// A control message's quiet line (`Message.controlLine(by:)`), never a bubble.
+        case control(String)
         /// Sats sent in a direct message (type 5).
         case payment
         /// A payment request with its invoice (type 2).
@@ -77,6 +80,26 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public var quote: Quote?
     /// For a request to join: whether the owner approved, once answered.
     public var approved: Bool?
+    /// For a control message: the agent's request whose card waits on you
+    /// (`AppModel.waitingCards`), what the card shows, drawn in its place.
+    public var approval: ToolIntent?
+    /// In the agent's DM (`rows(agentDM:)`): an agent's message, drawn with
+    /// Peel's logo and AGENT.
+    public var byAgent = false
+    /// In the agent's DM (`rows(agentDM:)`): the tools an agent's reply ran.
+    public var agentTools: [AgentToolLine] = []
+    /// In the agent's DM: the job an agent's message is about, and what it points to.
+    public var agentJob: AgentJob?
+    public var agentArtifacts: [AgentArtifact] = []
+    /// In the agent's DM: a request to this Mac as one row, how it ended
+    /// folded in (no ack or result lines of its own).
+    public var agentRequest: AgentRequest?
+    /// In the agent's DM: reads asked back to back and done, as one row
+    /// (`AgentReads`), oldest first, this row's own first; empty for a
+    /// row that stands alone.
+    public var agentReads: [AgentRead] = []
+    /// Its folded reads as one line and steps; nil for a row that stands alone.
+    public var reads: AgentReads? { agentReads.isEmpty ? nil : AgentReads(agentReads) }
     /// For a payment request: its invoice and whether it is paid.
     public var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
@@ -100,6 +123,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// collapsed thread's newest, else its own.
     public var shown: [Message] {
         if let latest { return [latest] }
+        if !agentReads.isEmpty { return agentReads.map(\.message) }
         return images.isEmpty ? [message] : images
     }
 
@@ -138,7 +162,8 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         _ messages: [Message], threads: [String: ThreadSummary] = [:], parents: [String: Message],
         boosts: [String: BoostSummary] = [:], requests: [Int64: PaymentRequest] = [:],
         purchases: [Int64: PurchaseState] = [:], inTribe: Bool, people: People, callServer: String? = nil,
-        threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil
+        threadRoot: String? = nil, original: Message? = nil, newAfter: Int64? = nil,
+        approvals: [String: ToolIntent] = [:], agentDM: Bool = false
     ) -> [ChatRow] {
         var answers: [String: Bool] = [:]
         for message in messages where message.type == MessageType.memberApprove || message.type == MessageType.memberReject {
@@ -150,14 +175,46 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         // A thread's rows start with its original (or, when only its replies
         // are stored, a note in its place) and the reply count.
         if let threadRoot, let anchor = original ?? messages.first {
-            rows.append(row(anchor, kind: original == nil ? .missingOriginal : .message, id: "o\(threadRoot)",
-                            inTribe: inTribe, people: people))
+            let kind: Kind = original == nil ? .missingOriginal
+                : anchor.isControlLine(inTribe: inTribe) ? .control(anchor.controlLine(by: people.sender(of: anchor, inTribe: inTribe)))
+                : .message
+            rows.append(row(anchor, kind: kind, id: "o\(threadRoot)", inTribe: inTribe, people: people))
             rows.append(row(anchor, kind: .replies(messages.count), id: "r\(threadRoot)", inTribe: inTribe, people: people))
         }
         var newAfter = newAfter
+        var cardRows: [String: Int] = [:]
+        // In a direct message, a device request is one row, on its newest
+        // copy (where its card is while up), with how this Mac answered it
+        // from its result that went; a status line ("Waiting for your Mac")
+        // is its line; an ack, a result or a cancel has no row of its own.
+        var requestRows: [String: Int64] = [:]
+        var answered: [String: ControlEnvelope] = [:]
+        if !inTribe {
+            for message in messages {
+                guard case .envelope(let envelope)? = message.control else { continue }
+                if envelope.op == .request, let id = envelope.id, let row = message.id { requestRows[id] = row }
+                if envelope.op == .result, message.fromMe, message.delivery != .failed, let re = envelope.re,
+                   envelope.status != nil { answered[re] = envelope }
+            }
+        }
         for message in messages {
+            // A control message is only its line, never a thread's row.
+            let controlLine = message.isControlLine(inTribe: inTribe)
+                ? message.controlLine(by: people.sender(of: message, inTribe: inTribe)) : nil
+            if controlLine?.isEmpty == true { continue }
+            var request: AgentRequest?
+            if !inTribe, controlLine != nil, case .envelope(let envelope)? = message.control, envelope.op != .status,
+               envelope.op == .request || message.fromMe || agentDM {
+                // Your Mac's ack, result or cancel, and a request's older copies,
+                // have no row; anyone else's own line stays (in the agent chat, the
+                // agent's cancels are the bridge's too).
+                guard envelope.op == .request, let id = envelope.id, requestRows[id] == message.id else { continue }
+                request = AgentRequest(envelope, answer: answered[id])
+                // Outside the agent chat any contact could send one: named, as its line was.
+                if !agentDM { request?.asker = people.sender(of: message, inTribe: inTribe).label }
+            }
             // A collapsed thread's row stands for its newest message, which this is.
-            let collapsed = message.standsForThread ? message.threadUUID.flatMap { threads[$0] } : nil
+            let collapsed = message.standsForThread && controlLine == nil ? message.threadUUID.flatMap { threads[$0] } : nil
             // No row that would draw nothing (blank space under the last
             // row, Tom 2026-10-08), or only "Original message not
             // available": "New messages" goes to the next.
@@ -176,10 +233,10 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 rows.append(row)
                 continue
             }
-            let kind: Kind = message.isSaid ? .message
+            let kind: Kind = controlLine.map(Kind.control) ?? (message.isSaid ? .message
                 : message.type == MessageType.directPayment ? .payment
                 : message.type == MessageType.invoice ? .paymentRequest
-                : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note
+                : message.type == MessageType.memberRequest && !message.fromMe ? .request : .note)
             var row = row(message, kind: kind, id: "m\(message.id ?? 0)", inTribe: inTribe, people: people)
             if kind == .message, !startsNew, let last = rows.last,
                last.takes(message, sender: row.sender, boosted: { boostsOn($0) != nil }) {
@@ -187,11 +244,26 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 rows[rows.count - 1].message = message
                 continue
             }
-            if kind == .message {
+            if kind == .message, agentDM, !message.fromMe {
+                // An agent's reply answers the message just above: no quote, its tool
+                // rows instead, but for its requests to this Mac, which have their own.
+                row.byAgent = true
+                row.agentTools = message.agentTools.filter { !$0.name.hasPrefix("sphinx") }
+                row.agentJob = message.agentJob
+                row.agentArtifacts = message.agentArtifacts
+            } else if kind == .message {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
+            // One card per request, on its newest copy (the bridge may ask again).
+            if case .control = kind, !approvals.isEmpty, case .envelope(let request)? = message.control,
+               request.op == .request, let id = request.id, let approval = approvals[id] {
+                if let earlier = cardRows[id] { rows[earlier].approval = nil }
+                row.approval = approval
+                cardRows[id] = rows.count
+            }
             row.startsNew = startsNew
+            row.agentRequest = request
             if kind == .paymentRequest { row.paymentRequest = message.id.flatMap { requests[$0] } }
             rows.append(row)
         }
@@ -200,6 +272,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         // never draws: blank space under the newest message.
         var seen = Set<String>()
         rows = rows.reversed().filter { seen.insert($0.id).inserted }.reversed()
+        if agentDM { rows = foldingReads(rows) }
         // Every message row, a collapsed thread's and a thread's original included.
         for index in rows.indices where rows[index].kind == .message {
             rows[index].call = callServer.flatMap { CallLink(in: rows[index].message, server: $0) }
@@ -236,6 +309,39 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         return rows
     }
 
+    /// Reads asked back to back, no more than `AgentReads.gap` apart on one
+    /// day, as their first row (`agentReads`): an agent's look around the
+    /// chats is one line, not one per chat. One still on this Mac folds too,
+    /// so a run's reads land in its line rather than as rows that then go;
+    /// a read that failed or was refused stays a row of its own between them.
+    private static func foldingReads(_ rows: [ChatRow]) -> [ChatRow] {
+        var folded: [ChatRow] = []
+        folded.reserveCapacity(rows.count)
+        let calendar = Calendar.current
+        for row in rows {
+            let head = folded.count - 1
+            if let read = row.quietRead, !row.startsNew, head >= 0, let first = folded[head].quietRead {
+                let previous = (folded[head].agentReads.last?.message ?? folded[head].message).date
+                if row.date.timeIntervalSince(previous) <= AgentReads.gap, calendar.isDate(row.date, inSameDayAs: previous) {
+                    if folded[head].agentReads.isEmpty {
+                        folded[head].agentReads = [AgentRead(message: folded[head].message, request: first)]
+                    }
+                    folded[head].agentReads.append(AgentRead(message: row.message, request: read))
+                    continue
+                }
+            }
+            folded.append(row)
+        }
+        return folded
+    }
+
+    /// This row's request when it is a read done or not yet answered: one that may fold.
+    private var quietRead: AgentRequest? {
+        guard approval == nil, let request = agentRequest, request.asker == nil, request.status == .done || request.status == nil,
+              AgentReads.Kind(request.kind) != nil else { return nil }
+        return request
+    }
+
     /// A row for one message, its sender worked out once.
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
         ChatRow(id: id, kind: kind, message: message, inTribe: inTribe,
@@ -250,15 +356,20 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     ) -> Quote? {
         guard let reply = message.replyUUID, reply != threadRoot else { return nil }
         guard let parent = parents[reply] else { return .missing }
-        guard parent.isContent, !parent.isBlank else { return nil }
+        // A control message is a line, never quoted as talk.
+        guard parent.isContent, !parent.isBlank, !parent.isControlLine(inTribe: inTribe) else { return nil }
         return .message(parent, people.sender(of: parent, inTribe: inTribe))
     }
 
     /// The uuids a jump finds this row by: its own, its run of images', and
     /// the original of its thread. None for a row that is not a message's.
     public var heldUUIDs: [String] {
-        guard [.message, .payment, .paymentRequest].contains(kind) else { return [] }
-        return ([message.uuid] + images.map(\.uuid) + [summary?.original.uuid]).compactMap { $0 }
+        switch kind {
+        case .message, .payment, .paymentRequest, .control: break
+        default: return []
+        }
+        return ([message.uuid] + images.map(\.uuid) + agentReads.dropFirst().map(\.message.uuid)
+                + [summary?.original.uuid]).compactMap { $0 }
     }
 
     /// Whether this is the row a jump to the message with `uuid` goes to.
@@ -289,3 +400,104 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             && (message.delivery == .delivered || message.delivery == nil)
     }
 }
+
+/// A request from the agent to this Mac, as its DM's row says it: what was
+/// asked, and how this Mac answered (nil while it works on it), with what
+/// it answered: a read's chat data, a send's "Sent to …", why not.
+public struct AgentRequest: Equatable, Sendable {
+    public let kind: String
+    /// What it was asked, as the agent wrote it.
+    public var args: PeelCore.JSONValue?
+    public let status: ControlEnvelope.Status?
+    /// Whether it waits on your answer on the Mac's card: a send in
+    /// conversation, an approval, a change to your calendar. An
+    /// automation's send goes on its grant.
+    public let asks: Bool
+    /// The answer's text (`result.text`), as this Mac sent it.
+    public var text: String?
+    /// Why it was not done, as this Mac said it.
+    public var reason: String?
+    /// Who asked, outside the agent chat: any contact can send a request.
+    public var asker: String?
+    /// After this second it is never done (`not_after`): unanswered by then, too late.
+    public var notAfter: Int64?
+
+    public init(kind: String, args: PeelCore.JSONValue? = nil, status: ControlEnvelope.Status?, asks: Bool = false,
+                text: String? = nil, reason: String? = nil, notAfter: Int64? = nil) {
+        self.kind = kind
+        self.notAfter = notAfter
+        self.args = args
+        self.status = status
+        self.asks = asks
+        self.text = text
+        self.reason = reason
+    }
+
+    /// `request`, answered by `answer` (this Mac's result), if it was.
+    init(_ request: ControlEnvelope, answer: ControlEnvelope?) {
+        let kind = request.kind ?? ""
+        var automation = false
+        if case .object(let args)? = request.args { automation = args["automation"].map { $0 != .null } ?? false }
+        var text: String?
+        if case .object(let result)? = answer?.result, case .string(let said)? = result["text"] { text = said }
+        self.init(kind: kind, args: request.args, status: answer?.status,
+                  asks: kind == "approve" || kind == "send" && !automation || kind.hasPrefix("calendar.") && kind != "calendar.events",
+                  text: text, reason: answer?.error,
+                  notAfter: request.notAfter)
+    }
+
+    /// Unanswered past its expiry, as the Mac judges it
+    /// (`ControlEnvelope.isPast`): nothing will be done, whatever comes.
+    public func isExpired(at now: Date) -> Bool {
+        status == nil && notAfter.map { ControlEnvelope.isPast($0, at: now) } == true
+    }
+
+    /// When the row says something else without a new message: the second
+    /// its expiry is past, while unanswered in the agent chat
+    /// (`TimelineSchedule.redrawing(at:)`).
+    public var changesAt: Date? {
+        status == nil && asker == nil ? notAfter.map { Date(timeIntervalSince1970: TimeInterval($0 + 1)) } : nil
+    }
+
+    /// What the row says: "Read your unread messages", after who asked
+    /// outside the agent chat ("Kate: Read your unread messages").
+    public var label: String { asker.map { "\($0): \(words)" } ?? words }
+
+    /// "Read your unread messages", by the request's kind.
+    public var words: String {
+        switch kind {
+        case "chats.list": "Read your chats"
+        case "chats.read": "Read a chat"
+        case "chats.threads": "Read threads"
+        case "chats.unseen": "Read your unread messages"
+        case "chats.search": "Search your messages"
+        case "send": "Send a message"
+        case "approve": "Asked for your approval"
+        case "calendar.events": "Read your calendar"
+        case let kind where kind.hasPrefix("calendar."): "Change your calendar"
+        default: "Asked your Mac"
+        }
+    }
+
+    /// How it ended at `now`, after the words: nil when it was done, as
+    /// asked; unanswered past its expiry, too late, as the Mac would answer.
+    /// Outside the agent chat, one never answered was not this Mac's.
+    public func outcome(at now: Date) -> String? {
+        switch isExpired(at: now) && asker == nil ? .expired : status {
+        case nil where asker != nil: "Not answered"
+        case nil: "on your Mac…"
+        case .done?: nil
+        case .denied?: "Declined"
+        case .expired?: "Too late, nothing done"
+        case .failed?: "Could not do it"
+        case .unknown?: "Not sure it went"
+        }
+    }
+
+    /// How it ended at `now` on a device that never answers it (the phone,
+    /// decision 9): its card waits on the Mac rather than working there.
+    public func outcomeElsewhere(at now: Date) -> String? {
+        status == nil && asks && !isExpired(at: now) ? "Waiting for your approval on your Mac" : outcome(at: now)
+    }
+}
+

@@ -96,6 +96,12 @@ struct ChatSectionsTests {
         #expect(ChatSections(chats, states: [:], layout: layout, open: "p1").tribes.isEmpty)
     }
 
+    @Test func matchesANameAsTheSectionsDo() {
+        #expect(ChatSections.matches("Peel", query: ""))
+        #expect(ChatSections.matches("Peel", query: " pee "))
+        #expect(!ChatSections.matches("Peel", query: "kate"))
+    }
+
     @Test func searchFindsEveryMatchUntrimmedInClosedSections() {
         var layout = ChatSections.Layout()
         layout.tribesOpen = false

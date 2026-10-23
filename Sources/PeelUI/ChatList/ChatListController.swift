@@ -101,23 +101,26 @@ public final class ChatListController {
     // MARK: Opening
 
     /// The list's first content: at the message asked for (`focus`, a
-    /// uuid), else "New messages", else where it last stood, else the newest.
+    /// uuid), else the row it was left scrolled up at (what came since
+    /// counted by the pill), else "New messages", else the newest.
     public func appear(_ content: ListContent, focus: String? = nil) -> ListMove {
         self.content = content
         let move: ListMove
+        let divider = content.divider.flatMap { store.opensAtNewMessages(in: list) && has($0) ? $0 : nil }
         if let focus, let id = row(holding: focus) {
             // T1
             move = land(on: id)
-        } else if store.opensAtNewMessages(in: list), let divider = content.divider, has(divider) {
-            // T2
-            mode = .reading
-            dividerUnread = true
-            move = ListMove(to: .row(id: divider, offset: 0))
         } else if case .row(let id, let offset)? = store.anchor(of: list), has(id) {
             // T3
             mode = .reading
+            dividerUnread = divider != nil
             anchor = (id, offset)
             move = ListMove(to: .row(id: id, offset: offset))
+        } else if let divider {
+            // T2: left at the newest, or never opened here.
+            mode = .reading
+            dividerUnread = true
+            move = ListMove(to: .row(id: divider, offset: 0))
         } else {
             // T4
             mode = .following
@@ -141,7 +144,7 @@ public final class ChatListController {
         defer { updatePill() }
 
         let newIDs = content.rows.map(\.id)
-        let inserted = Set(diff.inserted)
+        let inserted = diff.inserted
         let kept = newIDs.indices.filter { !inserted.contains(newIDs[$0]) }
         // T13, T14: a window swapped for another.
         if kept.isEmpty, !old.rows.isEmpty, !content.rows.isEmpty {
@@ -169,27 +172,39 @@ public final class ChatListController {
         case .jumping(let id):
             if has(id) { return ListMove(to: .center(id: id)) }
             mode = .reading
-            return holdReading(old: old)
+            return holdReading(old: old, moved: diff.moved)
         case .reading:
             // T8, T10, T11, T12
-            return holdReading(old: old)
+            return holdReading(old: old, moved: diff.moved)
         }
     }
 
-    /// Reading: the anchor held, or (T12) its nearest surviving neighbour,
-    /// below first, where it stood on the screen.
-    private func holdReading(old: ListContent) -> ListMove {
+    /// Reading: the anchor held where it is. When its row has left its
+    /// place (T12: deleted, or in a tribe re-sorted to its thread's newest
+    /// reply or folded into a thread's row there), the place is held
+    /// instead: the nearest row below still there takes it, so what is
+    /// above stays where it was and what is below closes up; with none
+    /// below, the nearest above stays where it stood on the screen.
+    private func holdReading(old: ListContent, moved: Set<String>) -> ListMove {
         guard let current = anchor else { return .keep }
-        if has(current.id) { return ListMove(to: .row(id: current.id, offset: current.offset)) }
+        if has(current.id), !moved.contains(current.id) {
+            return ListMove(to: .row(id: current.id, offset: current.offset))
+        }
         guard let index = old.rows.firstIndex(where: { $0.id == current.id }) else { return .keep }
-        let below = old.rows[(index + 1)...].first { anchorable.contains($0.id) }
-        let above = old.rows[..<index].last { anchorable.contains($0.id) }
-        guard let neighbour = below ?? above else { return .keep }
-        let offset = viewport.flatMap { view in
-            view.visibleIDs.firstIndex(of: neighbour.id).map { view.visibleTops[$0] }
-        } ?? current.offset
-        anchor = (neighbour.id, offset)
-        return ListMove(to: .row(id: neighbour.id, offset: offset))
+        let stays = { (row: ChatListRow) in self.anchorable.contains(row.id) && !moved.contains(row.id) }
+        let held: (id: String, offset: Double)
+        if let below = old.rows[(index + 1)...].first(where: stays) {
+            held = (below.id, current.offset)
+        } else if let above = old.rows[..<index].last(where: stays) {
+            let offset = viewport.flatMap { view in
+                view.visibleIDs.firstIndex(of: above.id).map { view.visibleTops[$0] }
+            } ?? current.offset
+            held = (above.id, offset)
+        } else {
+            return .keep
+        }
+        anchor = held
+        return ListMove(to: .row(id: held.id, offset: held.offset))
     }
 
     /// T13: the jump waiting for this window; T14: where it stood, else the newest.

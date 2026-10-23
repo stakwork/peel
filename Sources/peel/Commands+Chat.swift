@@ -1,4 +1,5 @@
 import Foundation
+import PeelAgent
 import PeelCore
 
 extension Invocation {
@@ -16,6 +17,19 @@ extension Invocation {
             try await session.engine.sendText(
                 arguments.rest().joined(separator: " "), to: pubkey, replyTo: replyTo, inThread: inThread
             )
+            try await session.finish(after: wait)
+
+        case "send-control":
+            guard let pubkey = arguments.next(), let json = arguments.next(), !arguments.isEmpty else {
+                throw PeelError("send-control needs a pubkey, an envelope and some text")
+            }
+            guard let envelope = try? JSONDecoder().decode(ControlEnvelope.self, from: Data(json.utf8)),
+                  envelope.isReadable else {
+                throw PeelError("the envelope is not one this Peel writes")
+            }
+            let session = try await Session(load())
+            await session.connectIfPossible(insecure: insecure)
+            try await session.engine.sendControl(envelope, text: arguments.rest().joined(separator: " "), to: pubkey)
             try await session.finish(after: wait)
 
         case "send-file":
@@ -191,8 +205,16 @@ extension Invocation {
 
         case "listen":
             let session = try await Session(load())
+            await session.engine.answerDeviceRequests(with: DeviceReads(storage: session.engine.storage).handler)
             await session.engine.start(allowUntrustedCertificate: insecure)
             await session.printer.value
+
+        case "device-agent":
+            let engine = try await load()
+            if let pubkey = arguments.next() {
+                try await engine.setDeviceAgent(pubkey == "off" ? nil : pubkey)
+            }
+            print(await engine.deviceAgent ?? "off")
 
         default:
             return false

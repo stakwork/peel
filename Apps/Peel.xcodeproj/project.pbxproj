@@ -22,18 +22,31 @@
 /* Begin PBXFileReference section */
 		B20000000000000000000201 /* Peel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Peel.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000201 /* Peel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Peel.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B40000000000000000000202 /* Peel.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Peel.xcconfig; sourceTree = "<group>"; };
-		B40000000000000000000203 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		B30000000000000000000211 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B30000000000000000000212 /* Peel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Peel.entitlements; sourceTree = "<group>"; };
+		B30000000000000000000213 /* Peel.AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Peel.AppStore.entitlements; sourceTree = "<group>"; };
+		B40000000000000000000202 /* Peel.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Peel.xcconfig; sourceTree = "<group>"; };
+		B40000000000000000000203 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		B40000000000000000000221 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		B40000000000000000000222 /* peel.svg */ = {isa = PBXFileReference; lastKnownFileType = text; path = peel.svg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B20000000000000000000301 /* Peel */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Peel; sourceTree = "<group>"; };
-		B30000000000000000000301 /* Peel */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Peel; sourceTree = "<group>"; };
-		B40000000000000000000301 /* Shared */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Shared; sourceTree = "<group>"; };
+		B20000000000000000000301 /* Peel */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Peel;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000301 /* Peel */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Peel;
+			sourceTree = "<group>";
+		};
+		B40000000000000000000301 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +87,15 @@
 			);
 			sourceTree = "<group>";
 		};
+		B20000000000000000000503 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000201 /* Peel.app */,
+				B30000000000000000000201 /* Peel.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		B40000000000000000000504 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -88,6 +110,7 @@
 				B30000000000000000000301 /* Peel */,
 				B30000000000000000000211 /* Info.plist */,
 				B30000000000000000000212 /* Peel.entitlements */,
+				B30000000000000000000213 /* Peel.AppStore.entitlements */,
 			);
 			path = Mac;
 			sourceTree = "<group>";
@@ -108,15 +131,6 @@
 				B40000000000000000000203 /* Local.xcconfig.example */,
 			);
 			path = Config;
-			sourceTree = "<group>";
-		};
-		B20000000000000000000503 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				B20000000000000000000201 /* Peel.app */,
-				B30000000000000000000201 /* Peel.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -271,6 +285,69 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		B20000000000000000000802 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				DEVELOPMENT_TEAM = 8297M44YTW;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Peel;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = Peel;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B20000000000000000000803 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				DEVELOPMENT_TEAM = 8297M44YTW;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Peel;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = Peel;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		B20000000000000000000812 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -279,7 +356,9 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
@@ -288,8 +367,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 			};
 			name = Debug;
 		};
@@ -302,71 +379,10 @@
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				VALIDATE_PRODUCT = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-			};
-			name = Release;
-		};
-		B20000000000000000000802 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Peel;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				PRODUCT_NAME = Peel;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = 1;
-				ENABLE_PREVIEWS = YES;
-			};
-			name = Debug;
-		};
-		B20000000000000000000803 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Peel;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				PRODUCT_NAME = Peel;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = 1;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -376,19 +392,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Peel;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				PRODUCT_NAME = Peel;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				CODE_SIGN_ENTITLEMENTS = Mac/Peel.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 8297M44YTW;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Mac/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Peel;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you.";
@@ -396,10 +411,14 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				PEEL_STRUT_ENTITLEMENTS = "strut-node.entitlements";
+				PRODUCT_NAME = Peel;
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = macosx;
-				ENABLE_PREVIEWS = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -409,19 +428,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Peel;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				PRODUCT_NAME = Peel;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				CODE_SIGN_ENTITLEMENTS = Mac/Peel.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Mac/Peel.AppStore.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 8297M44YTW;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Mac/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Peel;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you.";
@@ -429,9 +446,15 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				PEEL_BRIDGE_ENTITLEMENTS = bridge.sandbox.entitlements;
+				PEEL_STRUT_ENTITLEMENTS = "strut-node.sandbox.entitlements";
+				PRODUCT_NAME = Peel;
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -447,20 +470,20 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B30000000000000000000801 /* Build configuration list for PBXNativeTarget "Peel macOS" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				B30000000000000000000802 /* Debug */,
-				B30000000000000000000803 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		B20000000000000000000811 /* Build configuration list for PBXProject "Peel" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B20000000000000000000812 /* Debug */,
 				B20000000000000000000813 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B30000000000000000000801 /* Build configuration list for PBXNativeTarget "Peel macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B30000000000000000000802 /* Debug */,
+				B30000000000000000000803 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

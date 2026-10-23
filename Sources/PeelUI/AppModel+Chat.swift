@@ -35,7 +35,8 @@ public enum ListAnchor: Equatable, Sendable {
 public enum ComposerID: Hashable, Sendable {
     case chat(String)
     case thread(ThreadRef)
-    /// The agent chat's: text only, to the agent (`AppModel.sendDraft`).
+    /// The agent chat's list before its DM is the chat: the earlier turns,
+    /// read only, with no composer.
     case agent
 
     /// The Sphinx chat it writes in; nil for the agent's.
@@ -118,10 +119,21 @@ extension AppModel {
         replyTargets[composer] = nil
     }
 
+    /// Whether files can go with what `composer` sends: not the agent
+    /// chat's, nor its DM's (its agent opens no files yet).
+    public func takesFiles(_ composer: ComposerID) -> Bool {
+        composer.takesFiles && composer.chat != agentChat
+    }
+
+    /// Whether `composer` is the agent chat's: its DM's.
+    public func isAgentChat(_ composer: ComposerID) -> Bool {
+        composer.chat != nil && composer.chat == agentChat
+    }
+
     /// Escape in a composer: stops replying, else closes its thread panel.
     /// Returns whether it was taken.
     public func escape(in composer: ComposerID) -> Bool {
-        if composer == .agent, agentHost?.closeMemory(in: self) == true { return true }
+        if isAgentChat(composer), agentHost?.closeMemory(in: self) == true { return true }
         if replyTargets[composer] != nil {
             replyTargets[composer] = nil
             return true
@@ -241,10 +253,6 @@ extension AppModel {
     public func sendDraft(from composer: ComposerID) async {
         let text = (drafts[composer] ?? "").trimmed
         drafts[composer] = nil
-        if composer == .agent {
-            agent?.send(text)
-            return
-        }
         if await !send(text, from: composer), (drafts[composer] ?? "").isEmpty, !text.isEmpty {
             drafts[composer] = text
         }

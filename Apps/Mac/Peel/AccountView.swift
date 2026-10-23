@@ -49,6 +49,8 @@ struct AccountView: View {
                             BrainSection()
                         }
                         .id(AgentSettingsSection.id)
+                        ConnectionsSection()
+                            .id(ConnectionsSection.id)
                     }
                     SettingsSection("Security") {
                         if model.profile?.requiresPIN == true {
@@ -58,6 +60,7 @@ struct AccountView: View {
                         WordsRow()
                         WebsiteDataRow()
                     }
+                    DictationSettingsSection()
                     SettingsSection("Notifications") {
                         NotificationsRow()
                         NotificationTextRow()
@@ -79,6 +82,7 @@ struct AccountView: View {
             // Opened from the agent chat's settings: at its section.
             .onAppear { showAgentSettings(proxy) }
             .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
+            .onChange(of: model.connections.opened) { proxy.scrollTo(ConnectionsSection.id, anchor: .top) }
             }
         }
         .endsEditingOnClick()

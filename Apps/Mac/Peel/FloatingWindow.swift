@@ -60,7 +60,11 @@ final class FloatingWindow: NSPanel {
         alphaValue = 0
         let root = FloatingRoot(content: content, margin: Self.margin) { [weak self] size in self?.place(size) }
         contentView = NSHostingView(rootView: root)
-        if parent == nil { host.addChildWindow(self, ordered: .above) }
+        // AppKit throws (does not just refuse) adding a window as a child of
+        // itself. Never this window's own caller's mistake to make fatal:
+        // shown unparented instead, which only means it does not move with
+        // a host it was never really told.
+        if parent == nil, host !== self { host.addChildWindow(self, ordered: .above) }
         if takesKey { makeKeyAndOrderFront(nil) } else { orderFront(nil) }
     }
 

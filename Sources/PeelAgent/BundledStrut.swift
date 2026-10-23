@@ -7,8 +7,9 @@ import PeelCore
 /// only in memory; its address is the port the OS gives it, read from its
 /// ready line. It exits by itself when Peel goes away, however that
 /// happens: its stdin is a pipe only Peel holds (`STRUT_EXIT_ON_STDIN_EOF`).
-/// Its secret store (the automation token) is encrypted with a key the
-/// account keeps (`Profile.strutKey`), made on its first start.
+/// Its secret store (the connected model's key, the bridge's port and
+/// token) is encrypted with a key the account keeps (`Profile.strutKey`),
+/// made on its first start.
 /// Its workspace and the memory graph are in the folder it is given (the app
 /// account's under Application Support), and go with the account (`erase`).
 /// Its workspace (workflows, steps, automations) is one Ladybug file,
@@ -20,6 +21,28 @@ public final class BundledStrut {
     public private(set) var server: MemoryServer?
     /// Called when `server` changes, ready or stopped.
     public var onChange: (() -> Void)?
+    /// Which agents reach each MCP server (Connections), kept beside its
+    /// data and read into the host delta from its next start.
+    public var grants: MCPGrants { MCPGrants.read(in: data) }
+    /// The grants and person its running process was started with: a change
+    /// since (kept while it was starting) needs one more start.
+    public private(set) var launchedGrants: MCPGrants?
+    private var launchedPerson: String?
+    /// Started with grants or a person that have changed since.
+    public var launchedStale: Bool { launchedGrants.map { $0 != grants || launchedPerson != person } ?? false }
+
+    public func keep(_ grants: MCPGrants) throws {
+        try grants.write(in: data)
+    }
+    /// Whether an MCP server on this Mac may be registered
+    /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
+    public var allowsLocalMCP = false
+    /// The person's actor on their Hive orgs, once paired: the orchestrator
+    /// is then told its peers are those orgs (strut's
+    /// `personalOrchestratorSystem`), from the next start.
+    public var person: String?
+    /// The section last rendered, by person: Node runs once per person, not per start.
+    private var personal: (person: String, text: String)?
 
     private let folder: URL
     private let data: URL
@@ -37,8 +60,8 @@ public final class BundledStrut {
     }
 
     /// The strut package in `folder` (its `desktop.js` and `native/node`),
-    /// if there is one: for `peel agent`, which is not inside Peel.app, the
-    /// one `stage-strut.sh` staged (`staged`).
+    /// if there is one: for the tests and journeys, which are not inside
+    /// Peel.app, the one `stage-strut.sh` staged (`staged`).
     public init?(folder: URL, data: URL, secretKey: any SecretItem) {
         guard FileManager.default.isExecutableFile(atPath: folder.appending(path: "native/node").path),
               FileManager.default.fileExists(atPath: folder.appending(path: "desktop.js").path) else { return nil }
@@ -105,32 +128,67 @@ public final class BundledStrut {
         self.process = nil
         try? stdin?.fileHandleForWriting.close()
         stdin = nil
-        if process.isRunning {
-            process.terminate()
-            let deadline = Date.now.addingTimeInterval(2)
-            while process.isRunning, Date.now < deadline { usleep(50_000) }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
-            let killed = Date.now.addingTimeInterval(1)
-            while process.isRunning, Date.now < killed { usleep(10_000) }
-        }
+        // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
+        endProcess(process.processIdentifier, isRunning: { process.isRunning })
         if server != nil {
             server = nil
             if !quietly { onChange?() }
         }
     }
 
+    /// strut's section for `person`'s orgs, rendered by its own code with the
+    /// Node it ships (specs/DESKTOP.md §1), so the words are strut's; off the
+    /// main actor, given ten seconds. Nil when it cannot be: strut then starts
+    /// without it, its orgs still on file.
+    func personalSection(for person: String) async -> String? {
+        if let personal, personal.person == person { return personal.text }
+        let node = folder.appending(path: "native/node"), seed = folder.appending(path: "build/orchestrator-seed.js")
+        let text = await Task.detached { Self.render(node: node, seed: seed, person: person) }.value
+        if let text { personal = (person, text) }
+        return text
+    }
+
+    private nonisolated static func render(node: URL, seed: URL, person: String) -> String? {
+        let render = Process()
+        render.executableURL = node
+        render.arguments = ["--input-type=module", "-e",
+                            "const m = await import(process.argv[1]); process.stdout.write(m.personalOrchestratorSystem(process.argv[2]))",
+                            seed.absoluteString, person]
+        // Nothing of Peel's: only what Node needs to run.
+        render.environment = ["PATH": "/usr/bin:/bin", "HOME": NSTemporaryDirectory()]
+        let output = Pipe()
+        render.standardOutput = output
+        render.standardError = FileHandle.nullDevice
+        guard (try? render.run()) != nil else { return nil }
+        let timer = DispatchWorkItem { if render.isRunning { render.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timer)
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        render.waitUntilExit()
+        timer.cancel()
+        return render.terminationStatus == 0 && !text.isEmpty ? text : nil
+    }
+
     private func launch() async throws -> MemoryServer {
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
-        let key = try AutomationServer.newKey()
+        let key = try Self.newKey()
         let secrets = try Self.secretKey(in: secretKey)
+        // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
+        let hostConfig = data.appending(path: "host-config.json")
+        let (grants, person) = (grants, person)
+        var personal: String?
+        if let person { personal = await personalSection(for: person) }
+        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
+        launchedGrants = grants
+        launchedPerson = person
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
-        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data)
+        process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
+                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -157,16 +215,7 @@ public final class BundledStrut {
         self.process = process
         stdin = input
 
-        let server = try await withThrowingTaskGroup(of: MemoryServer?.self) { group in
-            group.addTask { await ready.first { _ in true } }
-            group.addTask {
-                try await Task.sleep(for: Self.readyTimeout)
-                return nil
-            }
-            let first = try await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
+        let server = try await first(of: ready, within: Self.readyTimeout)
         guard let server, self.process === process else {
             // Its output can end a moment before it is reaped.
             for _ in 0..<40 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
@@ -200,10 +249,19 @@ public final class BundledStrut {
         return MemoryServer(base: url, key: key)
     }
 
+    /// 32 random bytes as hex: a key or a token for this launch.
+    public nonisolated static func newKey() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw PeelError("could not make a key")
+        }
+        return bytes.hex
+    }
+
     /// The key kept in `item`, or a new random one kept there.
     nonisolated static func secretKey(in item: any SecretItem) throws -> String {
         if let kept = try item.read(), let key = String(data: kept, encoding: .utf8), key.count == 64 { return key }
-        let key = try AutomationServer.newKey()
+        let key = try Self.newKey()
         try item.write(Data(key.utf8))
         return key
     }
@@ -216,8 +274,11 @@ public final class BundledStrut {
     /// disconnected is gone), and then strut's: this Mac only, a port the OS picks,
     /// Peel's keys and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no
     /// configuration and loads no engine or provider: it was built for
-    /// Homebrew's folders, which another user may own.
-    nonisolated static func environment(_ inherited: [String: String], key: String, secretKey: String, data: URL) -> [String: String] {
+    /// Homebrew's folders, which another user may own. `hostConfig`: the
+    /// file of Peel's delta for the workflows strut ships (`STRUT_HOST_CONFIG`).
+    nonisolated static func environment(
+        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false
+    ) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
             name == "NODE_EXTRA_CA_CERTS"
@@ -233,19 +294,54 @@ public final class BundledStrut {
             "STRUT_WORKSPACE_BACKEND": "ladybug",
             "STRUT_WORKSPACE": data.appending(path: "workspace").path,
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
+            "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
+            "STRUT_SEALED": Orchestrator.sealedSteps.joined(separator: ","),
+            "STRUT_MCP_LOCAL": allowsLocalMCP ? "1" : "0",
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",
             "OPENSSL_ENGINES": "/var/empty",
         ]) { _, new in new }
+        // strut clears its environment at boot (strut's env.ts); a stand-in model on this Mac (the
+        // tests') is kept for the model library, which reads it from there. Any other is ignored.
+        let loopback: Set = ["127.0.0.1", "localhost", "::1"]
+        if let host = environment["ANTHROPIC_BASE_URL"].flatMap(URL.init(string:))?.host(percentEncoded: false), loopback.contains(host) {
+            environment["STRUT_ENV_KEEP"] = "ANTHROPIC_BASE_URL"
+        }
         return environment
     }
 }
 
+/// The first thing `stream` yields within `timeout`; nil if it ends or the time runs out first.
+func first<T: Sendable>(of stream: AsyncStream<T>, within timeout: Duration) async throws -> T? {
+    try await withThrowingTaskGroup(of: T?.self) { group in
+        group.addTask { await stream.first { _ in true } }
+        group.addTask {
+            try await Task.sleep(for: timeout)
+            return nil
+        }
+        let first = try await group.next() ?? nil
+        group.cancelAll()
+        return first
+    }
+}
+
+/// Ends process `pid`: SIGTERM, then SIGKILL if it is still there after two
+/// seconds; returns once it is gone, or a second after the SIGKILL.
+func endProcess(_ pid: pid_t, isRunning: () -> Bool) {
+    guard isRunning() else { return }
+    kill(pid, SIGTERM)
+    let deadline = Date.now.addingTimeInterval(2)
+    while isRunning(), Date.now < deadline { usleep(50_000) }
+    if isRunning() { kill(pid, SIGKILL) }
+    let killed = Date.now.addingTimeInterval(1)
+    while isRunning(), Date.now < killed { usleep(10_000) }
+}
+
 /// Lines from chunks of a pipe's output, read on Foundation's own queue
 /// (`readabilityHandler`), not the concurrency pool, which busy work can
-/// starve while strut waits on a full pipe.
-private final class LineReader: @unchecked Sendable {
+/// starve while strut (or the bridge) waits on a full pipe.
+final class LineReader: @unchecked Sendable {
     private let lock = NSLock()
     private var pending = Data()
 

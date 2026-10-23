@@ -3,6 +3,11 @@
 Last updated 2026-10-15. **Built** (stakwork/peel#256; stakwork/strut#167, #170, #172, #174, #175). The first
 built-in shipped as "Tidy memory" and was renamed **Merge duplicates** (strut#174); its workflow is still
 `tidy-memory`.
+
+> **Superseded in part (2026-10-19).** "Peel's automations" below now run
+> on `peel-automation-run` in strut with the same connected model; Peel's
+> `AutomationServer` and its Swift run were removed in Phase 1's PR 11.
+
 It adds built-in automations to [phases/12-automations.md](phases/12-automations.md)
 (v1 built, PR #221). The first one is the duplicates janitor from
 [agent-brain.md](agent-brain.md) ("Janitors") and from strut's
@@ -251,6 +256,11 @@ instead of only `peel-automation`. The existing `AutomationsView` gains:
   user can, from the switch in the System tab.
 
 ## Where it runs
+
+> **Superseded in part (2026-10-19):** work that needs Sphinx chats does not
+> wait for Peel to claim it. A strut step asks your Mac by device request in
+> the agent's DM, through the bridge (agent-on-strut.md, section 2). See
+> [agent-architecture.md](agent-architecture.md).
 
 This fits how automations work now and how the home server will work:
 

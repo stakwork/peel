@@ -2,8 +2,9 @@ import AgentKit
 import Foundation
 import PeelCore
 
-/// The Sphinx read tools over one account's storage, under the official
-/// Mac app's names where it has them (`AIAgentManager.swift`):
+/// The Sphinx read tools over one account's storage, which answer the
+/// agent's chat reads (`DeviceReads`), under the official Mac app's names
+/// where it has them (`AIAgentManager.swift`):
 /// `get_contacts_and_tribes`, `read_recent_messages`,
 /// `read_unseen_messages`, `read_threads`, and Peel's own
 /// `search_messages`. Each only reads, through the reads the app's views
@@ -27,15 +28,12 @@ public struct SphinxTools: Sendable {
     /// The most unseen messages across every chat when none is named.
     static let unseenEverywhereLines = 30
 
-    public var tools: [Tool] {
-        [contactsAndTribes, recentMessages, unseenMessages, threads, search]
-    }
-
-    /// What the model is told about the tools and their results.
-    public static let systemPrompt = """
-        The Sphinx tools read the user's chats as stored on this device: get_contacts_and_tribes, \
-        read_recent_messages, read_unseen_messages, read_threads and search_messages. For "what did I miss?", \
-        call read_unseen_messages with no chat. Name a chat as the tools list it, or by its chat id. \
+    /// What strut's orchestrator is told about the reads it asks this Mac
+    /// for (`Orchestrator`, `DeviceStep.reads`) and their results.
+    static let systemPrompt = """
+        The Sphinx tools read the user's chats on their Mac, by asking it: sphinx/chats, \
+        sphinx/read, sphinx/unseen, sphinx/threads and sphinx/search. For "what did I miss?", \
+        call sphinx/unseen with no chat. Name a chat as the tools list it, or by its chat id. \
         Each message line reads "[sender] date (uuid=… thread=… reply=…): text" (dates in UTC; "Me" is the \
         user), under a "==" line naming its \
         chat and chat id; only use uuids and chat ids you read in a result, never invent one. \

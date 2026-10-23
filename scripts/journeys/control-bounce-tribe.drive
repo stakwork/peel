@@ -1,0 +1,15 @@
+// The tribe scrolled up, then the direct chat as a control message comes
+// in there; back to the tribe: on the row you were reading.
+// needs: peer
+// check: back land=anchor
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 1500}
+{"wait": 1}
+{"probe": "back", "for": 9}
+{"select": "{{chat}}"}
+{"signal": "peer-sends-control"}
+{"wait": 4}
+{"select": "{{tribe}}"}
+{"wait": 2.5}

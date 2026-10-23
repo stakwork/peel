@@ -22,6 +22,63 @@ struct MnemonicTests {
         #expect(try Engine.validate(mnemonic: mnemonic) == mnemonic)
         #expect(try Engine.generateMnemonic() != mnemonic)
     }
+
+    /// The agent's account comes from the user's seed, so the words recover it
+    /// only while the linked core derives exactly what upstream does: the
+    /// vectors are sphinx's `agent_seed_vectors` (signer/derive.rs).
+    @Test(arguments: [
+        ([UInt8](repeating: 0, count: 32), UInt32(1), "6b7c00dcafc11be785c740e8bde0cc5ec5458e2666940788f406abc258509071"),
+        ([UInt8](repeating: 0, count: 32), UInt32(2), "a1d8805df73ab1a657815b746f1922da2c5308619fab2a84fc52ce7d72ec4ec0"),
+        ([UInt8](0..<32), UInt32(1), "b13c64eb614fc62c744d1a3f0b82cdb5ab219fe985f725226392814693c30492"),
+    ])
+    func theAgentsSeedMatchesTheCoresVectors(seed: [UInt8], n: UInt32, agent: String) throws {
+        #expect(try agentSeed(seed: seed.hex, n: n) == agent)
+    }
+}
+
+struct AgentAccountTests {
+    let profile = TempProfile()
+
+    @Test func theAgentIsItsOwnAccountFromTheSameWords() async throws {
+        let engine = try testEngine(try registeredStorage(profile))
+        let agent = try await engine.agentAccount()
+        #expect(try agent.seed == agentSeed(seed: Engine.seed(of: abandon.joined(separator: " ")), n: 1))
+        #expect(agent.pubkey != agent.owner)
+        #expect(agent.owner == (await engine.accountKey))
+        #expect(agent.broker == "127.0.0.1:1")
+        #expect(try await engine.agentAccount() == agent)
+        // The phone knows the agent's DM by the same key.
+        #expect(try await engine.agentPubkey() == agent.pubkey)
+    }
+
+    @Test func itsSeedIsNeverPrinted() async throws {
+        let agent = try await testEngine(try registeredStorage(profile)).agentAccount()
+        var dumped = ""
+        dump(agent, to: &dumped)
+        for text in [String(describing: agent), String(reflecting: agent), "\(agent)", dumped] {
+            #expect(!text.contains(agent.seed))
+            #expect(text.contains(agent.pubkey))
+        }
+    }
+
+    @Test func refusesNoServerAndTLSRunnerWouldNotUse() async throws {
+        let others = (0..<4).map { _ in TempProfile() }
+        await #expect(throws: Engine.Failure.noServer) { try await testEngine(try others[0].storage()).agentAccount() }
+        for (other, (server, refused)) in zip(others.dropFirst(), [
+            ("mqtts://broker.example:8883", false), ("mqtts://broker.example:1883", true), ("mqtt://127.0.0.1:8883", true),
+        ]) {
+            let storage = try other.storage()
+            var commit = Storage.Commit()
+            commit.settings[.server] = server
+            _ = try storage.apply(commit)
+            let engine = try testEngine(storage)
+            if refused {
+                await #expect(throws: PeelError.self) { try await engine.agentAccount() }
+            } else {
+                #expect(try await engine.agentAccount().broker == "broker.example:8883")
+            }
+        }
+    }
 }
 
 struct InviteTests {

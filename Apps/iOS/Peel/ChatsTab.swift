@@ -15,7 +15,6 @@ struct ChatsTab: View {
         NavigationStack(path: $router.chats) {
             ChatList()
                 .navigationTitle("Chats")
-                .modifier(ConnectionSubtitle())
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
                 }
@@ -65,7 +64,11 @@ struct ChatList: View {
         let sections = model.sidebarSections
         // Read once here and passed down: a row redraws only when its own state changes.
         let states = model.readStates
-        let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty
+        // The agent's DM is its own row, first in Direct messages, as on the
+        // Mac (never in the sections), and found by its name as a chat is.
+        let agent = model.agentChat.flatMap { chat in model.conversations.first { $0.chat == chat } }
+            .flatMap { ChatSections.matches($0.name, query: model.searchQuery) ? $0 : nil }
+        let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
         List {
             if !sections.searching {
                 Section {
@@ -110,9 +113,12 @@ struct ChatList: View {
                     }
                 }
             }
-            if !sections.searching || !sections.direct.isEmpty {
+            if !sections.searching || !sections.direct.isEmpty || agent != nil {
                 ChatsSection(title: "Direct messages",
                              expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                    if let agent {
+                        ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
+                    }
                     ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
                     if let all = sections.allDirect {
                         ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
@@ -190,12 +196,13 @@ private struct ChatLink: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let state: ChatReadState?
+    var isAgent = false
 
     var body: some View {
         // Once per row build: the swipe and the menu share it.
         let read = readAction
         NavigationLink(value: ChatsRoute.chat(conversation.chat)) {
-            ChatListRow(conversation: conversation, state: state)
+            ChatListRow(conversation: conversation, state: state, isAgent: isAgent)
         }
         .navigationLinkIndicatorVisibility(.hidden)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {

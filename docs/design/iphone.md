@@ -252,7 +252,10 @@ with Dynamic Type.
 - **Composer**: the same composer, placeholder "Ask Peel"; the send-sats
   bolt is not shown (messages to your agent are free).
 - The cards depend on the remote track (B1 to B4 in the phase file). Until
-  then the agent DM is a plain DM.
+  then the agent DM is a plain DM. *Superseded (2026-10-19):* the remote
+  track is replaced by Phase 1's bridge and device requests; the phone shows
+  each request as a line, and approving from the phone is Phase 2
+  ([../agent-architecture.md](../agent-architecture.md)).
 
 ### 5. Automations
 
@@ -266,7 +269,7 @@ with Dynamic Type.
   recurring one the last run's outcome. A paused or finished one is in
   `secondaryText`.
 - Tapping a row opens it (to design). Pull to refresh asks the brain for
-  status. Waits on the remote track (B3).
+  status. Waits on the remote track (B3); now Phase 2, see above.
 
 ### 6. Payments
 

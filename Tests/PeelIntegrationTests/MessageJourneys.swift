@@ -49,6 +49,35 @@ extension Journeys {
             await bob.close()
         }
 
+        /// A control message through the real core (docs/agent-on-strut.md,
+        /// "The device channel"): Bob gets the envelope whole beside Alice's
+        /// time zone, and the text the official apps show as its content.
+        @Test func aControlMessageKeepsItsEnvelopeAndTheTimeZone() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            try await Bank.shared.give(100, to: alice)
+            try await alice.engine.addContact(code: try bob.contactInfo)
+            try await eventually("Alice and Bob to be contacts") {
+                try alice.isReadyContact(bob) && bob.isReadyContact(alice)
+            }
+            let envelope = ControlEnvelope(op: .request, id: "r_\(UUID().uuidString)", device: "mac-test",
+                                           kind: "chats.unseen", args: .object(["since": .string("2026-10-16T08:00:00Z")]),
+                                           notAfter: 1_760_610_000)
+            let text = "Peel asked your Mac to read your unread messages"
+            try await alice.engine.sendControl(envelope, text: text, to: try bob.pubkey)
+            let received = try await eventually("Bob to receive the control message") {
+                try bob.messages(in: alice.pubkey).first { $0.control != nil }
+            }
+            #expect(received.control == .envelope(envelope))
+            #expect(received.content == text)
+            #expect(received.senderTZ == TimeZoneOffset.format(.current))
+            let sent = try #require(try alice.messages(in: bob.pubkey).first { $0.control != nil })
+            #expect(sent.control == .envelope(envelope))
+
+            await alice.close()
+            await bob.close()
+        }
+
         /// The words as bytes, and in the encodings a payload might carry them in.
         static func forms(of text: String) -> [Data] {
             let utf8 = Data(text.utf8)

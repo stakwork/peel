@@ -1,0 +1,16 @@
+// As thread-send-first-dm, in the tribe: the thread grows by the three
+// replies, the tribe by none (its threads fold into one row each), and
+// it does not move.
+// check: send hold=chat land=end@thread grew=thread:3,chat:0
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"scroll": 600}
+{"wait": 1}
+{"probe": "send", "for": 6}
+{"thread": "visible2"}
+{"note": "focus", "next": 0}
+{"type": "first tribe reply", "return": true, "next": 0.15}
+{"type": "second tribe reply", "return": true, "next": 0.15}
+{"type": "third tribe reply", "return": true}
+{"wait": 4}

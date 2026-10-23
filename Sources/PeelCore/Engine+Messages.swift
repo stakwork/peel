@@ -34,16 +34,34 @@ extension Engine {
     /// thread, and a reply given with it must be in that thread. Returns the
     /// tag the server will confirm. With `priceAtMost` (msat), a tribe whose
     /// price is now above it is refused (`tribePriceRose`) rather than paid:
-    /// the price someone agreed to is the most the send pays.
+    /// the price someone agreed to is the most the send pays. `for`, the
+    /// agent's send request it answers: sent at most once, refused
+    /// (`requestClosed`) once past its time or already being sent, and
+    /// throwing `SendUnconfirmed` when it is stored but its publish failed
+    /// or may have, so the request is never answered as sent.
     @discardableResult
     public func sendText(
-        _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil, priceAtMost: UInt64? = nil
+        _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil, priceAtMost: UInt64? = nil,
+        for request: DeviceRequest? = nil
     ) async throws -> String? {
         let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
         var fields = ["content": text]
         fields["replyUuid"] = links.replyTo
         fields["threadUuid"] = links.thread
-        return try await deliver(body: try Self.json(fields), to: pubkey, priceAtMost: priceAtMost, replacing: nil)
+        return try await deliver(body: try Self.json(fields), to: pubkey, priceAtMost: priceAtMost, replacing: nil, for: request)
+    }
+
+    /// A control message to the contact `pubkey` (docs/agent-on-strut.md,
+    /// "The device channel"): `text`, the line the official apps show, with
+    /// `envelope` in its metadata. Never to a tribe: the channel is a DM.
+    @discardableResult
+    public func sendControl(_ envelope: ControlEnvelope, text: String, to pubkey: String) async throws -> String? {
+        guard isContact(pubkey) else { throw Failure.notAContact }
+        return try await deliver(body: Self.controlBody(envelope, text: text), to: pubkey, replacing: nil)
+    }
+
+    static func controlBody(_ envelope: ControlEnvelope, text: String) throws -> String {
+        try envelope.adding(to: json(["content": text]))
     }
 
     /// `replyUuid` and `threadUuid` for a message to `chat`, as the Mac app
@@ -280,10 +298,12 @@ extension Engine {
     /// be sent again, until the server says.
     /// `auto` (a reconnect's own resend) leaves a failure to the row alone.
     /// `priceAtMost` (msat) refuses a tribe's price above it
-    /// (`tribePriceRose`) rather than pay it.
+    /// (`tribePriceRose`) rather than pay it. `request`, an agent's send
+    /// request: marked sending, with the message's uuid, in the commit that
+    /// stores the row (`sendText(for:)`).
     func deliver(
         body: String, to pubkey: String, type: Int = MessageType.text, amountMsat: UInt64? = nil,
-        priceAtMost: UInt64? = nil, replacing id: Int64?, auto: Bool = false
+        priceAtMost: UInt64? = nil, replacing id: Int64?, auto: Bool = false, for request: DeviceRequest? = nil
     ) async throws -> String? {
         let tribe = try openTribe(pubkey)
         if let priceAtMost, amountMsat == nil, let tribe, tribe.messageAmountMsat(type: type) > priceAtMost {
@@ -327,7 +347,8 @@ extension Engine {
             }
         }
         let failure: (any Error)?
-        switch try await commitAndPublish(result, time: time, outgoing: outgoing, resend: resend) {
+        let deviceSend = request.map { ($0.agent, $0.id, sent?.uuid ?? "", Int64(Date().timeIntervalSince1970)) }
+        switch try await commitAndPublish(result, time: time, outgoing: outgoing, resend: resend, deviceSend: deviceSend) {
         case .all:
             failure = nil
         case .none:
@@ -335,6 +356,7 @@ extension Engine {
         case .unknown(let error) where sats > 0:
             let what = amountMsat == nil ? "message" : "payment"
             emit.yield(.conversationError(chat: pubkey, message: Self.mayHaveGone(error, what: what)))
+            if request != nil { throw SendUnconfirmed(error: error) }
             return sent?.tag
         case .unknown(let error):
             failure = error
@@ -347,6 +369,8 @@ extension Engine {
             if !auto {
                 emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(failure))"))
             }
+            // Stored, so a retry or a reconnect's resend may still send it.
+            if request != nil { throw SendUnconfirmed(error: failure) }
             return sent?.tag
         }
         // The server moves the chat's read marker to what was just sent.

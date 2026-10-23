@@ -6,44 +6,40 @@ import PeelUI
 
 // MARK: - Pieces
 
-/// Peel's logo as the agent's avatar: the app's icon, its tile filling a
-/// rounded square (agents are rounded squares, people circles).
-struct PeelLogo: View {
-    let size: CGFloat
-
-    var body: some View {
-        // The icon's tile is 824 of its 1024 points; the rest is margin.
-        AppIcon(size: size * 1024 / 824)
-            .frame(width: size, height: size)
-            .clipShape(Avatar.outline(.roundedSquare, size: size))
-            .accessibilityHidden(true)
-    }
-}
-
-/// Peel's row at the top of Direct messages: "Set up" in link blue until a
-/// model is connected, then AGENT; bold with a count for replies that
+/// Peel's row at the top of Direct messages: "Set up" in link blue until the
+/// agent has its own account, then AGENT ("Needs a model" beside it, quiet,
+/// while none is connected); bold with a count for replies that
 /// came while it was not open; "Waiting on you" in orange while a send's
 /// card waits for an answer.
 struct AgentLink: View {
+    @Environment(AppModel.self) private var model
     let agent: AgentSession
 
     var body: some View {
-        let unread = agent.unread
-        SidebarLink(agent.name, to: .agent, unread: unread > 0) {
+        let unread = model.agentUnread
+        SidebarLink(agent.name, to: model.agentDestination, unread: unread > 0) {
             PeelLogo(size: 18)
         } accessory: {
-            if agent.waiting != nil {
+            if model.agentWaiting {
                 Text("Waiting on you")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.attention)
             } else if unread > 0 {
                 Badge(count: unread)
-            } else if agent.connection == nil {
+            } else if model.agentChat == nil && (agent.connection == nil || model.agentSetUp.action != nil) {
                 Text("Set up")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.link)
             } else {
-                AgentTag()
+                HStack(spacing: 6) {
+                    if model.agentNeedsModel {
+                        Text("Needs a model")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(1)
+                    }
+                    AgentTag()
+                }
             }
         }
     }
@@ -53,11 +49,15 @@ struct AgentLink: View {
 
 /// The agent chat: one long conversation like a direct message. Peel's
 /// first message introduces it, with a card to connect a model until one
-/// is; replies stream in as Markdown, tools run as quiet rows, a failure
-/// is a row with Retry. Everything it does is an `AgentSession` action.
+/// is; the chat Peel's own loop kept on this Mac before strut was the agent
+/// is under it, read only. With `dm`, the agent's DM (`AppModel.agentChat`)
+/// follows, its messages sent to the agent contact and its replies whole;
+/// without, until the agent has its own account, its set-up
+/// (`AgentSetUpPanel`).
 struct AgentChatView: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    var dm: String?
     /// Dragged on its divider; remembered on this Mac (a convenience).
     @AppStorage("memoryPanelWidth") private var memoryWidth: Double = ThreadPanel.width
 
@@ -65,22 +65,13 @@ struct AgentChatView: View {
         // One memory a row opened, beside the chat as a thread is.
         SidePanelSplit(item: model.memoryPanel, width: $memoryWidth, range: ConversationView.threadRange,
                        standard: ThreadPanel.width, minimumMain: ConversationView.minimumWidth) {
-            AgentChatColumn(agent: agent)
+            AgentChatColumn(agent: agent, dm: dm)
         } panel: { panel, _ in
             MemoryPanelView(panel: panel)
         }
-        // A card waiting on the person must be in view: on a narrow window
-        // the memory would hide it.
-        .onChange(of: agent.waiting != nil) { _, waiting in
-            if waiting { model.closeMemory() }
-        }
         // Here, not on the column: a memory in the chat's place on a narrow
         // window is still the agent chat, shown.
-        .onAppear { agent.isShown = true }
-        .onDisappear {
-            agent.isShown = false
-            model.closeMemory()
-        }
+        .onDisappear { model.closeMemory() }
     }
 }
 
@@ -89,6 +80,15 @@ struct AgentChatView: View {
 private struct AgentChatColumn: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    let dm: String?
+
+    private var composer: ComposerID { dm.map(ComposerID.chat) ?? .agent }
+
+    /// While the DM's turn runs (`agentAnswering`).
+    private var stop: (@MainActor () -> Void)? {
+        let model = model
+        return model.agentAnswering == nil ? nil : { @MainActor in model.stopAgentTurn() }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,9 +98,28 @@ private struct AgentChatColumn: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
             }
-            AgentMessageList(agent: agent)
-            Composer(composer: .agent, placeholder: "Message \(agent.name)",
-                     stop: agent.isRunning ? { agent.stop() } : nil)
+            // The DM's list is made once, with its rows, as a chat's is (`ConversationView`).
+            if let dm, model.loadedChat != dm {
+                Spacer()
+            } else {
+                AgentMessageList(agent: agent, dm: dm, composer: composer)
+                    .id(composer)
+            }
+            if let conversation = model.selectedConversation, conversation.chat == dm {
+                // Its bridge or Peel's memory stopped, or failed to start: said, with Try again.
+                if model.agentSetUp.problem { AgentSetUpPanel() }
+                if model.agentNeedsModel {
+                    // The model was removed: nothing sent here could be answered.
+                    AgentModelPrompt()
+                } else {
+                    // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
+                    ChatFooter(conversation: conversation, tribe: nil, composer: composer,
+                               placeholder: "Message \(agent.name)", stop: stop)
+                }
+            } else {
+                // No DM yet: setting up the agent's own account, never the local loop.
+                AgentSetUpPanel()
+            }
         }
         // A reply's View opens the message; any other link goes where a
         // message's link goes (`WebPane.linkAction`).
@@ -112,15 +131,15 @@ private struct AgentChatColumn: View {
         .onAppear {
             // After this layout pass, once the chat it replaced has let go
             // of the keyboard (Tom: back from a View, the cursor was lost).
-            if !model.sidebarHasKeys { Task { model.composerFocus[.agent, default: 0] += 1 } }
+            if !model.sidebarHasKeys { Task { model.composerFocus[composer, default: 0] += 1 } }
         }
         // Connected: the cursor goes to the field, ready for the first question.
         .onChange(of: agent.connection) { _, connection in
-            if connection != nil { model.composerFocus[.agent, default: 0] += 1 }
+            if connection != nil { model.composerFocus[composer, default: 0] += 1 }
         }
         // A card took the keys while it waited; answered, they go back to the field.
-        .onChange(of: agent.waiting == nil) { _, answered in
-            if answered { model.composerFocus[.agent, default: 0] += 1 }
+        .onChange(of: model.agentWaiting) { _, waiting in
+            if !waiting { model.composerFocus[composer, default: 0] += 1 }
         }
     }
 
@@ -137,22 +156,33 @@ private struct AgentChatColumn: View {
 }
 
 /// The conversation, newest at the bottom: the shared list
-/// (`ChatListController` on `MessageTableEngine`), so the reply follows as
-/// it streams only while the list is at the bottom; any scroll by hand
-/// stops it, and reaching the bottom by hand or the pill takes it up again.
+/// (`ChatListController` on `MessageTableEngine`), as a chat's.
 private struct AgentMessageList: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    /// The agent's DM, when the chat is it: the DM's rows, its read marks
+    /// and older pages as any chat's (`MessageTableEngine` on its composer).
+    let dm: String?
+    let composer: ComposerID
 
     @State private var link = ListLink()
     @State private var rows = AgentRows()
 
     var body: some View {
-        MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows), composer: .agent, link: link)
+        // The local turns only above the DM's first message: not while older
+        // pages are to come, nor over a jump's window. With no DM yet they are
+        // shown the same way, read only.
+        let shown = dm.map { _ in
+            AgentDMRows(rows: model.chatRows, answering: model.agentAnswering,
+                        fromStart: !model.mayHaveOlder && !model.showsWindow)
+        } ?? AgentDMRows(rows: [], answering: nil, fromStart: true)
+        MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows, dm: shown), composer: composer,
+                     focus: dm == nil ? nil : MessageList.focusTarget(of: model, in: composer, hasRows: !model.chatRows.isEmpty),
+                     reachesNewest: dm == nil || model.timelineReachesNewest, hasOlder: dm != nil && model.mayHaveOlder, link: link)
             // Bottom centre, above the composer, as in a chat.
             .overlay(alignment: .bottom) {
                 if let controller = link.controller {
-                    JumpPill(controller: controller, composer: .agent)
+                    JumpPill(controller: controller, composer: composer)
                 }
             }
             .hiddenShortcut(KeyboardShortcut(.pageUp, modifiers: [])) { link.engine?.page(up: true) }
@@ -160,22 +190,150 @@ private struct AgentMessageList: View {
     }
 }
 
-/// A model call made again on its own, under the reply, until the reply
-/// goes on: "Rate limited by the provider. Retrying in 4 s…". Its own view,
-/// so the reply's row does not read `retrying`.
-struct AgentRetryRow: View {
-    let agent: AgentSession
+/// A row of the agent's DM: drawn as the chat draws it (`ListRowContent`),
+/// with the tools an agent's reply ran above it, under its day line.
+struct AgentDMRow: View {
+    let row: ChatRow
+    let composer: ComposerID
+    let canAnswer: Bool
 
     var body: some View {
-        if let retrying = agent.retrying {
-            Callout(detail: RetryPolicy.note(after: retrying.after, retrying.reason), icon: .progress)
-                .agentNoteRow()
+        ListRowContent(row: row, composer: composer, canAnswer: canAnswer, above: above, below: artifacts)
+            .environment(\.inAgentDM, true)
+    }
+
+    /// The job it is about, then the tools it ran.
+    private var above: AnyView? {
+        guard row.agentJob != nil || !row.agentTools.isEmpty else { return nil }
+        return agentNoteLines {
+            if let job = row.agentJob { AgentJobLine(job: job) }
+            // By position: a reply may run one tool twice.
+            ForEach(Array(row.agentTools.enumerated()), id: \.offset) { _, tool in
+                AgentToolLineRow(tool: tool)
+            }
+        }
+    }
+
+    /// What it points to: a job's deliverables, a page, a link.
+    private var artifacts: AnyView? {
+        guard !row.agentArtifacts.isEmpty else { return nil }
+        return agentNoteLines {
+            ForEach(Array(row.agentArtifacts.enumerated()), id: \.offset) { _, artifact in
+                AgentArtifactLine(artifact: artifact)
+            }
         }
     }
 }
 
+/// Quiet lines in line with a message's text, as a tool's rows are.
+@MainActor private func agentNoteLines(@ViewBuilder _ lines: () -> some View) -> AnyView {
+    AnyView(VStack(alignment: .leading, spacing: 2) { lines() }.agentNoteRow())
+}
+
+/// The job an agent's message is about, one quiet line: "Job · Lisbon
+/// flights · Asks you", orange while it waits on your answer (your next
+/// message continues it), "Done", or "Didn't finish".
+private struct AgentJobLine: View {
+    let job: AgentJob
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "briefcase")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(job.title.map { "Job · \($0)" } ?? "Job")
+                .lineLimit(1)
+                .truncationMode(.tail)
+            switch job.state {
+            case .asking?:
+                Text("· Asks you").foregroundStyle(Theme.attention)
+            case .done?:
+                Text("· Done")
+            case .failed?:
+                Text("· Didn't finish")
+            case .working?:
+                Text("· Working")
+            case nil:
+                EmptyView()
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
+        .help(job.id)
+    }
+}
+
+/// Something an agent's message points to: its label and title, a line of
+/// what is in it, and Open for an https link (the web pane, as any link).
+private struct AgentArtifactLine: View {
+    @Environment(\.openURL) private var openURL
+    let artifact: AgentArtifact
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+            if let summary = artifact.summary {
+                Text("· " + summary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(summary)
+            }
+            if let url = artifact.url {
+                // Where it goes, beside the agent's words for it.
+                Button("Open") { openURL(url) }
+                    .buttonStyle(.peel(.link))
+                    .help(url.absoluteString)
+                if let host = url.host() { Text(host).fixedSize() }
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
+    }
+}
+
+/// A tool an agent's reply in its DM ran, one quiet line as the bridge
+/// listed it: "Read unseen messages · {"chat":"Kate"}", and "failed".
+private struct AgentToolLineRow: View {
+    let tool: AgentToolLine
+
+    var body: some View {
+        let asked = AgentToolTitle.asked(tool.summary)
+        HStack(spacing: 6) {
+            Text(AgentToolTitle.of(tool.name))
+                .layoutPriority(1)
+            if !asked.isEmpty {
+                Text("· " + asked)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(asked)
+            }
+            if tool.failed {
+                Text("· failed")
+                    .fixedSize()
+            }
+        }
+        .font(Theme.font(13))
+        .foregroundStyle(Theme.secondaryText)
+    }
+}
+
+/// The agent answering your message in its DM: no streamed text, only
+/// "writing…" in its header, until the reply comes whole.
+struct AgentAnsweringRow: View {
+    let name: String
+
+    var body: some View {
+        AgentRow(author: .agent, name: name, writing: true) {}
+    }
+}
+
 /// Peel's first message: what it can do, and until a model is connected a
-/// card to connect one.
+/// card to connect one (in the DM, the composer's place has it instead).
 struct AgentIntro: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -186,7 +344,7 @@ struct AgentIntro: View {
                 .font(Theme.font(14))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
-            if agent.connection == nil {
+            if agent.connection == nil && model.agentChat == nil {
                 Card {
                 HStack(spacing: 12) {
                     Text("Connect a model to start")
@@ -203,15 +361,12 @@ struct AgentIntro: View {
     }
 }
 
-/// One message: the person's on a faint tint with their photo, or the
-/// agent's with its logo and AGENT; the tools a reply ran above it; how it
-/// ended when not on its own ("Stopped").
+/// One earlier message: the person's on a faint tint with their photo, or
+/// the agent's with its logo and AGENT; the tools a reply ran above it; how
+/// it ended when not on its own ("Stopped").
 struct AgentTurnRow: View {
     let turn: AgentTurn
     let name: String
-    var writing = false
-    /// The reply streaming now: answers a card that waits.
-    var agent: AgentSession?
     /// Its tool rows' open parts.
     let disclosures: AgentDisclosures
 
@@ -220,16 +375,15 @@ struct AgentTurnRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 // By position: a provider may repeat a call id across steps.
                 ForEach(Array(turn.tools.enumerated()), id: \.offset) { index, tool in
-                    AgentToolRow(tool: tool, agent: agent, open: disclosures.open("tool\(index)"))
+                    AgentToolRow(tool: tool, open: disclosures.open("tool\(index)"))
                 }
             }
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.trailing, 20)
             .padding(.top, 6)
         }
-        if turn.author == .user || writing || !turn.text.isEmpty || turn.ending != nil {
-            AgentRow(author: turn.author, name: name, date: writing ? nil : turn.date, writing: writing,
-                     menuID: turn.id, menu: menu) {
+        if turn.author == .user || !turn.text.isEmpty || turn.ending != nil {
+            AgentRow(author: turn.author, name: name, date: turn.date, menuID: turn.id, menu: menu) {
                 if !turn.text.isEmpty {
                     MessageText(text: turn.text, chat: nil, agentLinks: turn.author == .agent)
                         .rowMenu(turn.id, menu)
@@ -243,10 +397,9 @@ struct AgentTurnRow: View {
         }
     }
 
-    /// The turn's menu, as a message's: Copy text, once it is said; the
-    /// reply still writing has none.
+    /// The turn's menu, as a message's: Copy text.
     private var menu: (@MainActor () -> [MenuEntry])? {
-        guard !writing, !turn.text.isEmpty else { return nil }
+        guard !turn.text.isEmpty else { return nil }
         let text = turn.text
         return { [.copyText(text)] }
     }
@@ -335,11 +488,11 @@ private struct AgentRow<Content: View>: View {
 }
 
 /// One quiet line in the agent chat with a chevron; a click opens `detail`
-/// under it on an inset card. Tool rows and the summary row. Whether it is
-/// open is kept beside the list (`AgentOpenRows`), so a tool row stays open
-/// when its approval card comes and goes, or its row scrolls away; a click
-/// first tells the list, which keeps the row's top where it is.
-private struct AgentDisclosureRow<Label: View, Detail: View>: View {
+/// under it on an inset card. Tool rows and request rows. Whether it is
+/// open is kept beside the list (`AgentOpenRows`), so a row stays open when
+/// it scrolls away; a click first tells the list, which keeps the row's top
+/// where it is.
+struct AgentDisclosureRow<Label: View, Detail: View>: View {
     @Environment(\.listRowExpanding) private var expanding
     let disclosure: AgentDisclosure
     let label: Label
@@ -372,48 +525,16 @@ private struct AgentDisclosureRow<Label: View, Detail: View>: View {
     }
 }
 
-/// Where the model's view of the conversation begins again: "Summarised
-/// earlier conversation", which opens to the summary it is sent instead of
-/// the turns above (they stay here in full).
-struct AgentSummaryRow: View {
-    let summary: AgentSession.Summary
-    let disclosures: AgentDisclosures
-
-    var body: some View {
-        AgentDisclosureRow(disclosures.open("summary")) {
-            Text("Summarised earlier conversation")
-        } detail: {
-            Text(summary.text)
-                .font(Theme.font(12))
-                .foregroundStyle(Theme.text)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
-        .padding(.trailing, 20)
-        .padding(.vertical, 6)
-    }
-}
-
-/// A tool the agent ran, one quiet line ("Read the time · 0.1 s"); a click
-/// opens what it was asked and what it answered. A tool that acts shows
-/// its approval card in its place while it waits, then what it did and
-/// how it was answered ("Send to Kate · Allowed once · 0.4 s · View").
+/// A tool an earlier reply ran, one quiet line ("Read the time · 0.1 s"); a
+/// click opens what it was asked and what it answered. A tool that acted
+/// says what it did and how it was answered ("Send to Kate · Allowed once ·
+/// 0.4 s · View").
 private struct AgentToolRow: View {
     @Environment(AppModel.self) private var model
     let tool: ToolActivity
-    var agent: AgentSession?
     let open: AgentDisclosure
 
     var body: some View {
-        if tool.isWaiting, let agent, let approval = tool.approval {
-            AgentApprovalCard(agent: agent, intent: approval.intent)
-        } else {
-            row
-        }
-    }
-
-    private var row: some View {
         AgentDisclosureRow(open) {
             Text(tool.approval?.intent.action ?? AgentToolTitle.of(tool.name))
                 .layoutPriority(1)
@@ -432,8 +553,6 @@ private struct AgentToolRow: View {
                 Text("· " + (tool.failed ? "failed · " : "") + AgentToolTitle.duration(duration))
                     .monospacedDigit()
                     .fixedSize()
-            } else {
-                ProgressView().controlSize(.mini)
             }
             if tool.approval != nil, let url = tool.summary.flatMap(AgentMessageLink.init(summary:))?.url {
                 Button("View") { _ = model.openAgentLink(url) }
@@ -452,13 +571,21 @@ private struct AgentToolRow: View {
     /// What it was asked and answered, for a tool whose row keeps nothing more.
     private var facts: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let content = tool.approval?.intent.content { detail("Content", content) }
-            detail("Asked", tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
-            if let summary = tool.summary { detail("Answered", AgentToolTitle.summary(summary)) }
+            if let content = tool.approval?.intent.content { FactLine(label: "Content", text: content) }
+            FactLine(label: "Asked", text: tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
+            if let summary = tool.summary { FactLine(label: "Answered", text: AgentToolTitle.summary(summary)) }
         }
     }
 
-    private func detail(_ label: String, _ text: String) -> some View {
+}
+
+/// One fact under an opened agent row: its label, then what it says
+/// ("Asked", "Answered", "Why"): a tool's details, a device request's.
+struct FactLine: View {
+    let label: String
+    let text: String
+
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
                 .foregroundStyle(Theme.secondaryText)
@@ -472,15 +599,16 @@ private struct AgentToolRow: View {
     }
 }
 
-/// A tool that acts, waiting on you, where its row will be: what will
-/// happen in plain words, the exact content, any cost, and Allow once
-/// (Return), Always allow for its target, and Deny (Escape). Orange while
-/// it waits; no red, since nothing is lost by declining. Once answered it
-/// is the tool's row again, one line with the outcome.
-private struct AgentApprovalCard: View {
-    @Environment(AppModel.self) private var model
-    let agent: AgentSession
+/// A device request that acts, waiting on you in the agent's DM
+/// (`DeviceRequestLine`): what will happen in plain words, the exact
+/// content, any cost, and Allow once (Return), Always allow for its
+/// target, and Deny (Escape). Orange while it waits; no red, since nothing
+/// is lost by declining. It never takes the keys as it appears: the agent,
+/// not you, decides when it comes, so a Return meant for the composer
+/// never allows it.
+struct AgentApprovalCard: View {
     let intent: ToolIntent
+    let answer: (ApprovalDecision) -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -499,16 +627,16 @@ private struct AgentApprovalCard: View {
                     }
                 }
                 HStack(spacing: Theme.Space.sm) {
-                    Button("Allow once") { agent.answer(.allowOnce) }
+                    Button("Allow once") { answer(.allowOnce) }
                         .buttonStyle(.peel(.primary, size: .sm))
                         .help(intent.cost == nil ? "Return" : "Click to pay and send")
                     if intent.mayBeAlwaysAllowed {
                         Button(intent.alwaysLabel) {
-                            agent.answer(.alwaysAllow)
+                            answer(.alwaysAllow)
                         }
                         .buttonStyle(.peel(.outline, size: .sm))
                     }
-                    Button("Deny") { agent.answer(.deny) }
+                    Button("Deny") { answer(.deny) }
                         .buttonStyle(.peel(.ghost, size: .sm))
                         .help("Escape")
                 }
@@ -526,17 +654,14 @@ private struct AgentApprovalCard: View {
         // something else.
         .onKeyPress(.return) {
             guard focused, intent.cost == nil else { return .ignored }
-            agent.answer(.allowOnce)
+            answer(.allowOnce)
             return .handled
         }
         .onKeyPress(.escape) {
             guard focused else { return .ignored }
-            agent.answer(.deny)
+            answer(.deny)
             return .handled
         }
-        // It takes the keys only from an empty composer: a Return meant for
-        // a half-typed message never allows a send unread.
-        .onAppear { if (model.drafts[.agent] ?? "").trimmed.isEmpty { focused = true } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Waiting on you: \(intent.action)")
     }
@@ -548,46 +673,9 @@ private struct AgentApprovalCard: View {
     }
 }
 
-/// Why a message got no reply, in the provider's plain words, with what
-/// helps: Retry, Replace key for a key that stopped working, Connect when
-/// none is. Quiet, not red: nothing was lost.
-struct AgentProblemRow: View {
-    let agent: AgentSession
-    let failure: AgentSession.Failure
-
-    var body: some View {
-        Callout(detail: words, icon: .problem) {
-            switch failure {
-            case .noModel:
-                AgentConnectButton(source: .problem, title: "Connect", variant: .primary, size: .sm)
-            case .model(.invalidKey):
-                AgentConnectButton(source: .problem, title: "Replace key", variant: .primary, size: .sm)
-            case .unreadableKey, .model:
-                Button("Retry") { agent.retry() }
-                    .buttonStyle(.peel(.outline, size: .sm))
-            }
-        }
-        .agentNoteRow()
-    }
-
-    private var words: String {
-        switch failure {
-        case .noModel:
-            "No model connected."
-        case .unreadableKey(let reason):
-            PeelError.problem(reason, couldNot: "read the API key on this Mac")
-        case .model(.invalidKey(let message, _)):
-            "Your \(agent.connection?.provider.name ?? "provider's") key stopped working."
-                + (message.map { " (\($0))" } ?? "")
-        case .model(let error):
-            error.localizedDescription
-        }
-    }
-}
-
 extension View {
-    /// A note in the agent chat (a failure, a retry), under the message it
-    /// is about, in line with the messages' text.
+    /// A note in the agent chat (a job, the tools a reply ran, what it
+    /// points to), with the message it is about, in line with its text.
     fileprivate func agentNoteRow() -> some View {
         frame(maxWidth: MessageRow.textWidth, alignment: .leading)
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)

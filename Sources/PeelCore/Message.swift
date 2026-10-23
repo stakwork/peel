@@ -75,6 +75,9 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var firstSentAt: Int64?
     /// When a reconnect sent it again by itself (ms; v22).
     public var autoResentAt: Int64?
+    /// A control message in a direct message (`control`, v27), as stored:
+    /// drawn as a line or not at all, so never unread and never notified.
+    public var isControl: Bool?
 
     public var date: Date { Date(millisecondsSince1970: timestamp ?? 0) }
 
@@ -282,9 +285,10 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 
     /// Unread past `marker`, as a row counts it (`Storage.readStates` also
     /// counts others' boosts on our messages): someone else's text,
-    /// attachment or payment, if it has words.
+    /// attachment or payment, if it has words and is not a control message.
     public func countsAsUnread(after marker: Int64) -> Bool {
         !fromMe && MessageType.unreadTypes.contains(type) && (serverIndex ?? -1) > marker && !hasNoWords
+            && isControl != true
     }
 
     /// Whether a reply or a thread message can name this one: text or an
@@ -368,6 +372,7 @@ extension Message {
         arrived = row["arrived"]
         firstSentAt = row["firstSentAt"]
         autoResentAt = row["autoResentAt"]
+        isControl = row["isControl"]
     }
 }
 

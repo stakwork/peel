@@ -1,6 +1,6 @@
 # Peel's end state
 
-Last updated 2026-10-16. **The picture everything else builds toward**, from
+Last updated 2026-10-18. **The picture everything else builds toward**, from
 the decisions in [foundation.md](foundation.md). It shows the parts, the path
 a message takes, and which phase brings each part. A drawn version is the
 "Peel end-state map" artifact (https://claude.ai/artifact/SU2wNEXhw94WB6C5788bCX);
@@ -105,13 +105,13 @@ Each milestone is something you can do at the end of it.
 |---|---|---|---|
 | 0 | Today | Use Peel on Mac and iPhone as a Sphinx client. Talk to an agent that lives only in the Mac app. Automations fail if Peel is closed or the Mac locked; nothing is backed up | Done |
 | 1 | 1. strut answers (dev preview) | Message the agent contact and get a reply from strut; "what did I miss?" reads through your Mac | S1, S2, B1, 1, 2, 4, 5 |
-| 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac); Calendar | 3, 7, 8 |
+| 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac). Calendar (PR 8) is dropped from Phase 1 for now (Tom, 2026-10-18) | 3, 7 |
 | 1 | 3. One conversation everywhere | The same agent thread on Mac and iPhone, with jobs and their files in it | 6, 6b, 9 |
-| 1 | 4. On for real | A week on your real account, then the Swift agent removed | 10 (waits on Evan), 11 |
-| 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | brain-handover.md PRs 1–11 |
-| 2 | 6. The phone helps too | Approve and act from the iPhone while the Mac sleeps | To plan |
-| 2 | 7. Can't lose it | Memory, then the whole brain, backed up sealed; a fresh Mac gets it back from your words | memory-backup.md phases 1–4, on the handover snapshot |
-| 2 | 8. Hardened | Model spending limits, real auth on strut, an optional Tailscale connection | To plan |
+| 1 | 4. On for real | A week on your real account, then the Swift agent removed | 10, 11 |
+| 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | [phase-2.md](phase-2.md) PRs H1–H4, R1, 1–3 |
+| 2 | 6. The phone helps too | Approve and act from the iPhone while the Mac sleeps | [phase-2.md](phase-2.md) PRs R2, 4–7 |
+| 2 | 7. Can't lose it | Memory, then the whole brain, backed up sealed; a fresh Mac gets it back from your words | [phase-2.md](phase-2.md) PRs B1, 8, 9 |
+| 2 | 8. Hardened | Model spending limits, real auth on strut, an optional Tailscale connection | [phase-2.md](phase-2.md) PRs 10–13 |
 | 3 | 9. Remote signer | The agent acts as you with every device asleep; your key stays on a signing device | Direction |
 | 3 | 10. Money | An optional Lightning node on the same signer | Direction |
 | 3 | 11. Private AI | A local model, and a filter that strips personal details before hosted AI | Direction |
@@ -125,27 +125,37 @@ until then Time Machine's copy of strut's folder is the fallback.
 What gates the start of each phase:
 
 - **Phase 1** starts with the build plan in [agent-on-strut.md](agent-on-strut.md)
-  (#303, #306). Turning the agent on for real accounts waits
-  on Evan's two answers below.
-- **Phase 2** starts when Phase 1 is in daily use. It builds on
-  [brain-handover.md](brain-handover.md) and [peel-brain.md](peel-brain.md).
+  (#303, #306). Evan's two answers are in (runner is the bridge,
+  `agent_seed` derives the account), and Peel's sphinx-rs pin is at
+  v0.8.39, which has `agent_seed`.
+- **Phase 2** starts when Phase 1 is in daily use. Its plan is
+  [phase-2.md](phase-2.md), built on [brain-handover.md](brain-handover.md)
+  and [peel-brain.md](peel-brain.md).
 - **Phase 3** is a direction, not yet planned. VISION open question 8.
 
-## Where the work stands (2026-10-16)
+## Where the work stands (2026-10-18)
 
 | Piece | State | Where |
 |---|---|---|
-| Five foundation decisions | Answered | [foundation.md](foundation.md), #301, #302 |
+| Five foundation decisions | Answered, Evan's parts included | [foundation.md](foundation.md), #301, #302 |
 | Ladybug snapshot round trip | Proven: memory and workspace graphs round-trip losslessly; a whole-brain snapshot needs format 2 | stakwork/strut#193 |
-| `sphinx/runner` as the bridge | Spike works on the local stack: key exchange, replies, catch-up, about 360 lines | [research/runner-bridge-spike.md](research/runner-bridge-spike.md), #304 |
-| Phase 1 design and PR plan | Merged: the layers, S1, S2, B1 and Peel PRs 1–11 with 6b; not started | [agent-on-strut.md](agent-on-strut.md), #303 |
+| The bridge | Merged: runner is the bridge (inbox, turns, sessions with `/new`, device requests, cancel, chunking) | stakwork/sphinx#382 |
+| The agent's seed | Merged: `agent_seed` in the core with test vectors; in sphinx-ffi from v0.8.39, which Peel pins | stakwork/sphinx#383, stakwork/sphinx-rs#100 |
+| S1: the agent step's gaps | Merged: `withStop()`, `retain`, automation callbacks; `systemAtCompaction` deferred | stakwork/strut#198 |
+| S2: `job/start`, `job/continue` | Merged | stakwork/strut#195 |
+| The generic orchestrator | Merged, with the automation steps | stakwork/strut#196, stakwork/strut#213 |
+| The agent's funding | One 10-sat invite from your account when it pairs: the agent registers with it, and sats it did not need are asked back. Not free, and not settled beyond that | stakwork/sphinx#385, stakwork/peel#322 |
+| Peel PRs 1–6 | Merged: the control envelope, device requests (reads, then sends and approvals), the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM | stakwork/peel#311, #319, #321, #322, #323, #325 |
+| PR 6's follow-ups | In review: a request's one row in any DM, opening to what it read or did | stakwork/peel#326 |
+| PR 7: automations on strut | In review, waiting on strut#215 and sphinx#387 | stakwork/peel#324 |
+| PR 8: Calendar | Dropped from Phase 1 for now (Tom, 2026-10-18) | — |
+| Phase 1 design and PR plan | Merged: the layers, S1, S2, B1 and Peel PRs 1–11 with 6b | [agent-on-strut.md](agent-on-strut.md), #303 |
 
 ## Open
 
-- **For Evan:** whether the bridge is a strut mode of `sphinx/runner`, and the
-  key derivation scheme (it starts from the seed either way).
+- **For Evan:** how Peel's own keys are derived (the brain id and key, the
+  backup key). The agent's seed is settled.
 - **For Evan:** where the second backup copy goes. A Phase 2 question.
-- **For Tom:** how the agent account is funded. Accepting the owner's key
-  exchange costs the agent 3,000 msat plus a ping, so either the owner funds
-  it on pairing or the bridge adds the owner, who then pays.
+- **For Tom and Evan:** how a revised orchestrator prompt reaches a
+  long-lived DM (agent-on-strut.md, open question 10). `/new` until then.
 - **Sphinx team:** whether the push hub accepts Peel's iPhone app (spike S4).

@@ -12,6 +12,15 @@ checked it against the code. Updated 2026-10-15 for the bundled strut's
 workspace on Ladybug (peel#284, strut `main` ae64fde): workflows, steps
 and automations are in a graph file now, not in files.
 
+> **Out of date in part (2026-10-19).** Designed before the bridge and the
+> orchestrator existed. The bridge is `sphinx/runner`, not Peel's engine
+> headless, and it holds only the agent's account: reads and sends as you
+> are device requests to your Mac, not tools on the brain. Automations run
+> in strut on the brain (`peel-automation-run`), so they no longer wait for
+> Peel there. The handover and the snapshot stand as the starting point for
+> Phase 2; the snapshot round trip is proven, and a whole-brain snapshot
+> needs format 2 (stakwork/strut#193). See [agent-architecture.md](agent-architecture.md).
+
 ## Goal
 
 The brain is a role, not a machine (agent-brain.md). An always-on Mac and a
@@ -27,6 +36,9 @@ Not goals:
 - **Peel's own data.** Agent conversations and Sphinx messages live in Peel
   on each device. Moving those is the later work of running Peel's engine
   on the brain (peel-brain.md, "Later").
+  *Superseded (2026-10-19):* the agent's conversation is a strut session
+  on the brain, so it moves with the brain; Sphinx messages stay on your
+  devices, and no Peel engine runs on the brain.
 
 ## What the first version taught
 
@@ -246,6 +258,11 @@ Pull, as the new brain sees it (push is the same steps from the other side):
 
 ## Devices follow the brain
 
+> **Out of date (2026-10-19):** devices reach the agent over Sphinx, and the
+> bridge on the new brain holds the same agent account, so messages follow
+> the brain with no pointer. A pointer and `409 moved` matter only for the
+> optional direct path to strut. Phase 2 replans this.
+
 Peel keeps a pointer per device: address, brain id, generation (the brain
 key is derived, not stored). It moves into PeelCore so the iPhone shares
 it. One place in PeelCore's strut requests sends the generation header and
@@ -268,6 +285,10 @@ strut whenever it becomes active, before its schedules start. On a home
 server, the `peel-automation` workflow moves with the brain but can't reach
 Peel; its runs fail with "runs once Peel's brain is this Mac" until Peel
 runs on the brain (peel-brain.md, "Later").
+
+> **Superseded (2026-10-19):** the paragraph on automations above. On a
+> home server, automations run there in strut, and what they need from your
+> chats or a send as you is asked of your Mac or phone by device request.
 
 ## Warm standby (later)
 
@@ -327,6 +348,10 @@ Peel switches over at 10.
   replies, and exposes the Sphinx tools (read chats, send, pay) that live
   in Peel's Swift today. Remotes reach the agent by message, Tailscale stays
   for strut's UI and the graph.
+
+  > **Settled since (2026-10-16):** the bridge is `sphinx/runner`
+  > (sphinx#382), and the Sphinx tools that need your account stay on your
+  > devices, asked by device request (foundation.md, decisions 1, 3 and 4).
 
 ## Open questions
 

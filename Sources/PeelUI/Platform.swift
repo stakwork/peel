@@ -147,6 +147,9 @@ public protocol OngoingCall: AnyObject {
 @MainActor
 public protocol AgentHost: AnyObject {
     func open(_ profile: Profile, engine: Engine, in model: AppModel)
+    /// What answers the agent's device requests on `engine`
+    /// (`Engine.answerDeviceRequests`), set before it starts; nil, none.
+    func deviceRequests(for engine: Engine) -> DeviceRequestHandler?
     func close(in model: AppModel)
     /// Escape in the agent's composer: closes a memory open beside the
     /// chat. Returns whether one was.

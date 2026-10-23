@@ -34,7 +34,7 @@ struct BundledStrutTests {
              "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0", "PEEL_AGENT_API_KEY": "model key",
              "STRUT_SECRET_KEY": "the caller's", "ANTHROPIC_API_KEY": "shell key", "OPENAI_API_KEY": "shell key",
              "OPENROUTER_API_KEY": "shell key"],
-            key: key, secretKey: secretKey, data: data)
+            key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "host-config.json"))
         #expect(environment["PATH"] == "/usr/bin" && environment["HOME"] == "/Users/x")
         #expect(environment["DYLD_INSERT_LIBRARIES"] == nil && environment["NODE_OPTIONS"] == nil
                 && environment["STRUT_CONNECTION_FILE"] == nil && environment["PEEL_AGENT_API_KEY"] == nil)
@@ -47,6 +47,21 @@ struct BundledStrutTests {
         #expect(environment["STRUT_EXIT_ON_STDIN_EOF"] == "1")
         #expect(environment["STRUT_WORKSPACE"] == "/tmp/peel-strut/workspace")
         #expect(environment["STRUT_WORKSPACE_BACKEND"] == "ladybug")
+        #expect(environment["STRUT_HOST_CONFIG"] == "/tmp/peel-strut/host-config.json")
+        // An MCP server on this Mac only for a development profile's test server.
+        #expect(environment["STRUT_MCP_LOCAL"] == "0")
+        #expect(BundledStrut.environment([:], key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "h"),
+                                         allowsLocalMCP: true)["STRUT_MCP_LOCAL"] == "1")
+        // Every gated step the meta surface could run is sealed: strut seals meta/* itself.
+        let sealed = Set(environment["STRUT_SEALED"]?.split(separator: ",").map(String.init) ?? [])
+        #expect(Orchestrator.builderApprove.allSatisfy { $0.hasPrefix("meta/") || sealed.contains($0) }, "\(sealed)")
+        // strut clears its environment at boot: only a stand-in model on this Mac is kept through it.
+        #expect(environment["STRUT_ENV_KEEP"] == nil)
+        for (base, kept) in [("http://127.0.0.1:9", true), ("http://localhost:9", true), ("https://example.com", false)] {
+            let keeping = BundledStrut.environment(["ANTHROPIC_BASE_URL": base], key: key, secretKey: secretKey, data: data,
+                                                   hostConfig: data.appending(path: "host-config.json"))
+            #expect((keeping["STRUT_ENV_KEEP"] == "ANTHROPIC_BASE_URL") == kept, "\(base)")
+        }
     }
 
     /// strut's secret store key: made once, owner-only, the same on every
@@ -155,78 +170,31 @@ struct BundledStrutTests {
         await #expect(throws: (any Error).self) { _ = try await server.run("ontology", [:]) }
     }
 
-    /// An automation through the staged strut, as the app runs one: the
-    /// token in strut's encrypted store (never in a workflow, Peel's step
-    /// or in plain text on disk), Peel's step reading it and sending it.
+    /// What Peel hands strut's secret store (here the connected model's
+    /// key) is encrypted with the account's key: no file strut wrote holds it as it is.
     @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrut.staged.path)))
-    func theStagedStrutFiresAnAutomationWithTheTokenFromItsSecretStore() async throws {
+    func theStagedStrutNeverKeepsASecretAsItIs() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "peel-strut-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let strut = try stagedStrut(in: root)
         defer { strut.stop(quietly: true) }
-        let seen = Mutex<[AutomationRequest]>([])
-        let peel = try await AutomationServer.start(port: 0, token: try AutomationServer.newKey()) { request in
-            seen.withLock { $0.append(request) }
-            return AutomationReply(status: .delivered, text: "Done")
-        }
-        defer { Task { await peel.stop() } }
-
+        let key = "sk-ant-" + (try BundledStrut.newKey())
         let client = AutomationsClient(server: try await strut.start())
-        try await client.install(port: peel.port, token: peel.token)
-        let automation = try await client.create(
-            name: "Daily", prompt: "Summarise",
-            trigger: ["type": "schedule", "every": "day", "at": ["09:00"], "tz": "Europe/London"])
-        let first = try await fire(automation, on: client)
-        #expect(first.status == "success", "\(first.error ?? "")")
-        #expect(seen.withLock { $0 } == [AutomationRequest(name: "Daily", prompt: "Summarise")])
+        try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-5-5", apiKey: key))
 
-        // Started again with the same key, nothing installed: the stored token still decrypts.
-        strut.stop()
-        let again = AutomationsClient(server: try await strut.start())
-        let second = try await fire(automation, on: again, after: first.id)
-        #expect(second.status == "success", "\(second.error ?? "")")
-        #expect(seen.withLock { $0.count } == 2)
-
-        // Any workflow may run Peel's step, but where it goes is only what Peel stored:
-        // a port or URL in its config is ignored, and without Peel's secrets nothing is sent.
-        let elsewhere: AgentKit.JSONValue = ["peel_url": "http://example.invalid", "port": 1, "name": "Elsewhere", "prompt": "x"]
-        #expect(try await runStep(elsewhere, on: again.server) == "success")
-        #expect(seen.withLock { $0.last?.name } == "Elsewhere" && seen.withLock { $0.count } == 3)
-        let (deleted, _) = try await Web.requestStrut(
-            "DELETE", again.server.base.appending(path: "secrets/PEEL_AUTOMATION_PORT"), bearer: again.server.key,
-            limit: 100_000, what: "the secret")
-        #expect(deleted == 200)
-        #expect(try await runStep(elsewhere, on: again.server) == "error")
-        #expect(seen.withLock { $0.count } == 3)
-
-        // Nothing strut wrote holds the token as it is.
         let workspace = root.appending(path: "data/workspace")
         #expect(FileManager.default.fileExists(atPath: workspace.appending(path: "secrets.json").path))
-        // Peel's step is kept in the workspace's graph and written out here for strut to load.
-        #expect(FileManager.default.fileExists(atPath: workspace.appending(path: "steps/_graph/peel/run-automation.ts").path))
         let files = FileManager.default.enumerator(at: workspace, includingPropertiesForKeys: nil)?
             .compactMap { $0 as? URL } ?? []
-        let holding = files.filter { (try? Data(contentsOf: $0))?.range(of: Data(peel.token.utf8)) != nil }
+        let holding = files.filter { (try? Data(contentsOf: $0))?.range(of: Data(key.utf8)) != nil }
         #expect(holding.isEmpty, "\(holding.map(\.lastPathComponent))")
     }
 
-    /// Peel's step run on its own with `config`, as any workflow could: the run's status.
-    func runStep(_ config: AgentKit.JSONValue, on server: MemoryServer) async throws -> String? {
-        let (_, data) = try await Web.requestStrut(
-            "POST", server.base.appending(path: "steps/peel/run-automation/run"),
-            json: Data(AgentKit.JSONValue.object(["config": config]).jsonString.utf8), bearer: server.key,
-            limit: 1_000_000, what: "the step")
-        return try AgentKit.JSONValue(parsing: String(decoding: data, as: UTF8.self))["status"]?.string
-    }
-
-    /// Runs it now and waits for that run to end: its record.
-    func fire(_ automation: Automation, on client: AutomationsClient, after earlier: String? = nil) async throws -> AutomationRunRecord {
-        try await client.runNow(automation)
-        for _ in 0..<100 {
-            if let run = try await client.runs(of: automation).first, run.id != earlier, run.status != "running" { return run }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        throw PeelError("the run did not end")
+    /// A development profile's memory is inside its own folder, never the app account's.
+    @Test func aDevelopmentProfilesMemoryIsItsOwn() throws {
+        let development = try Profile(name: "agent-setup-test", kind: .development)
+        #expect(BundledStrut.dataFolder(for: development) == development.directory.appending(path: "strut"))
+        #expect(BundledStrut.dataFolder(for: try Profile(name: "x", kind: .app)) == BundledStrut.dataFolder)
     }
 
     /// A Peel.app in `root` whose strut is the staged one, its data and key beside it.

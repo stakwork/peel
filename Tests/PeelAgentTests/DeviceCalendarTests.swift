@@ -153,10 +153,14 @@ struct DeviceCalendarTests {
             let ask = try request("lunch", "calendar.create", ["title": "Lunch", "start": "2026-10-29T12:30"])
             let made = try #require(await actions.answer(ask))
             #expect(made.status == .done && made.text?.contains(ChatData.begin) == true && made.text?.contains("Lunch") == true)
-            #expect(cards.asked.first?.details == ["Thu 29 Oct, 12:30\u{2013}13:30", "Calendar: your default calendar"])
+            // The card's times in the Mac's own locale: an hour from 12:30, on the 29th.
+            let time = Date.FormatStyle().hour().minute()
+            let (start, end) = (try local("2026-10-29T12:30"), try local("2026-10-29T13:30"))
+            let when = try #require(cards.asked.first?.details.first)
+            #expect(when.contains(start.formatted(time)) && when.contains(end.formatted(time)) && when.contains("29"), "\(when)")
+            #expect(cards.asked.first?.details.last == "Calendar: your default calendar")
             _ = await actions.answer(ask)
             let events = await calendar.allEvents
-            let end = try local("2026-10-29T13:30")
             #expect(events.count == 1 && cards.asked.count == 1 && events.first?.end == end)
         }
     }

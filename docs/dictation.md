@@ -49,11 +49,13 @@ on this Mac, turns it into text: nothing leaves it.
   Peel's bundled strut (the open account's, started with its agent; never
   a home server's) is staged with its speech engine, sherpa-onnx, in
   `native/` (`scripts/stage-strut.sh`, no longer `--no-stt`; +32 MB). The
-  recording's WAV goes to `POST /audio/transcribe?model=zipformer-en-kroko`
+  recording's WAV goes to `POST /audio/transcribe`
   with the strut's key, and the text comes back cased and punctuated (about
   1.3 s for a short sentence cold, tens of ms of decoding), on the slow
   strut session (a download or a long recording outlasts a minute). The
-  model, 57 MB, is fetched once into the account's strut cache, as soon as
+  default model (the one Peel checks for and sends no `model` for, so the
+  user's pick in Models, below, wins once installed), 57 MB, is fetched
+  once into the account's strut cache, as soon as
   dictation is on and the strut is up: the app tells dictation whenever
   its strut starts, stops or changes (`AppModel.strutChanged`), which
   checks the model again for that strut. A recording that finds it still
@@ -95,13 +97,14 @@ on this Mac, turns it into text: nothing leaves it.
   what the recogniser wrote, when that changed it. Peel types `text` and
   keeps `heard` in History. Peel has no rules of its own.
   - **Learning.** After typing, `DictationEditWatch` rereads the field every
-    0.5 s while it keeps the focus (until an edit strut says teaches
-    something — `dictation/correction` with `dry_run` — has been left alone
-    for 2 s, the field loses focus, the next dictation starts, or 45 s) and
-    takes the span between the text that was around Peel's, from the last
-    reading that still had that text: a field emptied by Return (a chat
-    sending) keeps the fix made just before. It sends `{typed, edited}` to
-    `dictation/correction`, which classifies and writes each mishearing
+    0.5 s while it keeps the focus, for up to 45 s, and takes the span
+    between the text that was around Peel's (`DictationEdit`, PeelUI). The
+    edit is sent **once**, when it has settled, because strut runs the
+    user's fixer model on it: 2 s after the last change, when the field is
+    emptied (Return in a chat sending it: the last reading before stands),
+    when the focus leaves the field, or when the next dictation starts.
+    Nothing is sent when the text is unchanged. It goes as `{typed, edited}`
+    to `dictation/correction`, which judges and writes each mishearing
     (only the pair, never the sentence) and returns what it learned with
     the ids to undo; the HUD says "Learned P8" with Undo for 5 s, and Undo
     is `dictation/undo`. Only while Peel is unlocked, never for Peel's own
@@ -110,8 +113,23 @@ on this Mac, turns it into text: nothing leaves it.
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove
     (`dictation/remove`), a switch to leave it alone (`memory/attributes`),
-    and Add (`dictation/add`, which says when what was added is an everyday
-    word it will never rewrite). A view over the graph, not a second list.
+    and Add (`dictation/add`). A view over the graph, not a second list.
+- **Models** (`DictationModels`; Account › Dictation › Speech model and
+  Fixer). Strut runs dictation on a small local model of each kind, which
+  the user picks: speech Kroko (`zipformer-en-kroko`, 57 MB, the default)
+  or Parakeet (`parakeet-tdt-en-0.6b-v2`, 482 MB); fixer Qwen3 0.6B
+  (`qwen3-0.6b-q4`, 397 MB), Qwen3 1.7B (`qwen3-1.7b-q4`, 1.1 GB,
+  recommended) or none. The fixer is what puts dictation right and learns
+  from the user's edits. Each row shows its size and use; Select calls
+  `dictation/use` (`{speech}` or `{fixer}`, `fixer: null` for None), which
+  downloads a model that is not installed, and strut uses it once it is
+  there (the default speech model until then). While a model downloads its
+  progress shows, from `dictation/models` read every second, and only
+  then. An installed model has Remove (`dictation/remove-model`, in place
+  confirm), but for Kroko, which dictation falls back on and fetches
+  itself. A failed download shows strut's reason under its row. Every
+  step returns the whole list. `/audio/transcribe` goes without a `model`,
+  so the pick is used, and its reply names the `fixer` that ran.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -179,6 +197,13 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: strut judges with a local model the user picks (speech and
+  fixer): the Speech model and Fixer pickers in Account › Dictation; the
+  edit watch sends each edit once, when it settles, as `dictation/correction`
+  now runs the fixer (no more `dry_run` polling); `dictation/add` no longer
+  says whether a word applies. Unit tested: reading the models reply, when
+  an edit is done. The pickers not yet seen against a strut with the
+  `dictation/models` steps.
 - 2026-10-23: the vocabulary's rewrite, classifier and common-word test
   moved from Peel (Swift) to strut (stakwork/strut#301), so any client gets
   them; Peel calls `/audio/transcribe`, `dictation/correction`, `add`,

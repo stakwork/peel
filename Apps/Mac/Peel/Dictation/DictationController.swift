@@ -40,6 +40,8 @@ final class DictationController {
     let speech = DictationSpeech()
     /// The user's vocabulary: rewrites what dictation mishears, learns from edits.
     let lingo = DictationLingo()
+    /// The speech model and the fixer the user picked, on Peel's strut.
+    let models = DictationModels()
     /// The field Peel last typed into, watched for the user's corrections.
     @ObservationIgnored private var watch: Task<Void, Never>?
     /// Dictation History keeps each dictation in the open account's database.
@@ -101,6 +103,7 @@ final class DictationController {
     func strutChanged(_ server: MemoryServer?) {
         speech.use(server)
         lingo.use(server)
+        models.use(server)
         if isEnabled { speech.prepare() }
     }
 
@@ -329,14 +332,12 @@ final class DictationController {
 }
 
 extension DictationController {
-    /// Watches the field for what the user does to `typed`, then has strut
-    /// learn what it can from it, with Undo in the HUD.
+    /// Watches the field for what the user does to `typed`, then, once the
+    /// edit has settled, has strut learn what it can from it (one call: it
+    /// runs a model), with Undo in the HUD.
     fileprivate func watchForCorrections(of typed: String) {
         watch?.cancel()
-        let lingo = lingo
-        watch = DictationEditWatch.watch(typed: typed, teaches: { edited in
-            await lingo.teaches(typed: typed, edited: edited)
-        }) { [weak self] edited in
+        watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
             // Only while unlocked (`history` is the unlocked account's database).
             guard let self, let edited, edited != typed, history() != nil else { return }
             Task { await self.learn(typed: typed, edited: edited) }

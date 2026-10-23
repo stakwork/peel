@@ -71,8 +71,8 @@ struct DictationVocabularyView: View {
 
     private func addPair() async {
         do {
-            let applies = try await lingo.add(written: word.trimmed, heard: heard.trimmed)
-            problem = applies ? nil : "Added, but “\(heard.trimmed)” is an everyday word: dictation won't rewrite it on its own"
+            try await lingo.add(written: word.trimmed, heard: heard.trimmed)
+            problem = nil
             word = ""
             heard = ""
         } catch {

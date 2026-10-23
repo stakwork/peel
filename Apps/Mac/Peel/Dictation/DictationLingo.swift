@@ -43,14 +43,8 @@ final class DictationLingo {
         }
     }
 
-    /// Whether strut would learn from turning `typed` into `edited`, writing nothing.
-    func teaches(typed: String, edited: String) async -> Bool {
-        guard let output = try? await call("dictation/correction", ["typed": .string(typed), "edited": .string(edited), "dry_run": true])
-        else { return false }
-        return !LingoLearned.list(from: output).isEmpty
-    }
-
-    /// Strut learns what it can from the user's edit of `typed`.
+    /// Strut learns what it can from the user's edit of `typed`: once per
+    /// edit, when it has settled, as strut runs a model on it.
     func correct(typed: String, edited: String) async throws -> [LingoLearned] {
         let output = try await call("dictation/correction", ["typed": .string(typed), "edited": .string(edited)])
         await refresh()
@@ -65,13 +59,10 @@ final class DictationLingo {
         await refresh()
     }
 
-    /// The Vocabulary's Add: dictation writes `heard` where the user means
-    /// `written`. False when strut says `heard` alone is an everyday word it
-    /// will never rewrite.
-    func add(written: String, heard: String) async throws -> Bool {
-        let output = try await call("dictation/add", ["written": .string(written), "heard": .string(heard)])
+    /// The Vocabulary's Add: dictation writes `heard` where the user means `written`.
+    func add(written: String, heard: String) async throws {
+        _ = try await call("dictation/add", ["written": .string(written), "heard": .string(heard)])
         await refresh()
-        return output["applies"] != .bool(false)
     }
 
     /// A mishearing, or a taught word (with what is known of it).

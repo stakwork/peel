@@ -89,3 +89,58 @@ public struct LingoLearned: Equatable, Sendable {
         }
     }
 }
+
+/// One of the models dictation runs on Peel's strut, as `dictation/models`,
+/// `dictation/use` and `dictation/remove-model` list them: a speech model
+/// (what you said, as text) or a fixer (the small model that puts
+/// dictation right and learns from your edits). Strut downloads a pick
+/// that is not installed and uses it once it is.
+public struct DictationModel: Equatable, Sendable, Identifiable {
+    public enum Kind: String, Sendable { case speech, fixer }
+    public enum State: String, Sendable { case available, downloading, installed }
+
+    public var id: String
+    public var kind: Kind
+    /// The download's size.
+    public var bytes: Int64
+    /// Strut's own description, for a model Peel has no words for.
+    public var description: String
+    public var state: State
+    /// 0...1 while downloading, when strut knows.
+    public var progress: Double?
+    /// The user's pick for its kind.
+    public var selected: Bool
+    /// Why its last download failed.
+    public var error: String?
+
+    public init(id: String, kind: Kind, bytes: Int64, description: String = "", state: State,
+                progress: Double? = nil, selected: Bool = false, error: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.bytes = bytes
+        self.description = description
+        self.state = state
+        self.progress = progress
+        self.selected = selected
+        self.error = error
+    }
+
+    /// The steps' reply: `{ models: [...] }`; a model of a kind or state
+    /// Peel does not know is left out.
+    public static func list(from output: AgentKit.JSONValue) -> [DictationModel] {
+        (output["models"]?.array ?? []).compactMap { model in
+            guard let id = model["id"]?.string,
+                  let kind = model["kind"]?.string.flatMap(Kind.init(rawValue:)),
+                  let state = model["state"]?.string.flatMap(State.init(rawValue:)) else { return nil }
+            return DictationModel(
+                id: id, kind: kind, bytes: Int64(model["bytes"]?.int ?? 0), description: model["description"]?.string ?? "",
+                state: state, progress: number(model["progress"]).map { min(max($0, 0), 1) },
+                selected: model["selected"] == .bool(true), error: model["error"]?.string
+            )
+        }
+    }
+
+    private static func number(_ value: AgentKit.JSONValue?) -> Double? {
+        if case .number(let number)? = value { number } else { nil }
+    }
+}

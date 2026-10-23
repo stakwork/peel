@@ -457,11 +457,14 @@ is a short plan. Update the status and the journal when you finish something.
   dictation vocabulary, stakwork/strut#301: the lexicon for the window,
   `dictation/correction`, `add`, `remove`, `undo`; strut does the judging),
   `DictationEditWatch` (rereads the field after typing for the user's
-  correction), `DictationVocabularyView` (the Vocabulary window),
+  correction, sent once it settles: `DictationEdit`, PeelUI),
+  `DictationModels` (the speech model and fixer picked on strut,
+  `dictation/models`, `use`, `remove-model`, read every second while one
+  downloads), `DictationVocabularyView` (the Vocabulary window),
   `DictationHistoryView` (the History window:
   each dictation by day, with Copy and Clear History),
-  `DictationPermissions`, and the Account section, offer and menu item in
-  `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
+  `DictationPermissions`, and the Account section (with the Speech model
+  and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
@@ -761,8 +764,9 @@ is a short plan. Update the status and the journal when you finish something.
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
   state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
-  where dictated text goes) and `LingoTests` (reading strut's lexicon and
-  what a correction learned)
+  where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
+  correction learned and the dictation models; `DictationEditTests`, when
+  an edit to dictated text is done)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

@@ -54,7 +54,7 @@ final class DictationController {
         hud.model.accept = { [weak self] in self?.send(.accept) }
         hud.model.cancel = { [weak self] in self?.send(.cancel) }
         capture.onLevel = { [weak self] level in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.model.level = level } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.model.push(level) } }
         }
         capture.onProblem = { [weak self] text in
             MainActor.assumeIsolated { self?.abandon(text) }

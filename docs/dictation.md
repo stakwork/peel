@@ -32,6 +32,9 @@ transcriber; a later feature types the text into the focused field.
   seen it, and on cancel.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
+  A small dark pill: 24 pt with a live waveform (the last eight levels) while
+  the key is held, 28 pt with a grey X and a white tick either side when
+  hands-free. Fades in over 150 ms, out over 110 ms.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
   `Transcriber`; `StubTranscriber` returns canned text, shown in the HUD
   for 3 s and logged.

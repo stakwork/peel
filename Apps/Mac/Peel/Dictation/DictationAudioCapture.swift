@@ -3,16 +3,16 @@ import CoreAudio
 import Foundation
 import PeelUI
 
-/// The microphone, as 16 kHz mono PCM16. The engine's input tap runs the
-/// whole time the engine does, filling a short pre-roll ring; a recording
-/// starts with that ring and goes on into a temporary WAV file. Used from
-/// the main thread; the audio thread only touches `lock`ed state.
+/// The microphone, as 16 kHz mono PCM16 into a temporary WAV file. It runs
+/// only while the hotkey is down or a recording goes on, so the mic
+/// indicator (and a Bluetooth headset's call mode) is on only then. Used
+/// from the main thread; the audio thread only touches `lock`ed state.
 ///
 /// An engine stays on the input it started with, so when the input changes
 /// (AirPods connect, another mic is chosen) a new one is made: on macOS's
 /// word that the default input changed and on the engine's that its
-/// configuration did; as a fallback, should both be missed, when a recording
-/// starts on an engine that has gone quiet.
+/// configuration did. Each press starts a new engine, so none is left deaf
+/// on an input that went away while dictation was idle.
 final class DictationAudioCapture: @unchecked Sendable {
     enum Failure: Error { case permissionDenied, noInput, formatUnavailable }
 
@@ -24,7 +24,6 @@ final class DictationAudioCapture: @unchecked Sendable {
     private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var converter: AVAudioConverter?
-    private var preRoll = PreRollBuffer(seconds: DictationDefaults.preRoll, sampleRate: DictationDefaults.sampleRate)
     private var writer: WAVFileWriter?
     private var observer: (any NSObjectProtocol)?
     private var inputListener: AudioObjectPropertyListenerBlock?
@@ -52,7 +51,7 @@ final class DictationAudioCapture: @unchecked Sendable {
         commonFormat: .pcmFormatInt16, sampleRate: DictationDefaults.sampleRate, channels: 1, interleaved: true
     )
 
-    /// Starts the engine and fills the pre-roll. Throws without permission.
+    /// Starts the engine. Throws without permission.
     func start() throws {
         guard !isRunning else { return }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { throw Failure.permissionDenied }
@@ -65,6 +64,7 @@ final class DictationAudioCapture: @unchecked Sendable {
     }
 
     func stop() {
+        guard isRunning else { return }
         if let inputListener {
             var address = Self.defaultInput
             AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, inputListener)
@@ -73,28 +73,18 @@ final class DictationAudioCapture: @unchecked Sendable {
         tearDown()
         isRunning = false
         lock.withLock {
-            preRoll.removeAll()
             writer?.discard()
             writer = nil
         }
     }
 
-    /// Starts a file with the pre-roll in it; what comes next follows it.
+    /// Starts a file; what the engine hears next goes into it.
     func beginRecording() throws {
-        // Deaf since its input went away unseen: a new engine before anything is kept.
-        if isRunning, isQuiet {
-            rebuild()
-            // No input to make one on: nothing to record from.
-            guard isRunning else { throw Failure.noInput }
-        }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("peel-dictation-\(UUID().uuidString).wav")
         let new = try WAVFileWriter(url: url)
-        try lock.withLock {
+        lock.withLock {
             guard writer == nil else { new.discard(); return }
-            try new.append(preRoll.snapshot())
-            // Spent: the next recording's pre-roll is the audio just before it.
-            preRoll.removeAll()
             writer = new
         }
     }
@@ -125,8 +115,8 @@ final class DictationAudioCapture: @unchecked Sendable {
 
     // MARK: - Engine
 
-    /// A new engine on the current default input, its tap filling the pre-roll
-    /// or the recording under way.
+    /// A new engine on the current default input, its tap filling the
+    /// recording under way.
     private func install() throws {
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -222,14 +212,11 @@ final class DictationAudioCapture: @unchecked Sendable {
         let samples = Array(UnsafeBufferPointer(start: channel[0], count: Int(out.frameLength)))
         let recording = lock.withLock {
             lastAudio = ProcessInfo.processInfo.systemUptime
-            guard let writer else {
-                preRoll.append(samples)
-                return false
-            }
+            guard let writer else { return false }
             do { try writer.append(samples) } catch { self.writer = nil; writer.discard() }
             return true
         }
-        // Only a recording shows a meter; between them the main thread is left alone.
+        // Only a recording shows a meter.
         if recording { onLevel?(PCM16.level(of: samples)) }
     }
 }

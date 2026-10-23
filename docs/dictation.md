@@ -28,15 +28,14 @@ on this Mac, turns it into text: nothing leaves it.
   of a shortcut (Option-Space, Option-arrow, Command-Tab): the recording is
   dropped and the key goes on to the app.
 - **Capture** (`DictationAudioCapture`): AVAudioEngine's input, converted
-  to 16 kHz mono PCM16 and written to a temp WAV (mode 0600); a 200 ms ring
-  is put in front of each recording. The file is deleted once transcribed,
+  to 16 kHz mono PCM16 and written to a temp WAV (mode 0600). The engine
+  runs only from key-down to the recording's end. The file is deleted once transcribed,
   and on cancel. An engine stays on the input it started with, so a new one
   is made when the input changes (AirPods connecting while Peel is open, or
   another mic chosen): on macOS's notice that the default input changed, on
   the engine's that its configuration did (one new engine per burst, as a
-  Bluetooth headset switches profile when its mic opens), and when a
-  recording starts on an engine that has had no audio for a second. A
-  recording under way carries on into the new engine.
+  Bluetooth headset switches profile when its mic opens). A recording under
+  way carries on into the new engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while
@@ -122,10 +121,9 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Key | Right Option (fixed for now) |
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
-| Pre-roll | 200 ms |
 | Format | 16 kHz mono PCM16 WAV |
 | HUD | bottom centre, 56 pt above the visible area |
-| Mic kept warm | yes (the mic indicator stays on while dictation is on) |
+| Microphone | on from the key going down to the recording's end, off otherwise |
 
 The key is Right Option for now. Choosing another (R3) is open: the
 Settings recorder, an `NSEvent` local monitor, never received a key when
@@ -141,13 +139,16 @@ Start and stop sounds; muting system audio while recording; a login item
 retrying a recording whose transcription failed (it is deleted); dictation
 when the account's memory is on a home server (no bundled strut runs then);
 learning from corrections (milestone 2); terminals' bracketed paste, remote
-desktops and input methods for non-Latin scripts, untried; whether a warm
-mic is acceptable or should start at key-down
-(a warm Bluetooth headset mic holds AirPods in call quality);
+desktops and input methods for non-Latin scripts, untried;
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: the mic goes on when the key goes down and off when the
+  recording ends (or the press turns out to be a tap). It was kept warm with
+  a 200 ms pre-roll, which left the mic indicator on and AirPods in call
+  quality the whole time dictation was on. The 200 ms hold threshold covers
+  the engine's start.
 - 2026-10-23: History (step 0 of the dictation lingo design): on by default,
   30 days, text only. Not built from that design yet: a choice of keep
   time, deleting one entry, opening the window at an entry from the HUD,

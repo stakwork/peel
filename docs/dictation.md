@@ -138,9 +138,11 @@ on this Mac, turns it into text: nothing leaves it.
   row: the model in use (`active`), what it does, its size, and for
   clean-up how many words it has learned; Change opens Peel's menu beside
   it with every choice, what it means (a second line, "Recommended." first
-  for strut's choice) and its size on the right; a ⋯ beside it, only when
-  strut says something can go (`removable`), removes it, with the space it
-  frees. Choosing calls `dictation/use` (`{speech}` or
+  for strut's choice) and its size on the right. Once a switch's new model
+  is in use, the row offers to remove the one it replaced, with the space
+  that frees (Remove or Keep). On this Mac shows how much space dictation's
+  models take; Manage lists each with its size, In use or Dictation's
+  fallback, and Remove where strut lets it go (`removable`). Choosing calls `dictation/use` (`{speech}` or
   `{fixer}`, `fixer: null` for Off), which downloads a model that is not
   installed, and strut switches to it once it is there. While the pick
   downloads its progress shows under the row (`downloaded`), from

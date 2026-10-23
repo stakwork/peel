@@ -136,6 +136,9 @@ private struct DictationModelsSection: View {
                     DictationModelSummary(models: models, kind: .fixer, choices: fixers, learned: dictation.lingo.lexicon.wordCount)
                 }
             }
+            if !models.installed.isEmpty {
+                SettingsSection("On this Mac") { DictationModelStorage(models: models) }
+            }
             Group {
                 if let problem = models.problem {
                     ProblemText(problem)
@@ -189,18 +192,12 @@ private struct DictationModelSummary: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(summary).fixedSize(horizontal: false, vertical: true)
                 status
+                if let old = models.leftBehind(kind) { LeftBehind(models: models, model: old) }
             }
         } trailing: {
-            HStack(spacing: Theme.Space.xs) {
-                Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
-                    .buttonStyle(.peel(.outline))
-                    .menuAnchor(anchor)
-                // Removing what is on this Mac but not in use: apart from choosing.
-                if choices.contains(where: \.removable) {
-                    MenuButton(systemImage: "ellipsis", help: "More", source: "dictation-models-\(kind)", edge: .trailing,
-                               entries: removals)
-                }
-            }
+            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
+                .buttonStyle(.peel(.outline))
+                .menuAnchor(anchor)
         }
     }
 
@@ -254,16 +251,6 @@ private struct DictationModelSummary: View {
         return picks
     }
 
-    /// The models on this Mac that aren't in use, to remove, each with the space it frees.
-    private func removals() -> [MenuEntry] {
-        choices.filter(\.removable).map { model in
-            .destructive("Remove \(model.name)", subtitle: AttachmentFormat.size(model.bytes).map { "Frees \($0)" },
-                         confirm: "Remove \(model.name) from this Mac") {
-                Task { await models.remove(model) }
-            }
-        }
-    }
-
     static let offText = "No clean-up, nothing learned."
 
     /// "Downloading Parakeet: 202.6 of 482.5 MB…", from what strut says has come.
@@ -271,5 +258,78 @@ private struct DictationModelSummary: View {
         let done = (model.downloaded ?? model.progress.map { Int64(Double(model.bytes) * $0) })
             .map { ": " + AttachmentFormat.progress($0, of: model.bytes) } ?? ""
         return "Downloading \(model.name)\(done)… Switches over when it's done."
+    }
+}
+
+/// After a switch, once the new model is in use: the one it replaced, with
+/// the space removing it frees, to remove or keep.
+private struct LeftBehind: View {
+    let models: DictationModels
+    let model: DictationModel
+
+    var body: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Text("Switched from \(model.name). Remove it to free \(AttachmentFormat.size(model.bytes) ?? "space")?")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button("Remove") { Task { await models.remove(model) } }
+                .buttonStyle(.peel(.link, size: .sm))
+            Button("Keep") { models.keep(model.kind) }
+                .buttonStyle(.peel(.link, size: .sm))
+        }
+        .padding(.horizontal, Theme.Space.sm)
+        .padding(.vertical, 6)
+        .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.Radius.control))
+        .padding(.top, 4)
+    }
+}
+
+/// Dictation's models on this Mac: how much space they take, and Manage,
+/// which lists each with its size, whether it is in use, and Remove where
+/// strut lets it go.
+private struct DictationModelStorage: View {
+    let models: DictationModels
+    @State private var managing = false
+
+    var body: some View {
+        let installed = models.installed
+        let total = installed.reduce(Int64(0)) { $0 + $1.bytes }
+        let inUse = installed.filter(\.active).count
+        ListRow(size: .md, alignment: .firstTextBaseline) {
+            Image(systemName: "internaldrive")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 18)
+        } title: {
+            Text(AttachmentFormat.size(total) ?? "")
+        } detail: {
+            Text("\(Formatting.count(installed.count, "model")), \(inUse) in use")
+        } trailing: {
+            Button(managing ? "Done" : "Manage") { managing.toggle() }
+                .buttonStyle(.peel(.outline))
+        }
+        if managing {
+            ForEach(installed) { model in
+                ListRow(size: .md, alignment: .firstTextBaseline) {
+                    Color.clear.frame(width: 18, height: 1)
+                } title: {
+                    Text(model.name)
+                } detail: {
+                    Text([AttachmentFormat.size(model.bytes), Self.role(model)].compactMap { $0 }.joined(separator: " · "))
+                } trailing: {
+                    if model.removable {
+                        InlineConfirm(trigger: "Remove", prompt: "Remove \(model.name)?", confirm: "Remove", alignment: .trailing) {
+                            await models.remove(model)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Why one can't go: in use, or the speech model dictation falls back on.
+    private static func role(_ model: DictationModel) -> String? {
+        if model.active { return "In use" }
+        return model.removable ? nil : "Dictation's fallback"
     }
 }

@@ -8,8 +8,6 @@ struct MenuButton<Label: View>: View {
     @Environment(\.menuPresenter) private var presenter
     let help: String
     var source: AnyHashable?
-    /// `.trailing` for a button at the end of a row: the menu's right edge in line with it.
-    var edge: PopoverEdge = .leading
     let entries: @MainActor () -> [MenuEntry]
     @ViewBuilder let label: () -> Label
 
@@ -17,7 +15,7 @@ struct MenuButton<Label: View>: View {
 
     var body: some View {
         IconButton(help: help, lit: presenter?.isOpen(from: source) == true) {
-            presenter?.show(entries(), at: anchor, source: source, edge: edge)
+            presenter?.show(entries(), at: anchor, source: source)
         } label: {
             label()
         }
@@ -27,9 +25,8 @@ struct MenuButton<Label: View>: View {
 }
 
 extension MenuButton where Label == Image {
-    init(systemImage: String, help: String, source: AnyHashable? = nil, edge: PopoverEdge = .leading,
-         entries: @escaping @MainActor () -> [MenuEntry]) {
-        self.init(help: help, source: source, edge: edge, entries: entries) { Image(systemName: systemImage) }
+    init(systemImage: String, help: String, source: AnyHashable? = nil, entries: @escaping @MainActor () -> [MenuEntry]) {
+        self.init(help: help, source: source, entries: entries) { Image(systemName: systemImage) }
     }
 }
 

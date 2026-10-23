@@ -294,8 +294,8 @@ Next for memory, in order (updated 2026-10-13):
 
 Done: the tools (#218); strut's key, the graph's folder owner-only
 (#219); connecting with nothing to set up (#224, #226); Peel ships strut
-and runs it (#231): strut's desktop package (`--no-stt`; Ladybug and its
-OpenSSL in `native/`) and a pinned Node 22, staged once per Mac by
+and runs it (#231): strut's desktop package (Ladybug and its OpenSSL in
+`native/`; since dictation's milestone 1, the speech engine too) and a pinned Node 22, staged once per Mac by
 `scripts/stage-strut.sh` into `~/Library/Caches/dev.peel.build/strut`, copied into
 `Contents/Strut` by every checkout's `bundle-app.sh` and signed with
 Peel's identity (Node allow-jit only); `BundledStrut` starts it with the

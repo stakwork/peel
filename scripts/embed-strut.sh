@@ -56,6 +56,11 @@ echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'st
   echo "error: the staged strut has no Ladybug; stage it again (scripts/stage-strut.sh <strut checkout>)"
   exit 1
 }
+# Dictation turns speech into text on it: a stage without its speech engine is refused too.
+[ "$(plutil -extract stt raw -o - "$STRUT_STAGE/desktop.json" 2> /dev/null)" = true ] || {
+  echo "error: the staged strut has no speech engine; stage it again (scripts/stage-strut.sh <strut checkout>)"
+  exit 1
+}
 ditto "$STRUT_STAGE" "$DEST"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
   for code in "$DEST"/native/*; do

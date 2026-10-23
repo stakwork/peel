@@ -1,45 +1,5 @@
 import Foundation
 
-/// The last stretch of audio, kept in memory: a fixed-size ring. A recording
-/// starts with it, so the words said as the key went down are not clipped.
-public struct PreRollBuffer: Sendable {
-    public let capacity: Int
-    private var storage: [Int16]
-    private var next = 0
-    private var filled = 0
-
-    public init(capacity: Int) {
-        self.capacity = max(capacity, 0)
-        storage = [Int16](repeating: 0, count: self.capacity)
-    }
-
-    public init(seconds: TimeInterval, sampleRate: Double) {
-        self.init(capacity: Int(seconds * sampleRate))
-    }
-
-    public mutating func append(_ samples: [Int16]) {
-        guard capacity > 0 else { return }
-        // Only the last `capacity` samples can stay.
-        for sample in samples.suffix(capacity) {
-            storage[next] = sample
-            next = (next + 1) % capacity
-        }
-        filled = min(filled + min(samples.count, capacity), capacity)
-    }
-
-    /// What is kept, oldest first.
-    public func snapshot() -> [Int16] {
-        guard filled > 0 else { return [] }
-        if filled < capacity { return Array(storage[0..<filled]) }
-        return Array(storage[next...] + storage[..<next])
-    }
-
-    public mutating func removeAll() {
-        next = 0
-        filled = 0
-    }
-}
-
 public enum PCM16 {
     /// How loud, 0…1, for the HUD's meter: RMS on a dB scale from -50 dB up.
     public static func level(of samples: [Int16]) -> Float {

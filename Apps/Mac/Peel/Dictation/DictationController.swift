@@ -152,9 +152,6 @@ final class DictationController {
         canSwallow = tap.swallows
         isListening = true
         poll = repeating(every: 2) { $0.checkSecureInput() }
-        if DictationDefaults.keepMicWarm {
-            do { try capture.start() } catch { log.error("microphone not started: \(String(describing: error))") }
-        }
     }
 
     private func stopListening() {
@@ -207,6 +204,7 @@ final class DictationController {
                 stopTicking()
                 target = nil
                 capture.discardRecording()
+                capture.stop()
                 hud.hide()
             }
         }
@@ -260,6 +258,7 @@ final class DictationController {
         stopTicking()
         target = nil
         capture.discardRecording()
+        capture.stop()
         hud.show(.message(text))
     }
 
@@ -270,6 +269,8 @@ final class DictationController {
 
     private func submit(_ mode: DictationMode) {
         hud.hide()
+        // The mic is off once the key is up, whatever became of the recording.
+        defer { capture.stop() }
         guard let start = target, !start.isSecure else {
             capture.discardRecording()
             return
@@ -279,7 +280,6 @@ final class DictationController {
             hud.show(.message("The recording could not be saved"))
             return
         }
-        if !DictationDefaults.keepMicWarm { capture.stop() }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
         // Where and when, as of now: the account and the clock may move on
         // while the strut transcribes.

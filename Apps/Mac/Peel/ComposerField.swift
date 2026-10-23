@@ -10,9 +10,10 @@ import SwiftUI
 /// scrolls. A text view rather than a `TextField`, because a field
 /// cannot tell Return from Shift-Return.
 ///
-/// It also reports the `@word` being typed before the cursor (`mention`), lets
-/// the composer take arrow keys, Tab, Return and Escape while suggestions
-/// show (`suggestionKey`), and puts in a chosen alias (`insertion`).
+/// It also reports the `@word` being typed before the cursor, or with
+/// `commands` a `/word` opening the message (`mention`, trigger included),
+/// lets the composer take arrow keys, Tab, Return and Escape while
+/// suggestions show (`suggestionKey`), and puts in a chosen one (`insertion`).
 struct ComposerField: View {
     @Binding var text: String
     let placeholder: String
@@ -22,6 +23,8 @@ struct ComposerField: View {
     var focusesOnAppear = true
     let submit: () -> Void
     var mention: Binding<String?> = .constant(nil)
+    /// A `/` opening the message is a command (the agent's DM).
+    var commands = false
     var insertion: MentionInsertion?
     var suggestionKey: (SuggestionKey) -> Bool = { _ in false }
     /// Escape with no suggestions showing, such as to stop replying; returns
@@ -36,8 +39,8 @@ struct ComposerField: View {
 
     var body: some View {
         ComposerTextView(
-            text: $text, height: $height, mention: mention, focusRequest: focusRequest, focusesOnAppear: focusesOnAppear,
-            insertion: insertion,
+            text: $text, height: $height, mention: mention, commands: commands, focusRequest: focusRequest,
+            focusesOnAppear: focusesOnAppear, insertion: insertion,
             submit: submit, suggestionKey: suggestionKey, escape: escape, attach: attach,
             dropTargeted: dropTargeted
         )
@@ -58,16 +61,18 @@ struct ComposerField: View {
 /// A key the mention suggestions may take while they show.
 enum SuggestionKey { case up, down, accept, dismiss }
 
-/// An alias to put in place of the `@word` being typed. A new `id` each time.
+/// What to put in place of the word being typed, its trigger included
+/// (`@ann`, `/new`). A new `id` each time.
 struct MentionInsertion: Equatable {
     let id: Int
-    let alias: String
+    let text: String
 }
 
 private struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var height: CGFloat
     @Binding var mention: String?
+    let commands: Bool
     let focusRequest: Int
     let focusesOnAppear: Bool
     let insertion: MentionInsertion?
@@ -128,7 +133,7 @@ private struct ComposerTextView: NSViewRepresentable {
         }
         if let insertion, context.coordinator.insertedID != insertion.id {
             context.coordinator.insertedID = insertion.id
-            context.coordinator.insert(insertion.alias, in: textView)
+            context.coordinator.insert(insertion.text, in: textView)
         }
         // Covered by a panel (`SidePanelSplit`): the keyboard leaves it, and
         // comes back once it shows again if nothing else has taken it.
@@ -158,7 +163,7 @@ private struct ComposerTextView: NSViewRepresentable {
         var insertedID: Int?
         /// It had the keyboard when a panel covered it.
         var hadKeysWhenCovered = false
-        /// Where the `@word` before the cursor sits, while there is one.
+        /// Where the `@word` or `/word` before the cursor sits, while there is one.
         private var mentionRange: NSRange?
 
         init(_ parent: ComposerTextView) {
@@ -201,23 +206,24 @@ private struct ComposerTextView: NSViewRepresentable {
             #selector(NSResponder.cancelOperation(_:)): .dismiss,
         ]
 
-        /// The word ending at the cursor, if it starts with `@`, as the Mac
-        /// app looks for it; reported without the `@`.
+        /// The word ending at the cursor, if it starts with `@` (or `/`
+        /// opening the message, with `commands`); reported with its trigger.
         func findMention(_ textView: NSTextView) {
             let selection = textView.selectedRange()
             let found = MentionQuery.word(in: textView.string, cursor: selection.location,
-                                          selectionLength: selection.length)
+                                          selectionLength: selection.length, commands: parent.commands)
             mentionRange = found?.range
-            if parent.mention != found?.query {
-                let query = found?.query
+            let word = found.map { String($0.trigger) + $0.query }
+            if parent.mention != word {
+                let query = word
                 Task { @MainActor in self.parent.mention = query }
             }
         }
 
-        /// Replaces the `@word` with `@alias ` and leaves the cursor after it.
-        func insert(_ alias: String, in textView: NSTextView) {
+        /// Replaces the word with `text` and a space, the cursor after it.
+        func insert(_ text: String, in textView: NSTextView) {
             guard let range = mentionRange else { return }
-            textView.insertText("@\(alias) ", replacementRange: range)
+            textView.insertText("\(text) ", replacementRange: range)
         }
 
         func measure(_ textView: NSTextView) {

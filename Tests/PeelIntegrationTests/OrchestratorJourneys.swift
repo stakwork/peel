@@ -346,6 +346,180 @@ extension Journeys {
             // Decided once: nothing more reaches the server.
             try await Task.sleep(for: .seconds(5))
             #expect(mcp.calls.count == 2)
+            for person in [alice, other] { await person.close() }
+        }
+
+        /// A Hive workspace as a peer (docs/connectors-and-authoring.md,
+        /// "Peers", P8), on two staged struts: Peel's, speaking for the person
+        /// (strut's own section, rendered by its Node), and one standing in
+        /// for the org's central strut, whose person token it mints. The
+        /// orchestrator's call to the org is a proposal; the Mac's card is worded
+        /// from strut's record ("Send this to Acme?", the message), and Always
+        /// keeps a rule for that org only; strut's `decide` (the bridge's, in
+        /// runner R1) then reaches the org's assistant as the person, on this
+        /// conversation's thread there (`<person>/<conversation id>`, strut#290),
+        /// and the next call to Acme needs no card. The builder launched with
+        /// `peer` gets no route around the card (strut#294).
+        @Test(.enabled(if: staged))
+        @MainActor
+        func aHiveWorkspaceIsAskedOnlyOnACard() async throws {
+            let person = "tom-cm1"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                guard body.contains("Its peers are the person's ORGS") else {
+                    // Acme's own assistant, on its strut (which speaks for no person).
+                    return Self.toolUse("final_answer", ["text": "Acme ships v2 on Friday.", "artifacts": []])
+                }
+                guard body.contains(#""type":"tool_result""#) else {
+                    return Self.toolUse("strut_run_workflow", ["peer": "acme", "workflow": "orchestrator",
+                                                               "input": ["prompt": "What is Acme shipping?", "session": "\(person)/peel/agent-1/dm"]])
+                }
+                return Self.toolUse("final_answer", ["text": "Asked Acme; waiting for your yes.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-hive-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let mine = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "mine"),
+                                                 secretKey: FileItem(file: root.appending(path: "mine-key"))))
+            let acme = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "acme"),
+                                                 secretKey: FileItem(file: root.appending(path: "acme-key"))))
+            defer {
+                mine.stop(quietly: true)
+                acme.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            mine.person = person
+            let (local, central) = (try await mine.start(), try await acme.start())
+            let credential = AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in")
+            let client = AutomationsClient(server: local)
+            for server in [local, central] { try await AutomationsClient(server: server).setModel(credential) }
+            let token = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string(person)], on: central)["token"]?.string)
+            try await client.syncPeers([HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: token, label: "Acme")])
+            #expect(try await Self.strutCall("GET", "peers", on: local)["peers"]?.array?.compactMap { $0["id"]?.string } == ["acme"])
+            // strut's section for a person's orgs, behind Peel's.
+            let system = try await Self.strutCall("GET", "workflows/orchestrator/flow", on: local)["params"]?["system"]?.string ?? ""
+            #expect(system.contains("You are Peel's agent") && system.contains("Its peers are the person's ORGS") && system.contains("\(person)/<conversation>"))
+
+            // No route around the card (strut#294): the builder launched with `peer`, as `job/start` and
+            // `meta/run-workflow` do, is refused on Peel's strut and nothing reaches Acme.
+            let build = try await Self.strutCall("POST", "workflows/builder/run", ["input": ["prompt": "Build hello on Acme", "peer": "acme"]], on: local)
+            let buildId = try #require(build["runId"]?.string)
+            let built = try await eventually("the builder's run to end", timeout: .seconds(60)) {
+                let record = try? await Self.strutCall("GET", "workflows/builder/runs/\(buildId)", on: local)
+                return ["success", "error"].contains(record?["status"]?.string ?? "") ? record : nil
+            }
+            #expect(built["status"] == "error" && built["error"]?["message"]?.string?.contains("needs the person's approval") == true, "\(built)")
+            for workflow in ["builder", "orchestrator"] {
+                #expect(try await Self.strutCall("GET", "workflows/\(workflow)/runs", on: central).array?.isEmpty == true)
+            }
+
+            func ask() async throws -> String {
+                let run = try await Self.strutCall("POST", "workflows/orchestrator/run", ["input": ["prompt": "@acme what are you shipping?"]], on: local)
+                let runId = try #require(run["runId"]?.string)
+                return try await eventually("the call to Acme to wait as a proposal", timeout: .seconds(60)) {
+                    let pending = try await Self.strutCall("GET", "proposals?status=pending&runId=\(runId)", on: local)["proposals"]?.array ?? []
+                    return pending.first?["id"]?.string
+                }
+            }
+            let first = try await ask()
+            #expect(try await client.peerRequest(proposal: first) == PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator",
+                                                                                  prompt: "What is Acme shipping?"))
+
+            let (alice, other) = try await Journeys.Payments.pair()
+            let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
+            let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
+            do {
+                let actions = DeviceActions(engine: alice.engine, rules: rules, peerRequest: { id in try? await client.peerRequest(proposal: id) }) { _, approval in
+                    cards.withLock { $0.append(approval.intent) }
+                    return .alwaysAllow
+                }
+                // As the bridge relays a proposal (runner R1): its own words, which the Mac does not use.
+                func card(_ proposal: String) async -> DeviceAnswer? {
+                    await actions.answer(DeviceRequest(agent: "02a", id: "proposal:\(proposal)", kind: "approve",
+                                                       args: .object(["intent": .object(["action": .string("Run strut/run-workflow")])]),
+                                                       deadline: Date().addingTimeInterval(3600)))
+                }
+                #expect(await card(first)?.status == .done)
+                let shown = try #require(cards.withLock { $0 }.first)
+                #expect(shown.action == "Send this to Acme?" && shown.content == "What is Acme shipping?")
+                #expect(shown.details == ["To Acme's assistant (@acme) in Stadeum, as you"] && shown.target?.id == "acme/orchestrator")
+                #expect(try rules.all().map { "\($0.tool) \($0.target?.id ?? "-")" } == ["strut/run-workflow acme/orchestrator"])
+
+                // Allowed: strut runs the call (as the bridge's decide will), and Acme's assistant answers as the person.
+                let decided = try await Self.strutCall("POST", "proposals/\(first)/decide", ["action": "accept"], on: local)
+                let applied = try await eventually("the call to reach Acme", timeout: .seconds(60)) {
+                    let record = try await Self.strutCall("GET", "proposals/\(first)", on: local)
+                    return ["applied", "failed"].contains(record["status"]?.string ?? "") ? record : nil
+                }
+                #expect(applied["status"] == "applied", "\(decided) \(applied)")
+                #expect(applied["result"]?["output"]?["output"]?["text"] == "Acme ships v2 on Friday.", "\(applied)")
+
+                // Always for Acme: the next call to it is allowed with no card.
+                let second = try await ask()
+                #expect(await card(second)?.status == .done && cards.withLock { $0 }.count == 1)
+            }
+            // Disconnected (or Acme left): its record is gone from strut.
+            try await client.syncPeers([])
+            #expect(try await Self.strutCall("GET", "peers", on: local)["peers"]?.array?.isEmpty == true)
+            for person in [alice, other] { await person.close() }
+        }
+
+        /// An automation whose task needs the web (connectors and authoring,
+        /// "automations wake the agent"): its run starts a job, which has the
+        /// web, and says nothing itself; the job's result reaches Alice's DM
+        /// on its own, as the bridge sends the end of a job no DM started.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func anAutomationStartsAJobWhoseResultReachesTheDM() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let found = "Top 3 padel videos this week: \(UUID().uuidString.prefix(6))"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                let answered = body.contains(#""type":"tool_result""#)
+                if body.contains("scheduled automation") {
+                    return answered ? Self.toolUse("final_answer", ["text": PeelAgent.Orchestrator.nothingToReport])
+                        : Self.toolUse("job_start", ["prompt": "Find the top 3 YouTube videos about padel", "title": "Padel videos"])
+                }
+                // The job.
+                return Self.toolUse("final_answer", ["text": found, "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-automation-job-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let setup = AutomationsClient(server: server)
+            try await setup.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await setup.installOrchestrator()
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            let running = try #require(bridge.server)
+            try await setup.useBridge(running)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            try await alice.engine.setDeviceAgent(agent)
+
+            let client = AutomationsClient(server: server, yours: PeelAgent.Orchestrator.automationWorkflow, callback: running.runEnds)
+            let padel = try #require(Automation(try await client.make(
+                name: "Padel videos", trigger: ["every": "week", "on": ["sun"], "at": ["09:00"], "tz": "UTC"], enabled: true,
+                input: AutomationsClient.input(name: "Padel videos", prompt: "Send me the top 3 YouTube videos about padel"),
+                what: "the automation")["automation"] ?? .null))
+            try await client.runNow(padel)
+            try await eventually("the job's result in the DM", timeout: .seconds(90)) {
+                try alice.messages(in: agent).contains { !$0.fromMe && $0.content == found }
+            }
+            let fire = try #require(try await client.runs(of: padel).first)
+            #expect(fire.status == "success" && fire.nothing, "\(fire)")
+            // The run itself said nothing: the job's result is the agent's one message.
+            let said = try alice.messages(in: agent).filter { !$0.fromMe && $0.control == nil }.compactMap(\.content)
+            #expect(said == [found], "\(said)")
 
             for person in [alice, other] { await person.close() }
         }

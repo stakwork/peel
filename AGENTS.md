@@ -97,8 +97,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `ListBottom.swift` — a message list against its bottom, for its jump
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
-  - `MentionQuery.swift` — the `@word` before a composer's cursor and who
-    it matches, for the Mac's composer and the iPhone's (tested)
+  - `MentionQuery.swift` — the `@word` before a composer's cursor (or a
+    `/` command opening the agent DM's message) and what it matches, by
+    any of an item's names, for the Mac's composer and the iPhone's (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states and the unread messages behind them, tribes and their senders,
     mentions, payments, the shared SQL
@@ -333,13 +334,19 @@ is a short plan. Update the status and the journal when you finish something.
   and no model key for it),
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
-  restart Peel's strut with the new grants; Gmail to come),
+  restart Peel's strut with the new grants; Gmail to come; below them
+  `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Peel agent show of its own account,
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
-  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`);
+  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
+  `AppModel+Hive` (`HiveState`: Connect Stadeum's device flow against
+  Hive's API (the user-facing name is Stadeum), the credential in
+  `Profile.hive`, the orgs put on strut as peers when the bridge starts
+  and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
+  development profile's defaults for a test Hive);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -364,7 +371,8 @@ is a short plan. Update the status and the journal when you finish something.
   here), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
-  `ComposerField` (the message field: Return sends, `@` mentions),
+  `ComposerField` (the message field: Return sends, `@` mentions; in the
+  agent's DM `@` offers the Stadeum workspaces and `/` its commands),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, and the shared `PaymentPanes`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
@@ -631,6 +639,11 @@ is a short plan. Update the status and the journal when you finish something.
     the tools and which ask first), remove (with its key); and `MCPGrants`,
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
+  - `Hive.swift` — Hive's device flow for a strut desktop app
+    (`HiveClient`: start, poll, renew), what is kept of a pairing
+    (`HiveLink`, its peers and credential, never in a database), strut's
+    peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
+    for, read from strut's record (`peerRequest`)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -763,7 +776,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
-  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
+  state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
   correction learned and the dictation models; `DictationEditTests`, when
   an edit to dictated text is done)
@@ -782,7 +795,11 @@ is a short plan. Update the status and the journal when you finish something.
   steps and the move off `peel-automation`), `ConnectionsTests` (an MCP
   server added, tested, granted and removed on a staged strut against a
   stand-in server, `MCPStub`, its key held by name only), `StrutSpeechTests` (dictation's
-  WAV and key sent, refusals, the model list and download), `BundledBridgeTests`,
+  WAV and key sent, refusals, the model list and download), `HiveTests` (Hive's device
+  flow against a stand-in answering as stakwork/hive#5602 documents:
+  approve and collect once, deny, expiry, a page on another site or an
+  account Peel cannot name refused, renewal and revoke; the org call's
+  card worded from strut's record), `BundledBridgeTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the

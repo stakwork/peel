@@ -135,7 +135,8 @@ extension AppModel {
     /// Peel's own strut stopped and started again, so it reads its host
     /// delta afresh; the bridge follows it. A turn under way is cut short
     /// and said so in the DM. While it is still starting, nothing: once up,
-    /// `restartIfGrantsChanged` starts it once more if they moved meanwhile.
+    /// `restartIfGrantsChanged` starts it once more if they (or the person
+    /// it speaks for) moved meanwhile.
     func restartOwnStrut() {
         guard let strut, strut.server != nil, brain == .thisMac else { return }
         strut.stop()
@@ -143,9 +144,10 @@ extension AppModel {
     }
 
     /// Called as Peel's strut comes up: started with grants that have
-    /// changed since (a switch while it was starting), it starts once more.
+    /// changed since (a switch while it was starting), or for another
+    /// person (a Stadeum pairing), it starts once more.
     func restartIfGrantsChanged() {
-        guard let strut, strut.server != nil, let launched = strut.launchedGrants, launched != strut.grants else { return }
+        guard let strut, strut.server != nil, strut.launchedStale else { return }
         restartOwnStrut()
     }
 }

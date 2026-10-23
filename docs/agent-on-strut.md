@@ -1445,6 +1445,137 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   read-through for a peer's workflows (S6). An accepted proposal runs
   against the registration as it is then (strut#286's open point).
 
+### Built: connectors P8, Connect Stadeum (2026-10-23)
+
+The connectors design (stakwork/peel#342, "Peers") on strut's
+`specs/DESKTOP.md` and Hive's pairing (stakwork/hive#5602). The
+user-facing name is Stadeum; the code says Hive where it talks to Hive's
+API. Builds on P1's strut pin (person tokens, `personalOrchestratorSystem`,
+proposals), P3's Connections screen, and runner #389 (proposal cards) and
+#390 (rooms and the wake).
+
+- **Pairing.** Account › Connections › Stadeum workspaces: Connect
+  Stadeum asks Hive for a code (`POST /api/strut-devices/pair`), shows it
+  and a QR of Hive's own pairing page (one on another site is refused),
+  and polls every `interval` until the person approves there. The
+  `hivedev_` credential and the org records go in `Profile.hive` (the
+  Keychain for the app account), never a database or a log. Each org goes
+  on Peel's strut as `PUT /peers/<id>` when the bridge starts; Peel puts no
+  other peers, so any other is taken off.
+- **The list.** Each workspace by its label and `@id`, "Paired, renews
+  daily", and whether a request to it asks first; an org Hive gave no
+  record for, with Hive's reason; Unpair.
+- **Renewal.** `GET /api/strut-devices/peers` once a day (or when the
+  tokens are within a day of expiring), checked hourly while the account
+  is open and once as it opens; it replaces the orgs. A 401 is "Stadeum
+  no longer knows this Mac" with Pair again, and the orgs come off strut
+  and runner at once (their tokens may still work for days). Unpair takes
+  the orgs off strut and runner (once the bridge runs, if it is stopped),
+  forgets the credential and revokes the workspaces' Always rules; the
+  device stays in Hive's settings until revoked there. An Always also
+  goes when a pairing names another account or the org leaves the list,
+  since its slug may later be another org's.
+- **Runner.** Paired, the bridge starts with `BRIDGE_ACTOR` (the actor),
+  so its strut calls and `decide`s name the owner (sphinx#389). After
+  pairing, each renewal and each bridge start, Peel hands runner the orgs'
+  person tokens (`PUT /peers { actor, tokens }`, sphinx#390, which holds a
+  room on each org's strut for the jobs that end there): strut never
+  returns a token. Unpair sends no tokens before strut and the bridge
+  start again.
+- **The prompt.** Paired, strut is started again speaking for the person:
+  strut's own `personalOrchestratorSystem(actor)`, rendered by the Node it
+  ships, follows Peel's section. Since strut#290 its thread on an org is
+  `<actor>/<conversation id>`, the conversation id being the DM session
+  runner names in each turn. A conversation keeps its first turn's
+  prompt, so the DM knows the orgs from its next `/new`.
+- **Consent.** `orchestrator.approve` and `job.approve` list
+  `strut/run-workflow` (strut grants it to both): every call to an org is a
+  proposal. The bridge relays it as an `approve` request with
+  id `proposal:<id>` (runner R1); the Mac reads that proposal from its own
+  strut and words the card itself: "Send this to Acme?", the message, "To
+  Acme's assistant (@acme) in Stadeum, as you", with "Always allow for
+  Acme" kept as an `ApprovalRules` rule on `(strut/run-workflow,
+  acme/orchestrator)`: that org's assistant only, never another workflow
+  there (asked every time). The workspace's row then says "Sends without
+  asking" with Ask first, which revokes it. The card fails closed: a
+  proposal Peel cannot read from strut, no longer pending, for a peer
+  strut has not got, or holding more than the card shows (input beyond
+  the message and its thread, a `version`, `params` or `job` on the org,
+  a message too long or not showable) is refused, never shown in the
+  bridge's words. The card does not show the thread (`input.session`),
+  `wait` or `room`: they steer delivery on the org under the person's own
+  token, among the person's own threads there.
+- **Tokens go only where they should.** A peer whose address is not https
+  off this Mac is refused (that org's error), so a person token never
+  travels in the clear; plain http on this Mac only from a test Hive on
+  this Mac. The Keychain item is readable once the Mac has been unlocked,
+  so a renewal while it is locked is kept.
+- **No route around the card.** `Vendor/strut.lock` moves to 4742720
+  (strut#294, with #297 and #298): a host-gated `strut/run-workflow` runs
+  only as an accepted proposal, so a builder launched with `peer`
+  (`job/start`, `meta/run-workflow`, over HTTP) is refused before it
+  reaches the org. The journey checks it on Peel's delta. Left for strut:
+  `requireApproval` accepts any accepted proposal, not only one of
+  `strut/run-workflow` (nothing reaches that at this pin).
+- **Not here.** A turn after a `decide` (runner, R2's row): the org's
+  first answer reaches the agent on the person's next turn, and the job's
+  result by the room's wake. Deliverables as Sphinx attachments (runner).
+  Hive's rate limit on the pair start and the `dev` claim (H4). Strut's
+  read-through for a workspace's workflows (S6).
+- **Checked.** `HiveTests` against a stand-in answering as hive#5602
+  documents (no local Hive exists: it needs Postgres and the swarms'
+  mcps); `Journeys/Orchestrator.aHiveWorkspaceIsAskedOnlyOnACard` on two
+  staged struts at the pin, one standing in for the org's central with a
+  person token it minted: strut's section names `<actor>/<conversation>`,
+  the orchestrator's call is a proposal, the card's words come from strut,
+  Always keeps a rule for that org, strut's `decide` reaches the org's
+  assistant as the person, and the next call needs no card;
+  `check-app.sh` with a stand-in Hive: the code and QR, the workspace and
+  one org's error, then revoked there: Pair again, and Unpair. Reviews:
+  `/code-review`, `/simplify`, `/security-review` (nothing at 8 or
+  above) and an independent adversarial review (re-pair keeping Always
+  rules, Unpair leaving runner's tokens, a revoked Mac still calling the
+  orgs, a late poll undoing a newer pairing, top-level `params`/`version`/`job`
+  hidden from the card, one bad id stopping the sync: all fixed). Not
+  yet against Hive itself (it needs Tom's approval on hive.sphinx.chat).
+
+### Built: an automation can do anything you can (2026-10-23)
+
+From Tom's user model (`docs/connectors-and-authoring.md`, section 7):
+an automation is a prompt on a schedule, and a workflow is a tool.
+
+- **Runs start jobs.** `peel-automation-run`'s agent gets `job/start`
+  beside memory, the reads and `sphinx/post`. Work its tools cannot do
+  (the web, a page, a workflow by name) is a job's; the run then says
+  `NOTHING_TO_REPORT` and the job's result reaches the DM by itself: the
+  bridge sends the end of a job no DM started (`turns.rs`, `unasked`).
+  The run's prompt forbids a builder job. Only `job/start` is granted, not
+  the other `job/*`: a run is one shot.
+- **The orchestrator never declines a schedule for want of a tool.** Its
+  automations paragraph says a run can do what a turn can, a built
+  workflow is scheduled as an automation whose prompt runs it, and
+  building is never an automation's.
+- **The builder no longer schedules.** `meta/set-automation` leaves
+  `builder.approve`, so strut refuses it (it runs only as an accepted
+  proposal): every schedule is an automation, on one card and in one list.
+- **Next PR (security review):** a run reads other people's messages
+  and can now start a job with the web and a shell, so text injected in a
+  tribe could reach a job with nobody watching. The same path exists in
+  the person's own turns, so the fix sits between the agent and its jobs:
+  once a turn or run has read other people's messages, starting a job
+  needs the person's card (a Peel step in front of `job/start`, asking
+  the Mac, which knows which runs it answered reads for), and a run's
+  `job/start` is pinned to `workflow: job` in code, not only the prompt.
+- **Not changed:** automations still run on `peel-automation-run`, not on
+  strut's `orchestrator`. Firing the orchestrator directly would lose the
+  run's name, `since` and the post grant, and need strut and runner work;
+  the run already has the same model, memory and now jobs.
+- **Checked.** `Journeys.Orchestrator.anAutomationStartsAJobWhoseResultReachesTheDM`:
+  an automation's run starts a job, says nothing, and the job's result is
+  the agent's one message in the DM. `anAutomationPostsAtItsMinuteAndReportsToTheDM`
+  is flaky on main as well (2 of 4 runs there failed: once at Bob reading
+  the tribe post, which the Mac reported sent, once pairing contacts).
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

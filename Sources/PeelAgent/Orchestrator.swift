@@ -28,10 +28,11 @@ public enum Orchestrator {
     /// strut's own memory steps.
     static let memoryTools = ["remember", "recall", "get", "ontology", "forget", "merge"].map { "memory/" + $0 }
 
-    /// What an automation's run is granted: memory, the reads, and posting
-    /// as the user (`DeviceStep.post`), which the Mac allows only to the chats
-    /// of the automation's send grant; no schedules.
-    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type]
+    /// What an automation's run is granted: memory, the reads, posting as
+    /// the user (`DeviceStep.post`), which the Mac allows only to the chats
+    /// of the automation's send grant, and starting a job (strut's
+    /// `job/start`) for the web, files or a workflow; no schedules.
+    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type, "job/start"]
 
     // MARK: The prompt
 
@@ -93,10 +94,17 @@ public enum Orchestrator {
             itself, word for word. Their Mac starts each post with "[Agent] ": leave that out.
             """
         return """
-            You can set up automations: a task Peel carries out on its own, on a schedule or once, with its result \
+            You can set up automations: a prompt Peel runs on its own, on a schedule or once, with its result \
             delivered to this chat. A reminder ("remind me tomorrow at 8 to…", "text me the score on Saturday") is an \
-            automation that runs once. Write an automation's prompt as a standalone instruction for a future run that \
-            \(run) Each run is told when the last one \
+            automation that runs once. When it fires, its prompt is a turn of yours with no one watching: it has \
+            memory, the chat reads and job/start, so it can start a job for what has to be found out or made (the \
+            web included); it cannot send on a card, continue a job or build a workflow. So never decline a \
+            schedule for want of the web, and never build a workflow just to schedule something. A workflow the \
+            person had built runs on a schedule the same way: an automation whose prompt says to run that \
+            workflow, by name, and tell them what it found. When they want a workflow built and run on a \
+            schedule, leave the schedule out of the builder's brief; set up that automation once the builder \
+            reports what it built. Write an automation's prompt as a \
+            standalone instruction for a future run that \(run) Each run is told when the last one \
             finished, so write "since the last run"; never have a run save or recall its own progress, times or \
             cursors in memory. When a request names two times (read on Friday, tell me on Sunday), ask which one it \
             should run at. Find an automation with automation/list before changing it. Each change is shown to the \
@@ -122,7 +130,7 @@ public enum Orchestrator {
     static let unattended = [
             intro("Your result reaches the user in your direct message; the run's message says when it runs."),
             AgentMessageLink.instruction, SphinxTools.systemPrompt,
-            "If their Mac does not answer a tool, say what you could not read.", memoryPrompt,
+            "If their Mac does not answer a tool, say what you could not read.", memoryPrompt, jobsPrompt,
             """
             \(DeviceStep.post.type) posts a message as the user, but only for an automation they allowed to post when \
             they made it, and only to the chats they allowed then; their Mac refuses anything else, and adds "[Agent] " \
@@ -130,13 +138,29 @@ public enum Orchestrator {
             """,
         ].joined(separator: " ")
 
+    /// What an automation's run is told about jobs: the work its own tools
+    /// cannot do. The job's result reaches the DM by itself (the bridge
+    /// sends the end of a job no DM started), so the run then says nothing.
+    static let jobsPrompt = """
+        Anything to be found out or made that your other tools cannot do (searching the web, reading a page, \
+        running a workflow by name) is a job's: start one with job/start, with the whole task in its prompt \
+        (and the last run's time, written out, when the task says "since the last run"), the automation's \
+        name as its title, and a line asking it to begin its answer with that name in bold. Then reply with \
+        only \(nothingToReport): the job's result reaches the person by itself when it ends. If job/start \
+        fails, reply with what you could not start and why instead. Never start a job with workflow builder: \
+        building or changing a workflow waits for the person.
+        """
+
     // MARK: The host delta
 
     /// What strut's `builder` job (the orchestrator starts it with
     /// `job/start`) may only propose: each call becomes a proposal the person
     /// decides (docs/connectors-and-authoring.md, section 6), never a
     /// publish on its own. `app/publish` publishes an app with its grants.
-    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"]
+    /// `meta/set-automation` is left out, so strut refuses it: a workflow is
+    /// scheduled by an automation whose prompt runs it, made by the
+    /// orchestrator on one card, never by the builder.
+    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish"]
 
     /// What a workflow the builder writes may reach (strut #284): the web
     /// tools and nothing else, no step code, no process, no secret, so the
@@ -152,16 +176,24 @@ public enum Orchestrator {
 
     /// The JSON strut's bundled server reads at boot (`STRUT_HOST_CONFIG`):
     /// Peel's tools and section on the orchestrator, which runs on the
-    /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), the
-    /// builder gated and closed to other struts (`peer: false`), and the
-    /// automation steps' workflow and approval step.
+    /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), its
+    /// calls to an org behind a card, and once a Stadeum workspace is paired,
+    /// strut's own section for a person's orgs (`personal`, strut's
+    /// `personalOrchestratorSystem`); the builder gated and closed to other
+    /// struts (`peer: false`); and the automation steps' workflow and
+    /// approval step.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
-    static func hostConfig(grants: MCPGrants = MCPGrants()) throws -> Data {
+    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
+        let system = [section, personal].compactMap { $0 }.joined(separator: "\n\n")
+        // A call to an org's assistant (a Stadeum workspace paired as a peer) asks the person first, from
+        // the orchestrator or a job it starts: a card on the Mac that names the org and shows the message
+        // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.
+        let approve: AgentKit.JSONValue = [.string(DeviceActions.peerTool)]
         let config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
-                             "system": .string(section), "model": .null],
-            "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string))],
+                             "system": .string(system), "model": .null, "approve": approve],
+            "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
             "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],

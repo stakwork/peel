@@ -24,9 +24,12 @@ public final class BundledStrut {
     /// Which agents reach each MCP server (Connections), kept beside its
     /// data and read into the host delta from its next start.
     public var grants: MCPGrants { MCPGrants.read(in: data) }
-    /// The grants its running process was started with: a change since
-    /// (kept while it was starting) needs one more start.
+    /// The grants and person its running process was started with: a change
+    /// since (kept while it was starting) needs one more start.
     public private(set) var launchedGrants: MCPGrants?
+    private var launchedPerson: String?
+    /// Started with grants or a person that have changed since.
+    public var launchedStale: Bool { launchedGrants.map { $0 != grants || launchedPerson != person } ?? false }
 
     public func keep(_ grants: MCPGrants) throws {
         try grants.write(in: data)
@@ -34,6 +37,12 @@ public final class BundledStrut {
     /// Whether an MCP server on this Mac may be registered
     /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
     public var allowsLocalMCP = false
+    /// The person's actor on their Hive orgs, once paired: the orchestrator
+    /// is then told its peers are those orgs (strut's
+    /// `personalOrchestratorSystem`), from the next start.
+    public var person: String?
+    /// The section last rendered, by person: Node runs once per person, not per start.
+    private var personal: (person: String, text: String)?
 
     private let folder: URL
     private let data: URL
@@ -127,6 +136,38 @@ public final class BundledStrut {
         }
     }
 
+    /// strut's section for `person`'s orgs, rendered by its own code with the
+    /// Node it ships (specs/DESKTOP.md §1), so the words are strut's; off the
+    /// main actor, given ten seconds. Nil when it cannot be: strut then starts
+    /// without it, its orgs still on file.
+    func personalSection(for person: String) async -> String? {
+        if let personal, personal.person == person { return personal.text }
+        let node = folder.appending(path: "native/node"), seed = folder.appending(path: "build/orchestrator-seed.js")
+        let text = await Task.detached { Self.render(node: node, seed: seed, person: person) }.value
+        if let text { personal = (person, text) }
+        return text
+    }
+
+    private nonisolated static func render(node: URL, seed: URL, person: String) -> String? {
+        let render = Process()
+        render.executableURL = node
+        render.arguments = ["--input-type=module", "-e",
+                            "const m = await import(process.argv[1]); process.stdout.write(m.personalOrchestratorSystem(process.argv[2]))",
+                            seed.absoluteString, person]
+        // Nothing of Peel's: only what Node needs to run.
+        render.environment = ["PATH": "/usr/bin:/bin", "HOME": NSTemporaryDirectory()]
+        let output = Pipe()
+        render.standardOutput = output
+        render.standardError = FileHandle.nullDevice
+        guard (try? render.run()) != nil else { return nil }
+        let timer = DispatchWorkItem { if render.isRunning { render.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timer)
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        render.waitUntilExit()
+        timer.cancel()
+        return render.terminationStatus == 0 && !text.isEmpty ? text : nil
+    }
+
     private func launch() async throws -> MemoryServer {
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
@@ -135,9 +176,12 @@ public final class BundledStrut {
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
         let hostConfig = data.appending(path: "host-config.json")
-        let grants = grants
-        try Orchestrator.hostConfig(grants: grants).write(to: hostConfig, options: .atomic)
+        let (grants, person) = (grants, person)
+        var personal: String?
+        if let person { personal = await personalSection(for: person) }
+        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
         launchedGrants = grants
+        launchedPerson = person
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")

@@ -49,6 +49,9 @@ public final class BundledBridge: CustomReflectable {
     private var stdin: Pipe?
     /// The running runner's admin token and the agent it holds.
     private var admin: (token: String, agent: String)?
+    /// The owner as their orgs' struts know them (a Hive pairing's actor):
+    /// runner names them to strut (`x-strut-actor`) from its next start.
+    public var actor: String?
     private var starting: Task<Server, any Error>?
 
     /// How long runner may take to listen, and then to start the bridge once it has the seed.
@@ -292,7 +295,7 @@ public final class BundledBridge: CustomReflectable {
         process.currentDirectoryURL = executable.deletingLastPathComponent()
         process.environment = Self.environment(
             ProcessInfo.processInfo.environment, account: account, strut: strut, port: port, admin: admin, token: token,
-            alias: alias, data: data
+            alias: alias, data: data, actor: actor
         )
         let input = Pipe(), output = Pipe()
         process.standardInput = input
@@ -350,15 +353,30 @@ public final class BundledBridge: CustomReflectable {
         clear(quietly: false)
     }
 
-    /// One admin call, `POST /<route>` with the admin token: refused unless
-    /// it answers 200 (or a status in `allowing`: the seed already set).
-    private static func admin(_ base: URL, _ route: String, _ body: [String: String], token: String, allowing: Set<Int> = []) async throws {
+    /// Hands runner the person's org tokens (`PUT /peers`, sphinx#390), which
+    /// strut never returns: it holds a room on each org's strut with them,
+    /// for the jobs that end there. Replaces what it held; no tokens clears
+    /// them.
+    public func usePeers(actor: String, tokens: [String: String]) async throws {
+        guard let server, let admin else { throw PeelError("Peel's bridge is not running.") }
+        try await Self.admin(server.base, "peers", ["actor": actor, "tokens": tokens], token: admin.token, method: "PUT",
+                             refused: "your Stadeum workspaces")
+    }
+
+    /// One admin call, `POST /<route>` (or `method`) with the admin token:
+    /// refused unless it answers 200 (or a status in `allowing`: the seed
+    /// already set).
+    private static func admin(
+        _ base: URL, _ route: String, _ body: [String: Any], token: String, method: String = "POST",
+        allowing: Set<Int> = [], refused: String? = nil
+    ) async throws {
         let (status, _) = try await Web.requestStrut(
-            "POST", base.appending(path: route), json: JSONSerialization.data(withJSONObject: body),
+            method, base.appending(path: route), json: JSONSerialization.data(withJSONObject: body),
             headers: ["x-admin-token": token], limit: 4096, what: "the bridge's \(route)", timeout: 10
         )
         guard status == 200 || allowing.contains(status) else {
-            throw PeelError("Peel's bridge refused \(route == "seed" ? "the agent's account" : "its owner") (HTTP \(status)).")
+            let what = refused ?? (route == "seed" ? "the agent's account" : "its owner")
+            throw PeelError("Peel's bridge refused \(what) (HTTP \(status)).")
         }
     }
 
@@ -381,7 +399,7 @@ public final class BundledBridge: CustomReflectable {
     /// here, the workflow PR 5 seeds, the agent's session left at runner's default.
     nonisolated static func environment(
         _ inherited: [String: String], account: AgentAccount, strut: MemoryServer, port: Int, admin: String, token: String,
-        alias: String, data: URL
+        alias: String, data: URL, actor: String? = nil
     ) -> [String: String] {
         var environment = inherited.filter { $0.key == "TMPDIR" }
         environment.merge([
@@ -400,6 +418,7 @@ public final class BundledBridge: CustomReflectable {
             // Rocket looks for Rocket.toml up from where it starts: none is read.
             "ROCKET_CONFIG": data.appending(path: "Rocket.toml").path,
         ]) { _, new in new }
+        if let actor { environment["BRIDGE_ACTOR"] = actor }
         return environment
     }
 

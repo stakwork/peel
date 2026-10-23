@@ -80,8 +80,8 @@ struct AgentSettingsSection: View {
                         .fixedSize()
                     }
                 }
-                // Each "Always allow" given on a card, until revoked.
-                ForEach(Array(agent.approvalRules.enumerated()), id: \.element.id) { index, rule in
+                // Each "Always allow" given on a card, until revoked; a workspace's is under Connections.
+                ForEach(Array(agent.approvalRules.filter { $0.tool != DeviceActions.peerTool }.enumerated()), id: \.element.id) { index, rule in
                     Fact(index == 0 ? "Always allowed" : "") {
                         Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
                     } trailing: {

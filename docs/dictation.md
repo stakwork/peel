@@ -123,6 +123,7 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Longest recording | 5 min, then submitted |
 | Format | 16 kHz mono PCM16 WAV |
 | HUD | bottom centre, 56 pt above the visible area |
+| Hands-free tip | after 2 s of holding, until hands-free is used once (5 times at most) |
 | Microphone | on from the key going down to the recording's end, off otherwise |
 
 The key is Right Option for now. Choosing another (R3) is open: the
@@ -144,6 +145,10 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: the HUD teaches hands-free: after 2 s of holding the key, a
+  tip above the pill says "Press Space to keep going hands-free", until
+  hands-free has been used once (`dictation.usedHandsFree`), and 5 times
+  at most for someone who never uses it.
 - 2026-10-23: the mic goes on when the key goes down and off when the
   recording ends (or the press turns out to be a tap). It was kept warm with
   a 200 ms pre-roll, which left the mic indicator on and AirPods in call

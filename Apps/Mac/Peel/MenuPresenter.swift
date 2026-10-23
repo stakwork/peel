@@ -90,11 +90,12 @@ final class MenuPresenter {
 
     /// Opens a menu below a button (`anchor`), moving with it while its
     /// list moves and closing once it is out of sight, unless it has
-    /// nothing in it.
+    /// nothing in it. `edge: .trailing` lines its right edge up with the
+    /// button's, for a button at the end of a row.
     func show(_ entries: [MenuEntry], at anchor: MenuAnchor, source: AnyHashable? = nil,
-              minWidth: CGFloat = 0, highlightChecked: Bool = false) {
+              minWidth: CGFloat = 0, highlightChecked: Bool = false, edge: PopoverEdge = .leading) {
         show(entries, at: anchor.screenRect, in: anchor.window, following: anchor, source: source, minWidth: minWidth,
-             highlightChecked: highlightChecked)
+             highlightChecked: highlightChecked, edge: edge)
     }
 
     /// Opens a menu at a point on the screen (a right-click) from `window`
@@ -104,7 +105,8 @@ final class MenuPresenter {
     }
 
     private func show(_ entries: [MenuEntry], at rect: CGRect, in window: NSWindowRef = nil, following: MenuAnchor? = nil,
-                      source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false) {
+                      source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false,
+                      edge: PopoverEdge = .leading) {
         guard entries.contains(where: { $0.item != nil }) else { return }
         let checked = highlightChecked ? entries.firstIndex { $0.item?.checked == true } : nil
         hideCard()
@@ -114,7 +116,7 @@ final class MenuPresenter {
         #if os(macOS)
         guard let host = window ?? hostWindow else { return dismiss() }
         menuWindow.present(environment(AnyView(MenuPanel(presenter: self))), anchor: rect, from: host,
-                           following: following) { [weak self] in self?.dismiss() }
+                           following: following, lost: { [weak self] in self?.dismiss() }, edge: edge)
         startMonitoring()
         #endif
     }

@@ -190,7 +190,7 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
 | Format | 16 kHz mono PCM16 WAV |
-| HUD | bottom centre, 56 pt above the visible area |
+| HUD | bottom centre, 10 pt above the visible area (just above the Dock) |
 | Microphone | on from the key going down to the recording's end, off otherwise |
 
 The key is Right Option for now. Choosing another (R3) is open: the

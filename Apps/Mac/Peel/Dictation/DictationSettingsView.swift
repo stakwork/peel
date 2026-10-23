@@ -191,7 +191,7 @@ private struct DictationModelSummary: View {
                 status
             }
         } trailing: {
-            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true) }
+            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
                 .buttonStyle(.peel(.outline))
                 .menuAnchor(anchor)
         }

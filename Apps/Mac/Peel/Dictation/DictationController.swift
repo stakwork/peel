@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Observation
 import os
+import PeelAgent
 import PeelUI
 
 /// System-wide dictation, milestone 0: the hotkey, the microphone and the
@@ -34,7 +35,8 @@ final class DictationController {
     @ObservationIgnored private let machine = MachineBox()
     @ObservationIgnored private let capture = DictationAudioCapture()
     @ObservationIgnored private let hud = DictationHUDPanel()
-    @ObservationIgnored private let transcriber: any Transcriber = StubTranscriber()
+    /// Speech-to-text on Peel's own strut, and its model.
+    let speech = DictationSpeech()
     @ObservationIgnored private var tap: DictationHotkeyTap?
     /// What had the keyboard when the key went down: where the text goes.
     @ObservationIgnored private var target: FocusFacts?
@@ -58,6 +60,9 @@ final class DictationController {
     func start() {
         hud.model.accept = { [weak self] in self?.send(.accept) }
         hud.model.cancel = { [weak self] in self?.send(.cancel) }
+        speech.onDownloadWait = { [weak self] in
+            self?.hud.show(.message("Downloading the speech model (\(StrutSpeech.modelSize)), once"))
+        }
         capture.onLevel = { [weak self] level in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.model.push(level) } }
         }
@@ -77,6 +82,14 @@ final class DictationController {
         // A tap made before Accessibility was granted cannot swallow; make it again.
         if isListening && !canSwallow && permissions.accessibility == .granted { stopListening() }
         if isEnabled && permissions.requiredGranted { startListening() } else { stopListening() }
+        // The model is fetched while dictation is on, before the first recording needs it.
+        if isEnabled { speech.prepare() }
+    }
+
+    /// Peel's strut started, stopped or changed (`AppModel.strutChanged`).
+    func strutChanged(_ server: MemoryServer?) {
+        speech.use(server)
+        if isEnabled { speech.prepare() }
     }
 
     func setEnabled(_ on: Bool) {
@@ -247,7 +260,7 @@ final class DictationController {
         if !DictationDefaults.keepMicWarm { capture.stop() }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
         log.info("dictation \(session.id.uuidString) \(session.mode.rawValue) \(session.duration)s")
-        let transcriber = self.transcriber
+        let transcriber = StrutTranscriber(speech: speech)
         let previous = insertion
         insertion = Task {
             defer { try? FileManager.default.removeItem(at: session.audioURL) }
@@ -255,7 +268,7 @@ final class DictationController {
             do {
                 text = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
-                hud.show(.message("Could not transcribe"))
+                hud.show(.message((error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"))
                 return
             }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

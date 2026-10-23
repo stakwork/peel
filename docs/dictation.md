@@ -1,12 +1,12 @@
 # System-wide dictation
 
-Last updated 2026-10-23. **Milestone 0 built (unverified on a Mac):** the
-global hotkey and the capture. A stub stands in for transcription.
+Last updated 2026-10-23. **Milestones 0 and 1 built:** the global hotkey,
+the capture, typing into the focused field, and speech-to-text on Peel's
+own strut.
 
-Hold a key anywhere on the Mac, speak, let go, and the text is typed where
-you were typing. Peel records on this Mac, nothing leaves it. Milestone 1
-(not built) sends the recording to a transcriber; until then the stub's
-words are typed.
+Hold a key anywhere on the Mac, speak, let go, and what you said is typed
+where you were typing. Peel records on this Mac and its own strut, running
+on this Mac, turns it into text: nothing leaves it.
 
 ## How it works
 
@@ -37,7 +37,26 @@ words are typed.
   the key is held, 28 pt with a grey X and a white tick either side when
   hands-free. Fades in over 150 ms, out over 110 ms.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
-  `Transcriber`; `StubTranscriber` returns canned text.
+  `Transcriber`: `StrutTranscriber` (`DictationSpeech`, the app; the HTTP
+  calls are `StrutSpeech`, PeelAgent). `StubTranscriber` stays for tests.
+- **Speech-to-text** (strut's `plans/native-dictation-client.md` §3, §6).
+  Peel's bundled strut (the open account's, started with its agent; never
+  a home server's) is staged with its speech engine, sherpa-onnx, in
+  `native/` (`scripts/stage-strut.sh`, no longer `--no-stt`; +32 MB). The
+  recording's WAV goes to `POST /audio/transcribe?model=zipformer-en-kroko`
+  with the strut's key, and the text comes back cased and punctuated (about
+  1.3 s for a short sentence cold, tens of ms of decoding), on the slow
+  strut session (a download or a long recording outlasts a minute). The
+  model, 57 MB, is fetched once into the account's strut cache, as soon as
+  dictation is on and the strut is up: the app tells dictation whenever
+  its strut starts, stops or changes (`AppModel.strutChanged`), which
+  checks the model again for that strut. A recording that finds it still
+  downloading says so in the HUD, and one made while the strut is starting
+  waits up to 10 s for it. Account › Dictation › Speech shows the state,
+  with Try again after a failure. Strut's refusals come back as
+  `StrutSpeech.Failure`, in Peel's words for the HUD, never strut's own
+  (which can carry its paths). Nothing said is logged. `embed-strut.sh`
+  refuses a stage without the speech engine.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -94,8 +113,12 @@ Keyboard › Press 🌐 key › Do Nothing.
 ## Open
 
 Start and stop sounds; muting system audio while recording; a login item
-(SMAppService); the real transcriber (milestone 1); terminals' bracketed
-paste, remote desktops and input methods for non-Latin scripts, untried; whether a warm mic is acceptable or should start at key-down
+(SMAppService); live text while speaking (strut's `/audio/stream`);
+retrying a recording whose transcription failed (it is deleted); dictation
+when the account's memory is on a home server (no bundled strut runs then);
+learning from corrections (milestone 2); terminals' bracketed paste, remote
+desktops and input methods for non-Latin scripts, untried; whether a warm
+mic is acceptable or should start at key-down
 (a warm Bluetooth headset mic holds AirPods in call quality);
 macOS 13+ is already the minimum (the project targets 15.6).
 
@@ -120,3 +143,8 @@ macOS 13+ is already the minimum (the project targets 15.6).
   in the same app counts as moved focus, the Accessibility check is by
   length, the restore waits 750 ms and never puts a secret back, Peel's
   tap ignores the ⌘V. Not run by hand yet.
+- 2026-10-23: milestone 1, speech-to-text on Peel's own strut. Checked
+  against a real staged strut: the model downloaded in 4.4 s and a `say`
+  sentence came back word for word. Unit tested: `StrutSpeech` against a
+  stub strut (the WAV and key sent, refusals, the model list, the
+  download's events).

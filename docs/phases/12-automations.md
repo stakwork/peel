@@ -186,8 +186,22 @@ use the same strut base URL and the same `Web.isThisMac` check:
   Below them is run history from strut's runs for this automation, each
   delivered result rendered as the agent chat renders it. The schedule is
   changed by asking the agent, which shows strut's sentence on its card.
-- Reads come from strut, every 30 seconds while the view is on screen.
-  Nothing is cached in `peel.sqlite`.
+- Reads come from strut, every 30 seconds while the view is on screen,
+  every 3 while a run is going or starting. Nothing is cached in
+  `peel.sqlite`.
+- **Run now shows it going** (2026-10-23): strut answered a fire before
+  the run was on record, so the read after Run now found nothing going,
+  and strut could cache that run as no automation's until it ended.
+  strut now counts a fired run as its automation's, in flight, from the
+  moment it launches (stakwork/strut#306, which also stops a second fire
+  in that gap). Peel shows "Running…" from the tap (`AutomationsState.firing`,
+  only while strut is asked), then what strut lists; the runs list starts
+  with strut's newest run while it is going and not in the runs yet. Run
+  now from the row's menu also opens the row. Needs the strut pin past
+  #306: on an older strut the row says "Running…" only while it is asked.
+  - Not applied from review: keeping Peel's own record of a fired run
+    until strut lists it (a run id and a two-minute expiry), which worked
+    on any strut; strut owns run state, so the fix went there.
 - **System automations** ([../system-automations.md](../system-automations.md)):
   a "Yours" | "System" choice under the header (`SegmentedChoice`). Yours
   is the above, `peel-automation`'s only. System lists strut's

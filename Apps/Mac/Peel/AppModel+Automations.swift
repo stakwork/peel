@@ -20,6 +20,9 @@ struct AutomationsState: Equatable {
     /// The system automations Peel has turned on once, by workflow, as
     /// last read or written (`Engine.systemAutomationsOn`).
     var turnedOn: Set<String>?
+    /// The automations (by id) whose Run now is being asked of strut: from
+    /// its answer on, strut lists the run as going.
+    var firing: Set<String> = []
 
     /// The person's own: one-offs still to come, then everything
     /// recurring, then one-offs done.
@@ -34,6 +37,11 @@ struct AutomationsState: Equatable {
 
     /// strut's clock is off when an enabled automation's time has passed unrun.
     func schedulerLooksOff(now: Date = .now) -> Bool { shown.contains { $0.isOverdue(now: now) } }
+
+    /// Going, as strut says it, or being asked for.
+    func isRunning(_ automation: Automation) -> Bool { automation.running || firing.contains(automation.id) }
+
+    var anyRunning: Bool { list.contains(where: isRunning) }
 
     /// Automations whose last run failed, the person's and the system's:
     /// the sidebar's badge.
@@ -143,17 +151,19 @@ extension AppModel {
             var list = try await client.list(descriptions: &descriptions)
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
-            automations.descriptions = descriptions
+            if automations.descriptions != descriptions { automations.descriptions = descriptions }
             if automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
             if own, let missed = try? macAgent.deviceCards.revokeGrants(
                 missingFrom: Set(list.filter(\.isYours).map(\.id)), missedBefore: automations.grantsMissed) {
-                automations.grantsMissed = missed
+                if automations.grantsMissed != missed { automations.grantsMissed = missed }
             }
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }
         } catch {
+            // The view's read loop starting again (a run started or ended) is not strut gone.
+            guard !Task.isCancelled else { return }
             automations.problem = PeelError.problem(error, couldNot: "read the automations")
         }
         if !automations.loaded { automations.loaded = true }
@@ -209,8 +219,14 @@ extension AppModel {
         }
     }
 
+    /// Shows it going from the tap: the read after strut's answer lists the run.
     func runAutomationNow(_ automation: Automation) async {
-        await changeAutomations("run \u{201C}\(automation.name)\u{201D}") { try await $0.runNow(automation) }
+        guard !automations.isRunning(automation) else { return }
+        await changeAutomations("run \u{201C}\(automation.name)\u{201D}") { client in
+            automations.firing.insert(automation.id)
+            defer { automations.firing.remove(automation.id) }
+            try await client.runNow(automation)
+        }
     }
 
     func deleteAutomation(_ automation: Automation) async {

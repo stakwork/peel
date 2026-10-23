@@ -43,8 +43,11 @@ struct ConversationRow: View, Equatable {
         case .note:
             RowNote(text: row.message.membershipNote(by: row.sender))
         case .control(let line):
-            if let request = row.agentRequest {
-                AgentRequestLine(request: request)
+            if let reads = row.reads {
+                // A read still on the Mac stands for the line.
+                AgentRequestLine(label: reads.summary, request: reads.waiting)
+            } else if let request = row.agentRequest {
+                AgentRequestLine(label: request.label, request: request)
             } else {
                 RowNote(text: line)
             }
@@ -648,19 +651,23 @@ struct AgentToolLines: View {
 
 /// A request from the agent to the Mac, one quiet line like a tool's:
 /// "Read your unread messages ✓", "Send a message · Waiting for your
-/// approval on your Mac". The phone never answers one (decision 9).
+/// approval on your Mac"; reads back to back as the Mac folds them,
+/// "Checked unread messages and 4 chats ✓". The phone never answers one
+/// (decision 9).
 struct AgentRequestLine: View {
-    let request: AgentRequest
+    let label: String
+    /// How it stands; nil when all of it is done.
+    let request: AgentRequest?
 
     var body: some View {
         // One text, so a long outcome wraps under the words, not beside them;
         // unanswered, it turns too late at its expiry.
-        TimelineView(.redrawing(at: request.changesAt)) { context in
-            if let outcome = request.outcomeElsewhere(at: context.date) {
-                Text("\(request.label) · \(outcome)")
+        TimelineView(.redrawing(at: request?.changesAt)) { context in
+            if let outcome = request?.outcomeElsewhere(at: context.date) {
+                Text("\(label) · \(outcome)")
             } else {
-                Text("\(request.label)  \(Image(systemName: "checkmark"))")
-                    .accessibilityLabel("\(request.label), done")
+                Text("\(label)  \(Image(systemName: "checkmark"))")
+                    .accessibilityLabel("\(label), done")
             }
         }
         .agentLine()

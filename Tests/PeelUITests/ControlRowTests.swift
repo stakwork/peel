@@ -211,4 +211,49 @@ struct ControlRowTests {
         #expect(plain[1].agentRequest?.label == "them: Read a chat" && rows[1].agentRequest?.label == "Read a chat")
         #expect(plain[4].quote != nil && plain[4].agentTools.isEmpty)
     }
+
+    /// A look around the chats is one row in the agent's DM: reads asked
+    /// back to back, done or still on this Mac, fold into the first, which
+    /// a jump to any of them finds; one that failed, a send, or a pause
+    /// breaks the run.
+    @Test func readsBackToBackAreOneRow() throws {
+        // A request at second `n` asking `kind` with `args`, and this Mac's answer with `status`, if any.
+        func read(_ n: Int, _ kind: String, _ args: String = "{}", status: String? = "done") -> [Message] {
+            let asked = message(n, body: controlBody("Peel asked your Mac",
+                peel: #"{"v":1,"op":"request","id":"r_\#(n)","device":"d","kind":"\#(kind)","args":\#(args),"not_after":999}"#))
+            guard let status else { return [asked] }
+            let answer = message(n * 1_000 + 1, fromMe: true, body: controlBody("Peel on your Mac answered",
+                peel: #"{"v":1,"op":"result","re":"r_\#(n)","status":"\#(status)","result":{"text":"ok"}}"#))
+            return [asked, answer]
+        }
+        let look = read(1, "chats.unseen") + read(2, "chats.list") + read(3, "chats.read", #"{"chat":"hive"}"#)
+            + read(4, "chats.read", #"{"chat":"Team Electa"}"#) + read(5, "chats.read", #"{"chat":"hive","limit":5}"#)
+            + read(6, "chats.threads", #"{"chat":"hive"}"#) + read(7, "chats.search", #"{"q":"release"}"#)
+        let rows = ChatRow.rows(look, parents: [:], inTribe: false, people: people, agentDM: true)
+        let row = try #require(rows.first)
+        #expect(rows.count == 1 && row.agentReads.count == 7)
+        // Found by any of its reads, and the newest it holds is its last.
+        #expect(row.holds(uuid(5)) && row.shown.last?.uuid == uuid(7))
+        let reads = try #require(row.reads)
+        #expect(reads.summary == "Checked unread messages, 2 chats, threads and a search")
+        #expect(AgentReads([row.agentReads[1]]).summary == "Checked your chats")
+        #expect(reads.steps.map(\.title) == ["Read your unread messages", "Read your chats", "Read 2 chats",
+                                             "Read threads in a chat", "Searched your messages"])
+        #expect(reads.steps[2].subjects == ["hive", "Team Electa"] && reads.steps[4].subjects == ["“release”"])
+        #expect(reads.span == 6)
+
+        // Still on this Mac, it folds and the line says so; failed, a send, or minutes later: rows of their own.
+        let send = message(14, body: controlBody("Peel asked your Mac",
+            peel: #"{"v":1,"op":"request","id":"r_14","device":"d","kind":"send","args":{},"not_after":999}"#))
+        let broken = read(8, "chats.unseen") + read(9, "chats.list") + read(10, "chats.read", status: nil)
+            + read(11, "chats.list") + read(12, "chats.read", status: "failed") + read(13, "chats.list")
+            + [send] + read(15, "chats.list") + read(400, "chats.list")
+        let brokenRows = ChatRow.rows(broken, parents: [:], inTribe: false, people: people, agentDM: true)
+        #expect(brokenRows.map(\.agentReads.count) == [4, 0, 0, 0, 0, 0])
+        let waiting = AgentReads(brokenRows[0].agentReads)
+        #expect(waiting.waiting?.kind == "chats.read" && waiting.steps[2].done == false && waiting.steps[0].done)
+        #expect(reads.waiting == nil)
+        // Outside the agent chat, each its own row as before.
+        #expect(ChatRow.rows(look, parents: [:], inTribe: false, people: people).count == 7)
+    }
 }

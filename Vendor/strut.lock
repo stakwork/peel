@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #220 (automation grants bound to the automation's id, ctx.automation; params that cannot widen grants; no dead one-offs).
-c180e8f97af4faa8070ed7263b7690748a7bedc0
+# stakwork/strut main at the merge of #285, after #289 (launch params may only add to an approve list), #286, #284 and #281.
+2296d297d9abbf31308ee03b5fd0af64d9c4a29d

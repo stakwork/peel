@@ -196,6 +196,25 @@ use the same strut base URL and the same `Web.isThisMac` check:
   agent's text and its cost). No prompt and no Delete. One muted line
   says which model they run on and which provider sees the memory. The
   badge counts both tabs' failures.
+- **Nothing to report** (2026-10-23): a run whose agent answered
+  NOTHING_TO_REPORT ends in strut as a success whose text is blank lines
+  (the bridge sends nothing for it). Its row says "Nothing to report" with
+  its cost (`AutomationRunRecord.nothing`), not "Didn't finish: no reason
+  given". On the old `peel-automation`, a success with no reply is still a
+  failure.
+- **A run's reads in the agent's DM** (2026-10-23, approved on the "Agent
+  request grouping" canvas: A's line opening into B's steps): reads asked
+  back to back, done or still on the Mac, at most 2 minutes apart, fold
+  into one row (`ChatRow.agentReads`, `AgentReads`): "Checked unread
+  messages, 2 chats, threads and a search ✓ · 16 s", opening into a step
+  per kind with the chats it covered, each opening its chat. A send, an
+  approval, a calendar change, or a read that failed or was refused keeps
+  its own row. The iPhone shows the line only.
+  - Not done: the group does not name the automation (reads carry no run
+    id; the read steps would have to send one); the opened steps link the
+    chats but not the messages each read covered, which a lone read's row
+    shows; and a run with nothing to report still leaves its reads with no
+    line after them.
 
 ## Delivery
 

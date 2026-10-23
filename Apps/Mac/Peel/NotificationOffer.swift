@@ -6,18 +6,34 @@ struct NotificationOffer: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        OfferBar(
+            icon: "bell", text: "Get notified about new messages?", action: "Turn on notifications",
+            dismiss: model.dismissNotificationOffer, accept: { Task { await model.enableNotifications() } }
+        )
+    }
+}
+
+/// A one-line offer at the foot of the window: "Not now", or yes.
+struct OfferBar: View {
+    let icon: String
+    let text: String
+    let action: String
+    let dismiss: () -> Void
+    let accept: () -> Void
+
+    var body: some View {
         HStack(spacing: Theme.Space.md) {
-            Image(systemName: "bell")
+            Image(systemName: icon)
                 .foregroundStyle(Theme.secondaryText)
-            Text("Get notified about new messages?")
+            Text(text)
                 .font(Theme.font(13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // The text gives way, never the buttons: their labels keep one line.
             Group {
-                Button("Not now") { model.dismissNotificationOffer() }
+                Button("Not now", action: dismiss)
                     .buttonStyle(.peel(.outline, size: .sm))
-                Button("Turn on notifications") { Task { await model.enableNotifications() } }
+                Button(action, action: accept)
                     .buttonStyle(.peel(.primary, size: .sm))
             }
             .fixedSize()

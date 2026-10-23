@@ -270,7 +270,11 @@ threads, limit) and its rows built (count, the "New messages" row); and
 each list's table (`MessageTable`): its appear (rows, where it opens), each
 change of rows and the move it made (`rows 200->201 move newest
 animated`), each move outside a change (a jump, the pill) and its
-dismantle. Never message text, names, keys, ids or amounts. The log changes
+dismantle; and `height row <n> drawn=… slot=… held=… w=…` when a row's
+cell draws it at another height than the table gave it, not because the
+cell's content changed (the row's height, or its slot, went from what the
+cell draws), which the list then corrects: the cause of rows drawn over
+each other, should it come back. Never message text, names, keys, ids or amounts. The log changes
 nothing about how a list runs.
 
 ## List journeys
@@ -290,7 +294,9 @@ the list runs, unlike the timeline log's `scrollTargetLayout`; outside
 the offscreen mode nothing is registered. `scripts/journeys/evaluate.py`
 judges the probe files against each drive's `// check:` lines: any frame
 where the reading row moved more than 1 pt (or the bottom left its end)
-in a journey that must hold it, any blank frame, and the landing.
+in a journey that must hold it, any blank frame, any row drawn over its
+neighbours (its cell's content taller than its slot) for more than two
+frames or at the end, and the landing.
 
 ```sh
 scripts/test-stack.sh start                             # its PEEL_STACK_DIR
@@ -323,7 +329,13 @@ only the offscreen mode draws at its top left, `ListProbe.drawnPanel`) and
 the control message journeys (`control-*`: the peer's control message,
 `send-control`, arriving with the chat scrolled up, at its bottom, while
 the tribe is open, and on a bounce back to the tribe; each a quiet line,
-the list held or placed as for any arrival). A step waits
+the list held or placed as for any arrival) and
+`notification-thread-move` (a reply in the tribe's thread, its row
+between two of your messages (`// before: thread-between`), arriving with
+another chat open; its notification clicked, the thread then closed: no
+row drawn over another) and `height-heal` (`mismeasure` gives a row a
+height its cell does not draw; it is corrected in the next layout pass).
+A step waits
 0.3 s after it, or its `"next"` seconds.
 
 The agent chat's journeys (`agent-*`) give the agent an earlier chat of

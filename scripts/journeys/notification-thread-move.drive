@@ -1,0 +1,22 @@
+// A reply in a tribe's thread arrives while another chat is open, the
+// thread's row between two of your messages, and its notification is
+// clicked: the tribe opens with the thread beside it, the thread's row now
+// below your messages and the two in one run, then the thread closes and
+// the tribe widens again. No row is drawn over another at any point (Tom,
+// 2026-10-21: two rows drawn over each other in a tribe after a
+// notification's click).
+// needs: peer
+// before: thread-between
+// check: notification
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"select": "{{other}}"}
+{"wait": 1}
+{"signal": "peer-replies-thread"}
+{"unread": "{{tribe}}"}
+{"probe": "notification", "for": 8}
+{"notification": "{{tribe}}"}
+{"wait": 2.5}
+{"close": "thread"}
+{"wait": 4.5}

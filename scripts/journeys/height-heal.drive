@@ -1,0 +1,13 @@
+// A row given a height its cell does not draw (a measurement that
+// disagreed with the cell, whatever made it): the list puts back the
+// height its cell draws in the next layout pass, so the row is drawn over
+// its neighbour for a frame at most, never left there.
+// check: heal
+{"width": 1180}
+{"select": "{{tribe}}"}
+{"wait": 2}
+{"probe": "heal", "for": 2.5}
+{"mismeasure": 0}
+{"wait": 0.5}
+{"mismeasure": 2}
+{"wait": 1.5}

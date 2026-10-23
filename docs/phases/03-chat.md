@@ -3294,3 +3294,42 @@ Xcode's debug dylib, which the signing left unsigned. On a stack running
 for over an hour the tribes server refused the peer's posts ("Upstream
 node set CLTV to less than the CLTV set by the sender"); restarting its
 mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
+
+### Rows drawn over each other (2026-10-22)
+
+Tom saw two rows in a tribe drawn over each other after clicking a
+notification: a three-line message's slot about 95 pt short of its
+content (SwiftUI centres content taller than its hosting view, so it
+spilled into the rows either side). Not reproduced in ten offscreen
+journeys on a seeded stack: a notification from another chat, a thread
+reply moving the collapsed thread past two of your messages (his layout),
+the thread panel opening and closing (919 -> 558 -> 919 pt), the window
+hidden when the reply came, with and without the click. Boosts could not
+be sent on the local stack (the mixer's CLTV refusal). The likely real
+path is an animated jump in a chat already open in a background window
+(the open chat notifies while Peel is not frontmost), which offscreen
+cannot drive: `animate` places at once with no screen.
+
+The design hole: a cell's report (`onGeometryChange`, fired only when its
+size changes) was compared with the engine's height cache, never with
+the table's slot, so once the cache or the slot went from what a cell
+draws, nothing put it right. Now each cell's drawn size is kept
+(`drawn`), reported once after every `show` (the report carries the
+show's number), and a row whose cell draws another height than its
+height or slot is set to the drawn one in the next layout pass
+(`applyDrawn`), whether its content changed or a measurement disagreed
+with it (`noteHeights`). That second case writes a timeline-log line,
+`height row <n> drawn=… held=… w=…`, so a recurrence on Tom's Mac names
+its cause. The probe records each row's drawn height and `evaluate.py`
+fails any journey with a row drawn over its neighbours for more than two
+frames or at the end; `height-heal` forces the disagreement
+(`mismeasure`) and fails without the fix (two rows overlapping to the
+end), `notification-thread-move` drives Tom's journey (`// before:
+thread-between`).
+
+Review findings not applied: the drawn size is not kept on `HostCell`
+and checked in its `setFrameSize` (the parent's layout pass runs before a
+re-shown cell's new report, so it would put back the old height for a
+frame); `mismeasure` stays on `MessageTableHost`, guarded offscreen-only;
+the `before: thread-between` sends do not stop the run when the stack
+refuses them (the journey then fails at its `unread` step).

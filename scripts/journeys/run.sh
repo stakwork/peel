@@ -16,7 +16,10 @@
 # a control message (a request, docs/agent-on-strut.md) in the chat. With --peer, each journey starts
 # with the chat read, and the journeys marked `// needs: peer` run too:
 # that profile sends into the chat when a drive signals it, and its key
-# marks the chat unread for `// before: unread <n>`. Without it they are
+# marks the chat unread for `// before: unread <n>`; `// before:
+# thread-between` has <me> post a long message in the tribe, the peer reply
+# in t210's thread (its row then below that message) and <me> post again,
+# so the thread's row sits between two of <me>'s. Without it they are
 # skipped. Results go to .build/journeys/<journey>/. Exits 1 if any
 # failed. PEEL_BUILD_LOCK names the build lock (default
 # $TMPDIR/peel-build.lock).
@@ -63,6 +66,9 @@ incoming() {
         | tail -n "$1" | head -n 1
 }
 
+# The uuid of the tribe's thread its message t210 started.
+t210() { peel "$PEER" threads | awk '/ t210 / { print prev } { prev = $2 }' | head -n 1; }
+
 failed=0
 for drive in "$HERE"/*.drive; do
     journey=$(basename "$drive" .drive)
@@ -90,6 +96,14 @@ sys.stdout.write(text)' "$drive" "$CHAT" "$OTHER" "$TRIBE_NAME" >"$OUT/journey.d
         index=$(incoming "$unread")
         peel "$ME" mark-unread "$PEER_KEY" "$index" --wait 3 >/dev/null 2>&1
     fi
+    if grep -q '^// before: thread-between$' "$drive"; then
+        peel "$ME" send "$TRIBE" "a long message from the journey check, over three lines at the usual width: \
+heads up, out this afternoon, on the phone for the rest of the day, so replies will be slow" --wait 3 >/dev/null 2>&1
+        peel "$PEER" send "$TRIBE" "a thread reply from the journey check" --thread "$(t210)" --wait 3 >/dev/null 2>&1
+        peel "$ME" send "$TRIBE" "a second message from the journey check, two lines at the usual width, \
+after the thread's row" --wait 3 >/dev/null 2>&1
+        peel "$ME" read "$TRIBE" --wait 3 >/dev/null 2>&1
+    fi
 
     lockf "$LOCK" scripts/check-app.sh "$ME" "$OUT/journey.drive" "$OUT" >"$OUT/check.log" 2>&1 &
     CHECK=$!
@@ -107,8 +121,7 @@ sys.stdout.write(text)' "$drive" "$CHAT" "$OTHER" "$TRIBE_NAME" >"$OUT/journey.d
                     peel "$PEER" send-control "$ME_KEY" "$envelope" "Peel asked your Mac to read your unread messages" --wait 2 >/dev/null 2>&1 & ;;
                 peer-posts-tribe) peel "$PEER" send "$TRIBE" "a tribe message from the journey check" --wait 2 >/dev/null 2>&1 & ;;
                 peer-replies-thread)
-                    uuid=$(peel "$PEER" threads | awk '/ t210 / { print prev } { prev = $2 }' | head -n 1)
-                    peel "$PEER" send "$TRIBE" "a thread reply from the journey check" --thread "$uuid" --wait 2 >/dev/null 2>&1 & ;;
+                    peel "$PEER" send "$TRIBE" "a thread reply from the journey check" --thread "$(t210)" --wait 2 >/dev/null 2>&1 & ;;
             esac
         done
         sleep 0.2

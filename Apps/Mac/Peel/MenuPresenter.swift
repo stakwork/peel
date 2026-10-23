@@ -460,9 +460,17 @@ private struct MenuRow: View {
             }
             .font(.system(size: 12, weight: confirming ? .bold : .regular))
             .frame(width: 16)
-            Text(confirming ? item.confirm ?? item.title : item.title)
-                .font(Theme.font(13, confirming ? .bold : .regular))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(confirming ? item.confirm ?? item.title : item.title)
+                    .font(Theme.font(13, confirming ? .bold : .regular))
+                    .lineLimit(1)
+                if let subtitle = item.subtitle, !confirming {
+                    Text(subtitle)
+                        .font(Theme.font(12))
+                        .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 16)
             if confirming {
                 Text("Click again")
@@ -483,7 +491,8 @@ private struct MenuRow: View {
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
         .padding(.horizontal, Theme.Space.sm)
-        .frame(height: 28)
+        .frame(minHeight: 28)
+        .padding(.vertical, item.subtitle == nil ? 0 : 4)
         .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

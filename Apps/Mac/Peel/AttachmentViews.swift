@@ -50,13 +50,13 @@ enum AttachmentFormat {
         bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
     }
 
-    /// "2.1 of 3.4 MB".
+    /// "2.1 of 3.4 MB", or "284.9 MB of 1.11 GB" when the units differ.
     static func progress(_ bytes: Int64, of total: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        let whole = formatter.string(fromByteCount: total)
-        formatter.includesUnit = false
-        return "\(formatter.string(fromByteCount: bytes)) of \(whole)"
+        let done = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        let whole = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        let unit = { (s: String) in s.split(separator: " ").last }
+        guard unit(done) == unit(whole), let number = done.split(separator: " ").first else { return "\(done) of \(whole)" }
+        return "\(number) of \(whole)"
     }
 
     /// What a file is, from its name: "PDF document", "Markdown".

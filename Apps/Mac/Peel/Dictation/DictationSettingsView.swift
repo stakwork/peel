@@ -34,17 +34,6 @@ struct DictationSettingsSection: View {
                     Text("Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.").muted()
                 }
             }
-            Fact("Speech") {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(speechText)
-                    Text("Recognised by Peel's own strut, on this Mac. Nothing you say leaves it.").muted()
-                }
-            } trailing: {
-                if case .failed = dictation.speech.model {
-                    Button("Try again") { Task { try? await dictation.speech.ensureModel() } }
-                        .buttonStyle(.peel(.outline))
-                }
-            }
             Fact("Vocabulary") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(vocabularyText)
@@ -76,17 +65,6 @@ struct DictationSettingsSection: View {
         if dictation.lingo.problem != nil { return "Not available: Peel's strut can't read it" }
         let count = dictation.lingo.lexicon.entries.filter { !$0.heard.isEmpty }.count
         return count == 0 ? "No words yet" : count == 1 ? "1 word" : "\(count) words"
-    }
-
-    private var speechText: String {
-        let size = StrutSpeech.modelSize
-        return switch dictation.speech.model {
-        case .waiting: "Waiting for Peel's strut to start"
-        case .checking: dictation.isEnabled ? "Getting the English model ready…" : "English model (\(size)) downloads when dictation is on"
-        case .downloading: "Downloading the English model (\(size))…"
-        case .installed: "Ready"
-        case .failed(let why): why
-        }
     }
 
     private var stateText: String {
@@ -135,88 +113,98 @@ struct DictationMenuItem: View {
     }
 }
 
-/// Account › Dictation's two pickers: the speech model and the fixer, each
-/// model with its size and what it is for. Select downloads it first if it
-/// has to (its progress shown), and strut uses it once it is there; an
-/// installed model can be removed, but for the default speech model, which
-/// dictation falls back on.
+/// Account › Dictation's models, one row for each job: the model doing it
+/// and what it does for you, with Change to pick another. A pick that
+/// isn't on this Mac downloads first (its progress shown) and strut
+/// switches to it once it's there.
 private struct DictationModelsSection: View {
     let models: DictationModels
+    private var dictation: DictationController { .shared }
 
     var body: some View {
         let speech = models.models.filter { $0.kind == .speech }
         let fixers = models.models.filter { $0.kind == .fixer }
         VStack(alignment: .leading, spacing: 6) {
             if !speech.isEmpty {
-                SettingsSection("Speech model") {
-                    ForEach(speech) { DictationModelRow(models: models, model: $0) }
+                SettingsSection("Speech to text") {
+                    DictationModelSummary(models: models, kind: .speech, choices: speech, learned: nil)
                 }
             }
             if !fixers.isEmpty {
-                SettingsSection("Fixer") {
-                    ForEach(fixers) { DictationModelRow(models: models, model: $0) }
-                    Fact("None") {
-                        Text("Dictation types what it hears, with your vocabulary.").muted()
-                    } trailing: {
-                        DictationModelChoice(selected: !fixers.contains(where: \.selected)) { await models.selectNoFixer() }
-                    }
+                SettingsSection("Clean-up and learning") {
+                    DictationModelSummary(models: models, kind: .fixer, choices: fixers, learned: learnedCount)
                 }
-                Text("A fixer is a small model on this Mac that puts right what dictation mishears and learns from your edits.")
-                    .muted()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 4)
             }
-            if let problem = models.problem {
-                Text(problem)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.attention)
-                    .padding(.horizontal, 4)
-            }
+            Text(models.problem ?? "Runs on this Mac. Nothing you say leaves it.")
+                .font(Theme.font(12))
+                .foregroundStyle(models.problem == nil ? Theme.secondaryText : Theme.attention)
+                .padding(.horizontal, 4)
         }
         .task { await models.load() }
     }
+
+    private var learnedCount: Int {
+        dictation.lingo.lexicon.entries.filter { !$0.heard.isEmpty }.count
+    }
 }
 
-/// One model: its name, size and use, a download's progress or failure,
-/// Select or the check, and Remove once it is on this Mac.
-private struct DictationModelRow: View {
+/// One job's row: an icon, the picked model's name, what it does, its size
+/// (and, for clean-up, how many words it has learned), a download under
+/// way, and Change, which opens the choices beside it.
+private struct DictationModelSummary: View {
+    @Environment(\.menuPresenter) private var presenter
     let models: DictationModels
-    let model: DictationModel
-    @State private var removing = false
+    let kind: DictationModel.Kind
+    let choices: [DictationModel]
+    /// Words learned, for clean-up.
+    let learned: Int?
+    @State private var anchor = MenuAnchor()
+
+    /// Nil for clean-up when none is picked: Off.
+    private var picked: DictationModel? { choices.first(where: \.selected) }
 
     var body: some View {
-        Fact(Self.name(model)) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(AttachmentFormat.size(model.bytes) ?? "") · \(Self.blurb(model))")
-                    .muted()
-                    .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+            Image(systemName: kind == .speech ? "waveform" : "wand.and.stars")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(picked.map(Self.name) ?? "Off")
+                Text(summary).muted().fixedSize(horizontal: false, vertical: true)
                 status
             }
-        } trailing: {
-            HStack(spacing: Theme.Space.sm) {
-                if !removing {
-                    DictationModelChoice(selected: model.selected) { await models.select(model) }
-                }
-                if model.state == .installed, model.id != StrutSpeech.model {
-                    InlineConfirm(trigger: "Remove", confirm: "Remove", confirming: $removing) {
-                        await models.remove(model)
-                    }
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true) }
+                .buttonStyle(.peel(.outline))
+                .menuAnchor(anchor)
         }
+        .font(Theme.font(13))
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, 10)
+    }
+
+    private var summary: String {
+        guard let picked else { return Self.offText }
+        var parts = [Self.blurb(picked)]
+        if let size = AttachmentFormat.size(picked.bytes) { parts.append(size) }
+        if let learned, picked.state == .installed {
+            parts.append(learned == 1 ? "1 word learned" : "\(learned) words learned")
+        }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder private var status: some View {
-        if model.state == .downloading {
+        if let picked, picked.state == .downloading {
             VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: model.progress ?? 0)
+                ProgressView(value: picked.progress ?? 0)
                     .tint(Theme.accent)
-                    .frame(maxWidth: 220)
-                Text(downloadText).muted().monospacedDigit()
+                    .frame(maxWidth: 240)
+                Text(Self.downloadText(picked)).muted().monospacedDigit()
             }
             .padding(.top, 2)
-        } else if let error = model.error {
-            Text("The download failed: " + error)
+        } else if let failed = choices.first(where: { $0.error != nil }), let error = failed.error {
+            Text("\(Self.name(failed)) didn't download: \(error)")
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.attention)
                 .lineLimit(2)
@@ -224,10 +212,38 @@ private struct DictationModelRow: View {
         }
     }
 
-    private var downloadText: String {
+    /// Each choice with what it means; Off for clean-up; Remove for what is
+    /// on this Mac but not in use (never the speech model dictation falls back on).
+    private func entries() -> [MenuEntry] {
+        var picks: [MenuEntry] = []
+        if kind == .fixer {
+            picks.append(.button("Off", subtitle: Self.offText, checked: picked == nil) {
+                Task { await models.selectNoFixer() }
+            })
+        }
+        for model in choices {
+            let size = AttachmentFormat.size(model.bytes).map { " · \($0)" } ?? ""
+            let later = model.state == .installed ? "" : " Downloads first."
+            let lead = model.id == Self.recommended ? "Recommended. " : ""
+            picks.append(.button(Self.name(model) + size, subtitle: lead + Self.blurb(model) + later, checked: model.selected) {
+                Task { await models.select(model) }
+            })
+        }
+        let removable = choices.filter { $0.state == .installed && !$0.selected && $0.id != StrutSpeech.model }
+        let removals: [MenuEntry] = removable.map { model in
+            .destructive("Remove \(Self.name(model))", confirm: "Remove \(Self.name(model)) from this Mac") {
+                Task { await models.remove(model) }
+            }
+        }
+        return .sections(picks, removals)
+    }
+
+    static let offText = "No clean-up, nothing learned."
+    static let recommended = "qwen3-1.7b-q4"
+
+    static func downloadText(_ model: DictationModel) -> String {
         let done = model.progress.map { AttachmentFormat.progress(Int64(Double(model.bytes) * $0), of: model.bytes) }
-        let progress = done.map { "Downloading, \($0)" } ?? "Downloading…"
-        return model.selected ? progress + ". Used once it's here." : progress
+        return (done.map { "Downloading \($0)" } ?? "Downloading…") + ". Switches over when it's done."
     }
 
     /// Peel's names for the models it knows; any other by its id.
@@ -241,43 +257,14 @@ private struct DictationModelRow: View {
         }
     }
 
-    /// What it is for, in a few words; strut's own description for a model Peel doesn't know.
+    /// What it does for you; strut's own description for a model Peel doesn't know.
     static func blurb(_ model: DictationModel) -> String {
         switch model.id {
-        case "zipformer-en-kroko": "The default. Quick and light."
-        case "parakeet-tdt-en-0.6b-v2": "More accurate, a little slower."
-        case "qwen3-0.6b-q4": "The quickest, less sure what you meant."
-        case "qwen3-1.7b-q4": "Recommended. Better at telling a mishearing from a new word."
+        case "zipformer-en-kroko": "Fastest and smallest."
+        case "parakeet-tdt-en-0.6b-v2": "More accurate with names and jargon."
+        case "qwen3-0.6b-q4": "Small and capable."
+        case "qwen3-1.7b-q4": "Most accurate at learning your lingo."
         default: model.description
-        }
-    }
-}
-
-/// The picked one's check, or Select.
-private struct DictationModelChoice: View {
-    let selected: Bool
-    let select: () async -> Void
-    @State private var working = false
-
-    var body: some View {
-        if selected {
-            Image(systemName: "checkmark")
-                .font(Theme.font(13, .semibold))
-                .foregroundStyle(Theme.accent)
-                .frame(minWidth: 28)
-                .accessibilityLabel("Selected")
-        } else {
-            Button {
-                working = true
-                Task {
-                    await select()
-                    working = false
-                }
-            } label: {
-                Text("Select").buttonProgress(working, size: .small)
-            }
-            .buttonStyle(.peel(.outline))
-            .disabled(working)
         }
     }
 }

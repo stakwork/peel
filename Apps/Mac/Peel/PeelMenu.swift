@@ -33,6 +33,8 @@ struct MenuShortcut: Equatable {
 
 struct MenuItem {
     var title: String
+    /// A muted line under the title: what choosing it means.
+    var subtitle: String?
     var systemImage: String?
     var shortcut: MenuShortcut?
     var checked = false
@@ -62,10 +64,10 @@ enum MenuEntry {
     case divider
 
     static func button(
-        _ title: String, systemImage: String? = nil, shortcut: MenuShortcut? = nil, checked: Bool = false,
-        action: @escaping @MainActor () -> Void
+        _ title: String, subtitle: String? = nil, systemImage: String? = nil, shortcut: MenuShortcut? = nil,
+        checked: Bool = false, action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, shortcut: shortcut, checked: checked) {
+        .item(MenuItem(title: title, subtitle: subtitle, systemImage: systemImage, shortcut: shortcut, checked: checked) {
             action()
             return true
         })

@@ -80,6 +80,11 @@ public final class AppModel {
         case chat(String)
     }
 
+    /// Account's categories, listed where the sidebar was while it is open.
+    public enum AccountPage: Hashable, Sendable, CaseIterable {
+        case profile, payments, assistant, brain, connections, dictation, notifications, security
+    }
+
     public var phase: Phase = .loading {
         // Locked, no call is watched.
         didSet {
@@ -100,6 +105,7 @@ public final class AppModel {
     public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
+            if destination == .account, oldValue != .account { accountReturn = oldValue }
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
@@ -356,20 +362,24 @@ public final class AppModel {
             if chat == nil { agentUnanswered = nil }
             // Not as the account closes, which takes the agent first.
             if let old, agent != nil, destination == .chat(old) { destination = .agent }
+            // The same for where Account's Chats goes back to (the brain moved from Account › Brain).
+            if let old, agent != nil, accountReturn == .chat(old) { accountReturn = .agent }
             if selectedChat == chat || selectedChat == old { rebuildChatRows() }
         }
         if destination == .agent, let agentChat { destination = .chat(agentChat) }
     }
-    /// Bumped to open Account › Brain's home server form, as its "Connect a
-    /// home server…" or "Change" would (the offscreen driver's `brain-form`).
-    public var brainFormOpened = 0
-    /// Bumped to ask "Switch back to this Mac?" in Account › Brain, as its
-    /// "Use this Mac" would (the offscreen driver's `brain-leave`).
-    public var brainLeaveOpened = 0
+    /// Asked of Account › Brain until it is shown, which takes it: its home
+    /// server form, as "Connect a home server…" or "Change" opens it, or
+    /// "Switch back to this Mac?", as "Use this Mac" asks (the offscreen
+    /// driver's `brain-form` and `brain-leave`).
+    public var brainAsk: BrainAsk?
+    public enum BrainAsk: Sendable { case form, leave }
     /// Where the Connect panel is open from, if it is.
     public var agentConnectFrom: AgentConnectSource?
-    /// Account opens at the Peel agent section (`openAgentSettings`).
-    public var showsAgentSettings = false
+    /// The Account category shown, kept while Account is closed (`openAccount`).
+    public var accountPage = AccountPage.profile
+    /// What Account's Chats goes back to: what was open before it (`closeAccount`).
+    private var accountReturn: Destination?
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -440,6 +450,27 @@ public final class AppModel {
     public func openUnread(by offset: Int) {
         guard takesCommands, let chat = sidebarSections.unread(from: selectedChat, by: offset) else { return }
         destination = .chat(chat)
+    }
+
+    /// Account, at one of its categories: the agent chat's gear, a pairing
+    /// link, the dictation offer.
+    public func openAccount(_ page: AccountPage) {
+        accountPage = page
+        destination = .account
+    }
+
+    /// Account's Chats: back to what was open before, unless it went
+    /// meanwhile (a chat left or deleted, the agent's chat or automations
+    /// with the agent gone).
+    public func closeAccount() {
+        switch accountReturn {
+        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }):
+            destination = nil
+        case .agent? where agent == nil, .automations? where agent == nil:
+            destination = nil
+        default:
+            destination = accountReturn
+        }
     }
 
     /// The open account's database while it is unlocked; nil when locked,
@@ -1234,6 +1265,8 @@ public final class AppModel {
         pendingInvites = []
         focus = nil
         destination = nil
+        accountPage = .profile
+        brainAsk = nil
         searchQuery = ""
         timeline = .empty
         openThread = nil

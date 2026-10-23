@@ -20,8 +20,6 @@ final class ConnectionsState {
     var problem: String?
     /// Read from strut at least once since it started.
     var loaded = false
-    /// Asked to be shown: Account scrolls to it each time this moves.
-    var opened = 0
 
     func reset() {
         servers = []

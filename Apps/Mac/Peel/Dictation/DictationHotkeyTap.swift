@@ -100,7 +100,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
         // The system turns a slow or disturbed tap off without telling anyone
         // else; this notices when the callback's own notice was missed.
         let watchdog = Timer(timeInterval: Self.watchdogInterval, repeats: true) { [weak self] _ in
-            self?.watch(created)
+            self?.watch()
         }
         RunLoop.current.add(watchdog, forMode: .common)
         started.signal()
@@ -112,8 +112,10 @@ final class DictationHotkeyTap: @unchecked Sendable {
         CFMachPortInvalidate(created)
     }
 
-    private func watch(_ tap: CFMachPort) {
-        if !CGEvent.tapIsEnabled(tap: tap) { CGEvent.tapEnable(tap: tap, enable: true) }
+    private func watch() {
+        if let tap = lock.withLock({ self.tap }), !CGEvent.tapIsEnabled(tap: tap) {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
         releaseIfStuck()
     }
 

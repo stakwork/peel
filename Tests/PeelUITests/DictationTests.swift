@@ -101,7 +101,8 @@ struct DictationStateMachineTests {
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
         #expect(m.handle(.hotkeyDown(isRepeat: true), at: 0.05).effects.isEmpty)
         #expect(m.phase == .pending(since: 0))
-        #expect(machine().handle(.hotkeyDown(isRepeat: true), at: 0).effects.isEmpty)
+        var fresh = machine()
+        #expect(fresh.handle(.hotkeyDown(isRepeat: true), at: 0).effects.isEmpty)
     }
 
     @Test func anotherKeyBeforeTheThresholdMeansAShortcut() {
@@ -149,7 +150,8 @@ struct HotkeyConfigTests {
 
     @Test func roundTripsThroughEncoding() throws {
         let key = HotkeyConfig.key(code: 40, character: "k")
-        let back = try #require(HotkeyConfig.decode(try #require(key.encoded())))
+        let data = try #require(key.encoded())
+        let back = try #require(HotkeyConfig.decode(data))
         #expect(back == key)
         #expect(back.label == "K")
         #expect(!back.isModifier)

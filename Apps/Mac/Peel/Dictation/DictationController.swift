@@ -12,7 +12,7 @@ final class DictationController {
     static let shared = DictationController()
 
     let permissions = DictationPermissions()
-    private(set) var settings = DictationSettings()
+    private(set) var settings: DictationSettings
 
     /// What the user chose; before they do, on once permissions are granted.
     var isEnabled: Bool {
@@ -43,6 +43,9 @@ final class DictationController {
     @ObservationIgnored private let log = Logger(subsystem: "chat.sphinx.peel", category: "dictation")
 
     private init() {
+        // @Observable makes `settings` computed, so read a local copy before init completes.
+        let settings = DictationSettings()
+        self.settings = settings
         hotkey = settings.hotkey
         stored = settings.storedEnabled
         offerDismissed = settings.offerDismissed

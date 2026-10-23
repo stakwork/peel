@@ -107,6 +107,10 @@ is a short plan. Update the status and the journal when you finish something.
     threads collapsed), `thread(_:in:)`, `threads()`, `threads(in:limit:)`
     (one chat's, whoever wrote), parents, boosts and
     thread summaries
+  - `Storage+Dictation.swift` — Dictation History on the Mac
+    (`DictationRecord`, `dictation`, v28): kept with a keep time that
+    drops older ones, watched newest first, cleared. Tested in
+    `DictationHistoryTests`
   - `Storage+DeviceRequests.swift` — the device requests' ledger
     (`deviceRequest`, a request's id within its agent): `admit` (the
     stored row wins; a message seen before is not a new copy), `claim` and
@@ -446,7 +450,8 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationTextInserter` (the focused element, Accessibility or ⌘V with
   the clipboard put back), `DictationSpeech` (speech-to-text on the open
   account's own strut, told of it by `AppModel.strutChanged`, and its
-  model; `StrutTranscriber`),
+  model; `StrutTranscriber`), `DictationHistoryView` (the History window:
+  each dictation by day, with Copy and Clear History),
   `DictationPermissions`, and the Account section, offer and menu item in
   `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's

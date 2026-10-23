@@ -61,8 +61,26 @@ on this Mac, turns it into text: nothing leaves it.
   waits up to 10 s for it. Account › Dictation › Speech shows the state,
   with Try again after a failure. Strut's refusals come back as
   `StrutSpeech.Failure`, in Peel's words for the HUD, never strut's own
-  (which can carry its paths). Nothing said is logged. `embed-strut.sh`
+  (which can carry its paths). Nothing said is logged; what is kept is
+  History's, below. `embed-strut.sh`
   refuses a stage without the speech engine.
+- **History** (`DictationRecord`, PeelCore's `dictation` table, v28; the
+  window `DictationHistoryView`). Each dictation is kept in the open
+  account's own database, on by default, for 30 days (dropped as each new
+  one is kept), and goes with the account: the text that was typed or
+  copied, when, how long, the app's id and name (never its window title)
+  and where the text went (typed; copied, and why; blocked: a password
+  field, no text; failed, and why). Never the recording, which is still
+  deleted once transcribed. Nothing is kept, and the window shows nothing,
+  while the account is locked (`AppModel.unlockedStorage` is nil: locking
+  leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
+  window (app menu › Dictation History…, or Open in Settings) lists the
+  newest 500 by day with Copy and Clear History; opening it also drops what
+  is past 30 days. Clear overwrites the text in the file (`secure_delete`)
+  and folds in the log. A "Copied: press ⌘V" note adds "(also in History)"
+  only when it was kept. Time and account are taken when the key is let go.
+  Strut's sessions are not used: they keep the recogniser's raw text with
+  no app or outcome, and cannot be cleared.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -130,6 +148,10 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: History (step 0 of the dictation lingo design): on by default,
+  30 days, text only. Not built from that design yet: a choice of keep
+  time, deleting one entry, opening the window at an entry from the HUD,
+  and the one-time HUD note about History.
 - 2026-10-20: milestone 0 written without a Mac to run it. Unit tested:
   the state machine, hotkey encoding and flags, pre-roll ring, PCM and
   level maths, WAV writer. Not run: the real tap, capture, HUD focus,

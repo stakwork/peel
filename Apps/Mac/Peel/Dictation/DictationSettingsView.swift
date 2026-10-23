@@ -5,6 +5,7 @@ import PeelUI
 
 /// Account › Dictation: on or off, the key (Right Option for now), and what macOS has been asked for.
 struct DictationSettingsSection: View {
+    @Environment(\.openWindow) private var openWindow
     private var dictation: DictationController { .shared }
 
     var body: some View {
@@ -34,6 +35,20 @@ struct DictationSettingsSection: View {
                 if case .failed = dictation.speech.model {
                     Button("Try again") { Task { try? await dictation.speech.ensureModel() } }
                         .buttonStyle(.peel(.outline))
+                }
+            }
+            Fact("History") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dictation.historyOn ? "Kept for 30 days" : "Off: earlier ones stay until cleared or 30 days old")
+                    Text("What you dictate, kept on this Mac so you can copy it again. Nothing is sent anywhere.").muted()
+                }
+            } trailing: {
+                HStack(spacing: Theme.Space.sm) {
+                    Button("Open") { openWindow(id: DictationHistoryView.id) }
+                        .buttonStyle(.peel(.outline))
+                    Toggle("History", isOn: Binding(get: { dictation.historyOn }, set: { dictation.setHistoryOn($0) }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                 }
             }
             DictationPermissionRows(permissions: dictation.permissions)
@@ -86,11 +101,14 @@ struct DictationOffer: View {
 
 /// The app menu's line for dictation: its state, and a way to turn it off or on.
 struct DictationMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         let dictation = DictationController.shared
         Button(dictation.isEnabled ? "Turn Dictation Off" : "Turn Dictation On") {
             dictation.setEnabled(!dictation.isEnabled)
         }
+        Button("Dictation History…") { openWindow(id: DictationHistoryView.id) }
         Text("Dictation: " + (dictation.isListening ? "On (\(dictation.hotkey.label))" : "Off"))
     }
 }

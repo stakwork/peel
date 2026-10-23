@@ -3,6 +3,7 @@ import AVFoundation
 import Observation
 import os
 import PeelAgent
+import PeelCore
 import PeelUI
 
 /// System-wide dictation, milestone 0: the hotkey, the microphone and the
@@ -37,6 +38,11 @@ final class DictationController {
     @ObservationIgnored private let hud = DictationHUDPanel()
     /// Speech-to-text on Peel's own strut, and its model.
     let speech = DictationSpeech()
+    /// Dictation History keeps each dictation in the open account's database.
+    private(set) var historyOn: Bool
+    /// The open account's database; nil while it is locked or closed, when
+    /// nothing is kept (`AppDelegate` gates it on `AppModel.phase`).
+    @ObservationIgnored var history: () -> Storage? = { nil }
     @ObservationIgnored private var tap: DictationHotkeyTap?
     /// What had the keyboard when the key went down: where the text goes.
     @ObservationIgnored private var target: FocusFacts?
@@ -53,6 +59,7 @@ final class DictationController {
         self.settings = settings
         stored = settings.storedEnabled
         offerDismissed = settings.offerDismissed
+        historyOn = settings.historyOn
     }
 
     // MARK: - Lifecycle
@@ -96,6 +103,11 @@ final class DictationController {
         stored = on
         settings.storedEnabled = on
         refresh()
+    }
+
+    func setHistoryOn(_ on: Bool) {
+        historyOn = on
+        settings.historyOn = on
     }
 
     func dismissOffer() {
@@ -259,6 +271,14 @@ final class DictationController {
         }
         if !DictationDefaults.keepMicWarm { capture.stop() }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
+        // Where and when, as of now: the account and the clock may move on
+        // while the strut transcribes.
+        let storage = historyOn ? history() : nil
+        let entry = HistoryEntry(
+            id: session.id, storage: storage, startedAt: Date().addingTimeInterval(-recorded.duration),
+            duration: recorded.duration, appID: start.bundleID,
+            appName: storage == nil ? nil : NSRunningApplication(processIdentifier: start.pid)?.localizedName
+        )
         log.info("dictation \(session.id.uuidString) \(session.mode.rawValue) \(session.duration)s")
         let transcriber = StrutTranscriber(speech: speech)
         let previous = insertion
@@ -268,18 +288,70 @@ final class DictationController {
             do {
                 text = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
-                hud.show(.message((error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"))
+                let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"
+                await entry.keep(nil, .failed, note: why)
+                hud.show(.message(why))
                 return
             }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                await entry.keep(nil, .failed, note: "Nothing was heard")
                 hud.show(.message("Nothing was heard"))
                 return
             }
             await previous?.value
-            // Only a message: by now another dictation may be under way.
-            if let note = Self.message(for: await DictationTextInserter.insert(text, startedIn: start)) {
-                hud.show(.message(note))
+            let outcome = await DictationTextInserter.insert(text, startedIn: start)
+            let note = Self.message(for: outcome)
+            var copied = false
+            let kept: Bool
+            switch outcome {
+            case .inserted: kept = await entry.keep(text, .typed)
+            case .copied(let why):
+                copied = true
+                kept = await entry.keep(text, .copied, note: Self.historyNote(why))
+            case .blocked(let secureEntry): kept = await entry.keep(nil, .blocked, note: Self.secureMessage(entry: secureEntry))
             }
+            // Only a message: by now another dictation may be under way.
+            if let note { hud.show(.message(kept && copied ? note + " (also in History)" : note)) }
+        }
+    }
+}
+
+extension DictationController {
+    /// Why a dictation was copied rather than typed, for its History row.
+    fileprivate static func historyNote(_ why: DictationTextInserter.Outcome.Why) -> String {
+        switch why {
+        case .noField, .notPosted: "no field had focus"
+        case .focusMoved: "the focus moved"
+        case .noAccessibility: "Accessibility is off"
+        }
+    }
+}
+
+/// One dictation on its way into History: the account's database and the
+/// moment the key was let go, taken when the recording ended; nothing kept
+/// with History off or the account locked (`storage` nil).
+private struct HistoryEntry {
+    let id: UUID
+    let storage: Storage?
+    let startedAt: Date
+    let duration: TimeInterval
+    let appID: String?
+    let appName: String?
+
+    /// Keeps it, never anything from a password field; whether it was kept.
+    @discardableResult
+    func keep(_ text: String?, _ outcome: DictationRecord.Outcome, note: String? = nil) async -> Bool {
+        guard let storage else { return false }
+        let record = DictationRecord(
+            id: id, startedAt: startedAt, duration: duration, text: text, appID: appID, appName: appName,
+            outcome: outcome, note: note
+        )
+        do {
+            try await storage.addDictation(record, keep: DictationDefaults.historyKeep)
+            return true
+        } catch {
+            Logger(subsystem: "dev.peel.mac", category: "dictation").error("dictation history not kept: \(String(describing: error))")
+            return false
         }
     }
 }

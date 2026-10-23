@@ -230,6 +230,7 @@ final class WebPane: NSObject, Identifiable {
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         // As in Safari: video plays, but nothing starts making sound until clicked.
         configuration.mediaTypesRequiringUserActionForPlayback = .audio
+        disableWebRTC(configuration.preferences)
         let view = PaneWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
         view.uiDelegate = self
@@ -246,6 +247,25 @@ final class WebPane: NSObject, Identifiable {
         ]
         webView = view
         return view
+    }
+
+    /// Off: a page's own WebRTC (an ICE-candidate-gathering script for
+    /// something like a Spaces embed, or a local-IP-leak fingerprinting
+    /// trick) is what prompts macOS for local network access here, on
+    /// Peel's behalf, not anything Peel's own code does. Camera and mic
+    /// stay denied regardless (`decideMediaCapturePermissionsFor`); this
+    /// additionally keeps a page from opening a peer connection at all, so
+    /// it can't gather local candidates even without ever asking for a
+    /// camera — at the cost of breaking even listen-only participation in
+    /// a WebRTC call opened in the pane (e.g. a Google Meet link). No
+    /// public WKWebView API for this — `peerConnectionEnabled` is
+    /// WebPreferences' own, reached through WKPreferences' KVC bridge to
+    /// it, guarded by `responds(to:)` so a future WebKit without it just
+    /// leaves WebRTC on instead of crashing.
+    private func disableWebRTC(_ preferences: WKPreferences) {
+        let setter = Selector(("setPeerConnectionEnabled:"))
+        guard preferences.responds(to: setter) else { return }
+        preferences.setValue(false, forKey: "peerConnectionEnabled")
     }
 
     /// Reads the page's state off the web view; writes only a change.

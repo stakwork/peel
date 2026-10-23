@@ -29,8 +29,14 @@ on this Mac, turns it into text: nothing leaves it.
   dropped and the key goes on to the app.
 - **Capture** (`DictationAudioCapture`): AVAudioEngine's input, converted
   to 16 kHz mono PCM16 and written to a temp WAV (mode 0600); a 200 ms ring
-  is put in front of each recording. The file is deleted after the stub has
-  seen it, and on cancel.
+  is put in front of each recording. The file is deleted once transcribed,
+  and on cancel. An engine stays on the input it started with, so a new one
+  is made when the input changes (AirPods connecting while Peel is open, or
+  another mic chosen): on macOS's notice that the default input changed, on
+  the engine's that its configuration did (one new engine per burst, as a
+  Bluetooth headset switches profile when its mic opens), and when a
+  recording starts on an engine that has had no audio for a second. A
+  recording under way carries on into the new engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while

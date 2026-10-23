@@ -109,7 +109,8 @@ public struct DictationModel: Equatable, Sendable, Identifiable {
     public var downloaded: Int64?
     /// The user's pick for its kind.
     public var selected: Bool
-    /// In use now: the pick once it is installed, until then the one before.
+    /// In use now: the pick once it is installed; until then strut's default
+    /// speech model, or no fixer.
     public var active: Bool
     /// Strut's choice for its kind.
     public var recommended: Bool

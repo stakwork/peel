@@ -409,6 +409,8 @@ private struct MenuPanel: View {
 
     var body: some View {
         if let open = presenter.open {
+            // One column for checks and icons when any row has one, so every title lines up.
+            let leading = open.entries.contains { $0.item.map { $0.checked || $0.systemImage != nil } ?? false }
             VStack(alignment: .leading, spacing: 0) {
                 if let back = open.back {
                     MenuBackRow(title: back.title) { presenter.goBack() }
@@ -428,7 +430,8 @@ private struct MenuPanel: View {
                             .padding(.top, Theme.Space.xs)
                             .padding(.bottom, 2)
                     case .item(let item):
-                        MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index)
+                        MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index,
+                                leading: leading)
                             .onHover { if $0 { presenter.highlight(index) } }
                             .onTapGesture { presenter.choose(index) }
                     }
@@ -450,6 +453,8 @@ private struct MenuRow: View {
     let item: MenuItem
     let highlighted: Bool
     var confirming = false
+    /// The menu has a column for checks and icons: kept empty on a row without one.
+    var leading = false
 
     var body: some View {
         HStack(spacing: 9) {
@@ -458,6 +463,8 @@ private struct MenuRow: View {
                     Image(systemName: "checkmark")
                 } else if let systemImage = confirming ? "trash" : item.systemImage {
                     Image(systemName: systemImage)
+                } else if leading {
+                    Color.clear.frame(height: 1)
                 }
             }
             .font(.system(size: 12, weight: confirming ? .bold : .regular))

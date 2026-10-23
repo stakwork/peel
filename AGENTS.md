@@ -331,6 +331,9 @@ is a short plan. Update the status and the journal when you finish something.
   `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
   which `AppDelegate` hands it), that server's, Peel's own never started
   and no model key for it),
+  `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
+  Add MCP server, Test, Remove, the Assistant and Jobs switches, which
+  restart Peel's strut with the new grants; Gmail to come),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Peel agent show of its own account,
@@ -614,6 +617,12 @@ is a short plan. Update the status and the journal when you finish something.
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app opens it
+  - `Connections.swift` — Account › Connections' MCP servers in strut's
+    registry (`/mcp-servers`): add (the key put in strut's secret store
+    first, the registration naming only the secret), test (strut's probe:
+    the tools and which ask first), remove (with its key); and `MCPGrants`,
+    which agents (the assistant, its jobs) reach each server, written into
+    the host delta as `mcp/<server>/*`
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -760,7 +769,9 @@ is a short plan. Update the status and the journal when you finish something.
   model handed to strut), `BundledStrutTests` (with a staged strut, a real
   start and stop, and no secret kept on disk as it is), `OrchestratorTests`
   (the host delta and prompt section; with a staged strut, the device
-  steps and the move off `peel-automation`), `StrutSpeechTests` (dictation's
+  steps and the move off `peel-automation`), `ConnectionsTests` (an MCP
+  server added, tested, granted and removed on a staged strut against a
+  stand-in server, `MCPStub`, its key held by name only), `StrutSpeechTests` (dictation's
   WAV and key sent, refusals, the model list and download), `BundledBridgeTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send

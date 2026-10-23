@@ -21,6 +21,19 @@ public final class BundledStrut {
     public private(set) var server: MemoryServer?
     /// Called when `server` changes, ready or stopped.
     public var onChange: (() -> Void)?
+    /// Which agents reach each MCP server (Connections), kept beside its
+    /// data and read into the host delta from its next start.
+    public var grants: MCPGrants { MCPGrants.read(in: data) }
+    /// The grants its running process was started with: a change since
+    /// (kept while it was starting) needs one more start.
+    public private(set) var launchedGrants: MCPGrants?
+
+    public func keep(_ grants: MCPGrants) throws {
+        try grants.write(in: data)
+    }
+    /// Whether an MCP server on this Mac may be registered
+    /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
+    public var allowsLocalMCP = false
 
     private let folder: URL
     private let data: URL
@@ -122,14 +135,16 @@ public final class BundledStrut {
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
         let hostConfig = data.appending(path: "host-config.json")
-        try Orchestrator.hostConfig().write(to: hostConfig, options: .atomic)
+        let grants = grants
+        try Orchestrator.hostConfig(grants: grants).write(to: hostConfig, options: .atomic)
+        launchedGrants = grants
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
         process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
-                                               hostConfig: hostConfig)
+                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -218,7 +233,7 @@ public final class BundledStrut {
     /// Homebrew's folders, which another user may own. `hostConfig`: the
     /// file of Peel's delta for the workflows strut ships (`STRUT_HOST_CONFIG`).
     nonisolated static func environment(
-        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL
+        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false
     ) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
@@ -238,6 +253,7 @@ public final class BundledStrut {
             "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
             "STRUT_SEALED": Orchestrator.sealedSteps.joined(separator: ","),
+            "STRUT_MCP_LOCAL": allowsLocalMCP ? "1" : "0",
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",
             "OPENSSL_ENGINES": "/var/empty",

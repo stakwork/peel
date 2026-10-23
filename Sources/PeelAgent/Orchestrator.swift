@@ -138,6 +138,13 @@ public enum Orchestrator {
     /// publish on its own. `app/publish` publishes an app with its grants.
     static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"]
 
+    /// What a workflow the builder writes may reach (strut #284): the web
+    /// tools and nothing else, no step code, no process, no secret, so the
+    /// keys in strut's store (a model's, a connected service's, the bridge's)
+    /// stay out of what the AI publishes. A Workflows switch per connection
+    /// widens it later (docs/connectors-and-authoring.md, section 6).
+    static let builderReach: AgentKit.JSONValue = ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]
+
     /// Steps strut seals from its meta surface beside its own (`meta/*`,
     /// `STRUT_SEALED`), so `meta/run-step` never runs one of `builderApprove`
     /// around its proposal; the builder still proposes it as a tool.
@@ -148,10 +155,14 @@ public enum Orchestrator {
     /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), the
     /// builder gated and closed to other struts (`peer: false`), and the
     /// automation steps' workflow and approval step.
-    static func hostConfig() throws -> Data {
+    /// `grants`: the MCP servers each agent reaches (Connections), all of
+    /// their tools; strut asks first for any not read-only.
+    static func hostConfig(grants: MCPGrants = MCPGrants()) throws -> Data {
         let config: AgentKit.JSONValue = [
-            "orchestrator": ["tools": .array(tools.map(AgentKit.JSONValue.string)), "system": .string(section), "model": .null],
-            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false],
+            "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
+                             "system": .string(section), "model": .null],
+            "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string))],
+            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]

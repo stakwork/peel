@@ -24,7 +24,8 @@ struct OrchestratorTests {
         #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section)
         #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve", "grants": true])
         // The builder only proposes what it writes, and no other strut may launch it.
-        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"], "peer": false])
+        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"], "peer": false,
+                                       "reach": ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))

@@ -449,7 +449,7 @@ private struct BrainStatusText: View {
 }
 
 /// "Connected" with a green dot: a model, a home server.
-private struct ConnectedLabel: View {
+struct ConnectedLabel: View {
     var body: some View {
         Label("Connected", systemImage: "circle.fill")
             .labelStyle(.titleAndIcon)

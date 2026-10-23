@@ -48,6 +48,10 @@ struct BundledStrutTests {
         #expect(environment["STRUT_WORKSPACE"] == "/tmp/peel-strut/workspace")
         #expect(environment["STRUT_WORKSPACE_BACKEND"] == "ladybug")
         #expect(environment["STRUT_HOST_CONFIG"] == "/tmp/peel-strut/host-config.json")
+        // An MCP server on this Mac only for a development profile's test server.
+        #expect(environment["STRUT_MCP_LOCAL"] == "0")
+        #expect(BundledStrut.environment([:], key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "h"),
+                                         allowsLocalMCP: true)["STRUT_MCP_LOCAL"] == "1")
         // Every gated step the meta surface could run is sealed: strut seals meta/* itself.
         let sealed = Set(environment["STRUT_SEALED"]?.split(separator: ",").map(String.init) ?? [])
         #expect(Orchestrator.builderApprove.allSatisfy { $0.hasPrefix("meta/") || sealed.contains($0) }, "\(sealed)")

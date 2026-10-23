@@ -68,6 +68,8 @@ final class MacAgent: AgentHost {
     var openedAutomation: String?
     /// The device requests' cards and the send grants.
     let deviceCards = DeviceCards()
+    /// Account › Connections (`AppModel+Connections`).
+    let connections = ConnectionsState()
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
@@ -489,6 +491,7 @@ extension AppModel {
         strut?.onChange = { [weak self] in
             self?.lookForMemory(restarting: false)
             self?.lookForBridge()
+            self?.restartIfGrantsChanged()
         }
     }
 
@@ -514,8 +517,12 @@ extension AppModel {
         switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
-            UserDefaults.standard.bool(forKey: "strut")
-                ? BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) : nil
+            UserDefaults.standard.bool(forKey: "strut") ? {
+                let strut = BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey)
+                // A test MCP server on this Mac, for a development profile only.
+                strut?.allowsLocalMCP = true
+                return strut
+            }() : nil
         }
     }
 
@@ -532,6 +539,7 @@ extension AppModel {
         localHoldsMemory = nil
         automations = AutomationsState()
         agentBridge.stop()
+        connections.reset()
         agent = nil
         closeMemory()
         memoryServer = nil

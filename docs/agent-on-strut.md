@@ -1390,6 +1390,61 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
   a DM asks for a workflow, the orchestrator starts the builder, its
   publish is one pending proposal and the workflow does not exist.
 
+### Built: connectors P3, the Connections screen (2026-10-23)
+
+From the connectors design (stakwork/peel#342, sections 1 and 2), on
+strut's MCP registry (strut#286). Built on P1 (the builder gated).
+
+- **Pins.** `Vendor/runner.lock` to sphinx master 6a3863d4 (#389 the
+  proposal cards, #390 rooms and the wake); strut stays at P1's 2296d29,
+  which has the registry.
+- **Account › Connections.** Each MCP server: where it is, Connected with
+  its tool count and how many ask first (strut's probe), or why it did not
+  answer (anything shaped like a key in that answer hidden); the Assistant
+  and Jobs switches; Test; Remove (confirmed, which deletes its key too).
+  Add MCP server: a name (its tools are `<name>_<tool>`), an https address
+  (plain http only to a development profile's test server on this Mac),
+  and a key or token. strut registers it first; then the key goes into
+  strut's encrypted store under `MCP_<the name in hex>_KEY`, a name no
+  other server's can be (`linear`, `Linear`, `lin-ear` each their own).
+  Peel keeps no copy. A name already connected is refused (Remove it
+  first), and an address strut refuses leaves nothing behind. Gmail is a
+  "coming soon" row.
+- **Grants.** Which agents reach a server is Peel's: `connections.json`
+  beside strut's data, read into the host delta at each start
+  (`orchestrator.tools` and `job.tools` gain `mcp/<server>/*`). A switch
+  restarts Peel's strut; one flipped while it was starting is applied by
+  one more start once it is up. A server strut no longer has takes its
+  grants with it. On a home server the switches are hidden: its own
+  settings decide.
+- **Asks first.** strut gates every tool the server does not mark
+  read-only: the call is a proposal, the bridge brings its card to the Mac
+  (R1), and on Allow strut calls the server once, with the key. A server
+  that marks a write read-only runs it unasked, by strut's design; the
+  screen says the rule as it is.
+- **What the AI publishes.** `builder.reach` (strut#284) is set: a
+  workflow the builder writes may use the web tools and nothing else, no
+  step code, no process, no secret, so the keys in strut's store stay out
+  of what it publishes. A Workflows switch per connection widens it later.
+  The builder's own `meta/run-step` is outside reach (strut's S1 scope).
+- **This Mac only for tests.** A development profile's strut may register
+  a server on this Mac (`STRUT_MCP_LOCAL=1`); the app account's may not.
+- **Checked.** `ConnectionsTests` on a staged strut against `MCPStub`
+  (each name its own key, a refused add leaving nothing, a re-add refused);
+  `Journeys/Orchestrator.aConnectedServersWriteWaitsForTheCardAndRunsOnce`
+  (a read runs at once; a write is a proposal whose card reaches the Mac
+  through the bridge, and Allow makes exactly one call, with the key); all
+  the agent journeys on the new pins; `check-app.sh` with a stand-in
+  server: added, tested (2 tools, 1 asks first), Jobs off (the delta
+  followed), removed. An independent adversarial review found the shared
+  key names, a failed add's leftovers, a switch lost during a restart,
+  grants rebuilt from an empty cache, plain http, the reach, keys echoed in
+  errors and weak tests: all fixed.
+- **Not yet.** A switch restarts strut, which cuts short a turn or job
+  under way. A workspace's shared-workflow count needs strut's
+  read-through for a peer's workflows (S6). An accepted proposal runs
+  against the registration as it is then (strut#286's open point).
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

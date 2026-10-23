@@ -35,6 +35,11 @@ final class DictationHUDModel {
     var note: String? {
         didSet { if note != oldValue { resized() } }
     }
+    /// A tip above the pill while recording, until hands-free is known
+    /// ("Press Space to keep going hands-free").
+    var tip: String? {
+        didSet { if tip != oldValue { resized() } }
+    }
     var accept: () -> Void = {}
     var cancel: () -> Void = {}
     /// Undo of what `.learned` says was learned.
@@ -58,6 +63,15 @@ struct DictationHUDView: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.xs) {
+            if let tip = model.tip, model.mode == .recording {
+                Text(tip)
+                    .font(Theme.font(12))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                    .transition(.opacity)
+            }
             pill
             if let note = model.note, model.mode != .hidden {
                 Text(note)

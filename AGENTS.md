@@ -97,8 +97,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `ListBottom.swift` — a message list against its bottom, for its jump
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
-  - `MentionQuery.swift` — the `@word` before a composer's cursor and who
-    it matches, for the Mac's composer and the iPhone's (tested)
+  - `MentionQuery.swift` — the `@word` before a composer's cursor (or a
+    `/` command opening the agent DM's message) and what it matches, by
+    any of an item's names, for the Mac's composer and the iPhone's (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states and the unread messages behind them, tribes and their senders,
     mentions, payments, the shared SQL
@@ -370,7 +371,8 @@ is a short plan. Update the status and the journal when you finish something.
   here), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
-  `ComposerField` (the message field: Return sends, `@` mentions),
+  `ComposerField` (the message field: Return sends, `@` mentions; in the
+  agent's DM `@` offers the Stadeum workspaces and `/` its commands),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, and the shared `PaymentPanes`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the

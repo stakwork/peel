@@ -63,9 +63,10 @@ echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'st
 }
 ditto "$STRUT_STAGE" "$DEST"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
-  for code in "$DEST"/native/*; do
-    case "$(basename "$code"):$(file -b "$code")" in
-      node:*) ;;
+  # native/ and its folders (the dictation fixer's in native/llama/<platform>).
+  find "$DEST/native" -type f | while IFS= read -r code; do
+    case "$code:$(file -b "$code")" in
+      "$DEST/native/node":*) ;;
       *:Mach-O*) sign "$code" ;;
     esac
   done

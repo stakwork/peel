@@ -845,7 +845,8 @@ is a short plan. Update the status and the journal when you finish something.
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
   (`package-desktop.mjs`, with dictation's speech engine (sherpa) in
-  `native/`, Ladybug, its `vector` and `fts`
+  `native/` and its fixer (node-llama-cpp with Metal) in
+  `native/llama/mac-arm64-metal`, Ladybug, its `vector` and `fts`
   extensions, the `memory/*` steps, and the `orchestrator` with the
   `automation/*` steps, which Peel's delta needs), built from the strut
   commit `Vendor/strut.lock` pins (git archive of that commit only, so the
@@ -869,8 +870,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
   microphone, camera), frameworks and the strut's Node and native
-  libraries first (Node with `scripts/strut-node.entitlements`:
-  allow-jit only) (see Signing)
+  libraries (every Mach-O in `native/` and its folders) first (Node with
+  `scripts/strut-node.entitlements`: allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged

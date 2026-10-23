@@ -28,6 +28,9 @@ enum AgentToolTitle {
         "job_list": "Looked for a job",
         "job_get": "Checked on a job",
         "job_read": "Read a job's file",
+        // Hive workspaces, paired as peers.
+        "strut_list-peers": "Looked at your Stadeum workspaces",
+        "strut_run-workflow": "Asked a Stadeum workspace",
     ]
 
     /// strut's orchestrator's tools, as the bridge names them (`sphinx/unseen`

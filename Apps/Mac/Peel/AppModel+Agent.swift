@@ -70,6 +70,8 @@ final class MacAgent: AgentHost {
     let deviceCards = DeviceCards()
     /// Account › Connections (`AppModel+Connections`).
     let connections = ConnectionsState()
+    /// The person's Hive workspaces, paired as peers (`AppModel+Hive`).
+    let hive = HiveState()
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
@@ -270,6 +272,7 @@ extension AppModel {
             self.agent = agent
             macAgent.hasOwnStrut = Self.strut(for: profile) != nil
             if brain == .thisMac { useOwnStrut(profile) }
+            openHive(profile)
             lookForMemory(reporting: true)
             lookForBridge()
             checkBrain()
@@ -496,6 +499,8 @@ extension AppModel {
     /// again from here, only by the person's Set up or Try again: no crash loop.
     func useOwnStrut(_ profile: Profile) {
         if strut == nil { strut = Self.strut(for: profile) }
+        // Whose orgs it speaks for, kept across a switch of brain.
+        strut?.person = hive.link?.actor
         strut?.onChange = { [weak self] in
             self?.lookForMemory(restarting: false)
             self?.lookForBridge()
@@ -549,6 +554,7 @@ extension AppModel {
         automations = AutomationsState()
         agentBridge.stop()
         connections.reset()
+        closeHive()
         agent = nil
         closeMemory()
         memoryServer = nil

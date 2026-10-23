@@ -333,13 +333,19 @@ is a short plan. Update the status and the journal when you finish something.
   and no model key for it),
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
-  restart Peel's strut with the new grants; Gmail to come),
+  restart Peel's strut with the new grants; Gmail to come; below them
+  `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Peel agent show of its own account,
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
-  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`);
+  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
+  `AppModel+Hive` (`HiveState`: Connect Stadeum's device flow against
+  Hive's API (the user-facing name is Stadeum), the credential in
+  `Profile.hive`, the orgs put on strut as peers when the bridge starts
+  and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
+  development profile's defaults for a test Hive);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -623,6 +629,11 @@ is a short plan. Update the status and the journal when you finish something.
     the tools and which ask first), remove (with its key); and `MCPGrants`,
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
+  - `Hive.swift` — Hive's device flow for a strut desktop app
+    (`HiveClient`: start, poll, renew), what is kept of a pairing
+    (`HiveLink`, its peers and credential, never in a database), strut's
+    peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
+    for, read from strut's record (`peerRequest`)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -772,7 +783,11 @@ is a short plan. Update the status and the journal when you finish something.
   steps and the move off `peel-automation`), `ConnectionsTests` (an MCP
   server added, tested, granted and removed on a staged strut against a
   stand-in server, `MCPStub`, its key held by name only), `StrutSpeechTests` (dictation's
-  WAV and key sent, refusals, the model list and download), `BundledBridgeTests`,
+  WAV and key sent, refusals, the model list and download), `HiveTests` (Hive's device
+  flow against a stand-in answering as stakwork/hive#5602 documents:
+  approve and collect once, deny, expiry, a page on another site or an
+  account Peel cannot name refused, renewal and revoke; the org call's
+  card worded from strut's record), `BundledBridgeTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the

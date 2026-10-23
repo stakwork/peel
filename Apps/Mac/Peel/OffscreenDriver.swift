@@ -356,6 +356,8 @@ final class OffscreenDriver {
     /// the agent's DM; `request-rows`, every device request's row opened; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-set-up`, the agent chat's Set up or Try again (its own account);
+    /// `hive-connect` and `hive-disconnect`, Account › Connections' Connect
+    /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
@@ -451,6 +453,10 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "hive-connect":
+            model.connectHive()
+        case "hive-disconnect":
+            model.disconnectHive()
         case "agent-set-up":
             // The agent chat's Set up (or Try again): its own account.
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }

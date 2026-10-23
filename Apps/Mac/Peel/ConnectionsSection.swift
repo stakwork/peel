@@ -7,7 +7,8 @@ import SwiftUI
 /// credentials, kept in your strut (`AppModel+Connections`). Each MCP
 /// server: where it is, whether it answered and with how many tools (and
 /// how many ask first), which agents use it, Test and Remove. Add MCP
-/// server registers one; Gmail is next.
+/// server registers one; Gmail is next. Below, the Stadeum workspaces
+/// paired as peers (`StadeumSection`).
 struct ConnectionsSection: View {
     static let id = "connections"
     @Environment(AppModel.self) private var model
@@ -48,6 +49,7 @@ struct ConnectionsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
+            StadeumSection()
         }
         // Read again whenever strut is (again) reachable.
         .task(id: model.memoryServer?.base) { await model.loadConnections() }

@@ -9,9 +9,9 @@ import PeelUI
 final class DictationAudioCapture: @unchecked Sendable {
     enum Failure: Error { case permissionDenied, noInput, formatUnavailable }
 
-    /// 0…1 for each buffer, on the audio thread.
+    /// 0…1 for each buffer while recording, on the audio thread.
     var onLevel: (@Sendable (Float) -> Void)?
-    /// Something the user should know ("The microphone changed").
+    /// The microphone stopped working, on the main thread.
     var onProblem: (@Sendable (String) -> Void)?
 
     private let engine = AVAudioEngine()
@@ -26,15 +26,13 @@ final class DictationAudioCapture: @unchecked Sendable {
         commonFormat: .pcmFormatInt16, sampleRate: DictationDefaults.sampleRate, channels: 1, interleaved: true
     )
 
-    var isRecording: Bool { lock.withLock { writer != nil } }
-
     /// Starts the engine and fills the pre-roll. Throws without permission.
     func start() throws {
         guard !isRunning else { return }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { throw Failure.permissionDenied }
         try install()
         observer = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in self?.configurationChanged() }
         isRunning = true
     }
@@ -60,17 +58,15 @@ final class DictationAudioCapture: @unchecked Sendable {
         try lock.withLock {
             guard writer == nil else { new.discard(); return }
             try new.append(preRoll.snapshot())
+            // Spent: the next recording's pre-roll is the audio just before it.
+            preRoll.removeAll()
             writer = new
         }
     }
 
     /// The finished file and its length; nil if nothing was being recorded.
     func finishRecording() -> (url: URL, duration: TimeInterval)? {
-        let finished = lock.withLock { () -> WAVFileWriter? in
-            defer { writer = nil }
-            return writer
-        }
-        guard let finished else { return nil }
+        guard let finished = takeWriter() else { return nil }
         do {
             try finished.finish()
             return (finished.url, finished.duration)
@@ -82,11 +78,14 @@ final class DictationAudioCapture: @unchecked Sendable {
 
     /// Throws the recording away, file and all.
     func discardRecording() {
-        let old = lock.withLock { () -> WAVFileWriter? in
+        takeWriter()?.discard()
+    }
+
+    private func takeWriter() -> WAVFileWriter? {
+        lock.withLock {
             defer { writer = nil }
             return writer
         }
-        old?.discard()
     }
 
     // MARK: - Engine
@@ -113,7 +112,7 @@ final class DictationAudioCapture: @unchecked Sendable {
         do {
             try install()
         } catch {
-            isRunning = false
+            stop()
             onProblem?("The microphone is not available")
         }
     }
@@ -140,13 +139,15 @@ final class DictationAudioCapture: @unchecked Sendable {
         }
         guard status != .error, error == nil, out.frameLength > 0, let channel = out.int16ChannelData else { return }
         let samples = Array(UnsafeBufferPointer(start: channel[0], count: Int(out.frameLength)))
-        onLevel?(PCM16.level(of: samples))
-        lock.withLock {
-            if let writer {
-                do { try writer.append(samples) } catch { self.writer = nil; writer.discard() }
-            } else {
+        let recording = lock.withLock {
+            guard let writer else {
                 preRoll.append(samples)
+                return false
             }
+            do { try writer.append(samples) } catch { self.writer = nil; writer.discard() }
+            return true
         }
+        // Only a recording shows a meter; between them the main thread is left alone.
+        if recording { onLevel?(PCM16.level(of: samples)) }
     }
 }

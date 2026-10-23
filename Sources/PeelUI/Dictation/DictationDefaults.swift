@@ -27,6 +27,7 @@ public enum DictationDefaults {
     public static let hotkeyKey = "dictation.hotkey"
     public static let enabledKey = "dictation.enabled"
     public static let offerDismissedKey = "dictation.offerDismissed"
+    public static let askedInputMonitoringKey = "dictation.askedInputMonitoring"
 }
 
 /// What the user chose, kept in `UserDefaults`.

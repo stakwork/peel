@@ -13,8 +13,6 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
     }
 
     public static let rightOption = HotkeyConfig(keyCode: 61, label: "Right Option ⌥")
-    public static let rightCommand = HotkeyConfig(keyCode: 54, label: "Right Command ⌘")
-    public static let rightControl = HotkeyConfig(keyCode: 62, label: "Right Control ⌃")
     public static let fn = HotkeyConfig(keyCode: 63, label: "Fn")
 
     /// Virtual key codes of the keys that only change the modifier flags, and
@@ -59,8 +57,13 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
         Self.modifiers[keyCode].map { flags & $0.mask != 0 }
     }
 
-    /// Keys that cannot be the hotkey: they are the lock and cancel keys.
-    public var isReserved: Bool { keyCode == 49 || keyCode == 53 }
+    /// F1–F15: keys that type nothing, so holding one is free to mean dictation.
+    private static let functionKeys: Set<UInt16> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113]
+
+    /// A modifier on its own or a function key. Any other key would type
+    /// itself in every app (its key-down is never swallowed), Caps Lock
+    /// sends no release, and Space, Return and Escape steer a recording.
+    public var canBeHotkey: Bool { isModifier || Self.functionKeys.contains(keyCode) }
 
     public func encoded() -> Data? { try? JSONEncoder().encode(self) }
 

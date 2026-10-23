@@ -6,7 +6,7 @@ import PeelUI
 /// Watches the keyboard system-wide with a CGEventTap on its own thread's run
 /// loop and feeds `DictationStateMachine`. The tap is an active one, since
 /// swallowing the Space that locks needs it; every event but that Space (and
-/// the Escape that cancels) goes on untouched. Without the permission an
+/// the Escape that cancels, and the Return that finishes) goes on untouched. Without the permission an
 /// active tap needs it falls back to a listen-only one, where nothing can
 /// be swallowed. Never started before Input Monitoring is granted.
 final class DictationHotkeyTap: @unchecked Sendable {
@@ -16,8 +16,9 @@ final class DictationHotkeyTap: @unchecked Sendable {
     /// The key is down according to the system, for the watchdog's stuck-key check.
     typealias IsActive = @Sendable () -> Bool
 
-    private static let spaceKey: Int64 = 49
-    private static let escapeKey: Int64 = 53
+    private static let spaceKey = Int64(kVK_Space)
+    private static let escapeKey = Int64(kVK_Escape)
+    private static let returnKeys: Set<Int64> = [Int64(kVK_Return), Int64(kVK_ANSI_KeypadEnter)]
     private static let watchdogInterval: TimeInterval = 2
 
     private let handler: Handler
@@ -124,9 +125,9 @@ final class DictationHotkeyTap: @unchecked Sendable {
     private func releaseIfStuck() {
         guard isActive() else { return }
         let key = currentHotkey
-        guard key.isModifier else { return }
-        let flags = CGEventSource.flagsState(.combinedSessionState).rawValue
-        if key.isDown(flags: flags) == false { _ = handler(.hotkeyUp) }
+        let down = key.isDown(flags: CGEventSource.flagsState(.combinedSessionState).rawValue)
+            ?? CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(key.keyCode))
+        if !down { _ = handler(.hotkeyUp) }
     }
 
     // MARK: - Events
@@ -148,6 +149,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             if code == Self.spaceKey { return handler(.spaceDown(isRepeat: isRepeat)) }
             if code == Self.escapeKey { return handler(.escapeDown) }
+            if Self.returnKeys.contains(code) { return isRepeat ? false : handler(.returnDown) }
             let key = currentHotkey
             if !key.isModifier, code == Int64(key.keyCode) { return handler(.hotkeyDown(isRepeat: isRepeat)) }
             return isRepeat ? false : handler(.otherKeyDown)

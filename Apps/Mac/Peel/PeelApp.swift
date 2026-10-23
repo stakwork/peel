@@ -214,9 +214,7 @@ struct RootView: View {
             MainView()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
-                        #if os(macOS)
                         if DictationController.shared.showsOffer { DictationOffer() }
-                        #endif
                         if model.notifier.offersPermission { NotificationOffer() }
                     }
                 }

@@ -29,16 +29,18 @@ final class DictationPermissions {
         accessibility = AXIsProcessTrusted() ? .granted : .denied
     }
 
-    /// What the hotkey and the capture need; Accessibility is for inserting text later.
+    /// What the hotkey and the capture need. Without Accessibility the tap only
+    /// listens, so the Space that locks and the Escape that cancels also reach the app.
     var requiredGranted: Bool { microphone == .granted && inputMonitoring == .granted }
 
     private var inputMonitoringAsked: Bool {
-        get { UserDefaults.standard.bool(forKey: "dictation.askedInputMonitoring") }
-        set { UserDefaults.standard.set(newValue, forKey: "dictation.askedInputMonitoring") }
+        get { UserDefaults.standard.bool(forKey: DictationDefaults.askedInputMonitoringKey) }
+        set { UserDefaults.standard.set(newValue, forKey: DictationDefaults.askedInputMonitoringKey) }
     }
 
     func requestMicrophone() async {
         if microphone == .notAsked {
+            guard !Offscreen.refuses("a device prompt") else { return }
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             refresh()
         } else {
@@ -48,6 +50,7 @@ final class DictationPermissions {
 
     func requestInputMonitoring() {
         if inputMonitoring == .notAsked {
+            guard !Offscreen.refuses("a device prompt") else { return }
             inputMonitoringAsked = true
             _ = CGRequestListenEventAccess()
             refresh()
@@ -81,7 +84,7 @@ struct DictationPermissionRows: View {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }
         Fact("Accessibility") {
-            state(permissions.accessibility, needed: "Needed later, to type what you said")
+            state(permissions.accessibility, needed: "Keeps Space and Esc from reaching the app while you dictate")
         } trailing: {
             button(permissions.accessibility) { permissions.requestAccessibility() }
         }

@@ -51,7 +51,7 @@ struct DictationSettingsSection: View {
 }
 
 /// Press a key to choose it: a modifier on its own (Right Option, Fn …) or
-/// any other key. Escape stops choosing.
+/// a function key. Escape stops choosing.
 private struct HotkeyRecorder: View {
     let current: HotkeyConfig
     let choose: (HotkeyConfig) -> Void
@@ -72,7 +72,7 @@ private struct HotkeyRecorder: View {
         problem = nil
         recording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
-            if event.type == .keyDown, event.keyCode == 53 {
+            if event.type == .keyDown, event.keyCode == KeyCode.escape {
                 stop()
                 return nil
             }
@@ -83,8 +83,8 @@ private struct HotkeyRecorder: View {
             } else if event.isARepeat {
                 return nil
             }
-            if key.isReserved {
-                problem = "Space and Escape are used while dictating."
+            if !key.canBeHotkey {
+                problem = "Choose a modifier, such as Right Option, or a function key."
             } else {
                 choose(key)
                 stop()
@@ -106,28 +106,14 @@ struct DictationOffer: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: Theme.Space.md) {
-            Image(systemName: "mic")
-                .foregroundStyle(Theme.secondaryText)
-            Text("Dictate anywhere on your Mac by holding a key?")
-                .font(Theme.font(13))
-                .foregroundStyle(Theme.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Group {
-                Button("Not now") { DictationController.shared.dismissOffer() }
-                    .buttonStyle(.peel(.outline, size: .sm))
-                Button("Set up") {
-                    DictationController.shared.dismissOffer()
-                    model.destination = .account
-                }
-                .buttonStyle(.peel(.primary, size: .sm))
+        OfferBar(
+            icon: "mic", text: "Dictate anywhere on your Mac by holding a key?", action: "Set up",
+            dismiss: { DictationController.shared.dismissOffer() },
+            accept: {
+                DictationController.shared.dismissOffer()
+                model.destination = .account
             }
-            .fixedSize()
-        }
-        .padding(.horizontal, Theme.Space.lg)
-        .padding(.vertical, 10)
-        .background(Theme.panel)
-        .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
+        )
     }
 }
 

@@ -20,8 +20,6 @@ final class DictationController {
     }
     /// The hotkey, kept in step with the settings.
     private(set) var hotkey: HotkeyConfig
-    /// The last thing worth showing in the menu and Settings.
-    private(set) var lastResult: String?
     private(set) var secureInput = false
     /// The tap is running.
     private(set) var isListening = false
@@ -40,7 +38,7 @@ final class DictationController {
     @ObservationIgnored private var tap: DictationHotkeyTap?
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
-    @ObservationIgnored private let log = Logger(subsystem: "chat.sphinx.peel", category: "dictation")
+    @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
 
     private init() {
         // @Observable makes `settings` computed, so read a local copy before init completes.
@@ -60,14 +58,11 @@ final class DictationController {
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.model.level = level } }
         }
         capture.onProblem = { [weak self] text in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.show(.message(text)) } }
+            MainActor.assumeIsolated { self?.abandon(text) }
         }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
-        poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkSecureInput() }
-        }
         refresh()
     }
 
@@ -75,6 +70,8 @@ final class DictationController {
     func refresh() {
         permissions.refresh()
         checkSecureInput()
+        // A tap made before Accessibility was granted cannot swallow; make it again.
+        if isListening && !canSwallow && permissions.accessibility == .granted { stopListening() }
         if isEnabled && permissions.requiredGranted { startListening() } else { stopListening() }
     }
 
@@ -90,7 +87,7 @@ final class DictationController {
     }
 
     func setHotkey(_ new: HotkeyConfig) {
-        guard !new.isReserved else { return }
+        guard new.canBeHotkey else { return }
         hotkey = new
         settings.hotkey = new
         tap?.setHotkey(new)
@@ -98,7 +95,8 @@ final class DictationController {
 
     private func checkSecureInput() {
         let on = SecureInput.isEnabled
-        if on != secureInput { secureInput = on }
+        guard on != secureInput else { return }
+        secureInput = on
         hud.model.note = on ? "Another app is blocking keyboard shortcuts" : nil
     }
 
@@ -123,7 +121,10 @@ final class DictationController {
         self.tap = tap
         canSwallow = tap.swallows
         isListening = true
-        if DictationDefaults.keepMicWarm { warmUp() }
+        poll = repeating(every: 2) { $0.checkSecureInput() }
+        if DictationDefaults.keepMicWarm {
+            do { try capture.start() } catch { log.error("microphone not started: \(String(describing: error))") }
+        }
     }
 
     private func stopListening() {
@@ -131,16 +132,22 @@ final class DictationController {
         tap?.stop()
         tap = nil
         isListening = false
-        ticker?.invalidate()
-        ticker = nil
+        poll?.invalidate()
+        poll = nil
+        stopTicking()
         machine.reset()
         capture.discardRecording()
         capture.stop()
         hud.hide()
     }
 
-    private func warmUp() {
-        do { try capture.start() } catch { log.error("microphone not started: \(String(describing: error))") }
+    /// A main-thread timer that also runs while a menu is open or a window is resized.
+    private func repeating(every interval: TimeInterval, _ body: @escaping @MainActor (DictationController) -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { if let self { body(self) } }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     // MARK: - Effects
@@ -172,24 +179,31 @@ final class DictationController {
     }
 
     private func beginCapture() {
+        // Delivered after the key went down: dictation may have been turned
+        // off, or the press already ended, in between.
+        guard isListening, !machine.isIdle else { return }
         do {
             try capture.start()
             try capture.beginRecording()
         } catch DictationAudioCapture.Failure.permissionDenied {
-            _ = machine.reset()
             permissions.refresh()
-            hud.show(.message("Allow the microphone in System Settings"))
+            abandon("Allow the microphone in System Settings")
             return
         } catch {
-            _ = machine.reset()
-            hud.show(.message("The microphone is not available"))
+            abandon("The microphone is not available")
             return
         }
         // The machine needs the time to know a hold from a tap, and a recording's end.
         ticker?.invalidate()
-        ticker = Timer.scheduledTimer(withTimeInterval: DictationDefaults.tickInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.send(.tick) }
-        }
+        ticker = repeating(every: DictationDefaults.tickInterval) { $0.send(.tick) }
+    }
+
+    /// The microphone failed: whatever was under way ends, and the user is told.
+    private func abandon(_ text: String) {
+        machine.reset()
+        stopTicking()
+        capture.discardRecording()
+        hud.show(.message(text))
     }
 
     private func stopTicking() {
@@ -199,9 +213,11 @@ final class DictationController {
 
     private func submit(_ mode: DictationMode) {
         hud.hide()
-        let warm = DictationDefaults.keepMicWarm
-        guard let recorded = capture.finishRecording() else { return }
-        if !warm { capture.stop() }
+        guard let recorded = capture.finishRecording() else {
+            hud.show(.message("The recording could not be saved"))
+            return
+        }
+        if !DictationDefaults.keepMicWarm { capture.stop() }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
         log.info("dictation \(session.id.uuidString) \(session.mode.rawValue) \(session.duration)s")
         let transcriber = self.transcriber
@@ -210,7 +226,6 @@ final class DictationController {
             do {
                 let text = try await transcriber.transcribe(audioFileURL: session.audioURL)
                 log.info("dictation result: \(text)")
-                lastResult = text
                 hud.show(.message(text))
             } catch {
                 hud.show(.message("Could not transcribe"))
@@ -231,9 +246,7 @@ final class MachineBox: @unchecked Sendable {
         lock.withLock { machine.handle(input, at: ProcessInfo.processInfo.systemUptime) }
     }
 
-    @discardableResult
-    func reset() -> Bool {
+    func reset() {
         lock.withLock { machine = DictationStateMachine() }
-        return true
     }
 }

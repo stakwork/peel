@@ -17,8 +17,6 @@ public struct PreRollBuffer: Sendable {
         self.init(capacity: Int(seconds * sampleRate))
     }
 
-    public var count: Int { filled }
-
     public mutating func append(_ samples: [Int16]) {
         guard capacity > 0 else { return }
         // Only the last `capacity` samples can stay.
@@ -43,11 +41,6 @@ public struct PreRollBuffer: Sendable {
 }
 
 public enum PCM16 {
-    /// Float samples (-1…1) as 16-bit, clipped rather than wrapped.
-    public static func samples(from floats: [Float]) -> [Int16] {
-        floats.map { Int16(max(-1, min(1, $0)) * Float(Int16.max)) }
-    }
-
     /// How loud, 0…1, for the HUD's meter: RMS on a dB scale from -50 dB up.
     public static func level(of samples: [Int16]) -> Float {
         guard !samples.isEmpty else { return 0 }
@@ -66,8 +59,6 @@ public enum PCM16 {
 
 /// Writes mono 16-bit PCM to a WAV file, then fixes the header's sizes on `finish`.
 public final class WAVFileWriter {
-    public static let headerSize = 44
-
     public let url: URL
     public let sampleRate: Int
     private var handle: FileHandle?

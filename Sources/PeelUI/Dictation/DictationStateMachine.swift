@@ -9,7 +9,9 @@ public enum DictationMode: String, Codable, Equatable, Sendable {
 }
 
 /// The hotkey's life: Idle, Pending (down, not yet held long enough),
-/// Recording (held: push-to-talk) and Locked (hands-free). A plain value
+/// Recording (held: push-to-talk) and Locked (hands-free). Space locks only
+/// once the key has been held past the threshold, and any other key before
+/// a lock is a shortcut, so the hotkey's own shortcuts keep working. A plain value
 /// with the time passed in, so it is tested without a keyboard or a clock.
 public struct DictationStateMachine: Sendable {
     public enum Phase: Equatable, Sendable {
@@ -28,6 +30,8 @@ public struct DictationStateMachine: Sendable {
         case spaceDown(isRepeat: Bool)
         case spaceUp
         case escapeDown
+        /// Return or Enter went down.
+        case returnDown
         /// Any other key went down.
         case otherKeyDown
         /// The tick on the HUD.
@@ -96,19 +100,12 @@ public struct DictationStateMachine: Sendable {
 
         case .pending(let since):
             switch input {
-            case .hotkeyUp, .otherKeyDown:
-                // A tap, or a shortcut that uses the key: nothing happened.
+            case .hotkeyUp, .otherKeyDown, .escapeDown, .returnDown, .spaceDown:
+                // A tap, or a shortcut that uses the key (Option-Space and
+                // Command-Space among them): nothing happened, and the key
+                // goes on to the app.
                 phase = .idle
                 out.effects = [.discard]
-            case .escapeDown:
-                phase = .idle
-                out.effects = [.discard]
-            case .spaceDown(let isRepeat):
-                guard !isRepeat else { break }
-                phase = .locked(since: since)
-                swallowingSpace = true
-                out.swallow = true
-                out.effects = [.showHUD, .enterLocked]
             case .tick:
                 if now - since >= holdThreshold {
                     phase = .recording(since: since)
@@ -128,16 +125,12 @@ public struct DictationStateMachine: Sendable {
                 swallowingSpace = true
                 out.swallow = true
                 out.effects = [.enterLocked]
-            case .escapeDown:
+            case .otherKeyDown, .returnDown:
+                // A shortcut made while the key is held (Option-arrow, Command-Tab).
                 phase = .idle
-                out.swallow = true
                 out.effects = [.discard]
-            case .tick:
-                if now - since >= maxRecording {
-                    phase = .idle
-                    out.effects = [.submit(.pushToTalk)]
-                }
-            default: break
+            default:
+                out = ending(input, since: since, now: now, mode: .pushToTalk)
             }
 
         case .locked(let since):
@@ -145,20 +138,33 @@ public struct DictationStateMachine: Sendable {
             case .accept, .hotkeyDown(isRepeat: false):
                 phase = .idle
                 out.effects = [.submit(.locked)]
+            case .returnDown:
+                phase = .idle
+                out.swallow = true
+                out.effects = [.submit(.locked)]
             case .cancel:
                 phase = .idle
                 out.effects = [.discard]
-            case .escapeDown:
-                phase = .idle
-                out.swallow = true
-                out.effects = [.discard]
-            case .tick:
-                if now - since >= maxRecording {
-                    phase = .idle
-                    out.effects = [.submit(.locked)]
-                }
-            default: break
+            default:
+                out = ending(input, since: since, now: now, mode: .locked)
             }
+        }
+        return out
+    }
+
+    /// What ends a recording either way: Escape throws it away, and the longest
+    /// recording hands it over.
+    private mutating func ending(_ input: Input, since: TimeInterval, now: TimeInterval, mode: DictationMode) -> Output {
+        var out = Output()
+        switch input {
+        case .escapeDown:
+            phase = .idle
+            out.swallow = true
+            out.effects = [.discard]
+        case .tick where now - since >= maxRecording:
+            phase = .idle
+            out.effects = [.submit(mode)]
+        default: break
         }
         return out
     }

@@ -42,12 +42,13 @@ struct DictationStateMachineTests {
         #expect(m.phase == .locked(since: 0))
     }
 
-    @Test func spaceBeforeTheThresholdLocksAndShowsTheHUD() {
+    @Test func spaceBeforeTheThresholdIsTheKeysOwnShortcut() {
+        // Option-Space, Command-Space: the Space goes on to the app.
         var m = machine()
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
-        let lock = m.handle(.spaceDown(isRepeat: false), at: 0.1)
-        #expect(lock.effects == [.showHUD, .enterLocked])
-        #expect(lock.swallow)
+        let out = m.handle(.spaceDown(isRepeat: false), at: 0.1)
+        #expect(out.effects == [.discard] && !out.swallow)
+        #expect(m.isIdle)
     }
 
     @Test func spaceWithoutTheKeyPassesThrough() {
@@ -60,6 +61,7 @@ struct DictationStateMachineTests {
         var m = machine()
         func lock() {
             _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
+            _ = m.handle(.tick, at: 0.3)
             _ = m.handle(.spaceDown(isRepeat: false), at: 0.5)
             _ = m.handle(.spaceUp, at: 0.6)
             _ = m.handle(.hotkeyUp, at: 0.7)
@@ -75,6 +77,7 @@ struct DictationStateMachineTests {
     @Test func escapeCancelsAndIsSwallowedWhenRecording() {
         var m = machine()
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
+        _ = m.handle(.tick, at: 0.3)
         _ = m.handle(.spaceDown(isRepeat: false), at: 0.5)
         let out = m.handle(.escapeDown, at: 1)
         #expect(out.effects == [.discard] && out.swallow)
@@ -90,6 +93,7 @@ struct DictationStateMachineTests {
     @Test func pressingTheKeyAgainWhenLockedSubmits() {
         var m = machine()
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
+        _ = m.handle(.tick, at: 0.3)
         _ = m.handle(.spaceDown(isRepeat: false), at: 0.5)
         _ = m.handle(.hotkeyUp, at: 0.6)
         #expect(m.handle(.hotkeyDown(isRepeat: true), at: 1).effects.isEmpty)
@@ -112,12 +116,25 @@ struct DictationStateMachineTests {
         #expect(m.isIdle)
     }
 
-    @Test func anotherKeyWhileRecordingIsIgnored() {
+    @Test func anotherKeyWhileHeldIsAShortcut() {
+        // Holding Option a while, then Option-arrow: not a dictation.
         var m = machine()
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
         _ = m.handle(.tick, at: 0.3)
-        #expect(m.handle(.otherKeyDown, at: 0.4).effects.isEmpty)
-        #expect(m.phase == .recording(since: 0))
+        let out = m.handle(.otherKeyDown, at: 0.4)
+        #expect(out.effects == [.discard] && !out.swallow)
+        #expect(m.isIdle)
+    }
+
+    @Test func returnWhenLockedSubmitsAndIsSwallowed() {
+        var m = machine()
+        _ = m.handle(.hotkeyDown(isRepeat: false), at: 0)
+        _ = m.handle(.tick, at: 0.3)
+        _ = m.handle(.spaceDown(isRepeat: false), at: 0.5)
+        _ = m.handle(.hotkeyUp, at: 0.6)
+        let out = m.handle(.returnDown, at: 2)
+        #expect(out.effects == [.submit(.locked)] && out.swallow)
+        #expect(m.isIdle)
     }
 
     @Test func theLongestRecordingSubmitsByItself() {
@@ -129,6 +146,7 @@ struct DictationStateMachineTests {
         #expect(m.isIdle)
 
         _ = m.handle(.hotkeyDown(isRepeat: false), at: 400)
+        _ = m.handle(.tick, at: 400.3)
         _ = m.handle(.spaceDown(isRepeat: false), at: 401)
         #expect(m.handle(.tick, at: 700).effects == [.submit(.locked)])
     }
@@ -169,7 +187,18 @@ struct HotkeyConfigTests {
     @Test func namesKeysWithoutACharacter() {
         #expect(HotkeyConfig.key(code: 122).label == "F1")
         #expect(HotkeyConfig.key(code: 200).label == "Key 200")
-        #expect(HotkeyConfig.key(code: 49).isReserved)
+        #expect(!HotkeyConfig.key(code: 49).canBeHotkey)
+    }
+
+    @Test func onlyModifiersAndFunctionKeysCanBeTheHotkey() {
+        #expect(HotkeyConfig.rightOption.canBeHotkey)
+        #expect(HotkeyConfig.fn.canBeHotkey)
+        #expect(HotkeyConfig.key(code: 105).canBeHotkey)   // F13
+        // A letter would type itself; Caps Lock sends no key-up; Return and Escape end a recording.
+        #expect(!HotkeyConfig.key(code: 40, character: "k").canBeHotkey)
+        #expect(!HotkeyConfig.key(code: 57).canBeHotkey)
+        #expect(!HotkeyConfig.key(code: 36).canBeHotkey)
+        #expect(!HotkeyConfig.key(code: 53).canBeHotkey)
     }
 
     @Test func settingsPersistAndDefault() throws {
@@ -206,10 +235,6 @@ struct DictationAudioTests {
 
     @Test func preRollSizeFollowsSeconds() {
         #expect(PreRollBuffer(seconds: 0.2, sampleRate: 16_000).capacity == 3200)
-    }
-
-    @Test func conversionClipsRatherThanWraps() {
-        #expect(PCM16.samples(from: [0, 1, -1, 2, -2]) == [0, 32767, -32767, 32767, -32767])
     }
 
     @Test func levelRisesWithLoudness() {

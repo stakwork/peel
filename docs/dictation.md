@@ -1,6 +1,6 @@
 # System-wide dictation
 
-Last updated 2026-10-20. **Milestone 0 built (unverified on a Mac):** the
+Last updated 2026-10-23. **Milestone 0 built (unverified on a Mac):** the
 global hotkey and the capture. A stub stands in for transcription.
 
 Hold a key anywhere on the Mac, speak, let go. Peel records on this Mac,
@@ -11,17 +11,21 @@ transcriber; a later feature types the text into the focused field.
 
 - **Hotkey.** A CGEventTap on its own thread (`DictationHotkeyTap`) sees
   flags-changed, key-down and key-up. It is an active tap, because the
-  Space that locks must be swallowed; every other event goes on untouched.
-  Without Accessibility an active tap is refused, and a listen-only one is
-  used instead (the Space then also types a space). Not started before Input
-  Monitoring is granted. Re-enabled when the system turns it off, and by a
-  2 s watchdog, which also ends a hold whose key-up was missed.
+  Space that locks must be swallowed (and the Escape that cancels, and the
+  Return that finishes); every other event goes on untouched. Without
+  Accessibility an active tap is refused, and a listen-only one is used
+  instead (those keys then also reach the app); granting Accessibility later
+  makes the tap again. Not started before Input Monitoring is granted.
+  Re-enabled when the system turns it off, and by a 2 s watchdog, which also
+  ends a hold whose key-up was missed.
 - **State machine** (`DictationStateMachine`, PeelUI): Idle, Pending,
   Recording, Locked, with time passed in. A tap under the threshold passes
-  through. Hold: push-to-talk, release submits. Hold + Space: locked,
-  hands-free, Space swallowed; X or Esc discards, the tick (or pressing the
-  key again) submits. Another key pressed during Pending means the key is
-  part of a shortcut: nothing happens.
+  through. Hold: push-to-talk, release submits. Hold past the threshold, then
+  Space: locked, hands-free, Space swallowed; X or Esc discards, the tick,
+  Return or pressing the key again submits. Any other key (Space included)
+  before the threshold, or any other key while holding, means the key is part
+  of a shortcut (Option-Space, Option-arrow, Command-Tab): the recording is
+  dropped and the key goes on to the app.
 - **Capture** (`DictationAudioCapture`): AVAudioEngine's input, converted
   to 16 kHz mono PCM16 and written to a temp WAV (mode 0600); a 200 ms ring
   is put in front of each recording. The file is deleted after the stub has
@@ -34,8 +38,8 @@ transcriber; a later feature types the text into the focused field.
 
 ## Turning it on
 
-Account › Dictation. Allow Microphone, Input Monitoring (and Accessibility,
-which only the later typing needs), then the switch. With no choice made it
+Account › Dictation. Allow Microphone, Input Monitoring and Accessibility
+(without it Space and Esc also reach the app), then the switch. With no choice made it
 is on once Microphone and Input Monitoring are granted. A bar offers it once.
 The app menu has Turn Dictation On/Off. macOS may need Peel restarted after
 Input Monitoring is granted, and a stable signature (Developer ID) for the
@@ -53,15 +57,16 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | HUD | bottom centre, 56 pt above the visible area |
 | Mic kept warm | yes (the mic indicator stays on while dictation is on) |
 
-A normal key as the hotkey is not swallowed, so it also types; modifiers
-and function keys suit best. Fn needs System Settings › Keyboard › Press
+Only a modifier on its own or a function key can be the hotkey: any other
+key would type itself in every app. Fn needs System Settings › Keyboard › Press
 🌐 key › Do Nothing.
 
 ## Open
 
 Start and stop sounds; muting system audio while recording; a login item
 (SMAppService); the real transcriber (milestone 1); typing the text
-(Accessibility); whether a warm mic is acceptable or should start at key-down;
+(Accessibility); whether a warm mic is acceptable or should start at key-down
+(a warm Bluetooth headset mic holds AirPods in call quality);
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
@@ -70,3 +75,9 @@ macOS 13+ is already the minimum (the project targets 15.6).
   the state machine, hotkey encoding and flags, pre-roll ring, PCM and
   level maths, WAV writer. Not run: the real tap, capture, HUD focus,
   permissions.
+- 2026-10-23: built and unit tested on a Mac; review fixes. Space locks only
+  after the hold threshold and any other key while holding drops the
+  recording, so the hotkey's own shortcuts work; Return submits when locked;
+  the hotkey is limited to modifiers and function keys; the tap is made again
+  once Accessibility is granted; a microphone failure ends the recording and
+  says so. Still not run by hand: the real tap, capture, HUD focus.

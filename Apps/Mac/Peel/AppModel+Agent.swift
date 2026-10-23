@@ -277,7 +277,7 @@ extension AppModel {
             lookForBridge()
             checkBrain()
             // A pairing link that came while the account was locked.
-            if pairing != nil { openAgentSettings() }
+            if pairing != nil { openAccount(.brain) }
         } catch {
             notice = PeelError.problem(error, couldNot: "open the agent chat")
         }
@@ -382,7 +382,7 @@ extension AppModel {
             return true
         }
         pairing = server
-        if phase == .ready { openAgentSettings() }
+        if phase == .ready { openAccount(.brain) }
         return true
     }
 
@@ -538,12 +538,6 @@ extension AppModel {
                 return strut
             }() : nil
         }
-    }
-
-    /// The agent chat's settings: Account, at its Peel agent section.
-    func openAgentSettings() {
-        showsAgentSettings = true
-        destination = .account
     }
 
     func closeAgent() {

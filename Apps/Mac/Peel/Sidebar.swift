@@ -25,8 +25,6 @@ struct Sidebar: View {
         // passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
         VStack(alignment: .leading, spacing: Theme.Space.md) {
-            SidebarHeader()
-            SearchField(text: $model.searchQuery, focusRequest: model.sidebarSearchFocus)
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
@@ -93,6 +91,8 @@ struct Sidebar: View {
                     highlighted = nil
                     if let destination = model.destination { proxy.scrollTo(destination) }
                 }
+                // Back from Account, rebuilt: the open chat in view again.
+                .onAppear { if let destination = model.destination { proxy.scrollTo(destination) } }
             }
             .focusable()
             .focusEffectDisabled()
@@ -105,17 +105,8 @@ struct Sidebar: View {
                 model.sidebarHasKeys = true
                 focused = true
             }
-            // Its own view: each page restored redraws the bar, not the sidebar.
-            RestoreBar()
-            if let call = model.calls.session {
-                OnCallBar(call: call)
-            }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 34) // clear of the window's traffic lights
-        .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.sidebar.ignoresSafeArea())
         .onChange(of: focused) {
             model.sidebarHasKeys = focused
             highlighted = nil
@@ -177,7 +168,9 @@ struct Sidebar: View {
     /// menu, panel or viewer up: Down and Up move the highlight, Return
     /// opens it, Escape clears it. Typing goes to the open chat.
     private func handle(_ event: NSEvent, responder: NSResponder?) -> Bool {
-        guard model.phase == .ready, !model.isLockDue, let presenter, presenter.takesKeys(event), model.viewer == nil,
+        // Not while Account is open, as the list fades out under its categories.
+        guard model.phase == .ready, !model.isLockDue, model.destination != .account, let presenter,
+              presenter.takesKeys(event), model.viewer == nil,
               responder != nil, !(responder is NSText), event.window?.firstResponder === responder,
               !event.modifierFlags.contains(.control)
         else { return false }
@@ -260,17 +253,74 @@ extension EnvironmentValues {
     @Entry var sidebarClicked: @MainActor () -> Void = {}
 }
 
+/// The sidebar column: you and the search at the top in both, the chats
+/// below or, while Account is open, its categories. Only your row moves:
+/// the way back slides in before you and the bolt out after; the search
+/// stays where it is and searches Account's categories instead.
+struct SidebarColumn: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// What the search holds while Account is open; empty each time it opens.
+    @State private var settingsQuery = ""
+
+    var body: some View {
+        @Bindable var model = model
+        let inAccount = model.destination == .account
+        let found = AccountPage.matching(settingsQuery, in: model)
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            SidebarHeader()
+            SearchField(text: inAccount ? $settingsQuery : $model.searchQuery,
+                        prompt: inAccount ? "Search settings" : "Search", focusRequest: model.sidebarSearchFocus)
+                // Return: the first category found.
+                .onSubmit { if inAccount, let first = found.first { model.accountPage = first } }
+            // Stacked, not in the column: while one fades out and the other in,
+            // they share the space rather than each taking half.
+            ZStack(alignment: .top) {
+                if inAccount {
+                    AccountCategories(pages: found, searching: !settingsQuery.isEmpty)
+                        .transition(.opacity)
+                } else {
+                    Sidebar()
+                        .transition(.opacity)
+                }
+            }
+            // Under either, staying put as they swap. Its own view: each page
+            // restored redraws the bar, not the column.
+            RestoreBar()
+            if let call = model.calls.session {
+                OnCallBar(call: call)
+            }
+        }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: inAccount)
+        .onChange(of: inAccount) { settingsQuery = "" }
+        .padding(.horizontal, 10)
+        .padding(.top, 34) // clear of the window's traffic lights
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Theme.sidebar.ignoresSafeArea())
+    }
+}
+
 /// You, at the top of the sidebar: your photo, name and balance, opening
-/// the Account screen; the connection bolt beside it.
+/// the Account screen, and its Profile row while it is open; the connection
+/// bolt after it. While Account is open the way back to the chats (⌘[)
+/// slides in before you and the bolt slides out.
 struct SidebarHeader: View {
     @Environment(AppModel.self) private var model
 
     @State private var hovering = false
 
+    private var inAccount: Bool { model.destination == .account }
+
     var body: some View {
         HStack(spacing: 6) {
+            if inAccount {
+                IconButton("chevron.left", help: "Back to your chats (⌘[)", size: .sm, action: model.closeAccount)
+                    .keyboardShortcut("[", modifiers: .command)
+                    .transition(.offset(x: -16).combined(with: .opacity))
+            }
             Button {
-                model.destination = .account
+                if inAccount { model.accountPage = .profile } else { model.destination = .account }
             } label: {
                 HStack(spacing: 9) {
                     Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.lg, hue: model.myHue)
@@ -284,24 +334,31 @@ struct SidebarHeader: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, Theme.Space.xs)
-                .background(hovering || model.destination == .account ? Theme.hover : .clear,
+                // Account's Profile row while it is open: selected as its categories are.
+                .background(inAccount && AccountPage.shown(in: model) == .profile ? Theme.selection
+                                : hovering ? Theme.hover : .clear,
                             in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help("Account")
-            ConnectionBolt()
+            .help(inAccount ? "Profile" : "Account")
+            if !inAccount {
+                // In place: sliding, it would cross the column's edge and the divider.
+                ConnectionBolt()
+                    .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+            }
         }
     }
 }
 
 struct SearchField: View {
     @Binding var text: String
+    var prompt = "Search"
     var focusRequest = 0
 
     var body: some View {
-        FormTextField(label: "Search", prompt: "Search", text: $text, systemImage: "magnifyingglass",
+        FormTextField(label: prompt, prompt: prompt, text: $text, systemImage: "magnifyingglass",
                       focusRequest: focusRequest)
     }
 }

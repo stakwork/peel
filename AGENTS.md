@@ -338,7 +338,7 @@ is a short plan. Update the status and the journal when you finish something.
   `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
-  what the agent chat and Account › Peel agent show of its own account,
+  what the agent chat and Account › Assistant show of its own account,
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
   `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
@@ -358,7 +358,7 @@ is a short plan. Update the status and the journal when you finish something.
   `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
   for the chat: `MessageViews` (`MessageList` with its pill and Page
   keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
   engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
@@ -399,7 +399,7 @@ is a short plan. Update the status and the journal when you finish something.
   `AgentMemoryViews` (an earlier memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key
-  and model, kept and handed to strut) and `AgentSettings` (Account › Peel agent, with
+  and model, kept and handed to strut) and `AgentSettings` (Account › Assistant, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Brain, `BrainSection`:
   This Mac or a home server's address and key, its status, and a pairing
@@ -981,6 +981,7 @@ quitting before any window opens.
   {"open": "connection"}                  // the sidebar bolt’s status panel
   {"open": "connection-check"}            // its check/reconnect action
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
+  {"open": "account-dictation"}           // Account at one category, as its row opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu

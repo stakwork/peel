@@ -17,7 +17,7 @@ struct DictationSettingsSection: View {
     }
 
     private var section: some View {
-        SettingsSection("Dictation") {
+        SettingsSection {
             Fact("Dictation") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stateText)
@@ -87,11 +87,11 @@ struct DictationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "mic", text: "Dictate anywhere on your Mac by holding a key?", action: "Set up",
+            icon: "mic", text: "Dictation that works everywhere and stays local and private.", action: "Set up",
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()
-                model.destination = .account
+                model.openAccount(.dictation)
             }
         )
     }

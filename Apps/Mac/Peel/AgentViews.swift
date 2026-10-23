@@ -149,7 +149,7 @@ private struct AgentChatColumn: View {
             PeelLogo(size: 28)
         } trailing: {
             if agent.connection != nil {
-                IconButton("gearshape", help: "Agent settings") { model.openAgentSettings() }
+                IconButton("gearshape", help: "Agent settings") { model.openAccount(.assistant) }
             }
         }
     }

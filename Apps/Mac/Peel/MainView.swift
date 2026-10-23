@@ -13,7 +13,7 @@ struct MainView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar()
+            SidebarColumn()
                 .frame(width: sidebarWidth)
             PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
             VStack(spacing: 0) {

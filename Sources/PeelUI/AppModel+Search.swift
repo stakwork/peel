@@ -78,8 +78,9 @@ public final class ChatSearch {
 
 extension AppModel {
     /// Edit › Find (⌘F): the open chat's search, or the sidebar's when no
-    /// chat is open (Threads, Mentions, Payments, the account). Only while
-    /// the main window takes commands (`takesCommands`).
+    /// chat is open (Threads, Mentions, Payments, the account, where it
+    /// searches the account's categories). Only while the main window takes
+    /// commands (`takesCommands`).
     public func find() {
         guard takesCommands else { return }
         if let chat = selectedChat { openSearch(in: chat) } else { sidebarSearchFocus += 1 }

@@ -25,7 +25,7 @@ struct AutomationsView: View {
                 }
             } else if model.automationsClient == nil {
                 EmptyState("It keeps the schedule.", title: "Connect strut") {
-                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.primary))
+                    Button("Open Account") { model.openAccount(.brain) }.buttonStyle(.peel(.primary))
                 }
             } else {
                 SegmentedChoice(selection: $model.automationsTab, options: [(.yours, "Yours"), (.system, "System")])
@@ -38,12 +38,13 @@ struct AutomationsView: View {
                 }
             }
         }
-        .task {
+        .task(id: model.automations.anyRunning) {
             // strut fires on its own: keep the list current while it shows,
-            // and close to live while a run is going.
+            // and close to live while a run is going (or Run now is asking
+            // for one): a run starting or ending starts it again.
             while !Task.isCancelled {
                 await model.refreshAutomations()
-                try? await Task.sleep(for: .seconds(model.automations.list.contains(where: \.running) ? 3 : 30))
+                try? await Task.sleep(for: .seconds(model.automations.anyRunning ? 3 : 30))
             }
         }
     }
@@ -60,7 +61,7 @@ struct AutomationsView: View {
         if state.loaded, state.yours.isEmpty, state.problem == nil {
             if onHomeServer {
                 EmptyState(Self.homeServerNote, title: "Not on a home server yet") {
-                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.outline))
+                    Button("Open Account") { model.openAccount(.brain) }.buttonStyle(.peel(.outline))
                 }
             } else {
                 EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
@@ -102,7 +103,8 @@ struct AutomationsView: View {
                                 .padding(.bottom, Theme.Space.sm)
                         }
                         ForEach(state.system) { automation in
-                            SystemAutomationRow(automation: automation, expanded: model.openedAutomation == automation.id) {
+                            SystemAutomationRow(automation: automation, running: state.isRunning(automation),
+                                                expanded: model.openedAutomation == automation.id) {
                                 model.openedAutomation = model.openedAutomation == automation.id ? nil : automation.id
                             }
                         }
@@ -130,7 +132,8 @@ struct AutomationsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 SectionHeader(title).padding(.horizontal, Theme.Space.sm).padding(.bottom, Theme.Space.xs)
                 ForEach(automations) { automation in
-                    AutomationRow(automation: automation, expanded: model.openedAutomation == automation.id) {
+                    AutomationRow(automation: automation, running: model.automations.isRunning(automation),
+                                  expanded: model.openedAutomation == automation.id) {
                         model.openedAutomation = model.openedAutomation == automation.id ? nil : automation.id
                     }
                 }
@@ -144,6 +147,7 @@ struct AutomationsView: View {
 private struct AutomationRow: View {
     @Environment(AppModel.self) private var model
     let automation: Automation
+    let running: Bool
     let expanded: Bool
     let toggle: () -> Void
 
@@ -161,11 +165,11 @@ private struct AutomationRow: View {
             } detail: {
                 Text(automation.summary).muted()
             } trailing: {
-                AutomationStatus(automation: automation)
+                AutomationStatus(automation: automation, running: running)
             }
             .peelMenu { menu }
             if expanded {
-                AutomationDetail(automation: automation)
+                AutomationDetail(automation: automation, running: running)
                     .padding(.leading, 44)
                     .padding(.trailing, Theme.Space.md)
                     .padding(.vertical, Theme.Space.sm)
@@ -179,7 +183,11 @@ private struct AutomationRow: View {
             .button(automation.enabled ? "Pause" : "Resume", systemImage: automation.enabled ? "pause" : "play") {
                 Task { await model.setAutomation(automation, enabled: !automation.enabled) }
             },
-            .button("Run now", systemImage: "play.circle") { Task { await model.runAutomationNow(automation) } },
+            .button("Run now", systemImage: "play.circle") {
+                // Opened, so the run shows under it.
+                model.openedAutomation = automation.id
+                Task { await model.runAutomationNow(automation) }
+            },
             .divider,
             .destructive("Delete", systemImage: "trash", confirm: "Delete \u{201C}\(automation.name)\u{201D}") {
                 Task { await model.deleteAutomation(automation) }
@@ -192,6 +200,7 @@ private struct AutomationRow: View {
 private struct AutomationDetail: View {
     @Environment(AppModel.self) private var model
     let automation: Automation
+    let running: Bool
     @State private var editing: String?
 
     var body: some View {
@@ -223,7 +232,7 @@ private struct AutomationDetail: View {
                     .buttonStyle(.peel(.outline, size: .sm))
                     Button("Run now") { Task { await model.runAutomationNow(automation) } }
                         .buttonStyle(.peel(.outline, size: .sm))
-                        .disabled(automation.running)
+                        .disabled(running)
                 }
                 Text("To change when it runs, ask the agent.").muted()
             }
@@ -239,6 +248,7 @@ private struct AutomationDetail: View {
 private struct SystemAutomationRow: View {
     @Environment(AppModel.self) private var model
     let automation: Automation
+    let running: Bool
     let expanded: Bool
     let toggle: () -> Void
 
@@ -257,7 +267,7 @@ private struct SystemAutomationRow: View {
                 Text(automation.about ?? automation.summary).muted()
             } trailing: {
                 HStack(spacing: Theme.Space.md) {
-                    AutomationStatus(automation: automation)
+                    AutomationStatus(automation: automation, running: running)
                     PeelSwitch(isOn: enabled)
                         .accessibilityRepresentation { Toggle(automation.name, isOn: enabled) }
                 }
@@ -269,7 +279,7 @@ private struct SystemAutomationRow: View {
                         .foregroundStyle(Theme.text)
                     Button("Run now") { Task { await model.runAutomationNow(automation) } }
                         .buttonStyle(.peel(.outline, size: .sm))
-                        .disabled(automation.running)
+                        .disabled(running)
                     AutomationRuns(automation: automation)
                 }
                 .task(id: automation.lastRun) { await model.refreshRuns(of: automation) }
@@ -290,11 +300,13 @@ private struct SystemAutomationRow: View {
 /// ran (its switch says whether it is on).
 private struct AutomationStatus: View {
     let automation: Automation
+    /// strut says it is, or Run now is asking for it.
+    let running: Bool
 
     var body: some View {
         let system = automation.isSystem
         let (text, attention): (String, Bool) =
-            if automation.running { ("Running…", false) }
+            if running { ("Running…", false) }
             else if !automation.enabled, !system { ("Paused", false) }
             else if automation.lastRunFailed { ("Didn't finish", true) }
             else if automation.isMissed, !system { ("Missed", false) }
@@ -316,20 +328,31 @@ private struct AutomationRuns: View {
 
     @ViewBuilder var body: some View {
         let runs = model.automations.runs[automation.id] ?? []
-        if !runs.isEmpty {
+        // strut's newest run, going, before its runs list has it.
+        let going = automation.lastRun.flatMap { last in
+            last.status == "running" && !runs.contains { $0.id == last.runId } ? last : nil
+        }
+        if !runs.isEmpty || going != nil {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 SectionHeader("Runs")
+                if let going {
+                    row(going.startedAt) { Text("Running…").muted() }
+                }
                 ForEach(runs) { run in
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
-                        Text(run.startedAt.map { Formatting.dateAndTime($0) } ?? "")
-                            .font(Theme.font(11))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.secondaryText)
-                            .frame(width: 110, alignment: .leading)
-                        outcome(run)
-                    }
+                    row(run.startedAt) { outcome(run) }
                 }
             }
+        }
+    }
+
+    private func row(_ at: Date?, @ViewBuilder _ outcome: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+            Text(at.map { Formatting.dateAndTime($0) } ?? "")
+                .font(Theme.font(11))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 110, alignment: .leading)
+            outcome()
         }
     }
 

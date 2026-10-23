@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import WebKit
+import PeelAgent
 import PeelCore
 import PeelUI
 
@@ -31,7 +32,7 @@ final class WebPane: NSObject, Identifiable {
         /// The web address on show; nil for an HTML attachment, which has
         /// none to copy or open elsewhere.
         var url: URL?
-        /// An HTML attachment's name, shown in the address's place.
+        /// An HTML attachment's name, or a deliverable's, shown in the address's place.
         var fileName: String?
         var title = ""
         var canGoBack = false
@@ -78,6 +79,13 @@ final class WebPane: NSObject, Identifiable {
     /// The HTML attachment on show (`openDocument`): Peel's copy, removed
     /// with the page, and the name the address field shows.
     @ObservationIgnored private var document: (file: URL, name: String)?
+    /// The deliverable on show (`open(_ page:)`): Peel's own strut's page,
+    /// whose address carries strut's key, and the name the address field shows.
+    @ObservationIgnored private var strut: StrutPage?
+
+    /// An HTML attachment or a deliverable is on show: no web address to
+    /// show, copy, or offer to try again.
+    private var showsNoAddress: Bool { document != nil || strut != nil }
 
     init(profile: Profile?) {
         self.profile = profile
@@ -89,8 +97,8 @@ final class WebPane: NSObject, Identifiable {
     /// `WebPage.address` accepts; the caller sends anything else elsewhere.
     func open(_ url: URL) {
         guard let url = WebPage.address(url) else { return }
-        // An HTML attachment's web view is not for the web: a new one replaces it.
-        if document != nil { endPage() }
+        // An HTML attachment's or a deliverable's web view is not for the web: a new one replaces it.
+        if showsNoAddress { endPage() }
         let view = webView ?? makeWebView()
         isOpen = true
         problem = nil
@@ -125,6 +133,21 @@ final class WebPane: NSObject, Identifiable {
         view.loadFileURL(copy, allowingReadAccessTo: copy)
     }
 
+    /// Shows a deliverable from the agent's DM, replacing what the pane
+    /// showed: Peel's own strut's UI showing it alone (`StrutPage`), in a web
+    /// view of its own on a store that keeps nothing, so the key the page is
+    /// handed goes when it does. The address field shows its name, never its
+    /// address. A link clicked in it opens here as a page of the web, ending
+    /// it; a download comes only from strut's own page, never a frame in it.
+    func open(_ page: StrutPage) {
+        endPage()
+        strut = page
+        let view = makeWebView(keepsNothing: true)
+        isOpen = true
+        problem = nil
+        view.load(URLRequest(url: page.url))
+    }
+
     /// The header's Browser: the page as it is, or the pane with only its
     /// address field, which then has the keyboard.
     func show() {
@@ -152,16 +175,29 @@ final class WebPane: NSObject, Identifiable {
     }
 
     /// Ends the page and its web view; an HTML attachment's copy goes with it.
+    /// The web view is let go of first, so nothing it reports while it stops
+    /// is read as the next page's (a deliverable's address, with its key).
     private func endPage() {
+        if let view = webView {
+            observations = []
+            view.navigationDelegate = nil
+            view.uiDelegate = nil
+            view.stopLoading()
+            webView = nil
+        }
         page = Page()
         if let document { IncomingFiles.discard(document.file, root: Self.pagesRoot) }
         document = nil
-        guard let view = webView else { return }
-        view.stopLoading()
-        view.navigationDelegate = nil
-        view.uiDelegate = nil
-        observations = []
-        webView = nil
+        strut = nil
+    }
+
+    /// Peel's strut started again (on another port, with another key) or
+    /// stopped: a deliverable from the one before ends, since its address and
+    /// the key in it were that strut's, and the pane says so in its place.
+    func strutChanged(to server: MemoryServer?) {
+        guard let strut, strut.server != server else { return }
+        endPage()
+        problem = Problem(url: nil, message: "Peel's strut started again. Open this from the agent's message again.")
     }
 
     func goBack() { webView?.goBack() }
@@ -213,14 +249,18 @@ final class WebPane: NSObject, Identifiable {
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
 
-    /// A web view for the web, or with `offline` rules for an HTML attachment.
-    private func makeWebView(offline rules: WKContentRuleList? = nil) -> PaneWebView {
+    /// A web view for the web, with `offline` rules for an HTML attachment,
+    /// or one that `keepsNothing` for a deliverable on Peel's own strut.
+    private func makeWebView(offline rules: WKContentRuleList? = nil, keepsNothing: Bool = false) -> PaneWebView {
         let configuration = WKWebViewConfiguration()
         if let rules {
             // Someone else's page: no script, nothing kept, nothing fetched.
             configuration.websiteDataStore = .nonPersistent()
             configuration.defaultWebpagePreferences.allowsContentJavaScript = false
             configuration.userContentController.add(rules)
+        } else if keepsNothing {
+            // strut's UI, handed strut's key: it goes with the page.
+            configuration.websiteDataStore = .nonPersistent()
         } else {
             // Without a profile folder, a store that keeps nothing: never the
             // default store other apps' pages and other profiles would share.
@@ -233,7 +273,7 @@ final class WebPane: NSObject, Identifiable {
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
         // A force click's preview would load the link outside the rules.
-        view.allowsLinkPreview = rules == nil
+        view.allowsLinkPreview = rules == nil && !keepsNothing
         view.close = { [weak self] in self?.close() }
         func watch<Value>(_ keyPath: KeyPath<PaneWebView, Value>) -> NSKeyValueObservation {
             view.observe(keyPath) { [weak self] _, _ in MainActor.assumeIsolated { self?.sync() } }
@@ -281,13 +321,14 @@ final class WebPane: NSObject, Identifiable {
     /// So the address changes only once the new page commits (`committed`),
     /// or while nothing is loading (a page's own history changes); the
     /// first load, which Peel started, shows where it goes. An HTML
-    /// attachment shows its name, never its copy's path.
+    /// attachment shows its name, never its copy's path, and a deliverable
+    /// its name, never its address, which carries strut's key.
     private func sync(committed: Bool = false) {
         guard let webView else { return }
-        let url = document != nil ? nil
+        let url = showsNoAddress ? nil
             : committed || !webView.isLoading || page.url == nil ? webView.url ?? page.url : page.url
         let new = Page(
-            url: url, fileName: document?.name, title: webView.title ?? "",
+            url: url, fileName: document?.name ?? strut?.name, title: webView.title ?? "",
             canGoBack: webView.canGoBack, canGoForward: webView.canGoForward,
             isLoading: webView.isLoading, progress: webView.estimatedProgress,
             hasOnlySecureContent: webView.hasOnlySecureContent
@@ -326,6 +367,8 @@ final class WebPane: NSObject, Identifiable {
 extension WebPane: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
         if let document { return documentPolicy(for: action, file: document.file) }
+        // A deliverable's rules are a strut page's, with the pane's downloads.
+        if let strut { return strut.policy(for: action, in: webView, open: linkAction, downloads: true) }
         if action.shouldPerformDownload { return .download }
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame ?? true
@@ -375,6 +418,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        if let strut { return strut.policy(for: response, downloads: true) }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
         let attachment = disposition?.lowercased().hasPrefix("attachment") == true
         return response.isForMainFrame && (attachment || !response.canShowMIMEType) ? .download : .allow
@@ -399,20 +443,22 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         let error = error as NSError
         if error.domain == NSURLErrorDomain, error.code == NSURLErrorCancelled { return }
         if error.domain == WebKitErrorDomain, error.code == WebKitErrorFrameLoadInterruptedByPolicyChange { return }
-        // An HTML attachment's copy is never offered to try again as an address.
-        let url = document == nil ? error.userInfo[NSURLErrorFailingURLErrorKey] as? URL : nil
+        // An HTML attachment's copy, or a deliverable's address with strut's key,
+        // is never offered to try again as an address.
+        let url = showsNoAddress ? nil : error.userInfo[NSURLErrorFailingURLErrorKey] as? URL
         problem = Problem(url: url, message: error.localizedDescription)
     }
 
     /// Loads the page again, once: a page that brings its process down
     /// again within a minute is left on its problem rather than reloaded
-    /// for as long as the pane is open.
+    /// for as long as the pane is open. A deliverable loads its address with
+    /// the key again: strut's UI took it out of the one it shows.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard crashes.again() else {
-            problem = Problem(url: document == nil ? webView.url ?? page.url : nil, message: "The page stopped working.")
+            problem = Problem(url: showsNoAddress ? nil : webView.url ?? page.url, message: "The page stopped working.")
             return
         }
-        webView.reload()
+        if let strut { webView.load(URLRequest(url: strut.url)) } else { webView.reload() }
     }
 
     /// `target=_blank` and `window.open`: the pane is the one window.
@@ -420,6 +466,12 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
+        if let strut {
+            strut.newWindow(for: action, from: webView, open: linkAction) { request in
+                webView.startDownload(using: request) { $0.delegate = self }
+            }
+            return nil
+        }
         guard let url = action.request.url, WebPage.address(url) != nil else { return nil }
         if document != nil {
             if action.navigationType == .linkActivated { follow(url) }
@@ -512,7 +564,7 @@ struct CrashReload {
     }
 }
 
-final class PaneWebView: WKWebView {
+final class PaneWebView: InputWebView {
     var close: (() -> Void)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

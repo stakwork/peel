@@ -239,8 +239,9 @@ public struct AgentJob: Sendable, Equatable {
 }
 
 /// Something an agent's message points to, as strut's reply shape gives it
-/// (`{ id, title, kind?, label?, summary?, url? }`): shown by its title;
-/// opened only by an https link (a file comes as an attachment instead).
+/// (`{ id, title, kind?, label?, summary?, url? }`) and the bridge adds to
+/// (`path` or `app`, stakwork/sphinx#391): shown by its title; opened by an
+/// https link, or on Peel's own strut by its handle.
 public struct AgentArtifact: Sendable, Equatable {
     /// The most read from one message.
     static let most = 20
@@ -253,13 +254,18 @@ public struct AgentArtifact: Sendable, Equatable {
     /// An https link with a host and no user name in it, if it has one;
     /// anything else is dropped (`https://bank.com@evil.example` reads as the bank).
     public let url: URL?
+    /// Where Peel's own strut shows it, if the bridge named a place strut
+    /// would take; anything else is dropped.
+    public let handle: Handle?
 
-    public init(id: String, title: String, label: String? = nil, summary: String? = nil, url: URL? = nil) {
+    public init(id: String, title: String, label: String? = nil, summary: String? = nil, url: URL? = nil,
+                handle: Handle? = nil) {
         self.id = id
         self.title = title
         self.label = label
         self.summary = summary
         self.url = url
+        self.handle = handle
     }
 
     init?(_ value: JSONValue) {
@@ -272,8 +278,118 @@ public struct AgentArtifact: Sendable, Equatable {
            parsed.user == nil, parsed.password == nil {
             url = parsed
         }
+        var handle: Handle?
+        if case .string(let path)? = fields["path"] {
+            handle = Handle(path: path)
+        } else if case .string(let app)? = fields["app"] {
+            handle = Handle(app: app)
+        }
         self.init(id: text("id") ?? title, title: String(title.prefix(AgentToolLine.longest)), label: text("label"),
-                  summary: text("summary"), url: url)
+                  summary: text("summary"), url: url, handle: handle)
+    }
+}
+
+extension AgentArtifact {
+    /// A deliverable on a strut, as strut's UI shows one alone (its
+    /// `?artifact=` and `?app=`, strut's specs/API.md §14.3). Only these
+    /// shapes: the words are a message's, and the page opened from them is
+    /// loaded with strut's key.
+    public enum Handle: Sendable, Equatable {
+        /// A file strut serves: `/jobs/<job>/files/<file>` or
+        /// `/artifacts/<run>/<file>`, behind at most two `/peers/<id>` (an
+        /// org's, through strut's read-through), each segment percent-encoded.
+        case file(String)
+        /// An app: `<name>`, or `@<id>/<name>` for an org's.
+        case app(String)
+
+        /// The org it lives on, which the person reads as `@<id>`: the first
+        /// hop; nil for one of this strut's own.
+        public var peer: String? {
+            switch self {
+            case .file(let path):
+                let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+                return parts.count > 2 && parts[1] == "peers" ? String(parts[2]) : nil
+            case .app(let app):
+                guard app.hasPrefix("@"), let slash = app.firstIndex(of: "/") else { return nil }
+                return String(app[app.index(after: app.startIndex)..<slash])
+            }
+        }
+
+        /// A file's handle, if `path` is exactly one of those shapes: a path's
+        /// characters only, no `.` or `..` segment however it is written, a
+        /// run id with no `/` (only a job's holds one), and no escaped `/`,
+        /// `\` or control character in the file's own segments.
+        public init?(path: String) {
+            guard path.utf8.count <= 512, path.hasPrefix("/"), path.unicodeScalars.allSatisfy(Self.pathCharacters.contains) else {
+                return nil
+            }
+            var segments = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false).map(String.init)[...]
+            var hops = 0
+            while segments.first == "peers" {
+                guard hops < 2, segments.count > 1, Self.isPeerID(segments[segments.startIndex + 1]) else { return nil }
+                segments = segments.dropFirst(2)
+                hops += 1
+            }
+            let file: ArraySlice<String>
+            switch segments.first {
+            case "jobs" where segments.count > 3 && segments[segments.startIndex + 2] == "files":
+                file = segments.dropFirst(3)
+            case "artifacts" where segments.count > 2:
+                file = segments.dropFirst(2)
+            default:
+                return nil
+            }
+            // The job or run id; a job's may hold an escaped `/` (`peer%2Fj-1`).
+            guard let id = segments.dropFirst().first?.removingPercentEncoding, Self.isID(id),
+                  segments.first == "jobs" || !id.contains("/") else { return nil }
+            for segment in file {
+                guard let plain = segment.removingPercentEncoding, !plain.isEmpty, plain != ".", plain != "..",
+                      !plain.contains("/"), !plain.contains("\\"),
+                      !plain.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+            }
+            self = .file(path)
+        }
+
+        /// An app's handle, if `app` is a strut app name, behind `@<id>/` for an org's.
+        public init?(app: String) {
+            var name = Substring(app)
+            if app.hasPrefix("@") {
+                guard let slash = app.firstIndex(of: "/"), Self.isPeerID(String(app[app.index(after: app.startIndex)..<slash])) else {
+                    return nil
+                }
+                name = app[app.index(after: slash)...]
+            }
+            guard Self.isAppName(String(name)) else { return nil }
+            self = .app(app)
+        }
+
+        /// A URL path's characters (RFC 3986's `pchar` and `/`): every other
+        /// one is percent-encoded by whoever made the path.
+        private static let pathCharacters = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@%/")
+
+        /// strut's peer ids: letters, digits, `.`, `_` and `-`, a letter or
+        /// digit first, at most 64 (the person reads one as `@<id>`).
+        public static func isPeerID(_ id: String) -> Bool {
+            id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"#, options: .regularExpression) != nil
+        }
+
+        /// strut's app names (`validateAppName`): `/`-separated segments of
+        /// letters, digits, `_`, `.` and `-`, each starting with a letter or
+        /// digit; never `@`, which pins a version, and no segment that reads
+        /// as a version (`v2`) or is the app's database (`data.db`).
+        public static func isAppName(_ name: String) -> Bool {
+            name.count <= 120
+                && name.range(of: #"^[A-Za-z0-9][A-Za-z0-9_.-]*(/[A-Za-z0-9][A-Za-z0-9_.-]*)*$"#, options: .regularExpression) != nil
+                && !name.split(separator: "/").contains { $0 == "data.db" || $0.range(of: #"^v[0-9]+$"#, options: .regularExpression) != nil }
+        }
+
+        /// strut's job and run ids: `/`-separated segments of letters,
+        /// digits, `.`, `_` and `-`, a letter or digit at each end, at most 120.
+        static func isID(_ id: String) -> Bool {
+            let segment = #"[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?"#
+            return id.count <= 120 && id.range(of: "^\(segment)(/\(segment))*$", options: .regularExpression) != nil
+        }
     }
 }
 

@@ -135,7 +135,11 @@ extension AppModel {
 
     var memoryServer: MemoryServer? {
         get { macAgent.memoryServer }
-        set { macAgent.memoryServer = newValue }
+        set {
+            macAgent.memoryServer = newValue
+            // A deliverable open in the web pane was the strut before's (its port and key).
+            web.strutChanged(to: newValue)
+        }
     }
 
     var strut: BundledStrut? {

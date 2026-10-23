@@ -1,8 +1,9 @@
 #!/bin/sh
 # Build phase of the Mac app (Apps/Peel.xcodeproj, "Peel macOS"): puts the
 # agent's strut, as scripts/stage-strut.sh left it (once per Mac, shared by
-# every checkout), into Contents/Strut. Not under Contents/Helpers, which
-# codesign keeps for signed nested bundles.
+# every checkout), into Contents/Strut, only if it was staged from the commit
+# Vendor/strut.lock names. Not under Contents/Helpers, which codesign keeps
+# for signed nested bundles.
 #
 # PEEL_REQUIRE_STRUT=1 (scripts/run-app.sh) fails without a staged strut and
 # bridge instead of warning; a Release build always fails without the bridge. When Xcode signs the build (an archive, a run from
@@ -48,6 +49,14 @@ rm -rf "$DEST"
 if [ ! -d "$STRUT_STAGE" ]; then
   echo "warning: no strut staged at $STRUT_STAGE (scripts/stage-strut.sh <strut checkout>); this Peel's agent has no memory or automations"
   [ "${PEEL_REQUIRE_STRUT:-}" != 1 ] || exit 1
+  exit 0
+fi
+# Another strut than the pin, as for the bridge: left out, or the build's end where it must ship one.
+# Its UI is what opens the agent's deliverables, so an older one would show the whole of itself instead.
+WANT_STRUT="$(awk '!/^#/ && NF { print $1; exit }' "$ROOT/Vendor/strut.lock")"
+if [ "$(sed -n 's/^strut //p' "$STRUT_STAGE/STAGED_FROM" 2> /dev/null)" != "$WANT_STRUT" ]; then
+  echo "warning: the staged strut is not strut $WANT_STRUT (Vendor/strut.lock); stage it again (scripts/stage-strut.sh <strut checkout>). Left out: this Peel's agent has no memory or automations"
+  [ "${PEEL_REQUIRE_STRUT:-}" != 1 ] && [ "${CONFIGURATION:-}" != Release ] || exit 1
   exit 0
 fi
 echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'strut, unknown source')"

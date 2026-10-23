@@ -28,7 +28,7 @@ struct WorkspaceAppView: View {
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
             if let server = model.memoryServer, let page = server.page(of: app) {
-                AppPage(url: page, server: server)
+                AppPage(page: StrutPage(url: page, server: server, name: app.title))
                     // Another app, strut started again (a new port and key), or Reload: a new
                     // page; not the workspace renaming it, which would lose what the page holds.
                     .id(PageID(app: app.id, server: server, loads: loads))
@@ -53,35 +53,34 @@ extension WorkspaceApp {
 /// The web view under an app: strut's UI from Peel's own strut, on a store
 /// that keeps nothing (the key it is handed lives in the tab's session
 /// storage, and goes with the view), limited as the web pane is
-/// (`WebPane.limit`), and nowhere else. A link out of the page opens beside
-/// it as a message's link does (`WebPane.follow`), only right after the
-/// person clicked or typed in it: the page's scripts are the workspace's.
-/// No download, camera or microphone.
+/// (`WebPane.limit`), and kept to `StrutPage`'s rules: a link out of the page
+/// opens beside it as a message's link does, only right after the person
+/// clicked or typed in it, since the page's scripts are the workspace's. No
+/// download, camera or microphone.
 private struct AppPage: NSViewRepresentable {
-    let url: URL
-    let server: MemoryServer
+    let page: StrutPage
     @Environment(\.openURL) private var openURL
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(page: url, server: server, open: openURL)
+        Coordinator(page: page, open: openURL)
     }
 
-    func makeNSView(context: Context) -> AppWebView {
+    func makeNSView(context: Context) -> InputWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         WebPane.limit(configuration)
-        let view = AppWebView(frame: .zero, configuration: configuration)
+        let view = InputWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         // A force click's preview would load a link outside these rules.
         view.allowsLinkPreview = false
-        view.load(URLRequest(url: url))
+        view.load(URLRequest(url: page.url))
         return view
     }
 
-    func updateNSView(_ view: AppWebView, context: Context) {}
+    func updateNSView(_ view: InputWebView, context: Context) {}
 
-    static func dismantleNSView(_ view: AppWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {
         view.stopLoading()
         view.navigationDelegate = nil
         view.uiDelegate = nil
@@ -89,55 +88,34 @@ private struct AppPage: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        /// The page's address with the key: loaded again, never shown.
-        private let page: URL
-        private let server: MemoryServer
+        private let page: StrutPage
         private let open: OpenURLAction
         private var crashes = CrashReload()
 
-        init(page: URL, server: MemoryServer, open: OpenURLAction) {
+        init(page: StrutPage, open: OpenURLAction) {
             self.page = page
-            self.server = server
             self.open = open
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-            guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
-            let mainFrame = action.targetFrame?.isMainFrame ?? true
-            if action.shouldPerformDownload { return .cancel }
-            if server.serves(url) { return .allow }
-            switch scheme {
-            case "about":
-                // The page's own frame (`srcdoc`).
-                return .allow
-            case "data", "blob":
-                return mainFrame ? .cancel : .allow
-            case "http", "https":
-                // Anywhere else: a link the person clicked opens beside the app.
-                if action.navigationType == .linkActivated { follow(url, from: webView) }
-                return .cancel
-            default:
-                return .cancel
-            }
+            page.policy(for: action, in: webView, open: open, downloads: false)
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-            response.canShowMIMEType ? .allow : .cancel
+            page.policy(for: response, downloads: false)
         }
 
-        /// `target=_blank` and `window.open`: strut's UI opens a page's link
-        /// to anywhere but strut this way; it opens beside the app.
         func webView(
             _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
             for action: WKNavigationAction, windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if let url = action.request.url, !server.serves(url) { follow(url, from: webView) }
+            page.newWindow(for: action, from: webView, open: open, download: nil)
             return nil
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             // With the key: strut's UI took it out of the address it shows.
-            if crashes.again() { webView.load(URLRequest(url: page)) }
+            if crashes.again() { webView.load(URLRequest(url: page.url)) }
         }
 
         func webView(
@@ -154,31 +132,5 @@ private struct AppPage: NSViewRepresentable {
         ) async -> [URL]? {
             FilePanels().open(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
         }
-
-        /// Only on the person's own click or key: a script's `click()` is
-        /// `linkActivated` too, and could keep opening pages in the pane.
-        private func follow(_ url: URL, from webView: WKWebView) {
-            guard (webView as? AppWebView)?.personActed == true else { return }
-            WebPane.follow(url, with: open)
-        }
-    }
-}
-
-/// The app's web view, which knows when the person last clicked or typed in
-/// it: events AppKit delivers, which no script on the page can make.
-final class AppWebView: WKWebView {
-    private var lastInput: ContinuousClock.Instant?
-
-    /// The person clicked or typed here within the last second.
-    var personActed: Bool { lastInput.map { .now - $0 < .seconds(1) } ?? false }
-
-    override func mouseDown(with event: NSEvent) {
-        lastInput = .now
-        super.mouseDown(with: event)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        lastInput = .now
-        super.keyDown(with: event)
     }
 }

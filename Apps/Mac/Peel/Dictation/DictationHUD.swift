@@ -8,83 +8,169 @@ import PeelUI
 final class DictationHUDModel {
     enum Mode: Equatable {
         case hidden
-        /// Push-to-talk: a level meter only.
+        /// Push-to-talk: the waveform only.
         case recording
-        /// Hands-free: the meter, with X and tick.
+        /// Hands-free: the waveform between X and tick.
         case locked
-        /// A line of text for a moment (the stub's result, a problem).
+        /// A line of text for a moment (where the text went, a problem).
         case message(String)
     }
 
+    private static let silence = [Float](repeating: 0, count: 8)
+
     var mode: Mode = .hidden
-    /// 0…1.
-    var level: Float = 0
-    /// A standing note under the meter, such as secure input being on.
-    var note: String?
+    /// The last few levels (0…1), oldest first: the bars.
+    private(set) var levels = silence
+    /// A standing note under the pill, such as secure input being on.
+    var note: String? {
+        didSet { if note != oldValue { resized() } }
+    }
     var accept: () -> Void = {}
     var cancel: () -> Void = {}
+    /// The panel's, to fit and recentre itself when the content changes size.
+    @ObservationIgnored var resized: () -> Void = {}
+
+    /// The latest level pushes the waveform along.
+    func push(_ level: Float) {
+        levels.removeFirst()
+        levels.append(level)
+    }
+
+    func clearLevels() { levels = Self.silence }
 }
 
+/// A small dark pill, like a system overlay: the waveform alone while the
+/// key is held; X and tick either side of it when hands-free.
 struct DictationHUDView: View {
     let model: DictationHUDModel
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 12) {
-                switch model.mode {
-                case .hidden:
-                    EmptyView()
-                case .recording:
-                    DictationLevelMeter(level: model.level)
-                case .locked:
-                    Button(action: model.cancel) {
-                        Image(systemName: "xmark").frame(width: 28, height: 28)
-                    }
-                    .accessibilityLabel("Cancel dictation")
-                    DictationLevelMeter(level: model.level)
-                    Button(action: model.accept) {
-                        Image(systemName: "checkmark").frame(width: 28, height: 28)
-                    }
-                    .accessibilityLabel("Finish dictation")
-                case .message(let text):
-                    Text(text)
-                        .font(Theme.font(13))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(2)
-                        .frame(maxWidth: 320)
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.text)
+        VStack(spacing: Theme.Space.xs) {
+            pill
             if let note = model.note, model.mode != .hidden {
-                Text(note).font(Theme.font(11)).foregroundStyle(Theme.secondaryText)
+                Text(note)
+                    .font(Theme.font(11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, Theme.Space.sm)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.8), in: Capsule())
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.black.opacity(0.85), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-        .padding(8)
+        // Room for the shadow, which reaches 6 pt below the pill.
+        .padding(Theme.Space.sm)
         .fixedSize()
+    }
+
+    @ViewBuilder private var pill: some View {
+        switch model.mode {
+        case .hidden:
+            EmptyView()
+        case .recording:
+            DictationWaveform(model: model)
+                .padding(.horizontal, Theme.Space.md)
+                .frame(height: 24)
+                .hudCapsule()
+        case .locked:
+            HStack(spacing: Theme.Space.sm) {
+                HUDButton(symbol: "xmark", label: "Cancel dictation", filled: false, action: model.cancel)
+                DictationWaveform(model: model)
+                HUDButton(symbol: "checkmark", label: "Finish dictation", filled: true, action: model.accept)
+            }
+            .padding(.horizontal, Theme.Space.xs)
+            .frame(height: 28)
+            .hudCapsule()
+        case .message(let text):
+            HugUpTo(maxWidth: 300) {
+                Text(text)
+                    .font(Theme.font(12))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, Theme.Space.md)
+            .padding(.vertical, 6)
+            .hudCapsule()
+        }
     }
 }
 
-private struct DictationLevelMeter: View {
-    let level: Float
-    private static let bars = 12
+/// The system-overlay look: always dark, whatever the app's appearance, so
+/// its own near-black and white hairline rather than `menuBoxed`'s navy.
+private extension View {
+    func hudCapsule() -> some View {
+        // The shadow is on the shape alone: the bars move without re-blurring it.
+        background {
+            Capsule()
+                .fill(Color(white: 0.06).opacity(0.94))
+                .shadow(color: Theme.menuShadow, radius: 1, y: 0.5)
+                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+        }
+        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+    }
+}
+
+/// Its child at its own width up to `maxWidth`, then wrapped to that width:
+/// a short message hugs its words, a long one goes onto a second line.
+private struct HugUpTo: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let ideal = child.sizeThatFits(.unspecified)
+        return ideal.width <= maxWidth ? ideal : child.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+/// Thin white bars, the newest at the right, each as tall as its moment was
+/// loud. Reads the levels itself, so a new one redraws only the bars.
+private struct DictationWaveform: View {
+    let model: DictationHUDModel
+    private static let minHeight: CGFloat = 3
+    private static let maxHeight: CGFloat = 14
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<Self.bars, id: \.self) { index in
-                let lit = Float(index + 1) / Float(Self.bars) <= level + 0.001
+        let levels = model.levels
+        HStack(spacing: 2) {
+            ForEach(levels.indices, id: \.self) { index in
                 Capsule()
-                    .fill(lit ? Theme.accent : .white.opacity(0.2))
-                    .frame(width: 4, height: 6 + CGFloat(index) * 1.5)
+                    .fill(.white)
+                    .frame(width: 2, height: Self.minHeight + CGFloat(levels[index]) * (Self.maxHeight - Self.minHeight))
             }
         }
-        .frame(width: 100, height: 24)
-        .animation(.linear(duration: 0.08), value: level)
+        .frame(height: Self.maxHeight)
+        .animation(.easeOut(duration: 0.1), value: levels)
         .accessibilityHidden(true)
+    }
+}
+
+/// A 20 pt round button: grey for X, white for the tick.
+private struct HUDButton: View {
+    let symbol: String
+    let label: String
+    let filled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(filled ? Color.black : .white)
+                .frame(width: 20, height: 20)
+                .background(filled ? Color.white : Color.white.opacity(0.22), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(HUDPress())
+        .accessibilityLabel(label)
+    }
+}
+
+private struct HUDPress: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed ? 0.94 : 1)
     }
 }
 
@@ -96,6 +182,12 @@ final class DictationHUDPanel: NSPanel {
     let model = DictationHUDModel()
     private let host: NSHostingView<DictationHUDView>
     private var hideTask: Task<Void, Never>?
+    /// Bumped on every show and hide, so a fade that finishes late does not
+    /// take away a HUD shown again meanwhile.
+    private var generation = 0
+
+    private static let fadeIn: TimeInterval = 0.15
+    private static let fadeOut: TimeInterval = 0.11
 
     init() {
         host = NSHostingView(rootView: DictationHUDView(model: model))
@@ -105,7 +197,8 @@ final class DictationHUDPanel: NSPanel {
         contentView = host
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // The pill draws its own soft shadow.
+        hasShadow = false
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         level = .statusBar
@@ -114,6 +207,11 @@ final class DictationHUDPanel: NSPanel {
         becomesKeyOnlyIfNeeded = true
         appearance = NSAppearance(named: .darkAqua)
         ignoresMouseEvents = true
+        alphaValue = 0
+        model.resized = { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.place()
+        }
     }
 
     override var canBecomeKey: Bool { false }
@@ -121,11 +219,19 @@ final class DictationHUDPanel: NSPanel {
 
     func show(_ mode: DictationHUDModel.Mode) {
         hideTask?.cancel()
+        generation += 1
+        // A new recording starts from silence, not the last one's bars.
+        if mode == .recording, model.mode != .locked { model.clearLevels() }
         model.mode = mode
         // Mouse only while there is something to click.
         ignoresMouseEvents = mode != .locked
         place()
         orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fadeIn
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+        }
         if case .message = mode {
             hideTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(DictationDefaults.resultDisplay))
@@ -137,9 +243,21 @@ final class DictationHUDPanel: NSPanel {
 
     func hide() {
         hideTask?.cancel()
-        model.mode = .hidden
+        generation += 1
+        let fading = generation
         ignoresMouseEvents = true
-        orderOut(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fadeOut
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.generation == fading else { return }
+                // Only now: the pill keeps its content while it fades.
+                self.model.mode = .hidden
+                self.orderOut(nil)
+            }
+        }
     }
 
     /// Bottom centre of the screen the pointer is on.
@@ -147,6 +265,8 @@ final class DictationHUDPanel: NSPanel {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
+        // Measured from the model as it is now, not as last drawn.
+        host.rootView = DictationHUDView(model: model)
         host.layoutSubtreeIfNeeded()
         let size = host.fittingSize
         setContentSize(size)

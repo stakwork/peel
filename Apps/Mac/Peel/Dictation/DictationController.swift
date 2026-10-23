@@ -169,6 +169,28 @@ final class DictationController {
         return timer
     }
 
+    // MARK: - Teaching hands-free
+
+    /// When the HUD came up for this hold; nil once hands-free needs no tip.
+    @ObservationIgnored private var tipClock: Date?
+
+    /// The HUD came up: Space's tip, after a while, until hands-free has
+    /// been used or the tip has shown its fill (its X and tick say how to end it).
+    private func teachHandsFree(locked: Bool) {
+        hud.model.tip = nil
+        tipClock = nil
+        if locked { settings.usedHandsFree = true } else if settings.wantsHandsFreeTip { tipClock = Date() }
+    }
+
+    /// Each tick of a hold: the Space tip once it has gone on long enough.
+    private func offerHandsFree() {
+        guard let since = tipClock, hud.model.mode == .recording,
+              Date().timeIntervalSince(since) >= DictationDefaults.handsFreeTipAfter else { return }
+        tipClock = nil
+        settings.handsFreeTipsShown += 1
+        hud.model.tip = "Press Space to keep going hands-free"
+    }
+
     // MARK: - Effects
 
     private func send(_ input: DictationStateMachine.Input) {
@@ -187,6 +209,7 @@ final class DictationController {
                 if let target, target.isSecure {
                     abandon(Self.secureMessage(entry: target.secureInput))
                 } else {
+                    teachHandsFree(locked: effect == .enterLocked)
                     hud.show(effect == .enterLocked ? .locked : .recording)
                 }
             case .submit(let mode):
@@ -210,7 +233,10 @@ final class DictationController {
         target = focus
         // The machine needs the time to know a hold from a tap, and a recording's end.
         ticker?.invalidate()
-        ticker = repeating(every: DictationDefaults.tickInterval) { $0.send(.tick) }
+        ticker = repeating(every: DictationDefaults.tickInterval) {
+            $0.send(.tick)
+            $0.offerHandsFree()
+        }
         // A password field: not a word is recorded. Said once the hold is
         // past the threshold, so typing an Option character there stays quiet.
         guard !focus.isSecure else { return }

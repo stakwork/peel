@@ -14,6 +14,8 @@ final class DictationHUDModel {
         case locked
         /// A line of text for a moment (where the text went, a problem).
         case message(String)
+        /// A word learned from the user's edit, with Undo, for a few seconds.
+        case learned(String)
     }
 
     private static let silence = [Float](repeating: 0, count: 8)
@@ -27,6 +29,8 @@ final class DictationHUDModel {
     }
     var accept: () -> Void = {}
     var cancel: () -> Void = {}
+    /// Undo of what `.learned` says was learned.
+    var undo: () -> Void = {}
     /// The panel's, to fit and recentre itself when the content changes size.
     @ObservationIgnored var resized: () -> Void = {}
 
@@ -89,6 +93,24 @@ struct DictationHUDView: View {
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, 6)
+            .hudCapsule()
+        case .learned(let text):
+            HStack(spacing: Theme.Space.sm) {
+                Text(text)
+                    .font(Theme.font(12))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Button("Undo", action: model.undo)
+                    .buttonStyle(HUDPress())
+                    .font(Theme.font(12, .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, Theme.Space.sm)
+                    .frame(height: 20)
+                    .background(.white, in: Capsule())
+            }
+            .padding(.leading, Theme.Space.md)
+            .padding(.trailing, Theme.Space.xs)
+            .frame(height: 28)
             .hudCapsule()
         }
     }
@@ -224,7 +246,7 @@ final class DictationHUDPanel: NSPanel {
         if mode == .recording, model.mode != .locked { model.clearLevels() }
         model.mode = mode
         // Mouse only while there is something to click.
-        ignoresMouseEvents = mode != .locked
+        ignoresMouseEvents = !(mode == .locked || { if case .learned = mode { true } else { false } }())
         place()
         orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
@@ -232,9 +254,14 @@ final class DictationHUDPanel: NSPanel {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animator().alphaValue = 1
         }
-        if case .message = mode {
+        let display: TimeInterval? = switch mode {
+        case .message: DictationDefaults.resultDisplay
+        case .learned: DictationDefaults.learnedDisplay
+        default: nil
+        }
+        if let display {
             hideTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(DictationDefaults.resultDisplay))
+                try? await Task.sleep(for: .seconds(display))
                 guard !Task.isCancelled else { return }
                 self?.hide()
             }

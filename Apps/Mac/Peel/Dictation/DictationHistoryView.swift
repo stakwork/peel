@@ -160,7 +160,7 @@ private struct DictationHistoryRow: View {
 
     /// The app, then where the text went when it was not typed.
     private var detail: String {
-        let app = record.appName ?? "Unknown app"
+        let app = (record.appName ?? "Unknown app") + (record.heard.map { " · heard “\($0)”" } ?? "")
         switch record.outcome {
         case .typed: return app
         case .copied: return "\(app) · Copied, not typed" + (record.note.map { ": \($0)" } ?? "")

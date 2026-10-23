@@ -101,6 +101,16 @@ struct PeelApp: App {
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
+        // Dictation's Vocabulary: the words it puts right, from the memory graph.
+        Window("Dictation Vocabulary", id: DictationVocabularyView.id) {
+            DictationVocabularyView()
+                .environment(model)
+                .tint(Theme.accent)
+        }
+        .defaultSize(width: 560, height: 560)
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+
         // The call you are on: 960 × 640 at first, then where you left it.
         Window("Call", id: CallWindow.id) {
             CallWindow()

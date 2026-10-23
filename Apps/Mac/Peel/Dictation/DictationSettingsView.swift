@@ -37,6 +37,15 @@ struct DictationSettingsSection: View {
                         .buttonStyle(.peel(.outline))
                 }
             }
+            Fact("Vocabulary") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(vocabularyText)
+                    Text("Names and words dictation puts right, kept in your memory. Fix a word after dictating and it's learned.").muted()
+                }
+            } trailing: {
+                Button("Open") { openWindow(id: DictationVocabularyView.id) }
+                    .buttonStyle(.peel(.outline))
+            }
             Fact("History") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(dictation.historyOn ? "Kept for 30 days" : "Off: earlier ones stay until cleared or 30 days old")
@@ -54,6 +63,12 @@ struct DictationSettingsSection: View {
             DictationPermissionRows(permissions: dictation.permissions)
         }
         .onAppear { dictation.refresh() }
+    }
+
+    private var vocabularyText: String {
+        if dictation.lingo.problem != nil { return "Not available: Peel's strut can't read it" }
+        let count = dictation.lingo.lexicon.entries.filter { !$0.heard.isEmpty }.count
+        return count == 0 ? "No words yet" : count == 1 ? "1 word" : "\(count) words"
     }
 
     private var speechText: String {

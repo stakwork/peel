@@ -34,10 +34,13 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable, Fetch
     public var outcome: Outcome
     /// Why, in Peel's words, when it was not typed ("No field had focus").
     public var note: String?
+    /// What dictation heard, when the vocabulary rewrote it into `text`
+    /// ("ask the stack work team"); nil when it was typed as heard (v29).
+    public var heard: String?
 
     public init(
         id: UUID, startedAt: Date, duration: TimeInterval, text: String?, appID: String?, appName: String?,
-        outcome: Outcome, note: String?
+        outcome: Outcome, note: String?, heard: String? = nil
     ) {
         self.id = id
         self.startedAt = Int64((startedAt.timeIntervalSince1970 * 1000).rounded())
@@ -47,6 +50,7 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable, Fetch
         self.appName = appName
         self.outcome = outcome
         self.note = note
+        self.heard = heard
     }
 
     public var date: Date { Date(timeIntervalSince1970: Double(startedAt) / 1000) }

@@ -38,6 +38,10 @@ final class DictationController {
     @ObservationIgnored private let hud = DictationHUDPanel()
     /// Speech-to-text on Peel's own strut, and its model.
     let speech = DictationSpeech()
+    /// The user's vocabulary: rewrites what dictation mishears, learns from edits.
+    let lingo = DictationLingo()
+    /// The field Peel last typed into, watched for the user's corrections.
+    @ObservationIgnored private var watch: Task<Void, Never>?
     /// Dictation History keeps each dictation in the open account's database.
     private(set) var historyOn: Bool
     /// The open account's database; nil while it is locked or closed, when
@@ -96,6 +100,7 @@ final class DictationController {
     /// Peel's strut started, stopped or changed (`AppModel.strutChanged`).
     func strutChanged(_ server: MemoryServer?) {
         speech.use(server)
+        lingo.use(server)
         if isEnabled { speech.prepare() }
     }
 
@@ -208,6 +213,8 @@ final class DictationController {
         // Delivered after the key went down: dictation may have been turned
         // off, or the press already ended, in between.
         guard isListening, !machine.isIdle else { return }
+        // A new dictation: what the user did to the last one is as it is now.
+        watch?.cancel()
         let focus = DictationFocus.current(full: false).facts
         target = focus
         // The machine needs the time to know a hold from a tap, and a recording's end.
@@ -284,30 +291,36 @@ final class DictationController {
         let previous = insertion
         insertion = Task {
             defer { try? FileManager.default.removeItem(at: session.audioURL) }
-            let text: String
+            let heard: String
             do {
-                text = try await transcriber.transcribe(audioFileURL: session.audioURL)
+                heard = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
                 let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"
                 await entry.keep(nil, .failed, note: why)
                 hud.show(.message(why))
                 return
             }
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 await entry.keep(nil, .failed, note: "Nothing was heard")
                 hud.show(.message("Nothing was heard"))
                 return
             }
+            // What the user means, from their vocabulary: "stack work" → "Stakwork".
+            let text = lingo.rewrite(heard)
+            let rewritten = text == heard ? nil : heard
             await previous?.value
             let outcome = await DictationTextInserter.insert(text, startedIn: start)
             let note = Self.message(for: outcome)
             var copied = false
             let kept: Bool
             switch outcome {
-            case .inserted: kept = await entry.keep(text, .typed)
+            case .inserted:
+                kept = await entry.keep(text, .typed, heard: rewritten)
+                // Not Peel's own fields: asking Accessibility would wait on this very thread.
+                if start.pid != getpid(), history() != nil { watchForCorrections(of: text) }
             case .copied(let why):
                 copied = true
-                kept = await entry.keep(text, .copied, note: Self.historyNote(why))
+                kept = await entry.keep(text, .copied, note: Self.historyNote(why), heard: rewritten)
             case .blocked(let secureEntry): kept = await entry.keep(nil, .blocked, note: Self.secureMessage(entry: secureEntry))
             }
             // Only a message: by now another dictation may be under way.
@@ -317,6 +330,54 @@ final class DictationController {
 }
 
 extension DictationController {
+    /// Watches the field for what the user does to `typed`, then learns any
+    /// mishearing it shows, with Undo in the HUD.
+    fileprivate func watchForCorrections(of typed: String) {
+        watch?.cancel()
+        let teaches: @MainActor (String) -> Bool = { [weak self] edited in
+            self?.lingo.lessons(typed: typed, edited: edited).contains { if case .misheard = $0 { true } else { false } } ?? false
+        }
+        watch = DictationEditWatch.watch(typed: typed, teaches: teaches) { [weak self] edited in
+            // Only while unlocked (`history` is the unlocked account's database).
+            guard let self, let edited, edited != typed, history() != nil else { return }
+            let learned = lingo.lessons(typed: typed, edited: edited).compactMap { lesson -> (String, String)? in
+                if case .misheard(let heard, let written) = lesson { (heard, written) } else { nil }
+            }
+            guard !learned.isEmpty else { return }
+            Task { await self.learn(learned) }
+        }
+    }
+
+    private func learn(_ pairs: [(heard: String, written: String)]) async {
+        var undo: [String] = []
+        var words: [String] = []
+        for pair in pairs {
+            do {
+                let ids = try await lingo.learn(heard: pair.heard, written: pair.written)
+                guard !ids.isEmpty else { continue }
+                undo += ids
+                words.append(pair.written)
+            } catch {
+                log.error("lingo not learned: \(String(describing: error))")
+            }
+        }
+        guard !words.isEmpty else { return }
+        // Not over a dictation under way: once it is done (the usual case,
+        // as the next dictation is what ends the watch).
+        let clock = ContinuousClock()
+        let until = clock.now + .seconds(60)
+        while !machine.isIdle {
+            guard clock.now < until else { return }
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        await insertion?.value
+        hud.model.undo = { [weak self] in
+            self?.hud.hide()
+            Task { await self?.lingo.undo(undo) }
+        }
+        hud.show(.learned("Learned " + ListFormatter.localizedString(byJoining: words)))
+    }
+
     /// Why a dictation was copied rather than typed, for its History row.
     fileprivate static func historyNote(_ why: DictationTextInserter.Outcome.Why) -> String {
         switch why {
@@ -340,11 +401,12 @@ private struct HistoryEntry {
 
     /// Keeps it, never anything from a password field; whether it was kept.
     @discardableResult
-    func keep(_ text: String?, _ outcome: DictationRecord.Outcome, note: String? = nil) async -> Bool {
+    /// `heard`: what dictation heard, when the vocabulary rewrote it into `text`.
+    func keep(_ text: String?, _ outcome: DictationRecord.Outcome, note: String? = nil, heard: String? = nil) async -> Bool {
         guard let storage else { return false }
         let record = DictationRecord(
             id: id, startedAt: startedAt, duration: duration, text: text, appID: appID, appName: appName,
-            outcome: outcome, note: note
+            outcome: outcome, note: note, heard: text == nil ? nil : heard
         )
         do {
             try await storage.addDictation(record, keep: DictationDefaults.historyKeep)

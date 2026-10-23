@@ -10,7 +10,7 @@ struct DictationFocus {
     let facts: FocusFacts
     let element: AXUIElement?
 
-    private static let system: AXUIElement = {
+    static let system: AXUIElement = {
         let system = AXUIElementCreateSystemWide()
         // Asked on the main thread: an app that hangs costs a quarter second
         // a question, not six. Set on the system-wide element, it holds for all.
@@ -42,7 +42,7 @@ struct DictationFocus {
         return DictationFocus(facts: facts, element: element)
     }
 
-    fileprivate static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
         var value: CFTypeRef?
         return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
     }

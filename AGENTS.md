@@ -453,7 +453,11 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationTextInserter` (the focused element, Accessibility or ⌘V with
   the clipboard put back), `DictationSpeech` (speech-to-text on the open
   account's own strut, told of it by `AppModel.strutChanged`, and its
-  model; `StrutTranscriber`), `DictationHistoryView` (the History window:
+  model; `StrutTranscriber`), `DictationLingo` (the vocabulary from
+  strut's `memory/lexicon`, the rewrite, learning and Undo),
+  `DictationEditWatch` (rereads the field after typing for the user's
+  correction), `DictationVocabularyView` (the Vocabulary window),
+  `DictationHistoryView` (the History window:
   each dictation by day, with Copy and Clear History),
   `DictationPermissions`, and the Account section, offer and menu item in
   `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
@@ -756,7 +760,8 @@ is a short plan. Update the status and the journal when you finish something.
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
   state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
-  where dictated text goes)
+  where dictated text goes) and `LingoTests` (the vocabulary rewrite, what
+  an edit teaches, strut's lexicon read and the learn and Undo writes)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

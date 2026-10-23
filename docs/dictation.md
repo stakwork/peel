@@ -70,7 +70,9 @@ on this Mac, turns it into text: nothing leaves it.
   one is kept), and goes with the account: the text that was typed or
   copied, when, how long, the app's id and name (never its window title)
   and where the text went (typed; copied, and why; blocked: a password
-  field, no text; failed, and why). Never the recording, which is still
+  field, no text; failed, and why), and what dictation heard when the
+  vocabulary rewrote it (`heard`, v29: "heard “ask the stack work team”").
+  Never the recording, which is still
   deleted once transcribed. Nothing is kept, and the window shows nothing,
   while the account is locked (`AppModel.unlockedStorage` is nil: locking
   leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
@@ -81,6 +83,36 @@ on this Mac, turns it into text: nothing leaves it.
   only when it was kept. Time and account are taken when the key is let go.
   Strut's sessions are not used: they keep the recogniser's raw text with
   no app or outcome, and cannot be cleared.
+- **Vocabulary** (`DictationLingo`; the pure parts are PeelUI's
+  `Lingo.swift`). The user's words live in the memory graph on Peel's own
+  strut (stakwork/strut#297): a `Lingo` entity type for jargon, acronyms and
+  product words, and on any entity `heard_as` facts, how dictation mishears
+  it ("stack work" for Stakwork), kept out of strut's alias matching. Peel
+  reads it all with `memory/lexicon` when the strut starts and after each
+  write, and before typing rewrites each known mishearing (longest first,
+  on word boundaries), then catches new spellings of a taught word (one or
+  two words whose letters, spaces and case aside, are a known form's, or
+  one long word a quarter off at most: "Stockwork" → Stakwork), and gives
+  written forms their casing; a mishearing
+  that is one everyday word ("fix" for Sphinx) is never applied on its own.
+  - **Learning.** After typing, `DictationEditWatch` rereads the field every
+    0.5 s while it keeps the focus (until an edit has been left alone for
+    2 s, the field loses focus, the next dictation starts, or 45 s) and takes the span between the text that was around Peel's,
+    from the last reading that still had that text: a field emptied by
+    Return (a chat sending) keeps the fix made just before. `LingoClassifier`
+    diffs it word by word: a rewrite of the whole is ignored; a correction
+    is learned only when the corrected word is name- or term-shaped, sounds
+    like what was written (same letters split or run together, or the same
+    sounds spelled out: "p eight" / "P8") and what dictation wrote is
+    nothing the user would write themselves. "PH" for P8, "their" for
+    "there", "BTC" for "Bitcoin" teach nothing. A learn is one
+    `memory/remember` with only the pair, and the HUD says "Learned P8"
+    with Undo for 5 s; Undo forgets it with reason `undone`, and an undone
+    pair is never learned again.
+  - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
+    word with how it is misheard, Remove, a switch to leave it alone, and
+    Add (the word and how dictation writes it). A view over the graph, not
+    a second list.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -148,6 +180,12 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: Vocabulary (steps 1–4 of the dictation lingo design): strut
+  pinned at #297; the rewrite, the edit watch, the classifier (spoken forms
+  for acronyms and numbers; nothing learned when dictation's text is
+  something the user could mean) and Undo in the HUD; the Vocabulary
+  window. Checked against a real staged strut: a learn, the read, Undo.
+  Not yet: hotwords, the LLM clean-up, measuring corrections per 100 words.
 - 2026-10-23: History (step 0 of the dictation lingo design): on by default,
   30 days, text only. Not built from that design yet: a choice of keep
   time, deleting one entry, opening the window at an entry from the HUD,

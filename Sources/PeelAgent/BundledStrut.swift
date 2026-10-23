@@ -237,10 +237,17 @@ public final class BundledStrut {
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
             "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
+            "STRUT_SEALED": Orchestrator.sealedSteps.joined(separator: ","),
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",
             "OPENSSL_ENGINES": "/var/empty",
         ]) { _, new in new }
+        // strut clears its environment at boot (strut's env.ts); a stand-in model on this Mac (the
+        // tests') is kept for the model library, which reads it from there. Any other is ignored.
+        let loopback: Set = ["127.0.0.1", "localhost", "::1"]
+        if let host = environment["ANTHROPIC_BASE_URL"].flatMap(URL.init(string:))?.host(percentEncoded: false), loopback.contains(host) {
+            environment["STRUT_ENV_KEEP"] = "ANTHROPIC_BASE_URL"
+        }
         return environment
     }
 }

@@ -132,13 +132,26 @@ public enum Orchestrator {
 
     // MARK: The host delta
 
+    /// What strut's `builder` job (the orchestrator starts it with
+    /// `job/start`) may only propose: each call becomes a proposal the person
+    /// decides (docs/connectors-and-authoring.md, section 6), never a
+    /// publish on its own. `app/publish` publishes an app with its grants.
+    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"]
+
+    /// Steps strut seals from its meta surface beside its own (`meta/*`,
+    /// `STRUT_SEALED`), so `meta/run-step` never runs one of `builderApprove`
+    /// around its proposal; the builder still proposes it as a tool.
+    static let sealedSteps = ["app/publish"]
+
     /// The JSON strut's bundled server reads at boot (`STRUT_HOST_CONFIG`):
     /// Peel's tools and section on the orchestrator, which runs on the
-    /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), and
-    /// the automation steps' workflow and approval step.
+    /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), the
+    /// builder gated and closed to other struts (`peer: false`), and the
+    /// automation steps' workflow and approval step.
     static func hostConfig() throws -> Data {
         let config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array(tools.map(AgentKit.JSONValue.string)), "system": .string(section), "model": .null],
+            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]

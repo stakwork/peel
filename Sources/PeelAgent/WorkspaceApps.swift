@@ -24,21 +24,13 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
     public var id: String { "@\(peer)/\(name)" }
-
-    /// strut's app names (`validateAppName`): `/`-separated segments of
-    /// letters, digits, `_`, `.` and `-`, each starting with a letter or
-    /// digit; never `@`, which pins a version.
-    static func isAppName(_ name: String) -> Bool {
-        name.count <= 120
-            && name.range(of: #"^[A-Za-z0-9][A-Za-z0-9_.-]*(/[A-Za-z0-9][A-Za-z0-9_.-]*)*$"#, options: .regularExpression) != nil
-    }
 }
 
 extension WorkspaceApp {
     /// One entry of strut's `GET /apps`; nil for one not pinned, or with a
     /// name strut would not have given it.
     init?(peer: String, json: AgentKit.JSONValue) {
-        guard json["pinned"] == .bool(true), let name = json["name"]?.string, Self.isAppName(name) else { return nil }
+        guard json["pinned"] == .bool(true), let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
         self.peer = peer
         self.name = name
         let title = ChatData.clean(json["title"]?.string ?? "", max: ChatData.maxName)
@@ -65,12 +57,27 @@ extension MemoryServer {
     /// workspaces of this Mac's. The address carries the key, so it is
     /// handed to the web view and never shown, logged or kept.
     public func page(of app: WorkspaceApp) -> URL? {
+        page("app", app.id)
+    }
+
+    /// strut's UI showing a deliverable from the agent's DM alone, as for an
+    /// app: a file through its viewer (`?artifact=`, stakwork/strut#314),
+    /// an app's page (`?app=`). An org's is read through to it with the
+    /// person's token, as an app is.
+    public func page(showing handle: AgentArtifact.Handle) -> URL? {
+        switch handle {
+        case .file(let path): page("artifact", path)
+        case .app(let app): page("app", app)
+        }
+    }
+
+    private func page(_ name: String, _ value: String) -> URL? {
         guard !isHomeServer, var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
         // Only unreserved characters left as they are: `+` would read as a space.
         let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         func encoded(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "" }
         parts.path = "/"
-        parts.percentEncodedQuery = "key=\(encoded(key))&app=\(encoded(app.id))&solo=1"
+        parts.percentEncodedQuery = "key=\(encoded(key))&\(name)=\(encoded(value))&solo=1"
         return parts.url
     }
 

@@ -204,7 +204,10 @@ is a short plan. Update the status and the journal when you finish something.
     for `unsupported`, never a guess; `Message.agentTools` (a reply's tool
     rows, `metadata.peel.tools`, as `AgentToolLine`), `Message.agentJob`
     and `agentArtifacts` (a job's message: `metadata.peel.job`, `AgentJob`,
-    and what it points to, `AgentArtifact`, https links only) and `AgentDM` (your
+    and what it points to, `AgentArtifact`: an https link, or the handle
+    the bridge adds, `AgentArtifact.Handle`, a file strut serves or an app,
+    only in those shapes, with strut's peer id and app name rules that
+    `Hive` and `WorkspaceApp` use too) and `AgentDM` (your
     message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
@@ -351,7 +354,11 @@ is a short plan. Update the status and the journal when you finish something.
   those apps alone in the detail column, the sidebar's Apps: Peel's own
   strut's UI showing its page, in a `WKWebView` whose store keeps nothing
   and which goes nowhere but that strut; `docs/agent-on-strut.md`, "Built:
-  a workspace's apps");
+  a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
+  alone with strut's key in its address, and the rules the app view and the
+  web pane's deliverable both keep to: only that strut, its `srcdoc` and
+  blob frames, a link out only on the person's own click, which
+  `InputWebView` knows of; "Built: a deliverable opens beside the chat");
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -458,7 +465,10 @@ is a short plan. Update the status and the journal when you finish something.
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
   own data store, its toolbar and address field, the routing of http and
   https links, Browser and a tribe's pages as More menu items, and
-  `WebPane.open(_ page:)`, the one way a tribe's page opens);
+  `WebPane.open(_ page:)`, the one way a tribe's page opens; and, besides a
+  page of the web and an HTML attachment, a deliverable from the agent's DM,
+  `open(_:)` with a `StrutPage`: a web view of its own whose store keeps
+  nothing, its name in the address field and never its address);
   `NotificationOffer` (the bar offering notifications);
   `Dictation/` (system-wide dictation, milestone 0, `docs/dictation.md`:
   `DictationController` the glue, `DictationHotkeyTap` the CGEventTap on
@@ -653,7 +663,8 @@ is a short plan. Update the status and the journal when you finish something.
     through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), and
     the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
     with its key as `?key=`, `&app=@<id>/<name>&solo=1`; Peel's own strut
-    only)
+    only), and of a deliverable from the agent's DM the same way
+    (`page(showing:)`: `&artifact=<path>&solo=1` for a file, `&app=` for an app)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -872,7 +883,8 @@ is a short plan. Update the status and the journal when you finish something.
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
   (`package-desktop.mjs`, with dictation's speech engine (sherpa) in
-  `native/` and its fixer (node-llama-cpp with Metal) in
+  `native/` and its fixer (node-llama-cpp with Metal, from strut's own
+  `fixer/` install since strut#312) in
   `native/llama/mac-arm64-metal`, Ladybug, its `vector` and `fts`
   extensions, the `memory/*` steps, and the `orchestrator` with the
   `automation/*` steps, which Peel's delta needs), built from the strut

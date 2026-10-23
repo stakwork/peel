@@ -51,11 +51,15 @@ git -C "$STRUT_CHECKOUT" archive "$COMMIT" | tar -x -C "$STRUT_SRC"
 tar -xzf "$NODE_TAR" -C "$NODE_TMP"
 NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
 # Under that Node, which strut requires (22 or newer): the checkout's
-# dependencies from its lockfile, then the package (it builds strut).
+# dependencies from its lockfile, dictation's fixer from fixer/'s own
+# (node-llama-cpp, never one of strut's since strut#312; its install
+# scripts off, the prebuilt Metal binaries are packages of their own),
+# then the package (it builds strut).
 (
   cd "$STRUT_SRC"
   export PATH="$NODE_DIR/bin:$PATH"
   yarn install --frozen-lockfile --silent
+  yarn --cwd fixer install --frozen-lockfile --ignore-scripts --silent
   node scripts/package-desktop.mjs --out "$WORK"
 )
 STAGE="$WORK/strut"
@@ -68,7 +72,7 @@ done
   || { echo "stage-strut: the package left the speech engine out (sherpa-onnx-node in the strut checkout's install?)" >&2; exit 1; }
 # Dictation's fixer (node-llama-cpp with Metal), its binaries in native/llama/mac-arm64-metal to be signed.
 [ "$(plutil -extract fixer raw -o - "$STAGE/desktop.json" 2> /dev/null)" = true ] && [ -e "$STAGE/native/llama/mac-arm64-metal/llama-addon.node" ] \
-  || { echo "stage-strut: the package left dictation's fixer out (node-llama-cpp and @node-llama-cpp/mac-arm64-metal in the strut checkout's install?)" >&2; exit 1; }
+  || { echo "stage-strut: the package left dictation's fixer out (node-llama-cpp and @node-llama-cpp/mac-arm64-metal in fixer/'s install?)" >&2; exit 1; }
 # The package's own word that it carries Ladybug and its extensions, which the workspace needs.
 [ "$(plutil -extract ladybug raw -o - "$STAGE/desktop.json")" = true ] || { echo "stage-strut: the package left Ladybug out (is openssl@3 installed? brew install openssl@3)" >&2; exit 1; }
 cp "$NODE_DIR/bin/node" "$STAGE/native/node"

@@ -78,6 +78,9 @@ public final class AppModel {
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
+        /// An app a Stadeum workspace pinned, by the workspace's peer id and
+        /// the app's name there; the Mac's alone, shown by its own strut.
+        case app(peer: String, name: String)
     }
 
     /// Account's categories, listed where the sidebar was while it is open.

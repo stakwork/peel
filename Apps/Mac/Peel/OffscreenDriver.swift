@@ -12,8 +12,8 @@ import PeelUI
 /// fails after `deadline` in all.
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
-/// `{"select": "a chat's name"}` (or its chat id; sets the destination a click on its
-/// sidebar row sets), `{"open": "send-sats"}` (what a button with no
+/// `{"select": "a chat's name"}` (or its chat id, or a workspace's app as
+/// `@<workspace>/<name>`; sets the destination a click on its sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
 /// the notification for its newest message from someone else).
@@ -284,6 +284,12 @@ final class OffscreenDriver {
             // The agent's own row in Direct messages.
             model.destination = .agent
             Offscreen.log("drive: selected the agent chat")
+            return
+        }
+        if let model = model(), let app = model.hive.apps.first(where: { $0.id == name }) {
+            // A workspace's app in Apps, by `@<workspace>/<name>`.
+            model.destination = .app(peer: app.peer, name: app.name)
+            Offscreen.log("drive: selected the app \(app.id)")
             return
         }
         let (model, chat) = try chat(named: name)

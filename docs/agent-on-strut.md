@@ -1539,6 +1539,74 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
   hidden from the card, one bad id stopping the sync: all fixed). Not
   yet against Hive itself (it needs Tom's approval on hive.sphinx.chat).
 
+### Built: a workspace's apps (2026-10-23)
+
+An app a Stadeum workspace pinned as a tab opens in Peel, alone in the
+detail column, from a new Apps section at the foot of the sidebar. The
+app lives on the workspace's strut (its grants, runs and data); Peel's
+own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
+and #308).
+
+- **The pin.** `Vendor/strut.lock` moves to 3c1870d (strut#308, after
+  #307): the read-through serves a peer's apps and their files, relays
+  `POST /peers/<id>/mcp`, and a person token gets the app's `step_run`
+  alone on the org; `?app=@<id>/<name>&solo=1` shows the page and
+  nothing of strut's around it.
+- **The list.** `AutomationsClient.pinnedApps(of:)` reads `GET
+  /peers/<id>/apps` on Peel's own strut for each live workspace and keeps
+  those marked `pinned` (what strut says a host showing tabs takes), under
+  names strut gives. `refreshWorkspaceApps` runs after each `syncHive`
+  (the bridge starting, a pairing, a renewal or revoke; never waited for,
+  so a slow workspace cannot hold up the bridge) and every five minutes
+  while the sidebar shows, reading the workspaces at once, a newer read
+  replacing one under way. A workspace that cannot be read keeps what it
+  last listed, and the list stays while Peel's strut is away (starting
+  again, a memory move). Nothing on a home server, which holds none of
+  this Mac's workspaces. The workspace's `@id` shows beside each app only when
+  the apps come from several.
+- **The page.** `WorkspaceAppView`: the app's title and `@workspace`,
+  Reload, and a `WKWebView` on `MemoryServer.page(of:)`, strut's UI with
+  Peel's strut key as `?key=`, which strut's UI keeps for the tab and takes
+  out of the address. The web view's store keeps nothing
+  (`.nonPersistent()`), so the key goes with the view; it is limited as
+  the web pane is (`WebPane.limit`: no window without a click, no sound
+  until clicked, no WebRTC). It navigates only to Peel's own strut,
+  `about:` (the page's `srcdoc` frame) and data/blob frames; a link to
+  anywhere else, or a new window strut opens for one, opens in the web
+  pane beside the app (`WebPane.follow`), and only within a second of the
+  person's own click or key in the view (`AppWebView`): a script's
+  `click()` counts as a link activation too. No download, camera or
+  microphone. The person's token for the workspace never leaves strut's
+  peers file. The page itself is the workspace's, in a sandboxed frame
+  with an opaque origin: strut's build gives it `connect-src 'none'`, so
+  its calls go through strut's relay, but a workspace that served another
+  document could fetch what any web page can (never strut's API, which
+  wants the key the frame does not have).
+- **Strut's side, to fix there.** Shown alone, strut's UI still loads
+  every workflow, step type and peer's app list before drawing the page,
+  and polls the active runs every five seconds while it shows.
+- **Not here.** The page's `ui/message` (a message about the app to the
+  agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
+  the page shows alone; a workspace's apps that are not pinned; the
+  iPhone (no strut of its own).
+- **Checked.** `HiveTests.aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut`
+  (the read-through's path and key, pinned only, names strut gives, the
+  page's `key`, `app` and `solo` read back exactly, none on a home
+  server). By hand, two struts from the stage at the new pin, one standing
+  in for the org with its seeded `strut/views` pinned and a person token
+  it minted: Peel's strut listed it pinned through the read-through, and a
+  WebKit web view with this view's configuration and rules loaded
+  `page(of:)`: the gallery drew, the address lost the key, only strut's
+  page and the `srcdoc` frame were let through, and the page's MCP
+  `initialize` reached the org's `/mcp` through `/peers/acme/mcp`. Not yet
+  `check-app.sh` (signing), nor against a swarm (mcp pins #307's merge).
+  Reviews: an independent adversarial review (a script's `click()`
+  opening pages in the pane, the bridge start waiting on every
+  workspace's apps, a second copy of the pane's web view policy, a web
+  view rebuilt when a title changed, overlapping reads, the list cleared
+  while strut restarts, a test that could not see a `+` in the key: all
+  fixed; strut's solo loading, above, left for strut).
+
 ### Built: an automation can do anything you can (2026-10-23)
 
 From Tom's user model (`docs/connectors-and-authoring.md`, section 7):

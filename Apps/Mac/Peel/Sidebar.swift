@@ -1,5 +1,6 @@
 import AgentKit
 import SwiftUI
+import PeelAgent
 import PeelCore
 import PeelUI
 
@@ -80,6 +81,14 @@ struct Sidebar: View {
                                 ContactsSidebarRows()
                             }
                         }
+                        let apps = shownApps
+                        if !apps.isEmpty {
+                            // The workspace beside each only when there are several.
+                            let several = Set(apps.map(\.peer)).count > 1
+                            SidebarSection("Apps") {
+                                ForEach(apps) { WorkspaceAppLink(app: $0, showsWorkspace: several) }
+                            }
+                        }
                     }
                     .padding(.bottom, Theme.Space.md)
                 }
@@ -122,6 +131,14 @@ struct Sidebar: View {
             }
             #endif
         }
+        // A workspace's newly pinned app shows within minutes; the workspaces
+        // changing, or strut starting (`syncHive`), reads them at once.
+        .task(id: model.hive.live.map(\.id)) {
+            while !Task.isCancelled {
+                model.refreshWorkspaceApps()
+                try? await Task.sleep(for: .seconds(300))
+            }
+        }
         .onDisappear {
             // Locked or gone: nothing kept, nothing typed on.
             model.sidebarHasKeys = false
@@ -141,6 +158,12 @@ struct Sidebar: View {
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
             + sections.direct.map { (.chat($0.chat), $0.name) }
+            + shownApps.map { (.app(peer: $0.peer, name: $0.name), $0.title) }
+    }
+
+    /// The workspaces' pinned apps matching the search.
+    private var shownApps: [WorkspaceApp] {
+        model.hive.apps.filter { ChatSections.matches($0.title, query: model.searchQuery) }
     }
 
     /// The agent's row, first in Direct messages: while the section is open
@@ -749,6 +772,27 @@ private struct AutomationsLink: View {
         } accessory: {
             if failed > 0 { Badge(count: failed, .outline) }
         }
+    }
+}
+
+/// An app a Stadeum workspace pinned (`WorkspaceAppView`), with its
+/// workspace beside it when the apps come from several.
+private struct WorkspaceAppLink: View {
+    let app: WorkspaceApp
+    let showsWorkspace: Bool
+
+    var body: some View {
+        SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
+            Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
+        } accessory: {
+            if showsWorkspace {
+                Text("@\(app.peer)")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+        .help(app.about ?? app.title)
     }
 }
 

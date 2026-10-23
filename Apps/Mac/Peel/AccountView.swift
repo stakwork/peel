@@ -58,6 +58,7 @@ struct AccountView: View {
                         WordsRow()
                         WebsiteDataRow()
                     }
+                    DictationSettingsSection()
                     SettingsSection("Notifications") {
                         NotificationsRow()
                         NotificationTextRow()

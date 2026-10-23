@@ -440,6 +440,11 @@ is a short plan. Update the status and the journal when you finish something.
   https links, Browser and a tribe's pages as More menu items, and
   `WebPane.open(_ page:)`, the one way a tribe's page opens);
   `NotificationOffer` (the bar offering notifications);
+  `Dictation/` (system-wide dictation, milestone 0, `docs/dictation.md`:
+  `DictationController` the glue, `DictationHotkeyTap` the CGEventTap on
+  its own thread, `DictationAudioCapture`, `DictationHUD`,
+  `DictationPermissions`, and the Account section, offer and menu item in
+  `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
@@ -727,7 +732,8 @@ is a short plan. Update the status and the journal when you finish something.
   busiest watched call, the call you are on, locking stops the watches),
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
-  matches waits for the first of them)
+  matches waits for the first of them) and `DictationTests` (the hotkey's
+  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
